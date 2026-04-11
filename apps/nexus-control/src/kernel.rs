@@ -6200,6 +6200,9 @@ impl KernelState {
             contribution.contributor_set_revision_id =
                 req.window.contributor_set_revision_id.clone();
             contribution.validator_policy_ref = req.window.validator_policy_ref.clone();
+            contribution.work_class = req.window.work_class;
+            contribution.replica_type = req.window.replica_type;
+            contribution.base_checkpoint_ref = req.window.base_checkpoint_ref.clone();
             contribution.adapter_target_id = req.window.adapter_target_id.clone();
             contribution.adapter_family = req.window.adapter_family.clone();
             contribution.base_model_ref = req.window.base_model_ref.clone();
@@ -6230,8 +6233,17 @@ impl KernelState {
                     "window_id": req.window.window_id.clone(),
                     "status": req.window.status,
                     "contribution_count": req.contribution_outcomes.len(),
+                    "work_class": req.window.work_class.label(),
+                    "replica_type": req.window.replica_type.label(),
+                    "round_index": req.window.round_index,
+                    "base_checkpoint_ref": req.window.base_checkpoint_ref.clone(),
+                    "planned_local_step_count": req.window.planned_local_step_count,
+                    "aggregation_rule": req.window.aggregation_rule.clone(),
+                    "aggregation_weight_basis": req.window.aggregation_weight_basis.clone(),
                     "promotion_ready": req.window.promotion_ready,
                     "promotion_disposition": req.window.promotion_disposition,
+                    "accepted_aggregate_id": req.window.accepted_aggregate_id.clone(),
+                    "promoted_checkpoint_ref": req.window.promoted_checkpoint_ref.clone(),
                     "accepted_outcome_id": req.window.accepted_outcome_id.clone(),
                 }),
                 evidence: req.evidence.clone(),
@@ -16014,6 +16026,12 @@ mod tests {
                 validator_policy_ref: "policy://validator/training".to_string(),
                 work_class: ComputeTrainingWorkClass::AdapterTraining,
                 replica_type: ComputeTrainingReplicaType::SingleNode,
+                round_index: Some(7),
+                base_checkpoint_ref: "checkpoint://decoder/train.math.basic.alpha/promotion"
+                    .to_string(),
+                planned_local_step_count: Some(64),
+                aggregation_rule: Some("weighted_avg".to_string()),
+                aggregation_weight_basis: Some("tokens".to_string()),
                 adapter_target_id: "adapter.target.math-basic".to_string(),
                 adapter_family: "openagents.adapter.reference".to_string(),
                 base_model_ref: "model://llama3.2".to_string(),
@@ -16037,8 +16055,12 @@ mod tests {
                 promotion_disposition: Some(ComputeAdapterPromotionDisposition::Promoted),
                 hold_reason_codes: Vec::new(),
                 aggregated_delta_digest: Some("sha256:adapter-aggregate-alpha".to_string()),
+                accepted_aggregate_id: Some("aggregate.adapter.alpha".to_string()),
                 output_policy_revision: Some(output_policy_revision),
                 output_checkpoint_pointer: Some(output_checkpoint_pointer),
+                promoted_checkpoint_ref: Some(
+                    "checkpoint://decoder/train.math.basic.alpha/promotion".to_string(),
+                ),
                 accepted_outcome_id: None,
                 recorded_at_ms,
                 metadata: json!({"validator_window_id": "validator.window.alpha"}),
@@ -16054,6 +16076,10 @@ mod tests {
                     contributor_node_id: "node.alpha".to_string(),
                     worker_id: "worker.alpha".to_string(),
                     validator_policy_ref: "policy://validator/training".to_string(),
+                    work_class: ComputeTrainingWorkClass::AdapterTraining,
+                    replica_type: ComputeTrainingReplicaType::SingleNode,
+                    base_checkpoint_ref: "checkpoint://decoder/train.math.basic.alpha/promotion"
+                        .to_string(),
                     adapter_target_id: "adapter.target.math-basic".to_string(),
                     adapter_family: "openagents.adapter.reference".to_string(),
                     base_model_ref: "model://llama3.2".to_string(),
@@ -16079,6 +16105,11 @@ mod tests {
                     validator_receipt_digest: "sha256:validator-alpha".to_string(),
                     aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
                     accepted_for_aggregation: true,
+                    local_step_count: Some(64),
+                    consumed_token_count: Some(131_072),
+                    consumed_example_count: Some(256),
+                    aggregation_weight_basis: Some("tokens".to_string()),
+                    aggregation_weight_value: Some(131_072),
                     aggregation_weight_bps: Some(10_000),
                     promotion_receipt_digest: Some("sha256:promotion-alpha".to_string()),
                     recorded_at_ms,
@@ -16094,6 +16125,10 @@ mod tests {
                     contributor_node_id: "node.beta".to_string(),
                     worker_id: "worker.beta".to_string(),
                     validator_policy_ref: "policy://validator/training".to_string(),
+                    work_class: ComputeTrainingWorkClass::AdapterTraining,
+                    replica_type: ComputeTrainingReplicaType::SingleNode,
+                    base_checkpoint_ref: "checkpoint://decoder/train.math.basic.alpha/promotion"
+                        .to_string(),
                     adapter_target_id: "adapter.target.math-basic".to_string(),
                     adapter_family: "openagents.adapter.reference".to_string(),
                     base_model_ref: "model://llama3.2".to_string(),
@@ -16121,6 +16156,11 @@ mod tests {
                     validator_receipt_digest: "sha256:validator-beta".to_string(),
                     aggregation_eligibility: ComputeAdapterAggregationEligibility::Ineligible,
                     accepted_for_aggregation: false,
+                    local_step_count: Some(64),
+                    consumed_token_count: Some(131_072),
+                    consumed_example_count: Some(256),
+                    aggregation_weight_basis: None,
+                    aggregation_weight_value: None,
                     aggregation_weight_bps: None,
                     promotion_receipt_digest: None,
                     recorded_at_ms,

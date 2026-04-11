@@ -102,14 +102,18 @@ The authority now also manages:
     refs, source linkage, step expectations, terminal summaries, and checkpoint
     promotion refs
 - `ComputeAdapterTrainingWindow`
-  - canonical decentralized-adapter window projection linked to one
-    `ComputeTrainingRun`, including lifecycle state, validator score summary,
-    promotion readiness, promotion lineage, declared work class, declared
-    replica type, and optional accepted-outcome linkage
+  - canonical training-window projection linked to one `ComputeTrainingRun`,
+    including lifecycle state, validator score summary, promotion readiness,
+    promotion lineage, declared work class, declared replica type, round index,
+    base-checkpoint lineage, planned local-work semantics, aggregation rule and
+    weighting basis, optional accepted aggregate identity, optional promoted
+    checkpoint identity, and optional accepted-outcome linkage
 - `ComputeAdapterContributionOutcome`
   - canonical contribution-level projection linked to one
     `ComputeAdapterTrainingWindow`, including manifest/object digests, validator
-    disposition, aggregation eligibility, aggregation weight, and preserved
+    disposition, aggregation eligibility, contribution work class, contribution
+    replica type, base-checkpoint lineage, local-step or token or example
+    accounting, aggregation weight basis and value, and preserved
     submission/artifact/provenance/security/validator receipt digests
 - `ComputeAcceptedOutcome`
   - canonical accepted-outcome id for either:
@@ -138,6 +142,12 @@ execution receipts into operator and settlement-facing truth:
   from those receipts
 - accepted outcomes remain the only canonical promotion boundary for later
   market settlement or accepted operator claims
+
+The current type names still carry the historical adapter-first naming, but the
+authority semantics no longer do. Windows and contributions now carry explicit
+round, checkpoint, local-work, and aggregation fields directly so the same
+sealed closeout path can describe adapter windows, grouped stages, or island
+local-update rounds without inferring those semantics from opaque metadata.
 
 ## Current Apple Operator Path
 
@@ -223,6 +233,36 @@ The important rule is simple:
 - accepted Apple runs require the typed package digest and held-out eval ref,
   plus the runtime-validation eval ref when the Apple runtime-validation
   posture requires runtime smoke
+
+### Training window record
+
+- window records require one explicit `base_checkpoint_ref`
+- the explicit `base_checkpoint_ref` must match the source checkpoint pointer
+- optional `round_index` and `planned_local_step_count` become part of the
+  canonical authority object rather than metadata-only hints
+- optional `aggregation_rule` and `aggregation_weight_basis` must either both
+  be present or both be absent
+- adapter-target and adapter-format fields remain required for
+  `adapter_training`, but non-adapter work classes can persist empty adapter
+  naming fields while still carrying the same window lifecycle
+- `window_summary_digest` now covers the window's work class, replica type,
+  round, base-checkpoint, aggregation semantics, accepted aggregate linkage,
+  promoted checkpoint linkage, accepted outcome linkage, and contribution-level
+  local-work accounting fields
+
+### Contribution outcome record
+
+- contribution records require one explicit `base_checkpoint_ref`
+- the explicit `base_checkpoint_ref` must match the source checkpoint pointer
+- contribution work class and replica type must remain coherent with the parent
+  run or window topology rules
+- local-step count, token count, example count, and aggregation weight value
+  must be positive when present
+- aggregation weight basis and value must either both be present or both be
+  absent
+- adapter dataset slices remain required for `adapter_training`, but non-adapter
+  contributions can persist default slices while preserving the same receipt and
+  lineage surface
 
 ### Accepted outcomes
 

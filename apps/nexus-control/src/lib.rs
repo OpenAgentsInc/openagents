@@ -60,7 +60,8 @@ use openagents_kernel_core::compute::{
     ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact, ComputeEvaluationMetric,
     ComputeEvaluationRunStatus, ComputeProductStatus, ComputeRegistryStatus,
     ComputeSyntheticDataJobStatus, ComputeTrainingRun, ComputeTrainingRunStatus,
-    ComputeTrainingSummary, ComputeValidatorChallengeContext, ComputeValidatorChallengeFailureCode,
+    ComputeTrainingSummary, ComputeTrainingWorkClass, ComputeValidatorChallengeContext,
+    ComputeValidatorChallengeFailureCode,
     ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
     ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
     ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
@@ -1185,6 +1186,15 @@ struct PlanTrainingWindowRequest {
     recorded_at_ms: i64,
     training_run_id: String,
     stage_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    round_index: Option<u64>,
+    base_checkpoint_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    planned_local_step_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_rule: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_weight_basis: Option<String>,
     adapter_target_id: String,
     adapter_family: String,
     base_model_ref: String,
@@ -1223,6 +1233,16 @@ struct TrainingWindowContributionInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     aggregation_eligibility: Option<ComputeAdapterAggregationEligibility>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_step_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    consumed_token_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    consumed_example_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_weight_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_weight_value: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     aggregation_weight_bps: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     promotion_receipt_digest: Option<String>,
@@ -1254,6 +1274,10 @@ struct ReconcileTrainingWindowRequest {
     runtime_smoke_passed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     aggregated_delta_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accepted_aggregate_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    promoted_checkpoint_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -2333,6 +2357,17 @@ fn training_window_summary_digest(
         "training_run_id": window.training_run_id,
         "status": window.status,
         "contributor_set_revision_id": window.contributor_set_revision_id,
+        "work_class": window.work_class.label(),
+        "replica_type": window.replica_type.label(),
+        "round_index": window.round_index,
+        "base_checkpoint_ref": window.base_checkpoint_ref,
+        "planned_local_step_count": window.planned_local_step_count,
+        "aggregation_rule": window.aggregation_rule,
+        "aggregation_weight_basis": window.aggregation_weight_basis,
+        "aggregated_delta_digest": window.aggregated_delta_digest,
+        "accepted_aggregate_id": window.accepted_aggregate_id,
+        "promoted_checkpoint_ref": window.promoted_checkpoint_ref,
+        "accepted_outcome_id": window.accepted_outcome_id,
         "counts": {
             "total": window.total_contributions,
             "admitted": window.admitted_contributions,
@@ -2348,7 +2383,15 @@ fn training_window_summary_digest(
             serde_json::json!({
                 "contribution_id": contribution.contribution_id,
                 "assignment_id": contribution.assignment_id,
+                "work_class": contribution.work_class.label(),
+                "replica_type": contribution.replica_type.label(),
+                "base_checkpoint_ref": contribution.base_checkpoint_ref,
                 "validator_disposition": contribution.validator_disposition,
+                "local_step_count": contribution.local_step_count,
+                "consumed_token_count": contribution.consumed_token_count,
+                "consumed_example_count": contribution.consumed_example_count,
+                "aggregation_weight_basis": contribution.aggregation_weight_basis,
+                "aggregation_weight_value": contribution.aggregation_weight_value,
                 "manifest_digest": contribution.manifest_digest,
                 "object_digest": contribution.object_digest,
                 "artifact_receipt_digest": contribution.artifact_receipt_digest,
@@ -3455,6 +3498,11 @@ fn training_window_base_record(
         validator_policy_ref: training_run.validator_policy_ref.clone(),
         work_class: training_run.work_class,
         replica_type: training_run.replica_type,
+        round_index: planned_request.round_index,
+        base_checkpoint_ref: planned_request.base_checkpoint_ref.clone(),
+        planned_local_step_count: planned_request.planned_local_step_count,
+        aggregation_rule: planned_request.aggregation_rule.clone(),
+        aggregation_weight_basis: planned_request.aggregation_weight_basis.clone(),
         adapter_target_id: planned_request.adapter_target_id.clone(),
         adapter_family: planned_request.adapter_family.clone(),
         base_model_ref: planned_request.base_model_ref.clone(),
@@ -3478,8 +3526,10 @@ fn training_window_base_record(
         promotion_disposition: None,
         hold_reason_codes: Vec::new(),
         aggregated_delta_digest: None,
+        accepted_aggregate_id: None,
         output_policy_revision: None,
         output_checkpoint_pointer: None,
+        promoted_checkpoint_ref: None,
         accepted_outcome_id: None,
         recorded_at_ms,
         metadata: training_window_metadata_value(&metadata),
@@ -3546,6 +3596,9 @@ fn training_window_contribution_outcomes_from_inputs(
             contributor_node_id: plan.contributor_node_id.clone(),
             worker_id: plan.worker_id.clone(),
             validator_policy_ref: window.validator_policy_ref.clone(),
+            work_class: window.work_class,
+            replica_type: window.replica_type,
+            base_checkpoint_ref: window.base_checkpoint_ref.clone(),
             adapter_target_id: window.adapter_target_id.clone(),
             adapter_family: window.adapter_family.clone(),
             base_model_ref: window.base_model_ref.clone(),
@@ -3599,6 +3652,22 @@ fn training_window_contribution_outcomes_from_inputs(
             )?,
             aggregation_eligibility,
             accepted_for_aggregation,
+            local_step_count: input.local_step_count,
+            consumed_token_count: input.consumed_token_count,
+            consumed_example_count: input.consumed_example_count,
+            aggregation_weight_basis: if accepted_for_aggregation {
+                input
+                    .aggregation_weight_basis
+                    .clone()
+                    .or_else(|| window.aggregation_weight_basis.clone())
+            } else {
+                None
+            },
+            aggregation_weight_value: if accepted_for_aggregation {
+                input.aggregation_weight_value
+            } else {
+                None
+            },
             aggregation_weight_bps: if accepted_for_aggregation {
                 input.aggregation_weight_bps
             } else {
@@ -4845,22 +4914,27 @@ async fn plan_training_window(
         request.stage_id.as_str(),
         "compute_adapter_stage_id_missing",
     )?;
-    request.adapter_target_id = normalize_required_field(
-        request.adapter_target_id.as_str(),
-        "compute_adapter_target_id_missing",
-    )?;
-    request.adapter_family = normalize_required_field(
-        request.adapter_family.as_str(),
-        "compute_adapter_family_missing",
+    request.base_checkpoint_ref = normalize_required_field(
+        request.base_checkpoint_ref.as_str(),
+        "compute_adapter_base_checkpoint_ref_missing",
     )?;
     request.base_model_ref = normalize_required_field(
         request.base_model_ref.as_str(),
         "compute_adapter_base_model_ref_missing",
     )?;
-    request.adapter_format = normalize_required_field(
-        request.adapter_format.as_str(),
-        "compute_adapter_format_missing",
-    )?;
+    request.aggregation_rule = normalize_optional_field(request.aggregation_rule.as_deref());
+    request.aggregation_weight_basis =
+        normalize_optional_field(request.aggregation_weight_basis.as_deref());
+    if request.planned_local_step_count == Some(0) {
+        return Err(kernel_api_error(
+            "compute_adapter_planned_local_step_count_invalid".to_string(),
+        ));
+    }
+    if request.aggregation_rule.is_some() != request.aggregation_weight_basis.is_some() {
+        return Err(kernel_api_error(
+            "compute_adapter_aggregation_rule_missing".to_string(),
+        ));
+    }
     request.recorded_at_ms = if request.recorded_at_ms <= 0 {
         now_unix_ms() as i64
     } else {
@@ -4895,6 +4969,11 @@ async fn plan_training_window(
                 "training_window_checkpoint_mismatch".to_string(),
             ));
         }
+        if request.base_checkpoint_ref != request.source_checkpoint_pointer.checkpoint_ref {
+            return Err(kernel_api_error(
+                "training_window_checkpoint_mismatch".to_string(),
+            ));
+        }
         if training_run
             .checkpoint_binding
             .latest_checkpoint_ref
@@ -4906,6 +4985,33 @@ async fn plan_training_window(
             return Err(kernel_api_error(
                 "training_window_checkpoint_mismatch".to_string(),
             ));
+        }
+        if training_run.work_class == ComputeTrainingWorkClass::AdapterTraining {
+            request.adapter_target_id = normalize_required_field(
+                request.adapter_target_id.as_str(),
+                "compute_adapter_target_id_missing",
+            )?;
+            request.adapter_family = normalize_required_field(
+                request.adapter_family.as_str(),
+                "compute_adapter_family_missing",
+            )?;
+            request.adapter_format = normalize_required_field(
+                request.adapter_format.as_str(),
+                "compute_adapter_format_missing",
+            )?;
+        } else {
+            request.adapter_target_id = normalize_optional_field(Some(
+                request.adapter_target_id.as_str(),
+            ))
+            .unwrap_or_default();
+            request.adapter_family = normalize_optional_field(Some(
+                request.adapter_family.as_str(),
+            ))
+            .unwrap_or_default();
+            request.adapter_format = normalize_optional_field(Some(
+                request.adapter_format.as_str(),
+            ))
+            .unwrap_or_default();
         }
         let contributor_set_revision_id =
             pylon_training_membership_revision_label(scheduler_run.membership_revision);
@@ -5151,6 +5257,8 @@ async fn seal_training_window(
         ];
         updated_window.promotion_ready = false;
         updated_window.aggregated_delta_digest = None;
+        updated_window.accepted_aggregate_id = None;
+        updated_window.promoted_checkpoint_ref = None;
         updated_window.recorded_at_ms = request.recorded_at_ms;
         updated_window.metadata = training_window_metadata_value(&metadata);
         updated_window.window_summary_digest = training_window_summary_digest(
@@ -5301,6 +5409,8 @@ async fn reconcile_training_window(
         updated_window.runtime_smoke_passed = request.runtime_smoke_passed;
         updated_window.gate_reason_codes = gate_reason_codes;
         updated_window.aggregated_delta_digest = request.aggregated_delta_digest.clone();
+        updated_window.accepted_aggregate_id = request.accepted_aggregate_id.clone();
+        updated_window.promoted_checkpoint_ref = request.promoted_checkpoint_ref.clone();
         updated_window.recorded_at_ms = request.recorded_at_ms;
         let mut closeout_status = closeout_status;
         let defensibility = training_window_defensibility_audit(
@@ -14813,6 +14923,11 @@ mod tests {
             recorded_at_ms,
             training_run_id: training_run_id.to_string(),
             stage_id: "sft".to_string(),
+            round_index: Some(7),
+            base_checkpoint_ref: "checkpoint://decoder/base".to_string(),
+            planned_local_step_count: Some(64),
+            aggregation_rule: Some("weighted_avg".to_string()),
+            aggregation_weight_basis: Some("tokens".to_string()),
             adapter_target_id: "adapter.target.trainnet.alpha".to_string(),
             adapter_family: "openagents.adapter.reference".to_string(),
             base_model_ref: "model://gpt-oss-20b".to_string(),
@@ -14879,6 +14994,11 @@ mod tests {
             validation_reason_codes: Vec::new(),
             validator_disposition,
             aggregation_eligibility: None,
+            local_step_count: Some(64),
+            consumed_token_count: Some(131_072),
+            consumed_example_count: Some(256),
+            aggregation_weight_basis: Some("tokens".to_string()),
+            aggregation_weight_value: Some(131_072),
             aggregation_weight_bps: Some(10_000),
             promotion_receipt_digest: None,
             metadata: json!({"contribution_id": contribution_id}),
@@ -16276,6 +16396,12 @@ mod tests {
                 validator_policy_ref: "policy://validator/training".to_string(),
                 work_class: ComputeTrainingWorkClass::AdapterTraining,
                 replica_type: ComputeTrainingReplicaType::SingleNode,
+                round_index: Some(7),
+                base_checkpoint_ref:
+                    "checkpoint://decoder/train.math.basic.client/promotion".to_string(),
+                planned_local_step_count: Some(64),
+                aggregation_rule: Some("weighted_avg".to_string()),
+                aggregation_weight_basis: Some("tokens".to_string()),
                 adapter_target_id: "adapter.target.client".to_string(),
                 adapter_family: "openagents.adapter.reference".to_string(),
                 base_model_ref: "model://gpt-oss-20b".to_string(),
@@ -16299,6 +16425,7 @@ mod tests {
                 promotion_disposition: Some(ComputeAdapterPromotionDisposition::Promoted),
                 hold_reason_codes: Vec::new(),
                 aggregated_delta_digest: Some("sha256:adapter-aggregate-client".to_string()),
+                accepted_aggregate_id: Some("aggregate.adapter.client".to_string()),
                 output_policy_revision: Some(compute_adapter_policy_revision(
                     "policy-rev-8",
                     recorded_at_ms,
@@ -16307,6 +16434,9 @@ mod tests {
                     "sha256:pointer-8",
                     recorded_at_ms,
                 )),
+                promoted_checkpoint_ref: Some(
+                    "checkpoint://decoder/train.math.basic.client/promotion".to_string(),
+                ),
                 accepted_outcome_id: accepted_outcome_id.map(ToOwned::to_owned),
                 recorded_at_ms,
                 metadata: json!({"validator_window_id": "validator.window.client"}),
@@ -16322,6 +16452,10 @@ mod tests {
                     contributor_node_id: "node.client.alpha".to_string(),
                     worker_id: "worker.client.alpha".to_string(),
                     validator_policy_ref: "policy://validator/training".to_string(),
+                    work_class: ComputeTrainingWorkClass::AdapterTraining,
+                    replica_type: ComputeTrainingReplicaType::SingleNode,
+                    base_checkpoint_ref:
+                        "checkpoint://decoder/train.math.basic.client/promotion".to_string(),
                     adapter_target_id: "adapter.target.client".to_string(),
                     adapter_family: "openagents.adapter.reference".to_string(),
                     base_model_ref: "model://gpt-oss-20b".to_string(),
@@ -16347,6 +16481,11 @@ mod tests {
                     validator_receipt_digest: "sha256:validator-client-alpha".to_string(),
                     aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
                     accepted_for_aggregation: true,
+                    local_step_count: Some(64),
+                    consumed_token_count: Some(131_072),
+                    consumed_example_count: Some(256),
+                    aggregation_weight_basis: Some("tokens".to_string()),
+                    aggregation_weight_value: Some(131_072),
                     aggregation_weight_bps: Some(10_000),
                     promotion_receipt_digest: Some("sha256:promotion-client".to_string()),
                     recorded_at_ms,
@@ -16362,6 +16501,10 @@ mod tests {
                     contributor_node_id: "node.client.beta".to_string(),
                     worker_id: "worker.client.beta".to_string(),
                     validator_policy_ref: "policy://validator/training".to_string(),
+                    work_class: ComputeTrainingWorkClass::AdapterTraining,
+                    replica_type: ComputeTrainingReplicaType::SingleNode,
+                    base_checkpoint_ref:
+                        "checkpoint://decoder/train.math.basic.client/promotion".to_string(),
                     adapter_target_id: "adapter.target.client".to_string(),
                     adapter_family: "openagents.adapter.reference".to_string(),
                     base_model_ref: "model://gpt-oss-20b".to_string(),
@@ -16389,6 +16532,11 @@ mod tests {
                     validator_receipt_digest: "sha256:validator-client-beta".to_string(),
                     aggregation_eligibility: ComputeAdapterAggregationEligibility::Ineligible,
                     accepted_for_aggregation: false,
+                    local_step_count: Some(64),
+                    consumed_token_count: Some(131_072),
+                    consumed_example_count: Some(256),
+                    aggregation_weight_basis: None,
+                    aggregation_weight_value: None,
                     aggregation_weight_bps: None,
                     promotion_receipt_digest: None,
                     recorded_at_ms,
@@ -22645,6 +22793,8 @@ mod tests {
                             aggregated_delta_digest: Some(
                                 "sha256:aggregate-window-alpha".to_string(),
                             ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
                         },
                     )?))?,
             )
@@ -22792,6 +22942,8 @@ mod tests {
                             aggregated_delta_digest: Some(
                                 "sha256:aggregate-window-defense-replay".to_string(),
                             ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
                         },
                     )?))?,
             )
@@ -22934,6 +23086,8 @@ mod tests {
                             aggregated_delta_digest: Some(
                                 "sha256:aggregate-window-defense-build-revoked".to_string(),
                             ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
                         },
                     )?))?,
             )
@@ -23352,6 +23506,8 @@ mod tests {
                             aggregated_delta_digest: Some(
                                 "sha256:aggregate-window-trn-alpha".to_string(),
                             ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
                         },
                     )?))?,
             )
@@ -24309,6 +24465,8 @@ mod tests {
                             aggregated_delta_digest: Some(
                                 "sha256:aggregate-window-summary-alpha".to_string(),
                             ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
                         },
                     )?))?,
             )
@@ -24778,6 +24936,8 @@ mod tests {
                             aggregated_delta_digest: Some(
                                 "sha256:aggregate-window-held".to_string(),
                             ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
                         },
                     )?))?,
             )
@@ -24868,6 +25028,8 @@ mod tests {
                             aggregated_delta_digest: Some(
                                 "sha256:aggregate-window-held".to_string(),
                             ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
                         },
                     )?))?,
             )
@@ -25188,6 +25350,8 @@ mod tests {
                             aggregated_delta_digest: Some(
                                 "sha256:aggregate-window-timeout".to_string(),
                             ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
                         },
                     )?))?,
             )
@@ -25279,6 +25443,8 @@ mod tests {
                             aggregated_delta_digest: Some(
                                 "sha256:aggregate-window-timeout".to_string(),
                             ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
                         },
                     )?))?,
             )

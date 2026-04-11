@@ -1361,6 +1361,15 @@ pub struct ComputeAdapterTrainingWindow {
     pub work_class: ComputeTrainingWorkClass,
     #[serde(default)]
     pub replica_type: ComputeTrainingReplicaType,
+    #[serde(default)]
+    pub round_index: Option<u64>,
+    pub base_checkpoint_ref: String,
+    #[serde(default)]
+    pub planned_local_step_count: Option<u64>,
+    #[serde(default)]
+    pub aggregation_rule: Option<String>,
+    #[serde(default)]
+    pub aggregation_weight_basis: Option<String>,
     pub adapter_target_id: String,
     pub adapter_family: String,
     pub base_model_ref: String,
@@ -1393,9 +1402,13 @@ pub struct ComputeAdapterTrainingWindow {
     #[serde(default)]
     pub aggregated_delta_digest: Option<String>,
     #[serde(default)]
+    pub accepted_aggregate_id: Option<String>,
+    #[serde(default)]
     pub output_policy_revision: Option<ComputeAdapterPolicyRevision>,
     #[serde(default)]
     pub output_checkpoint_pointer: Option<ComputeAdapterCheckpointPointer>,
+    #[serde(default)]
+    pub promoted_checkpoint_ref: Option<String>,
     #[serde(default)]
     pub accepted_outcome_id: Option<String>,
     pub recorded_at_ms: i64,
@@ -1414,6 +1427,11 @@ pub struct ComputeAdapterContributionOutcome {
     pub contributor_node_id: String,
     pub worker_id: String,
     pub validator_policy_ref: String,
+    #[serde(default)]
+    pub work_class: ComputeTrainingWorkClass,
+    #[serde(default)]
+    pub replica_type: ComputeTrainingReplicaType,
+    pub base_checkpoint_ref: String,
     pub adapter_target_id: String,
     pub adapter_family: String,
     pub base_model_ref: String,
@@ -1438,6 +1456,16 @@ pub struct ComputeAdapterContributionOutcome {
     #[serde(default)]
     pub aggregation_eligibility: ComputeAdapterAggregationEligibility,
     pub accepted_for_aggregation: bool,
+    #[serde(default)]
+    pub local_step_count: Option<u64>,
+    #[serde(default)]
+    pub consumed_token_count: Option<u64>,
+    #[serde(default)]
+    pub consumed_example_count: Option<u64>,
+    #[serde(default)]
+    pub aggregation_weight_basis: Option<String>,
+    #[serde(default)]
+    pub aggregation_weight_value: Option<u64>,
     #[serde(default)]
     pub aggregation_weight_bps: Option<u32>,
     #[serde(default)]
@@ -2852,16 +2880,45 @@ pub fn validate_compute_adapter_training_window(
         return Err("compute_validator_policy_ref_missing".to_string());
     }
     validate_compute_training_work_class_and_replica_type(window.work_class, window.replica_type)?;
-    if window.adapter_target_id.trim().is_empty() {
+    if window.base_checkpoint_ref.trim().is_empty() {
+        return Err("compute_adapter_base_checkpoint_ref_missing".to_string());
+    }
+    if window.planned_local_step_count == Some(0) {
+        return Err("compute_adapter_planned_local_step_count_invalid".to_string());
+    }
+    if window
+        .aggregation_rule
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_adapter_aggregation_rule_invalid".to_string());
+    }
+    if window
+        .aggregation_weight_basis
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_adapter_aggregation_weight_basis_invalid".to_string());
+    }
+    if window.aggregation_rule.is_some() != window.aggregation_weight_basis.is_some() {
+        return Err("compute_adapter_aggregation_rule_missing".to_string());
+    }
+    if window.work_class == ComputeTrainingWorkClass::AdapterTraining
+        && window.adapter_target_id.trim().is_empty()
+    {
         return Err("compute_adapter_target_id_missing".to_string());
     }
-    if window.adapter_family.trim().is_empty() {
+    if window.work_class == ComputeTrainingWorkClass::AdapterTraining
+        && window.adapter_family.trim().is_empty()
+    {
         return Err("compute_adapter_family_missing".to_string());
     }
     if window.base_model_ref.trim().is_empty() {
         return Err("compute_adapter_base_model_ref_missing".to_string());
     }
-    if window.adapter_format.trim().is_empty() {
+    if window.work_class == ComputeTrainingWorkClass::AdapterTraining
+        && window.adapter_format.trim().is_empty()
+    {
         return Err("compute_adapter_format_missing".to_string());
     }
     if window.admitted_contributions > window.total_contributions
@@ -2887,6 +2944,20 @@ pub fn validate_compute_adapter_training_window(
     }
     if window.recorded_at_ms <= 0 {
         return Err("compute_adapter_window_recorded_at_invalid".to_string());
+    }
+    if window
+        .accepted_aggregate_id
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_adapter_accepted_aggregate_id_invalid".to_string());
+    }
+    if window
+        .promoted_checkpoint_ref
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_adapter_promoted_checkpoint_ref_invalid".to_string());
     }
     if window
         .accepted_outcome_id
@@ -2923,11 +2994,21 @@ pub fn validate_compute_adapter_training_window(
     }
     validate_compute_adapter_policy_revision(&window.source_policy_revision)?;
     validate_compute_adapter_checkpoint_pointer(&window.source_checkpoint_pointer)?;
+    if window.base_checkpoint_ref != window.source_checkpoint_pointer.checkpoint_ref {
+        return Err("compute_adapter_window_base_checkpoint_mismatch".to_string());
+    }
     if let Some(output_policy_revision) = window.output_policy_revision.as_ref() {
         validate_compute_adapter_policy_revision(output_policy_revision)?;
     }
     if let Some(output_checkpoint_pointer) = window.output_checkpoint_pointer.as_ref() {
         validate_compute_adapter_checkpoint_pointer(output_checkpoint_pointer)?;
+        if window
+            .promoted_checkpoint_ref
+            .as_deref()
+            .is_none_or(|value| value != output_checkpoint_pointer.checkpoint_ref)
+        {
+            return Err("compute_adapter_promoted_checkpoint_ref_missing".to_string());
+        }
     }
     Ok(())
 }
@@ -2981,16 +3062,29 @@ pub fn validate_compute_adapter_contribution_outcome(
     if contribution.validator_policy_ref.trim().is_empty() {
         return Err("compute_validator_policy_ref_missing".to_string());
     }
-    if contribution.adapter_target_id.trim().is_empty() {
+    validate_compute_training_work_class_and_replica_type(
+        contribution.work_class,
+        contribution.replica_type,
+    )?;
+    if contribution.base_checkpoint_ref.trim().is_empty() {
+        return Err("compute_adapter_base_checkpoint_ref_missing".to_string());
+    }
+    if contribution.work_class == ComputeTrainingWorkClass::AdapterTraining
+        && contribution.adapter_target_id.trim().is_empty()
+    {
         return Err("compute_adapter_target_id_missing".to_string());
     }
-    if contribution.adapter_family.trim().is_empty() {
+    if contribution.work_class == ComputeTrainingWorkClass::AdapterTraining
+        && contribution.adapter_family.trim().is_empty()
+    {
         return Err("compute_adapter_family_missing".to_string());
     }
     if contribution.base_model_ref.trim().is_empty() {
         return Err("compute_adapter_base_model_ref_missing".to_string());
     }
-    if contribution.adapter_format.trim().is_empty() {
+    if contribution.work_class == ComputeTrainingWorkClass::AdapterTraining
+        && contribution.adapter_format.trim().is_empty()
+    {
         return Err("compute_adapter_format_missing".to_string());
     }
     if contribution.submission_receipt_digest.trim().is_empty() {
@@ -3025,6 +3119,42 @@ pub fn validate_compute_adapter_contribution_outcome(
         return Err("compute_adapter_validator_receipt_digest_missing".to_string());
     }
     if contribution
+        .local_step_count
+        .is_some_and(|value| value == 0)
+    {
+        return Err("compute_adapter_local_step_count_invalid".to_string());
+    }
+    if contribution
+        .consumed_token_count
+        .is_some_and(|value| value == 0)
+    {
+        return Err("compute_adapter_consumed_token_count_invalid".to_string());
+    }
+    if contribution
+        .consumed_example_count
+        .is_some_and(|value| value == 0)
+    {
+        return Err("compute_adapter_consumed_example_count_invalid".to_string());
+    }
+    if contribution
+        .aggregation_weight_basis
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err("compute_adapter_aggregation_weight_basis_invalid".to_string());
+    }
+    if contribution
+        .aggregation_weight_value
+        .is_some_and(|value| value == 0)
+    {
+        return Err("compute_adapter_aggregation_weight_value_invalid".to_string());
+    }
+    if contribution.aggregation_weight_basis.is_some()
+        != contribution.aggregation_weight_value.is_some()
+    {
+        return Err("compute_adapter_aggregation_weight_value_missing".to_string());
+    }
+    if contribution
         .aggregation_weight_bps
         .is_some_and(|value| value > 10_000)
     {
@@ -3045,9 +3175,14 @@ pub fn validate_compute_adapter_contribution_outcome(
     if contribution.recorded_at_ms <= 0 {
         return Err("compute_adapter_contribution_recorded_at_invalid".to_string());
     }
-    validate_compute_adapter_dataset_slice(&contribution.dataset_slice)?;
+    if contribution.work_class == ComputeTrainingWorkClass::AdapterTraining {
+        validate_compute_adapter_dataset_slice(&contribution.dataset_slice)?;
+    }
     validate_compute_adapter_policy_revision(&contribution.source_policy_revision)?;
     validate_compute_adapter_checkpoint_pointer(&contribution.source_checkpoint_pointer)?;
+    if contribution.base_checkpoint_ref != contribution.source_checkpoint_pointer.checkpoint_ref {
+        return Err("compute_adapter_contribution_base_checkpoint_mismatch".to_string());
+    }
     Ok(())
 }
 
@@ -3896,25 +4031,28 @@ mod tests {
         COMPUTE_APPLE_BENCHMARK_PACKAGE_METADATA_ABI_VERSION,
         COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION,
         COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION, COMPUTE_LAUNCH_TAXONOMY_VERSION,
-        ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeAppleAdapterSampleKind,
-        ComputeAppleBenchmarkPackageMetadata, ComputeAppleRuntimeValidationPosture,
-        ComputeAppleTrainingPolicyMetadata, ComputeAppleTrainingRunMetadata, ComputeBackendFamily,
-        ComputeBenchmarkPackage, ComputeCapabilityEnvelope, ComputeCheckpointBinding,
-        ComputeCheckpointFamilyPolicy, ComputeEnvironmentArtifactExpectation,
-        ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
-        ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus,
-        ComputeEnvironmentRubricBinding, ComputeEvaluationArtifact, ComputeEvaluationMetric,
-        ComputeEvaluationRun, ComputeEvaluationRunStatus, ComputeEvaluationSampleStatus,
-        ComputeEvaluationSummary, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
-        ComputeProduct, ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind,
-        ComputeRegistryStatus, ComputeSettlementMode, ComputeSyntheticDataJob,
-        ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
-        ComputeSyntheticDataSampleStatus, ComputeTopologyKind, ComputeTrainingPolicy,
-        ComputeTrainingReplicaType, ComputeTrainingRun, ComputeTrainingRunStatus,
-        ComputeTrainingSummary, ComputeTrainingWorkClass, ComputeValidatorPolicy,
-        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence,
-        DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
-        PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID,
+        ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeAdapterAggregationEligibility,
+        ComputeAdapterCheckpointPointer, ComputeAdapterContributionDisposition,
+        ComputeAdapterContributionOutcome, ComputeAdapterDatasetSlice,
+        ComputeAdapterPolicyRevision, ComputeAdapterTrainingWindow, ComputeAdapterWindowStatus,
+        ComputeAppleAdapterSampleKind, ComputeAppleBenchmarkPackageMetadata,
+        ComputeAppleRuntimeValidationPosture, ComputeAppleTrainingPolicyMetadata,
+        ComputeAppleTrainingRunMetadata, ComputeBackendFamily, ComputeBenchmarkPackage,
+        ComputeCapabilityEnvelope, ComputeCheckpointBinding, ComputeCheckpointFamilyPolicy,
+        ComputeEnvironmentArtifactExpectation, ComputeEnvironmentBinding,
+        ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness, ComputeEnvironmentPackage,
+        ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
+        ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRun,
+        ComputeEvaluationRunStatus, ComputeEvaluationSampleStatus, ComputeEvaluationSummary,
+        ComputeExecutionKind, ComputeFamily, ComputeHostCapability, ComputeProduct,
+        ComputeProductStatus, ComputeProofPosture, ComputeProvisioningKind, ComputeRegistryStatus,
+        ComputeSettlementMode, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
+        ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, ComputeTopologyKind,
+        ComputeTrainingPolicy, ComputeTrainingReplicaType, ComputeTrainingRun,
+        ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeTrainingWorkClass,
+        ComputeValidatorPolicy, ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus,
+        DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
+        GptOssRuntimeCapability, PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID,
         PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
         PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID,
         PSIONIC_CLUSTER_POOLED_INFERENCE_DENSE_SPLIT_PRODUCT_ID,
@@ -3925,6 +4063,7 @@ mod tests {
         PSIONIC_LOCAL_APPLE_FM_INFERENCE_PRODUCT_ID, PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID,
         PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID, canonical_compute_product_id,
         launch_compute_product_spec, validate_compute_accepted_outcome,
+        validate_compute_adapter_contribution_outcome, validate_compute_adapter_training_window,
         validate_compute_benchmark_package, validate_compute_capability_envelope,
         validate_compute_checkpoint_family_policy, validate_compute_environment_package,
         validate_compute_synthetic_data_job, validate_compute_synthetic_data_sample,
@@ -5227,5 +5366,138 @@ mod tests {
         let err = validate_compute_training_run(&run)
             .expect_err("grouped replica work should require grouped replica topology");
         assert_eq!(err, "compute_training_grouped_replica_type_invalid");
+    }
+
+    #[test]
+    fn non_adapter_training_window_accepts_round_and_aggregation_semantics() {
+        let source_policy_revision = ComputeAdapterPolicyRevision {
+            policy_family: "policy://training/math/basic".to_string(),
+            revision_id: "policy-rev-42".to_string(),
+            revision_number: Some(42),
+            policy_digest: "sha256:policy-rev-42".to_string(),
+            parent_revision_id: Some("policy-rev-41".to_string()),
+            produced_at_ms: 1_762_000_700_000,
+        };
+        let source_checkpoint_pointer = ComputeAdapterCheckpointPointer {
+            scope_kind: "training_run".to_string(),
+            scope_id: "train.math.basic.alpha".to_string(),
+            checkpoint_family: "decoder".to_string(),
+            checkpoint_ref: "checkpoint://decoder/base".to_string(),
+            manifest_digest: "sha256:checkpoint-base".to_string(),
+            updated_at_ms: 1_762_000_700_100,
+            pointer_digest: "sha256:pointer-base".to_string(),
+        };
+        let window = ComputeAdapterTrainingWindow {
+            window_id: "window.alpha.0042".to_string(),
+            training_run_id: "train.math.basic.alpha".to_string(),
+            stage_id: "dense.pretrain".to_string(),
+            contributor_set_revision_id: "contributors.rev42".to_string(),
+            validator_policy_ref: "policy://validator/training".to_string(),
+            work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+            replica_type: ComputeTrainingReplicaType::Island,
+            round_index: Some(42),
+            base_checkpoint_ref: source_checkpoint_pointer.checkpoint_ref.clone(),
+            planned_local_step_count: Some(500),
+            aggregation_rule: Some("weighted_avg".to_string()),
+            aggregation_weight_basis: Some("tokens".to_string()),
+            adapter_target_id: String::new(),
+            adapter_family: String::new(),
+            base_model_ref: "model://gpt-oss-20b".to_string(),
+            adapter_format: String::new(),
+            source_policy_revision,
+            source_checkpoint_pointer,
+            status: ComputeAdapterWindowStatus::Reconciled,
+            total_contributions: 1,
+            admitted_contributions: 1,
+            accepted_contributions: 1,
+            quarantined_contributions: 0,
+            rejected_contributions: 0,
+            replay_required_contributions: 0,
+            replay_checked_contributions: 1,
+            held_out_average_score_bps: Some(9_500),
+            benchmark_pass_rate_bps: Some(9_400),
+            runtime_smoke_passed: Some(true),
+            promotion_ready: true,
+            gate_reason_codes: Vec::new(),
+            window_summary_digest: "sha256:window-summary".to_string(),
+            promotion_disposition: None,
+            hold_reason_codes: Vec::new(),
+            aggregated_delta_digest: Some("sha256:aggregate-manifest".to_string()),
+            accepted_aggregate_id: Some("aggregate.r42".to_string()),
+            output_policy_revision: None,
+            output_checkpoint_pointer: None,
+            promoted_checkpoint_ref: None,
+            accepted_outcome_id: Some("accepted.window.alpha.0042".to_string()),
+            recorded_at_ms: 1_762_000_700_200,
+            metadata: json!({"network_id": "trainnet.alpha"}),
+        };
+        validate_compute_adapter_training_window(&window)
+            .expect("non-adapter window should validate");
+    }
+
+    #[test]
+    fn non_adapter_contribution_accepts_local_work_accounting() {
+        let source_policy_revision = ComputeAdapterPolicyRevision {
+            policy_family: "policy://training/math/basic".to_string(),
+            revision_id: "policy-rev-42".to_string(),
+            revision_number: Some(42),
+            policy_digest: "sha256:policy-rev-42".to_string(),
+            parent_revision_id: Some("policy-rev-41".to_string()),
+            produced_at_ms: 1_762_000_700_000,
+        };
+        let source_checkpoint_pointer = ComputeAdapterCheckpointPointer {
+            scope_kind: "training_run".to_string(),
+            scope_id: "train.math.basic.alpha".to_string(),
+            checkpoint_family: "decoder".to_string(),
+            checkpoint_ref: "checkpoint://decoder/base".to_string(),
+            manifest_digest: "sha256:checkpoint-base".to_string(),
+            updated_at_ms: 1_762_000_700_100,
+            pointer_digest: "sha256:pointer-base".to_string(),
+        };
+        let contribution = ComputeAdapterContributionOutcome {
+            contribution_id: "contribution.alpha.0042".to_string(),
+            training_run_id: "train.math.basic.alpha".to_string(),
+            stage_id: "dense.pretrain".to_string(),
+            window_id: "window.alpha.0042".to_string(),
+            contributor_set_revision_id: "contributors.rev42".to_string(),
+            assignment_id: "assignment.0042".to_string(),
+            contributor_node_id: "node.alpha".to_string(),
+            worker_id: "worker.0042".to_string(),
+            validator_policy_ref: "policy://validator/training".to_string(),
+            work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+            replica_type: ComputeTrainingReplicaType::Island,
+            base_checkpoint_ref: source_checkpoint_pointer.checkpoint_ref.clone(),
+            adapter_target_id: String::new(),
+            adapter_family: String::new(),
+            base_model_ref: "model://gpt-oss-20b".to_string(),
+            adapter_format: String::new(),
+            dataset_slice: ComputeAdapterDatasetSlice::default(),
+            source_policy_revision,
+            source_checkpoint_pointer,
+            submission_receipt_digest: "sha256:submission".to_string(),
+            artifact_id: "artifact.alpha.0042".to_string(),
+            manifest_digest: "sha256:manifest".to_string(),
+            object_digest: "sha256:object".to_string(),
+            artifact_receipt_digest: "sha256:artifact-receipt".to_string(),
+            provenance_bundle_digest: "sha256:provenance".to_string(),
+            security_receipt_digest: "sha256:security".to_string(),
+            replay_receipt_digest: None,
+            validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+            validation_reason_codes: Vec::new(),
+            validator_receipt_digest: "sha256:validator".to_string(),
+            aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+            accepted_for_aggregation: true,
+            local_step_count: Some(500),
+            consumed_token_count: Some(182_340_992),
+            consumed_example_count: Some(1_024),
+            aggregation_weight_basis: Some("tokens".to_string()),
+            aggregation_weight_value: Some(182_340_992),
+            aggregation_weight_bps: Some(10_000),
+            promotion_receipt_digest: Some("sha256:promotion".to_string()),
+            recorded_at_ms: 1_762_000_700_300,
+            metadata: json!({"group_id": "island.alpha"}),
+        };
+        validate_compute_adapter_contribution_outcome(&contribution)
+            .expect("non-adapter contribution should validate");
     }
 }
