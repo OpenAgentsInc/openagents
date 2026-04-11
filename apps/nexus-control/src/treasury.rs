@@ -1436,6 +1436,18 @@ impl TreasuryState {
                     .saturating_add(TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS)
     }
 
+    fn latest_wallet_activity_at_unix_ms(&self) -> Option<u64> {
+        [
+            self.last_wallet_sync_at_unix_ms,
+            self.wallet_balance_updated_at_unix_ms,
+            self.last_dispatch_at_unix_ms,
+            self.last_confirmed_payout_at_unix_ms,
+        ]
+        .into_iter()
+        .flatten()
+        .max()
+    }
+
     fn degraded_reason(&self, config: &TreasuryConfig, now_unix_ms: u64) -> Option<String> {
         if matches!(self.policy_runtime_status.as_deref(), Some("blocked")) {
             return self
@@ -1488,10 +1500,11 @@ impl TreasuryState {
             return Some(format!("wallet_storage_diverges_from_rebuild:{delta}"));
         }
         if self.treasury_enabled(config) {
-            let Some(last_wallet_sync_at_unix_ms) = self.last_wallet_sync_at_unix_ms else {
+            let Some(last_wallet_activity_at_unix_ms) = self.latest_wallet_activity_at_unix_ms()
+            else {
                 return Some("wallet_unsynced".to_string());
             };
-            let lag_ms = now_unix_ms.saturating_sub(last_wallet_sync_at_unix_ms);
+            let lag_ms = now_unix_ms.saturating_sub(last_wallet_activity_at_unix_ms);
             if lag_ms >= config.wallet_snapshot_stale_after_ms() {
                 return Some(format!("wallet_snapshot_stale:{lag_ms}"));
             }
@@ -1598,8 +1611,8 @@ impl TreasuryState {
             .clone()
             .unwrap_or_else(|| self.build_public_snapshot(config, now_unix_ms));
         let wallet_sync_lag_ms = self
-            .last_wallet_sync_at_unix_ms
-            .map(|last_sync| now_unix_ms.saturating_sub(last_sync));
+            .latest_wallet_activity_at_unix_ms()
+            .map(|last_activity| now_unix_ms.saturating_sub(last_activity));
         TreasuryPublicStats {
             treasury_enabled: snapshot.treasury_enabled,
             payout_sats_per_window: snapshot.payout_sats_per_window,
@@ -4998,6 +5011,22 @@ mod tests {
 
         let after_stats = state.public_stats(&config, now_unix_ms);
         assert_eq!(after_stats.degraded_reason, None);
+    }
+
+    #[test]
+    fn recent_dispatch_activity_prevents_wallet_stale_alerts() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.wallet_status_refresh_seconds = 30;
+
+        state.wallet_runtime_status = Some("connected".to_string());
+        state.last_wallet_sync_at_unix_ms = Some(1_000);
+        state.last_dispatch_at_unix_ms = Some(95_000);
+        state.last_confirmed_payout_at_unix_ms = Some(94_000);
+
+        let stats = state.public_stats(&config, 100_000);
+        assert_eq!(stats.wallet_sync_lag_ms, Some(5_000));
+        assert_eq!(stats.degraded_reason, None);
     }
 
     #[test]
