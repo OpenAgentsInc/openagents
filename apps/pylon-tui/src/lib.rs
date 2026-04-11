@@ -5657,6 +5657,7 @@ mod tests {
             Some(&wallet_status),
             None,
             &ledger,
+            0,
             now_ms,
         );
 
@@ -6136,6 +6137,7 @@ mod tests {
             None,
             None,
             &ledger,
+            0,
             now_ms,
         );
 
