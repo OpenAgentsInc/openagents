@@ -862,6 +862,7 @@
       const publicationFeedHost = document.getElementById("publication-feed");
       const relayWs = "__RELAY_WS__";
       const relayHttp = "__RELAY_HTTP__";
+      let nextHomepageEnrichmentAt = 0;
 
       function escapeHtml(value) {
         return String(value ?? "")
@@ -1504,7 +1505,7 @@
 
       function minimalSnapshot(stats) {
         return {
-          generated_at_unix_ms: Date.now(),
+          generated_at_unix_ms: numeric(stats?.as_of_unix_ms, Date.now()),
           stats,
           training_summary: {},
           training_nodes: [],
@@ -1514,18 +1515,44 @@
         };
       }
 
+      async function fetchJsonWithTimeout(url, timeoutMs) {
+        const controller = typeof AbortController === "function" ? new AbortController() : null;
+        const timeoutId = controller
+          ? window.setTimeout(() => controller.abort(), timeoutMs)
+          : null;
+        try {
+          const response = await fetch(url, {
+            cache: "no-store",
+            signal: controller?.signal,
+          });
+          if (!response.ok) {
+            throw new Error(`${url} request failed: ${response.status}`);
+          }
+          return await response.json();
+        } finally {
+          if (timeoutId !== null) {
+            window.clearTimeout(timeoutId);
+          }
+        }
+      }
+
       async function loadHomepage() {
         try {
-          const response = await fetch("/api/homepage", { cache: "no-store" });
-          if (response.ok) {
-            render(await response.json());
+          const stats = await fetchJsonWithTimeout("/api/stats", 2500);
+          render(minimalSnapshot(stats));
+
+          const now = Date.now();
+          if (now < nextHomepageEnrichmentAt) {
             return;
           }
-          const fallback = await fetch("/api/stats", { cache: "no-store" });
-          if (!fallback.ok) {
-            throw new Error(`homepage request failed: ${response.status}`);
+          nextHomepageEnrichmentAt = now + 60_000;
+          try {
+            const snapshot = await fetchJsonWithTimeout("/api/homepage", 1200);
+            render(snapshot);
+            nextHomepageEnrichmentAt = now + 15_000;
+          } catch (_error) {
+            // Keep the fast stats-backed HUD live while the richer snapshot route is unhealthy.
           }
-          render(minimalSnapshot(await fallback.json()));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           buildStatus(null, message);
