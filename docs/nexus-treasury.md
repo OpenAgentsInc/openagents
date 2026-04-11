@@ -111,11 +111,18 @@ lowering the daily budget cap, widening the payout interval, or turning on
 script now fails closed.
 
 If `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS` is unset,
-`nexus-control` now treats wallet snapshots as stale after 3 seconds by
-default. A dedicated background wallet refresh loop wakes every 1 second,
-refreshes only when the cached wallet snapshot is missing or stale, and gives
-each wallet refresh a 1.5 second timeout budget. `/api/stats` and
+`nexus-control` refreshes wallet-backed treasury stats every 3 seconds by
+default. Treasury snapshots are treated as stale only after two missed refresh
+windows, with a minimum 15 second stale budget, and the background refresh now
+reads cached wallet balance plus local payment history instead of forcing a
+full Spark sync on every stats refresh. `/api/stats` and
 `GET /v1/treasury/status` no longer trigger wallet refresh inline.
+
+If treasury state JSON ever deserializes badly on restart, `nexus-control` now
+tries to recover from cached/derived fields first and, as a last resort,
+salvages the persisted payout total from the state payload instead of silently
+resetting the public paid-total counter to zero. That recovery path surfaces a
+runtime error in treasury status until the next healthy refresh.
 
 ## Production Watchdog
 

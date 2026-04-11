@@ -241,10 +241,18 @@ impl SparkWallet {
     }
 
     pub async fn get_balance(&self) -> Result<Balance, SparkError> {
+        self.get_balance_with_sync(true).await
+    }
+
+    pub async fn get_balance_cached(&self) -> Result<Balance, SparkError> {
+        self.get_balance_with_sync(false).await
+    }
+
+    async fn get_balance_with_sync(&self, ensure_synced: bool) -> Result<Balance, SparkError> {
         let info = self
             .sdk
             .get_info(GetInfoRequest {
-                ensure_synced: Some(true),
+                ensure_synced: Some(ensure_synced),
             })
             .await
             .map_err(|error| SparkError::Wallet(error.to_string()))?;
