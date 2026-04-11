@@ -111,9 +111,21 @@ pub(super) fn window_event(
     let mut extra_tags = vec![
         vec!["run".to_string(), source.window.training_run_id.clone()],
         vec!["class".to_string(), "training_window".to_string()],
+        vec![
+            "work_class".to_string(),
+            source.window.work_class.label().to_string(),
+        ],
+        vec![
+            "replica_type".to_string(),
+            source.window.replica_type.label().to_string(),
+        ],
     ];
     push_optional_tag(&mut extra_tags, "backend", metadata.backend_family.as_str());
-    push_optional_tag(&mut extra_tags, "environment", metadata.environment_ref.as_str());
+    push_optional_tag(
+        &mut extra_tags,
+        "environment",
+        metadata.environment_ref.as_str(),
+    );
     if let Some(accepted_outcome_id) = source.window.accepted_outcome_id.as_ref()
         && let Some(closeout_status) = closeout_status_by_outcome_id.get(accepted_outcome_id)
     {
@@ -138,6 +150,8 @@ pub(super) fn window_event(
             "training_run_id": source.window.training_run_id,
             "window_id": source.window.window_id,
             "status": source.window.status.label(),
+            "work_class": source.window.work_class.label(),
+            "replica_type": source.window.replica_type.label(),
             "stage_id": source.window.stage_id,
             "contributor_set_revision_id": source.window.contributor_set_revision_id,
             "window_summary_digest": source.window.window_summary_digest,
@@ -164,8 +178,20 @@ pub(super) fn window_receipt_event(
         "run".to_string(),
         source.window.training_run_id.clone(),
     ]];
+    extra_tags.push(vec![
+        "work_class".to_string(),
+        source.window.work_class.label().to_string(),
+    ]);
+    extra_tags.push(vec![
+        "replica_type".to_string(),
+        source.window.replica_type.label().to_string(),
+    ]);
     push_optional_tag(&mut extra_tags, "backend", metadata.backend_family.as_str());
-    push_optional_tag(&mut extra_tags, "environment", metadata.environment_ref.as_str());
+    push_optional_tag(
+        &mut extra_tags,
+        "environment",
+        metadata.environment_ref.as_str(),
+    );
     Ok(TrainingReceiptEvent {
         network_id: metadata.network_id.clone(),
         window_id: source.window.window_id.clone(),
@@ -177,6 +203,8 @@ pub(super) fn window_receipt_event(
             "environment_ref": optional_training_string(metadata.environment_ref.as_str()),
             "backend_family": optional_training_string(metadata.backend_family.as_str()),
             "status": status,
+            "work_class": source.window.work_class.label(),
+            "replica_type": source.window.replica_type.label(),
             "kernel_object_id": source.window.window_id,
             "kernel_receipt_ids": vec![source.receipt_id.clone()],
         }),
@@ -437,7 +465,8 @@ mod tests {
             ComputeAcceptedOutcome, ComputeAdapterCheckpointPointer,
             ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow,
             ComputeAdapterWindowStatus, ComputeCheckpointBinding, ComputeEnvironmentBinding,
-            ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary,
+            ComputeTrainingReplicaType, ComputeTrainingRun, ComputeTrainingRunStatus,
+            ComputeTrainingSummary, ComputeTrainingWorkClass,
         },
         pylon_training::PylonTrainingReputationRecord,
     };
@@ -518,6 +547,8 @@ mod tests {
                 stage_id: "stage.alpha".to_string(),
                 contributor_set_revision_id: "contributors.rev1".to_string(),
                 validator_policy_ref: "policy.validator.alpha".to_string(),
+                work_class: ComputeTrainingWorkClass::AdapterTraining,
+                replica_type: ComputeTrainingReplicaType::SingleNode,
                 adapter_target_id: "adapter.target.alpha".to_string(),
                 adapter_family: "lora".to_string(),
                 base_model_ref: "model://base.alpha".to_string(),
@@ -584,6 +615,8 @@ mod tests {
                 recovery_posture: Some("resume_from_latest".to_string()),
             },
             validator_policy_ref: "policy.validator.alpha".to_string(),
+            work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+            replica_type: ComputeTrainingReplicaType::Island,
             benchmark_package_refs: vec!["benchmark.alpha".to_string()],
             product_id: Some("psionic.training.gradient.elastic".to_string()),
             capacity_lot_id: None,

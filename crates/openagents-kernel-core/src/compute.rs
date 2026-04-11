@@ -180,6 +180,77 @@ impl ComputeTrainingRunStatus {
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub enum ComputeTrainingWorkClass {
+    ValidationReplay,
+    Evaluation,
+    #[default]
+    AdapterTraining,
+    SmallModelLocalTraining,
+    GroupedReplicaStageExecution,
+    FullIslandLocalUpdateTraining,
+    Aggregation,
+    CheckpointPromotion,
+}
+
+impl ComputeTrainingWorkClass {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ValidationReplay => "validation_replay",
+            Self::Evaluation => "evaluation",
+            Self::AdapterTraining => "adapter_training",
+            Self::SmallModelLocalTraining => "small_model_local_training",
+            Self::GroupedReplicaStageExecution => "grouped_replica_stage_execution",
+            Self::FullIslandLocalUpdateTraining => "full_island_local_update_training",
+            Self::Aggregation => "aggregation",
+            Self::CheckpointPromotion => "checkpoint_promotion",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "validation_replay" => Some(Self::ValidationReplay),
+            "evaluation" => Some(Self::Evaluation),
+            "adapter_training" => Some(Self::AdapterTraining),
+            "small_model_local_training" => Some(Self::SmallModelLocalTraining),
+            "grouped_replica_stage_execution" => Some(Self::GroupedReplicaStageExecution),
+            "full_island_local_update_training" => Some(Self::FullIslandLocalUpdateTraining),
+            "aggregation" => Some(Self::Aggregation),
+            "checkpoint_promotion" => Some(Self::CheckpointPromotion),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeTrainingReplicaType {
+    #[default]
+    SingleNode,
+    Island,
+    GroupedReplica,
+}
+
+impl ComputeTrainingReplicaType {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::SingleNode => "single_node",
+            Self::Island => "island",
+            Self::GroupedReplica => "grouped_replica",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "single_node" => Some(Self::SingleNode),
+            "island" => Some(Self::Island),
+            "grouped_replica" => Some(Self::GroupedReplica),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum ComputeEvaluationSampleStatus {
     #[default]
     Recorded,
@@ -1186,6 +1257,10 @@ pub struct ComputeTrainingRun {
     pub checkpoint_binding: ComputeCheckpointBinding,
     pub validator_policy_ref: String,
     #[serde(default)]
+    pub work_class: ComputeTrainingWorkClass,
+    #[serde(default)]
+    pub replica_type: ComputeTrainingReplicaType,
+    #[serde(default)]
     pub benchmark_package_refs: Vec<String>,
     #[serde(default)]
     pub product_id: Option<String>,
@@ -1282,6 +1357,10 @@ pub struct ComputeAdapterTrainingWindow {
     pub stage_id: String,
     pub contributor_set_revision_id: String,
     pub validator_policy_ref: String,
+    #[serde(default)]
+    pub work_class: ComputeTrainingWorkClass,
+    #[serde(default)]
+    pub replica_type: ComputeTrainingReplicaType,
     pub adapter_target_id: String,
     pub adapter_family: String,
     pub base_model_ref: String,
@@ -2566,6 +2645,7 @@ pub fn validate_compute_training_run(run: &ComputeTrainingRun) -> Result<(), Str
     if run.validator_policy_ref.trim().is_empty() {
         return Err("compute_validator_policy_ref_missing".to_string());
     }
+    validate_compute_training_work_class_and_replica_type(run.work_class, run.replica_type)?;
     if run.expected_step_count == Some(0) {
         return Err("compute_training_expected_step_count_invalid".to_string());
     }
@@ -2771,6 +2851,7 @@ pub fn validate_compute_adapter_training_window(
     if window.validator_policy_ref.trim().is_empty() {
         return Err("compute_validator_policy_ref_missing".to_string());
     }
+    validate_compute_training_work_class_and_replica_type(window.work_class, window.replica_type)?;
     if window.adapter_target_id.trim().is_empty() {
         return Err("compute_adapter_target_id_missing".to_string());
     }
@@ -2849,6 +2930,25 @@ pub fn validate_compute_adapter_training_window(
         validate_compute_adapter_checkpoint_pointer(output_checkpoint_pointer)?;
     }
     Ok(())
+}
+
+fn validate_compute_training_work_class_and_replica_type(
+    work_class: ComputeTrainingWorkClass,
+    replica_type: ComputeTrainingReplicaType,
+) -> Result<(), String> {
+    match work_class {
+        ComputeTrainingWorkClass::GroupedReplicaStageExecution
+            if replica_type != ComputeTrainingReplicaType::GroupedReplica =>
+        {
+            Err("compute_training_grouped_replica_type_invalid".to_string())
+        }
+        ComputeTrainingWorkClass::FullIslandLocalUpdateTraining
+            if replica_type != ComputeTrainingReplicaType::Island =>
+        {
+            Err("compute_training_island_replica_type_invalid".to_string())
+        }
+        _ => Ok(()),
+    }
 }
 
 pub fn validate_compute_adapter_contribution_outcome(
@@ -3810,10 +3910,11 @@ mod tests {
         ComputeRegistryStatus, ComputeSettlementMode, ComputeSyntheticDataJob,
         ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
         ComputeSyntheticDataSampleStatus, ComputeTopologyKind, ComputeTrainingPolicy,
-        ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary,
-        ComputeValidatorPolicy, ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus,
-        DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
-        GptOssRuntimeCapability, PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID,
+        ComputeTrainingReplicaType, ComputeTrainingRun, ComputeTrainingRunStatus,
+        ComputeTrainingSummary, ComputeTrainingWorkClass, ComputeValidatorPolicy,
+        ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence,
+        DeliveryTopologyEvidence, DeliveryVerificationEvidence, GptOssRuntimeCapability,
+        PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID,
         PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
         PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID,
         PSIONIC_CLUSTER_POOLED_INFERENCE_DENSE_SPLIT_PRODUCT_ID,
@@ -4158,6 +4259,8 @@ mod tests {
                 recovery_posture: Some("warm-resume".to_string()),
             },
             validator_policy_ref: "policy://validator/training".to_string(),
+            work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+            replica_type: ComputeTrainingReplicaType::Island,
             benchmark_package_refs: vec!["benchmark://mmlu/reference".to_string()],
             product_id: Some("psionic.training.gradient.elastic".to_string()),
             capacity_lot_id: Some("lot.training.alpha".to_string()),
@@ -4220,6 +4323,8 @@ mod tests {
                 recovery_posture: Some("warm-resume".to_string()),
             },
             validator_policy_ref: "policy://validator/apple_adapter/helpdesk".to_string(),
+            work_class: ComputeTrainingWorkClass::AdapterTraining,
+            replica_type: ComputeTrainingReplicaType::SingleNode,
             benchmark_package_refs: vec![
                 "benchmark://apple_adapter/helpdesk/reference".to_string(),
             ],
@@ -5095,5 +5200,32 @@ mod tests {
         let err = validate_delivery_proof(&proof)
             .expect_err("sandbox delivery should require explicit sandbox refs");
         assert_eq!(err, "delivery_proof_sandbox_profile_ref_missing");
+    }
+
+    #[test]
+    fn compute_training_work_class_and_replica_type_round_trip() {
+        assert_eq!(
+            ComputeTrainingWorkClass::parse("grouped_replica_stage_execution"),
+            Some(ComputeTrainingWorkClass::GroupedReplicaStageExecution)
+        );
+        assert_eq!(
+            ComputeTrainingReplicaType::parse("grouped_replica"),
+            Some(ComputeTrainingReplicaType::GroupedReplica)
+        );
+        assert_eq!(
+            ComputeTrainingWorkClass::FullIslandLocalUpdateTraining.label(),
+            "full_island_local_update_training"
+        );
+        assert_eq!(ComputeTrainingReplicaType::Island.label(), "island");
+    }
+
+    #[test]
+    fn training_run_requires_grouped_replica_for_grouped_replica_work() {
+        let mut run = training_run();
+        run.work_class = ComputeTrainingWorkClass::GroupedReplicaStageExecution;
+        run.replica_type = ComputeTrainingReplicaType::SingleNode;
+        let err = validate_compute_training_run(&run)
+            .expect_err("grouped replica work should require grouped replica topology");
+        assert_eq!(err, "compute_training_grouped_replica_type_invalid");
     }
 }
