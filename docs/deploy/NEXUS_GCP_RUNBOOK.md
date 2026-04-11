@@ -88,6 +88,8 @@ the rollout if:
 - the VM or `nexus-relay` systemd service is not healthy
 - `/healthz`, `/api/stats`, or `/v1/treasury/status` latency regresses past the
   configured thresholds
+- repeated local-origin probes show bad tail latency on `/healthz`,
+  `/api/stats`, or `/api/provider-presence/heartbeat?dry_run=true`
 - treasury policy on the live status surface drifts from
   `/etc/nexus-relay/nexus-relay.env`
 - treasury snapshot freshness or wallet-sync freshness crosses the configured
@@ -101,10 +103,20 @@ Optional local threshold overrides:
 VERIFY_HEALTH_LATENCY_MAX_MS=1000 \
 VERIFY_STATS_LATENCY_MAX_MS=1000 \
 VERIFY_TREASURY_LATENCY_MAX_MS=1000 \
+VERIFY_LATENCY_SAMPLE_COUNT=40 \
+VERIFY_HEALTH_LATENCY_P95_MAX_MS=1000 \
+VERIFY_HEALTH_LATENCY_P99_MAX_MS=2000 \
+VERIFY_STATS_LATENCY_P95_MAX_MS=1000 \
+VERIFY_STATS_LATENCY_P99_MAX_MS=2000 \
+VERIFY_PROVIDER_PRESENCE_LATENCY_P95_MAX_MS=1000 \
+VERIFY_PROVIDER_PRESENCE_LATENCY_P99_MAX_MS=2000 \
 VERIFY_TREASURY_SNAPSHOT_MAX_AGE_MS=15000 \
 VERIFY_TREASURY_WALLET_SYNC_MAX_LAG_MS=15000 \
 scripts/deploy/nexus/04-verify-gates.sh
 ```
+
+The provider-presence probe now uses `dry_run=true` so deploy verification hits
+the real heartbeat handler without polluting live public pylon counts.
 
 ## 4) Runtime model
 

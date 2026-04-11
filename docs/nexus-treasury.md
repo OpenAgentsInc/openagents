@@ -347,9 +347,12 @@ Deployment gating:
 - `scripts/deploy/nexus/04-verify-gates.sh` now measures `/healthz`,
   `/api/stats`, and `/v1/treasury/status` latency directly on the VM and fails
   the rollout if latency exceeds the configured thresholds
+- the verifier now also runs repeated local-origin probes against `/healthz`,
+  `/api/stats`, and `/api/provider-presence/heartbeat?dry_run=true`, then fails
+  the rollout if p95 or p99 tail latency exceeds the configured budget
 - the deploy verifier now fails if live treasury policy diverges from the VM env
   file, if snapshot freshness regresses, or if critical treasury continuity
   alerts are active
 - the deploy receipt now includes explicit gate pass/fail rows, endpoint
-  latency, treasury policy evidence, recent payout activity, snapshot freshness,
-  and active continuity alerts
+  latency, tail-latency samples, treasury policy evidence, recent payout
+  activity, snapshot freshness, and active continuity alerts
