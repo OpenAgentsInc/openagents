@@ -3131,6 +3131,13 @@ pub fn compute_adapter_training_window_to_proto(
         accepted_outcome_id: window.accepted_outcome_id.clone(),
         recorded_at_ms: window.recorded_at_ms,
         metadata_json: json_value_to_string(&window.metadata)?,
+        round_index: window.round_index,
+        base_checkpoint_ref: window.base_checkpoint_ref.clone(),
+        planned_local_step_count: window.planned_local_step_count,
+        aggregation_rule: window.aggregation_rule.clone(),
+        aggregation_weight_basis: window.aggregation_weight_basis.clone(),
+        accepted_aggregate_id: window.accepted_aggregate_id.clone(),
+        promoted_checkpoint_ref: window.promoted_checkpoint_ref.clone(),
     })
 }
 
@@ -3145,6 +3152,11 @@ pub fn compute_adapter_training_window_from_proto(
         validator_policy_ref: window.validator_policy_ref.clone(),
         work_class: compute_training_work_class_from_proto(window.work_class),
         replica_type: compute_training_replica_type_from_proto(window.replica_type),
+        round_index: window.round_index,
+        base_checkpoint_ref: window.base_checkpoint_ref.clone(),
+        planned_local_step_count: window.planned_local_step_count,
+        aggregation_rule: optional_string_as_none(window.aggregation_rule.clone()),
+        aggregation_weight_basis: optional_string_as_none(window.aggregation_weight_basis.clone()),
         adapter_target_id: window.adapter_target_id.clone(),
         adapter_family: window.adapter_family.clone(),
         base_model_ref: window.base_model_ref.clone(),
@@ -3188,6 +3200,7 @@ pub fn compute_adapter_training_window_from_proto(
             .filter_map(|value| compute_adapter_promotion_hold_reason_code_from_proto(*value))
             .collect(),
         aggregated_delta_digest: optional_string_as_none(window.aggregated_delta_digest.clone()),
+        accepted_aggregate_id: optional_string_as_none(window.accepted_aggregate_id.clone()),
         output_policy_revision: window
             .output_policy_revision
             .as_ref()
@@ -3198,6 +3211,7 @@ pub fn compute_adapter_training_window_from_proto(
             .as_ref()
             .map(compute_adapter_checkpoint_pointer_from_proto)
             .transpose()?,
+        promoted_checkpoint_ref: optional_string_as_none(window.promoted_checkpoint_ref.clone()),
         accepted_outcome_id: optional_string_as_none(window.accepted_outcome_id.clone()),
         recorded_at_ms: window.recorded_at_ms,
         metadata: json_string_to_value(window.metadata_json.as_str())?,
@@ -3217,6 +3231,9 @@ pub fn compute_adapter_contribution_outcome_to_proto(
         contributor_node_id: contribution.contributor_node_id.clone(),
         worker_id: contribution.worker_id.clone(),
         validator_policy_ref: contribution.validator_policy_ref.clone(),
+        work_class: compute_training_work_class_to_proto(contribution.work_class),
+        replica_type: compute_training_replica_type_to_proto(contribution.replica_type),
+        base_checkpoint_ref: contribution.base_checkpoint_ref.clone(),
         adapter_target_id: contribution.adapter_target_id.clone(),
         adapter_family: contribution.adapter_family.clone(),
         base_model_ref: contribution.base_model_ref.clone(),
@@ -3251,6 +3268,11 @@ pub fn compute_adapter_contribution_outcome_to_proto(
             contribution.aggregation_eligibility,
         ),
         accepted_for_aggregation: contribution.accepted_for_aggregation,
+        local_step_count: contribution.local_step_count,
+        consumed_token_count: contribution.consumed_token_count,
+        consumed_example_count: contribution.consumed_example_count,
+        aggregation_weight_basis: contribution.aggregation_weight_basis.clone(),
+        aggregation_weight_value: contribution.aggregation_weight_value,
         aggregation_weight_bps: contribution.aggregation_weight_bps,
         promotion_receipt_digest: contribution.promotion_receipt_digest.clone(),
         recorded_at_ms: contribution.recorded_at_ms,
@@ -3271,6 +3293,9 @@ pub fn compute_adapter_contribution_outcome_from_proto(
         contributor_node_id: contribution.contributor_node_id.clone(),
         worker_id: contribution.worker_id.clone(),
         validator_policy_ref: contribution.validator_policy_ref.clone(),
+        work_class: compute_training_work_class_from_proto(contribution.work_class),
+        replica_type: compute_training_replica_type_from_proto(contribution.replica_type),
+        base_checkpoint_ref: contribution.base_checkpoint_ref.clone(),
         adapter_target_id: contribution.adapter_target_id.clone(),
         adapter_family: contribution.adapter_family.clone(),
         base_model_ref: contribution.base_model_ref.clone(),
@@ -3316,6 +3341,13 @@ pub fn compute_adapter_contribution_outcome_from_proto(
             contribution.aggregation_eligibility,
         ),
         accepted_for_aggregation: contribution.accepted_for_aggregation,
+        local_step_count: contribution.local_step_count,
+        consumed_token_count: contribution.consumed_token_count,
+        consumed_example_count: contribution.consumed_example_count,
+        aggregation_weight_basis: optional_string_as_none(
+            contribution.aggregation_weight_basis.clone(),
+        ),
+        aggregation_weight_value: contribution.aggregation_weight_value,
         aggregation_weight_bps: contribution.aggregation_weight_bps,
         promotion_receipt_digest: optional_string_as_none(
             contribution.promotion_receipt_digest.clone(),
@@ -6893,6 +6925,11 @@ mod tests {
             validator_policy_ref: "policy://validator/alpha".to_string(),
             work_class: ComputeTrainingWorkClass::AdapterTraining,
             replica_type: ComputeTrainingReplicaType::SingleNode,
+            round_index: Some(7),
+            base_checkpoint_ref: "checkpoint://decoder/train.alpha/promotion".to_string(),
+            planned_local_step_count: Some(500),
+            aggregation_rule: Some("weighted_avg".to_string()),
+            aggregation_weight_basis: Some("tokens".to_string()),
             adapter_target_id: "adapter.target.alpha".to_string(),
             adapter_family: "openagents.adapter.reference".to_string(),
             base_model_ref: "model://alpha".to_string(),
@@ -6931,8 +6968,10 @@ mod tests {
             promotion_disposition: None,
             hold_reason_codes: Vec::new(),
             aggregated_delta_digest: Some("sha256:aggregate".to_string()),
+            accepted_aggregate_id: Some("aggregate.alpha".to_string()),
             output_policy_revision: None,
             output_checkpoint_pointer: None,
+            promoted_checkpoint_ref: None,
             accepted_outcome_id: Some("accepted.window.alpha".to_string()),
             recorded_at_ms: 1_762_000_700_000,
             metadata: json!({"network_id": "alpha"}),
@@ -8159,6 +8198,21 @@ mod tests {
         assert_eq!(
             roundtrip.replica_type,
             ComputeTrainingReplicaType::SingleNode
+        );
+        assert_eq!(roundtrip.round_index, Some(7));
+        assert_eq!(
+            roundtrip.base_checkpoint_ref,
+            "checkpoint://decoder/train.alpha/promotion"
+        );
+        assert_eq!(roundtrip.planned_local_step_count, Some(500));
+        assert_eq!(roundtrip.aggregation_rule.as_deref(), Some("weighted_avg"));
+        assert_eq!(
+            roundtrip.aggregation_weight_basis.as_deref(),
+            Some("tokens")
+        );
+        assert_eq!(
+            roundtrip.accepted_aggregate_id.as_deref(),
+            Some("aggregate.alpha")
         );
 
         let windows = vec![window.clone()];

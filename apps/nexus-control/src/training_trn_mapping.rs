@@ -120,6 +120,41 @@ pub(super) fn window_event(
             source.window.replica_type.label().to_string(),
         ],
     ];
+    if let Some(round_index) = source.window.round_index {
+        extra_tags.push(vec!["round".to_string(), round_index.to_string()]);
+    }
+    push_optional_tag(
+        &mut extra_tags,
+        "base_checkpoint",
+        source.window.base_checkpoint_ref.as_str(),
+    );
+    if let Some(planned_local_step_count) = source.window.planned_local_step_count {
+        extra_tags.push(vec![
+            "planned_local_steps".to_string(),
+            planned_local_step_count.to_string(),
+        ]);
+    }
+    if let Some(aggregation_rule) = source.window.aggregation_rule.as_ref() {
+        extra_tags.push(vec![
+            "aggregation_rule".to_string(),
+            aggregation_rule.clone(),
+        ]);
+    }
+    if let Some(aggregation_weight_basis) = source.window.aggregation_weight_basis.as_ref() {
+        extra_tags.push(vec![
+            "aggregation_weight".to_string(),
+            aggregation_weight_basis.clone(),
+        ]);
+    }
+    if let Some(accepted_aggregate_id) = source.window.accepted_aggregate_id.as_ref() {
+        extra_tags.push(vec!["aggregate".to_string(), accepted_aggregate_id.clone()]);
+    }
+    if let Some(promoted_checkpoint_ref) = source.window.promoted_checkpoint_ref.as_ref() {
+        extra_tags.push(vec![
+            "checkpoint".to_string(),
+            promoted_checkpoint_ref.clone(),
+        ]);
+    }
     push_optional_tag(&mut extra_tags, "backend", metadata.backend_family.as_str());
     push_optional_tag(
         &mut extra_tags,
@@ -152,10 +187,17 @@ pub(super) fn window_event(
             "status": source.window.status.label(),
             "work_class": source.window.work_class.label(),
             "replica_type": source.window.replica_type.label(),
+            "round_index": source.window.round_index,
+            "base_checkpoint_ref": source.window.base_checkpoint_ref,
+            "planned_local_step_count": source.window.planned_local_step_count,
+            "aggregation_rule": source.window.aggregation_rule,
+            "aggregation_weight_basis": source.window.aggregation_weight_basis,
             "stage_id": source.window.stage_id,
             "contributor_set_revision_id": source.window.contributor_set_revision_id,
             "window_summary_digest": source.window.window_summary_digest,
             "aggregated_delta_digest": source.window.aggregated_delta_digest,
+            "accepted_aggregate_id": source.window.accepted_aggregate_id,
+            "promoted_checkpoint_ref": source.window.promoted_checkpoint_ref,
             "accepted_outcome_id": source.window.accepted_outcome_id,
             "kernel_object_id": source.window.window_id,
             "kernel_receipt_ids": vec![source.receipt_id.clone()],
@@ -186,6 +228,32 @@ pub(super) fn window_receipt_event(
         "replica_type".to_string(),
         source.window.replica_type.label().to_string(),
     ]);
+    if let Some(round_index) = source.window.round_index {
+        extra_tags.push(vec!["round".to_string(), round_index.to_string()]);
+    }
+    push_optional_tag(
+        &mut extra_tags,
+        "base_checkpoint",
+        source.window.base_checkpoint_ref.as_str(),
+    );
+    if let Some(planned_local_step_count) = source.window.planned_local_step_count {
+        extra_tags.push(vec![
+            "planned_local_steps".to_string(),
+            planned_local_step_count.to_string(),
+        ]);
+    }
+    if let Some(aggregation_rule) = source.window.aggregation_rule.as_ref() {
+        extra_tags.push(vec![
+            "aggregation_rule".to_string(),
+            aggregation_rule.clone(),
+        ]);
+    }
+    if let Some(aggregation_weight_basis) = source.window.aggregation_weight_basis.as_ref() {
+        extra_tags.push(vec![
+            "aggregation_weight".to_string(),
+            aggregation_weight_basis.clone(),
+        ]);
+    }
     push_optional_tag(&mut extra_tags, "backend", metadata.backend_family.as_str());
     push_optional_tag(
         &mut extra_tags,
@@ -205,6 +273,13 @@ pub(super) fn window_receipt_event(
             "status": status,
             "work_class": source.window.work_class.label(),
             "replica_type": source.window.replica_type.label(),
+            "round_index": source.window.round_index,
+            "base_checkpoint_ref": source.window.base_checkpoint_ref,
+            "planned_local_step_count": source.window.planned_local_step_count,
+            "aggregation_rule": source.window.aggregation_rule,
+            "aggregation_weight_basis": source.window.aggregation_weight_basis,
+            "accepted_aggregate_id": source.window.accepted_aggregate_id,
+            "promoted_checkpoint_ref": source.window.promoted_checkpoint_ref,
             "kernel_object_id": source.window.window_id,
             "kernel_receipt_ids": vec![source.receipt_id.clone()],
         }),
@@ -549,6 +624,11 @@ mod tests {
                 validator_policy_ref: "policy.validator.alpha".to_string(),
                 work_class: ComputeTrainingWorkClass::AdapterTraining,
                 replica_type: ComputeTrainingReplicaType::SingleNode,
+                round_index: Some(1),
+                base_checkpoint_ref: "checkpoint://run.alpha/0001".to_string(),
+                planned_local_step_count: Some(64),
+                aggregation_rule: Some("weighted_avg".to_string()),
+                aggregation_weight_basis: Some("tokens".to_string()),
                 adapter_target_id: "adapter.target.alpha".to_string(),
                 adapter_family: "lora".to_string(),
                 base_model_ref: "model://base.alpha".to_string(),
@@ -588,8 +668,10 @@ mod tests {
                 promotion_disposition: None,
                 hold_reason_codes: Vec::new(),
                 aggregated_delta_digest: Some("sha256:aggregate-alpha".to_string()),
+                accepted_aggregate_id: Some("aggregate.window.0001".to_string()),
                 output_policy_revision: None,
                 output_checkpoint_pointer: None,
+                promoted_checkpoint_ref: None,
                 accepted_outcome_id: Some("accepted.training_window.window.0001".to_string()),
                 recorded_at_ms: 1_762_491_240_000,
                 metadata: super::super::training_window_metadata_value(&metadata),
@@ -790,6 +872,35 @@ mod tests {
             window
                 .extra_tags
                 .iter()
+                .any(|tag| tag == &vec!["round".to_string(), "1".to_string()])
+        );
+        assert!(
+            window.extra_tags.iter().any(|tag| {
+                tag == &vec![
+                    "base_checkpoint".to_string(),
+                    "checkpoint://run.alpha/0001".to_string(),
+                ]
+            })
+        );
+        assert!(
+            window.extra_tags.iter().any(|tag| {
+                tag == &vec![
+                    "aggregation_rule".to_string(),
+                    "weighted_avg".to_string(),
+                ]
+            })
+        );
+        assert_eq!(
+            window
+                .content
+                .get("base_checkpoint_ref")
+                .and_then(serde_json::Value::as_str),
+            Some("checkpoint://run.alpha/0001")
+        );
+        assert!(
+            window
+                .extra_tags
+                .iter()
                 .any(|tag| tag == &vec!["closeout".to_string(), "rewarded".to_string()])
         );
         assert!(matches!(
@@ -818,6 +929,12 @@ mod tests {
                 .iter()
                 .any(|tag| tag == &vec!["environment".to_string(), "env.cuda.alpha".to_string()])
         );
+        assert!(
+            receipt
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["round".to_string(), "1".to_string()])
+        );
         assert!(matches!(
             nostr::TrnEvent::from_event(&fake_event(
                 receipt.to_event_template(1_774_160_021).expect("receipt template"),
@@ -837,6 +954,9 @@ mod tests {
                 contributor_node_id: "node-alpha".to_string(),
                 worker_id: "worker-alpha".to_string(),
                 validator_policy_ref: "policy.validator.alpha".to_string(),
+                work_class: ComputeTrainingWorkClass::AdapterTraining,
+                replica_type: ComputeTrainingReplicaType::SingleNode,
+                base_checkpoint_ref: "checkpoint://run.alpha/0001".to_string(),
                 adapter_target_id: "adapter.target.alpha".to_string(),
                 adapter_family: "lora".to_string(),
                 base_model_ref: "model://base.alpha".to_string(),
@@ -878,6 +998,11 @@ mod tests {
                 validator_receipt_digest: "sha256:validator-alpha".to_string(),
                 aggregation_eligibility: Default::default(),
                 accepted_for_aggregation: false,
+                local_step_count: None,
+                consumed_token_count: None,
+                consumed_example_count: None,
+                aggregation_weight_basis: None,
+                aggregation_weight_value: None,
                 aggregation_weight_bps: None,
                 promotion_receipt_digest: None,
                 recorded_at_ms: 1_762_491_240_000,

@@ -284,6 +284,13 @@ message ComputeAdapterTrainingWindow {
   optional string accepted_outcome_id = 33;
   int64 recorded_at_ms = 34;
   string metadata_json = 35;
+  optional uint64 round_index = 36;
+  string base_checkpoint_ref = 37;
+  optional uint64 planned_local_step_count = 38;
+  optional string aggregation_rule = 39;
+  optional string aggregation_weight_basis = 40;
+  optional string accepted_aggregate_id = 41;
+  optional string promoted_checkpoint_ref = 42;
 }
 
 message ComputeAdapterContributionOutcome {
@@ -320,6 +327,14 @@ message ComputeAdapterContributionOutcome {
   optional string promotion_receipt_digest = 31;
   int64 recorded_at_ms = 32;
   string metadata_json = 33;
+  ComputeTrainingWorkClass work_class = 34;
+  ComputeTrainingReplicaType replica_type = 35;
+  string base_checkpoint_ref = 36;
+  optional uint64 local_step_count = 37;
+  optional uint64 consumed_token_count = 38;
+  optional uint64 consumed_example_count = 39;
+  optional string aggregation_weight_basis = 40;
+  optional uint64 aggregation_weight_value = 41;
 }
 
 message RegisterComputeCheckpointFamilyPolicyRequest {
