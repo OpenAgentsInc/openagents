@@ -9,6 +9,10 @@ use psionic_runtime::{
     BackendRuntimeResources, BatchExecutionPosture, CacheInvalidationTrigger, CompilePathEvidence,
     CompilePathTemperature, DeviceInventoryQualifiers, LocalRuntimeObservability, QueueDiscipline,
 };
+use psionic_models::{
+    GptOssHarmonyParseOptions, PromptMessage, PromptMessageRole, parse_gpt_oss_harmony_text,
+    render_gpt_oss_harmony_prompt,
+};
 use psionic_serve::{
     CpuGgufGptOssTextGenerationService, CpuReferenceTextGenerationService,
     CudaGgufGptOssTextGenerationService, GenerationLoadState, GenerationOptions, GenerationRequest,
@@ -21,6 +25,8 @@ const DEFAULT_GPT_OSS_KEEPALIVE_MILLIS: u64 = 300_000;
 const ENV_GPT_OSS_BACKEND: &str = "OPENAGENTS_GPT_OSS_BACKEND";
 const ENV_GPT_OSS_MODEL_PATH: &str = "OPENAGENTS_GPT_OSS_MODEL_PATH";
 const GPT_OSS_20B_FILENAME: &str = "gpt-oss-20b-mxfp4.gguf";
+const GPT_OSS_HARMONY_RETURN_STOP: &str = "<|return|>";
+const GPT_OSS_HARMONY_CALL_STOP: &str = "<|call|>";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LocalInferenceExecutionMetrics {
@@ -541,6 +547,14 @@ impl PsionicRuntimeAdapter {
 
     fn handle_generate(&mut self, job: LocalInferenceGenerateJob) {
         let normalized_prompt = normalize_prompt(job.prompt.as_str());
+        let rendered_harmony_prompt = match render_harmony_user_prompt(normalized_prompt.as_str())
+        {
+            Ok(value) => value,
+            Err(error) => {
+                self.push_failure(job.request_id, error);
+                return;
+            }
+        };
         let options_map = match build_generate_options(job.params.as_slice()) {
             Ok(value) => value,
             Err(error) => {
@@ -583,18 +597,24 @@ impl PsionicRuntimeAdapter {
                 },
             ));
 
-        let options = match psionic_generation_options(&options_map) {
+        let mut options = match psionic_generation_options(&options_map) {
             Ok(value) => value,
             Err(error) => {
                 self.push_failure(job.request_id, error);
                 return;
             }
         };
+        options
+            .stop_sequences
+            .push(String::from(GPT_OSS_HARMONY_RETURN_STOP));
+        options
+            .stop_sequences
+            .push(String::from(GPT_OSS_HARMONY_CALL_STOP));
         let request = GenerationRequest::new_text(
             job.request_id.as_str(),
             self.service.model_descriptor().clone(),
             None,
-            normalized_prompt.as_str(),
+            rendered_harmony_prompt.as_str(),
             options,
         );
         let response = match self.service.generate(&request) {
@@ -673,12 +693,13 @@ impl PsionicRuntimeAdapter {
         self.refresh_snapshot(String::from(
             "Psionic local runtime refreshed after generation",
         ));
+        let assistant_text = extract_harmony_assistant_text(response.output.text.as_str());
         self.pending_updates
             .push_back(LocalInferenceRuntimeUpdate::Completed(
                 LocalInferenceExecutionCompleted {
                     request_id: job.request_id,
                     model,
-                    output: response.output.text,
+                    output: assistant_text,
                     metrics,
                     provenance,
                 },
@@ -1307,6 +1328,14 @@ impl GptOssRuntimeWorker {
 
     fn handle_generate(&mut self, job: LocalInferenceGenerateJob) {
         let normalized_prompt = normalize_prompt(job.prompt.as_str());
+        let rendered_harmony_prompt = match render_harmony_user_prompt(normalized_prompt.as_str())
+        {
+            Ok(value) => value,
+            Err(error) => {
+                self.push_failure(job.request_id, error);
+                return;
+            }
+        };
         let options_map = match build_generate_options(job.params.as_slice()) {
             Ok(value) => value,
             Err(error) => {
@@ -1358,18 +1387,24 @@ impl GptOssRuntimeWorker {
             },
         ));
 
-        let options = match psionic_generation_options(&options_map) {
+        let mut options = match psionic_generation_options(&options_map) {
             Ok(value) => value,
             Err(error) => {
                 self.push_failure(job.request_id, error);
                 return;
             }
         };
+        options
+            .stop_sequences
+            .push(String::from(GPT_OSS_HARMONY_RETURN_STOP));
+        options
+            .stop_sequences
+            .push(String::from(GPT_OSS_HARMONY_CALL_STOP));
         let request = GenerationRequest::new_text(
             job.request_id.as_str(),
             request_descriptor,
             None,
-            normalized_prompt.as_str(),
+            rendered_harmony_prompt.as_str(),
             options,
         );
         let Some(service) = self.service.as_mut() else {
@@ -1453,11 +1488,12 @@ impl GptOssRuntimeWorker {
         self.snapshot.last_error = None;
         self.snapshot.busy = false;
         self.refresh_snapshot(String::from("GPT-OSS runtime refreshed after generation"));
+        let assistant_text = extract_harmony_assistant_text(response.output.text.as_str());
         let _ = self.update_tx.send(LocalInferenceRuntimeUpdate::Completed(
             LocalInferenceExecutionCompleted {
                 request_id: job.request_id,
                 model,
-                output: response.output.text,
+                output: assistant_text,
                 metrics,
                 provenance,
             },
@@ -1651,6 +1687,62 @@ pub fn normalize_prompt(raw: &str) -> String {
         .replace('\r', "\n")
         .trim()
         .to_string()
+}
+
+/// Wraps a workbench prompt as a single GPT-OSS Harmony user turn and renders
+/// it for the model. The workbench surface only sends a single user message at
+/// a time, so we construct a one-element message slice and ask Harmony to add
+/// the assistant generation prompt. Mirrors the rendering psionic-serve's own
+/// OpenAI chat completions handler performs at openai_http.rs:9226 for the
+/// `GptOss` decoder family branch.
+fn render_harmony_user_prompt(prompt_text: &str) -> Result<String, String> {
+    let user_message = PromptMessage::new(PromptMessageRole::User, prompt_text);
+    render_gpt_oss_harmony_prompt(&[user_message], true, None)
+        .map_err(|error| format!("failed to render GPT-OSS Harmony prompt: {error}"))
+}
+
+/// Extracts the user-facing assistant text from a Harmony-formatted model
+/// response. Harmony assistant messages are split across analysis, commentary,
+/// and final channels; the workbench should display the final-channel content
+/// because that is the assistant's user-facing answer. If the response cannot
+/// be parsed or no final-channel content is present, falls back to the union
+/// of all assistant content, and finally to the raw response text. Mirrors the
+/// channel handling pattern in psionic-serve's chat completions handler at
+/// openai_http.rs:7048-7060.
+fn extract_harmony_assistant_text(raw_text: &str) -> String {
+    let parsed = match parse_gpt_oss_harmony_text(
+        raw_text,
+        GptOssHarmonyParseOptions {
+            role_hint: Some(PromptMessageRole::Assistant),
+            strict: false,
+        },
+    ) {
+        Ok(parsed) => parsed,
+        Err(_) => return raw_text.to_string(),
+    };
+    let final_text: String = parsed
+        .messages
+        .iter()
+        .filter(|message| message.role == PromptMessageRole::Assistant)
+        .filter(|message| message.channel.as_deref() == Some("final"))
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("");
+    if !final_text.is_empty() {
+        return final_text;
+    }
+    let any_assistant: String = parsed
+        .messages
+        .iter()
+        .filter(|message| message.role == PromptMessageRole::Assistant)
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("");
+    if any_assistant.is_empty() {
+        raw_text.to_string()
+    } else {
+        any_assistant
+    }
 }
 
 pub fn canonical_options_json(options: &Map<String, Value>) -> Result<String, String> {
