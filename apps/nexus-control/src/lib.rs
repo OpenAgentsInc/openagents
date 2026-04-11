@@ -123,7 +123,7 @@ use crate::treasury::{
     ProviderPayoutTargetRegistrationResponse, TreasuryConfig, TreasuryDispatchBatchResult,
     TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryPayoutPreparation,
     TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse, create_live_funding_target,
-    dispatch_live_payouts, load_live_wallet_snapshot,
+    dispatch_live_payouts, load_live_wallet_snapshot_with_plan,
 };
 
 pub use crate::treasury::{
@@ -12907,7 +12907,31 @@ fn find_session_by_id<'a>(
 
 async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool) {
     let now = now_unix_ms();
-    match load_live_wallet_snapshot(&state.config.treasury, create_if_missing).await {
+    let refresh_plan = match state.store.read() {
+        Ok(store) => store.treasury.wallet_refresh_plan(),
+        Err(_) => {
+            if let Ok(mut store) = state.store.write() {
+                store
+                    .treasury
+                    .record_wallet_error("session_store_poisoned".to_string());
+                let receipt_events = store
+                    .treasury
+                    .sync_continuity_alerts(&state.config.treasury, now);
+                store
+                    .treasury
+                    .refresh_public_snapshot(&state.config.treasury, now);
+                record_treasury_receipt_events(&mut store, receipt_events, now);
+            }
+            return;
+        }
+    };
+    match load_live_wallet_snapshot_with_plan(
+        &state.config.treasury,
+        create_if_missing,
+        refresh_plan,
+    )
+    .await
+    {
         Ok(snapshot) => {
             if let Ok(mut store) = state.store.write() {
                 let mut receipt_events = store.treasury.apply_wallet_snapshot(&snapshot, now);
@@ -18710,12 +18734,7 @@ mod tests {
         let second_stats: PublicStatsSnapshot = response_json(second_response).await?;
         assert_eq!(second_stats.nexus_wallet_balance_sats, 500);
         assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
-        assert!(
-            second_stats
-                .nexus_treasury_degraded_reason
-                .as_deref()
-                .is_some_and(|reason| reason.starts_with("wallet_snapshot_stale:"))
-        );
+        assert_eq!(second_stats.nexus_treasury_degraded_reason, None);
         assert!(
             second_stats
                 .nexus_wallet_sync_lag_ms

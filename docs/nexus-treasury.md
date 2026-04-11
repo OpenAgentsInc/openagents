@@ -114,8 +114,11 @@ If `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS` is unset,
 `nexus-control` refreshes wallet-backed treasury stats every 3 seconds by
 default. Treasury snapshots are treated as stale only after two missed refresh
 windows, with a minimum 15 second stale budget, and the background refresh now
-reads cached wallet balance plus local payment history instead of forcing a
-full Spark sync on every stats refresh. `/api/stats` and
+reads cached wallet balance plus bounded recent payment history instead of
+walking the entire Spark payment ledger on every refresh. The refresh loop
+tracks unresolved payout payment IDs and caps each cycle to a small page budget
+so the paid-total counter keeps moving even after the wallet has accumulated
+tens of thousands of payouts. `/api/stats` and
 `GET /v1/treasury/status` no longer trigger wallet refresh inline.
 
 If treasury state JSON ever deserializes badly on restart, `nexus-control` now
