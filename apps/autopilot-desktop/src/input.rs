@@ -2561,11 +2561,22 @@ fn dispatch_mouse_down(
     // Sidebar "Go Online" button (when panel is open).
     if button == MouseButton::Left && state.sidebar.is_open {
         let go_online_bounds = sidebar_go_online_button_bounds(state);
-        if go_online_bounds.size.width > 0.0
-            && go_online_bounds.contains(point)
-            && run_pane_hit_action(state, PaneHitAction::GoOnlineToggle)
-        {
-            return true;
+        if go_online_bounds.size.width > 0.0 && go_online_bounds.contains(point) {
+            // Mirror the Mission Control pane gating: when offline/degraded and
+            // the gate is closed (LLM not ready, or there are provider blockers
+            // such as the Pylon authority being unavailable), consume the click
+            // but reject the toggle. Without this, the sidebar shortcut bypasses
+            // the same go-online gate the in-pane button respects.
+            if matches!(
+                state.provider_runtime.mode,
+                crate::app_state::ProviderMode::Offline | crate::app_state::ProviderMode::Degraded
+            ) && !state.mission_control_go_online_enabled()
+            {
+                return true;
+            }
+            if run_pane_hit_action(state, PaneHitAction::GoOnlineToggle) {
+                return true;
+            }
         }
     }
 

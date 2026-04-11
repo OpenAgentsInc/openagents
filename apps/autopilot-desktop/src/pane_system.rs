@@ -8164,6 +8164,7 @@ fn pane_hit_action_for_pane(
                 &state.gpt_oss_execution,
                 provider_blockers.as_slice(),
                 &state.spark_wallet,
+                &state.earnings_scoreboard,
             );
             let alert_dismiss_bounds = if docked {
                 mission_control_docked_alert_dismiss_button_bounds(

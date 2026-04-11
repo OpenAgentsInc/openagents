@@ -28254,7 +28254,7 @@ impl RenderState {
         !matches!(
             self.provider_runtime.mode,
             ProviderMode::Offline | ProviderMode::Degraded
-        ) || self.mission_control_local_runtime_ready()
+        ) || (self.mission_control_local_runtime_ready() && self.provider_blockers().is_empty())
     }
 
     pub fn configured_provider_relay_urls(&self) -> Vec<String> {
@@ -28319,6 +28319,23 @@ impl RenderState {
         }
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
+        }
+        // Pylon is the authority for live provider earnings (PR #4266: "Source
+        // Autopilot earnings from Pylon authority"). The Pylon provider-admin
+        // store is the canonical sink for both sell-compute earnings and
+        // data-market earnings, so an unavailable Pylon authority blocks
+        // go-online in *every* provider mode -- not just sell-compute. This
+        // check sits above the data_seller / data_buyer / supports_sell_compute
+        // early returns so that a stale Data Seller draft from prior testing
+        // cannot accidentally short-circuit the Pylon gate on a sell-compute
+        // bring-up. The conservative `!= Ready` shape avoids a transient
+        // startup window where load_state is still `Loading` (its default)
+        // before the first earnings refresh tick has fired, during which an
+        // `== Error` check would let the user click Go Online before the gate
+        // kicks in. Mirrors how `GptOssModelUnavailable` is cleared only on an
+        // explicit `is_ready()`, not on the absence of an error.
+        if self.earnings_scoreboard.load_state != PaneLoadState::Ready {
+            blockers.push(ProviderBlocker::PylonAuthorityUnavailable);
         }
         if self.data_seller.derived_nip90_profile().is_some()
             || self.data_buyer.requires_nip90_response_tracking()
