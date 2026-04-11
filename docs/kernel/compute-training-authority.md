@@ -180,6 +180,57 @@ snapshots should expose both categories without collapsing them into one
 checkpoint lineage, and a busy validator queue can exist without any accepted
 progress.
 
+## Visualization Snapshot
+
+Nexus now also exposes one visualization-oriented training read model at:
+
+- `/api/training/visualization`
+
+The homepage payload mirrors the same object at:
+
+- `/api/homepage.training_visualization`
+
+This snapshot is the public/operator surface intended for WGPUI and future
+homepage or stats-page visualizations. It keeps the stable counters from
+`/api/training/summary`, but widens the shape so consumers do not need to
+reconstruct training state from scheduler internals.
+
+The visualization snapshot now projects:
+
+- capability-tier buckets
+  - node totals, online totals, eligible totals
+  - role mix, networks, backend families, throughput bands, replay capability,
+    and upload-latency classes per tier
+- run state
+  - work class, replica type, progress class
+  - required worker, validator, and recovery-source tiers
+  - active window ids, latest aggregate ref, and latest promoted checkpoint ref
+- window state
+  - round index, base checkpoint, planned local-step count
+  - aggregation rule and weighting basis
+  - validator pressure per window
+  - aggregate digest or aggregate id
+  - output or promoted checkpoint refs
+  - accepted closeout linkage and payout eligibility
+- validator state
+  - open, queued, leased, retrying, verified, rejected, and timed-out counts
+  - per-window challenge grouping when the challenge id binds to one training
+    window
+- aggregate, checkpoint, and closeout projections
+  - aggregate refs with closeout status and payout eligibility
+  - checkpoint refs by role such as `base`, `accepted_closeout`, `promoted`,
+    and `run_latest`
+  - closeouts with work class, progress class, payout basis, payout projection,
+    and accepted checkpoint refs
+
+This is the authority-facing answer to the UI request for:
+
+- tier visualization
+- active windows and validation pressure
+- accepted aggregates and promoted checkpoints
+- participation versus progress
+- payout references that stay legible after closeout
+
 ## Work-Class Settlement Projection
 
 The accepted-outcome closeout record now also carries explicit settlement

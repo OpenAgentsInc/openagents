@@ -1628,10 +1628,262 @@ struct TrainingOperatorSummaryResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct TrainingVisualizationResponse {
+    generated_at_unix_ms: u64,
+    participation: TrainingOperatorParticipationSummary,
+    progress: TrainingOperatorProgressSummary,
+    settlement: TrainingOperatorSettlementSummary,
+    #[serde(default)]
+    tiers: Vec<TrainingVisualizationTierSummary>,
+    #[serde(default)]
+    runs: Vec<TrainingVisualizationRun>,
+    #[serde(default)]
+    windows: Vec<TrainingVisualizationWindow>,
+    #[serde(default)]
+    validators: TrainingVisualizationValidatorSummary,
+    #[serde(default)]
+    aggregates: Vec<TrainingVisualizationAggregate>,
+    #[serde(default)]
+    checkpoints: Vec<TrainingVisualizationCheckpoint>,
+    #[serde(default)]
+    closeouts: Vec<TrainingVisualizationCloseout>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingVisualizationTierSummary {
+    tier: String,
+    nodes_total: u64,
+    nodes_online: u64,
+    nodes_eligible: u64,
+    #[serde(default)]
+    roles: Vec<String>,
+    #[serde(default)]
+    networks: Vec<String>,
+    #[serde(default)]
+    backend_families: Vec<String>,
+    #[serde(default)]
+    throughput_bands: Vec<String>,
+    #[serde(default)]
+    replay_capabilities: Vec<String>,
+    #[serde(default)]
+    artifact_upload_latency_classes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingVisualizationRun {
+    training_run_id: String,
+    network_id: String,
+    run_status: String,
+    scheduler_window_state: String,
+    current_window_id: String,
+    work_class: String,
+    replica_type: String,
+    progress_class: String,
+    required_worker_tier: String,
+    required_validator_tier: String,
+    required_recovery_source_tier: String,
+    #[serde(default)]
+    window_ids: Vec<String>,
+    admitted_nodes: u64,
+    admitted_nodes_online: u64,
+    worker_nodes_online: u64,
+    validator_nodes_online: u64,
+    recovery_source_nodes_online: u64,
+    active_window_count: u64,
+    pending_validation_window_count: u64,
+    accepted_closeouts: u64,
+    payout_eligible_closeouts: u64,
+    nodes_contributing_to_accepted_progress: u64,
+    windows_advanced_checkpoint_lineage: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_checkpoint_age_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_window_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_closeout_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_aggregate_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_promoted_checkpoint_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingVisualizationWindow {
+    window_id: String,
+    training_run_id: String,
+    network_id: String,
+    status: String,
+    stage_id: String,
+    work_class: String,
+    replica_type: String,
+    progress_class: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    round_index: Option<u64>,
+    base_checkpoint_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    planned_local_step_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_rule: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_weight_basis: Option<String>,
+    total_contributions: u32,
+    admitted_contributions: u32,
+    accepted_contributions: u32,
+    quarantined_contributions: u32,
+    rejected_contributions: u32,
+    replay_required_contributions: u32,
+    replay_checked_contributions: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    held_out_average_score_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    benchmark_pass_rate_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_smoke_passed: Option<bool>,
+    promotion_ready: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    promotion_disposition: Option<String>,
+    #[serde(default)]
+    gate_reason_codes: Vec<String>,
+    #[serde(default)]
+    hold_reason_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    validator_pool_ref: Option<String>,
+    #[serde(default)]
+    validator_challenge_ids: Vec<String>,
+    validator_challenges_open: u64,
+    validator_challenges_queued: u64,
+    validator_challenges_verified: u64,
+    validator_challenges_rejected: u64,
+    validator_challenges_timed_out: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregate_resolution: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    defensibility_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregated_delta_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accepted_aggregate_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    output_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    promoted_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accepted_outcome_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    closeout_status: Option<String>,
+    payout_eligible: bool,
+    lineage_advanced: bool,
+    planned_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    activated_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sealed_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reconciled_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingVisualizationValidatorSummary {
+    open: u64,
+    queued: u64,
+    leased: u64,
+    retrying: u64,
+    verified: u64,
+    rejected: u64,
+    timed_out: u64,
+    #[serde(default)]
+    windows: Vec<TrainingVisualizationValidatorWindowSummary>,
+}
+
+#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingVisualizationValidatorWindowSummary {
+    training_run_id: String,
+    window_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    validator_pool_ref: Option<String>,
+    #[serde(default)]
+    challenge_ids: Vec<String>,
+    open: u64,
+    queued: u64,
+    leased: u64,
+    retrying: u64,
+    verified: u64,
+    rejected: u64,
+    timed_out: u64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingVisualizationAggregate {
+    aggregate_ref: String,
+    training_run_id: String,
+    window_id: String,
+    work_class: String,
+    replica_type: String,
+    progress_class: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_rule: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_weight_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregated_delta_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accepted_aggregate_id: Option<String>,
+    contribution_count: u32,
+    accepted_contributions: u32,
+    window_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    closeout_status: Option<String>,
+    payout_eligible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    promoted_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accepted_outcome_id: Option<String>,
+    recorded_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingVisualizationCheckpoint {
+    checkpoint_ref: String,
+    checkpoint_role: String,
+    training_run_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    outcome_id: Option<String>,
+    canonical: bool,
+    recorded_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingVisualizationCloseout {
+    outcome_id: String,
+    training_run_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window_id: Option<String>,
+    work_class: String,
+    replica_type: String,
+    progress_class: String,
+    closeout_status: String,
+    payout_eligible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    payout_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    payout_projection: Option<TrainingPayoutProjection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accepted_checkpoint_ref: Option<String>,
+    accepted_at_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct NexusHomepageResponse {
     generated_at_unix_ms: u64,
     stats: PublicStatsSnapshot,
     training_summary: TrainingOperatorSummaryResponse,
+    training_visualization: TrainingVisualizationResponse,
     #[serde(default)]
     training_nodes: Vec<AdmittedTrainingNodeView>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5034,6 +5286,7 @@ fn build_api_router_with_state(state: AppState) -> Router {
             post(publish_training_trn_state),
         )
         .route("/api/training/summary", get(training_operator_summary))
+        .route("/api/training/visualization", get(training_visualization))
         .route("/api/training/nodes", get(list_training_nodes))
         .route(
             "/api/training/nodes/{node_pubkey_hex}",
@@ -5382,6 +5635,18 @@ async fn training_operator_summary(
         reason: "session_store_poisoned".to_string(),
     })?;
     Ok(Json(training_operator_summary_snapshot(&store, now)))
+}
+
+async fn training_visualization(
+    State(state): State<AppState>,
+) -> Result<Json<TrainingVisualizationResponse>, ApiError> {
+    let now = now_unix_ms();
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(training_visualization_snapshot(&store, now)))
 }
 
 async fn homepage_snapshot(
@@ -15137,6 +15402,823 @@ fn training_operator_metrics(store: &ControlStore, now_unix_ms: u64) -> Training
     }
 }
 
+fn serialized_label<T: Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn training_capability_tier_label(tier: ProviderTrainingCapabilityTier) -> &'static str {
+    match tier {
+        ProviderTrainingCapabilityTier::Tier0Presence => "tier0_presence",
+        ProviderTrainingCapabilityTier::Tier1Validation => "tier1_validation",
+        ProviderTrainingCapabilityTier::Tier2Trainer => "tier2_trainer",
+        ProviderTrainingCapabilityTier::Tier3Island => "tier3_island",
+        ProviderTrainingCapabilityTier::Tier4Authority => "tier4_authority",
+    }
+}
+
+fn training_visualization_required_tier(
+    role: TrainingNodeRoleClaim,
+    work_class: ComputeTrainingWorkClass,
+    replica_type: ComputeTrainingReplicaType,
+) -> ProviderTrainingCapabilityTier {
+    let work_class_tier = training_scheduler_minimum_tier_for_work_class(role, work_class);
+    let replica_tier = training_scheduler_minimum_tier_for_replica_type(role, replica_type);
+    if work_class_tier.ordinal() >= replica_tier.ordinal() {
+        work_class_tier
+    } else {
+        replica_tier
+    }
+}
+
+fn training_visualization_increment_validator_status(
+    summary: &mut TrainingVisualizationValidatorSummary,
+    status: ServiceValidatorChallengeStatus,
+) {
+    match status {
+        ServiceValidatorChallengeStatus::Queued => {
+            summary.open = summary.open.saturating_add(1);
+            summary.queued = summary.queued.saturating_add(1);
+        }
+        ServiceValidatorChallengeStatus::Leased => {
+            summary.open = summary.open.saturating_add(1);
+            summary.leased = summary.leased.saturating_add(1);
+        }
+        ServiceValidatorChallengeStatus::Retrying => {
+            summary.open = summary.open.saturating_add(1);
+            summary.retrying = summary.retrying.saturating_add(1);
+        }
+        ServiceValidatorChallengeStatus::Verified => {
+            summary.verified = summary.verified.saturating_add(1);
+        }
+        ServiceValidatorChallengeStatus::Rejected => {
+            summary.rejected = summary.rejected.saturating_add(1);
+        }
+        ServiceValidatorChallengeStatus::TimedOut => {
+            summary.timed_out = summary.timed_out.saturating_add(1);
+        }
+    }
+}
+
+fn training_visualization_increment_window_validator_status(
+    summary: &mut TrainingVisualizationValidatorWindowSummary,
+    status: ServiceValidatorChallengeStatus,
+) {
+    match status {
+        ServiceValidatorChallengeStatus::Queued => {
+            summary.open = summary.open.saturating_add(1);
+            summary.queued = summary.queued.saturating_add(1);
+        }
+        ServiceValidatorChallengeStatus::Leased => {
+            summary.open = summary.open.saturating_add(1);
+            summary.leased = summary.leased.saturating_add(1);
+        }
+        ServiceValidatorChallengeStatus::Retrying => {
+            summary.open = summary.open.saturating_add(1);
+            summary.retrying = summary.retrying.saturating_add(1);
+        }
+        ServiceValidatorChallengeStatus::Verified => {
+            summary.verified = summary.verified.saturating_add(1);
+        }
+        ServiceValidatorChallengeStatus::Rejected => {
+            summary.rejected = summary.rejected.saturating_add(1);
+        }
+        ServiceValidatorChallengeStatus::TimedOut => {
+            summary.timed_out = summary.timed_out.saturating_add(1);
+        }
+    }
+}
+
+fn training_visualization_challenge_window_binding<'a>(
+    challenge_id: &str,
+    windows: &'a [ComputeAdapterTrainingWindow],
+) -> Option<(&'a str, &'a str)> {
+    windows.iter().find_map(|window| {
+        let prefix = format!(
+            "challenge.training.{}.{}.",
+            window.training_run_id, window.window_id
+        );
+        challenge_id
+            .starts_with(prefix.as_str())
+            .then_some((window.training_run_id.as_str(), window.window_id.as_str()))
+    })
+}
+
+fn training_visualization_snapshot(
+    store: &ControlStore,
+    now_unix_ms: u64,
+) -> TrainingVisualizationResponse {
+    let summary = training_operator_summary_snapshot(store, now_unix_ms);
+    training_visualization_snapshot_with_summary(store, now_unix_ms, summary)
+}
+
+fn training_visualization_snapshot_with_summary(
+    store: &ControlStore,
+    now_unix_ms: u64,
+    summary: TrainingOperatorSummaryResponse,
+) -> TrainingVisualizationResponse {
+    struct TierAccumulator {
+        nodes_total: u64,
+        nodes_online: u64,
+        nodes_eligible: u64,
+        roles: BTreeSet<String>,
+        networks: BTreeSet<String>,
+        backend_families: BTreeSet<String>,
+        throughput_bands: BTreeSet<String>,
+        replay_capabilities: BTreeSet<String>,
+        artifact_upload_latency_classes: BTreeSet<String>,
+    }
+
+    let admitted_nodes = store.kernel.list_admitted_training_nodes(
+        &TrainingNodeQuery {
+            network_id: None,
+            role: None,
+            online_only: false,
+            eligible_only: false,
+        },
+        now_unix_ms as i64,
+    );
+    let mut training_runs = store.kernel.list_compute_training_runs(None, None, None);
+    let mut training_windows = store
+        .kernel
+        .list_compute_adapter_training_windows(None, None);
+    let mut accepted_outcomes = store
+        .kernel
+        .list_compute_accepted_outcomes(Some(ComputeAcceptedOutcomeKind::TrainingRun), None);
+    let validator_challenges = store.kernel.list_validator_challenges(None);
+
+    training_runs.sort_by(|lhs, rhs| lhs.training_run_id.cmp(&rhs.training_run_id));
+    training_windows.sort_by(|lhs, rhs| {
+        lhs.training_run_id
+            .cmp(&rhs.training_run_id)
+            .then_with(|| lhs.round_index.cmp(&rhs.round_index))
+            .then_with(|| lhs.window_id.cmp(&rhs.window_id))
+    });
+    accepted_outcomes.sort_by(|lhs, rhs| {
+        rhs.accepted_at_ms
+            .cmp(&lhs.accepted_at_ms)
+            .then_with(|| lhs.outcome_id.cmp(&rhs.outcome_id))
+    });
+
+    let run_summaries_by_id = summary
+        .runs
+        .iter()
+        .cloned()
+        .map(|run| (run.training_run_id.clone(), run))
+        .collect::<HashMap<_, _>>();
+    let accepted_outcomes_by_id = accepted_outcomes
+        .iter()
+        .map(|outcome| (outcome.outcome_id.as_str(), outcome))
+        .collect::<HashMap<_, _>>();
+    let runs_by_id = training_runs
+        .iter()
+        .map(|run| (run.training_run_id.as_str(), run))
+        .collect::<HashMap<_, _>>();
+
+    let mut window_metadata_by_id = HashMap::new();
+    let mut outcomes_by_window_id: HashMap<String, Vec<&ComputeAcceptedOutcome>> = HashMap::new();
+    let mut windows_by_run_id: HashMap<String, Vec<&ComputeAdapterTrainingWindow>> = HashMap::new();
+    for window in &training_windows {
+        if let Ok(metadata) = training_window_metadata_from_value(&window.metadata) {
+            window_metadata_by_id.insert(window.window_id.clone(), metadata);
+        }
+        windows_by_run_id
+            .entry(window.training_run_id.clone())
+            .or_default()
+            .push(window);
+    }
+    for outcome in &accepted_outcomes {
+        if let Some(window_id) = outcome.metadata.get("window_id").and_then(Value::as_str) {
+            outcomes_by_window_id
+                .entry(window_id.to_string())
+                .or_default()
+                .push(outcome);
+        }
+    }
+
+    let mut tier_accumulators: BTreeMap<String, TierAccumulator> = BTreeMap::new();
+    for node in &admitted_nodes {
+        let tier_label = training_capability_tier_label(node.capability_tier.tier).to_string();
+        let entry = tier_accumulators
+            .entry(tier_label)
+            .or_insert_with(|| TierAccumulator {
+                nodes_total: 0,
+                nodes_online: 0,
+                nodes_eligible: 0,
+                roles: BTreeSet::new(),
+                networks: BTreeSet::new(),
+                backend_families: BTreeSet::new(),
+                throughput_bands: BTreeSet::new(),
+                replay_capabilities: BTreeSet::new(),
+                artifact_upload_latency_classes: BTreeSet::new(),
+            });
+        entry.nodes_total = entry.nodes_total.saturating_add(1);
+        if node.online {
+            entry.nodes_online = entry.nodes_online.saturating_add(1);
+        }
+        if node.eligible {
+            entry.nodes_eligible = entry.nodes_eligible.saturating_add(1);
+        }
+        entry
+            .roles
+            .extend(node.role_claims.iter().map(|role| role.label().to_string()));
+        entry.networks.extend(
+            node.allowed_networks
+                .iter()
+                .filter(|network_id| !network_id.trim().is_empty())
+                .cloned(),
+        );
+        entry.backend_families.extend(
+            node.capability_tier
+                .backend_families
+                .iter()
+                .filter(|backend| !backend.trim().is_empty())
+                .cloned(),
+        );
+        entry
+            .throughput_bands
+            .insert(serialized_label(&node.capability_tier.throughput_band));
+        entry
+            .replay_capabilities
+            .insert(serialized_label(&node.capability_tier.replay_capability));
+        entry
+            .artifact_upload_latency_classes
+            .insert(serialized_label(
+                &node.capability_tier.artifact_upload_latency_class,
+            ));
+    }
+    let tiers = tier_accumulators
+        .into_iter()
+        .map(|(tier, accumulator)| TrainingVisualizationTierSummary {
+            tier,
+            nodes_total: accumulator.nodes_total,
+            nodes_online: accumulator.nodes_online,
+            nodes_eligible: accumulator.nodes_eligible,
+            roles: accumulator.roles.into_iter().collect(),
+            networks: accumulator.networks.into_iter().collect(),
+            backend_families: accumulator.backend_families.into_iter().collect(),
+            throughput_bands: accumulator.throughput_bands.into_iter().collect(),
+            replay_capabilities: accumulator.replay_capabilities.into_iter().collect(),
+            artifact_upload_latency_classes: accumulator
+                .artifact_upload_latency_classes
+                .into_iter()
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+
+    let mut validators = TrainingVisualizationValidatorSummary::default();
+    let mut validator_windows: BTreeMap<
+        (String, String),
+        TrainingVisualizationValidatorWindowSummary,
+    > = BTreeMap::new();
+    for challenge in &validator_challenges {
+        training_visualization_increment_validator_status(&mut validators, challenge.status);
+        if let Some((training_run_id, window_id)) = training_visualization_challenge_window_binding(
+            challenge.request.context.challenge_id.as_str(),
+            training_windows.as_slice(),
+        ) {
+            let entry = validator_windows
+                .entry((training_run_id.to_string(), window_id.to_string()))
+                .or_insert_with(|| TrainingVisualizationValidatorWindowSummary {
+                    training_run_id: training_run_id.to_string(),
+                    window_id: window_id.to_string(),
+                    validator_pool_ref: window_metadata_by_id.get(window_id).and_then(|metadata| {
+                        metadata
+                            .validation
+                            .as_ref()
+                            .map(|validation| validation.validator_pool_ref.clone())
+                    }),
+                    ..TrainingVisualizationValidatorWindowSummary::default()
+                });
+            if !entry
+                .challenge_ids
+                .iter()
+                .any(|existing| existing == &challenge.request.context.challenge_id)
+            {
+                entry
+                    .challenge_ids
+                    .push(challenge.request.context.challenge_id.clone());
+            }
+            training_visualization_increment_window_validator_status(entry, challenge.status);
+        }
+    }
+    validators.windows = validator_windows.into_values().collect();
+
+    let mut closeouts = accepted_outcomes
+        .iter()
+        .map(|outcome| {
+            let run = runs_by_id.get(outcome.source_run_id.as_str()).copied();
+            let run_summary = run_summaries_by_id.get(outcome.source_run_id.as_str());
+            let work_class = training_outcome_work_class(outcome)
+                .or_else(|| run.map(|run| run.work_class))
+                .unwrap_or(ComputeTrainingWorkClass::AdapterTraining);
+            let progress_class = training_work_progress_class(work_class);
+            let replica_type = outcome
+                .metadata
+                .get("replica_type")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| run.map(|run| run.replica_type.label().to_string()))
+                .unwrap_or_else(|| ComputeTrainingReplicaType::SingleNode.label().to_string());
+            let payout_projection = outcome
+                .metadata
+                .get("payout_projection")
+                .cloned()
+                .and_then(|value| serde_json::from_value::<TrainingPayoutProjection>(value).ok());
+            TrainingVisualizationCloseout {
+                outcome_id: outcome.outcome_id.clone(),
+                training_run_id: outcome.source_run_id.clone(),
+                network_id: outcome
+                    .metadata
+                    .get("network_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .or_else(|| run_summary.map(|summary| summary.network_id.clone())),
+                window_id: outcome
+                    .metadata
+                    .get("window_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                work_class: work_class.label().to_string(),
+                replica_type,
+                progress_class: progress_class.label().to_string(),
+                closeout_status: training_closeout_status_label(outcome)
+                    .unwrap_or("accepted")
+                    .to_string(),
+                payout_eligible: training_outcome_payout_eligible(outcome),
+                payout_basis: payout_projection
+                    .as_ref()
+                    .map(|projection| projection.basis.clone())
+                    .or_else(|| training_outcome_latest_payout_basis(outcome)),
+                payout_projection,
+                accepted_checkpoint_ref: outcome
+                    .training_summary
+                    .as_ref()
+                    .and_then(|summary| summary.accepted_checkpoint_ref.clone())
+                    .or_else(|| {
+                        outcome
+                            .metadata
+                            .get("promoted_checkpoint_ref")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    }),
+                accepted_at_ms: outcome.accepted_at_ms,
+            }
+        })
+        .collect::<Vec<_>>();
+    closeouts.sort_by(|lhs, rhs| {
+        rhs.accepted_at_ms
+            .cmp(&lhs.accepted_at_ms)
+            .then_with(|| lhs.outcome_id.cmp(&rhs.outcome_id))
+    });
+
+    let mut aggregates = training_windows
+        .iter()
+        .filter(|window| {
+            window.accepted_aggregate_id.is_some() || window.aggregated_delta_digest.is_some()
+        })
+        .map(|window| {
+            let latest_closeout = outcomes_by_window_id
+                .get(window.window_id.as_str())
+                .and_then(|outcomes| {
+                    outcomes.iter().copied().max_by(|lhs, rhs| {
+                        lhs.accepted_at_ms
+                            .cmp(&rhs.accepted_at_ms)
+                            .then_with(|| lhs.outcome_id.cmp(&rhs.outcome_id))
+                    })
+                });
+            TrainingVisualizationAggregate {
+                aggregate_ref: window
+                    .accepted_aggregate_id
+                    .clone()
+                    .or_else(|| window.aggregated_delta_digest.clone())
+                    .unwrap_or_else(|| format!("window::{}", window.window_id)),
+                training_run_id: window.training_run_id.clone(),
+                window_id: window.window_id.clone(),
+                work_class: window.work_class.label().to_string(),
+                replica_type: window.replica_type.label().to_string(),
+                progress_class: training_work_progress_class(window.work_class)
+                    .label()
+                    .to_string(),
+                aggregation_rule: window.aggregation_rule.clone(),
+                aggregation_weight_basis: window.aggregation_weight_basis.clone(),
+                aggregated_delta_digest: window.aggregated_delta_digest.clone(),
+                accepted_aggregate_id: window.accepted_aggregate_id.clone(),
+                contribution_count: window.total_contributions,
+                accepted_contributions: window.accepted_contributions,
+                window_status: window.status.label().to_string(),
+                closeout_status: latest_closeout
+                    .and_then(training_closeout_status_label)
+                    .map(str::to_string),
+                payout_eligible: latest_closeout.is_some_and(training_outcome_payout_eligible),
+                promoted_checkpoint_ref: window.promoted_checkpoint_ref.clone(),
+                accepted_outcome_id: window
+                    .accepted_outcome_id
+                    .clone()
+                    .or_else(|| latest_closeout.map(|outcome| outcome.outcome_id.clone())),
+                recorded_at_ms: window.recorded_at_ms,
+            }
+        })
+        .collect::<Vec<_>>();
+    aggregates.sort_by(|lhs, rhs| {
+        rhs.recorded_at_ms
+            .cmp(&lhs.recorded_at_ms)
+            .then_with(|| lhs.aggregate_ref.cmp(&rhs.aggregate_ref))
+    });
+
+    let mut checkpoints = Vec::new();
+    let mut checkpoint_keys = BTreeSet::new();
+    let mut push_checkpoint = |checkpoint_ref: String,
+                               checkpoint_role: &str,
+                               training_run_id: &str,
+                               window_id: Option<&str>,
+                               outcome_id: Option<&str>,
+                               canonical: bool,
+                               recorded_at_ms: i64| {
+        let key = (
+            checkpoint_ref.clone(),
+            checkpoint_role.to_string(),
+            training_run_id.to_string(),
+            window_id.map(str::to_string),
+            outcome_id.map(str::to_string),
+        );
+        if checkpoint_keys.insert(key) {
+            checkpoints.push(TrainingVisualizationCheckpoint {
+                checkpoint_ref,
+                checkpoint_role: checkpoint_role.to_string(),
+                training_run_id: training_run_id.to_string(),
+                window_id: window_id.map(str::to_string),
+                outcome_id: outcome_id.map(str::to_string),
+                canonical,
+                recorded_at_ms,
+            });
+        }
+    };
+
+    for window in &training_windows {
+        push_checkpoint(
+            window.base_checkpoint_ref.clone(),
+            "base",
+            window.training_run_id.as_str(),
+            Some(window.window_id.as_str()),
+            None,
+            false,
+            window.recorded_at_ms,
+        );
+        if let Some(pointer) = window.output_checkpoint_pointer.as_ref() {
+            push_checkpoint(
+                pointer.checkpoint_ref.clone(),
+                "output_pointer",
+                window.training_run_id.as_str(),
+                Some(window.window_id.as_str()),
+                None,
+                false,
+                pointer.updated_at_ms,
+            );
+        }
+        if let Some(checkpoint_ref) = window.promoted_checkpoint_ref.as_ref() {
+            push_checkpoint(
+                checkpoint_ref.clone(),
+                "promoted",
+                window.training_run_id.as_str(),
+                Some(window.window_id.as_str()),
+                window.accepted_outcome_id.as_deref(),
+                true,
+                window.recorded_at_ms,
+            );
+        }
+    }
+    for closeout in &closeouts {
+        if let Some(checkpoint_ref) = closeout.accepted_checkpoint_ref.as_ref() {
+            push_checkpoint(
+                checkpoint_ref.clone(),
+                "accepted_closeout",
+                closeout.training_run_id.as_str(),
+                closeout.window_id.as_deref(),
+                Some(closeout.outcome_id.as_str()),
+                closeout.payout_eligible,
+                closeout.accepted_at_ms,
+            );
+        }
+    }
+    for run_summary in &summary.runs {
+        if let Some(checkpoint_ref) = run_summary.latest_checkpoint_ref.as_ref() {
+            push_checkpoint(
+                checkpoint_ref.clone(),
+                "run_latest",
+                run_summary.training_run_id.as_str(),
+                run_summary.latest_window_id.as_deref(),
+                None,
+                true,
+                i64::try_from(
+                    now_unix_ms.saturating_sub(run_summary.latest_checkpoint_age_ms.unwrap_or(0)),
+                )
+                .unwrap_or(i64::MAX),
+            );
+        }
+    }
+    checkpoints.sort_by(|lhs, rhs| {
+        rhs.recorded_at_ms
+            .cmp(&lhs.recorded_at_ms)
+            .then_with(|| lhs.training_run_id.cmp(&rhs.training_run_id))
+            .then_with(|| lhs.checkpoint_role.cmp(&rhs.checkpoint_role))
+    });
+
+    let runs = training_runs
+        .iter()
+        .map(|run| {
+            let run_summary = run_summaries_by_id.get(run.training_run_id.as_str());
+            let run_windows = windows_by_run_id
+                .get(run.training_run_id.as_str())
+                .cloned()
+                .unwrap_or_default();
+            let latest_window = run_windows.iter().copied().max_by(|lhs, rhs| {
+                lhs.recorded_at_ms
+                    .cmp(&rhs.recorded_at_ms)
+                    .then_with(|| lhs.window_id.cmp(&rhs.window_id))
+            });
+            let latest_aggregate_ref = latest_window.and_then(|window| {
+                window
+                    .accepted_aggregate_id
+                    .clone()
+                    .or_else(|| window.aggregated_delta_digest.clone())
+            });
+            let latest_promoted_checkpoint_ref = latest_window.and_then(|window| {
+                window.promoted_checkpoint_ref.clone().or_else(|| {
+                    window
+                        .output_checkpoint_pointer
+                        .as_ref()
+                        .map(|pointer| pointer.checkpoint_ref.clone())
+                })
+            });
+            let window_ids = run_windows
+                .iter()
+                .map(|window| window.window_id.clone())
+                .collect::<Vec<_>>();
+            let required_worker_tier =
+                training_capability_tier_label(training_visualization_required_tier(
+                    TrainingNodeRoleClaim::Worker,
+                    run.work_class,
+                    run.replica_type,
+                ))
+                .to_string();
+            let required_validator_tier =
+                training_capability_tier_label(training_visualization_required_tier(
+                    TrainingNodeRoleClaim::Validator,
+                    run.work_class,
+                    run.replica_type,
+                ))
+                .to_string();
+            let required_recovery_source_tier =
+                training_capability_tier_label(training_visualization_required_tier(
+                    TrainingNodeRoleClaim::RecoverySource,
+                    run.work_class,
+                    run.replica_type,
+                ))
+                .to_string();
+            TrainingVisualizationRun {
+                training_run_id: run.training_run_id.clone(),
+                network_id: run_summary
+                    .map(|summary| summary.network_id.clone())
+                    .or_else(|| {
+                        run.metadata
+                            .get("network_id")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+                    .unwrap_or_default(),
+                run_status: run.status.label().to_string(),
+                scheduler_window_state: run_summary
+                    .map(|summary| summary.scheduler_window_state.clone())
+                    .unwrap_or_else(|| "unknown".to_string()),
+                current_window_id: run_summary
+                    .map(|summary| summary.current_window_id.clone())
+                    .or_else(|| latest_window.map(|window| window.window_id.clone()))
+                    .unwrap_or_else(|| "unknown".to_string()),
+                work_class: run.work_class.label().to_string(),
+                replica_type: run.replica_type.label().to_string(),
+                progress_class: training_work_progress_class(run.work_class)
+                    .label()
+                    .to_string(),
+                required_worker_tier,
+                required_validator_tier,
+                required_recovery_source_tier,
+                window_ids,
+                admitted_nodes: run_summary.map_or(0, |summary| summary.admitted_nodes),
+                admitted_nodes_online: run_summary
+                    .map_or(0, |summary| summary.admitted_nodes_online),
+                worker_nodes_online: run_summary.map_or(0, |summary| summary.worker_nodes_online),
+                validator_nodes_online: run_summary
+                    .map_or(0, |summary| summary.validator_nodes_online),
+                recovery_source_nodes_online: run_summary
+                    .map_or(0, |summary| summary.recovery_source_nodes_online),
+                active_window_count: run_summary.map_or(0, |summary| summary.active_window_count),
+                pending_validation_window_count: run_summary
+                    .map_or(0, |summary| summary.pending_validation_window_count),
+                accepted_closeouts: run_summary.map_or(0, |summary| summary.accepted_closeouts),
+                payout_eligible_closeouts: run_summary
+                    .map_or(0, |summary| summary.payout_eligible_closeouts),
+                nodes_contributing_to_accepted_progress: run_summary
+                    .map_or(0, |summary| summary.nodes_contributing_to_accepted_progress),
+                windows_advanced_checkpoint_lineage: run_summary
+                    .map_or(0, |summary| summary.windows_advanced_checkpoint_lineage),
+                latest_checkpoint_ref: run_summary
+                    .and_then(|summary| summary.latest_checkpoint_ref.clone()),
+                latest_checkpoint_age_ms: run_summary
+                    .and_then(|summary| summary.latest_checkpoint_age_ms),
+                latest_window_status: run_summary
+                    .and_then(|summary| summary.latest_window_status.clone()),
+                latest_closeout_status: run_summary
+                    .and_then(|summary| summary.latest_closeout_status.clone()),
+                latest_aggregate_ref,
+                latest_promoted_checkpoint_ref,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut windows = training_windows
+        .iter()
+        .map(|window| {
+            let metadata = window_metadata_by_id.get(window.window_id.as_str());
+            let latest_closeout = outcomes_by_window_id
+                .get(window.window_id.as_str())
+                .and_then(|outcomes| {
+                    outcomes.iter().copied().max_by(|lhs, rhs| {
+                        lhs.accepted_at_ms
+                            .cmp(&rhs.accepted_at_ms)
+                            .then_with(|| lhs.outcome_id.cmp(&rhs.outcome_id))
+                    })
+                });
+            let validator_summary = validators
+                .windows
+                .iter()
+                .find(|summary| {
+                    summary.training_run_id == window.training_run_id
+                        && summary.window_id == window.window_id
+                })
+                .cloned();
+            let aggregate_resolution = metadata.and_then(|metadata| {
+                metadata
+                    .defensibility
+                    .as_ref()
+                    .and_then(|value| value.get("validator_audit"))
+                    .and_then(|value| value.get("aggregate_resolution"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            });
+            let defensibility_status = metadata.and_then(|metadata| {
+                metadata
+                    .defensibility
+                    .as_ref()
+                    .and_then(|value| value.get("status"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            });
+            TrainingVisualizationWindow {
+                window_id: window.window_id.clone(),
+                training_run_id: window.training_run_id.clone(),
+                network_id: metadata
+                    .map(|metadata| metadata.network_id.clone())
+                    .or_else(|| {
+                        run_summaries_by_id
+                            .get(window.training_run_id.as_str())
+                            .map(|summary| summary.network_id.clone())
+                    })
+                    .unwrap_or_default(),
+                status: window.status.label().to_string(),
+                stage_id: window.stage_id.clone(),
+                work_class: window.work_class.label().to_string(),
+                replica_type: window.replica_type.label().to_string(),
+                progress_class: training_work_progress_class(window.work_class)
+                    .label()
+                    .to_string(),
+                round_index: window.round_index,
+                base_checkpoint_ref: window.base_checkpoint_ref.clone(),
+                planned_local_step_count: window.planned_local_step_count,
+                aggregation_rule: window.aggregation_rule.clone(),
+                aggregation_weight_basis: window.aggregation_weight_basis.clone(),
+                total_contributions: window.total_contributions,
+                admitted_contributions: window.admitted_contributions,
+                accepted_contributions: window.accepted_contributions,
+                quarantined_contributions: window.quarantined_contributions,
+                rejected_contributions: window.rejected_contributions,
+                replay_required_contributions: window.replay_required_contributions,
+                replay_checked_contributions: window.replay_checked_contributions,
+                held_out_average_score_bps: window.held_out_average_score_bps,
+                benchmark_pass_rate_bps: window.benchmark_pass_rate_bps,
+                runtime_smoke_passed: window.runtime_smoke_passed,
+                promotion_ready: window.promotion_ready,
+                promotion_disposition: window
+                    .promotion_disposition
+                    .map(|disposition| serialized_label(&disposition)),
+                gate_reason_codes: window
+                    .gate_reason_codes
+                    .iter()
+                    .map(|reason| serialized_label(reason))
+                    .collect(),
+                hold_reason_codes: window
+                    .hold_reason_codes
+                    .iter()
+                    .map(|reason| serialized_label(reason))
+                    .collect(),
+                validator_pool_ref: validator_summary
+                    .as_ref()
+                    .and_then(|summary| summary.validator_pool_ref.clone())
+                    .or_else(|| {
+                        metadata.and_then(|metadata| {
+                            metadata
+                                .validation
+                                .as_ref()
+                                .map(|validation| validation.validator_pool_ref.clone())
+                        })
+                    }),
+                validator_challenge_ids: validator_summary
+                    .as_ref()
+                    .map(|summary| summary.challenge_ids.clone())
+                    .or_else(|| {
+                        metadata.map(|metadata| {
+                            metadata
+                                .validation
+                                .as_ref()
+                                .map(|validation| {
+                                    validation
+                                        .challenges
+                                        .iter()
+                                        .map(|challenge| challenge.challenge_id.clone())
+                                        .collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default()
+                        })
+                    })
+                    .unwrap_or_default(),
+                validator_challenges_open: validator_summary
+                    .as_ref()
+                    .map_or(0, |summary| summary.open),
+                validator_challenges_queued: validator_summary
+                    .as_ref()
+                    .map_or(0, |summary| summary.queued),
+                validator_challenges_verified: validator_summary
+                    .as_ref()
+                    .map_or(0, |summary| summary.verified),
+                validator_challenges_rejected: validator_summary
+                    .as_ref()
+                    .map_or(0, |summary| summary.rejected),
+                validator_challenges_timed_out: validator_summary
+                    .as_ref()
+                    .map_or(0, |summary| summary.timed_out),
+                aggregate_resolution,
+                defensibility_status,
+                aggregated_delta_digest: window.aggregated_delta_digest.clone(),
+                accepted_aggregate_id: window.accepted_aggregate_id.clone(),
+                output_checkpoint_ref: window
+                    .output_checkpoint_pointer
+                    .as_ref()
+                    .map(|pointer| pointer.checkpoint_ref.clone()),
+                promoted_checkpoint_ref: window.promoted_checkpoint_ref.clone(),
+                accepted_outcome_id: window
+                    .accepted_outcome_id
+                    .clone()
+                    .or_else(|| latest_closeout.map(|outcome| outcome.outcome_id.clone())),
+                closeout_status: latest_closeout
+                    .and_then(training_closeout_status_label)
+                    .map(str::to_string),
+                payout_eligible: latest_closeout.is_some_and(training_outcome_payout_eligible),
+                lineage_advanced: training_window_advances_checkpoint_lineage(
+                    window,
+                    &accepted_outcomes_by_id,
+                ),
+                planned_at_ms: metadata
+                    .map_or(window.recorded_at_ms, |metadata| metadata.planned_at_ms),
+                activated_at_ms: metadata.and_then(|metadata| metadata.activated_at_ms),
+                sealed_at_ms: metadata.and_then(|metadata| metadata.sealed_at_ms),
+                reconciled_at_ms: metadata.and_then(|metadata| metadata.reconciled_at_ms),
+            }
+        })
+        .collect::<Vec<_>>();
+    windows.sort_by(|lhs, rhs| {
+        lhs.training_run_id
+            .cmp(&rhs.training_run_id)
+            .then_with(|| lhs.round_index.cmp(&rhs.round_index))
+            .then_with(|| lhs.window_id.cmp(&rhs.window_id))
+    });
+
+    TrainingVisualizationResponse {
+        generated_at_unix_ms: now_unix_ms,
+        participation: summary.participation.clone(),
+        progress: summary.progress.clone(),
+        settlement: summary.settlement.clone(),
+        tiers,
+        runs,
+        windows,
+        validators,
+        aggregates,
+        checkpoints,
+        closeouts,
+    }
+}
+
 fn build_homepage_snapshot(
     config: &ServiceConfig,
     store: &ControlStore,
@@ -15144,6 +16226,8 @@ fn build_homepage_snapshot(
 ) -> NexusHomepageResponse {
     let stats = build_public_stats_snapshot(config, store, now_unix_ms);
     let training_summary = training_operator_summary_snapshot(store, now_unix_ms);
+    let training_visualization =
+        training_visualization_snapshot_with_summary(store, now_unix_ms, training_summary.clone());
     let training_nodes = store.kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
@@ -15177,6 +16261,7 @@ fn build_homepage_snapshot(
         generated_at_unix_ms: now_unix_ms,
         stats,
         training_summary,
+        training_visualization,
         training_nodes,
         default_run_id,
         default_network_id,
@@ -15644,10 +16729,11 @@ mod tests {
         StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
         StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
-        SyncTokenResponse, TrainingAssignmentState, TrainingWindowContributionInput,
-        TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
-        build_api_router_with_state, build_app_state, build_router, build_router_with_state,
-        random_token, run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
+        SyncTokenResponse, TrainingAssignmentState, TrainingVisualizationResponse,
+        TrainingWindowContributionInput, TrainingWindowCoordinatorResponse,
+        TransitionTrainingWindowRequest, TreasuryConfig, build_api_router_with_state,
+        build_app_state, build_router, build_router_with_state, random_token,
+        run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
         training_kernel_mutation_context,
     };
 
@@ -15833,6 +16919,22 @@ mod tests {
                 Request::builder()
                     .method("GET")
                     .uri("/api/training/summary")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        response_json(response).await
+    }
+
+    async fn fetch_training_visualization(
+        app: &axum::Router,
+    ) -> Result<TrainingVisualizationResponse> {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/visualization")
                     .body(Body::empty())?,
             )
             .await?;
@@ -26970,6 +28072,84 @@ mod tests {
         );
         assert!(run_summary.latest_checkpoint_age_ms.is_some());
 
+        let visualization = fetch_training_visualization(&app).await?;
+        assert_eq!(visualization.participation.active_runs, 1);
+        assert_eq!(visualization.progress.accepted_closeouts, 1);
+        assert_eq!(visualization.settlement.accepted_closeouts, 1);
+        assert_eq!(visualization.validators.open, 0);
+        assert_eq!(visualization.validators.verified, 2);
+        assert_eq!(visualization.tiers.len(), 1);
+        assert_eq!(visualization.tiers[0].tier, "tier3_island");
+        assert_eq!(visualization.tiers[0].nodes_total, 2);
+        assert_eq!(visualization.runs.len(), 1);
+        let visualized_run = visualization
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == training_run_id)
+            .expect("visualized run");
+        assert_eq!(visualized_run.work_class, "adapter_training");
+        assert_eq!(visualized_run.replica_type, "single_node");
+        assert_eq!(visualized_run.progress_class, "model_update");
+        assert_eq!(visualized_run.required_worker_tier, "tier2_trainer");
+        assert_eq!(visualized_run.required_validator_tier, "tier1_validation");
+        assert_eq!(
+            visualized_run.latest_aggregate_ref.as_deref(),
+            Some("sha256:aggregate-window-summary-alpha")
+        );
+        assert!(visualized_run.latest_promoted_checkpoint_ref.is_none());
+        assert_eq!(visualization.windows.len(), 1);
+        let visualized_window = visualization
+            .windows
+            .iter()
+            .find(|window| window.window_id == "window.0001")
+            .expect("visualized window");
+        assert_eq!(visualized_window.network_id, "trainnet.alpha");
+        assert_eq!(visualized_window.status, "reconciled");
+        assert_eq!(visualized_window.work_class, "adapter_training");
+        assert_eq!(visualized_window.replica_type, "single_node");
+        assert_eq!(visualized_window.validator_challenges_verified, 2);
+        assert_eq!(visualized_window.validator_challenges_open, 0);
+        assert_eq!(
+            visualized_window.closeout_status.as_deref(),
+            Some("rewarded")
+        );
+        assert!(visualized_window.payout_eligible);
+        assert_eq!(
+            visualized_window.aggregated_delta_digest.as_deref(),
+            Some("sha256:aggregate-window-summary-alpha")
+        );
+        assert_eq!(
+            visualized_window.accepted_outcome_id.as_deref(),
+            Some("accepted.training_window.window.0001")
+        );
+        assert_eq!(visualization.aggregates.len(), 1);
+        assert_eq!(
+            visualization.aggregates[0].aggregate_ref,
+            "sha256:aggregate-window-summary-alpha"
+        );
+        assert_eq!(
+            visualization.aggregates[0].closeout_status.as_deref(),
+            Some("rewarded")
+        );
+        assert!(visualization.aggregates[0].payout_eligible);
+        assert!(
+            visualization
+                .checkpoints
+                .iter()
+                .any(|checkpoint| checkpoint.checkpoint_role == "base"
+                    && checkpoint.checkpoint_ref == "checkpoint://decoder/base")
+        );
+        assert_eq!(visualization.closeouts.len(), 1);
+        assert_eq!(
+            visualization.closeouts[0].outcome_id,
+            "accepted.training_window.window.0001"
+        );
+        assert_eq!(visualization.closeouts[0].closeout_status, "rewarded");
+        assert_eq!(
+            visualization.closeouts[0].payout_basis.as_deref(),
+            Some("aggregation_weight")
+        );
+
         Ok(())
     }
 
@@ -27342,6 +28522,69 @@ mod tests {
             Some("validator_verdict")
         );
 
+        let visualization = fetch_training_visualization(&app).await?;
+        assert_eq!(visualization.participation.active_runs, 2);
+        assert_eq!(visualization.progress.accepted_closeouts, 1);
+        assert_eq!(visualization.settlement.accepted_closeouts, 2);
+        assert_eq!(visualization.runs.len(), 2);
+        assert_eq!(visualization.windows.len(), 2);
+        assert_eq!(visualization.aggregates.len(), 1);
+        assert_eq!(
+            visualization.aggregates[0].aggregate_ref,
+            "aggregate.summary.progress"
+        );
+        assert_eq!(visualization.closeouts.len(), 2);
+        assert!(
+            visualization
+                .closeouts
+                .iter()
+                .any(|closeout| closeout.work_class == "validation_replay"
+                    && closeout.progress_class == "participation_only"
+                    && closeout.payout_basis.as_deref() == Some("validator_verdict"))
+        );
+        assert!(
+            visualization
+                .closeouts
+                .iter()
+                .any(
+                    |closeout| closeout.work_class == "full_island_local_update_training"
+                        && closeout.progress_class == "model_update"
+                        && closeout.accepted_checkpoint_ref.as_deref()
+                            == Some("checkpoint://progress/accepted")
+                )
+        );
+        assert!(
+            visualization
+                .checkpoints
+                .iter()
+                .any(
+                    |checkpoint| checkpoint.checkpoint_role == "accepted_closeout"
+                        && checkpoint.checkpoint_ref == "checkpoint://progress/accepted"
+                )
+        );
+        let progress_window = visualization
+            .windows
+            .iter()
+            .find(|window| window.window_id == "window.progress.0001")
+            .expect("progress visualization window");
+        assert_eq!(
+            progress_window.accepted_aggregate_id.as_deref(),
+            Some("aggregate.summary.progress")
+        );
+        assert_eq!(progress_window.closeout_status.as_deref(), Some("rewarded"));
+        assert!(progress_window.payout_eligible);
+        let validation_window = visualization
+            .windows
+            .iter()
+            .find(|window| window.window_id == "window.validation.0001")
+            .expect("validation visualization window");
+        assert_eq!(validation_window.progress_class, "participation_only");
+        assert_eq!(validation_window.accepted_aggregate_id, None);
+        assert_eq!(
+            validation_window.closeout_status.as_deref(),
+            Some("rewarded")
+        );
+
         Ok(())
     }
 
@@ -27406,6 +28649,13 @@ mod tests {
                 .runs_with_accepted_progress,
             0
         );
+        assert_eq!(homepage.training_visualization.participation.active_runs, 1);
+        assert_eq!(
+            homepage.training_visualization.progress.accepted_closeouts,
+            0
+        );
+        assert_eq!(homepage.training_visualization.runs.len(), 1);
+        assert_eq!(homepage.training_visualization.windows.len(), 0);
         assert_eq!(homepage.training_summary.active_runs, 1);
         assert_eq!(homepage.training_summary.runs.len(), 1);
         assert_eq!(homepage.training_nodes.len(), 1);
