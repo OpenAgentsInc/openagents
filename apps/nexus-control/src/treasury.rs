@@ -1742,6 +1742,16 @@ impl TreasuryState {
         });
     }
 
+    pub fn note_wallet_activity(&mut self, now_unix_ms: u64) {
+        self.wallet_runtime_status = Some("connected".to_string());
+        self.wallet_last_error = None;
+        self.last_wallet_sync_at_unix_ms = Some(
+            self.last_wallet_sync_at_unix_ms
+                .unwrap_or(now_unix_ms)
+                .max(now_unix_ms),
+        );
+    }
+
     pub fn wallet_refresh_plan(&self) -> TreasuryWalletRefreshPlan {
         let mut plan = TreasuryWalletRefreshPlan::recent_only();
         for record in self.payout_records_by_key.values() {
@@ -2120,6 +2130,7 @@ impl TreasuryState {
                 payout_key,
                 payment_id,
             } => {
+                self.note_wallet_activity(now_unix_ms);
                 self.last_dispatch_at_unix_ms = Some(
                     self.last_dispatch_at_unix_ms
                         .unwrap_or(now_unix_ms)
@@ -4931,6 +4942,62 @@ mod tests {
             warning_stats.degraded_reason.as_deref(),
             Some("wallet_snapshot_stale:60001")
         );
+    }
+
+    #[test]
+    fn dispatched_payout_refreshes_wallet_activity_and_clears_stale_reason() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.wallet_status_refresh_seconds = 30;
+
+        state.wallet_runtime_status = Some("error".to_string());
+        state.wallet_last_error = Some("wallet_refresh_timeout:60000".to_string());
+        state.last_wallet_sync_at_unix_ms = Some(1_000);
+        state.payout_records_by_key.insert(
+            "window-a:pubkey-a".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "window-a:pubkey-a".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 2,
+                status: "dispatching".to_string(),
+                reason: None,
+                payment_id: None,
+                window_started_at_unix_ms: 1_000,
+                window_ends_at_unix_ms: 2_000,
+                created_at_unix_ms: 1_000,
+                updated_at_unix_ms: 1_000,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+            },
+        );
+
+        let now_unix_ms = 100_000;
+        let before_stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(
+            before_stats.degraded_reason.as_deref(),
+            Some("wallet_refresh_timeout:60000")
+        );
+
+        let receipts = state.apply_dispatch_outcome(
+            TreasuryDispatchOutcome::Dispatched {
+                payout_key: "window-a:pubkey-a".to_string(),
+                payment_id: "payment-send-001".to_string(),
+            },
+            now_unix_ms,
+        );
+
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(state.wallet_runtime_status.as_deref(), Some("connected"));
+        assert_eq!(state.wallet_last_error, None);
+        assert_eq!(state.last_wallet_sync_at_unix_ms, Some(now_unix_ms));
+
+        let after_stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(after_stats.degraded_reason, None);
     }
 
     #[test]
