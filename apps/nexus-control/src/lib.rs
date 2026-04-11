@@ -1442,8 +1442,34 @@ struct TrainingCloseoutReputationContext {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingOperatorParticipationSummary {
+    admitted_nodes: u64,
+    online_nodes: u64,
+    active_runs: u64,
+    active_windows: u64,
+    pending_validation_windows: u64,
+    validator_challenges_open: u64,
+    validator_challenges_queued: u64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingOperatorProgressSummary {
+    runs_with_accepted_progress: u64,
+    windows_advanced_checkpoint_lineage: u64,
+    nodes_contributing_to_accepted_progress: u64,
+    accepted_closeouts: u64,
+    payout_eligible_closeouts: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoint_max_age_ms: Option<u64>,
+    artifact_failures_open: u64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingOperatorSummaryResponse {
     generated_at_unix_ms: u64,
+    participation: TrainingOperatorParticipationSummary,
+    progress: TrainingOperatorProgressSummary,
+    admitted_nodes: u64,
     admitted_nodes_online: u64,
     active_runs: u64,
     active_windows: u64,
@@ -1453,7 +1479,11 @@ struct TrainingOperatorSummaryResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     checkpoint_max_age_ms: Option<u64>,
     artifact_failures_open: u64,
+    accepted_closeouts: u64,
     payout_eligible_closeouts: u64,
+    nodes_contributing_to_accepted_progress: u64,
+    windows_advanced_checkpoint_lineage: u64,
+    runs_with_accepted_progress: u64,
     #[serde(default)]
     runs: Vec<TrainingOperatorRunSummary>,
 }
@@ -1492,12 +1522,50 @@ struct NexusHomepageRecentTrainingPublication {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingOperatorRunParticipationSummary {
+    admitted_nodes: u64,
+    online_nodes: u64,
+    worker_nodes_online: u64,
+    validator_nodes_online: u64,
+    recovery_source_nodes_online: u64,
+    worker_target_count: u32,
+    validator_target_count: u32,
+    recovery_source_target_count: u32,
+    active_window_count: u64,
+    pending_validation_window_count: u64,
+    open_validator_challenges: u64,
+    queued_validator_challenges: u64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingOperatorRunProgressSummary {
+    nodes_contributing_to_accepted_progress: u64,
+    windows_advanced_checkpoint_lineage: u64,
+    accepted_closeouts: u64,
+    payout_eligible_closeouts: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_checkpoint_age_ms: Option<u64>,
+    artifact_failures_open: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_window_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_closeout_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingOperatorRunSummary {
     training_run_id: String,
     network_id: String,
     run_status: String,
     scheduler_window_state: String,
     current_window_id: String,
+    participation: TrainingOperatorRunParticipationSummary,
+    progress: TrainingOperatorRunProgressSummary,
+    admitted_nodes: u64,
     admitted_nodes_online: u64,
     worker_nodes_online: u64,
     validator_nodes_online: u64,
@@ -1509,7 +1577,10 @@ struct TrainingOperatorRunSummary {
     pending_validation_window_count: u64,
     open_validator_challenges: u64,
     queued_validator_challenges: u64,
+    accepted_closeouts: u64,
     payout_eligible_closeouts: u64,
+    nodes_contributing_to_accepted_progress: u64,
+    windows_advanced_checkpoint_lineage: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     latest_checkpoint_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1525,6 +1596,7 @@ struct TrainingOperatorRunSummary {
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 struct TrainingOperatorMetrics {
+    admitted_nodes: u64,
     admitted_nodes_online: u64,
     active_runs: u64,
     active_windows: u64,
@@ -1533,7 +1605,11 @@ struct TrainingOperatorMetrics {
     validator_challenges_queued: u64,
     checkpoint_max_age_ms: Option<u64>,
     artifact_failures_open: u64,
+    accepted_closeouts: u64,
     payout_eligible_closeouts: u64,
+    nodes_contributing_to_accepted_progress: u64,
+    windows_advanced_checkpoint_lineage: u64,
+    runs_with_accepted_progress: u64,
 }
 
 impl TrainingSchedulerState {
@@ -13728,12 +13804,20 @@ fn runtime_snapshot(
         nexus_payouts_confirmed_24h: treasury_runtime.payouts_confirmed_24h,
         nexus_payouts_failed_24h: treasury_runtime.payouts_failed_24h,
         nexus_payouts_skipped_24h: treasury_runtime.payouts_skipped_24h,
+        training_nodes_admitted: training_metrics.admitted_nodes,
+        training_nodes_online: training_metrics.admitted_nodes_online,
         training_admitted_nodes_online: training_metrics.admitted_nodes_online,
         training_runs_active: training_metrics.active_runs,
         training_windows_active: training_metrics.active_windows,
         training_windows_pending_validation: training_metrics.pending_validation_windows,
         training_validator_challenges_open: training_metrics.validator_challenges_open,
         training_validator_challenges_queued: training_metrics.validator_challenges_queued,
+        training_nodes_contributing_to_accepted_progress: training_metrics
+            .nodes_contributing_to_accepted_progress,
+        training_runs_with_accepted_progress: training_metrics.runs_with_accepted_progress,
+        training_windows_advanced_checkpoint_lineage: training_metrics
+            .windows_advanced_checkpoint_lineage,
+        training_accepted_closeouts: training_metrics.accepted_closeouts,
         training_checkpoint_max_age_ms: training_metrics.checkpoint_max_age_ms,
         training_artifact_failures_open: training_metrics.artifact_failures_open,
         training_payout_eligible_closeouts: training_metrics.payout_eligible_closeouts,
@@ -13830,6 +13914,80 @@ fn build_public_stats_snapshot(
     )
 }
 
+fn training_closeout_status_label(outcome: &ComputeAcceptedOutcome) -> Option<&str> {
+    outcome
+        .metadata
+        .get("closeout_status")
+        .and_then(Value::as_str)
+}
+
+fn training_outcome_counts_as_accepted_progress(outcome: &ComputeAcceptedOutcome) -> bool {
+    match training_closeout_status_label(outcome) {
+        Some("rewarded" | "no_reward") | None => true,
+        Some(_) => false,
+    }
+}
+
+fn training_contribution_counts_as_accepted_progress(
+    contribution: &ComputeAdapterContributionOutcome,
+) -> bool {
+    contribution.accepted_for_aggregation
+        || contribution.validator_disposition == ComputeAdapterContributionDisposition::Accepted
+        || contribution.aggregation_eligibility == ComputeAdapterAggregationEligibility::Eligible
+}
+
+fn training_outcome_advances_checkpoint_lineage(outcome: &ComputeAcceptedOutcome) -> bool {
+    if !training_outcome_counts_as_accepted_progress(outcome) {
+        return false;
+    }
+
+    let accepted_checkpoint_ref = outcome
+        .training_summary
+        .as_ref()
+        .and_then(|summary| summary.accepted_checkpoint_ref.as_deref())
+        .or_else(|| {
+            outcome
+                .metadata
+                .get("promoted_checkpoint_ref")
+                .and_then(Value::as_str)
+        });
+    accepted_checkpoint_ref.is_some_and(|accepted_checkpoint_ref| {
+        outcome
+            .checkpoint_binding
+            .as_ref()
+            .and_then(|binding| binding.latest_checkpoint_ref.as_deref())
+            .is_none_or(|previous_checkpoint_ref| {
+                previous_checkpoint_ref != accepted_checkpoint_ref
+            })
+    })
+}
+
+fn training_window_advances_checkpoint_lineage<'a>(
+    window: &ComputeAdapterTrainingWindow,
+    accepted_outcomes_by_id: &HashMap<&'a str, &'a ComputeAcceptedOutcome>,
+) -> bool {
+    if window
+        .promoted_checkpoint_ref
+        .as_deref()
+        .is_some_and(|checkpoint_ref| checkpoint_ref != window.base_checkpoint_ref)
+    {
+        return true;
+    }
+    if window
+        .output_checkpoint_pointer
+        .as_ref()
+        .is_some_and(|pointer| pointer.checkpoint_ref != window.base_checkpoint_ref)
+    {
+        return true;
+    }
+
+    window
+        .accepted_outcome_id
+        .as_deref()
+        .and_then(|outcome_id| accepted_outcomes_by_id.get(outcome_id).copied())
+        .is_some_and(training_outcome_advances_checkpoint_lineage)
+}
+
 fn training_operator_summary_snapshot(
     store: &ControlStore,
     now_unix_ms: u64,
@@ -13850,7 +14008,14 @@ fn training_operator_summary_snapshot(
     let accepted_outcomes = store
         .kernel
         .list_compute_accepted_outcomes(Some(ComputeAcceptedOutcomeKind::TrainingRun), None);
+    let contribution_outcomes = store
+        .kernel
+        .list_compute_adapter_contribution_outcomes(None, None, None);
     let validator_challenges = store.kernel.list_validator_challenges(None);
+    let accepted_outcomes_by_id = accepted_outcomes
+        .iter()
+        .map(|outcome| (outcome.outcome_id.as_str(), outcome))
+        .collect::<HashMap<_, _>>();
 
     let mut challenge_bindings = HashMap::<String, (String, String)>::new();
     for window in &training_windows {
@@ -13867,6 +14032,7 @@ fn training_operator_summary_snapshot(
         }
     }
 
+    let mut progress_contributor_ids = HashSet::<String>::new();
     let mut run_summaries = training_runs
         .iter()
         .map(|run| {
@@ -13906,6 +14072,7 @@ fn training_operator_summary_snapshot(
                             == Some(run.training_run_id.as_str())
                 })
                 .collect::<Vec<_>>();
+            let admitted_nodes = run_nodes.len() as u64;
             let admitted_nodes_online = run_nodes.iter().filter(|node| node.online).count() as u64;
             let worker_nodes_online = run_nodes
                 .iter()
@@ -13983,7 +14150,33 @@ fn training_operator_summary_snapshot(
                 .iter()
                 .filter(|outcome| outcome.source_run_id == run.training_run_id)
                 .collect::<Vec<_>>();
-            let payout_eligible_closeouts = run_outcomes
+            let accepted_progress_outcomes = run_outcomes
+                .iter()
+                .copied()
+                .filter(|outcome| training_outcome_counts_as_accepted_progress(outcome))
+                .collect::<Vec<_>>();
+            let accepted_progress_window_ids = accepted_progress_outcomes
+                .iter()
+                .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
+                .collect::<HashSet<_>>();
+            let nodes_contributing_to_accepted_progress = contribution_outcomes
+                .iter()
+                .filter(|contribution| contribution.training_run_id == run.training_run_id)
+                .filter(|contribution| {
+                    accepted_progress_window_ids.contains(contribution.window_id.as_str())
+                })
+                .filter(|contribution| {
+                    training_contribution_counts_as_accepted_progress(contribution)
+                })
+                .filter_map(|contribution| {
+                    (!contribution.contributor_node_id.trim().is_empty())
+                        .then(|| contribution.contributor_node_id.clone())
+                })
+                .collect::<HashSet<_>>();
+            progress_contributor_ids
+                .extend(nodes_contributing_to_accepted_progress.iter().cloned());
+            let accepted_closeouts = accepted_progress_outcomes.len() as u64;
+            let payout_eligible_closeouts = accepted_progress_outcomes
                 .iter()
                 .filter(|outcome| {
                     outcome
@@ -13991,6 +14184,12 @@ fn training_operator_summary_snapshot(
                         .get("payout_eligible")
                         .and_then(Value::as_bool)
                         .unwrap_or(false)
+                })
+                .count() as u64;
+            let windows_advanced_checkpoint_lineage = run_windows
+                .iter()
+                .filter(|window| {
+                    training_window_advances_checkpoint_lineage(window, &accepted_outcomes_by_id)
                 })
                 .count() as u64;
             let latest_closeout = run_outcomes
@@ -14048,6 +14247,33 @@ fn training_operator_summary_snapshot(
                     .and_then(Value::as_str)
                     .map(str::to_string)
             });
+            let participation = TrainingOperatorRunParticipationSummary {
+                admitted_nodes,
+                online_nodes: admitted_nodes_online,
+                worker_nodes_online,
+                validator_nodes_online,
+                recovery_source_nodes_online,
+                worker_target_count: role_plan.worker_count,
+                validator_target_count: role_plan.validator_count,
+                recovery_source_target_count: role_plan.recovery_source_count,
+                active_window_count,
+                pending_validation_window_count,
+                open_validator_challenges,
+                queued_validator_challenges,
+            };
+            let progress = TrainingOperatorRunProgressSummary {
+                nodes_contributing_to_accepted_progress: nodes_contributing_to_accepted_progress
+                    .len() as u64,
+                windows_advanced_checkpoint_lineage,
+                accepted_closeouts,
+                payout_eligible_closeouts,
+                latest_checkpoint_ref: latest_checkpoint_ref.clone(),
+                latest_checkpoint_age_ms,
+                artifact_failures_open: 0,
+                latest_window_id: latest_window.map(|value| value.window_id.clone()),
+                latest_window_status: latest_window.map(|value| value.status.label().to_string()),
+                latest_closeout_status,
+            };
 
             TrainingOperatorRunSummary {
                 training_run_id: run.training_run_id.clone(),
@@ -14061,6 +14287,9 @@ fn training_operator_summary_snapshot(
                     .map(|value| value.current_window_id.clone())
                     .or_else(|| latest_window.map(|value| value.window_id.clone()))
                     .unwrap_or_else(|| "unknown".to_string()),
+                participation,
+                progress: progress.clone(),
+                admitted_nodes,
                 admitted_nodes_online,
                 worker_nodes_online,
                 validator_nodes_online,
@@ -14072,13 +14301,17 @@ fn training_operator_summary_snapshot(
                 pending_validation_window_count,
                 open_validator_challenges,
                 queued_validator_challenges,
+                accepted_closeouts,
                 payout_eligible_closeouts,
-                latest_checkpoint_ref,
-                latest_checkpoint_age_ms,
+                nodes_contributing_to_accepted_progress: progress
+                    .nodes_contributing_to_accepted_progress,
+                windows_advanced_checkpoint_lineage: progress.windows_advanced_checkpoint_lineage,
+                latest_checkpoint_ref: progress.latest_checkpoint_ref.clone(),
+                latest_checkpoint_age_ms: progress.latest_checkpoint_age_ms,
                 artifact_failures_open: 0,
-                latest_window_id: latest_window.map(|value| value.window_id.clone()),
-                latest_window_status: latest_window.map(|value| value.status.label().to_string()),
-                latest_closeout_status,
+                latest_window_id: progress.latest_window_id.clone(),
+                latest_window_status: progress.latest_window_status.clone(),
+                latest_closeout_status: progress.latest_closeout_status.clone(),
             }
         })
         .collect::<Vec<_>>();
@@ -14086,9 +14319,10 @@ fn training_operator_summary_snapshot(
 
     let checkpoint_max_age_ms = run_summaries
         .iter()
-        .filter_map(|summary| summary.latest_checkpoint_age_ms)
+        .filter_map(|summary| summary.progress.latest_checkpoint_age_ms)
         .max();
     let metrics = TrainingOperatorMetrics {
+        admitted_nodes: admitted_nodes.len() as u64,
         admitted_nodes_online: admitted_nodes.iter().filter(|node| node.online).count() as u64,
         active_runs: training_runs
             .iter()
@@ -14104,30 +14338,64 @@ fn training_operator_summary_snapshot(
             .count() as u64,
         active_windows: run_summaries
             .iter()
-            .map(|summary| summary.active_window_count)
+            .map(|summary| summary.participation.active_window_count)
             .sum(),
         pending_validation_windows: run_summaries
             .iter()
-            .map(|summary| summary.pending_validation_window_count)
+            .map(|summary| summary.participation.pending_validation_window_count)
             .sum(),
         validator_challenges_open: run_summaries
             .iter()
-            .map(|summary| summary.open_validator_challenges)
+            .map(|summary| summary.participation.open_validator_challenges)
             .sum(),
         validator_challenges_queued: run_summaries
             .iter()
-            .map(|summary| summary.queued_validator_challenges)
+            .map(|summary| summary.participation.queued_validator_challenges)
             .sum(),
         checkpoint_max_age_ms,
         artifact_failures_open: 0,
+        accepted_closeouts: run_summaries
+            .iter()
+            .map(|summary| summary.progress.accepted_closeouts)
+            .sum(),
         payout_eligible_closeouts: run_summaries
             .iter()
-            .map(|summary| summary.payout_eligible_closeouts)
+            .map(|summary| summary.progress.payout_eligible_closeouts)
             .sum(),
+        nodes_contributing_to_accepted_progress: progress_contributor_ids.len() as u64,
+        windows_advanced_checkpoint_lineage: run_summaries
+            .iter()
+            .map(|summary| summary.progress.windows_advanced_checkpoint_lineage)
+            .sum(),
+        runs_with_accepted_progress: run_summaries
+            .iter()
+            .filter(|summary| summary.progress.accepted_closeouts > 0)
+            .count() as u64,
+    };
+    let participation = TrainingOperatorParticipationSummary {
+        admitted_nodes: metrics.admitted_nodes,
+        online_nodes: metrics.admitted_nodes_online,
+        active_runs: metrics.active_runs,
+        active_windows: metrics.active_windows,
+        pending_validation_windows: metrics.pending_validation_windows,
+        validator_challenges_open: metrics.validator_challenges_open,
+        validator_challenges_queued: metrics.validator_challenges_queued,
+    };
+    let progress = TrainingOperatorProgressSummary {
+        runs_with_accepted_progress: metrics.runs_with_accepted_progress,
+        windows_advanced_checkpoint_lineage: metrics.windows_advanced_checkpoint_lineage,
+        nodes_contributing_to_accepted_progress: metrics.nodes_contributing_to_accepted_progress,
+        accepted_closeouts: metrics.accepted_closeouts,
+        payout_eligible_closeouts: metrics.payout_eligible_closeouts,
+        checkpoint_max_age_ms,
+        artifact_failures_open: metrics.artifact_failures_open,
     };
 
     TrainingOperatorSummaryResponse {
         generated_at_unix_ms: now_unix_ms,
+        participation,
+        progress,
+        admitted_nodes: metrics.admitted_nodes,
         admitted_nodes_online: metrics.admitted_nodes_online,
         active_runs: metrics.active_runs,
         active_windows: metrics.active_windows,
@@ -14136,7 +14404,11 @@ fn training_operator_summary_snapshot(
         validator_challenges_queued: metrics.validator_challenges_queued,
         checkpoint_max_age_ms: metrics.checkpoint_max_age_ms,
         artifact_failures_open: metrics.artifact_failures_open,
+        accepted_closeouts: metrics.accepted_closeouts,
         payout_eligible_closeouts: metrics.payout_eligible_closeouts,
+        nodes_contributing_to_accepted_progress: metrics.nodes_contributing_to_accepted_progress,
+        windows_advanced_checkpoint_lineage: metrics.windows_advanced_checkpoint_lineage,
+        runs_with_accepted_progress: metrics.runs_with_accepted_progress,
         runs: run_summaries,
     }
 }
@@ -14144,15 +14416,22 @@ fn training_operator_summary_snapshot(
 fn training_operator_metrics(store: &ControlStore, now_unix_ms: u64) -> TrainingOperatorMetrics {
     let summary = training_operator_summary_snapshot(store, now_unix_ms);
     TrainingOperatorMetrics {
-        admitted_nodes_online: summary.admitted_nodes_online,
-        active_runs: summary.active_runs,
-        active_windows: summary.active_windows,
-        pending_validation_windows: summary.pending_validation_windows,
-        validator_challenges_open: summary.validator_challenges_open,
-        validator_challenges_queued: summary.validator_challenges_queued,
-        checkpoint_max_age_ms: summary.checkpoint_max_age_ms,
-        artifact_failures_open: summary.artifact_failures_open,
-        payout_eligible_closeouts: summary.payout_eligible_closeouts,
+        admitted_nodes: summary.participation.admitted_nodes,
+        admitted_nodes_online: summary.participation.online_nodes,
+        active_runs: summary.participation.active_runs,
+        active_windows: summary.participation.active_windows,
+        pending_validation_windows: summary.participation.pending_validation_windows,
+        validator_challenges_open: summary.participation.validator_challenges_open,
+        validator_challenges_queued: summary.participation.validator_challenges_queued,
+        checkpoint_max_age_ms: summary.progress.checkpoint_max_age_ms,
+        artifact_failures_open: summary.progress.artifact_failures_open,
+        accepted_closeouts: summary.progress.accepted_closeouts,
+        payout_eligible_closeouts: summary.progress.payout_eligible_closeouts,
+        nodes_contributing_to_accepted_progress: summary
+            .progress
+            .nodes_contributing_to_accepted_progress,
+        windows_advanced_checkpoint_lineage: summary.progress.windows_advanced_checkpoint_lineage,
+        runs_with_accepted_progress: summary.progress.runs_with_accepted_progress,
     }
 }
 
@@ -24956,17 +25235,44 @@ mod tests {
             .await?;
         assert_eq!(stats_response.status(), StatusCode::OK);
         let initial_stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(initial_stats.training_nodes_admitted, 2);
+        assert_eq!(initial_stats.training_nodes_online, 2);
         assert_eq!(initial_stats.training_admitted_nodes_online, 2);
         assert_eq!(initial_stats.training_runs_active, 1);
         assert_eq!(initial_stats.training_windows_active, 1);
         assert_eq!(initial_stats.training_windows_pending_validation, 1);
         assert_eq!(initial_stats.training_validator_challenges_open, 2);
         assert_eq!(initial_stats.training_validator_challenges_queued, 2);
+        assert_eq!(
+            initial_stats.training_nodes_contributing_to_accepted_progress,
+            0
+        );
+        assert_eq!(initial_stats.training_runs_with_accepted_progress, 0);
+        assert_eq!(
+            initial_stats.training_windows_advanced_checkpoint_lineage,
+            0
+        );
+        assert_eq!(initial_stats.training_accepted_closeouts, 0);
         assert_eq!(initial_stats.training_artifact_failures_open, 0);
         assert_eq!(initial_stats.training_payout_eligible_closeouts, 0);
         assert!(initial_stats.training_checkpoint_max_age_ms.is_some());
 
         let initial_summary = fetch_training_summary(&app).await?;
+        assert_eq!(initial_summary.participation.admitted_nodes, 2);
+        assert_eq!(initial_summary.participation.online_nodes, 2);
+        assert_eq!(initial_summary.progress.accepted_closeouts, 0);
+        assert_eq!(
+            initial_summary
+                .progress
+                .nodes_contributing_to_accepted_progress,
+            0
+        );
+        assert_eq!(
+            initial_summary.progress.windows_advanced_checkpoint_lineage,
+            0
+        );
+        assert_eq!(initial_summary.progress.runs_with_accepted_progress, 0);
+        assert_eq!(initial_summary.admitted_nodes, 2);
         assert_eq!(initial_summary.admitted_nodes_online, 2);
         assert_eq!(initial_summary.active_runs, 1);
         assert_eq!(initial_summary.active_windows, 1);
@@ -24980,6 +25286,8 @@ mod tests {
         assert_eq!(run_summary.run_status, "running");
         assert_eq!(run_summary.scheduler_window_state, "validating");
         assert_eq!(run_summary.current_window_id, "window.0001");
+        assert_eq!(run_summary.participation.admitted_nodes, 2);
+        assert_eq!(run_summary.participation.online_nodes, 2);
         assert_eq!(run_summary.worker_nodes_online, 1);
         assert_eq!(run_summary.validator_nodes_online, 1);
         assert_eq!(run_summary.recovery_source_nodes_online, 0);
@@ -24987,6 +25295,11 @@ mod tests {
         assert_eq!(run_summary.pending_validation_window_count, 1);
         assert_eq!(run_summary.open_validator_challenges, 2);
         assert_eq!(run_summary.queued_validator_challenges, 2);
+        assert_eq!(run_summary.accepted_closeouts, 0);
+        assert_eq!(run_summary.nodes_contributing_to_accepted_progress, 0);
+        assert_eq!(run_summary.windows_advanced_checkpoint_lineage, 0);
+        assert_eq!(run_summary.progress.accepted_closeouts, 0);
+        assert_eq!(run_summary.progress.payout_eligible_closeouts, 0);
         assert_eq!(run_summary.payout_eligible_closeouts, 0);
         assert_eq!(
             run_summary.latest_checkpoint_ref.as_deref(),
@@ -25172,31 +25485,62 @@ mod tests {
             .await?;
         assert_eq!(stats_response.status(), StatusCode::OK);
         let final_stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(final_stats.training_nodes_admitted, 2);
+        assert_eq!(final_stats.training_nodes_online, 2);
         assert_eq!(final_stats.training_admitted_nodes_online, 2);
         assert_eq!(final_stats.training_runs_active, 1);
         assert_eq!(final_stats.training_windows_active, 0);
         assert_eq!(final_stats.training_windows_pending_validation, 0);
         assert_eq!(final_stats.training_validator_challenges_open, 0);
         assert_eq!(final_stats.training_validator_challenges_queued, 0);
+        assert_eq!(
+            final_stats.training_nodes_contributing_to_accepted_progress,
+            1
+        );
+        assert_eq!(final_stats.training_runs_with_accepted_progress, 1);
+        assert_eq!(final_stats.training_windows_advanced_checkpoint_lineage, 0);
+        assert_eq!(final_stats.training_accepted_closeouts, 1);
         assert_eq!(final_stats.training_artifact_failures_open, 0);
         assert_eq!(final_stats.training_payout_eligible_closeouts, 1);
         assert!(final_stats.training_checkpoint_max_age_ms.is_some());
 
         let final_summary = fetch_training_summary(&app).await?;
+        assert_eq!(final_summary.participation.admitted_nodes, 2);
+        assert_eq!(final_summary.participation.online_nodes, 2);
         assert_eq!(final_summary.active_runs, 1);
         assert_eq!(final_summary.active_windows, 0);
         assert_eq!(final_summary.pending_validation_windows, 0);
         assert_eq!(final_summary.validator_challenges_open, 0);
         assert_eq!(final_summary.validator_challenges_queued, 0);
+        assert_eq!(final_summary.progress.accepted_closeouts, 1);
+        assert_eq!(final_summary.progress.payout_eligible_closeouts, 1);
+        assert_eq!(
+            final_summary
+                .progress
+                .nodes_contributing_to_accepted_progress,
+            1
+        );
+        assert_eq!(
+            final_summary.progress.windows_advanced_checkpoint_lineage,
+            0
+        );
+        assert_eq!(final_summary.progress.runs_with_accepted_progress, 1);
         assert_eq!(final_summary.payout_eligible_closeouts, 1);
         assert_eq!(final_summary.runs.len(), 1);
         let run_summary = &final_summary.runs[0];
         assert_eq!(run_summary.scheduler_window_state, "accepted");
         assert_eq!(run_summary.current_window_id, "window.0002");
+        assert_eq!(run_summary.participation.admitted_nodes, 2);
+        assert_eq!(run_summary.participation.online_nodes, 2);
         assert_eq!(run_summary.active_window_count, 0);
         assert_eq!(run_summary.pending_validation_window_count, 0);
         assert_eq!(run_summary.open_validator_challenges, 0);
         assert_eq!(run_summary.queued_validator_challenges, 0);
+        assert_eq!(run_summary.accepted_closeouts, 1);
+        assert_eq!(run_summary.nodes_contributing_to_accepted_progress, 1);
+        assert_eq!(run_summary.windows_advanced_checkpoint_lineage, 0);
+        assert_eq!(run_summary.progress.accepted_closeouts, 1);
+        assert_eq!(run_summary.progress.payout_eligible_closeouts, 1);
         assert_eq!(run_summary.payout_eligible_closeouts, 1);
         assert_eq!(
             run_summary.latest_window_status.as_deref(),
@@ -25264,6 +25608,14 @@ mod tests {
         assert_eq!(homepage.stats.pylons_online_now, 1);
         assert_eq!(homepage.stats.sellable_pylons_online_now, 1);
         assert_eq!(homepage.stats.recent_pylons.len(), 1);
+        assert_eq!(homepage.training_summary.participation.active_runs, 1);
+        assert_eq!(
+            homepage
+                .training_summary
+                .progress
+                .runs_with_accepted_progress,
+            0
+        );
         assert_eq!(homepage.training_summary.active_runs, 1);
         assert_eq!(homepage.training_summary.runs.len(), 1);
         assert_eq!(homepage.training_nodes.len(), 1);
