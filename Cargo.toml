@@ -227,6 +227,7 @@ probe-server = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "0eb6
 
 [profile.dev]
 opt-level = 1
+debug = "line-tables-only"
 split-debuginfo = "unpacked"
 incremental = true
 codegen-units = 16
