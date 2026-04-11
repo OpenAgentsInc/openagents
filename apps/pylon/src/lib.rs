@@ -1622,6 +1622,9 @@ pub struct JobsReport {
 pub struct EarningsReport {
     context: ReportContext,
     earnings: Option<ProviderEarningsSummary>,
+    #[serde(skip_serializing_if = "WalletCreditSummary::is_empty")]
+    wallet_credits: WalletCreditSummary,
+    source: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -1666,6 +1669,23 @@ struct SandboxReport {
     last_scan_error: Option<String>,
     runtimes: Vec<ProviderSandboxRuntimeHealth>,
     profiles: Vec<ProviderSandboxProfile>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct WalletCreditSummary {
+    sats_today: u64,
+    lifetime_sats: u64,
+    count_today: u64,
+    last_credit_label: Option<String>,
+}
+
+impl WalletCreditSummary {
+    fn is_empty(&self) -> bool {
+        self.sats_today == 0
+            && self.lifetime_sats == 0
+            && self.count_today == 0
+            && self.last_credit_label.is_none()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -11010,7 +11030,7 @@ fn snapshot_training_status_report(
 fn render_human_status(status: &ProviderStatusResponse) -> String {
     let mut lines = vec![
         format!("state: {}", provider_runtime_state_label(status)),
-        format!("desired_mode: {}", status.desired_mode.label()),
+        format!("provider_mode: {}", status.desired_mode.label()),
     ];
     if let Some(listen_addr) = status.listen_addr.as_deref() {
         lines.push(format!("listen_addr: {listen_addr}"));
@@ -12287,9 +12307,19 @@ pub async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> 
         &status,
         wallet_credit_summary.as_ref(),
     );
+    let wallet_credits = summarize_wallet_credits(&ledger);
+    let source = if !provider_earnings_are_empty(earnings.as_ref()) {
+        "provider_earnings".to_string()
+    } else if !wallet_credits.is_empty() {
+        "wallet_credits".to_string()
+    } else {
+        "none".to_string()
+    };
     Ok(EarningsReport {
         context: report_context(&status),
         earnings,
+        wallet_credits,
+        source,
     })
 }
 
@@ -12519,14 +12549,16 @@ fn merge_ledger_earnings(
     status: &ProviderStatusResponse,
     wallet_credit_summary: Option<&PylonWalletCreditSummary>,
 ) -> Option<ProviderEarningsSummary> {
-    let use_wallet_credit_fallback = base.is_none();
-    if !ledger.jobs.iter().any(|job| job.direction == "provider")
-        && !ledger
-            .settlements
-            .iter()
-            .any(|settlement| settlement.direction == "provider")
-        && !wallet_credit_summary.is_some_and(|credits| credits.last_full_sync_at_ms.is_some())
-    {
+    let use_wallet_credit_fallback = provider_earnings_are_empty(base.as_ref());
+    let has_provider_jobs = ledger.jobs.iter().any(|job| job.direction == "provider");
+    let has_provider_settlements = ledger
+        .settlements
+        .iter()
+        .any(|settlement| settlement.direction == "provider");
+    let has_provider_ledger = has_provider_jobs || has_provider_settlements;
+    let wallet_credit_sync_present =
+        wallet_credit_summary.is_some_and(|credits| credits.last_full_sync_at_ms.is_some());
+    if !has_provider_ledger && !wallet_credit_sync_present {
         return base;
     }
     let mut earnings = base
@@ -12568,7 +12600,7 @@ fn merge_ledger_earnings(
                 .filter(|settlement| settlement.created_at_ms / 86_400_000 == current_day)
                 .count() as u64;
         }
-    } else {
+    } else if has_provider_ledger {
         earnings.lifetime_sats = settled
             .iter()
             .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
@@ -12617,6 +12649,61 @@ fn merge_ledger_earnings(
             Some(((settled.len() * 10_000) / payable_jobs).min(10_000) as u16);
     }
     Some(earnings)
+}
+
+fn provider_earnings_are_empty(earnings: Option<&ProviderEarningsSummary>) -> bool {
+    match earnings {
+        Some(value) => {
+            value.sats_today == 0
+                && value.lifetime_sats == 0
+                && value.jobs_today == 0
+                && value.last_job_result == "none"
+        }
+        None => true,
+    }
+}
+
+fn summarize_wallet_credits(ledger: &PylonLedger) -> WalletCreditSummary {
+    let current_day = (now_epoch_ms() as u64) / 86_400_000;
+    let settled_receives = ledger
+        .wallet
+        .payments
+        .iter()
+        .filter(|payment| payment.direction.eq_ignore_ascii_case("receive"))
+        .filter(|payment| is_settled_wallet_payment_status(payment.status.as_str()))
+        .collect::<Vec<_>>();
+    let latest_receive = settled_receives
+        .iter()
+        .max_by_key(|payment| payment.created_at_ms)
+        .copied();
+    WalletCreditSummary {
+        sats_today: settled_receives
+            .iter()
+            .filter(|payment| payment.created_at_ms / 86_400_000 == current_day)
+            .map(|payment| payment.amount_sats)
+            .sum(),
+        lifetime_sats: settled_receives
+            .iter()
+            .map(|payment| payment.amount_sats)
+            .sum(),
+        count_today: settled_receives
+            .iter()
+            .filter(|payment| payment.created_at_ms / 86_400_000 == current_day)
+            .count() as u64,
+        last_credit_label: latest_receive.map(|payment| {
+            format!(
+                "{} {} sats via {}",
+                payment.status, payment.amount_sats, payment.method
+            )
+        }),
+    }
+}
+
+fn is_settled_wallet_payment_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "succeeded" | "success" | "settled" | "completed" | "confirmed"
+    )
 }
 
 fn merge_ledger_receipts(
@@ -12809,7 +12896,7 @@ fn take_limited_rows<T>(mut values: Vec<T>, limit: Option<usize>) -> Vec<T> {
 fn render_report_context(context: &ReportContext) -> Vec<String> {
     let mut lines = vec![
         format!("state: {}", context.state),
-        format!("desired_mode: {}", context.desired_mode),
+        format!("provider_mode: {}", context.desired_mode),
     ];
     if let Some(listen_addr) = context.listen_addr.as_deref() {
         lines.push(format!("listen_addr: {listen_addr}"));
@@ -13005,9 +13092,15 @@ pub fn render_jobs_report(report: &JobsReport) -> String {
 
 pub fn render_earnings_report(report: &EarningsReport) -> String {
     let mut lines = render_report_context(&report.context);
-    match report.earnings.as_ref() {
-        Some(earnings) => {
+    match report.source.as_str() {
+        "provider_earnings" => {
+            let Some(earnings) = report.earnings.as_ref() else {
+                lines.push(String::new());
+                lines.push("earnings: none".to_string());
+                return lines.join("\n");
+            };
             lines.push(String::new());
+            lines.push("source: provider_earnings".to_string());
             lines.push(format!("sats_today: {}", earnings.sats_today));
             lines.push(format!("lifetime_sats: {}", earnings.lifetime_sats));
             lines.push(format!("jobs_today: {}", earnings.jobs_today));
@@ -13017,8 +13110,33 @@ pub fn render_earnings_report(report: &EarningsReport) -> String {
             ));
             lines.push(format!("last_job_result: {}", earnings.last_job_result));
         }
-        None => {
+        "wallet_credits" => {
             lines.push(String::new());
+            lines.push("source: wallet_credits".to_string());
+            lines.push(format!(
+                "credited_today: {}",
+                report.wallet_credits.sats_today
+            ));
+            lines.push(format!(
+                "credited_lifetime: {}",
+                report.wallet_credits.lifetime_sats
+            ));
+            lines.push(format!(
+                "receives_today: {}",
+                report.wallet_credits.count_today
+            ));
+            lines.push(format!(
+                "last_credit: {}",
+                report
+                    .wallet_credits
+                    .last_credit_label
+                    .as_deref()
+                    .unwrap_or("none")
+            ));
+        }
+        _ => {
+            lines.push(String::new());
+            lines.push("source: none".to_string());
             lines.push("earnings: none".to_string());
         }
     }
@@ -14698,7 +14816,8 @@ mod tests {
         PylonLedgerJob, PylonSettlementRecord,
         psionic_gemma_benchmark_command_args, publish_announcement_report,
         publish_training_trn_state, refresh_relay_report, remove_configured_relay,
-        render_human_status, render_jobs_report, render_public_config_json, render_sandbox_report,
+        render_earnings_report, render_human_status, render_jobs_report,
+        render_public_config_json, render_sandbox_report,
         render_training_status_report, report_provider_presence_heartbeat_for_snapshot,
         ReportContext, JobsReport,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
@@ -18553,6 +18672,10 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
         ensure(
             human.contains("state: unconfigured"),
             "human-readable status should include the unconfigured state",
+        )?;
+        ensure(
+            human.contains("provider_mode: offline"),
+            "human-readable status should label provider mode explicitly",
         )?;
         ensure(
             status.snapshot.as_ref().is_some_and(|snapshot| {
@@ -23030,7 +23153,8 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             earnings_report
                 .earnings
                 .as_ref()
-                .is_some_and(|earnings| earnings.lifetime_sats == 420),
+                .is_some_and(|earnings| earnings.lifetime_sats == 420)
+                && earnings_report.source == "provider_earnings",
             "earnings report should surface persisted earnings",
         )?;
         ensure(
@@ -23050,6 +23174,86 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             sandbox_receipt.sandbox_profile_id.as_deref() == Some("python-batch")
                 && sandbox_receipt.sandbox_termination_reason.as_deref() == Some("timeout"),
             "receipts report should surface sandbox receipt integrity fields",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn earnings_report_falls_back_to_wallet_credits_when_provider_stats_are_empty()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = seed_observability_snapshot(config_path.as_path())?;
+        let admin_config = provider_admin_config(&config)?;
+        let mut store = ProviderPersistenceStore::open(&admin_config)?;
+        let mut status = store.load_status()?;
+        let mut snapshot = status
+            .snapshot
+            .take()
+            .ok_or_else(|| std::io::Error::other("missing observability snapshot"))?;
+        snapshot.earnings = Some(ProviderEarningsSummary {
+            sats_today: 0,
+            lifetime_sats: 0,
+            jobs_today: 0,
+            online_uptime_seconds: 0,
+            last_job_result: "none".to_string(),
+            first_job_latency_seconds: None,
+            completion_ratio_bps: None,
+            payout_success_ratio_bps: None,
+            avg_wallet_confirmation_latency_seconds: None,
+        });
+        store.persist_snapshot(&snapshot)?;
+
+        let now_ms = super::now_epoch_ms() as u64;
+        let current_day_start = (now_ms / 86_400_000) * 86_400_000;
+        mutate_ledger(config_path.as_path(), |ledger| {
+            ledger.wallet.payments = vec![
+                PylonWalletPaymentRecord {
+                    payment_id: "wallet-recv-today".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 21,
+                    fees_sats: 0,
+                    method: "spark".to_string(),
+                    description: None,
+                    invoice: None,
+                    created_at_ms: current_day_start + 1_000,
+                    updated_at_ms: current_day_start + 80_000,
+                },
+                PylonWalletPaymentRecord {
+                    payment_id: "wallet-recv-yesterday".to_string(),
+                    direction: "receive".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 34,
+                    fees_sats: 0,
+                    method: "spark".to_string(),
+                    description: None,
+                    invoice: None,
+                    created_at_ms: current_day_start.saturating_sub(86_400_000) + 2_000,
+                    updated_at_ms: current_day_start + 90_000,
+                },
+            ];
+            Ok(())
+        })?;
+
+        let report = load_earnings_report(config_path.as_path()).await?;
+        ensure(
+            report.source == "wallet_credits"
+                && report.wallet_credits.sats_today == 21
+                && report.wallet_credits.lifetime_sats == 55
+                && report.wallet_credits.count_today == 1
+                && report.wallet_credits.last_credit_label.as_deref()
+                    == Some("completed 21 sats via spark"),
+            "earnings report should fall back to wallet credits using payment event timestamps",
+        )?;
+
+        let rendered = render_earnings_report(&report);
+        ensure(
+            rendered.contains("source: wallet_credits")
+                && rendered.contains("credited_today: 21")
+                && rendered.contains("credited_lifetime: 55")
+                && rendered.contains("receives_today: 1")
+                && rendered.contains("last_credit: completed 21 sats via spark"),
+            "human earnings render should show wallet credit stats when provider earnings are empty",
         )
     }
 
