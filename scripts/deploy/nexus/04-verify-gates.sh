@@ -6,6 +6,7 @@ source "${SCRIPT_DIR}/common.sh"
 
 require_cmd gcloud
 require_cmd jq
+require_cmd base64
 
 ensure_gcloud_context
 
@@ -43,13 +44,16 @@ ssh_vm() {
 
 fetch_json_probe() {
   local url="$1"
+  local url_b64
+  url_b64="$(printf '%s' "$url" | base64 | tr -d '\n')"
   ssh_vm "$(cat <<EOF
 python3 - <<'PY'
+import base64
 import json
 import time
 import urllib.request
 
-url = '${url}'
+url = base64.b64decode("${url_b64}").decode()
 started = time.time()
 with urllib.request.urlopen(url, timeout=20) as response:
     body = response.read().decode()
@@ -68,20 +72,21 @@ fetch_json_probe_series() {
   local method="${2:-GET}"
   local request_body="${3:-}"
   local sample_count="${4:-$VERIFY_LATENCY_SAMPLE_COUNT}"
-  local url_json method_json body_json
-  url_json="$(printf '%s' "$url" | jq -Rs .)"
-  method_json="$(printf '%s' "$method" | jq -Rs .)"
-  body_json="$(printf '%s' "$request_body" | jq -Rs .)"
+  local url_b64 method_b64 body_b64
+  url_b64="$(printf '%s' "$url" | base64 | tr -d '\n')"
+  method_b64="$(printf '%s' "$method" | base64 | tr -d '\n')"
+  body_b64="$(printf '%s' "$request_body" | base64 | tr -d '\n')"
   ssh_vm "$(cat <<EOF
 python3 - <<'PY'
+import base64
 import json
 import math
 import time
 import urllib.request
 
-url = json.loads(${url_json})
-method = json.loads(${method_json}).upper()
-body = json.loads(${body_json})
+url = base64.b64decode("${url_b64}").decode()
+method = base64.b64decode("${method_b64}").decode().upper()
+body = base64.b64decode("${body_b64}").decode()
 sample_count = int(${sample_count})
 
 headers = {}
