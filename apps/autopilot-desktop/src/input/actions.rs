@@ -1,4 +1,6 @@
 use super::*;
+use std::path::{Path, PathBuf};
+
 use crate::apple_fm_bridge::{
     AppleFmBridgeCommand, AppleFmMissionControlSummaryCommand, AppleFmWorkbenchCommand,
     AppleFmWorkbenchOperation, AppleFmWorkbenchToolMode,
@@ -25,7 +27,10 @@ use crate::spark_wallet::{
     normalize_lightning_invoice_ref,
 };
 use crate::state::job_inbox::JobExecutionParam;
+use chrono::{Datelike, TimeZone, Utc};
+use openagents_provider_substrate::{ProviderAdminConfig, ProviderPersistenceStore};
 use psionic_apple_fm::{AppleFmGenerationOptions, AppleFmSamplingMode};
+use serde::Deserialize;
 
 const MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Managed chat relay publish transport is not wired yet; local echo saved for retry.";
@@ -36,6 +41,15 @@ const DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED: &str =
 const MISSION_CONTROL_BUY_MODE_PROMPT: &str = "Reply with the exact text BUY MODE OK.";
 const MISSION_CONTROL_LOCAL_FM_SUMMARY_INSTRUCTIONS: &str = "You are the Mission Control local Foundation Models test. Summarize only the supplied context in 3 short markdown bullets. Highlight the latest result, current buyer/provider state, and the next operator action. Do not invent facts or mention missing data unless it matters.";
 const MNEMONIC_CLIPBOARD_EXPIRY_SECONDS: u64 = 300;
+const PYLON_PROVIDER_EARNINGS_SOURCE_TAG: &str = "pylon.provider-admin";
+const ENV_PYLON_PROVIDER_ADMIN_DB_PATH: &str = "OPENAGENTS_PYLON_PROVIDER_ADMIN_DB_PATH";
+const ENV_PYLON_CONFIG_PATH: &str = "OPENAGENTS_PYLON_CONFIG_PATH";
+const ENV_PYLON_HOME: &str = "OPENAGENTS_PYLON_HOME";
+
+#[derive(Debug, Deserialize)]
+struct PylonAuthorityConfigPathDocument {
+    admin_db_path: Option<PathBuf>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ManagedChatComposerIntent {
@@ -19276,15 +19290,16 @@ pub(super) fn refresh_earnings_scoreboard(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
 ) {
-    state
-        .job_history
-        .set_reference_epoch_seconds(crate::app_state::current_reference_epoch_seconds());
-    state.earnings_scoreboard.refresh_from_sources(
-        now,
-        &state.provider_runtime,
-        &state.job_history,
-        &state.spark_wallet,
-    );
+    match refresh_earnings_scoreboard_from_pylon_authority(&mut state.earnings_scoreboard, now) {
+        Ok(()) => {}
+        Err(error) => {
+            state.earnings_scoreboard.mark_pylon_authority_unavailable(
+                now,
+                PYLON_PROVIDER_EARNINGS_SOURCE_TAG,
+                error,
+            );
+        }
+    }
 
     let succeeded_jobs = state
         .job_history
@@ -19322,6 +19337,120 @@ pub(super) fn refresh_earnings_scoreboard(
     }
 
     refresh_loop_integrity_slo_alerts(state);
+}
+
+fn refresh_earnings_scoreboard_from_pylon_authority(
+    earnings_scoreboard: &mut crate::app_state::EarningsScoreboardState,
+    now: std::time::Instant,
+) -> Result<(), String> {
+    let provider_admin_db_path = resolve_pylon_provider_admin_db_path()?;
+    refresh_earnings_scoreboard_from_pylon_store(earnings_scoreboard, now, &provider_admin_db_path)
+}
+
+fn refresh_earnings_scoreboard_from_pylon_store(
+    earnings_scoreboard: &mut crate::app_state::EarningsScoreboardState,
+    now: std::time::Instant,
+    provider_admin_db_path: &Path,
+) -> Result<(), String> {
+    if !provider_admin_db_path.is_file() {
+        return Err(format!(
+            "Pylon provider admin store not found at {}",
+            provider_admin_db_path.display()
+        ));
+    }
+
+    let listen_addr = "127.0.0.1:0"
+        .parse()
+        .expect("static provider admin listen addr should parse");
+    let mut provider_admin_config =
+        ProviderAdminConfig::new(provider_admin_db_path.to_path_buf(), listen_addr);
+    provider_admin_config.runtime = provider_admin_config.runtime.with_list_limit(256);
+    let store = ProviderPersistenceStore::open(&provider_admin_config)?;
+    let status = store.load_status()?;
+    let sats_this_month = store
+        .load_payouts(Some(256))?
+        .into_iter()
+        .filter(|payout| {
+            payout.status.eq_ignore_ascii_case("confirmed")
+                && payout.direction.eq_ignore_ascii_case("receive")
+                && payout_is_in_reference_month(
+                    payout.created_at_epoch_seconds,
+                    crate::app_state::current_reference_epoch_seconds(),
+                )
+        })
+        .map(|payout| payout.amount_sats)
+        .sum();
+    earnings_scoreboard.refresh_from_pylon_status(
+        now,
+        &status,
+        PYLON_PROVIDER_EARNINGS_SOURCE_TAG,
+        sats_this_month,
+    );
+    Ok(())
+}
+
+fn resolve_pylon_provider_admin_db_path() -> Result<PathBuf, String> {
+    if let Some(path) = trimmed_env_path(ENV_PYLON_PROVIDER_ADMIN_DB_PATH) {
+        return Ok(path);
+    }
+    if let Some(config_path) = trimmed_env_path(ENV_PYLON_CONFIG_PATH) {
+        let bytes = std::fs::read(&config_path).map_err(|error| {
+            format!(
+                "failed to read pylon config {}: {error}",
+                config_path.display()
+            )
+        })?;
+        let document = serde_json::from_slice::<PylonAuthorityConfigPathDocument>(&bytes).map_err(
+            |error| {
+                format!(
+                    "failed to parse pylon config {}: {error}",
+                    config_path.display()
+                )
+            },
+        )?;
+        if let Some(admin_db_path) = document.admin_db_path {
+            return Ok(admin_db_path);
+        }
+        return Err(format!(
+            "pylon config {} is missing admin_db_path",
+            config_path.display()
+        ));
+    }
+    let home = trimmed_env_path(ENV_PYLON_HOME).unwrap_or_else(|| {
+        std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".openagents")
+            .join("pylon")
+    });
+    Ok(home.join("provider-admin.sqlite"))
+}
+
+fn trimmed_env_path(name: &str) -> Option<PathBuf> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+fn payout_is_in_reference_month(
+    payout_created_at_epoch_seconds: u64,
+    reference_epoch_seconds: u64,
+) -> bool {
+    let Some(reference) = Utc
+        .timestamp_opt(reference_epoch_seconds as i64, 0)
+        .single()
+    else {
+        return false;
+    };
+    let Some(payout) = Utc
+        .timestamp_opt(payout_created_at_epoch_seconds as i64, 0)
+        .single()
+    else {
+        return false;
+    };
+    payout.year() == reference.year() && payout.month() == reference.month()
 }
 
 fn classify_provider_failure(
@@ -20388,8 +20517,8 @@ mod tests {
         parse_chat_wallet_intent, parse_direct_message_creation_intent,
         parse_direct_message_room_intent, parse_github_ci_watch, parse_github_pull_request_watch,
         parse_managed_chat_composer_intent, parse_managed_chat_mention_prefix,
-        parse_shell_like_words, resolve_apple_fm_workbench_session_id,
-        resolve_wallet_blink_env_from_secure_values,
+        parse_shell_like_words, refresh_earnings_scoreboard_from_pylon_store,
+        resolve_apple_fm_workbench_session_id, resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
         resolve_wallet_settlement_pointer_for_starter_payout_from_surfaces,
         stable_sats_period_convert_totals_from_receipts,
@@ -20568,6 +20697,100 @@ mod tests {
             failure_reason: None,
             execution_provenance: None,
         }
+    }
+
+    #[test]
+    fn refresh_earnings_scoreboard_reads_authoritative_pylon_store() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let db_path = temp.path().join("provider-admin.sqlite");
+        let listen_addr = "127.0.0.1:0"
+            .parse()
+            .expect("static provider admin listen addr");
+        let config =
+            openagents_provider_substrate::ProviderAdminConfig::new(db_path.clone(), listen_addr);
+        let mut store = openagents_provider_substrate::ProviderPersistenceStore::open(&config)
+            .expect("provider admin store");
+        store
+            .set_listen_addr("127.0.0.1:9468")
+            .expect("persist listen addr");
+        store
+            .set_desired_mode(openagents_provider_substrate::ProviderDesiredMode::Online)
+            .expect("persist desired mode");
+
+        let reference_epoch_seconds = crate::app_state::current_reference_epoch_seconds();
+        let snapshot = openagents_provider_substrate::assemble_provider_persisted_snapshot(
+            openagents_provider_substrate::ProviderSnapshotParts {
+                captured_at_ms: i64::try_from(reference_epoch_seconds).unwrap_or(i64::MAX) * 1000,
+                runtime: openagents_provider_substrate::ProviderRuntimeStatusSnapshot {
+                    mode: openagents_provider_substrate::ProviderMode::Online,
+                    authoritative_status: Some("online".to_string()),
+                    online_uptime_seconds: 3600,
+                    ..Default::default()
+                },
+                payouts: vec![
+                    openagents_provider_substrate::ProviderPayoutSummary {
+                        payout_id: "payout-current-month".to_string(),
+                        amount_sats: 21,
+                        direction: "receive".to_string(),
+                        status: "confirmed".to_string(),
+                        created_at_epoch_seconds: reference_epoch_seconds,
+                        payment_pointer: Some("wallet:month".to_string()),
+                    },
+                    openagents_provider_substrate::ProviderPayoutSummary {
+                        payout_id: "payout-older".to_string(),
+                        amount_sats: 9,
+                        direction: "receive".to_string(),
+                        status: "confirmed".to_string(),
+                        created_at_epoch_seconds: reference_epoch_seconds
+                            .saturating_sub(40 * 86_400),
+                        payment_pointer: Some("wallet:older".to_string()),
+                    },
+                ],
+                earnings: Some(openagents_provider_substrate::ProviderEarningsSummary {
+                    sats_today: 21,
+                    lifetime_sats: 84,
+                    jobs_today: 3,
+                    online_uptime_seconds: 3600,
+                    last_job_result: "settled".to_string(),
+                    first_job_latency_seconds: Some(12),
+                    completion_ratio_bps: Some(8_800),
+                    payout_success_ratio_bps: Some(9_400),
+                    avg_wallet_confirmation_latency_seconds: Some(19),
+                }),
+                ..Default::default()
+            },
+        );
+        store.persist_snapshot(&snapshot).expect("persist snapshot");
+
+        let mut scoreboard = crate::app_state::EarningsScoreboardState::default();
+        refresh_earnings_scoreboard_from_pylon_store(
+            &mut scoreboard,
+            std::time::Instant::now(),
+            db_path.as_path(),
+        )
+        .expect("refresh from pylon store");
+
+        assert_eq!(scoreboard.source_tag, "pylon.provider-admin");
+        assert_eq!(
+            scoreboard.load_state,
+            crate::app_state::PaneLoadState::Ready
+        );
+        assert_eq!(scoreboard.sats_today, 21);
+        assert_eq!(scoreboard.sats_this_month, 21);
+        assert_eq!(scoreboard.lifetime_sats, 84);
+        assert_eq!(scoreboard.jobs_today, 3);
+        assert_eq!(scoreboard.last_job_result, "settled");
+        assert_eq!(scoreboard.online_uptime_seconds, 3600);
+        assert_eq!(scoreboard.first_job_latency_seconds, Some(12));
+        assert_eq!(scoreboard.completion_ratio_bps, Some(8_800));
+        assert_eq!(scoreboard.payout_success_ratio_bps, Some(9_400));
+        assert_eq!(scoreboard.avg_wallet_confirmation_latency_seconds, Some(19));
+        assert!(
+            scoreboard
+                .last_action
+                .as_deref()
+                .is_some_and(|action| action.contains("Pylon"))
+        );
     }
 
     #[test]
