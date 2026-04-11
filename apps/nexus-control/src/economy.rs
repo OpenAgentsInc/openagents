@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -395,6 +395,8 @@ pub struct ReceiptLedger {
     receipts: Vec<AuthorityReceipt>,
     receipt_log_path: Option<PathBuf>,
     last_persistence_error: Option<String>,
+    treasury_confirmed_payout_request_ids: HashSet<String>,
+    treasury_confirmed_payout_sats_total: u64,
 }
 
 impl ReceiptLedger {
@@ -404,6 +406,8 @@ impl ReceiptLedger {
             receipts: Vec::new(),
             receipt_log_path,
             last_persistence_error: None,
+            treasury_confirmed_payout_request_ids: HashSet::new(),
+            treasury_confirmed_payout_sats_total: 0,
         };
         ledger.load_existing_receipts();
         ledger
@@ -425,10 +429,15 @@ impl ReceiptLedger {
             authority: AUTHORITY_NAME.to_string(),
             context,
         };
+        self.note_treasury_confirmed_payout(&receipt);
         self.receipts.push(receipt.clone());
         self.trim_retention();
         self.append_receipt_to_log(&receipt);
         receipt
+    }
+
+    pub fn treasury_confirmed_payout_sats_total(&self) -> u64 {
+        self.treasury_confirmed_payout_sats_total
     }
 
     pub fn snapshot(
@@ -687,6 +696,7 @@ impl ReceiptLedger {
                 Ok(receipt) => {
                     self.next_receipt_seq =
                         self.next_receipt_seq.max(receipt.seq.saturating_add(1));
+                    self.note_treasury_confirmed_payout(&receipt);
                     self.receipts.push(receipt);
                 }
                 Err(error) => {
@@ -756,6 +766,25 @@ impl ReceiptLedger {
                     receipt.receipt_id
                 ));
             }
+        }
+    }
+
+    fn note_treasury_confirmed_payout(&mut self, receipt: &AuthorityReceipt) {
+        if receipt.receipt_type != "treasury.payout.confirmed" {
+            return;
+        }
+        let request_id = receipt
+            .context
+            .request_id
+            .clone()
+            .unwrap_or_else(|| receipt.receipt_id.clone());
+        if self
+            .treasury_confirmed_payout_request_ids
+            .insert(request_id)
+        {
+            self.treasury_confirmed_payout_sats_total = self
+                .treasury_confirmed_payout_sats_total
+                .saturating_add(receipt.context.amount_sats.unwrap_or(0));
         }
     }
 }

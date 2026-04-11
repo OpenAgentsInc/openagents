@@ -1038,6 +1038,21 @@ impl TreasuryState {
         loaded
     }
 
+    pub fn apply_paid_total_floor(&mut self, payout_sats_paid_total_floor: u64) -> Option<u64> {
+        if payout_sats_paid_total_floor <= self.payout_sats_paid_total {
+            return None;
+        }
+        let previous_total = self.payout_sats_paid_total;
+        self.payout_sats_paid_total = payout_sats_paid_total_floor;
+        if let Some(snapshot) = self.public_snapshot.as_mut() {
+            snapshot.payout_sats_paid_total = snapshot
+                .payout_sats_paid_total
+                .max(payout_sats_paid_total_floor);
+        }
+        self.persist();
+        Some(previous_total)
+    }
+
     pub fn initialize_runtime_policy(
         &mut self,
         config: &TreasuryConfig,
@@ -2477,10 +2492,19 @@ impl TreasuryState {
         }
         match serde_json::to_string_pretty(self) {
             Ok(payload) => {
-                if let Err(error) = fs::write(state_path.as_path(), format!("{payload}\n")) {
+                let tmp_path = state_path.with_extension("tmp");
+                if let Err(error) = fs::write(tmp_path.as_path(), format!("{payload}\n")) {
                     self.last_persistence_error = Some(format!(
-                        "failed to write treasury state {}: {error}",
-                        state_path.display()
+                        "failed to write treasury state temp {}: {error}",
+                        tmp_path.display()
+                    ));
+                    return;
+                }
+                if let Err(error) = fs::rename(tmp_path.as_path(), state_path.as_path()) {
+                    self.last_persistence_error = Some(format!(
+                        "failed to replace treasury state {} with {}: {error}",
+                        state_path.display(),
+                        tmp_path.display()
                     ));
                 } else {
                     self.last_persistence_error = None;

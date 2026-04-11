@@ -698,6 +698,17 @@ impl ControlStore {
             economy: ReceiptLedger::new(config.receipt_log_path.clone()),
             kernel,
         };
+        let receipt_log_paid_total_floor = store.economy.treasury_confirmed_payout_sats_total();
+        if let Some(previous_total) = store
+            .treasury
+            .apply_paid_total_floor(receipt_log_paid_total_floor)
+        {
+            tracing::warn!(
+                previous_total,
+                restored_total = receipt_log_paid_total_floor,
+                "restored treasury payout total floor from receipt log"
+            );
+        }
         let treasury_receipts = store
             .treasury
             .initialize_runtime_policy(&config.treasury, now_unix_ms);
@@ -14183,6 +14194,7 @@ mod tests {
     use tokio_tungstenite::tungstenite::Message;
     use tower::ServiceExt;
 
+    use crate::economy::{AuthorityReceipt, AuthorityReceiptContext};
     use crate::kernel::{
         RecordTrainingNodeAdmissionRequest, RecordTrainingNodeAdmissionResponse,
         RecordTrainingNodeHeartbeatRequest, RecordTrainingNodeHeartbeatResponse,
@@ -19248,6 +19260,81 @@ mod tests {
         assert_eq!(stats.receipt_count, 1);
 
         let _ = std::fs::remove_file(receipt_log_path.as_path());
+        Ok(())
+    }
+
+    #[test]
+    fn build_app_state_restores_treasury_paid_total_from_receipt_log_floor() -> Result<()> {
+        let receipt_log_path = std::env::temp_dir().join(format!(
+            "nexus-control-treasury-floor-{}.jsonl",
+            super::random_token()
+        ));
+        let treasury_state_path = std::env::temp_dir().join(format!(
+            "nexus-control-treasury-floor-state-{}.json",
+            super::random_token()
+        ));
+        let _ = std::fs::remove_file(receipt_log_path.as_path());
+        let _ = std::fs::remove_file(treasury_state_path.as_path());
+
+        let receipts = [
+            AuthorityReceipt {
+                seq: 1,
+                receipt_id: "nexus-receipt-00000001".to_string(),
+                receipt_type: "treasury.payout.confirmed".to_string(),
+                recorded_at_unix_ms: 1_775_900_000_000,
+                authority: "openagents-hosted-nexus".to_string(),
+                context: AuthorityReceiptContext {
+                    request_id: Some("window.alpha".to_string()),
+                    status: Some("confirmed".to_string()),
+                    amount_sats: Some(120),
+                    ..AuthorityReceiptContext::default()
+                },
+            },
+            AuthorityReceipt {
+                seq: 2,
+                receipt_id: "nexus-receipt-00000002".to_string(),
+                receipt_type: "treasury.payout.confirmed".to_string(),
+                recorded_at_unix_ms: 1_775_900_010_000,
+                authority: "openagents-hosted-nexus".to_string(),
+                context: AuthorityReceiptContext {
+                    request_id: Some("window.alpha".to_string()),
+                    status: Some("confirmed".to_string()),
+                    amount_sats: Some(120),
+                    ..AuthorityReceiptContext::default()
+                },
+            },
+        ];
+        let receipt_payload = receipts
+            .iter()
+            .map(serde_json::to_string)
+            .collect::<std::result::Result<Vec<_>, _>>()?
+            .join("\n");
+        std::fs::write(receipt_log_path.as_path(), format!("{receipt_payload}\n"))?;
+        std::fs::write(
+            treasury_state_path.as_path(),
+            "{\n  \"payout_sats_paid_total\": 2,\n  \"next_challenge_nonce\": 1\n}\n",
+        )?;
+
+        let mut config = test_config()?;
+        config.receipt_log_path = Some(receipt_log_path.clone());
+        config.treasury.state_path = treasury_state_path.clone();
+
+        let state = build_app_state(config.clone());
+        {
+            let store = state.store.read().expect("read store");
+            let stats = store
+                .treasury
+                .public_stats(&config.treasury, 1_775_900_020_000);
+            assert_eq!(store.economy.treasury_confirmed_payout_sats_total(), 120);
+            assert_eq!(stats.payout_sats_paid_total, 120);
+        }
+
+        let persisted: TreasuryState =
+            serde_json::from_str(std::fs::read_to_string(treasury_state_path.as_path())?.as_str())?;
+        assert_eq!(persisted.payout_sats_paid_total, 120);
+
+        let _ = std::fs::remove_file(receipt_log_path.as_path());
+        let _ = std::fs::remove_file(treasury_state_path.as_path());
         Ok(())
     }
 
