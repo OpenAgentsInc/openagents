@@ -14471,6 +14471,9 @@ mod tests {
         ProviderHostSwapTelemetry, ProviderHostTelemetrySnapshot,
         ProviderHostThermalComponentTelemetry, ProviderHostingTelemetrySnapshot,
         ProviderInventoryRow, ProviderRuntimeStatusSnapshot,
+        ProviderTrainingArtifactUploadLatencyClass, ProviderTrainingCapabilityTier,
+        ProviderTrainingCapabilityTierProfile, ProviderTrainingLeaseReliabilityClass,
+        ProviderTrainingReplayCapability, ProviderTrainingThroughputBand,
         sign_provider_payout_target_registration,
     };
     use openagents_validator_service::{
@@ -14924,6 +14927,47 @@ mod tests {
         }
     }
 
+    fn training_capability_tier_profile(
+        role_claims: &[TrainingNodeRoleClaim],
+        available_memory_gb: Option<u32>,
+    ) -> ProviderTrainingCapabilityTierProfile {
+        let tier = if role_claims.contains(&TrainingNodeRoleClaim::Validator)
+            && role_claims.contains(&TrainingNodeRoleClaim::RecoverySource)
+            && available_memory_gb.is_some_and(|value| value >= 80)
+        {
+            ProviderTrainingCapabilityTier::Tier4Authority
+        } else if available_memory_gb.is_some_and(|value| value >= 80) {
+            ProviderTrainingCapabilityTier::Tier3Island
+        } else if available_memory_gb.is_some_and(|value| value >= 32) {
+            ProviderTrainingCapabilityTier::Tier2Trainer
+        } else if role_claims.contains(&TrainingNodeRoleClaim::Validator) {
+            ProviderTrainingCapabilityTier::Tier1Validation
+        } else {
+            ProviderTrainingCapabilityTier::Tier0Presence
+        };
+        ProviderTrainingCapabilityTierProfile {
+            tier,
+            backend_families: vec!["cuda".to_string()],
+            accelerator_inventory: Vec::new(),
+            memory_floor_gb: Some(32),
+            available_memory_gb,
+            throughput_band: if available_memory_gb.is_some_and(|value| value >= 80) {
+                ProviderTrainingThroughputBand::Island
+            } else if available_memory_gb.is_some_and(|value| value >= 32) {
+                ProviderTrainingThroughputBand::Medium
+            } else {
+                ProviderTrainingThroughputBand::Unknown
+            },
+            lease_reliability: ProviderTrainingLeaseReliabilityClass::Steady,
+            replay_capability: if role_claims.contains(&TrainingNodeRoleClaim::Validator) {
+                ProviderTrainingReplayCapability::FullWindow
+            } else {
+                ProviderTrainingReplayCapability::ShortWindow
+            },
+            artifact_upload_latency_class: ProviderTrainingArtifactUploadLatencyClass::Moderate,
+        }
+    }
+
     fn training_node_admission_request(
         node_pubkey_hex: &str,
         build_digest: &str,
@@ -14932,13 +14976,14 @@ mod tests {
         available_memory_gb: Option<u32>,
     ) -> RecordTrainingNodeAdmissionRequest {
         let now = super::now_unix_ms() as i64;
+        let role_claims = vec![TrainingNodeRoleClaim::Worker];
         RecordTrainingNodeAdmissionRequest {
             idempotency_key: format!("idemp.training.admission.{node_pubkey_hex}.{build_digest}"),
             requested_at_ms: now,
             node_pubkey_hex: node_pubkey_hex.to_string(),
             release_id: "openagents.pylon@0.1.0".to_string(),
             node_label: Some(format!("node-{node_pubkey_hex}")),
-            role_claims: vec![TrainingNodeRoleClaim::Worker],
+            role_claims: role_claims.clone(),
             allowed_networks: allowed_networks.into_iter().map(str::to_string).collect(),
             build_version: Some("0.1.0".to_string()),
             build_digest: Some(build_digest.to_string()),
@@ -14960,6 +15005,10 @@ mod tests {
                     ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow,
                 ),
             },
+            capability_tier: training_capability_tier_profile(
+                role_claims.as_slice(),
+                available_memory_gb,
+            ),
             host_telemetry: provider_hosting_telemetry_fixture().host,
             active_reputation_labels: active_reputation_labels
                 .into_iter()
@@ -15003,6 +15052,15 @@ mod tests {
         } else {
             None
         };
+        request.capability_tier.memory_floor_gb =
+            request.contributor_availability.minimum_memory_gb;
+        request.capability_tier.backend_families = request
+            .contributor_availability
+            .environment_refs
+            .iter()
+            .find_map(|value| super::training_backend_family_for_environment_ref(value))
+            .map(|value| vec![value.to_string()])
+            .unwrap_or_default();
         request
     }
 
@@ -21651,7 +21709,11 @@ mod tests {
         assert_eq!(quarantined_response.status(), StatusCode::OK);
         let quarantined =
             response_json::<RecordTrainingNodeAdmissionResponse>(quarantined_response).await?;
-        assert!(quarantined.admitted);
+        assert!(!quarantined.admitted);
+        assert_eq!(
+            quarantined.reason.as_deref(),
+            Some("training_node_hard_gated")
+        );
 
         let eligible_nodes_response = app
             .clone()
@@ -21669,6 +21731,18 @@ mod tests {
         assert_eq!(eligible_nodes[0].node_pubkey_hex, "node-alpha");
         assert!(eligible_nodes[0].online);
         assert!(eligible_nodes[0].eligible);
+        assert_eq!(
+            eligible_nodes[0].capability_tier.tier,
+            ProviderTrainingCapabilityTier::Tier3Island
+        );
+        assert_eq!(
+            eligible_nodes[0].capability_tier.backend_families,
+            vec!["cuda".to_string()]
+        );
+        assert_eq!(
+            eligible_nodes[0].capability_tier.throughput_band,
+            ProviderTrainingThroughputBand::Island
+        );
 
         let all_nodes_response = app
             .clone()
@@ -21681,12 +21755,8 @@ mod tests {
             .await?;
         assert_eq!(all_nodes_response.status(), StatusCode::OK);
         let all_nodes = response_json::<Vec<AdmittedTrainingNodeView>>(all_nodes_response).await?;
-        assert_eq!(all_nodes.len(), 2);
-        assert!(
-            all_nodes.iter().any(|node| {
-                node.node_pubkey_hex == "node-beta" && !node.eligible && !node.online
-            })
-        );
+        assert_eq!(all_nodes.len(), 1);
+        assert_eq!(all_nodes[0].node_pubkey_hex, "node-alpha");
 
         let node_response = app
             .clone()
@@ -21703,6 +21773,14 @@ mod tests {
         assert_eq!(node.available_memory_gb, Some(512));
         assert_eq!(node.available_disk_gb, Some(700));
         assert_eq!(node.last_training_run_id.as_deref(), Some("run.alpha"));
+        assert_eq!(
+            node.capability_tier.tier,
+            ProviderTrainingCapabilityTier::Tier3Island
+        );
+        assert_eq!(
+            node.capability_tier.replay_capability,
+            ProviderTrainingReplayCapability::ShortWindow
+        );
 
         let reloaded_app = build_router(config);
         let reloaded_nodes_response = reloaded_app
@@ -21719,6 +21797,10 @@ mod tests {
             response_json::<Vec<AdmittedTrainingNodeView>>(reloaded_nodes_response).await?;
         assert_eq!(reloaded_nodes.len(), 1);
         assert_eq!(reloaded_nodes[0].node_pubkey_hex, "node-alpha");
+        assert_eq!(
+            reloaded_nodes[0].capability_tier.tier,
+            ProviderTrainingCapabilityTier::Tier3Island
+        );
 
         let _ = std::fs::remove_file(kernel_state_path.as_path());
         Ok(())

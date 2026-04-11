@@ -544,6 +544,160 @@ impl ProviderAdapterTrainingContributorAvailability {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTrainingCapabilityTier {
+    #[default]
+    Tier0Presence,
+    Tier1Validation,
+    Tier2Trainer,
+    Tier3Island,
+    Tier4Authority,
+}
+
+impl ProviderTrainingCapabilityTier {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Tier0Presence => "tier0_presence",
+            Self::Tier1Validation => "tier1_validation",
+            Self::Tier2Trainer => "tier2_trainer",
+            Self::Tier3Island => "tier3_island",
+            Self::Tier4Authority => "tier4_authority",
+        }
+    }
+
+    pub const fn ordinal(self) -> u8 {
+        match self {
+            Self::Tier0Presence => 0,
+            Self::Tier1Validation => 1,
+            Self::Tier2Trainer => 2,
+            Self::Tier3Island => 3,
+            Self::Tier4Authority => 4,
+        }
+    }
+
+    pub const fn meets(self, minimum: Self) -> bool {
+        self.ordinal() >= minimum.ordinal()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTrainingThroughputBand {
+    #[default]
+    Unknown,
+    Low,
+    Medium,
+    High,
+    Island,
+}
+
+impl ProviderTrainingThroughputBand {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Island => "island",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTrainingLeaseReliabilityClass {
+    #[default]
+    Unknown,
+    Unproven,
+    Steady,
+    Strong,
+}
+
+impl ProviderTrainingLeaseReliabilityClass {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Unproven => "unproven",
+            Self::Steady => "steady",
+            Self::Strong => "strong",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTrainingReplayCapability {
+    #[default]
+    None,
+    ShortWindow,
+    FullWindow,
+}
+
+impl ProviderTrainingReplayCapability {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::ShortWindow => "short_window",
+            Self::FullWindow => "full_window",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTrainingArtifactUploadLatencyClass {
+    #[default]
+    Unknown,
+    Slow,
+    Moderate,
+    Fast,
+}
+
+impl ProviderTrainingArtifactUploadLatencyClass {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Slow => "slow",
+            Self::Moderate => "moderate",
+            Self::Fast => "fast",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderTrainingAcceleratorInventoryEntry {
+    pub backend_family: String,
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<String>,
+    pub accelerator_count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_per_accelerator_gb: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderTrainingCapabilityTierProfile {
+    #[serde(default)]
+    pub tier: ProviderTrainingCapabilityTier,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backend_families: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accelerator_inventory: Vec<ProviderTrainingAcceleratorInventoryEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_floor_gb: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_memory_gb: Option<u32>,
+    #[serde(default)]
+    pub throughput_band: ProviderTrainingThroughputBand,
+    #[serde(default)]
+    pub lease_reliability: ProviderTrainingLeaseReliabilityClass,
+    #[serde(default)]
+    pub replay_capability: ProviderTrainingReplayCapability,
+    #[serde(default)]
+    pub artifact_upload_latency_class: ProviderTrainingArtifactUploadLatencyClass,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderAdapterTrainingMatchRequest {
     pub training_run_id: String,

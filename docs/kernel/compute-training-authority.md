@@ -315,6 +315,30 @@ The important rule is simple:
   set for that window, so one authority record can move from provisional window
   truth to accepted-outcome-linked truth without inventing parallel local state
 
+### Admitted training nodes and scheduler projection
+
+Outside the kernel registry objects, Nexus also persists one admitted-node
+read model for the training scheduler and public operator surfaces.
+
+Each admitted training node now preserves:
+
+- retained role claims and allowed networks
+- contributor-availability contract fields
+- one capability-tier profile with:
+  - capability tier (`tier0_presence` through `tier4_authority`)
+  - backend families and accelerator inventory
+  - memory floor and available memory
+  - throughput band
+  - lease reliability class
+  - replay capability
+  - artifact upload latency class
+- retained build and environment identity
+- last observed runtime, lease, heartbeat, and settlement destination state
+
+That projection is intentionally scheduler-readable. Nexus can match nodes
+against run requirements without reverse-engineering raw host telemetry from
+opaque metadata blobs or relay-only side channels.
+
 ## HTTP Authority Surface
 
 Nexus now exposes:
