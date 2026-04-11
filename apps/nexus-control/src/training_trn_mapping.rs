@@ -13,9 +13,9 @@ use serde_json::{Value, json};
 
 use super::{
     ComputeAcceptedOutcomePublicationSource, ComputeAdapterContributionOutcome,
-    ComputeTrainingWindowPublicationSource, TrainingTrnChallengeBinding,
-    TrainingTrnNetworkContractSource, canonical_challenge_status, canonical_challenge_verdict,
-    training_trn_closeout_status, training_trn_network_status,
+    ComputeAdapterTrainingWindow, ComputeTrainingWindowPublicationSource,
+    TrainingTrnChallengeBinding, TrainingTrnNetworkContractSource, canonical_challenge_status,
+    canonical_challenge_verdict, training_trn_closeout_status, training_trn_network_status,
 };
 
 pub(super) fn event_template_and_fingerprint(
@@ -53,6 +53,41 @@ fn push_optional_tag(tags: &mut Vec<Vec<String>>, key: &str, value: &str) {
     }
 }
 
+fn push_optional_u64_tag(tags: &mut Vec<Vec<String>>, key: &str, value: Option<u64>) {
+    if let Some(value) = value {
+        tags.push(vec![key.to_string(), value.to_string()]);
+    }
+}
+
+fn trn_sync_profile(
+    work_class: openagents_kernel_core::compute::ComputeTrainingWorkClass,
+) -> Option<&'static str> {
+    match work_class {
+        openagents_kernel_core::compute::ComputeTrainingWorkClass::GroupedReplicaStageExecution
+        | openagents_kernel_core::compute::ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => {
+            Some("diloco")
+        }
+        _ => None,
+    }
+}
+
+fn promotion_state(window: &super::ComputeTrainingWindowPublicationSource) -> Option<&'static str> {
+    if window.window.promoted_checkpoint_ref.is_some()
+        || matches!(
+            window.window.promotion_disposition,
+            Some(openagents_kernel_core::compute::ComputeAdapterPromotionDisposition::Promoted)
+        )
+    {
+        Some("accepted")
+    } else if window.window.accepted_aggregate_id.is_some()
+        || window.window.aggregated_delta_digest.is_some()
+    {
+        Some("candidate")
+    } else {
+        None
+    }
+}
+
 pub(super) fn network_contract_event(
     source: &TrainingTrnNetworkContractSource,
 ) -> Result<TrainingNetworkContractEvent, String> {
@@ -81,13 +116,25 @@ pub(super) fn network_contract_event(
         model_family: None,
         window_cadence: None,
         roles: Vec::new(),
-        profiles: Vec::new(),
+        profiles: source.sync_profiles.iter().cloned().collect(),
         address_refs: Vec::new(),
         extra_tags: {
             let mut tags = vec![vec![
                 "class".to_string(),
                 "training_network_contract".to_string(),
             ]];
+            for sync_profile in &source.sync_profiles {
+                tags.push(vec!["sync_profile".to_string(), sync_profile.clone()]);
+            }
+            for aggregation_rule in &source.aggregation_rules {
+                tags.push(vec!["aggregation_rule".to_string(), aggregation_rule.clone()]);
+            }
+            for aggregation_weight_basis in &source.aggregation_weight_bases {
+                tags.push(vec![
+                    "aggregation_weight".to_string(),
+                    aggregation_weight_basis.clone(),
+                ]);
+            }
             for backend_family in &source.backend_families {
                 tags.push(vec!["backend".to_string(), backend_family.clone()]);
             }
@@ -120,6 +167,9 @@ pub(super) fn window_event(
             source.window.replica_type.label().to_string(),
         ],
     ];
+    if let Some(sync_profile) = trn_sync_profile(source.window.work_class) {
+        extra_tags.push(vec!["sync_profile".to_string(), sync_profile.to_string()]);
+    }
     if let Some(round_index) = source.window.round_index {
         extra_tags.push(vec!["round".to_string(), round_index.to_string()]);
     }
@@ -155,6 +205,9 @@ pub(super) fn window_event(
             promoted_checkpoint_ref.clone(),
         ]);
     }
+    if let Some(promotion_state) = promotion_state(source) {
+        extra_tags.push(vec!["promotion".to_string(), promotion_state.to_string()]);
+    }
     push_optional_tag(&mut extra_tags, "backend", metadata.backend_family.as_str());
     push_optional_tag(
         &mut extra_tags,
@@ -187,6 +240,7 @@ pub(super) fn window_event(
             "status": source.window.status.label(),
             "work_class": source.window.work_class.label(),
             "replica_type": source.window.replica_type.label(),
+            "sync_profile": trn_sync_profile(source.window.work_class),
             "round_index": source.window.round_index,
             "base_checkpoint_ref": source.window.base_checkpoint_ref,
             "planned_local_step_count": source.window.planned_local_step_count,
@@ -198,6 +252,7 @@ pub(super) fn window_event(
             "aggregated_delta_digest": source.window.aggregated_delta_digest,
             "accepted_aggregate_id": source.window.accepted_aggregate_id,
             "promoted_checkpoint_ref": source.window.promoted_checkpoint_ref,
+            "promotion_state": promotion_state(source),
             "accepted_outcome_id": source.window.accepted_outcome_id,
             "kernel_object_id": source.window.window_id,
             "kernel_receipt_ids": vec![source.receipt_id.clone()],
@@ -228,6 +283,9 @@ pub(super) fn window_receipt_event(
         "replica_type".to_string(),
         source.window.replica_type.label().to_string(),
     ]);
+    if let Some(sync_profile) = trn_sync_profile(source.window.work_class) {
+        extra_tags.push(vec!["sync_profile".to_string(), sync_profile.to_string()]);
+    }
     if let Some(round_index) = source.window.round_index {
         extra_tags.push(vec!["round".to_string(), round_index.to_string()]);
     }
@@ -254,6 +312,9 @@ pub(super) fn window_receipt_event(
             aggregation_weight_basis.clone(),
         ]);
     }
+    if let Some(promotion_state) = promotion_state(source) {
+        extra_tags.push(vec!["promotion".to_string(), promotion_state.to_string()]);
+    }
     push_optional_tag(&mut extra_tags, "backend", metadata.backend_family.as_str());
     push_optional_tag(
         &mut extra_tags,
@@ -273,6 +334,7 @@ pub(super) fn window_receipt_event(
             "status": status,
             "work_class": source.window.work_class.label(),
             "replica_type": source.window.replica_type.label(),
+            "sync_profile": trn_sync_profile(source.window.work_class),
             "round_index": source.window.round_index,
             "base_checkpoint_ref": source.window.base_checkpoint_ref,
             "planned_local_step_count": source.window.planned_local_step_count,
@@ -280,6 +342,7 @@ pub(super) fn window_receipt_event(
             "aggregation_weight_basis": source.window.aggregation_weight_basis,
             "accepted_aggregate_id": source.window.accepted_aggregate_id,
             "promoted_checkpoint_ref": source.window.promoted_checkpoint_ref,
+            "promotion_state": promotion_state(source),
             "kernel_object_id": source.window.window_id,
             "kernel_receipt_ids": vec![source.receipt_id.clone()],
         }),
@@ -337,6 +400,240 @@ pub(super) fn replay_required_receipt_event(
         ],
     }
     .normalize()
+}
+
+pub(super) fn local_update_locator_event(
+    contribution: &ComputeAdapterContributionOutcome,
+    window: &ComputeAdapterTrainingWindow,
+    network_id: &str,
+    window_receipt_id: &str,
+) -> TrainingArtifactLocatorEvent {
+    let mut extra_tags = vec![
+        vec!["run".to_string(), contribution.training_run_id.clone()],
+        vec![
+            "base_checkpoint".to_string(),
+            contribution.base_checkpoint_ref.clone(),
+        ],
+    ];
+    if let Some(sync_profile) = trn_sync_profile(window.work_class) {
+        extra_tags.push(vec!["sync_profile".to_string(), sync_profile.to_string()]);
+    }
+    if let Some(round_index) = window.round_index {
+        extra_tags.push(vec!["round".to_string(), round_index.to_string()]);
+    }
+    push_optional_u64_tag(
+        &mut extra_tags,
+        "local_steps",
+        contribution.local_step_count,
+    );
+    push_optional_u64_tag(&mut extra_tags, "tokens", contribution.consumed_token_count);
+    push_optional_u64_tag(
+        &mut extra_tags,
+        "examples",
+        contribution.consumed_example_count,
+    );
+    push_optional_tag(
+        &mut extra_tags,
+        "aggregation_weight",
+        contribution
+            .aggregation_weight_basis
+            .as_deref()
+            .unwrap_or_default(),
+    );
+    push_optional_u64_tag(
+        &mut extra_tags,
+        "weight",
+        contribution.aggregation_weight_value,
+    );
+    TrainingArtifactLocatorEvent {
+        identifier: contribution.artifact_id.clone(),
+        network_id: network_id.to_string(),
+        status: contribution.validator_disposition.label().to_string(),
+        content: json!({
+            "network_id": network_id,
+            "training_run_id": contribution.training_run_id,
+            "window_id": contribution.window_id,
+            "contribution_id": contribution.contribution_id,
+            "artifact_role": "local_update",
+            "sync_profile": trn_sync_profile(window.work_class),
+            "work_class": contribution.work_class.label(),
+            "replica_type": contribution.replica_type.label(),
+            "base_checkpoint_id": contribution.base_checkpoint_ref,
+            "round_index": window.round_index,
+            "local_step_count": contribution.local_step_count,
+            "consumed_token_count": contribution.consumed_token_count,
+            "consumed_example_count": contribution.consumed_example_count,
+            "aggregation_weight_basis": contribution.aggregation_weight_basis,
+            "aggregation_weight_value": contribution.aggregation_weight_value,
+            "validator_disposition": contribution.validator_disposition.label(),
+            "kernel_object_id": contribution.contribution_id,
+            "kernel_receipt_ids": vec![window_receipt_id],
+        }),
+        artifact_id: Some(contribution.artifact_id.clone()),
+        checkpoint_id: None,
+        manifest_digest: Some(contribution.manifest_digest.clone()),
+        file_digest: Some(contribution.object_digest.clone()),
+        url_hint: None,
+        artifact_class: Some("local_update".to_string()),
+        window_id: Some(contribution.window_id.clone()),
+        policy_revision: Some(contribution.source_policy_revision.revision_id.clone()),
+        reason_codes: Vec::new(),
+        address_refs: Vec::new(),
+        extra_tags,
+    }
+    .normalize()
+}
+
+pub(super) fn aggregate_locator_event(
+    source: &super::ComputeTrainingWindowPublicationSource,
+    contributions: &[ComputeAdapterContributionOutcome],
+) -> Option<TrainingArtifactLocatorEvent> {
+    let aggregate_id = source
+        .window
+        .accepted_aggregate_id
+        .clone()
+        .unwrap_or_else(|| format!("aggregate.{}", source.window.window_id));
+    let file_digest = source.window.aggregated_delta_digest.clone()?;
+    let admitted_update_count = contributions
+        .iter()
+        .filter(|contribution| contribution.accepted_for_aggregation)
+        .count();
+    let admitted_weight_total = contributions
+        .iter()
+        .filter(|contribution| contribution.accepted_for_aggregation)
+        .filter_map(|contribution| contribution.aggregation_weight_value)
+        .sum::<u64>();
+    let status = promotion_state(source).unwrap_or("candidate").to_string();
+    let mut extra_tags = vec![
+        vec!["run".to_string(), source.window.training_run_id.clone()],
+        vec!["aggregate".to_string(), aggregate_id.clone()],
+        vec![
+            "base_checkpoint".to_string(),
+            source.window.base_checkpoint_ref.clone(),
+        ],
+    ];
+    if let Some(sync_profile) = trn_sync_profile(source.window.work_class) {
+        extra_tags.push(vec!["sync_profile".to_string(), sync_profile.to_string()]);
+    }
+    if let Some(round_index) = source.window.round_index {
+        extra_tags.push(vec!["round".to_string(), round_index.to_string()]);
+    }
+    push_optional_tag(
+        &mut extra_tags,
+        "aggregation_rule",
+        source
+            .window
+            .aggregation_rule
+            .as_deref()
+            .unwrap_or_default(),
+    );
+    push_optional_tag(
+        &mut extra_tags,
+        "aggregation_weight",
+        source
+            .window
+            .aggregation_weight_basis
+            .as_deref()
+            .unwrap_or_default(),
+    );
+    extra_tags.push(vec!["promotion".to_string(), status.clone()]);
+    Some(
+        TrainingArtifactLocatorEvent {
+            identifier: aggregate_id.clone(),
+            network_id: super::training_window_metadata_from_value(&source.window.metadata)
+                .ok()?
+                .network_id,
+            status: status.clone(),
+            content: json!({
+                "training_run_id": source.window.training_run_id,
+                "window_id": source.window.window_id,
+                "artifact_role": "aggregate",
+                "sync_profile": trn_sync_profile(source.window.work_class),
+                "base_checkpoint_id": source.window.base_checkpoint_ref,
+                "round_index": source.window.round_index,
+                "aggregation_rule": source.window.aggregation_rule,
+                "aggregation_weight_basis": source.window.aggregation_weight_basis,
+                "admitted_update_count": admitted_update_count,
+                "admitted_weight_total": admitted_weight_total,
+                "promotion_state": status,
+                "promoted_checkpoint_id": source.window.promoted_checkpoint_ref,
+                "kernel_object_id": source.window.window_id,
+                "kernel_receipt_ids": vec![source.receipt_id.clone()],
+            }),
+            artifact_id: Some(aggregate_id.clone()),
+            checkpoint_id: None,
+            manifest_digest: None,
+            file_digest: Some(file_digest),
+            url_hint: None,
+            artifact_class: Some("aggregate".to_string()),
+            window_id: Some(source.window.window_id.clone()),
+            policy_revision: Some(source.window.source_policy_revision.revision_id.clone()),
+            reason_codes: Vec::new(),
+            address_refs: Vec::new(),
+            extra_tags,
+        }
+        .normalize(),
+    )
+}
+
+pub(super) fn checkpoint_locator_event(
+    source: &super::ComputeTrainingWindowPublicationSource,
+) -> Option<TrainingArtifactLocatorEvent> {
+    let checkpoint_pointer = source.window.output_checkpoint_pointer.as_ref()?;
+    let checkpoint_id = source
+        .window
+        .promoted_checkpoint_ref
+        .clone()
+        .unwrap_or_else(|| checkpoint_pointer.checkpoint_ref.clone());
+    let status = promotion_state(source).unwrap_or("accepted").to_string();
+    let mut extra_tags = vec![
+        vec!["run".to_string(), source.window.training_run_id.clone()],
+        vec!["checkpoint".to_string(), checkpoint_id.clone()],
+        vec![
+            "base_checkpoint".to_string(),
+            source.window.base_checkpoint_ref.clone(),
+        ],
+        vec!["promotion".to_string(), status.clone()],
+    ];
+    if let Some(sync_profile) = trn_sync_profile(source.window.work_class) {
+        extra_tags.push(vec!["sync_profile".to_string(), sync_profile.to_string()]);
+    }
+    if let Some(round_index) = source.window.round_index {
+        extra_tags.push(vec!["round".to_string(), round_index.to_string()]);
+    }
+    Some(
+        TrainingArtifactLocatorEvent {
+            identifier: format!("checkpoint.{}", source.window.window_id),
+            network_id: super::training_window_metadata_from_value(&source.window.metadata)
+                .ok()?
+                .network_id,
+            status: status.clone(),
+            content: json!({
+                "training_run_id": source.window.training_run_id,
+                "window_id": source.window.window_id,
+                "artifact_role": "checkpoint",
+                "sync_profile": trn_sync_profile(source.window.work_class),
+                "base_checkpoint_id": source.window.base_checkpoint_ref,
+                "round_index": source.window.round_index,
+                "promotion_state": status,
+                "promoted_checkpoint_id": checkpoint_id,
+                "kernel_object_id": source.window.window_id,
+                "kernel_receipt_ids": vec![source.receipt_id.clone()],
+            }),
+            artifact_id: None,
+            checkpoint_id: Some(checkpoint_id),
+            manifest_digest: Some(checkpoint_pointer.manifest_digest.clone()),
+            file_digest: Some(checkpoint_pointer.pointer_digest.clone()),
+            url_hint: None,
+            artifact_class: Some("checkpoint".to_string()),
+            window_id: Some(source.window.window_id.clone()),
+            policy_revision: Some(source.window.source_policy_revision.revision_id.clone()),
+            reason_codes: Vec::new(),
+            address_refs: Vec::new(),
+            extra_tags,
+        }
+        .normalize(),
+    )
 }
 
 pub(super) fn closeout_event(
@@ -537,11 +834,12 @@ mod tests {
     };
     use openagents_kernel_core::{
         compute::{
-            ComputeAcceptedOutcome, ComputeAdapterCheckpointPointer,
-            ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow,
-            ComputeAdapterWindowStatus, ComputeCheckpointBinding, ComputeEnvironmentBinding,
-            ComputeTrainingReplicaType, ComputeTrainingRun, ComputeTrainingRunStatus,
-            ComputeTrainingSummary, ComputeTrainingWorkClass,
+            ComputeAcceptedOutcome, ComputeAdapterAggregationEligibility,
+            ComputeAdapterCheckpointPointer, ComputeAdapterContributionDisposition,
+            ComputeAdapterContributionOutcome, ComputeAdapterPromotionDisposition,
+            ComputeAdapterTrainingWindow, ComputeAdapterWindowStatus, ComputeCheckpointBinding,
+            ComputeEnvironmentBinding, ComputeTrainingReplicaType, ComputeTrainingRun,
+            ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeTrainingWorkClass,
         },
         pylon_training::PylonTrainingReputationRecord,
     };
@@ -581,6 +879,9 @@ mod tests {
             backend_families: BTreeSet::from(["cuda".to_string()]),
             environment_refs: BTreeSet::from(["env.cuda.alpha".to_string()]),
             benchmark_package_refs: BTreeSet::from(["benchmark.alpha".to_string()]),
+            sync_profiles: BTreeSet::new(),
+            aggregation_rules: BTreeSet::new(),
+            aggregation_weight_bases: BTreeSet::new(),
             statuses: BTreeSet::from(["running".to_string()]),
             training_run_ids: vec!["run.alpha".to_string()],
             kernel_receipt_ids: vec!["receipt.network.alpha".to_string()],
@@ -874,22 +1175,15 @@ mod tests {
                 .iter()
                 .any(|tag| tag == &vec!["round".to_string(), "1".to_string()])
         );
-        assert!(
-            window.extra_tags.iter().any(|tag| {
-                tag == &vec![
-                    "base_checkpoint".to_string(),
-                    "checkpoint://run.alpha/0001".to_string(),
-                ]
-            })
-        );
-        assert!(
-            window.extra_tags.iter().any(|tag| {
-                tag == &vec![
-                    "aggregation_rule".to_string(),
-                    "weighted_avg".to_string(),
-                ]
-            })
-        );
+        assert!(window.extra_tags.iter().any(|tag| {
+            tag == &vec![
+                "base_checkpoint".to_string(),
+                "checkpoint://run.alpha/0001".to_string(),
+            ]
+        }));
+        assert!(window.extra_tags.iter().any(|tag| {
+            tag == &vec!["aggregation_rule".to_string(), "weighted_avg".to_string()]
+        }));
         assert_eq!(
             window
                 .content
@@ -1017,6 +1311,122 @@ mod tests {
                 .extra_tags
                 .iter()
                 .any(|tag| tag == &vec!["contribution".to_string(), "contrib.alpha".to_string()])
+        );
+
+        let mut diloco_window_source = training_window_source_fixture();
+        diloco_window_source.window.work_class =
+            ComputeTrainingWorkClass::FullIslandLocalUpdateTraining;
+        diloco_window_source.window.replica_type = ComputeTrainingReplicaType::Island;
+        diloco_window_source.window.promotion_disposition =
+            Some(ComputeAdapterPromotionDisposition::Promoted);
+        diloco_window_source.window.promoted_checkpoint_ref =
+            Some("checkpoint://run.alpha/0002".to_string());
+        diloco_window_source.window.output_checkpoint_pointer =
+            Some(ComputeAdapterCheckpointPointer {
+                scope_kind: "run".to_string(),
+                scope_id: "run.alpha".to_string(),
+                checkpoint_family: "checkpoint.family.alpha".to_string(),
+                checkpoint_ref: "checkpoint://run.alpha/0002".to_string(),
+                manifest_digest: "sha256:checkpoint-manifest-beta".to_string(),
+                updated_at_ms: 1_762_491_250_000,
+                pointer_digest: "sha256:pointer-beta".to_string(),
+            });
+        let accepted_contribution = ComputeAdapterContributionOutcome {
+            contribution_id: "contrib.accepted.alpha".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            stage_id: "stage.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            contributor_set_revision_id: "contributors.rev1".to_string(),
+            assignment_id: "assign.node01.window0001".to_string(),
+            contributor_node_id: "node-alpha".to_string(),
+            worker_id: "worker-alpha".to_string(),
+            validator_policy_ref: "policy.validator.alpha".to_string(),
+            work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+            replica_type: ComputeTrainingReplicaType::Island,
+            base_checkpoint_ref: "checkpoint://run.alpha/0001".to_string(),
+            adapter_target_id: String::new(),
+            adapter_family: String::new(),
+            base_model_ref: "model://base.alpha".to_string(),
+            adapter_format: String::new(),
+            dataset_slice: openagents_kernel_core::compute::ComputeAdapterDatasetSlice::default(),
+            source_policy_revision: openagents_kernel_core::compute::ComputeAdapterPolicyRevision {
+                policy_family: "policy.family.alpha".to_string(),
+                revision_id: "policy.rev.alpha".to_string(),
+                revision_number: Some(1),
+                policy_digest: "sha256:policy-alpha".to_string(),
+                parent_revision_id: None,
+                produced_at_ms: 1_762_491_200_000,
+            },
+            source_checkpoint_pointer: ComputeAdapterCheckpointPointer {
+                scope_kind: "run".to_string(),
+                scope_id: "run.alpha".to_string(),
+                checkpoint_family: "checkpoint.family.alpha".to_string(),
+                checkpoint_ref: "checkpoint://run.alpha/0001".to_string(),
+                manifest_digest: "sha256:checkpoint-manifest-alpha".to_string(),
+                updated_at_ms: 1_762_491_200_000,
+                pointer_digest: "sha256:pointer-alpha".to_string(),
+            },
+            submission_receipt_digest: "sha256:submit-accepted-alpha".to_string(),
+            artifact_id: "artifact.local-update.alpha".to_string(),
+            manifest_digest: "sha256:manifest-accepted-alpha".to_string(),
+            object_digest: "sha256:object-accepted-alpha".to_string(),
+            artifact_receipt_digest: "sha256:artifact-receipt-accepted-alpha".to_string(),
+            provenance_bundle_digest: "sha256:prov-accepted-alpha".to_string(),
+            security_receipt_digest: "sha256:sec-accepted-alpha".to_string(),
+            replay_receipt_digest: None,
+            validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+            validation_reason_codes: Vec::new(),
+            validator_receipt_digest: "sha256:validator-accepted-alpha".to_string(),
+            aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+            accepted_for_aggregation: true,
+            local_step_count: Some(64),
+            consumed_token_count: Some(131_072),
+            consumed_example_count: Some(256),
+            aggregation_weight_basis: Some("tokens".to_string()),
+            aggregation_weight_value: Some(131_072),
+            aggregation_weight_bps: Some(10_000),
+            promotion_receipt_digest: None,
+            recorded_at_ms: 1_762_491_240_000,
+            metadata: json!({}),
+        };
+        let local_update = local_update_locator_event(
+            &accepted_contribution,
+            &diloco_window_source.window,
+            "trainnet.alpha",
+            "receipt.window.alpha",
+        );
+        assert_eq!(local_update.artifact_class.as_deref(), Some("local_update"));
+        assert!(
+            local_update
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["sync_profile".to_string(), "diloco".to_string()])
+        );
+        assert!(
+            local_update
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["weight".to_string(), "131072".to_string()])
+        );
+
+        let aggregate = aggregate_locator_event(
+            &diloco_window_source,
+            std::slice::from_ref(&accepted_contribution),
+        )
+        .expect("aggregate locator");
+        assert_eq!(aggregate.artifact_class.as_deref(), Some("aggregate"));
+        assert!(
+            aggregate
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["promotion".to_string(), "accepted".to_string()])
+        );
+
+        let checkpoint = checkpoint_locator_event(&diloco_window_source).expect("checkpoint");
+        assert_eq!(checkpoint.artifact_class.as_deref(), Some("checkpoint"));
+        assert_eq!(
+            checkpoint.checkpoint_id.as_deref(),
+            Some("checkpoint://run.alpha/0002")
         );
 
         let closeout = closeout_event(&accepted_outcome_source_fixture()).expect("closeout");

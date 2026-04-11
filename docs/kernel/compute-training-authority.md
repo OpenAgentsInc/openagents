@@ -400,3 +400,7 @@ Psionic still owns the runtime truth for:
 
 Kernel and Nexus now own the canonical authority publication layer that turns
 those runtime results into durable policy, receipt, and accepted-outcome truth.
+That public lane now includes typed TRN `kind:39520` artifact locators for
+accepted local updates, reconciled aggregates, and promoted checkpoints so the
+relay-visible control plane carries round lineage and artifact roles without
+embedding the underlying training bytes.

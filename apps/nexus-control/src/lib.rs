@@ -61,11 +61,11 @@ use openagents_kernel_core::compute::{
     ComputeEvaluationRunStatus, ComputeProductStatus, ComputeRegistryStatus,
     ComputeSyntheticDataJobStatus, ComputeTrainingRun, ComputeTrainingRunStatus,
     ComputeTrainingSummary, ComputeTrainingWorkClass, ComputeValidatorChallengeContext,
-    ComputeValidatorChallengeFailureCode,
-    ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
-    ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
-    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
-    ComputeValidatorChallengeVerdict, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
+    ComputeValidatorChallengeFailureCode, ComputeValidatorChallengeLease,
+    ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
+    ComputeValidatorChallengeResult, ComputeValidatorChallengeSnapshot,
+    ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict, DeliveryProofStatus,
+    StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::data::{
@@ -1368,6 +1368,8 @@ struct TrainingTrnPublicationReport {
     receipts: Vec<TrainingTrnPublicationEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     closeouts: Vec<TrainingTrnPublicationEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    artifact_locators: Vec<TrainingTrnPublicationEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     score_locators: Vec<TrainingTrnPublicationEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -5000,18 +5002,13 @@ async fn plan_training_window(
                 "compute_adapter_format_missing",
             )?;
         } else {
-            request.adapter_target_id = normalize_optional_field(Some(
-                request.adapter_target_id.as_str(),
-            ))
-            .unwrap_or_default();
-            request.adapter_family = normalize_optional_field(Some(
-                request.adapter_family.as_str(),
-            ))
-            .unwrap_or_default();
-            request.adapter_format = normalize_optional_field(Some(
-                request.adapter_format.as_str(),
-            ))
-            .unwrap_or_default();
+            request.adapter_target_id =
+                normalize_optional_field(Some(request.adapter_target_id.as_str()))
+                    .unwrap_or_default();
+            request.adapter_family =
+                normalize_optional_field(Some(request.adapter_family.as_str())).unwrap_or_default();
+            request.adapter_format =
+                normalize_optional_field(Some(request.adapter_format.as_str())).unwrap_or_default();
         }
         let contributor_set_revision_id =
             pylon_training_membership_revision_label(scheduler_run.membership_revision);
@@ -6242,6 +6239,9 @@ struct TrainingTrnNetworkContractSource {
     backend_families: BTreeSet<String>,
     environment_refs: BTreeSet<String>,
     benchmark_package_refs: BTreeSet<String>,
+    sync_profiles: BTreeSet<String>,
+    aggregation_rules: BTreeSet<String>,
+    aggregation_weight_bases: BTreeSet<String>,
     statuses: BTreeSet<String>,
     training_run_ids: Vec<String>,
     kernel_receipt_ids: Vec<String>,
@@ -7018,6 +7018,9 @@ fn training_trn_network_sources(
                 backend_families: BTreeSet::new(),
                 environment_refs: BTreeSet::new(),
                 benchmark_package_refs: BTreeSet::new(),
+                sync_profiles: BTreeSet::new(),
+                aggregation_rules: BTreeSet::new(),
+                aggregation_weight_bases: BTreeSet::new(),
                 statuses: BTreeSet::new(),
                 training_run_ids: Vec::new(),
                 kernel_receipt_ids: Vec::new(),
@@ -7060,6 +7063,13 @@ fn training_trn_network_sources(
             entry
                 .benchmark_package_refs
                 .insert(benchmark_package_ref.clone());
+        }
+        match source.training_run.work_class {
+            ComputeTrainingWorkClass::GroupedReplicaStageExecution
+            | ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => {
+                entry.sync_profiles.insert("trn-diloco".to_string());
+            }
+            _ => {}
         }
         if let Some(initial_window_id) = metadata.initial_window_id {
             entry.initial_window_ids.insert(initial_window_id);
@@ -7430,6 +7440,10 @@ async fn publish_training_trn_state(
         .iter()
         .map(|source| (source.window.window_id.clone(), source.receipt_id.clone()))
         .collect::<HashMap<_, _>>();
+    let window_source_by_window_id = window_sources
+        .iter()
+        .map(|source| (source.window.window_id.clone(), source))
+        .collect::<HashMap<_, _>>();
     let (pool, pool_error) = match build_training_trn_relay_pool(relay_urls.as_slice()).await {
         Ok(pool) => (Some(pool), None),
         Err(error) => (None, Some(error)),
@@ -7445,6 +7459,7 @@ async fn publish_training_trn_state(
         windows: Vec::new(),
         receipts: Vec::new(),
         closeouts: Vec::new(),
+        artifact_locators: Vec::new(),
         score_locators: Vec::new(),
         reputation_labels: Vec::new(),
     };
@@ -7643,6 +7658,174 @@ async fn publish_training_trn_state(
             None,
             outcome,
         ));
+    }
+
+    for contribution in &all_contributions {
+        if contribution.validator_disposition
+            == ComputeAdapterContributionDisposition::ReplayRequired
+        {
+            continue;
+        }
+        let Some(window_source) = window_source_by_window_id.get(contribution.window_id.as_str())
+        else {
+            continue;
+        };
+        let metadata = training_window_metadata_from_value(&window_source.window.metadata)
+            .map_err(kernel_api_error)?;
+        let event = training_trn_mapping::local_update_locator_event(
+            contribution,
+            &window_source.window,
+            metadata.network_id.as_str(),
+            window_source.receipt_id.as_str(),
+        );
+        let a_ref = event
+            .coordinate(identity.public_key_hex.as_str())
+            .map_err(|error| kernel_api_error(error.to_string()))?;
+        let (template, fingerprint) =
+            training_trn_template(&nostr::TrnEvent::ArtifactLocator(event))
+                .map_err(kernel_api_error)?;
+        let outcome = publish_or_queue_training_trn_pointer(
+            &state,
+            pool.as_ref(),
+            pool_error.as_deref(),
+            &identity,
+            &mut publication_cache,
+            &mut publication_record_cache,
+            relay_urls.as_slice(),
+            format!(
+                "artifact_locator::local_update::{}",
+                contribution.contribution_id
+            ),
+            "artifact_locator",
+            contribution.contribution_id.as_str(),
+            TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+            Some(a_ref),
+            template,
+            fingerprint,
+        )
+        .await?;
+        report
+            .artifact_locators
+            .push(build_training_trn_report_entry(
+                "artifact_locator",
+                contribution.artifact_id.clone(),
+                TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+                contribution.validator_disposition.label().to_string(),
+                contribution.contribution_id.clone(),
+                vec![window_source.receipt_id.clone()],
+                metadata.network_id,
+                Some(contribution.training_run_id.clone()),
+                Some(contribution.window_id.clone()),
+                None,
+                Some("local_update".to_string()),
+                Some(contribution.object_digest.clone()),
+                None,
+                outcome,
+            ));
+    }
+
+    for source in &window_sources {
+        let contributions = all_contributions
+            .iter()
+            .filter(|contribution| contribution.window_id == source.window.window_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        if let Some(event) = training_trn_mapping::aggregate_locator_event(source, &contributions) {
+            let a_ref = event
+                .coordinate(identity.public_key_hex.as_str())
+                .map_err(|error| kernel_api_error(error.to_string()))?;
+            let aggregate_id = event.identifier.clone();
+            let status = event.status.clone();
+            let file_digest = event.file_digest.clone();
+            let network_id = event.network_id.clone();
+            let (template, fingerprint) =
+                training_trn_template(&nostr::TrnEvent::ArtifactLocator(event))
+                    .map_err(kernel_api_error)?;
+            let outcome = publish_or_queue_training_trn_pointer(
+                &state,
+                pool.as_ref(),
+                pool_error.as_deref(),
+                &identity,
+                &mut publication_cache,
+                &mut publication_record_cache,
+                relay_urls.as_slice(),
+                format!("artifact_locator::aggregate::{}", source.window.window_id),
+                "artifact_locator",
+                aggregate_id.as_str(),
+                TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+                Some(a_ref),
+                template,
+                fingerprint,
+            )
+            .await?;
+            report
+                .artifact_locators
+                .push(build_training_trn_report_entry(
+                    "artifact_locator",
+                    aggregate_id.clone(),
+                    TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+                    status,
+                    source.window.window_id.clone(),
+                    vec![source.receipt_id.clone()],
+                    network_id,
+                    Some(source.window.training_run_id.clone()),
+                    Some(source.window.window_id.clone()),
+                    None,
+                    Some("aggregate".to_string()),
+                    file_digest,
+                    None,
+                    outcome,
+                ));
+        }
+        if let Some(event) = training_trn_mapping::checkpoint_locator_event(source) {
+            let a_ref = event
+                .coordinate(identity.public_key_hex.as_str())
+                .map_err(|error| kernel_api_error(error.to_string()))?;
+            let checkpoint_id = event.checkpoint_id.clone();
+            let status = event.status.clone();
+            let file_digest = event.file_digest.clone();
+            let network_id = event.network_id.clone();
+            let (template, fingerprint) =
+                training_trn_template(&nostr::TrnEvent::ArtifactLocator(event))
+                    .map_err(kernel_api_error)?;
+            let outcome = publish_or_queue_training_trn_pointer(
+                &state,
+                pool.as_ref(),
+                pool_error.as_deref(),
+                &identity,
+                &mut publication_cache,
+                &mut publication_record_cache,
+                relay_urls.as_slice(),
+                format!("artifact_locator::checkpoint::{}", source.window.window_id),
+                "artifact_locator",
+                source.window.window_id.as_str(),
+                TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+                Some(a_ref),
+                template,
+                fingerprint,
+            )
+            .await?;
+            report
+                .artifact_locators
+                .push(build_training_trn_report_entry(
+                    "artifact_locator",
+                    checkpoint_id
+                        .clone()
+                        .unwrap_or_else(|| source.window.window_id.clone()),
+                    TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+                    status,
+                    source.window.window_id.clone(),
+                    vec![source.receipt_id.clone()],
+                    network_id,
+                    Some(source.window.training_run_id.clone()),
+                    Some(source.window.window_id.clone()),
+                    None,
+                    Some("checkpoint".to_string()),
+                    file_digest,
+                    checkpoint_id,
+                    outcome,
+                ));
+        }
     }
 
     for source in &closeout_sources {
@@ -16397,8 +16580,8 @@ mod tests {
                 work_class: ComputeTrainingWorkClass::AdapterTraining,
                 replica_type: ComputeTrainingReplicaType::SingleNode,
                 round_index: Some(7),
-                base_checkpoint_ref:
-                    "checkpoint://decoder/train.math.basic.client/promotion".to_string(),
+                base_checkpoint_ref: "checkpoint://decoder/train.math.basic.client/promotion"
+                    .to_string(),
                 planned_local_step_count: Some(64),
                 aggregation_rule: Some("weighted_avg".to_string()),
                 aggregation_weight_basis: Some("tokens".to_string()),
@@ -16454,8 +16637,8 @@ mod tests {
                     validator_policy_ref: "policy://validator/training".to_string(),
                     work_class: ComputeTrainingWorkClass::AdapterTraining,
                     replica_type: ComputeTrainingReplicaType::SingleNode,
-                    base_checkpoint_ref:
-                        "checkpoint://decoder/train.math.basic.client/promotion".to_string(),
+                    base_checkpoint_ref: "checkpoint://decoder/train.math.basic.client/promotion"
+                        .to_string(),
                     adapter_target_id: "adapter.target.client".to_string(),
                     adapter_family: "openagents.adapter.reference".to_string(),
                     base_model_ref: "model://gpt-oss-20b".to_string(),
@@ -16503,8 +16686,8 @@ mod tests {
                     validator_policy_ref: "policy://validator/training".to_string(),
                     work_class: ComputeTrainingWorkClass::AdapterTraining,
                     replica_type: ComputeTrainingReplicaType::SingleNode,
-                    base_checkpoint_ref:
-                        "checkpoint://decoder/train.math.basic.client/promotion".to_string(),
+                    base_checkpoint_ref: "checkpoint://decoder/train.math.basic.client/promotion"
+                        .to_string(),
                     adapter_target_id: "adapter.target.client".to_string(),
                     adapter_family: "openagents.adapter.reference".to_string(),
                     base_model_ref: "model://gpt-oss-20b".to_string(),
@@ -23519,6 +23702,7 @@ mod tests {
         assert_eq!(second_report.windows.len(), 1);
         assert_eq!(second_report.closeouts.len(), 1);
         assert_eq!(second_report.score_locators.len(), 2);
+        assert_eq!(second_report.artifact_locators.len(), 2);
         assert_eq!(second_report.reputation_labels.len(), 7);
         assert!(
             second_report
@@ -23547,6 +23731,23 @@ mod tests {
                 .all(|entry| entry.publication_state == "published"
                     && entry.status == "rewarded"
                     && !entry.kernel_receipt_ids.is_empty())
+        );
+        assert!(
+            second_report
+                .artifact_locators
+                .iter()
+                .all(|entry| entry.publication_state == "published")
+        );
+        assert!(second_report.artifact_locators.iter().any(
+            |entry| entry.artifact_class.as_deref() == Some("local_update")
+                && entry.object_digest.as_deref() == Some("sha256:object:contrib.window.trn.alpha")
+        ));
+        assert!(
+            second_report
+                .artifact_locators
+                .iter()
+                .any(|entry| entry.artifact_class.as_deref() == Some("aggregate")
+                    && entry.object_digest.as_deref() == Some("sha256:aggregate-window-trn-alpha"))
         );
         assert!(
             second_report
@@ -23594,6 +23795,23 @@ mod tests {
             matches!(
                 event,
                 nostr::TrnEvent::ArtifactLocator(locator)
+                    if locator.artifact_class.as_deref() == Some("local_update")
+                        && locator.identifier == "artifact.contrib.window.trn.alpha"
+            )
+        }));
+        assert!(second_trn_events.iter().any(|event| {
+            matches!(
+                event,
+                nostr::TrnEvent::ArtifactLocator(locator)
+                    if locator.artifact_class.as_deref() == Some("aggregate")
+                        && locator.file_digest.as_deref()
+                            == Some("sha256:aggregate-window-trn-alpha")
+            )
+        }));
+        assert!(second_trn_events.iter().any(|event| {
+            matches!(
+                event,
+                nostr::TrnEvent::ArtifactLocator(locator)
                     if locator.artifact_class.as_deref() == Some("score")
                         && locator.identifier.starts_with("challenge.")
             )
@@ -23606,6 +23824,7 @@ mod tests {
                 .iter()
                 .chain(third_report.windows.iter())
                 .chain(third_report.receipts.iter())
+                .chain(third_report.artifact_locators.iter())
                 .chain(third_report.closeouts.iter())
                 .chain(third_report.score_locators.iter())
                 .chain(third_report.reputation_labels.iter())
@@ -23615,11 +23834,25 @@ mod tests {
 
         {
             let store = state.store.read().expect("read store");
-            assert_eq!(store.kernel.list_training_trn_publications().len(), 15);
+            assert_eq!(store.kernel.list_training_trn_publications().len(), 17);
             assert!(
                 store
                     .kernel
                     .get_training_trn_publication("network_contract::trainnet.alpha")
+                    .is_some()
+            );
+            assert!(
+                store
+                    .kernel
+                    .get_training_trn_publication(
+                        "artifact_locator::local_update::contrib.window.trn.alpha"
+                    )
+                    .is_some()
+            );
+            assert!(
+                store
+                    .kernel
+                    .get_training_trn_publication("artifact_locator::aggregate::window.0001")
                     .is_some()
             );
             assert!(
