@@ -562,8 +562,28 @@ pub fn init_state(
             .await
             .context("failed to find compatible adapter")?;
 
+        let adapter_info = adapter.get_info();
+        tracing::info!(
+            name = adapter_info.name,
+            vendor = adapter_info.vendor,
+            device = adapter_info.device,
+            device_type = ?adapter_info.device_type,
+            driver = adapter_info.driver,
+            driver_info = adapter_info.driver_info,
+            backend = ?adapter_info.backend,
+            "selected wgpu adapter",
+        );
+
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("autopilot-desktop-device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: adapter.limits(),
+                    memory_hints: wgpu::MemoryHints::default(),
+                },
+                None,
+            )
             .await
             .context("failed to create device")?;
 
