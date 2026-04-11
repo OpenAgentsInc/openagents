@@ -13,9 +13,9 @@ pub use openagents_provider_substrate::{
     ProviderAdapterTrainingSettlementTrigger, ProviderAdvertisedProduct,
     ProviderAppleAdapterHostingAvailability, ProviderAppleAdapterHostingEntry,
     ProviderAvailability, ProviderBackendHealth, ProviderBackendKind, ProviderBlocker,
-    ProviderComputeProduct, ProviderFailureClass, ProviderInventoryControls, ProviderInventoryRow,
-    ProviderMode, ProviderSandboxAvailability, ProviderSandboxDetectionConfig,
-    derive_provider_products, detect_sandbox_supply,
+    ProviderComputeProduct, ProviderDesiredMode, ProviderFailureClass, ProviderInventoryControls,
+    ProviderInventoryRow, ProviderMode, ProviderSandboxAvailability,
+    ProviderSandboxDetectionConfig, derive_provider_products, detect_sandbox_supply,
 };
 use psionic_apple_fm::{
     AppleFmAdapterInventoryEntry, AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,

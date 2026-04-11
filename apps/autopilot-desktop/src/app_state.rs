@@ -25042,8 +25042,8 @@ fn labor_tool_evidence_ref(
 }
 
 pub use crate::state::provider_runtime::{
-    EarnFailureClass, ProviderBlocker, ProviderInventoryProductToggleTarget, ProviderMode,
-    ProviderRuntimeState,
+    EarnFailureClass, ProviderBlocker, ProviderDesiredMode, ProviderInventoryProductToggleTarget,
+    ProviderMode, ProviderRuntimeState,
 };
 #[allow(unused_imports)]
 pub use crate::state::{
@@ -27213,6 +27213,14 @@ pub struct EarningsScoreboardState {
     pub avg_wallet_confirmation_latency_seconds: Option<u64>,
     pub stale_after: Duration,
     pub last_refreshed_at: Option<Instant>,
+    /// Pylon's persisted `desired_mode` from the most recent successful
+    /// `refresh_from_pylon_status` call. `None` until the first refresh has
+    /// run successfully (or after `mark_pylon_authority_unavailable` clears
+    /// it). Drives the `ProviderBlocker::PylonProviderOffline` gate so that
+    /// autopilot will not let the operator click GO ONLINE while the Pylon
+    /// provider lane is configured to drop incoming NIP-90 requests with
+    /// `provider_not_online`.
+    pub pylon_desired_mode: Option<ProviderDesiredMode>,
     scroll_offset_px: f32,
     tracked_online_since: Option<Instant>,
     first_completed_since_online: Option<Instant>,
@@ -27237,6 +27245,7 @@ impl Default for EarningsScoreboardState {
             avg_wallet_confirmation_latency_seconds: None,
             stale_after: Duration::from_secs(12),
             last_refreshed_at: None,
+            pylon_desired_mode: None,
             scroll_offset_px: 0.0,
             tracked_online_since: None,
             first_completed_since_online: None,
@@ -27372,6 +27381,14 @@ impl EarningsScoreboardState {
         self.tracked_online_since = None;
         self.first_completed_since_online = None;
         self.first_job_latency_seconds = None;
+        // Pylon's `desired_mode` lives at the top of `ProviderStatusResponse`,
+        // separate from the persisted snapshot. Capture it on every successful
+        // status load so the `PylonProviderOffline` gate in `provider_blockers()`
+        // can see whether the operator has flipped pylon online via the TUI or
+        // `pylon provider run`. The field is cleared back to `None` by
+        // `mark_pylon_authority_unavailable` so a stale "online" reading from a
+        // previous refresh cannot mask a now-unreachable Pylon authority.
+        self.pylon_desired_mode = Some(status.desired_mode);
 
         let Some(snapshot) = status.snapshot.as_ref() else {
             self.mark_pylon_authority_unavailable(
@@ -27448,6 +27465,7 @@ impl EarningsScoreboardState {
         self.completion_ratio_bps = None;
         self.payout_success_ratio_bps = None;
         self.avg_wallet_confirmation_latency_seconds = None;
+        self.pylon_desired_mode = None;
         self.tracked_online_since = None;
         self.first_completed_since_online = None;
     }
@@ -28336,6 +28354,21 @@ impl RenderState {
         // explicit `is_ready()`, not on the absence of an error.
         if self.earnings_scoreboard.load_state != PaneLoadState::Ready {
             blockers.push(ProviderBlocker::PylonAuthorityUnavailable);
+        } else if self.earnings_scoreboard.pylon_desired_mode != Some(ProviderDesiredMode::Online) {
+            // Even when the Pylon authority is reachable and reporting a clean
+            // snapshot, pylon's NIP-90 runtime drops every incoming job request
+            // with `provider_not_online` whenever its persisted `desired_mode`
+            // is not `Online` (see `apps/pylon/src/nip90_runtime.rs`). Going
+            // online from autopilot in that state produces a contradictory
+            // surface where Mission Control reads "ready to earn" but the
+            // actual job pipeline silently rejects every request. The
+            // operator must flip Pylon online via the `pylon` TUI or
+            // `pylon provider run` before autopilot's go-online is meaningful.
+            // Only fires when the scoreboard is `Ready`, so the
+            // `PylonAuthorityUnavailable` blocker above takes precedence for
+            // the missing-store case (avoids stacking two pylon blockers for
+            // the same root cause).
+            blockers.push(ProviderBlocker::PylonProviderOffline);
         }
         if self.data_seller.derived_nip90_profile().is_some()
             || self.data_buyer.requires_nip90_response_tracking()

@@ -20776,6 +20776,10 @@ mod tests {
             scoreboard.load_state,
             crate::app_state::PaneLoadState::Ready
         );
+        assert_eq!(
+            scoreboard.pylon_desired_mode,
+            Some(openagents_provider_substrate::ProviderDesiredMode::Online)
+        );
         assert_eq!(scoreboard.sats_today, 21);
         assert_eq!(scoreboard.sats_this_month, 21);
         assert_eq!(scoreboard.lifetime_sats, 84);
@@ -20792,6 +20796,105 @@ mod tests {
                 .as_deref()
                 .is_some_and(|action| action.contains("Pylon"))
         );
+    }
+
+    #[test]
+    fn refresh_earnings_scoreboard_captures_pylon_desired_mode_offline() {
+        // Mirrors `refresh_earnings_scoreboard_reads_authoritative_pylon_store`
+        // but persists the store with `desired_mode = Offline` and a healthy
+        // snapshot. Confirms that `EarningsScoreboardState.pylon_desired_mode`
+        // is populated from `ProviderStatusResponse.desired_mode` so the
+        // `ProviderBlocker::PylonProviderOffline` gate in
+        // `RenderState::provider_blockers()` can see the operator-configured
+        // offline state even when the Pylon authority itself is reachable
+        // (`load_state == Ready`).
+        let temp = tempfile::tempdir().expect("tempdir");
+        let db_path = temp.path().join("provider-admin.sqlite");
+        let listen_addr = "127.0.0.1:0"
+            .parse()
+            .expect("static provider admin listen addr");
+        let config =
+            openagents_provider_substrate::ProviderAdminConfig::new(db_path.clone(), listen_addr);
+        let mut store = openagents_provider_substrate::ProviderPersistenceStore::open(&config)
+            .expect("provider admin store");
+        store
+            .set_listen_addr("127.0.0.1:9468")
+            .expect("persist listen addr");
+        store
+            .set_desired_mode(openagents_provider_substrate::ProviderDesiredMode::Offline)
+            .expect("persist desired mode");
+
+        let reference_epoch_seconds = crate::app_state::current_reference_epoch_seconds();
+        let snapshot = openagents_provider_substrate::assemble_provider_persisted_snapshot(
+            openagents_provider_substrate::ProviderSnapshotParts {
+                captured_at_ms: i64::try_from(reference_epoch_seconds).unwrap_or(i64::MAX) * 1000,
+                runtime: openagents_provider_substrate::ProviderRuntimeStatusSnapshot {
+                    mode: openagents_provider_substrate::ProviderMode::Offline,
+                    authoritative_status: Some("offline".to_string()),
+                    online_uptime_seconds: 0,
+                    ..Default::default()
+                },
+                payouts: Vec::new(),
+                earnings: Some(openagents_provider_substrate::ProviderEarningsSummary::default()),
+                ..Default::default()
+            },
+        );
+        store.persist_snapshot(&snapshot).expect("persist snapshot");
+
+        let mut scoreboard = crate::app_state::EarningsScoreboardState::default();
+        refresh_earnings_scoreboard_from_pylon_store(
+            &mut scoreboard,
+            std::time::Instant::now(),
+            db_path.as_path(),
+        )
+        .expect("refresh from pylon store");
+
+        assert_eq!(
+            scoreboard.load_state,
+            crate::app_state::PaneLoadState::Ready,
+            "store loaded cleanly so the scoreboard should be Ready, not Error"
+        );
+        assert_eq!(
+            scoreboard.pylon_desired_mode,
+            Some(openagents_provider_substrate::ProviderDesiredMode::Offline),
+            "pylon_desired_mode should mirror ProviderStatusResponse.desired_mode"
+        );
+    }
+
+    #[test]
+    fn refresh_earnings_scoreboard_clears_pylon_desired_mode_on_unavailable() {
+        // When the store is missing entirely, refresh falls into
+        // `mark_pylon_authority_unavailable`, which must clear
+        // `pylon_desired_mode` back to `None` so a stale "online" reading from
+        // a previous successful refresh cannot mask a now-unreachable Pylon
+        // authority. Without this, a flaky bring-down of pylon would leave
+        // the offline gate seeing `Some(Online)` and let the operator click
+        // GO ONLINE while the Pylon authority is silently gone.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let missing_db_path = temp.path().join("does-not-exist.sqlite");
+        let mut scoreboard = crate::app_state::EarningsScoreboardState::default();
+        scoreboard.pylon_desired_mode =
+            Some(openagents_provider_substrate::ProviderDesiredMode::Online);
+
+        let result = refresh_earnings_scoreboard_from_pylon_store(
+            &mut scoreboard,
+            std::time::Instant::now(),
+            missing_db_path.as_path(),
+        );
+
+        assert!(result.is_err(), "missing store should propagate as Err");
+        // The action handler responds to that Err by calling
+        // `mark_pylon_authority_unavailable`, which is what tests the clear.
+        scoreboard.mark_pylon_authority_unavailable(
+            std::time::Instant::now(),
+            "pylon.provider-admin",
+            "Pylon provider admin store not found",
+        );
+        assert_eq!(
+            scoreboard.load_state,
+            crate::app_state::PaneLoadState::Error
+        );
+        assert_eq!(scoreboard.pylon_desired_mode, None);
     }
 
     #[test]
