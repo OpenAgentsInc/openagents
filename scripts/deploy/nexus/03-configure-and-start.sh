@@ -330,6 +330,15 @@ UPSTREAM_CONFIG_SOURCE_PATH="$3"
 NEXUS_DATA_DIR="$4"
 NEXUS_DATA_DISK_DEVICE_NAME="$5"
 
+image_uses_remote_registry() {
+  local image="$1"
+  if [[ "$image" != */* ]]; then
+    return 1
+  fi
+  local first_component="${image%%/*}"
+  [[ "$first_component" == "localhost" || "$first_component" == *.* || "$first_component" == *:* ]]
+}
+
 sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -y
 sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
   apt-get install -y \
@@ -367,11 +376,12 @@ sudo chown root:root /etc/nexus-relay/upstream-config.toml
 sudo mkdir -p "$NEXUS_DATA_DIR"
 sudo chown -R 60000:60000 "$NEXUS_DATA_DIR"
 
-AR_HOST="$(echo "$DEPLOY_IMAGE" | cut -d'/' -f1)"
-ACCESS_TOKEN="$(curl -fsS -H 'Metadata-Flavor: Google' \
-  'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | jq -r '.access_token')"
+if image_uses_remote_registry "$DEPLOY_IMAGE"; then
+  AR_HOST="$(echo "$DEPLOY_IMAGE" | cut -d'/' -f1)"
+  ACCESS_TOKEN="$(curl -fsS -H 'Metadata-Flavor: Google' \
+    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | jq -r '.access_token')"
 
-sudo tee /usr/local/bin/nexus-registry-login.sh >/dev/null <<SCRIPT
+  sudo tee /usr/local/bin/nexus-registry-login.sh >/dev/null <<SCRIPT
 #!/usr/bin/env bash
 set -euo pipefail
 AR_HOST="${AR_HOST}"
@@ -379,10 +389,32 @@ ACCESS_TOKEN="\$(curl -fsS -H 'Metadata-Flavor: Google' \
   'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | jq -r '.access_token')"
 printf '%s' "\${ACCESS_TOKEN}" | /usr/bin/docker login -u oauth2accesstoken --password-stdin "https://\${AR_HOST}"
 SCRIPT
-sudo chmod 755 /usr/local/bin/nexus-registry-login.sh
 
-echo "$ACCESS_TOKEN" | sudo docker login -u oauth2accesstoken --password-stdin "https://${AR_HOST}"
-sudo docker pull "$DEPLOY_IMAGE"
+  sudo tee /usr/local/bin/nexus-prepare-image.sh >/dev/null <<SCRIPT
+#!/usr/bin/env bash
+set -euo pipefail
+/usr/bin/docker pull "${DEPLOY_IMAGE}"
+SCRIPT
+
+  echo "$ACCESS_TOKEN" | sudo docker login -u oauth2accesstoken --password-stdin "https://${AR_HOST}"
+  sudo /usr/local/bin/nexus-prepare-image.sh
+else
+  sudo tee /usr/local/bin/nexus-registry-login.sh >/dev/null <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+SCRIPT
+
+  sudo tee /usr/local/bin/nexus-prepare-image.sh >/dev/null <<SCRIPT
+#!/usr/bin/env bash
+set -euo pipefail
+/usr/bin/docker image inspect "${DEPLOY_IMAGE}" >/dev/null
+SCRIPT
+
+  sudo /usr/local/bin/nexus-prepare-image.sh
+fi
+
+sudo chmod 755 /usr/local/bin/nexus-registry-login.sh /usr/local/bin/nexus-prepare-image.sh
 
 sudo tee /etc/systemd/system/nexus-relay.service >/dev/null <<UNIT
 [Unit]
@@ -397,7 +429,7 @@ Restart=always
 RestartSec=10
 ExecStartPre=-/usr/bin/docker rm -f nexus-relay
 ExecStartPre=/usr/local/bin/nexus-registry-login.sh
-ExecStartPre=/usr/bin/docker pull ${DEPLOY_IMAGE}
+ExecStartPre=/usr/local/bin/nexus-prepare-image.sh
 ExecStart=/usr/bin/docker run --rm --name nexus-relay --network host \
   --env-file /etc/nexus-relay/nexus-relay.env \
   -v /etc/nexus-relay:/etc/nexus-relay:ro \
