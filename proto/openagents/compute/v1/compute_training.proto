@@ -26,6 +26,25 @@ enum ComputeTrainingRunStatus {
   COMPUTE_TRAINING_RUN_STATUS_CANCELLED = 7;
 }
 
+enum ComputeTrainingWorkClass {
+  COMPUTE_TRAINING_WORK_CLASS_UNSPECIFIED = 0;
+  COMPUTE_TRAINING_WORK_CLASS_VALIDATION_REPLAY = 1;
+  COMPUTE_TRAINING_WORK_CLASS_EVALUATION = 2;
+  COMPUTE_TRAINING_WORK_CLASS_ADAPTER_TRAINING = 3;
+  COMPUTE_TRAINING_WORK_CLASS_SMALL_MODEL_LOCAL_TRAINING = 4;
+  COMPUTE_TRAINING_WORK_CLASS_GROUPED_REPLICA_STAGE_EXECUTION = 5;
+  COMPUTE_TRAINING_WORK_CLASS_FULL_ISLAND_LOCAL_UPDATE_TRAINING = 6;
+  COMPUTE_TRAINING_WORK_CLASS_AGGREGATION = 7;
+  COMPUTE_TRAINING_WORK_CLASS_CHECKPOINT_PROMOTION = 8;
+}
+
+enum ComputeTrainingReplicaType {
+  COMPUTE_TRAINING_REPLICA_TYPE_UNSPECIFIED = 0;
+  COMPUTE_TRAINING_REPLICA_TYPE_SINGLE_NODE = 1;
+  COMPUTE_TRAINING_REPLICA_TYPE_ISLAND = 2;
+  COMPUTE_TRAINING_REPLICA_TYPE_GROUPED_REPLICA = 3;
+}
+
 enum ComputeAcceptedOutcomeKind {
   COMPUTE_ACCEPTED_OUTCOME_KIND_UNSPECIFIED = 0;
   COMPUTE_ACCEPTED_OUTCOME_KIND_EVALUATION_RUN = 1;
@@ -167,24 +186,26 @@ message ComputeTrainingRun {
   ComputeEnvironmentBinding environment_binding = 3;
   ComputeCheckpointBinding checkpoint_binding = 4;
   string validator_policy_ref = 5;
-  repeated string benchmark_package_refs = 6;
-  optional string product_id = 7;
-  optional string capacity_lot_id = 8;
-  optional string instrument_id = 9;
-  optional string delivery_proof_id = 10;
-  optional string model_ref = 11;
-  optional string source_ref = 12;
-  repeated string rollout_verification_eval_run_ids = 13;
-  int64 created_at_ms = 14;
-  optional int64 started_at_ms = 15;
-  optional int64 finalized_at_ms = 16;
-  optional uint64 expected_step_count = 17;
-  optional uint64 completed_step_count = 18;
-  ComputeTrainingRunStatus status = 19;
-  optional string final_checkpoint_ref = 20;
-  optional string promotion_checkpoint_ref = 21;
-  optional ComputeTrainingSummary summary = 22;
-  string metadata_json = 23;
+  ComputeTrainingWorkClass work_class = 6;
+  ComputeTrainingReplicaType replica_type = 7;
+  repeated string benchmark_package_refs = 8;
+  optional string product_id = 9;
+  optional string capacity_lot_id = 10;
+  optional string instrument_id = 11;
+  optional string delivery_proof_id = 12;
+  optional string model_ref = 13;
+  optional string source_ref = 14;
+  repeated string rollout_verification_eval_run_ids = 15;
+  int64 created_at_ms = 16;
+  optional int64 started_at_ms = 17;
+  optional int64 finalized_at_ms = 18;
+  optional uint64 expected_step_count = 19;
+  optional uint64 completed_step_count = 20;
+  ComputeTrainingRunStatus status = 21;
+  optional string final_checkpoint_ref = 22;
+  optional string promotion_checkpoint_ref = 23;
+  optional ComputeTrainingSummary summary = 24;
+  string metadata_json = 25;
 }
 
 message ComputeAcceptedOutcome {
@@ -233,34 +254,36 @@ message ComputeAdapterTrainingWindow {
   string stage_id = 3;
   string contributor_set_revision_id = 4;
   string validator_policy_ref = 5;
-  string adapter_target_id = 6;
-  string adapter_family = 7;
-  string base_model_ref = 8;
-  string adapter_format = 9;
-  ComputeAdapterPolicyRevision source_policy_revision = 10;
-  ComputeAdapterCheckpointPointer source_checkpoint_pointer = 11;
-  ComputeAdapterWindowStatus status = 12;
-  uint32 total_contributions = 13;
-  uint32 admitted_contributions = 14;
-  uint32 accepted_contributions = 15;
-  uint32 quarantined_contributions = 16;
-  uint32 rejected_contributions = 17;
-  uint32 replay_required_contributions = 18;
-  uint32 replay_checked_contributions = 19;
-  optional uint32 held_out_average_score_bps = 20;
-  optional uint32 benchmark_pass_rate_bps = 21;
-  optional bool runtime_smoke_passed = 22;
-  bool promotion_ready = 23;
-  repeated ComputeAdapterWindowGateReasonCode gate_reason_codes = 24;
-  string window_summary_digest = 25;
-  optional ComputeAdapterPromotionDisposition promotion_disposition = 26;
-  repeated ComputeAdapterPromotionHoldReasonCode hold_reason_codes = 27;
-  optional string aggregated_delta_digest = 28;
-  optional ComputeAdapterPolicyRevision output_policy_revision = 29;
-  optional ComputeAdapterCheckpointPointer output_checkpoint_pointer = 30;
-  optional string accepted_outcome_id = 31;
-  int64 recorded_at_ms = 32;
-  string metadata_json = 33;
+  ComputeTrainingWorkClass work_class = 6;
+  ComputeTrainingReplicaType replica_type = 7;
+  string adapter_target_id = 8;
+  string adapter_family = 9;
+  string base_model_ref = 10;
+  string adapter_format = 11;
+  ComputeAdapterPolicyRevision source_policy_revision = 12;
+  ComputeAdapterCheckpointPointer source_checkpoint_pointer = 13;
+  ComputeAdapterWindowStatus status = 14;
+  uint32 total_contributions = 15;
+  uint32 admitted_contributions = 16;
+  uint32 accepted_contributions = 17;
+  uint32 quarantined_contributions = 18;
+  uint32 rejected_contributions = 19;
+  uint32 replay_required_contributions = 20;
+  uint32 replay_checked_contributions = 21;
+  optional uint32 held_out_average_score_bps = 22;
+  optional uint32 benchmark_pass_rate_bps = 23;
+  optional bool runtime_smoke_passed = 24;
+  bool promotion_ready = 25;
+  repeated ComputeAdapterWindowGateReasonCode gate_reason_codes = 26;
+  string window_summary_digest = 27;
+  optional ComputeAdapterPromotionDisposition promotion_disposition = 28;
+  repeated ComputeAdapterPromotionHoldReasonCode hold_reason_codes = 29;
+  optional string aggregated_delta_digest = 30;
+  optional ComputeAdapterPolicyRevision output_policy_revision = 31;
+  optional ComputeAdapterCheckpointPointer output_checkpoint_pointer = 32;
+  optional string accepted_outcome_id = 33;
+  int64 recorded_at_ms = 34;
+  string metadata_json = 35;
 }
 
 message ComputeAdapterContributionOutcome {

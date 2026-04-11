@@ -2136,7 +2136,8 @@ mod tests {
         ComputeAdapterAggregationEligibility, ComputeAdapterContributionDisposition,
         ComputeAdapterContributionOutcome, ComputeAdapterDatasetSlice,
         ComputeAdapterPolicyRevision, ComputeAdapterPromotionDisposition,
-        ComputeAdapterTrainingWindow, ComputeAdapterWindowStatus,
+        ComputeAdapterTrainingWindow, ComputeAdapterWindowStatus, ComputeTrainingReplicaType,
+        ComputeTrainingWorkClass,
     };
 
     fn ensure(condition: bool, message: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -2193,6 +2194,8 @@ mod tests {
             stage_id: "sft".to_string(),
             contributor_set_revision_id: "contributors.rev.1".to_string(),
             validator_policy_ref: "policy://validator/apple_adapter/helpdesk".to_string(),
+            work_class: ComputeTrainingWorkClass::AdapterTraining,
+            replica_type: ComputeTrainingReplicaType::SingleNode,
             adapter_target_id: "adapter.target.helpdesk".to_string(),
             adapter_family: "apple.foundation_models".to_string(),
             base_model_ref: "model://apple.foundation".to_string(),

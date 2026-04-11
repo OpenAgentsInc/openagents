@@ -98,13 +98,14 @@ The authority now also manages:
 
 - `ComputeTrainingRun`
   - canonical train run id, policy refs, environment binding, checkpoint
-    binding, validator posture, benchmark package refs, source linkage, step
-    expectations, terminal summaries, and checkpoint promotion refs
+    binding, validator posture, work class, replica type, benchmark package
+    refs, source linkage, step expectations, terminal summaries, and checkpoint
+    promotion refs
 - `ComputeAdapterTrainingWindow`
   - canonical decentralized-adapter window projection linked to one
     `ComputeTrainingRun`, including lifecycle state, validator score summary,
-    promotion readiness, promotion lineage, and optional accepted-outcome
-    linkage
+    promotion readiness, promotion lineage, declared work class, declared
+    replica type, and optional accepted-outcome linkage
 - `ComputeAdapterContributionOutcome`
   - canonical contribution-level projection linked to one
     `ComputeAdapterTrainingWindow`, including manifest/object digests, validator
@@ -194,6 +195,9 @@ The important rule is simple:
 - the checkpoint family must match the training policy
 - the validator policy must match the training policy
 - the environment must be permitted by the training policy
+- the declared work class and replica type must be coherent for the run:
+  - grouped replica stage execution requires `grouped_replica`
+  - full-island local-update training requires `island`
 - benchmark packages must exist and match the resolved environment
 - Apple benchmark packages may satisfy that environment check either by matching
   the run's top-level environment directly or, for benchmark-split packages, by
@@ -243,6 +247,8 @@ The important rule is simple:
 - recording one adapter window requires an existing `ComputeTrainingRun`
 - the window validator policy must match the source training run validator
   policy
+- the window work class and replica type are durable control-plane fields, not
+  inferred metadata
 - each contribution recorded with the window must bind to the same:
   - training run
   - stage id

@@ -27,7 +27,8 @@ use openagents_kernel_core::compute::{
     ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRun,
     ComputeEvaluationRunStatus, ComputeEvaluationSample, ComputeEvaluationSampleStatus,
     ComputeEvaluationSummary, ComputeProofPosture, ComputeRegistryStatus, ComputeTrainingPolicy,
-    ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeValidatorPolicy,
+    ComputeTrainingReplicaType, ComputeTrainingRun, ComputeTrainingRunStatus,
+    ComputeTrainingSummary, ComputeTrainingWorkClass, ComputeValidatorPolicy,
 };
 use openagents_kernel_core::compute_benchmarks::ComputeBenchmarkAdapterKind;
 use openagents_kernel_core::ids::sha256_prefixed_text;
@@ -2526,6 +2527,8 @@ fn build_training_run_requests(
             recovery_posture: Some("warm-resume".to_string()),
         },
         validator_policy_ref: refs.validator_policy_ref.clone(),
+        work_class: ComputeTrainingWorkClass::AdapterTraining,
+        replica_type: ComputeTrainingReplicaType::SingleNode,
         benchmark_package_refs: vec![refs.benchmark_package_ref.clone()],
         product_id: Some(APPLE_TRAINING_PRODUCT_ID.to_string()),
         capacity_lot_id: None,
@@ -2635,6 +2638,8 @@ fn build_accept_outcome_request(
                     recovery_posture: Some("warm-resume".to_string()),
                 },
                 validator_policy_ref: refs.validator_policy_ref.clone(),
+                work_class: ComputeTrainingWorkClass::AdapterTraining,
+                replica_type: ComputeTrainingReplicaType::SingleNode,
                 benchmark_package_refs: vec![refs.benchmark_package_ref.clone()],
                 product_id: Some(APPLE_TRAINING_PRODUCT_ID.to_string()),
                 capacity_lot_id: None,
