@@ -180,6 +180,29 @@ snapshots should expose both categories without collapsing them into one
 checkpoint lineage, and a busy validator queue can exist without any accepted
 progress.
 
+## Trust And Quorum Rules
+
+The current control plane now treats overlap and promotion authority as
+first-class invariants instead of operator convention.
+
+- one node cannot hold conflicting active roles on the same run
+  - worker plus validator is forbidden
+  - worker plus recovery source is forbidden
+  - validator plus recovery source is forbidden
+- validators cannot lease challenges against assignments they contributed
+- promotion-bearing closeouts must satisfy validator quorum explicitly
+- promotion-bearing closeouts must wait out the validator challenge window
+  before Nexus treats the checkpoint as canonization-ready
+
+In practice that means:
+
+- non-promotion closeouts can still finalize accepted work without pretending a
+  new canonical checkpoint exists
+- promotion requests stay held until the validator policy's minimum distinct
+  validator count and challenge-window requirements are both satisfied
+- the defensibility audit records the promotion posture, counted validators,
+  contributor identities, and any refused overlap
+
 ## Current Apple Operator Path
 
 The retained Apple adapter path now has a concrete operator-to-authority flow

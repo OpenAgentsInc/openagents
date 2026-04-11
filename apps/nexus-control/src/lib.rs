@@ -1026,6 +1026,22 @@ struct TrainingWindowDefensibilityArtifactAudit {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
+struct TrainingWindowDefensibilityPromotionAudit {
+    promotion_requested: bool,
+    required_validator_count: u32,
+    distinct_validator_count: u32,
+    distinct_validator_ids: Vec<String>,
+    challenge_window_ms: Option<u64>,
+    last_validator_finalized_at_ms: Option<i64>,
+    challenge_window_satisfied: bool,
+    quorum_satisfied: bool,
+    contributor_node_ids: Vec<String>,
+    recovery_source_node_ids: Vec<String>,
+    self_validation_validator_ids: Vec<String>,
+    self_promotion_node_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 struct TrainingWindowDefensibilityAudit {
     status: String,
     refusal_codes: Vec<String>,
@@ -1035,6 +1051,7 @@ struct TrainingWindowDefensibilityAudit {
     assignment_trail: Vec<TrainingWindowDefensibilityAssignmentAudit>,
     validator_audit: TrainingWindowDefensibilityValidatorAudit,
     artifact_audit: TrainingWindowDefensibilityArtifactAudit,
+    promotion_audit: TrainingWindowDefensibilityPromotionAudit,
 }
 
 impl TrainingWindowDefensibilityAudit {
@@ -1046,6 +1063,9 @@ impl TrainingWindowDefensibilityAudit {
                 code.as_str(),
                 value if value == PylonTrainingRefusalCode::ValidatorTimeout.label()
                     || value == PylonTrainingRefusalCode::ValidatorDisagreement.label()
+                    || value
+                        == PylonTrainingRefusalCode::CheckpointChallengeWindowOpen.label()
+                    || value == PylonTrainingRefusalCode::CheckpointQuorumMissing.label()
             )
         }) {
             "held"
@@ -1080,6 +1100,7 @@ impl TrainingWindowDefensibilityAudit {
                 .collect::<Vec<_>>(),
             "validator_audit": self.validator_audit.as_json(),
             "artifact_audit": self.artifact_audit.as_json(),
+            "promotion_audit": self.promotion_audit.as_json(),
         })
     }
 }
@@ -1135,6 +1156,25 @@ impl TrainingWindowDefensibilityArtifactAudit {
             "checkpoint_pointer_regression": self.checkpoint_pointer_regression,
             "output_checkpoint_manifest_digest": self.output_checkpoint_manifest_digest,
             "output_checkpoint_pointer_digest": self.output_checkpoint_pointer_digest,
+        })
+    }
+}
+
+impl TrainingWindowDefensibilityPromotionAudit {
+    fn as_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "promotion_requested": self.promotion_requested,
+            "required_validator_count": self.required_validator_count,
+            "distinct_validator_count": self.distinct_validator_count,
+            "distinct_validator_ids": self.distinct_validator_ids,
+            "challenge_window_ms": self.challenge_window_ms,
+            "last_validator_finalized_at_ms": self.last_validator_finalized_at_ms,
+            "challenge_window_satisfied": self.challenge_window_satisfied,
+            "quorum_satisfied": self.quorum_satisfied,
+            "contributor_node_ids": self.contributor_node_ids,
+            "recovery_source_node_ids": self.recovery_source_node_ids,
+            "self_validation_validator_ids": self.self_validation_validator_ids,
+            "self_promotion_node_ids": self.self_promotion_node_ids,
         })
     }
 }
@@ -1927,6 +1967,16 @@ impl ScheduledTrainingRun {
                 request.requested_at_ms,
             ));
         }
+        if let Some(conflicting_assignment) =
+            self.active_conflicting_assignment_for_node(node.node_pubkey_hex.as_str(), request.role)
+        {
+            return Err(training_scheduler_role_overlap_reason(
+                conflicting_assignment.role,
+                request.role,
+            )
+            .unwrap_or("training_scheduler_role_overlap_forbidden")
+            .to_string());
+        }
 
         let assignment_index = self
             .next_available_assignment_index(request.role)
@@ -2013,6 +2063,23 @@ impl ScheduledTrainingRun {
     ) -> Option<&ScheduledTrainingAssignment> {
         self.assignments.iter().find(|assignment| {
             assignment.role == role
+                && matches!(
+                    assignment.state,
+                    TrainingAssignmentState::Leased
+                        | TrainingAssignmentState::Acked
+                        | TrainingAssignmentState::Active
+                )
+                && assignment.node_pubkey_hex.as_deref() == Some(node_pubkey_hex)
+        })
+    }
+
+    fn active_conflicting_assignment_for_node(
+        &self,
+        node_pubkey_hex: &str,
+        requested_role: TrainingNodeRoleClaim,
+    ) -> Option<&ScheduledTrainingAssignment> {
+        self.assignments.iter().find(|assignment| {
+            assignment.role != requested_role
                 && matches!(
                     assignment.state,
                     TrainingAssignmentState::Leased
@@ -2481,23 +2548,26 @@ fn training_window_metadata_value(metadata: &TrainingWindowMetadata) -> serde_js
     serde_json::json!({ "pylon_training_window": metadata })
 }
 
-fn training_window_active_worker_assignments(
+fn training_assignment_state_is_active(assignment: &ScheduledTrainingAssignment) -> bool {
+    matches!(
+        assignment.state,
+        TrainingAssignmentState::Leased
+            | TrainingAssignmentState::Acked
+            | TrainingAssignmentState::Active
+            | TrainingAssignmentState::Completed
+    )
+}
+
+fn training_window_active_assignments_for_role(
     scheduled_run: &ScheduledTrainingRun,
+    role: TrainingNodeRoleClaim,
 ) -> Vec<ScheduledTrainingAssignment> {
     let mut assignments = scheduled_run
         .assignments
         .iter()
-        .filter(|assignment| {
-            assignment.role == TrainingNodeRoleClaim::Worker
-                && matches!(
-                    assignment.state,
-                    TrainingAssignmentState::Leased
-                        | TrainingAssignmentState::Acked
-                        | TrainingAssignmentState::Active
-                        | TrainingAssignmentState::Completed
-                )
-                && assignment.node_pubkey_hex.is_some()
-        })
+        .filter(|assignment| assignment.role == role)
+        .filter(|assignment| training_assignment_state_is_active(assignment))
+        .filter(|assignment| assignment.node_pubkey_hex.is_some())
         .cloned()
         .collect::<Vec<_>>();
     assignments.sort_by(|lhs, rhs| {
@@ -2507,6 +2577,91 @@ fn training_window_active_worker_assignments(
             .then_with(|| lhs.assignment_id.cmp(&rhs.assignment_id))
     });
     assignments
+}
+
+fn training_window_active_worker_assignments(
+    scheduled_run: &ScheduledTrainingRun,
+) -> Vec<ScheduledTrainingAssignment> {
+    training_window_active_assignments_for_role(scheduled_run, TrainingNodeRoleClaim::Worker)
+}
+
+fn training_scheduler_role_overlap_reason(
+    existing_role: TrainingNodeRoleClaim,
+    requested_role: TrainingNodeRoleClaim,
+) -> Option<&'static str> {
+    if existing_role == requested_role {
+        return None;
+    }
+    match (existing_role, requested_role) {
+        (TrainingNodeRoleClaim::Worker, TrainingNodeRoleClaim::Validator)
+        | (TrainingNodeRoleClaim::Validator, TrainingNodeRoleClaim::Worker) => {
+            Some("training_scheduler_self_validation_forbidden")
+        }
+        (TrainingNodeRoleClaim::Worker, TrainingNodeRoleClaim::RecoverySource)
+        | (TrainingNodeRoleClaim::RecoverySource, TrainingNodeRoleClaim::Worker) => {
+            Some("training_scheduler_self_promotion_forbidden")
+        }
+        (TrainingNodeRoleClaim::Validator, TrainingNodeRoleClaim::RecoverySource)
+        | (TrainingNodeRoleClaim::RecoverySource, TrainingNodeRoleClaim::Validator) => {
+            Some("training_scheduler_checkpoint_authority_overlap_forbidden")
+        }
+        _ => Some("training_scheduler_role_overlap_forbidden"),
+    }
+}
+
+fn training_window_requests_checkpoint_promotion(window: &ComputeAdapterTrainingWindow) -> bool {
+    window
+        .promoted_checkpoint_ref
+        .as_deref()
+        .is_some_and(|checkpoint_ref| checkpoint_ref != window.base_checkpoint_ref)
+        || window
+            .output_checkpoint_pointer
+            .as_ref()
+            .is_some_and(|pointer| pointer.checkpoint_ref != window.base_checkpoint_ref)
+}
+
+fn training_validator_targets_own_assignments(
+    assignment_plans: &[TrainingWindowAssignmentPlan],
+    challenge_plan: &TrainingWindowValidationChallengePlan,
+    validator_id: &str,
+) -> bool {
+    challenge_plan
+        .target_assignment_ids
+        .iter()
+        .any(|assignment_id| {
+            assignment_plans
+                .iter()
+                .find(|assignment| assignment.assignment_id == *assignment_id)
+                .is_some_and(|assignment| {
+                    assignment.node_pubkey_hex == validator_id
+                        || assignment.contributor_node_id == validator_id
+                })
+        })
+}
+
+fn training_window_recovery_source_node_ids(
+    scheduled_run: Option<&ScheduledTrainingRun>,
+) -> BTreeSet<String> {
+    let Some(scheduled_run) = scheduled_run else {
+        return BTreeSet::new();
+    };
+    training_window_active_assignments_for_role(
+        scheduled_run,
+        TrainingNodeRoleClaim::RecoverySource,
+    )
+    .into_iter()
+    .filter_map(|assignment| assignment.node_pubkey_hex)
+    .collect()
+}
+
+fn training_window_contributor_node_ids(
+    assignment_plans: &[TrainingWindowAssignmentPlan],
+) -> BTreeSet<String> {
+    assignment_plans
+        .iter()
+        .map(|assignment| assignment.contributor_node_id.clone())
+        .filter(|value| !value.trim().is_empty())
+        .collect()
 }
 
 fn training_window_assignment_plans(
@@ -3158,6 +3313,16 @@ fn training_window_defensibility_audit(
     let mut aggregate_challenge_count = 0u32;
     let mut sample_challenge_count = 0u32;
     let mut terminal_challenge_count = 0u32;
+    let challenge_finalizations = kernel
+        .list_training_validator_challenge_finalization_sources()
+        .into_iter()
+        .filter(|source| {
+            validation
+                .challenges
+                .iter()
+                .any(|challenge| challenge.challenge_id == source.challenge_id)
+        })
+        .collect::<Vec<_>>();
     for challenge in &validation.challenges {
         match challenge.challenge_kind {
             TrainingValidationChallengeKind::Aggregate => {
@@ -3188,6 +3353,81 @@ fn training_window_defensibility_audit(
         push_training_defensibility_refusal_code(
             &mut refusal_codes,
             PylonTrainingRefusalCode::ValidatorTimeout,
+        );
+    }
+
+    let promotion_requested = training_window_requests_checkpoint_promotion(window);
+    let validator_policy =
+        kernel.get_compute_validator_policy(window.validator_policy_ref.as_str(), None);
+    let required_validator_count = validator_policy
+        .as_ref()
+        .and_then(|policy| policy.minimum_validator_count)
+        .unwrap_or(1)
+        .max(1);
+    let challenge_window_ms = validator_policy
+        .as_ref()
+        .and_then(|policy| policy.challenge_window_ms);
+    let distinct_validator_ids = challenge_finalizations
+        .iter()
+        .map(|source| source.node_pubkey_hex.clone())
+        .collect::<BTreeSet<_>>();
+    let contributor_node_ids = training_window_contributor_node_ids(assignment_plans);
+    let recovery_source_node_ids = training_window_recovery_source_node_ids(scheduled_run);
+    let self_validation_validator_ids = challenge_finalizations
+        .iter()
+        .filter_map(|source| {
+            let challenge_plan = validation
+                .challenges
+                .iter()
+                .find(|challenge| challenge.challenge_id == source.challenge_id)?;
+            training_validator_targets_own_assignments(
+                assignment_plans,
+                challenge_plan,
+                source.node_pubkey_hex.as_str(),
+            )
+            .then(|| source.node_pubkey_hex.clone())
+        })
+        .collect::<BTreeSet<_>>();
+    if !self_validation_validator_ids.is_empty() {
+        push_training_defensibility_refusal_code(
+            &mut refusal_codes,
+            PylonTrainingRefusalCode::SelfValidation,
+        );
+    }
+    let self_promotion_node_ids = contributor_node_ids
+        .intersection(&recovery_source_node_ids)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if promotion_requested && !self_promotion_node_ids.is_empty() {
+        push_training_defensibility_refusal_code(
+            &mut refusal_codes,
+            PylonTrainingRefusalCode::SelfPromotion,
+        );
+    }
+    let last_validator_finalized_at_ms = challenge_finalizations
+        .iter()
+        .map(|source| source.finalized_at_ms)
+        .max();
+    let challenge_window_satisfied = !promotion_requested
+        || challenge_window_ms.is_none_or(|challenge_window_ms| {
+            last_validator_finalized_at_ms.is_some_and(|last_finalized_at_ms| {
+                recorded_at_ms
+                    >= last_finalized_at_ms
+                        .saturating_add(i64::try_from(challenge_window_ms).unwrap_or(i64::MAX))
+            })
+        });
+    if promotion_requested && !challenge_window_satisfied {
+        push_training_defensibility_refusal_code(
+            &mut refusal_codes,
+            PylonTrainingRefusalCode::CheckpointChallengeWindowOpen,
+        );
+    }
+    let quorum_satisfied =
+        !promotion_requested || (distinct_validator_ids.len() as u32) >= required_validator_count;
+    if promotion_requested && !quorum_satisfied {
+        push_training_defensibility_refusal_code(
+            &mut refusal_codes,
+            PylonTrainingRefusalCode::CheckpointQuorumMissing,
         );
     }
 
@@ -3237,6 +3477,20 @@ fn training_window_defensibility_audit(
                 .output_checkpoint_pointer
                 .as_ref()
                 .map(|pointer| pointer.pointer_digest.clone()),
+        },
+        promotion_audit: TrainingWindowDefensibilityPromotionAudit {
+            promotion_requested,
+            required_validator_count,
+            distinct_validator_count: distinct_validator_ids.len() as u32,
+            distinct_validator_ids: distinct_validator_ids.into_iter().collect(),
+            challenge_window_ms,
+            last_validator_finalized_at_ms,
+            challenge_window_satisfied,
+            quorum_satisfied,
+            contributor_node_ids: contributor_node_ids.into_iter().collect(),
+            recovery_source_node_ids: recovery_source_node_ids.into_iter().collect(),
+            self_validation_validator_ids: self_validation_validator_ids.into_iter().collect(),
+            self_promotion_node_ids: self_promotion_node_ids.into_iter().collect(),
         },
     }
 }
@@ -5865,6 +6119,13 @@ async fn claim_training_validator_challenge(
                 continue;
             };
             for challenge_plan in &validation.challenges {
+                if training_validator_targets_own_assignments(
+                    metadata.assignment_plans.as_slice(),
+                    challenge_plan,
+                    node.node_pubkey_hex.as_str(),
+                ) {
+                    continue;
+                }
                 let Some(snapshot) = store
                     .kernel
                     .get_validator_challenge(challenge_plan.challenge_id.as_str())
@@ -14779,12 +15040,12 @@ mod tests {
     use super::{
         ClaimTrainingValidatorChallengeRequest, FinalizeTrainingValidatorChallengeRequest,
         PublishTrainingTrnStateRequest, RetryTrainingValidatorChallengeRequest,
-        TRN_TRAINING_ARTIFACT_LOCATOR_KIND, TRN_TRAINING_CLOSEOUT_KIND,
+        ScheduledTrainingRun, TRN_TRAINING_ARTIFACT_LOCATOR_KIND, TRN_TRAINING_CLOSEOUT_KIND,
         TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND, TRN_TRAINING_WINDOW_KIND,
         TrainingOperatorSummaryResponse, TrainingSchedulerWindowState,
         TrainingTrnPublicationReport, TrainingValidatorChallengeCoordinatorResponse,
         TrainingWindowCloseoutStatus, TrainingWindowValidationSummary,
-        training_window_closeout_status, validator_service,
+        training_scheduler_metadata_from_run, training_window_closeout_status, validator_service,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -22822,6 +23083,119 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn training_scheduler_refuses_conflicting_worker_validator_and_recovery_roles() {
+        let state = build_app_state(test_config().expect("config"));
+        let created_at_ms = 1_762_491_465_000u64;
+        let training_run_id = "run.scheduler.overlap";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-overlap",
+            "sha256:build-overlap",
+        );
+
+        let (training_run, node) = {
+            let mut store = state.store.write().expect("write store");
+            let mut multi_role = training_node_admission_request(
+                "node-overlap",
+                "sha256:build-overlap",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            multi_role.idempotency_key =
+                "idemp.training.admission.node-overlap.sha256:build-overlap.multi".to_string();
+            multi_role.requested_at_ms = created_at_ms as i64 + 800;
+            multi_role.role_claims = vec![
+                TrainingNodeRoleClaim::Worker,
+                TrainingNodeRoleClaim::Validator,
+                TrainingNodeRoleClaim::RecoverySource,
+            ];
+            multi_role.capability_tier =
+                training_capability_tier_profile(multi_role.role_claims.as_slice(), Some(512));
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-overlap", created_at_ms + 800),
+                    multi_role,
+                )
+                .expect("record multi-role admission");
+            let training_run = store
+                .kernel
+                .get_compute_training_run(training_run_id)
+                .expect("training run");
+            let node = store
+                .kernel
+                .get_admitted_training_node("node-overlap", created_at_ms as i64 + 801)
+                .expect("admitted node");
+            (training_run, node)
+        };
+
+        let mut metadata =
+            training_scheduler_metadata_from_run(&training_run).expect("scheduler metadata");
+        metadata.validator_count = 1;
+        metadata.recovery_source_count = 1;
+        let mut scheduled_run =
+            ScheduledTrainingRun::from_kernel_run(&training_run, &metadata, created_at_ms as i64);
+
+        scheduled_run
+            .claim_lease(
+                &training_run_lease_request_for_scope(
+                    "idemp.training.lease.overlap.worker",
+                    created_at_ms as i64 + 1_000,
+                    "node-overlap",
+                    TrainingNodeRoleClaim::Worker,
+                    Some("trainnet.alpha"),
+                    Some(training_run_id),
+                ),
+                &node,
+                created_at_ms as i64 + 1_000,
+            )
+            .expect("worker lease");
+
+        let validator_error = scheduled_run
+            .claim_lease(
+                &training_run_lease_request_for_scope(
+                    "idemp.training.lease.overlap.validator",
+                    created_at_ms as i64 + 1_010,
+                    "node-overlap",
+                    TrainingNodeRoleClaim::Validator,
+                    Some("trainnet.alpha"),
+                    Some(training_run_id),
+                ),
+                &node,
+                created_at_ms as i64 + 1_010,
+            )
+            .expect_err("worker-validator overlap should fail");
+        assert_eq!(
+            validator_error,
+            "training_scheduler_self_validation_forbidden"
+        );
+
+        let recovery_error = scheduled_run
+            .claim_lease(
+                &training_run_lease_request_for_scope(
+                    "idemp.training.lease.overlap.recovery",
+                    created_at_ms as i64 + 1_020,
+                    "node-overlap",
+                    TrainingNodeRoleClaim::RecoverySource,
+                    Some("trainnet.alpha"),
+                    Some(training_run_id),
+                ),
+                &node,
+                created_at_ms as i64 + 1_020,
+            )
+            .expect_err("worker-recovery overlap should fail");
+        assert_eq!(
+            recovery_error,
+            "training_scheduler_self_promotion_forbidden"
+        );
+    }
+
     #[tokio::test]
     async fn training_scheduler_matches_worker_leases_to_backend_homogeneous_runs() -> Result<()> {
         let state = build_app_state(test_config()?);
@@ -23933,6 +24307,312 @@ mod tests {
                 .window_state,
             TrainingSchedulerWindowState::Refused
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_validator_claim_refuses_self_validation_targets() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_565_000u64;
+        let training_run_id = "run.window.self_validation";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-self",
+            "sha256:build-self",
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut multi_role = training_node_admission_request(
+                "node-self",
+                "sha256:build-self",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            multi_role.idempotency_key =
+                "idemp.training.admission.node-self.sha256:build-self.multi".to_string();
+            multi_role.requested_at_ms = created_at_ms as i64 + 760;
+            multi_role.role_claims = vec![
+                TrainingNodeRoleClaim::Worker,
+                TrainingNodeRoleClaim::Validator,
+            ];
+            multi_role.capability_tier =
+                training_capability_tier_profile(multi_role.role_claims.as_slice(), Some(512));
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-self", created_at_ms + 760),
+                    multi_role,
+                )
+                .expect("admit multi-role node");
+            let mut heartbeat = training_node_heartbeat_request("node-self", "sha256:build-self");
+            heartbeat.idempotency_key = "idemp.training.heartbeat.node-self.self".to_string();
+            heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            heartbeat.training_run_id = training_run_id.to_string();
+            heartbeat.window_id = "window.0001".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-self", created_at_ms + 770),
+                    heartbeat,
+                )
+                .expect("heartbeat multi-role node");
+        }
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.self_validation.worker",
+                            created_at_ms as i64 + 1_000,
+                            "node-self",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.self_validation",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://self-validation-0001",
+                                "sha256:slice-self-validation-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/activate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.self_validation",
+                            created_at_ms as i64 + 1_200,
+                            "window.0001",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/seal")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.self_validation"
+                                .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.self_validation",
+                                    &lease,
+                                    "sha256:validator-pending-self-validation",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let validator_claim = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.self_validation",
+                            created_at_ms as i64 + 1_310,
+                            "node-self",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(validator_claim.status(), StatusCode::CONFLICT);
+        let error = response_json::<serde_json::Value>(validator_claim).await?;
+        assert_eq!(
+            error.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_validator_challenge_unavailable")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_reconcile_holds_checkpoint_promotion_until_quorum_and_challenge_window()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_570_000u64;
+        let training_run_id = "run.window.promotion_hold";
+
+        let lease = prepare_reward_candidate_training_window(
+            &app,
+            &state,
+            created_at_ms,
+            training_run_id,
+            "contrib.window.promotion_hold",
+        )
+        .await?;
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.promotion_hold"
+                                .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_400,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.promotion_hold",
+                                    &lease,
+                                    "sha256:validator-final-promotion-hold",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-promotion-hold".to_string(),
+                            ),
+                            accepted_aggregate_id: Some(
+                                "aggregate.window.promotion_hold".to_string(),
+                            ),
+                            promoted_checkpoint_ref: Some(
+                                "checkpoint://decoder/promoted/window.0001".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+        let reconciled_window =
+            response_json::<TrainingWindowCoordinatorResponse>(reconciled).await?;
+        assert!(!reconciled_window.window.promotion_ready);
+
+        let store = state.store.read().expect("read store");
+        let closeout = store
+            .kernel
+            .get_compute_accepted_outcome("accepted.training_window.window.0001")
+            .expect("held closeout");
+        assert_eq!(
+            closeout
+                .metadata
+                .get("closeout_status")
+                .and_then(serde_json::Value::as_str),
+            Some("held")
+        );
+        let defensibility = closeout
+            .metadata
+            .get("defensibility")
+            .expect("defensibility metadata");
+        assert_eq!(
+            defensibility
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("held")
+        );
+        let refusal_codes = defensibility
+            .get("refusal_codes")
+            .and_then(serde_json::Value::as_array)
+            .expect("refusal code list");
+        assert!(refusal_codes.iter().any(|value| {
+            value.as_str() == Some(PylonTrainingRefusalCode::CheckpointChallengeWindowOpen.label())
+        }));
+        assert!(refusal_codes.iter().any(|value| {
+            value.as_str() == Some(PylonTrainingRefusalCode::CheckpointQuorumMissing.label())
+        }));
+        let promotion_audit = defensibility
+            .get("promotion_audit")
+            .expect("promotion audit");
+        assert_eq!(
+            promotion_audit
+                .get("promotion_requested")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            promotion_audit
+                .get("required_validator_count")
+                .and_then(serde_json::Value::as_u64),
+            Some(2)
+        );
+        assert_eq!(
+            promotion_audit
+                .get("distinct_validator_count")
+                .and_then(serde_json::Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            promotion_audit
+                .get("challenge_window_satisfied")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            promotion_audit
+                .get("quorum_satisfied")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .window_state,
+            TrainingSchedulerWindowState::Held
+        );
+
         Ok(())
     }
 

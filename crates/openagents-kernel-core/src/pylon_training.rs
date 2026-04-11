@@ -526,6 +526,10 @@ pub enum PylonTrainingRefusalCode {
     ArtifactDigestMismatch,
     ValidatorTimeout,
     ValidatorDisagreement,
+    SelfValidation,
+    SelfPromotion,
+    CheckpointChallengeWindowOpen,
+    CheckpointQuorumMissing,
     EnvironmentMismatch,
     BuildRevoked,
 }
@@ -543,6 +547,10 @@ impl PylonTrainingRefusalCode {
             Self::ArtifactDigestMismatch => "artifact_digest_mismatch",
             Self::ValidatorTimeout => "validator_timeout",
             Self::ValidatorDisagreement => "validator_disagreement",
+            Self::SelfValidation => "self_validation",
+            Self::SelfPromotion => "self_promotion",
+            Self::CheckpointChallengeWindowOpen => "checkpoint_challenge_window_open",
+            Self::CheckpointQuorumMissing => "checkpoint_quorum_missing",
             Self::EnvironmentMismatch => "environment_mismatch",
             Self::BuildRevoked => "build_revoked",
         }
@@ -556,11 +564,15 @@ impl PylonTrainingRefusalCode {
             | Self::CheckpointDigestMismatch
             | Self::ArtifactIncomplete
             | Self::ArtifactDigestMismatch
+            | Self::SelfValidation
+            | Self::SelfPromotion
             | Self::EnvironmentMismatch => PylonTrainingAuthorityOwner::Pylon,
             Self::StaleAssignment
             | Self::LeaseExpired
             | Self::ValidatorTimeout
             | Self::ValidatorDisagreement
+            | Self::CheckpointChallengeWindowOpen
+            | Self::CheckpointQuorumMissing
             | Self::BuildRevoked => PylonTrainingAuthorityOwner::Nexus,
         }
     }
@@ -570,13 +582,17 @@ impl PylonTrainingRefusalCode {
             Self::LeaseExpired
             | Self::CheckpointMissing
             | Self::ArtifactIncomplete
-            | Self::ValidatorTimeout => true,
+            | Self::ValidatorTimeout
+            | Self::CheckpointChallengeWindowOpen
+            | Self::CheckpointQuorumMissing => true,
             Self::BadConfig
             | Self::StaleAssignment
             | Self::UnsupportedTopology
             | Self::CheckpointDigestMismatch
             | Self::ArtifactDigestMismatch
             | Self::ValidatorDisagreement
+            | Self::SelfValidation
+            | Self::SelfPromotion
             | Self::EnvironmentMismatch
             | Self::BuildRevoked => false,
         }
