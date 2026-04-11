@@ -407,6 +407,7 @@ set -euo pipefail
 /usr/bin/docker pull "${DEPLOY_IMAGE}"
 SCRIPT
 
+  sudo chmod 755 /usr/local/bin/nexus-registry-login.sh /usr/local/bin/nexus-prepare-image.sh
   echo "$ACCESS_TOKEN" | sudo docker login -u oauth2accesstoken --password-stdin "https://${AR_HOST}"
   sudo /usr/local/bin/nexus-prepare-image.sh
 else
@@ -422,10 +423,9 @@ set -euo pipefail
 /usr/bin/docker image inspect "${DEPLOY_IMAGE}" >/dev/null
 SCRIPT
 
+  sudo chmod 755 /usr/local/bin/nexus-registry-login.sh /usr/local/bin/nexus-prepare-image.sh
   sudo /usr/local/bin/nexus-prepare-image.sh
 fi
-
-sudo chmod 755 /usr/local/bin/nexus-registry-login.sh /usr/local/bin/nexus-prepare-image.sh
 
 sudo tee /etc/systemd/system/nexus-relay.service >/dev/null <<UNIT
 [Unit]
