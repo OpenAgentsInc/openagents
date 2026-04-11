@@ -227,6 +227,20 @@ same `apps/pylon/src/lib.rs` surface can now:
   state for later operator/admin projection through
   `pylon training publish [--manifest <path>]`
 
+The retained training node record now also carries one scheduler-readable
+capability-tier profile derived from local host telemetry and retained
+training runtime state. That profile is published both in the TRN
+`kind:39501` content and in explicit capability tags so downstream schedulers
+can read:
+
+- capability tier (`tier0_presence` through `tier4_authority`)
+- backend families and accelerator inventory
+- memory floor and currently available memory
+- throughput band
+- lease reliability class
+- replay capability
+- artifact upload latency class
+
 This is still the node-side claim lane, not the final authoritative `Nexus`
 publication lane. The current locator status is intentionally `staged`, and
 `Nexus` closeout state still remains the authoritative settlement boundary.
@@ -253,18 +267,19 @@ staying buried in `state/runtime-state.json` only:
 - `pylon training status [--json]`
   - renders the retained training operator report directly: current run,
     active window, current runtime state, last checkpoint pointer, validator
-    queue, retained TRN publication pointers, recent closeouts, and recent
-    refusals or failures
+    queue, retained capability tier, retained TRN publication pointers, recent
+    closeouts, and recent refusals or failures
 - `pylon status`
   - now appends a concise training summary to the top-level provider status,
     including the training headline (`active`, `blocked`, `ready`, or
-    `inactive`), the active run/window when present, the last checkpoint ref,
-    validator-queue depth, and the most recent retained training issue
+    `inactive`), the retained capability tier, the active run/window when
+    present, the last checkpoint ref, validator-queue depth, and the most
+    recent retained training issue
 - `pylon doctor`
   - now includes a dedicated `training` block covering runtime-surface
-    discovery, contributor readiness, checkpoint-serve URL, retained role
-    claims, retention limits, blocked reputation labels, and recent retained
-    issues
+    discovery, contributor readiness, retained capability tier,
+    checkpoint-serve URL, retained role claims, retention limits, blocked
+    reputation labels, and recent retained issues
 
 The shared admin port now also exposes training-aware HTTP routes alongside the
 existing provider status routes:

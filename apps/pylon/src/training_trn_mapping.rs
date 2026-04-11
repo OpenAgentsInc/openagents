@@ -5,6 +5,7 @@ use nostr::{
     TrainingArtifactLocatorEvent, TrainingNodeRecordEvent, TrainingReceiptEvent,
     TrnAddressReference, TrnCapability, TrnPubkeyReference,
 };
+use openagents_provider_substrate::ProviderTrainingCapabilityTierProfile;
 use serde_json::{Map, Value, json};
 
 use super::{
@@ -37,6 +38,7 @@ pub(super) fn node_record_event(
     config: &PylonConfig,
     state: &PylonTrainingRuntimeState,
     contexts: &[&TrainingManifestInspectionContext],
+    capability_tier: &ProviderTrainingCapabilityTierProfile,
 ) -> Result<(String, TrainingNodeRecordEvent)> {
     let network_id = contexts
         .first()
@@ -85,6 +87,41 @@ pub(super) fn node_record_event(
     {
         capabilities.push(TrnCapability::new("world_size", world_size.to_string()));
     }
+    capabilities.push(TrnCapability::new(
+        "training_capability_tier",
+        capability_tier.tier.label(),
+    ));
+    capabilities.push(TrnCapability::new(
+        "training_throughput_band",
+        capability_tier.throughput_band.label(),
+    ));
+    capabilities.push(TrnCapability::new(
+        "training_lease_reliability",
+        capability_tier.lease_reliability.label(),
+    ));
+    capabilities.push(TrnCapability::new(
+        "training_replay_capability",
+        capability_tier.replay_capability.label(),
+    ));
+    capabilities.push(TrnCapability::new(
+        "training_artifact_upload_latency_class",
+        capability_tier.artifact_upload_latency_class.label(),
+    ));
+    for accelerator in &capability_tier.accelerator_inventory {
+        capabilities.push(TrnCapability::new(
+            "training_accelerator",
+            format!(
+                "{}:{}:{}:{}",
+                accelerator.backend_family,
+                accelerator.model,
+                accelerator.accelerator_count,
+                accelerator
+                    .memory_per_accelerator_gb
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            ),
+        ));
+    }
     let active_runtime = state
         .active_runtime
         .as_ref()
@@ -118,6 +155,8 @@ pub(super) fn node_record_event(
             .iter()
             .map(|context| context.manifest.manifest_digest.clone())
             .collect::<Vec<_>>(),
+        "capability_tier": serde_json::to_value(capability_tier)
+            .context("failed to encode capability tier")?,
         "active_runtime": active_runtime,
     });
     let mut extra_tags = Vec::new();
@@ -135,6 +174,29 @@ pub(super) fn node_record_event(
     {
         push_optional_tag(&mut extra_tags, "environment", environment_ref);
     }
+    extra_tags.push(vec![
+        "tier".to_string(),
+        capability_tier.tier.label().to_string(),
+    ]);
+    extra_tags.push(vec![
+        "throughput_band".to_string(),
+        capability_tier.throughput_band.label().to_string(),
+    ]);
+    extra_tags.push(vec![
+        "lease_reliability".to_string(),
+        capability_tier.lease_reliability.label().to_string(),
+    ]);
+    extra_tags.push(vec![
+        "replay_capability".to_string(),
+        capability_tier.replay_capability.label().to_string(),
+    ]);
+    extra_tags.push(vec![
+        "artifact_upload_latency_class".to_string(),
+        capability_tier
+            .artifact_upload_latency_class
+            .label()
+            .to_string(),
+    ]);
     Ok((
         status.to_string(),
         TrainingNodeRecordEvent {
@@ -258,10 +320,12 @@ pub(super) fn assignment_ack_event(
         extra_tags: vec![
             vec![
                 "backend".to_string(),
-                training_backend_family_label(context.manifest.topology.backend_family)
-                    .to_string(),
+                training_backend_family_label(context.manifest.topology.backend_family).to_string(),
             ],
-            vec!["environment".to_string(), context.manifest.environment_ref.clone()],
+            vec![
+                "environment".to_string(),
+                context.manifest.environment_ref.clone(),
+            ],
         ],
     }
     .normalize())
@@ -514,6 +578,38 @@ mod tests {
         ))
     }
 
+    fn capability_tier_fixture(
+        tier: openagents_provider_substrate::ProviderTrainingCapabilityTier,
+        backend_family: &str,
+    ) -> ProviderTrainingCapabilityTierProfile {
+        ProviderTrainingCapabilityTierProfile {
+            tier,
+            backend_families: vec![backend_family.to_string()],
+            accelerator_inventory: vec![
+                openagents_provider_substrate::ProviderTrainingAcceleratorInventoryEntry {
+                    backend_family: backend_family.to_string(),
+                    model: format!("{backend_family}-accelerator"),
+                    vendor: None,
+                    accelerator_count: 1,
+                    memory_per_accelerator_gb: Some(64),
+                },
+            ],
+            memory_floor_gb: Some(32),
+            available_memory_gb: Some(64),
+            throughput_band: if backend_family == "cuda" {
+                openagents_provider_substrate::ProviderTrainingThroughputBand::Island
+            } else {
+                openagents_provider_substrate::ProviderTrainingThroughputBand::Medium
+            },
+            lease_reliability:
+                openagents_provider_substrate::ProviderTrainingLeaseReliabilityClass::Steady,
+            replay_capability:
+                openagents_provider_substrate::ProviderTrainingReplayCapability::ShortWindow,
+            artifact_upload_latency_class:
+                openagents_provider_substrate::ProviderTrainingArtifactUploadLatencyClass::Moderate,
+        }
+    }
+
     #[test]
     fn training_trn_mapping_preserves_apple_backend_capabilities_in_node_records() -> Result<()> {
         let (temp_dir, context) = worker_manifest_context_with_topology(
@@ -523,9 +619,17 @@ mod tests {
         )?;
         let mut config = super::super::default_config(temp_dir.path());
         config.training.role_claims = vec![super::super::PylonTrainingRoleClaim::Worker];
+        let capability_tier = capability_tier_fixture(
+            openagents_provider_substrate::ProviderTrainingCapabilityTier::Tier2Trainer,
+            "metal",
+        );
 
-        let (status, node_record) =
-            node_record_event(&config, &PylonTrainingRuntimeState::default(), &[&context])?;
+        let (status, node_record) = node_record_event(
+            &config,
+            &PylonTrainingRuntimeState::default(),
+            &[&context],
+            &capability_tier,
+        )?;
         assert_eq!(status, "degraded");
         assert!(
             node_record
@@ -546,16 +650,19 @@ mod tests {
                 .iter()
                 .any(|tag| tag == &vec!["backend".to_string(), "metal".to_string()])
         );
+        assert!(node_record.extra_tags.iter().any(|tag| {
+            tag == &vec![
+                "environment".to_string(),
+                PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string(),
+            ]
+        }));
         assert!(
             node_record
-                .extra_tags
-                .iter()
-                .any(|tag| {
-                    tag == &vec![
-                        "environment".to_string(),
-                        PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string(),
-                    ]
-                })
+                .capabilities
+                .contains(&nostr::TrnCapability::new(
+                    "training_capability_tier",
+                    "tier2_trainer"
+                ))
         );
         Ok(())
     }
@@ -602,8 +709,13 @@ mod tests {
             }),
             ..PylonTrainingRuntimeState::default()
         };
+        let capability_tier = capability_tier_fixture(
+            openagents_provider_substrate::ProviderTrainingCapabilityTier::Tier3Island,
+            "cuda",
+        );
 
-        let (status, node_record) = node_record_event(&config, &state, &[&context])?;
+        let (status, node_record) =
+            node_record_event(&config, &state, &[&context], &capability_tier)?;
         assert_eq!(status, "online");
         assert_eq!(node_record.status, "online");
         assert_eq!(node_record.roles, vec!["worker".to_string()]);
@@ -669,6 +781,20 @@ mod tests {
                 .extra_tags
                 .iter()
                 .any(|tag| tag == &vec!["environment".to_string(), "env.cuda.alpha".to_string()])
+        );
+        assert_eq!(
+            node_record
+                .content
+                .get("capability_tier")
+                .and_then(|value| value.get("tier"))
+                .and_then(Value::as_str),
+            Some("tier3_island")
+        );
+        assert!(
+            node_record
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["tier".to_string(), "tier3_island".to_string()])
         );
         assert!(matches!(
             TrnEvent::from_event(&fake_event(node_record.to_event_template(1_774_160_010)?))?,

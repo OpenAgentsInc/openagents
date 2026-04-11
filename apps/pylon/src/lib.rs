@@ -66,8 +66,12 @@ use openagents_provider_substrate::{
     ProviderPooledInferenceAvailability, ProviderReceiptSummary, ProviderRecentJob,
     ProviderRuntimeStatusSnapshot, ProviderSandboxDetectionConfig, ProviderSandboxProfile,
     ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSnapshotParts,
-    ProviderStatusResponse, assemble_provider_persisted_snapshot, derive_provider_products,
-    detect_sandbox_supply, provider_runtime_state_label, sign_provider_payout_target_registration,
+    ProviderStatusResponse, ProviderTrainingAcceleratorInventoryEntry,
+    ProviderTrainingArtifactUploadLatencyClass, ProviderTrainingCapabilityTier,
+    ProviderTrainingCapabilityTierProfile, ProviderTrainingLeaseReliabilityClass,
+    ProviderTrainingReplayCapability, ProviderTrainingThroughputBand,
+    assemble_provider_persisted_snapshot, derive_provider_products, detect_sandbox_supply,
+    provider_runtime_state_label, sign_provider_payout_target_registration,
     validate_provider_control_action,
 };
 use serde::de::DeserializeOwned;
@@ -628,6 +632,8 @@ pub struct PylonTrainingNodeAdmissionRequest {
     pub build_digest: Option<String>,
     #[serde(default)]
     pub contributor_availability: ProviderAdapterTrainingContributorAvailability,
+    #[serde(default)]
+    pub capability_tier: ProviderTrainingCapabilityTierProfile,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_telemetry: Option<ProviderHostTelemetrySnapshot>,
     #[serde(default)]
@@ -857,6 +863,7 @@ pub struct TrainingOperatorStatusReport {
     checkpoint_serve_url: String,
     runtime_surface_detected: bool,
     contributor_supported: bool,
+    capability_tier: ProviderTrainingCapabilityTierProfile,
     manifest_count: usize,
     publication_pointer_count: usize,
     publication_record_count: usize,
@@ -1444,6 +1451,7 @@ struct DoctorReport {
 struct TrainingDoctorStatus {
     runtime_surface_detected: bool,
     contributor_supported: bool,
+    capability_tier: ProviderTrainingCapabilityTierProfile,
     checkpoint_serve_url: String,
     role_claims: Vec<String>,
     retention_limit_gb: u64,
@@ -6828,13 +6836,20 @@ async fn load_training_status_report(config_path: &Path) -> Result<TrainingOpera
 
 fn load_training_status_report_local(config_path: &Path) -> Result<TrainingOperatorStatusReport> {
     let config = load_or_create_config(config_path)?;
-    load_training_status_report_with_config(&config)
+    load_training_status_report_with_config(config_path, &config)
 }
 
 fn load_training_status_report_with_config(
+    config_path: &Path,
     config: &PylonConfig,
 ) -> Result<TrainingOperatorStatusReport> {
     let state = load_or_create_training_runtime_state(config)?;
+    let host = load_cached_provider_host_telemetry(config_path);
+    let runtime_surface = inspect_psionic_train_runtime_surface().ok();
+    let contributor_availability =
+        derive_adapter_training_contributor_availability(&host, runtime_surface.as_ref());
+    let capability_tier =
+        derive_training_capability_tier_profile(config, &state, &host, &contributor_availability);
     let contexts = load_training_manifest_inspection_contexts(config, &state)?;
     let provider_pubkey = config
         .identity_path
@@ -6842,7 +6857,6 @@ fn load_training_status_report_with_config(
         .then(|| load_identity_from_path(config.identity_path.as_path()).ok())
         .flatten()
         .map(|identity| identity.public_key_hex);
-    let contributor_supported = detect_adapter_training_contributor(config).contributor_supported;
     let blocked_label_keys = training_runtime_blocked_label_keys(&state);
     let pending_publication_count = state
         .publication_records
@@ -6925,8 +6939,9 @@ fn load_training_status_report_with_config(
         node_label: config.node_label.clone(),
         provider_pubkey,
         checkpoint_serve_url: training_checkpoint_serve_url(config),
-        runtime_surface_detected: inspect_psionic_train_runtime_surface().is_ok(),
-        contributor_supported,
+        runtime_surface_detected: runtime_surface.is_some(),
+        contributor_supported: contributor_availability.contributor_supported,
+        capability_tier,
         manifest_count: contexts.len(),
         publication_pointer_count: state.publication_pointers.len(),
         publication_record_count: state.publication_records.len(),
@@ -7326,6 +7341,7 @@ fn build_training_doctor_status(
     Ok(TrainingDoctorStatus {
         runtime_surface_detected: report.runtime_surface_detected,
         contributor_supported: report.contributor_supported,
+        capability_tier: report.capability_tier,
         checkpoint_serve_url: report.checkpoint_serve_url.clone(),
         role_claims: config
             .training
@@ -8658,7 +8674,14 @@ fn build_training_node_record_template(
     state: &PylonTrainingRuntimeState,
     contexts: &[&TrainingManifestInspectionContext],
 ) -> Result<(String, String, EventTemplate)> {
-    let (status, event) = training_trn_mapping::node_record_event(config, state, contexts)?;
+    let host = load_training_host_telemetry(config);
+    let runtime_surface = inspect_psionic_train_runtime_surface().ok();
+    let contributor_availability =
+        derive_adapter_training_contributor_availability(&host, runtime_surface.as_ref());
+    let capability_tier =
+        derive_training_capability_tier_profile(config, state, &host, &contributor_availability);
+    let (status, event) =
+        training_trn_mapping::node_record_event(config, state, contexts, &capability_tier)?;
     let a_ref = event
         .coordinate(identity.public_key_hex.as_str())
         .map_err(|error| anyhow!(error.to_string()))?;
@@ -9218,6 +9241,10 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
             report.runtime_surface_detected
         ),
         format!("contributor supported: {}", report.contributor_supported),
+        format!(
+            "capability tier: {}",
+            render_training_capability_tier_summary(&report.capability_tier)
+        ),
         format!("tracked manifests: {}", report.manifest_count),
         format!("tracked TRN events: {}", report.publication_pointer_count),
         format!("tracked TRN records: {}", report.publication_record_count),
@@ -9325,6 +9352,22 @@ fn training_status_headline(report: &TrainingOperatorStatusReport) -> &'static s
     } else {
         "inactive"
     }
+}
+
+fn render_training_capability_tier_summary(
+    profile: &ProviderTrainingCapabilityTierProfile,
+) -> String {
+    let mut segments = vec![profile.tier.label().to_string()];
+    if !profile.backend_families.is_empty() {
+        segments.push(profile.backend_families.join("+"));
+    }
+    if let Some(memory_floor_gb) = profile.memory_floor_gb {
+        segments.push(format!("floor={}gb", memory_floor_gb));
+    }
+    segments.push(format!("throughput={}", profile.throughput_band.label()));
+    segments.push(format!("replay={}", profile.replay_capability.label()));
+    segments.push(format!("reliability={}", profile.lease_reliability.label()));
+    segments.join(" ")
 }
 
 fn render_training_artifact_inspection_report(report: &TrainingArtifactInspectionReport) -> String {
@@ -10289,15 +10332,11 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                     && snapshot.runtime.authoritative_status.as_deref() == Some("online")
                     && Instant::now() >= next_provider_auto_run_at
                 {
-                    if let Err(error) = run_provider_requests(
-                        config_path,
-                        DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS,
-                    )
-                    .await
+                    if let Err(error) =
+                        run_provider_requests(config_path, DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS)
+                            .await
                     {
-                        eprintln!(
-                            "warning: automatic pylon provider intake pass failed: {error}"
-                        );
+                        eprintln!("warning: automatic pylon provider intake pass failed: {error}");
                     }
                     next_provider_auto_run_at = Instant::now() + provider_auto_run_interval;
                 }
@@ -10649,7 +10688,9 @@ fn build_snapshot_from_availability(
                     value: json!(config.local_gemma_preferred_model),
                 },
             ];
-            if let Ok(training_status) = load_training_status_report_with_config(config) {
+            if let Ok(training_status) =
+                load_training_status_report_with_config(config.admin_db_path.as_path(), config)
+            {
                 entries.push(ProviderJsonEntry {
                     key: "training_operator_status".to_string(),
                     value: serde_json::to_value(training_status).unwrap_or(Value::Null),
@@ -11065,6 +11106,10 @@ fn render_human_status(status: &ProviderStatusResponse) -> String {
         lines.extend(render_sandbox_status_lines(&snapshot.availability));
         if let Some(training) = snapshot_training_status_report(snapshot) {
             lines.push(format!("training: {}", training_status_headline(&training)));
+            lines.push(format!(
+                "training_tier: {}",
+                render_training_capability_tier_summary(&training.capability_tier)
+            ));
             if let Some(active_runtime) = training.active_runtime.as_ref() {
                 lines.push(format!(
                     "training_active: {} {} {} {}",
@@ -12301,12 +12346,8 @@ pub async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> 
         }
         Err(_) => None,
     };
-    let earnings = merge_ledger_earnings(
-        earnings,
-        &ledger,
-        &status,
-        wallet_credit_summary.as_ref(),
-    );
+    let earnings =
+        merge_ledger_earnings(earnings, &ledger, &status, wallet_credit_summary.as_ref());
     let wallet_credits = summarize_wallet_credits(&ledger);
     let source = if !provider_earnings_are_empty(earnings.as_ref()) {
         "provider_earnings".to_string()
@@ -12505,7 +12546,10 @@ fn merge_ledger_recent_jobs(
     limit: Option<usize>,
 ) -> Vec<ProviderRecentJob> {
     for job in ledger_provider_recent_jobs(ledger) {
-        if let Some(existing) = jobs.iter_mut().find(|existing| existing.job_id == job.job_id) {
+        if let Some(existing) = jobs
+            .iter_mut()
+            .find(|existing| existing.job_id == job.job_id)
+        {
             merge_provider_recent_job(existing, &job);
         } else {
             jobs.push(job);
@@ -12770,7 +12814,9 @@ fn ledger_provider_recent_jobs(ledger: &PylonLedger) -> Vec<ProviderRecentJob> {
                 payment_pointer: job
                     .payment_id
                     .clone()
-                    .or_else(|| settlement.and_then(|settlement| settlement.payment_reference.clone()))
+                    .or_else(|| {
+                        settlement.and_then(|settlement| settlement.payment_reference.clone())
+                    })
                     .or_else(|| job.bolt11.clone())
                     .unwrap_or_else(|| "none".to_string()),
                 failure_reason: job.error_detail.clone(),
@@ -14378,6 +14424,211 @@ fn derive_adapter_training_contributor_availability(
     }
 }
 
+fn load_training_host_telemetry(config: &PylonConfig) -> ProviderHostTelemetrySnapshot {
+    collect_provider_host_telemetry(config.training.run_root.as_path())
+}
+
+fn training_capability_backend_families(host: &ProviderHostTelemetrySnapshot) -> Vec<String> {
+    let mut families = BTreeSet::new();
+    if host_has_cuda_training_backend(host) {
+        families.insert("cuda".to_string());
+    }
+    if host_has_apple_training_backend(host) {
+        families.insert("metal".to_string());
+    }
+    families.into_iter().collect()
+}
+
+fn training_capability_backend_family_for_gpu(
+    gpu: &ProviderHostGpuTelemetry,
+) -> Option<&'static str> {
+    if provider_gpu_is_cuda_training_backend(gpu) {
+        Some("cuda")
+    } else if provider_gpu_is_apple_training_backend(gpu) {
+        Some("metal")
+    } else {
+        None
+    }
+}
+
+fn training_capability_accelerator_inventory(
+    host: &ProviderHostTelemetrySnapshot,
+) -> Vec<ProviderTrainingAcceleratorInventoryEntry> {
+    let mut grouped = BTreeMap::<(String, String, Option<String>, Option<u32>), u32>::new();
+    for gpu in &host.gpus {
+        let Some(backend_family) = training_capability_backend_family_for_gpu(gpu) else {
+            continue;
+        };
+        let key = (
+            backend_family.to_string(),
+            gpu.model.clone(),
+            gpu.vendor.clone().filter(|value| !value.trim().is_empty()),
+            provider_gpu_memory_gb(gpu),
+        );
+        *grouped.entry(key).or_default() += 1;
+    }
+    grouped
+        .into_iter()
+        .map(
+            |((backend_family, model, vendor, memory_per_accelerator_gb), accelerator_count)| {
+                ProviderTrainingAcceleratorInventoryEntry {
+                    backend_family,
+                    model,
+                    vendor,
+                    accelerator_count,
+                    memory_per_accelerator_gb,
+                }
+            },
+        )
+        .collect()
+}
+
+fn training_capability_available_memory_gb(
+    host: &ProviderHostTelemetrySnapshot,
+    availability: &ProviderAdapterTrainingContributorAvailability,
+) -> Option<u32> {
+    availability.available_memory_gb.or_else(|| {
+        host.memory
+            .as_ref()
+            .map(|memory| bytes_to_gib_ceil(memory.total_bytes.max(memory.available_bytes)))
+    })
+}
+
+fn training_capability_throughput_band(
+    host: &ProviderHostTelemetrySnapshot,
+    availability: &ProviderAdapterTrainingContributorAvailability,
+) -> ProviderTrainingThroughputBand {
+    let available_memory_gb = training_capability_available_memory_gb(host, availability);
+    let cuda_accelerator_count = host
+        .gpus
+        .iter()
+        .filter(|gpu| provider_gpu_is_cuda_training_backend(gpu))
+        .count();
+    match available_memory_gb {
+        Some(memory_gb) if memory_gb >= 80 || cuda_accelerator_count >= 2 => {
+            ProviderTrainingThroughputBand::Island
+        }
+        Some(memory_gb) if memory_gb >= 48 => ProviderTrainingThroughputBand::High,
+        Some(memory_gb) if memory_gb >= 24 => ProviderTrainingThroughputBand::Medium,
+        Some(_) => ProviderTrainingThroughputBand::Low,
+        None => ProviderTrainingThroughputBand::Unknown,
+    }
+}
+
+fn training_capability_replay_capability(
+    config: &PylonConfig,
+    availability: &ProviderAdapterTrainingContributorAvailability,
+) -> ProviderTrainingReplayCapability {
+    if config
+        .training
+        .role_claims
+        .contains(&PylonTrainingRoleClaim::Validator)
+    {
+        ProviderTrainingReplayCapability::FullWindow
+    } else if availability.authority_receipt_supported && availability.coordinator_match_supported {
+        ProviderTrainingReplayCapability::ShortWindow
+    } else {
+        ProviderTrainingReplayCapability::None
+    }
+}
+
+fn training_capability_lease_reliability(
+    state: &PylonTrainingRuntimeState,
+    host: &ProviderHostTelemetrySnapshot,
+) -> ProviderTrainingLeaseReliabilityClass {
+    let uptime_seconds = host.uptime_seconds.unwrap_or_default();
+    let successful_closeouts = state.closeout_cache.len();
+    let restart_count = state
+        .active_runtime
+        .as_ref()
+        .map(|runtime| runtime.restart_count)
+        .unwrap_or(0);
+    if successful_closeouts >= 3 && uptime_seconds >= 86_400 && restart_count == 0 {
+        ProviderTrainingLeaseReliabilityClass::Strong
+    } else if successful_closeouts >= 1 || uptime_seconds >= 86_400 {
+        ProviderTrainingLeaseReliabilityClass::Steady
+    } else if uptime_seconds > 0 {
+        ProviderTrainingLeaseReliabilityClass::Unproven
+    } else {
+        ProviderTrainingLeaseReliabilityClass::Unknown
+    }
+}
+
+fn training_capability_artifact_upload_latency_class(
+    state: &PylonTrainingRuntimeState,
+) -> ProviderTrainingArtifactUploadLatencyClass {
+    if state
+        .publication_records
+        .values()
+        .any(|record| record.pending_retry || record.last_error.is_some())
+    {
+        ProviderTrainingArtifactUploadLatencyClass::Slow
+    } else if !state.closeout_cache.is_empty() {
+        ProviderTrainingArtifactUploadLatencyClass::Fast
+    } else if !state.contribution_outcomes.is_empty() || !state.publication_pointers.is_empty() {
+        ProviderTrainingArtifactUploadLatencyClass::Moderate
+    } else {
+        ProviderTrainingArtifactUploadLatencyClass::Unknown
+    }
+}
+
+fn derive_training_capability_tier_profile(
+    config: &PylonConfig,
+    state: &PylonTrainingRuntimeState,
+    host: &ProviderHostTelemetrySnapshot,
+    availability: &ProviderAdapterTrainingContributorAvailability,
+) -> ProviderTrainingCapabilityTierProfile {
+    let backend_families = training_capability_backend_families(host);
+    let accelerator_inventory = training_capability_accelerator_inventory(host);
+    let available_memory_gb = training_capability_available_memory_gb(host, availability);
+    let throughput_band = training_capability_throughput_band(host, availability);
+    let lease_reliability = training_capability_lease_reliability(state, host);
+    let replay_capability = training_capability_replay_capability(config, availability);
+    let artifact_upload_latency_class = training_capability_artifact_upload_latency_class(state);
+    let satisfies_memory_floor = match (available_memory_gb, availability.minimum_memory_gb) {
+        (_, None) => true,
+        (Some(available), Some(minimum)) => available >= minimum,
+        (None, Some(_)) => false,
+    };
+    let trainer_ready = availability.contributor_supported && satisfies_memory_floor;
+    let authority_capable = config
+        .training
+        .role_claims
+        .contains(&PylonTrainingRoleClaim::Validator)
+        && config
+            .training
+            .role_claims
+            .contains(&PylonTrainingRoleClaim::RecoverySource)
+        && throughput_band == ProviderTrainingThroughputBand::Island
+        && matches!(
+            lease_reliability,
+            ProviderTrainingLeaseReliabilityClass::Steady
+                | ProviderTrainingLeaseReliabilityClass::Strong
+        );
+    let tier = if authority_capable {
+        ProviderTrainingCapabilityTier::Tier4Authority
+    } else if trainer_ready && throughput_band == ProviderTrainingThroughputBand::Island {
+        ProviderTrainingCapabilityTier::Tier3Island
+    } else if trainer_ready {
+        ProviderTrainingCapabilityTier::Tier2Trainer
+    } else if replay_capability != ProviderTrainingReplayCapability::None {
+        ProviderTrainingCapabilityTier::Tier1Validation
+    } else {
+        ProviderTrainingCapabilityTier::Tier0Presence
+    };
+    ProviderTrainingCapabilityTierProfile {
+        tier,
+        backend_families,
+        accelerator_inventory,
+        memory_floor_gb: availability.minimum_memory_gb,
+        available_memory_gb,
+        throughput_band,
+        lease_reliability,
+        replay_capability,
+        artifact_upload_latency_class,
+    }
+}
+
 fn host_has_training_network_posture(host: &ProviderHostTelemetrySnapshot) -> bool {
     !host.network_interfaces.is_empty()
 }
@@ -14776,31 +15027,34 @@ mod tests {
         GemmaBenchmarkRequest, GemmaBenchmarkSelector, GemmaCommand, GemmaDiagnosticReceipt,
         GemmaDiagnosticReport, GemmaDiagnosticRequest, GemmaDiagnosticResult,
         GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaDownloadTransport, GemmaSelector,
-        LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage,
+        JobsReport, LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage,
         PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CHECKPOINT_FAMILY,
         PYLON_TRAINING_ENVIRONMENT_REF, PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB,
         PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB, PYLON_TRAINING_VALIDATOR_POLICY_REF,
-        PsionicTrainRuntimeSurface, PylonConfig, PylonTrainingActiveRuntimeState,
-        PylonTrainingArtifactStoreClient, PylonTrainingAssignmentAckRequest,
-        PylonTrainingCheckpointPublicationRequest, PylonTrainingCloseoutCacheEntry,
-        PylonTrainingContributionOutcomeCacheEntry, PylonTrainingCoordinatorClient,
-        PylonTrainingDrainNoticeRequest, PylonTrainingFailureNoticeRequest,
-        PylonTrainingFailureReceipt, PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
+        PsionicTrainRuntimeSurface, PylonConfig, PylonLedger, PylonLedgerJob,
+        PylonSettlementRecord, PylonTrainingActiveRuntimeState, PylonTrainingArtifactStoreClient,
+        PylonTrainingAssignmentAckRequest, PylonTrainingCheckpointPublicationRequest,
+        PylonTrainingCloseoutCacheEntry, PylonTrainingContributionOutcomeCacheEntry,
+        PylonTrainingCoordinatorClient, PylonTrainingDrainNoticeRequest,
+        PylonTrainingFailureNoticeRequest, PylonTrainingFailureReceipt,
+        PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
         PylonTrainingManifestCacheEntry, PylonTrainingNodeAdmissionRequest,
         PylonTrainingPublicationPointer, PylonTrainingPublicationRecord,
         PylonTrainingPublicationTemplate, PylonTrainingReputationLabelCacheEntry,
         PylonTrainingRoleClaim, PylonTrainingRunLeaseRequest, PylonTrainingRuntimeState,
         PylonTrainingSupervisorCommand, PylonTrainingSupervisorDesiredState,
         PylonTrainingSupervisorProcessState, PylonTrainingSupervisorStartRequest,
-        PylonTrainingWindowCacheEntry, PylonTrainingWindowProgressRequest, PylonWalletCreditSummary,
-        PylonWalletInvoiceRecord, PylonWalletPaymentRecord, TRN_TRAINING_NODE_RECORD_KIND,
-        TRN_TRAINING_RECEIPT_KIND, TrainingArtifactsCommand, TrainingCommand,
-        TrainingOperatorStatusReport, TrainingTrnPublicationReport, WalletAddressReport,
-        WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand, add_configured_relay,
-        apply_config_set, apply_control_command, apply_training_reputation_gate_to_availability,
+        PylonTrainingWindowCacheEntry, PylonTrainingWindowProgressRequest,
+        PylonWalletCreditSummary, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
+        ReportContext, TRN_TRAINING_NODE_RECORD_KIND, TRN_TRAINING_RECEIPT_KIND,
+        TrainingArtifactsCommand, TrainingCommand, TrainingOperatorStatusReport,
+        TrainingTrnPublicationReport, WalletAddressReport, WalletInvoiceReport,
+        WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
+        apply_control_command, apply_training_reputation_gate_to_availability,
         build_pylon_training_admin_router, build_snapshot_from_availability, bytes_to_gib_ceil,
-        default_config, derive_adapter_training_contributor_availability, detect_availability,
+        default_config, derive_adapter_training_contributor_availability,
+        derive_training_capability_tier_profile, detect_availability,
         download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
         drain_training_supervisor, ensure_identity, ensure_no_conflicting_training_assignment,
         garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
@@ -14808,27 +15062,24 @@ mod tests {
         inventory_rows, load_backend_report, load_earnings_report, load_inventory_report,
         load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
-        load_relay_report, load_sandbox_report, load_status_or_detect, merge_ledger_earnings,
-        merge_ledger_recent_jobs, now_epoch_ms,
+        load_relay_report, load_sandbox_report, load_status_or_detect,
         load_training_artifact_inspection_report, load_training_status_report_local,
-        local_training_release_id, mutate_ledger, parse_args, planned_gemma_benchmark_modes,
-        poll_training_supervisor, provider_admin_config, provider_presence_client, PylonLedger,
-        PylonLedgerJob, PylonSettlementRecord,
-        psionic_gemma_benchmark_command_args, publish_announcement_report,
-        publish_training_trn_state, refresh_relay_report, remove_configured_relay,
-        render_earnings_report, render_human_status, render_jobs_report,
-        render_public_config_json, render_sandbox_report,
-        render_training_status_report, report_provider_presence_heartbeat_for_snapshot,
-        ReportContext, JobsReport,
+        local_training_release_id, merge_ledger_earnings, merge_ledger_recent_jobs, mutate_ledger,
+        now_epoch_ms, parse_args, planned_gemma_benchmark_modes, poll_training_supervisor,
+        provider_admin_config, provider_presence_client, psionic_gemma_benchmark_command_args,
+        publish_announcement_report, publish_training_trn_state, refresh_relay_report,
+        remove_configured_relay, render_earnings_report, render_human_status, render_jobs_report,
+        render_public_config_json, render_sandbox_report, render_training_status_report,
+        report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
-        save_config, save_gemma_diagnostic_report, save_training_runtime_state, serve,
-        scan_provider_requests, snapshot_training_status_report, start_training_checkpoint_server,
-        start_training_supervisor, submit_buyer_job, sync_live_announcement,
-        sync_provider_payout_target_with_report, sync_training_authority_state,
-        training_download_cache_root, training_runtime_state_path, training_settlement_destination,
-        watch_buyer_jobs,
+        save_config, save_gemma_diagnostic_report, save_training_runtime_state,
+        scan_provider_requests, serve, snapshot_training_status_report,
+        start_training_checkpoint_server, start_training_supervisor, submit_buyer_job,
+        sync_live_announcement, sync_provider_payout_target_with_report,
+        sync_training_authority_state, training_download_cache_root, training_runtime_state_path,
+        training_settlement_destination, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -14865,6 +15116,8 @@ mod tests {
         ProviderReceiptSummary, ProviderRecentJob, ProviderSandboxAvailability,
         ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxProfileSpec,
         ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind, ProviderStatusResponse,
+        ProviderTrainingCapabilityTier, ProviderTrainingLeaseReliabilityClass,
+        ProviderTrainingReplayCapability, ProviderTrainingThroughputBand,
         provider_runtime_state_label,
     };
     use serde_json::{Value, json};
@@ -15612,6 +15865,61 @@ mod tests {
                 && availability.environment_refs
                     == vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string()],
             "admitted Apple Silicon hosts should advertise the Apple training lane under the same control plane",
+        )
+    }
+
+    #[test]
+    fn training_capability_tier_marks_h100_worker_as_tier3_island()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut config = default_config(temp_dir.path());
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Worker];
+        let mut host =
+            training_host_snapshot(Some("NVIDIA H100 SXM5 80GB"), Some(80), Some(512), true);
+        host.uptime_seconds = Some(172_800);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+        let profile = derive_training_capability_tier_profile(
+            &config,
+            &PylonTrainingRuntimeState::default(),
+            &host,
+            &availability,
+        );
+
+        ensure(
+            profile.tier == ProviderTrainingCapabilityTier::Tier3Island
+                && profile.backend_families == vec!["cuda".to_string()]
+                && profile.throughput_band == ProviderTrainingThroughputBand::Island
+                && profile.replay_capability == ProviderTrainingReplayCapability::ShortWindow
+                && profile.lease_reliability == ProviderTrainingLeaseReliabilityClass::Steady,
+            "strong admitted CUDA workers should project an island-capable tier profile",
+        )
+    }
+
+    #[test]
+    fn training_capability_tier_marks_validator_without_trainer_floor_as_tier1_validation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut config = default_config(temp_dir.path());
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Validator];
+        let mut host = training_host_snapshot(None, None, Some(512), true);
+        host.uptime_seconds = Some(3_600);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+        let profile = derive_training_capability_tier_profile(
+            &config,
+            &PylonTrainingRuntimeState::default(),
+            &host,
+            &availability,
+        );
+
+        ensure(
+            profile.tier == ProviderTrainingCapabilityTier::Tier1Validation
+                && profile.replay_capability == ProviderTrainingReplayCapability::FullWindow
+                && profile.throughput_band == ProviderTrainingThroughputBand::Unknown,
+            "validator-only nodes without a training-capable accelerator should still publish a validation tier",
         )
     }
 
@@ -16454,8 +16762,9 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
 
         let (_temp_dir, config, identity) = training_coordinator_fixture(base_url.as_str())?;
         let client = PylonTrainingCoordinatorClient::new(&config)?;
+        let host = training_host_snapshot(Some("NVIDIA H100 SXM5 80GB"), Some(80), Some(512), true);
         let availability = derive_adapter_training_contributor_availability(
-            &training_host_snapshot(Some("NVIDIA H100 SXM5 80GB"), Some(80), Some(512), true),
+            &host,
             Some(&psionic_train_runtime_surface_fixture()),
         );
 
@@ -16470,12 +16779,13 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             build_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             build_digest: Some("sha256:build-alpha".to_string()),
             contributor_availability: availability.clone(),
-            host_telemetry: Some(training_host_snapshot(
-                Some("NVIDIA H100 SXM5 80GB"),
-                Some(80),
-                Some(512),
-                true,
-            )),
+            capability_tier: derive_training_capability_tier_profile(
+                &config,
+                &PylonTrainingRuntimeState::default(),
+                &host,
+                &availability,
+            ),
+            host_telemetry: Some(host),
             active_reputation_labels: Vec::new(),
             settlement_destination: training_settlement_destination(&config),
         };
@@ -17860,6 +18170,7 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
         ensure(
             report.current_run_id.as_deref() == Some("run.alpha")
                 && report.active_window_id.as_deref() == Some("window.0001")
+                && report.capability_tier.tier == ProviderTrainingCapabilityTier::Tier0Presence
                 && report.last_checkpoint.as_ref().is_some_and(|checkpoint| {
                     checkpoint.checkpoint_ref == "checkpoint://run.alpha/0001"
                         && checkpoint.optimizer_step == Some(42)
@@ -17890,6 +18201,7 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
         let human = render_training_status_report(&report);
         ensure(
             human.contains("training state: blocked")
+                && human.contains("capability tier: tier0_presence")
                 && human.contains("last checkpoint: checkpoint://run.alpha/0001 step=42")
                 && human.contains("validator queue: 1"),
             "the human training status renderer should summarize the blocked runtime, checkpoint, and validator queue",
@@ -17932,7 +18244,9 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             .ok_or_else(|| std::io::Error::other("missing embedded training status"))?;
         ensure(
             training.current_run_id.as_deref() == Some("run.alpha")
-                && render_human_status(&status).contains("training: active"),
+                && training.capability_tier.tier == ProviderTrainingCapabilityTier::Tier0Presence
+                && render_human_status(&status).contains("training: active")
+                && render_human_status(&status).contains("training_tier: tier0_presence"),
             "top-level pylon status should embed and render the training operator summary",
         )
     }
@@ -21090,7 +21404,11 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                         })
                         .to_string(),
                     ),
-                    _ => (404, "application/json", json!({"error": "not found"}).to_string()),
+                    _ => (
+                        404,
+                        "application/json",
+                        json!({"error": "not found"}).to_string(),
+                    ),
                 },
             )
             .await?;
@@ -21717,8 +22035,12 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
     #[test]
     fn merge_ledger_recent_jobs_overlays_paid_ledger_details_on_live_duplicates() {
         let mut ledger = PylonLedger::default();
-        let mut job =
-            PylonLedgerJob::new("provider-job-duplicate-001", "provider", 5050, "completed_local");
+        let mut job = PylonLedgerJob::new(
+            "provider-job-duplicate-001",
+            "provider",
+            5050,
+            "completed_local",
+        );
         job.payment_id = Some("payment-ledger-001".to_string());
         job.updated_at_ms = 1_762_700_100_000;
         ledger.upsert_job(job);
