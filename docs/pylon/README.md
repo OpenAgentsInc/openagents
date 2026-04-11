@@ -230,6 +230,10 @@ same `apps/pylon/src/lib.rs` surface can now:
 This is still the node-side claim lane, not the final authoritative `Nexus`
 publication lane. The current locator status is intentionally `staged`, and
 `Nexus` closeout state still remains the authoritative settlement boundary.
+The authoritative `Nexus` lane now also publishes typed `kind:39520` training
+artifact locators for accepted local updates, reconciled aggregate artifacts,
+and promoted checkpoints so relay readers can distinguish round contributions
+from aggregate and checkpoint lineage without moving heavy bytes over Nostr.
 
 `Pylon` also now has a retained authority-sync lane for training closeout and
 reputation state. `pylon training sync [--json]` will:
