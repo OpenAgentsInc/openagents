@@ -6,7 +6,7 @@ fn main() -> ExitCode {
         Ok(Action::RunDesktop) => match autopilot_desktop::run_desktop_app() {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
-                eprintln!("{error}");
+                eprintln!("{error:#}");
                 ExitCode::from(1)
             }
         },

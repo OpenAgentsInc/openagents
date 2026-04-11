@@ -128,16 +128,21 @@ pub fn run_desktop_app_with_options(options: DesktopAppOptions) -> Result<()> {
     let mut app = AppShell {
         inner: App::default(),
         options,
+        init_error: None,
     };
     event_loop
         .run_app(&mut app)
         .context("event loop terminated with error")?;
+    if let Some(error) = app.init_error {
+        return Err(error);
+    }
     Ok(())
 }
 
 struct AppShell {
     inner: App,
     options: DesktopAppOptions,
+    init_error: Option<anyhow::Error>,
 }
 
 impl ApplicationHandler for AppShell {
@@ -155,7 +160,9 @@ impl ApplicationHandler for AppShell {
                 state.window.request_redraw();
                 self.inner.state = Some(state);
             }
-            Err(_err) => {
+            Err(err) => {
+                tracing::error!(error = format!("{err:#}"), "failed to initialize desktop renderer");
+                self.init_error = Some(err);
                 event_loop.exit();
             }
         }
