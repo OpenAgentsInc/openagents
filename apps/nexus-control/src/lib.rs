@@ -621,6 +621,12 @@ pub struct ProviderPresenceResponse {
     pub stale_after_ms: u64,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+struct ProviderPresenceHeartbeatQuery {
+    #[serde(default)]
+    dry_run: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HealthResponse {
     pub ok: bool,
@@ -4512,6 +4518,7 @@ async fn homepage_snapshot(
 
 async fn record_provider_presence_heartbeat(
     State(state): State<AppState>,
+    Query(query): Query<ProviderPresenceHeartbeatQuery>,
     Json(request): Json<ProviderPresenceHeartbeatRequest>,
 ) -> Result<Json<ProviderPresenceResponse>, ApiError> {
     let normalized_request = ProviderPresenceHeartbeatRequest {
@@ -4531,6 +4538,17 @@ async fn record_provider_presence_heartbeat(
         hosting_telemetry: request.hosting_telemetry,
     };
     let now = now_unix_ms();
+    if query.dry_run {
+        return Ok(Json(ProviderPresenceResponse {
+            authority: "openagents-hosted-nexus".to_string(),
+            session_id: normalized_request.session_id.clone(),
+            nostr_pubkey_hex: normalized_request.nostr_pubkey_hex.clone(),
+            status: "online".to_string(),
+            recorded_at_unix_ms: now,
+            heartbeat_interval_ms: DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS,
+            stale_after_ms: state.config.provider_presence_stale_after_ms,
+        }));
+    }
     let mut store = state.store.write().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -17880,6 +17898,51 @@ mod tests {
         assert_eq!(stats.pylons_seen_24h, 2);
         assert_eq!(stats.pylon_sessions_online_now, 2);
         assert_eq!(stats.sellable_pylons_online_now, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn provider_presence_heartbeat_dry_run_leaves_public_stats_unchanged() -> Result<()> {
+        let app = build_router(test_config()?);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-presence/heartbeat?dry_run=true")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&provider_presence_request(
+                        "aabbccdd00112233",
+                        "session-a-1",
+                        "alpha",
+                        1,
+                        "online",
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let heartbeat: ProviderPresenceResponse = response_json(response).await?;
+        assert_eq!(heartbeat.status, "online");
+        assert_eq!(heartbeat.session_id, "session-a-1");
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.pylons_online_now, 0);
+        assert_eq!(stats.pylons_seen_24h, 0);
+        assert_eq!(stats.pylon_sessions_online_now, 0);
+        assert_eq!(stats.sellable_pylons_online_now, 0);
+        assert!(stats.recent_pylons.is_empty());
+        assert!(stats.recent_pylon_diagnostics.is_empty());
         Ok(())
     }
 
