@@ -20898,6 +20898,85 @@ mod tests {
     }
 
     #[test]
+    fn refresh_earnings_scoreboard_marks_stale_pylon_snapshot_as_unavailable() {
+        // Catches the third Pylon liveness failure mode: pylon serve dead,
+        // SQLite still on disk with `desired_mode = online` from a previous
+        // session. Persist a snapshot with `captured_at_ms` set ~10 minutes
+        // in the past (well past the 15s
+        // `PYLON_SNAPSHOT_STALENESS_THRESHOLD_MS`) and confirm
+        // `refresh_from_pylon_status` falls into
+        // `mark_pylon_authority_unavailable` instead of trusting the stale
+        // row. Without this gate, autopilot would happily read
+        // `desired_mode = Online` from the file and let the operator click
+        // GO ONLINE while no live job pipeline exists.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let db_path = temp.path().join("provider-admin.sqlite");
+        let listen_addr = "127.0.0.1:0"
+            .parse()
+            .expect("static provider admin listen addr");
+        let config =
+            openagents_provider_substrate::ProviderAdminConfig::new(db_path.clone(), listen_addr);
+        let mut store = openagents_provider_substrate::ProviderPersistenceStore::open(&config)
+            .expect("provider admin store");
+        store
+            .set_listen_addr("127.0.0.1:9468")
+            .expect("persist listen addr");
+        store
+            .set_desired_mode(openagents_provider_substrate::ProviderDesiredMode::Online)
+            .expect("persist desired mode");
+
+        // 10 minutes ago, well past the 15s staleness threshold.
+        let stale_captured_at_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0i64, |duration| {
+                i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
+            })
+            .saturating_sub(10 * 60 * 1_000);
+        let snapshot = openagents_provider_substrate::assemble_provider_persisted_snapshot(
+            openagents_provider_substrate::ProviderSnapshotParts {
+                captured_at_ms: stale_captured_at_ms,
+                runtime: openagents_provider_substrate::ProviderRuntimeStatusSnapshot {
+                    mode: openagents_provider_substrate::ProviderMode::Online,
+                    authoritative_status: Some("online".to_string()),
+                    online_uptime_seconds: 3600,
+                    ..Default::default()
+                },
+                payouts: Vec::new(),
+                earnings: Some(openagents_provider_substrate::ProviderEarningsSummary::default()),
+                ..Default::default()
+            },
+        );
+        store.persist_snapshot(&snapshot).expect("persist snapshot");
+
+        let mut scoreboard = crate::app_state::EarningsScoreboardState::default();
+        refresh_earnings_scoreboard_from_pylon_store(
+            &mut scoreboard,
+            std::time::Instant::now(),
+            db_path.as_path(),
+        )
+        .expect("refresh from pylon store");
+
+        assert_eq!(
+            scoreboard.load_state,
+            crate::app_state::PaneLoadState::Error,
+            "stale snapshot should fall into mark_pylon_authority_unavailable"
+        );
+        assert!(
+            scoreboard
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("stale")),
+            "stale snapshot last_error should call out the staleness; got {:?}",
+            scoreboard.last_error
+        );
+        assert_eq!(
+            scoreboard.pylon_desired_mode, None,
+            "stale snapshot must clear pylon_desired_mode so the offline gate \
+             cannot mistake the prior `online` reading for live truth"
+        );
+    }
+
+    #[test]
     fn resolves_open_network_wallet_pointer_by_exact_invoice_identity_before_amount_heuristic() {
         let mut job = fixture_open_network_delivered_job(10);
         job.settlement_bolt11 = Some("lnbc20n1targetinvoice".to_string());
