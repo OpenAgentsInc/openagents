@@ -1411,8 +1411,41 @@ struct TrainingOperatorSummaryResponse {
     checkpoint_max_age_ms: Option<u64>,
     artifact_failures_open: u64,
     payout_eligible_closeouts: u64,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     runs: Vec<TrainingOperatorRunSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct NexusHomepageResponse {
+    generated_at_unix_ms: u64,
+    stats: PublicStatsSnapshot,
+    training_summary: TrainingOperatorSummaryResponse,
+    #[serde(default)]
+    training_nodes: Vec<AdmittedTrainingNodeView>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_network_id: Option<String>,
+    #[serde(default)]
+    recent_trn_publications: Vec<NexusHomepageRecentTrainingPublication>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct NexusHomepageRecentTrainingPublication {
+    publication_key: String,
+    subject_kind: String,
+    subject_id: String,
+    event_kind: u32,
+    publication_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    event_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    published_at_ms: Option<i64>,
+    last_attempt_at_ms: i64,
+    attempt_count: u32,
+    pending_retry: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -4057,6 +4090,7 @@ fn build_api_router_with_state(state: AppState) -> Router {
     Router::new()
         .route("/stats", get(public_stats))
         .route("/api/stats", get(public_stats))
+        .route("/api/homepage", get(homepage_snapshot))
         .route(
             "/api/provider-presence/heartbeat",
             post(record_provider_presence_heartbeat),
@@ -4460,6 +4494,20 @@ async fn training_operator_summary(
         reason: "session_store_poisoned".to_string(),
     })?;
     Ok(Json(training_operator_summary_snapshot(&store, now)))
+}
+
+async fn homepage_snapshot(
+    State(state): State<AppState>,
+) -> Result<Json<NexusHomepageResponse>, ApiError> {
+    let now = now_unix_ms();
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let snapshot = build_homepage_snapshot(&state.config, &store, now);
+    replace_public_stats_cache(&state, snapshot.stats.clone());
+    Ok(Json(snapshot))
 }
 
 async fn record_provider_presence_heartbeat(
@@ -6852,7 +6900,11 @@ fn training_trn_network_sources(
                 .clone(),
         );
         if let Some(backend_family) = training_backend_family_for_environment_ref(
-            source.training_run.environment_binding.environment_ref.as_str(),
+            source
+                .training_run
+                .environment_binding
+                .environment_ref
+                .as_str(),
         ) {
             entry.backend_families.insert(backend_family.to_string());
         }
@@ -13618,6 +13670,98 @@ fn training_operator_metrics(store: &ControlStore, now_unix_ms: u64) -> Training
     }
 }
 
+fn build_homepage_snapshot(
+    config: &ServiceConfig,
+    store: &ControlStore,
+    now_unix_ms: u64,
+) -> NexusHomepageResponse {
+    let stats = build_public_stats_snapshot(config, store, now_unix_ms);
+    let training_summary = training_operator_summary_snapshot(store, now_unix_ms);
+    let training_nodes = store.kernel.list_admitted_training_nodes(
+        &TrainingNodeQuery {
+            network_id: None,
+            role: None,
+            online_only: false,
+            eligible_only: false,
+        },
+        now_unix_ms as i64,
+    );
+
+    let default_run = training_summary
+        .runs
+        .iter()
+        .find(|run| {
+            matches!(
+                run.run_status.as_str(),
+                "queued" | "preparing" | "running" | "finalizing"
+            )
+        })
+        .or_else(|| training_summary.runs.first());
+    let default_run_id = default_run.map(|run| run.training_run_id.clone());
+    let default_network_id = default_run.map(|run| run.network_id.clone()).or_else(|| {
+        training_nodes
+            .iter()
+            .flat_map(|node| node.allowed_networks.iter())
+            .find(|network_id| !network_id.trim().is_empty())
+            .cloned()
+    });
+
+    NexusHomepageResponse {
+        generated_at_unix_ms: now_unix_ms,
+        stats,
+        training_summary,
+        training_nodes,
+        default_run_id,
+        default_network_id,
+        recent_trn_publications: recent_homepage_training_publications(store),
+    }
+}
+
+fn recent_homepage_training_publications(
+    store: &ControlStore,
+) -> Vec<NexusHomepageRecentTrainingPublication> {
+    let mut records = store.kernel.list_training_trn_publication_records();
+    records.sort_by(|lhs, rhs| {
+        rhs.published_at_ms
+            .unwrap_or(rhs.last_attempt_at_ms)
+            .cmp(&lhs.published_at_ms.unwrap_or(lhs.last_attempt_at_ms))
+            .then_with(|| rhs.last_attempt_at_ms.cmp(&lhs.last_attempt_at_ms))
+            .then_with(|| lhs.publication_key.cmp(&rhs.publication_key))
+    });
+    records
+        .into_iter()
+        .take(12)
+        .map(homepage_training_publication_from_record)
+        .collect()
+}
+
+fn homepage_training_publication_from_record(
+    record: TrainingTrnPublicationRecord,
+) -> NexusHomepageRecentTrainingPublication {
+    let publication_state = if record.pending_retry {
+        "queued_retry".to_string()
+    } else if record.published_at_ms.is_some() || record.event_id.is_some() {
+        "published".to_string()
+    } else if record.attempt_count > 0 {
+        "attempted".to_string()
+    } else {
+        "pending".to_string()
+    };
+    NexusHomepageRecentTrainingPublication {
+        publication_key: record.publication_key,
+        subject_kind: record.subject_kind,
+        subject_id: record.subject_id,
+        event_kind: record.event_kind,
+        publication_state,
+        event_id: record.event_id,
+        published_at_ms: record.published_at_ms,
+        last_attempt_at_ms: record.last_attempt_at_ms,
+        attempt_count: record.attempt_count,
+        pending_retry: record.pending_retry,
+        last_error: record.last_error,
+    }
+}
+
 fn replace_public_stats_cache(state: &AppState, snapshot: PublicStatsSnapshot) {
     if let Ok(mut cache) = state.public_stats_cache.write() {
         *cache = snapshot;
@@ -14015,11 +14159,11 @@ mod tests {
         AdmittedTrainingNodeView, AppState, DEFAULT_COMPUTE_POLICY_BUNDLE_ID,
         DEFAULT_COMPUTE_POLICY_VERSION, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
         DesktopSessionCreateRequest, DesktopSessionResponse, FinalizeValidatorChallengeRequest,
-        LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse,
+        LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse, NexusHomepageResponse,
         PROVIDER_PRESENCE_RETENTION_WINDOW_MS, PYLON_TRAINING_LEASE_DURATION_MS,
         PlanTrainingWindowRequest, ProviderPresenceHeartbeatRequest,
-        ProviderPresenceOfflineRequest, ProviderPresenceState, PublicStatsSnapshot,
-        ReconcileTrainingWindowRequest, RecordTrainingRunLeaseRequest,
+        ProviderPresenceOfflineRequest, ProviderPresenceResponse, ProviderPresenceState,
+        PublicStatsSnapshot, ReconcileTrainingWindowRequest, RecordTrainingRunLeaseRequest,
         RecordTrainingRunLeaseResponse, ScheduleValidatorChallengeRequest,
         ScheduleValidatorChallengeResponse, SealTrainingWindowRequest, ServiceConfig,
         StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
@@ -14214,6 +14358,20 @@ mod tests {
                 Request::builder()
                     .method("GET")
                     .uri("/api/training/summary")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        response_json(response).await
+    }
+
+    async fn fetch_homepage(app: &axum::Router) -> Result<NexusHomepageResponse> {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/homepage")
                     .body(Body::empty())?,
             )
             .await?;
@@ -24029,6 +24187,79 @@ mod tests {
         );
         assert!(run_summary.latest_checkpoint_age_ms.is_some());
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn homepage_snapshot_aggregates_public_stats_training_state_and_recent_trn() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = super::now_unix_ms().saturating_sub(30_000);
+        let training_run_id = "run.homepage.alpha";
+        let session = create_session_token(&app).await?;
+
+        let presence_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-presence/heartbeat")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&provider_presence_request(
+                        "provider-alpha",
+                        session.session_id.as_str(),
+                        "Pylon Alpha",
+                        2,
+                        "online",
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(presence_response.status(), StatusCode::OK);
+        let presence: ProviderPresenceResponse = response_json(presence_response).await?;
+        assert_eq!(presence.status, "online");
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        let (relay_url, mut event_rx, relay_handle) = spawn_training_trn_capture_relay().await?;
+        let report = publish_training_trn(&app, vec![relay_url]).await?;
+        assert!(
+            !report.network_contracts.is_empty()
+                || !report.windows.is_empty()
+                || !report.receipts.is_empty()
+                || !report.reputation_labels.is_empty()
+        );
+        let published_events = collect_training_trn_events(&mut event_rx).await;
+        assert!(!published_events.is_empty());
+
+        let homepage = fetch_homepage(&app).await?;
+        assert_eq!(homepage.stats.pylons_online_now, 1);
+        assert_eq!(homepage.stats.sellable_pylons_online_now, 1);
+        assert_eq!(homepage.stats.recent_pylons.len(), 1);
+        assert_eq!(homepage.training_summary.active_runs, 1);
+        assert_eq!(homepage.training_summary.runs.len(), 1);
+        assert_eq!(homepage.training_nodes.len(), 1);
+        assert_eq!(homepage.default_run_id.as_deref(), Some(training_run_id));
+        assert_eq!(
+            homepage.default_network_id.as_deref(),
+            Some("trainnet.alpha")
+        );
+        assert!(!homepage.recent_trn_publications.is_empty());
+        assert!(
+            homepage
+                .recent_trn_publications
+                .iter()
+                .any(|publication| publication.publication_state == "published")
+        );
+
+        relay_handle.abort();
         Ok(())
     }
 
