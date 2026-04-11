@@ -12549,14 +12549,16 @@ fn merge_ledger_earnings(
     status: &ProviderStatusResponse,
     wallet_credit_summary: Option<&PylonWalletCreditSummary>,
 ) -> Option<ProviderEarningsSummary> {
-    let use_wallet_credit_fallback = base.is_none();
-    if !ledger.jobs.iter().any(|job| job.direction == "provider")
-        && !ledger
-            .settlements
-            .iter()
-            .any(|settlement| settlement.direction == "provider")
-        && !wallet_credit_summary.is_some_and(|credits| credits.last_full_sync_at_ms.is_some())
-    {
+    let use_wallet_credit_fallback = provider_earnings_are_empty(base.as_ref());
+    let has_provider_jobs = ledger.jobs.iter().any(|job| job.direction == "provider");
+    let has_provider_settlements = ledger
+        .settlements
+        .iter()
+        .any(|settlement| settlement.direction == "provider");
+    let has_provider_ledger = has_provider_jobs || has_provider_settlements;
+    let wallet_credit_sync_present =
+        wallet_credit_summary.is_some_and(|credits| credits.last_full_sync_at_ms.is_some());
+    if !has_provider_ledger && !wallet_credit_sync_present {
         return base;
     }
     let mut earnings = base
@@ -12598,7 +12600,7 @@ fn merge_ledger_earnings(
                 .filter(|settlement| settlement.created_at_ms / 86_400_000 == current_day)
                 .count() as u64;
         }
-    } else {
+    } else if has_provider_ledger {
         earnings.lifetime_sats = settled
             .iter()
             .map(|settlement| msats_to_sats_rounded_up(settlement.amount_msats))
