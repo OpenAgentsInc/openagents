@@ -59,13 +59,13 @@ use openagents_kernel_core::compute::{
     ComputeAdapterWindowGateReasonCode, ComputeAdapterWindowStatus,
     ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact, ComputeEvaluationMetric,
     ComputeEvaluationRunStatus, ComputeProductStatus, ComputeRegistryStatus,
-    ComputeSyntheticDataJobStatus, ComputeTrainingRun, ComputeTrainingRunStatus,
-    ComputeTrainingSummary, ComputeTrainingWorkClass, ComputeValidatorChallengeContext,
-    ComputeValidatorChallengeFailureCode, ComputeValidatorChallengeLease,
-    ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
-    ComputeValidatorChallengeResult, ComputeValidatorChallengeSnapshot,
-    ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict, DeliveryProofStatus,
-    StructuredCapacityInstrumentStatus,
+    ComputeSyntheticDataJobStatus, ComputeTrainingReplicaType, ComputeTrainingRun,
+    ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeTrainingWorkClass,
+    ComputeValidatorChallengeContext, ComputeValidatorChallengeFailureCode,
+    ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
+    ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
+    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
+    ComputeValidatorChallengeVerdict, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::data::{
@@ -91,7 +91,7 @@ use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
 use openagents_kernel_proto::openagents::data::v1 as proto_data;
 use openagents_provider_substrate::{
     ProviderAdapterTrainingSettlementTrigger, ProviderDiagnosticSummary,
-    ProviderHostingTelemetrySnapshot,
+    ProviderHostingTelemetrySnapshot, ProviderTrainingCapabilityTier,
 };
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
@@ -1709,8 +1709,10 @@ impl TrainingSchedulerState {
                 return Err("training_scheduler_run_not_schedulable".to_string());
             }
             let metadata = training_scheduler_metadata_from_run(&run)?;
-            if !training_node_matches_scheduler_run(node, &run, &metadata, request.role) {
-                return Err("training_scheduler_run_not_found".to_string());
+            if let Some(reason) =
+                training_node_scheduler_run_mismatch_reason(node, &run, &metadata, request.role)
+            {
+                return Err(reason.to_string());
             }
             if let Some(requested_network_id) = request.requested_network_id.as_deref()
                 && metadata.network_id != requested_network_id
@@ -1720,6 +1722,7 @@ impl TrainingSchedulerState {
             return Ok(run);
         }
 
+        let mut best_match: Option<((u8, u8, u8), ComputeTrainingRun)> = None;
         for run in candidate_runs {
             if !training_run_schedulable(&run) {
                 continue;
@@ -1734,9 +1737,21 @@ impl TrainingSchedulerState {
             {
                 continue;
             }
-            if training_node_matches_scheduler_run(node, run, &metadata, request.role) {
-                return Ok(run.clone());
+            if training_node_scheduler_run_mismatch_reason(node, run, &metadata, request.role)
+                .is_some()
+            {
+                continue;
             }
+            let priority = training_scheduler_run_priority(request.role, run);
+            if best_match
+                .as_ref()
+                .is_none_or(|(best_priority, _)| priority > *best_priority)
+            {
+                best_match = Some((priority, run.clone()));
+            }
+        }
+        if let Some((_, run)) = best_match {
+            return Ok(run);
         }
 
         let _ = now_unix_ms;
@@ -2148,8 +2163,17 @@ fn training_node_matches_scheduler_run(
     metadata: &TrainingSchedulerRunMetadata,
     role: TrainingNodeRoleClaim,
 ) -> bool {
+    training_node_scheduler_run_mismatch_reason(node, run, metadata, role).is_none()
+}
+
+fn training_node_scheduler_run_mismatch_reason(
+    node: &AdmittedTrainingNodeView,
+    run: &ComputeTrainingRun,
+    metadata: &TrainingSchedulerRunMetadata,
+    role: TrainingNodeRoleClaim,
+) -> Option<&'static str> {
     if !node.role_claims.contains(&role) || !node.online || !node.eligible {
-        return false;
+        return Some("training_scheduler_node_ineligible");
     }
     if !node.allowed_networks.is_empty()
         && !node
@@ -2157,7 +2181,7 @@ fn training_node_matches_scheduler_run(
             .iter()
             .any(|value| value == &metadata.network_id)
     {
-        return false;
+        return Some("training_scheduler_network_not_allowed");
     }
     if !node
         .contributor_availability
@@ -2165,7 +2189,7 @@ fn training_node_matches_scheduler_run(
         .iter()
         .any(|value| value == &run.validator_policy_ref)
     {
-        return false;
+        return Some("training_scheduler_validator_policy_mismatch");
     }
     if !node
         .contributor_availability
@@ -2173,7 +2197,7 @@ fn training_node_matches_scheduler_run(
         .iter()
         .any(|value| value == &run.checkpoint_binding.checkpoint_family)
     {
-        return false;
+        return Some("training_scheduler_checkpoint_family_mismatch");
     }
     if !node
         .contributor_availability
@@ -2181,10 +2205,124 @@ fn training_node_matches_scheduler_run(
         .iter()
         .any(|value| value == &run.environment_binding.environment_ref)
     {
-        return false;
+        return Some("training_scheduler_environment_mismatch");
     }
-    node.contributor_availability.settlement_trigger
-        == Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow)
+    if let Some(required_backend_family) = training_backend_family_for_environment_ref(
+        run.environment_binding.environment_ref.as_str(),
+    ) {
+        if !node
+            .capability_tier
+            .backend_families
+            .iter()
+            .any(|value| value == required_backend_family)
+        {
+            return Some("training_scheduler_backend_family_mismatch");
+        }
+    }
+    if node.contributor_availability.settlement_trigger
+        != Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow)
+    {
+        return Some("training_scheduler_settlement_trigger_mismatch");
+    }
+    if !node
+        .capability_tier
+        .tier
+        .meets(training_scheduler_minimum_tier_for_work_class(
+            role,
+            run.work_class,
+        ))
+    {
+        return Some("training_scheduler_work_class_tier_insufficient");
+    }
+    if !node
+        .capability_tier
+        .tier
+        .meets(training_scheduler_minimum_tier_for_replica_type(
+            role,
+            run.replica_type,
+        ))
+    {
+        return Some("training_scheduler_replica_type_tier_insufficient");
+    }
+    None
+}
+
+fn training_scheduler_minimum_tier_for_work_class(
+    role: TrainingNodeRoleClaim,
+    work_class: ComputeTrainingWorkClass,
+) -> ProviderTrainingCapabilityTier {
+    match role {
+        TrainingNodeRoleClaim::Validator => ProviderTrainingCapabilityTier::Tier1Validation,
+        TrainingNodeRoleClaim::RecoverySource => match work_class {
+            ComputeTrainingWorkClass::Aggregation
+            | ComputeTrainingWorkClass::CheckpointPromotion => {
+                ProviderTrainingCapabilityTier::Tier4Authority
+            }
+            ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => {
+                ProviderTrainingCapabilityTier::Tier3Island
+            }
+            _ => ProviderTrainingCapabilityTier::Tier1Validation,
+        },
+        TrainingNodeRoleClaim::Worker => match work_class {
+            ComputeTrainingWorkClass::ValidationReplay | ComputeTrainingWorkClass::Evaluation => {
+                ProviderTrainingCapabilityTier::Tier1Validation
+            }
+            ComputeTrainingWorkClass::AdapterTraining
+            | ComputeTrainingWorkClass::SmallModelLocalTraining
+            | ComputeTrainingWorkClass::GroupedReplicaStageExecution => {
+                ProviderTrainingCapabilityTier::Tier2Trainer
+            }
+            ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => {
+                ProviderTrainingCapabilityTier::Tier3Island
+            }
+            ComputeTrainingWorkClass::Aggregation
+            | ComputeTrainingWorkClass::CheckpointPromotion => {
+                ProviderTrainingCapabilityTier::Tier4Authority
+            }
+        },
+    }
+}
+
+fn training_scheduler_minimum_tier_for_replica_type(
+    role: TrainingNodeRoleClaim,
+    replica_type: ComputeTrainingReplicaType,
+) -> ProviderTrainingCapabilityTier {
+    match role {
+        TrainingNodeRoleClaim::Validator | TrainingNodeRoleClaim::RecoverySource => {
+            ProviderTrainingCapabilityTier::Tier1Validation
+        }
+        TrainingNodeRoleClaim::Worker => match replica_type {
+            ComputeTrainingReplicaType::SingleNode => ProviderTrainingCapabilityTier::Tier0Presence,
+            ComputeTrainingReplicaType::GroupedReplica => {
+                ProviderTrainingCapabilityTier::Tier2Trainer
+            }
+            ComputeTrainingReplicaType::Island => ProviderTrainingCapabilityTier::Tier3Island,
+        },
+    }
+}
+
+fn training_scheduler_run_priority(
+    role: TrainingNodeRoleClaim,
+    run: &ComputeTrainingRun,
+) -> (u8, u8, u8) {
+    (
+        training_scheduler_minimum_tier_for_work_class(role, run.work_class).ordinal(),
+        training_scheduler_minimum_tier_for_replica_type(role, run.replica_type).ordinal(),
+        training_scheduler_work_class_priority(run.work_class),
+    )
+}
+
+fn training_scheduler_work_class_priority(work_class: ComputeTrainingWorkClass) -> u8 {
+    match work_class {
+        ComputeTrainingWorkClass::CheckpointPromotion => 8,
+        ComputeTrainingWorkClass::Aggregation => 7,
+        ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => 6,
+        ComputeTrainingWorkClass::GroupedReplicaStageExecution => 5,
+        ComputeTrainingWorkClass::SmallModelLocalTraining => 4,
+        ComputeTrainingWorkClass::AdapterTraining => 3,
+        ComputeTrainingWorkClass::Evaluation => 2,
+        ComputeTrainingWorkClass::ValidationReplay => 1,
+    }
 }
 
 fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<&'static str> {
@@ -15104,6 +15242,24 @@ mod tests {
         recovery_source_count: u32,
         initial_window_id: &str,
     ) -> serde_json::Value {
+        training_scheduler_metadata_with_contract(
+            network_id,
+            worker_count,
+            validator_count,
+            recovery_source_count,
+            initial_window_id,
+            "checkpoint://decoder/base",
+        )
+    }
+
+    fn training_scheduler_metadata_with_contract(
+        network_id: &str,
+        worker_count: u32,
+        validator_count: u32,
+        recovery_source_count: u32,
+        initial_window_id: &str,
+        checkpoint_ref: &str,
+    ) -> serde_json::Value {
         json!({
             "pylon_training_scheduler": {
                 "network_id": network_id,
@@ -15112,7 +15268,7 @@ mod tests {
                 "validator_count": validator_count,
                 "recovery_source_count": recovery_source_count,
                 "initial_window_id": initial_window_id,
-                "checkpoint_ref": "checkpoint://decoder/base"
+                "checkpoint_ref": checkpoint_ref
             }
         })
     }
@@ -15575,7 +15731,7 @@ mod tests {
         }
     }
 
-    fn seed_training_scheduler_run_with_environment_contract(
+    fn seed_training_scheduler_run_with_environment_contract_and_topology(
         state: &AppState,
         created_at_ms: u64,
         training_run_id: &str,
@@ -15584,6 +15740,9 @@ mod tests {
         node_pubkey_hex: &str,
         build_digest: &str,
         environment_ref: &str,
+        work_class: ComputeTrainingWorkClass,
+        replica_type: ComputeTrainingReplicaType,
+        available_memory_gb: Option<u32>,
     ) {
         let shared_catalog_at_ms = 1_762_491_000_000i64;
         let mut store = state.store.write().expect("write store");
@@ -15687,8 +15846,16 @@ mod tests {
             "policy://validator/mvp/v1".to_string();
         training_run_request.training_run.status = ComputeTrainingRunStatus::Running;
         training_run_request.training_run.started_at_ms = Some(created_at_ms as i64 + 600);
-        training_run_request.training_run.metadata =
-            training_scheduler_metadata(network_id, 1, 0, 0, initial_window_id);
+        training_run_request.training_run.work_class = work_class;
+        training_run_request.training_run.replica_type = replica_type;
+        training_run_request.training_run.metadata = training_scheduler_metadata_with_contract(
+            network_id,
+            1,
+            0,
+            0,
+            initial_window_id,
+            "checkpoint://decoder/base",
+        );
         store
             .kernel
             .create_compute_training_run(
@@ -15702,7 +15869,7 @@ mod tests {
             build_digest,
             vec![network_id],
             Vec::new(),
-            Some(512),
+            available_memory_gb,
             vec![environment_ref],
         );
         node.requested_at_ms = created_at_ms as i64 + 700;
@@ -15728,6 +15895,31 @@ mod tests {
                 heartbeat,
             )
             .expect("heartbeat node");
+    }
+
+    fn seed_training_scheduler_run_with_environment_contract(
+        state: &AppState,
+        created_at_ms: u64,
+        training_run_id: &str,
+        initial_window_id: &str,
+        network_id: &str,
+        node_pubkey_hex: &str,
+        build_digest: &str,
+        environment_ref: &str,
+    ) {
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            state,
+            created_at_ms,
+            training_run_id,
+            initial_window_id,
+            network_id,
+            node_pubkey_hex,
+            build_digest,
+            environment_ref,
+            ComputeTrainingWorkClass::AdapterTraining,
+            ComputeTrainingReplicaType::SingleNode,
+            Some(512),
+        );
     }
 
     fn training_validator_retry_request(
@@ -22426,6 +22618,187 @@ mod tests {
         let cuda_lease = response_json::<RecordTrainingRunLeaseResponse>(cuda_response).await?;
         assert_eq!(cuda_lease.training_run_id, "run.scheduler.cuda");
         assert_eq!(cuda_lease.window_id, "window.cuda.0001");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_auto_selects_runs_by_capability_tier_and_replica_type() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_480_000u64;
+        let network_id = "trainnet.capability";
+
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms,
+            "run.scheduler.grouped",
+            "window.grouped.0001",
+            network_id,
+            "node-tier2",
+            "sha256:build-tier2",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::GroupedReplicaStageExecution,
+            ComputeTrainingReplicaType::GroupedReplica,
+            Some(64),
+        );
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms + 10_000,
+            "run.scheduler.island",
+            "window.island.0001",
+            network_id,
+            "node-tier3",
+            "sha256:build-tier3",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+            ComputeTrainingReplicaType::Island,
+            Some(512),
+        );
+
+        let tier2_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.tier2.auto",
+                            created_at_ms as i64 + 20_000,
+                            "node-tier2",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(tier2_response.status(), StatusCode::OK);
+        let tier2_lease = response_json::<RecordTrainingRunLeaseResponse>(tier2_response).await?;
+        assert_eq!(tier2_lease.training_run_id, "run.scheduler.grouped");
+
+        let tier3_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.tier3.auto",
+                            created_at_ms as i64 + 20_100,
+                            "node-tier3",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(tier3_response.status(), StatusCode::OK);
+        let tier3_lease = response_json::<RecordTrainingRunLeaseResponse>(tier3_response).await?;
+        assert_eq!(tier3_lease.training_run_id, "run.scheduler.island");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_refuses_requested_run_when_replica_type_needs_higher_tier()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_482_000u64;
+        let network_id = "trainnet.replica";
+        let training_run_id = "run.scheduler.adapter.island";
+
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.replica.0001",
+            network_id,
+            "node-tier2",
+            "sha256:build-tier2",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::AdapterTraining,
+            ComputeTrainingReplicaType::Island,
+            Some(64),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replica.refused",
+                            created_at_ms as i64 + 1_000,
+                            "node-tier2",
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            body.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_scheduler_replica_type_tier_insufficient")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_refuses_requested_run_when_work_class_needs_authority_tier()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_484_000u64;
+        let network_id = "trainnet.workclass";
+        let training_run_id = "run.scheduler.aggregate";
+
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.aggregate.0001",
+            network_id,
+            "node-tier3",
+            "sha256:build-tier3",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::Aggregation,
+            ComputeTrainingReplicaType::SingleNode,
+            Some(512),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.workclass.refused",
+                            created_at_ms as i64 + 1_000,
+                            "node-tier3",
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            body.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_scheduler_work_class_tier_insufficient")
+        );
         Ok(())
     }
 
