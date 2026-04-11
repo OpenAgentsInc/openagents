@@ -149,6 +149,37 @@ round, checkpoint, local-work, and aggregation fields directly so the same
 sealed closeout path can describe adapter windows, grouped stages, or island
 local-update rounds without inferring those semantics from opaque metadata.
 
+## Operator Summary And Public Stats Projection
+
+Nexus now projects training state into two explicit read-model buckets instead
+of one blended counter set:
+
+- participation
+  - admitted nodes
+  - online nodes
+  - active runs
+  - active windows
+  - pending-validation windows
+  - open or queued validator challenges
+- progress
+  - runs with accepted progress
+  - accepted closeouts
+  - nodes that contributed to accepted progress
+  - windows that advanced checkpoint lineage
+  - payout-eligible closeouts
+  - checkpoint-age and artifact-failure signals
+
+This split is deliberate.
+
+- participation answers who is present and what coordination load is live
+- progress answers what actually produced accepted state
+
+The public `/stats`, `/api/stats`, `/api/training/summary`, and homepage
+snapshots should expose both categories without collapsing them into one
+"activity" number. A rewarded or accepted closeout can exist without advancing
+checkpoint lineage, and a busy validator queue can exist without any accepted
+progress.
+
 ## Current Apple Operator Path
 
 The retained Apple adapter path now has a concrete operator-to-authority flow

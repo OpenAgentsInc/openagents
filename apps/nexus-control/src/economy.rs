@@ -192,6 +192,10 @@ pub struct PublicStatsSnapshot {
     #[serde(default)]
     pub nexus_payouts_skipped_24h: u64,
     #[serde(default)]
+    pub training_nodes_admitted: u64,
+    #[serde(default)]
+    pub training_nodes_online: u64,
+    #[serde(default)]
     pub training_admitted_nodes_online: u64,
     #[serde(default)]
     pub training_runs_active: u64,
@@ -203,6 +207,14 @@ pub struct PublicStatsSnapshot {
     pub training_validator_challenges_open: u64,
     #[serde(default)]
     pub training_validator_challenges_queued: u64,
+    #[serde(default)]
+    pub training_nodes_contributing_to_accepted_progress: u64,
+    #[serde(default)]
+    pub training_runs_with_accepted_progress: u64,
+    #[serde(default)]
+    pub training_windows_advanced_checkpoint_lineage: u64,
+    #[serde(default)]
+    pub training_accepted_closeouts: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub training_checkpoint_max_age_ms: Option<u64>,
     #[serde(default)]
@@ -314,12 +326,18 @@ pub struct PublicRuntimeSnapshot {
     pub nexus_payouts_confirmed_24h: u64,
     pub nexus_payouts_failed_24h: u64,
     pub nexus_payouts_skipped_24h: u64,
+    pub training_nodes_admitted: u64,
+    pub training_nodes_online: u64,
     pub training_admitted_nodes_online: u64,
     pub training_runs_active: u64,
     pub training_windows_active: u64,
     pub training_windows_pending_validation: u64,
     pub training_validator_challenges_open: u64,
     pub training_validator_challenges_queued: u64,
+    pub training_nodes_contributing_to_accepted_progress: u64,
+    pub training_runs_with_accepted_progress: u64,
+    pub training_windows_advanced_checkpoint_lineage: u64,
+    pub training_accepted_closeouts: u64,
     pub training_checkpoint_max_age_ms: Option<u64>,
     pub training_artifact_failures_open: u64,
     pub training_payout_eligible_closeouts: u64,
@@ -568,12 +586,20 @@ impl ReceiptLedger {
             nexus_payouts_confirmed_24h: runtime.nexus_payouts_confirmed_24h,
             nexus_payouts_failed_24h: runtime.nexus_payouts_failed_24h,
             nexus_payouts_skipped_24h: runtime.nexus_payouts_skipped_24h,
+            training_nodes_admitted: runtime.training_nodes_admitted,
+            training_nodes_online: runtime.training_nodes_online,
             training_admitted_nodes_online: runtime.training_admitted_nodes_online,
             training_runs_active: runtime.training_runs_active,
             training_windows_active: runtime.training_windows_active,
             training_windows_pending_validation: runtime.training_windows_pending_validation,
             training_validator_challenges_open: runtime.training_validator_challenges_open,
             training_validator_challenges_queued: runtime.training_validator_challenges_queued,
+            training_nodes_contributing_to_accepted_progress: runtime
+                .training_nodes_contributing_to_accepted_progress,
+            training_runs_with_accepted_progress: runtime.training_runs_with_accepted_progress,
+            training_windows_advanced_checkpoint_lineage: runtime
+                .training_windows_advanced_checkpoint_lineage,
+            training_accepted_closeouts: runtime.training_accepted_closeouts,
             training_checkpoint_max_age_ms: runtime.training_checkpoint_max_age_ms,
             training_artifact_failures_open: runtime.training_artifact_failures_open,
             training_payout_eligible_closeouts: runtime.training_payout_eligible_closeouts,
@@ -876,12 +902,18 @@ mod tests {
                 nexus_payouts_confirmed_24h: 0,
                 nexus_payouts_failed_24h: 0,
                 nexus_payouts_skipped_24h: 0,
+                training_nodes_admitted: 0,
+                training_nodes_online: 0,
                 training_admitted_nodes_online: 0,
                 training_runs_active: 0,
                 training_windows_active: 0,
                 training_windows_pending_validation: 0,
                 training_validator_challenges_open: 0,
                 training_validator_challenges_queued: 0,
+                training_nodes_contributing_to_accepted_progress: 0,
+                training_runs_with_accepted_progress: 0,
+                training_windows_advanced_checkpoint_lineage: 0,
+                training_accepted_closeouts: 0,
                 training_checkpoint_max_age_ms: None,
                 training_artifact_failures_open: 0,
                 training_payout_eligible_closeouts: 0,
