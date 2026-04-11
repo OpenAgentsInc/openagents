@@ -1448,7 +1448,32 @@ impl TreasuryState {
         .max()
     }
 
+    fn wallet_runtime_view(
+        &self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> (Option<String>, Option<String>) {
+        let recent_wallet_activity = self
+            .latest_wallet_activity_at_unix_ms()
+            .map(|last_activity| now_unix_ms.saturating_sub(last_activity))
+            .is_some_and(|lag_ms| lag_ms < config.wallet_snapshot_stale_after_ms());
+        let timeout_only_error = matches!(self.wallet_runtime_status.as_deref(), Some("error"))
+            && self
+                .wallet_last_error
+                .as_deref()
+                .is_some_and(|detail| detail.starts_with("wallet_refresh_timeout:"));
+        if timeout_only_error && recent_wallet_activity {
+            return (Some("connected".to_string()), None);
+        }
+        (
+            self.wallet_runtime_status.clone(),
+            self.wallet_last_error.clone(),
+        )
+    }
+
     fn degraded_reason(&self, config: &TreasuryConfig, now_unix_ms: u64) -> Option<String> {
+        let (wallet_runtime_status, wallet_last_error) =
+            self.wallet_runtime_view(config, now_unix_ms);
         if matches!(self.policy_runtime_status.as_deref(), Some("blocked")) {
             return self
                 .policy_last_error
@@ -1471,11 +1496,8 @@ impl TreasuryState {
         {
             return Some(format!("continuity_alert:{}", alert.alert_id));
         }
-        if matches!(self.wallet_runtime_status.as_deref(), Some("error")) {
-            return self
-                .wallet_last_error
-                .clone()
-                .or_else(|| Some("wallet_error".to_string()));
+        if matches!(wallet_runtime_status.as_deref(), Some("error")) {
+            return wallet_last_error.or_else(|| Some("wallet_error".to_string()));
         }
         if self.impossible_zero_balance_with_receive_history() {
             return Some(format!(
@@ -1517,6 +1539,8 @@ impl TreasuryState {
         config: &TreasuryConfig,
         now_unix_ms: u64,
     ) -> TreasuryPublicSnapshot {
+        let (wallet_runtime_status, wallet_last_error) =
+            self.wallet_runtime_view(config, now_unix_ms);
         let continuity = self.continuity_signal_snapshot(config, now_unix_ms);
         let policy = self.active_policy(config);
         let window_started_at_unix_ms = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
@@ -1569,8 +1593,8 @@ impl TreasuryState {
             wallet_balance_sats: self.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: self.wallet_balance_updated_at_unix_ms,
             last_wallet_sync_at_unix_ms: self.last_wallet_sync_at_unix_ms,
-            wallet_runtime_status: self.wallet_runtime_status.clone(),
-            wallet_last_error: self.wallet_last_error.clone(),
+            wallet_runtime_status,
+            wallet_last_error,
             wallet_storage_runtime_mode: self.wallet_storage_runtime_mode(),
             payout_loop_runtime_status: self.payout_loop_runtime_status.clone(),
             payout_loop_last_error: self.payout_loop_last_error.clone(),
@@ -1610,6 +1634,8 @@ impl TreasuryState {
             .public_snapshot
             .clone()
             .unwrap_or_else(|| self.build_public_snapshot(config, now_unix_ms));
+        let (wallet_runtime_status, wallet_last_error) =
+            self.wallet_runtime_view(config, now_unix_ms);
         let wallet_sync_lag_ms = self
             .latest_wallet_activity_at_unix_ms()
             .map(|last_activity| now_unix_ms.saturating_sub(last_activity));
@@ -1622,8 +1648,8 @@ impl TreasuryState {
             registered_payout_identities: snapshot.registered_payout_identities,
             wallet_balance_sats: snapshot.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: snapshot.wallet_balance_updated_at_unix_ms,
-            wallet_runtime_status: snapshot.wallet_runtime_status,
-            wallet_last_error: snapshot.wallet_last_error,
+            wallet_runtime_status,
+            wallet_last_error,
             wallet_storage_runtime_mode: snapshot.wallet_storage_runtime_mode,
             payout_loop_runtime_status: snapshot.payout_loop_runtime_status,
             payout_loop_last_error: snapshot.payout_loop_last_error,
@@ -5025,6 +5051,25 @@ mod tests {
         state.last_confirmed_payout_at_unix_ms = Some(94_000);
 
         let stats = state.public_stats(&config, 100_000);
+        assert_eq!(stats.wallet_sync_lag_ms, Some(5_000));
+        assert_eq!(stats.degraded_reason, None);
+    }
+
+    #[test]
+    fn recent_dispatch_activity_suppresses_wallet_refresh_timeout_surface() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.wallet_status_refresh_seconds = 30;
+
+        state.wallet_runtime_status = Some("error".to_string());
+        state.wallet_last_error = Some("wallet_refresh_timeout:60000".to_string());
+        state.last_wallet_sync_at_unix_ms = Some(1_000);
+        state.last_dispatch_at_unix_ms = Some(95_000);
+        state.last_confirmed_payout_at_unix_ms = Some(94_000);
+
+        let stats = state.public_stats(&config, 100_000);
+        assert_eq!(stats.wallet_runtime_status.as_deref(), Some("connected"));
+        assert_eq!(stats.wallet_last_error, None);
         assert_eq!(stats.wallet_sync_lag_ms, Some(5_000));
         assert_eq!(stats.degraded_reason, None);
     }
