@@ -339,6 +339,18 @@ That projection is intentionally scheduler-readable. Nexus can match nodes
 against run requirements without reverse-engineering raw host telemetry from
 opaque metadata blobs or relay-only side channels.
 
+Scheduler matching now consumes that admitted-node profile together with the
+training run's declared `work_class` and `replica_type`. Lease assignment
+therefore fails closed on explicit mismatches such as:
+
+- backend-family mismatch
+- environment mismatch
+- work-class tier insufficiency
+- replica-type tier insufficiency
+
+This keeps scheduler refusal semantics legible instead of collapsing every
+missed assignment into a generic "run not found" path.
+
 ## HTTP Authority Surface
 
 Nexus now exposes:
