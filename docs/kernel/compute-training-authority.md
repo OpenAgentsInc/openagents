@@ -211,17 +211,18 @@ The visualization snapshot now projects:
   - validator pressure per window
   - aggregate digest or aggregate id
   - output or promoted checkpoint refs
-  - accepted closeout linkage and payout eligibility
+  - accepted closeout linkage, payout eligibility, and contributor tier mix
 - validator state
   - open, queued, leased, retrying, verified, rejected, and timed-out counts
   - per-window challenge grouping when the challenge id binds to one training
     window
 - aggregate, checkpoint, and closeout projections
-  - aggregate refs with closeout status and payout eligibility
+  - aggregate refs with closeout status, payout eligibility, and
+    weak-device-bearing flags
   - checkpoint refs by role such as `base`, `accepted_closeout`, `promoted`,
     and `run_latest`
   - closeouts with work class, progress class, payout basis, payout projection,
-    and accepted checkpoint refs
+    contributor tiers, weak-device-bearing state, and accepted checkpoint refs
 
 This is the authority-facing answer to the UI request for:
 
@@ -257,6 +258,12 @@ Each training closeout should now publish:
   - optional weighting basis and total weighted value
   - whether one accepted result is shared across multiple contributors
   - one projected participant list with contribution identity and share basis
+- `contributor_tiers`
+  - minimum and maximum admitted contributor capability tiers counted for
+    settlement
+  - per-tier participant counts for the accepted outcome
+  - one `weak_device_bearing` flag when the accepted settlement includes any
+    contributor below `tier3_island`
 
 This is the public authority answer to two different questions that were
 previously conflated:
@@ -269,7 +276,8 @@ For example:
 - validation replay can now be payout-eligible while remaining
   `participation_only`
 - grouped replica stage execution can now surface one shared accepted result
-  with split attribution across multiple nodes
+  with split attribution across multiple nodes and expose whether the accepted
+  lane actually included weaker consumer-device tiers
 - aggregation or checkpoint-promotion lanes can be payout-eligible and still be
   classified as checkpoint-advance work rather than raw local training
 

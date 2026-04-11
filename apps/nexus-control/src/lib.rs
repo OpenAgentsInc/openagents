@@ -927,6 +927,21 @@ struct TrainingPayoutProjection {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingContributorTierCount {
+    tier: String,
+    participant_count: u64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingContributorTierProjection {
+    weak_device_bearing: bool,
+    minimum_tier: String,
+    maximum_tier: String,
+    #[serde(default)]
+    tiers: Vec<TrainingContributorTierCount>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingSchedulerRunMetadata {
     network_id: String,
     artifact_bucket_uri: String,
@@ -1590,6 +1605,7 @@ struct TrainingOperatorWorkClassSummary {
     run_count: u64,
     accepted_closeouts: u64,
     payout_eligible_closeouts: u64,
+    weak_device_bearing_closeouts: u64,
     progress_bearing_closeouts: u64,
     participation_only_closeouts: u64,
 }
@@ -1598,6 +1614,7 @@ struct TrainingOperatorWorkClassSummary {
 struct TrainingOperatorSettlementSummary {
     accepted_closeouts: u64,
     payout_eligible_closeouts: u64,
+    weak_device_bearing_closeouts: u64,
     #[serde(default)]
     work_classes: Vec<TrainingOperatorWorkClassSummary>,
 }
@@ -1693,6 +1710,7 @@ struct TrainingVisualizationRun {
     pending_validation_window_count: u64,
     accepted_closeouts: u64,
     payout_eligible_closeouts: u64,
+    weak_device_bearing_closeouts: u64,
     nodes_contributing_to_accepted_progress: u64,
     windows_advanced_checkpoint_lineage: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1774,6 +1792,9 @@ struct TrainingVisualizationWindow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     closeout_status: Option<String>,
     payout_eligible: bool,
+    weak_device_bearing: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    contributor_tiers: Option<TrainingContributorTierProjection>,
     lineage_advanced: bool,
     planned_at_ms: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1836,6 +1857,7 @@ struct TrainingVisualizationAggregate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     closeout_status: Option<String>,
     payout_eligible: bool,
+    weak_device_bearing: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     promoted_checkpoint_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1874,7 +1896,10 @@ struct TrainingVisualizationCloseout {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     payout_projection: Option<TrainingPayoutProjection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    contributor_tiers: Option<TrainingContributorTierProjection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     accepted_checkpoint_ref: Option<String>,
+    weak_device_bearing: bool,
     accepted_at_ms: i64,
 }
 
@@ -1954,6 +1979,7 @@ struct TrainingOperatorRunSettlementSummary {
     progress_class: String,
     accepted_closeouts: u64,
     payout_eligible_closeouts: u64,
+    weak_device_bearing_closeouts: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     latest_payout_basis: Option<String>,
 }
@@ -4237,6 +4263,7 @@ fn training_window_closeout_metadata(
 ) -> serde_json::Value {
     let progress_class = training_work_progress_class(window.work_class);
     let payout_projection = training_window_closeout_payout_projection(window, contributions);
+    let contributor_tiers = training_contributor_tier_projection(contributions);
     serde_json::json!({
         "network_id": network_id,
         "window_id": window.window_id,
@@ -4246,6 +4273,7 @@ fn training_window_closeout_metadata(
         "work_class": window.work_class.label(),
         "replica_type": window.replica_type.label(),
         "progress_class": progress_class.label(),
+        "contributor_tiers": contributor_tiers,
         "window_summary_digest": window.window_summary_digest,
         "aggregated_delta_digest": window.aggregated_delta_digest,
         "gate_reason_codes": window.gate_reason_codes,
@@ -4781,6 +4809,45 @@ fn training_window_apply_validation_overrides(
                 validator_receipt_digest,
             );
         }
+    }
+}
+
+fn training_enrich_contribution_outcomes_with_node_tiers(
+    kernel: &KernelState,
+    contribution_outcomes: &mut [ComputeAdapterContributionOutcome],
+    recorded_at_ms: i64,
+) {
+    for contribution in contribution_outcomes {
+        let Some(node) = kernel
+            .get_admitted_training_node(contribution.contributor_node_id.as_str(), recorded_at_ms)
+        else {
+            continue;
+        };
+        let mut metadata = contribution.metadata.clone();
+        if metadata.is_null() {
+            metadata = Value::Object(serde_json::Map::new());
+        }
+        let Some(metadata_object) = metadata.as_object_mut() else {
+            continue;
+        };
+        metadata_object.insert(
+            "contributor_capability_tier".to_string(),
+            Value::String(training_capability_tier_label(node.capability_tier.tier).to_string()),
+        );
+        metadata_object.insert(
+            "contributor_weak_device_bearing".to_string(),
+            Value::Bool(
+                node.capability_tier.tier.ordinal()
+                    < ProviderTrainingCapabilityTier::Tier3Island.ordinal(),
+            ),
+        );
+        if let Some(available_memory_gb) = node.available_memory_gb {
+            metadata_object.insert(
+                "contributor_available_memory_gb".to_string(),
+                serde_json::json!(available_memory_gb),
+            );
+        }
+        contribution.metadata = metadata;
     }
 }
 
@@ -6259,7 +6326,7 @@ async fn seal_training_window(
         let mut metadata =
             training_window_metadata_from_value(&window.metadata).map_err(kernel_api_error)?;
         let assignment_plans = metadata.assignment_plans.clone();
-        let contribution_outcomes = training_window_contribution_outcomes_from_inputs(
+        let mut contribution_outcomes = training_window_contribution_outcomes_from_inputs(
             &window,
             assignment_plans.as_slice(),
             request.contribution_outcomes.as_slice(),
@@ -6267,6 +6334,11 @@ async fn seal_training_window(
             true,
         )
         .map_err(kernel_api_error)?;
+        training_enrich_contribution_outcomes_with_node_tiers(
+            &store.kernel,
+            contribution_outcomes.as_mut_slice(),
+            request.recorded_at_ms,
+        );
         let validator_policy = store
             .kernel
             .get_compute_validator_policy(training_run.validator_policy_ref.as_str(), None)
@@ -6427,6 +6499,11 @@ async fn reconcile_training_window(
             contribution_outcomes.as_mut_slice(),
             &validation_summary,
             window.window_summary_digest.as_str(),
+        );
+        training_enrich_contribution_outcomes_with_node_tiers(
+            &store.kernel,
+            contribution_outcomes.as_mut_slice(),
+            request.recorded_at_ms,
         );
         let (
             total_contributions,
@@ -14946,6 +15023,7 @@ fn training_operator_summary_snapshot(
     let mut progress_contributor_ids = HashSet::<String>::new();
     let mut settlement_accepted_closeouts = 0u64;
     let mut settlement_payout_eligible_closeouts = 0u64;
+    let mut settlement_weak_device_bearing_closeouts = 0u64;
     let mut work_class_summaries = BTreeMap::<String, TrainingOperatorWorkClassSummary>::new();
     let mut run_summaries = training_runs
         .iter()
@@ -15104,10 +15182,16 @@ fn training_operator_summary_snapshot(
                 .iter()
                 .filter(|outcome| training_outcome_payout_eligible(outcome))
                 .count() as u64;
+            let weak_device_bearing_run_closeouts = accepted_terminal_outcomes
+                .iter()
+                .filter(|outcome| training_outcome_weak_device_bearing(outcome))
+                .count() as u64;
             settlement_accepted_closeouts =
                 settlement_accepted_closeouts.saturating_add(settlement_closeouts);
             settlement_payout_eligible_closeouts = settlement_payout_eligible_closeouts
                 .saturating_add(settlement_payout_eligible_run_closeouts);
+            settlement_weak_device_bearing_closeouts = settlement_weak_device_bearing_closeouts
+                .saturating_add(weak_device_bearing_run_closeouts);
             let work_class = run.work_class.label().to_string();
             let progress_class = training_work_progress_class(run.work_class)
                 .label()
@@ -15122,6 +15206,7 @@ fn training_operator_summary_snapshot(
                     run_count: 0,
                     accepted_closeouts: 0,
                     payout_eligible_closeouts: 0,
+                    weak_device_bearing_closeouts: 0,
                     progress_bearing_closeouts: 0,
                     participation_only_closeouts: 0,
                 });
@@ -15132,6 +15217,9 @@ fn training_operator_summary_snapshot(
             work_class_summary.payout_eligible_closeouts = work_class_summary
                 .payout_eligible_closeouts
                 .saturating_add(settlement_payout_eligible_run_closeouts);
+            work_class_summary.weak_device_bearing_closeouts = work_class_summary
+                .weak_device_bearing_closeouts
+                .saturating_add(weak_device_bearing_run_closeouts);
             work_class_summary.progress_bearing_closeouts = work_class_summary
                 .progress_bearing_closeouts
                 .saturating_add(accepted_closeouts);
@@ -15205,6 +15293,7 @@ fn training_operator_summary_snapshot(
                 progress_class,
                 accepted_closeouts: settlement_closeouts,
                 payout_eligible_closeouts: settlement_payout_eligible_run_closeouts,
+                weak_device_bearing_closeouts: weak_device_bearing_run_closeouts,
                 latest_payout_basis: latest_closeout.and_then(training_outcome_latest_payout_basis),
             };
             let participation = TrainingOperatorRunParticipationSummary {
@@ -15354,6 +15443,7 @@ fn training_operator_summary_snapshot(
     let settlement = TrainingOperatorSettlementSummary {
         accepted_closeouts: settlement_accepted_closeouts,
         payout_eligible_closeouts: settlement_payout_eligible_closeouts,
+        weak_device_bearing_closeouts: settlement_weak_device_bearing_closeouts,
         work_classes: work_class_summaries.into_values().collect(),
     };
 
@@ -15417,6 +15507,98 @@ fn training_capability_tier_label(tier: ProviderTrainingCapabilityTier) -> &'sta
         ProviderTrainingCapabilityTier::Tier3Island => "tier3_island",
         ProviderTrainingCapabilityTier::Tier4Authority => "tier4_authority",
     }
+}
+
+fn training_capability_tier_from_label(label: &str) -> Option<ProviderTrainingCapabilityTier> {
+    match label.trim() {
+        "tier0_presence" => Some(ProviderTrainingCapabilityTier::Tier0Presence),
+        "tier1_validation" => Some(ProviderTrainingCapabilityTier::Tier1Validation),
+        "tier2_trainer" => Some(ProviderTrainingCapabilityTier::Tier2Trainer),
+        "tier3_island" => Some(ProviderTrainingCapabilityTier::Tier3Island),
+        "tier4_authority" => Some(ProviderTrainingCapabilityTier::Tier4Authority),
+        _ => None,
+    }
+}
+
+fn training_contribution_capability_tier_label(
+    contribution: &ComputeAdapterContributionOutcome,
+) -> Option<String> {
+    contribution
+        .metadata
+        .get("contributor_capability_tier")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn training_contributor_tier_projection(
+    contributions: &[ComputeAdapterContributionOutcome],
+) -> Option<TrainingContributorTierProjection> {
+    let mut counts = BTreeMap::<String, u64>::new();
+    let mut minimum_tier: Option<ProviderTrainingCapabilityTier> = None;
+    let mut maximum_tier: Option<ProviderTrainingCapabilityTier> = None;
+
+    for contribution in contributions
+        .iter()
+        .filter(|contribution| training_contribution_counts_for_settlement(contribution))
+    {
+        let Some(tier_label) = training_contribution_capability_tier_label(contribution) else {
+            continue;
+        };
+        *counts.entry(tier_label.clone()).or_default() += 1;
+        if let Some(tier) = training_capability_tier_from_label(tier_label.as_str()) {
+            minimum_tier = Some(match minimum_tier {
+                Some(current) if current.ordinal() <= tier.ordinal() => current,
+                _ => tier,
+            });
+            maximum_tier = Some(match maximum_tier {
+                Some(current) if current.ordinal() >= tier.ordinal() => current,
+                _ => tier,
+            });
+        }
+    }
+
+    if counts.is_empty() {
+        return None;
+    }
+
+    let minimum_tier = minimum_tier
+        .map(training_capability_tier_label)
+        .map(str::to_string)
+        .unwrap_or_else(|| counts.keys().next().cloned().unwrap_or_default());
+    let maximum_tier = maximum_tier
+        .map(training_capability_tier_label)
+        .map(str::to_string)
+        .unwrap_or_else(|| counts.keys().next_back().cloned().unwrap_or_default());
+    let weak_device_bearing = training_capability_tier_from_label(minimum_tier.as_str())
+        .is_some_and(|tier| tier.ordinal() < ProviderTrainingCapabilityTier::Tier3Island.ordinal());
+
+    Some(TrainingContributorTierProjection {
+        weak_device_bearing,
+        minimum_tier,
+        maximum_tier,
+        tiers: counts
+            .into_iter()
+            .map(|(tier, participant_count)| TrainingContributorTierCount {
+                tier,
+                participant_count,
+            })
+            .collect(),
+    })
+}
+
+fn training_outcome_contributor_tiers(
+    outcome: &ComputeAcceptedOutcome,
+) -> Option<TrainingContributorTierProjection> {
+    outcome
+        .metadata
+        .get("contributor_tiers")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<TrainingContributorTierProjection>(value).ok())
+}
+
+fn training_outcome_weak_device_bearing(outcome: &ComputeAcceptedOutcome) -> bool {
+    training_outcome_contributor_tiers(outcome)
+        .is_some_and(|projection| projection.weak_device_bearing)
 }
 
 fn training_visualization_required_tier(
@@ -15727,6 +15909,7 @@ fn training_visualization_snapshot_with_summary(
                 .get("payout_projection")
                 .cloned()
                 .and_then(|value| serde_json::from_value::<TrainingPayoutProjection>(value).ok());
+            let contributor_tiers = training_outcome_contributor_tiers(outcome);
             TrainingVisualizationCloseout {
                 outcome_id: outcome.outcome_id.clone(),
                 training_run_id: outcome.source_run_id.clone(),
@@ -15753,6 +15936,7 @@ fn training_visualization_snapshot_with_summary(
                     .map(|projection| projection.basis.clone())
                     .or_else(|| training_outcome_latest_payout_basis(outcome)),
                 payout_projection,
+                contributor_tiers: contributor_tiers.clone(),
                 accepted_checkpoint_ref: outcome
                     .training_summary
                     .as_ref()
@@ -15764,6 +15948,9 @@ fn training_visualization_snapshot_with_summary(
                             .and_then(Value::as_str)
                             .map(str::to_string)
                     }),
+                weak_device_bearing: contributor_tiers
+                    .as_ref()
+                    .is_some_and(|projection| projection.weak_device_bearing),
                 accepted_at_ms: outcome.accepted_at_ms,
             }
         })
@@ -15789,6 +15976,8 @@ fn training_visualization_snapshot_with_summary(
                             .then_with(|| lhs.outcome_id.cmp(&rhs.outcome_id))
                     })
                 });
+            let contributor_tiers =
+                latest_closeout.and_then(|outcome| training_outcome_contributor_tiers(outcome));
             TrainingVisualizationAggregate {
                 aggregate_ref: window
                     .accepted_aggregate_id
@@ -15813,6 +16002,9 @@ fn training_visualization_snapshot_with_summary(
                     .and_then(training_closeout_status_label)
                     .map(str::to_string),
                 payout_eligible: latest_closeout.is_some_and(training_outcome_payout_eligible),
+                weak_device_bearing: contributor_tiers
+                    .as_ref()
+                    .is_some_and(|projection| projection.weak_device_bearing),
                 promoted_checkpoint_ref: window.promoted_checkpoint_ref.clone(),
                 accepted_outcome_id: window
                     .accepted_outcome_id
@@ -16020,6 +16212,9 @@ fn training_visualization_snapshot_with_summary(
                 accepted_closeouts: run_summary.map_or(0, |summary| summary.accepted_closeouts),
                 payout_eligible_closeouts: run_summary
                     .map_or(0, |summary| summary.payout_eligible_closeouts),
+                weak_device_bearing_closeouts: run_summary.map_or(0, |summary| {
+                    summary.settlement.weak_device_bearing_closeouts
+                }),
                 nodes_contributing_to_accepted_progress: run_summary
                     .map_or(0, |summary| summary.nodes_contributing_to_accepted_progress),
                 windows_advanced_checkpoint_lineage: run_summary
@@ -16051,6 +16246,8 @@ fn training_visualization_snapshot_with_summary(
                             .then_with(|| lhs.outcome_id.cmp(&rhs.outcome_id))
                     })
                 });
+            let contributor_tiers =
+                latest_closeout.and_then(|outcome| training_outcome_contributor_tiers(outcome));
             let validator_summary = validators
                 .windows
                 .iter()
@@ -16185,6 +16382,10 @@ fn training_visualization_snapshot_with_summary(
                     .and_then(training_closeout_status_label)
                     .map(str::to_string),
                 payout_eligible: latest_closeout.is_some_and(training_outcome_payout_eligible),
+                weak_device_bearing: contributor_tiers
+                    .as_ref()
+                    .is_some_and(|projection| projection.weak_device_bearing),
+                contributor_tiers,
                 lineage_advanced: training_window_advances_checkpoint_lineage(
                     window,
                     &accepted_outcomes_by_id,
@@ -28585,6 +28786,477 @@ mod tests {
             Some("rewarded")
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_summary_visualization_and_trn_surface_weak_device_grouped_replica_closeout()
+    -> Result<()> {
+        let (relay_url, mut event_rx, relay_handle) = spawn_training_trn_capture_relay().await?;
+        let temp_dir = tempdir()?;
+        let mut config = test_config()?;
+        config.training_trn_identity_path = temp_dir.path().join("training-trn-identity.mnemonic");
+        config.training_trn_relay_urls = vec![relay_url.clone()];
+
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_660_000u64;
+        let training_run_id = "run.weak.grouped";
+        let window_id = "window.weak.0001";
+        let network_id = "trainnet.weak";
+
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            network_id,
+            "node-tier2-weak",
+            "sha256:build-tier2-weak",
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::GroupedReplicaStageExecution,
+            ComputeTrainingReplicaType::GroupedReplica,
+            Some(32),
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut validator = training_node_admission_request_with_environment_refs(
+                "validator-weak",
+                "sha256:validator-weak",
+                vec![network_id],
+                Vec::new(),
+                Some(32),
+                vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF],
+            );
+            validator.requested_at_ms = created_at_ms as i64 + 760;
+            validator.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            validator.capability_tier =
+                training_capability_tier_profile(validator.role_claims.as_slice(), Some(32));
+            validator.capability_tier.backend_families = vec!["metal".to_string()];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-weak", created_at_ms + 760),
+                    validator,
+                )
+                .expect("admit validator");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-weak", "sha256:validator-weak");
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-weak", created_at_ms + 770),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator");
+        }
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.weak.grouped",
+                            created_at_ms as i64 + 1_000,
+                            "node-tier2-weak",
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.weak.grouped",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://weak-0001",
+                                "sha256:slice-weak-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/activate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.weak.grouped",
+                            created_at_ms as i64 + 1_200,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/seal"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.weak.grouped".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.weak.grouped",
+                                    &lease,
+                                    "sha256:validator-pending-weak-grouped",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+        {
+            let store = state.store.read().expect("read store");
+            let validator = store
+                .kernel
+                .get_admitted_training_node("validator-weak", created_at_ms as i64 + 1_300)
+                .expect("validator node");
+            let window = store
+                .kernel
+                .get_compute_adapter_training_window(window_id)
+                .expect("sealed window");
+            let run = store
+                .kernel
+                .get_compute_training_run(training_run_id)
+                .expect("training run");
+            let metadata =
+                training_scheduler_metadata_from_run(&run).expect("training scheduler metadata");
+            let mismatch_reason = super::training_node_scheduler_run_mismatch_reason(
+                &validator,
+                &run,
+                &metadata,
+                TrainingNodeRoleClaim::Validator,
+            );
+            assert_eq!(
+                mismatch_reason, None,
+                "validator mismatch: {mismatch_reason:?}"
+            );
+            let challenges = store.kernel.list_validator_challenges(None);
+            assert_eq!(challenges.len(), 2, "scheduled challenges: {challenges:#?}");
+            assert!(super::training_validator_node_matches_window(
+                &store.kernel,
+                &validator,
+                &window,
+            ));
+        }
+
+        let claimed_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request_for_scope(
+                            "idemp.training.validator.claim.weak.1",
+                            created_at_ms as i64 + 1_310,
+                            "validator-weak",
+                            Some(network_id),
+                            Some(training_run_id),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_one.status(), StatusCode::OK);
+        let claimed_one =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_one).await?;
+        let finalized_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        claimed_one.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.weak.1",
+                            created_at_ms as i64 + 1_320,
+                            "validator-weak",
+                            claimed_one.lease.clone().expect("claim lease"),
+                            claimed_one
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            claimed_one.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-weak-one",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_one.status(), StatusCode::OK);
+
+        let claimed_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request_for_scope(
+                            "idemp.training.validator.claim.weak.2",
+                            created_at_ms as i64 + 1_330,
+                            "validator-weak",
+                            Some(network_id),
+                            Some(training_run_id),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_two.status(), StatusCode::OK);
+        let claimed_two =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_two).await?;
+        let finalized_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        claimed_two.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.weak.2",
+                            created_at_ms as i64 + 1_340,
+                            "validator-weak",
+                            claimed_two.lease.clone().expect("second claim lease"),
+                            claimed_two
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            claimed_two.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-weak-two",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_two.status(), StatusCode::OK);
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/reconcile"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.weak.grouped"
+                                .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_400,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.weak.grouped",
+                                    &lease,
+                                    "sha256:validator-final-weak-grouped",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_420),
+                            benchmark_pass_rate_bps: Some(9_610),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-weak-grouped".to_string(),
+                            ),
+                            accepted_aggregate_id: Some(
+                                "aggregate.window.weak.grouped".to_string(),
+                            ),
+                            promoted_checkpoint_ref: None,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+
+        let summary = fetch_training_summary(&app).await?;
+        assert_eq!(summary.settlement.accepted_closeouts, 1);
+        assert_eq!(summary.settlement.weak_device_bearing_closeouts, 1);
+        let work_class_summary = summary
+            .settlement
+            .work_classes
+            .iter()
+            .find(|entry| entry.work_class == "grouped_replica_stage_execution")
+            .expect("grouped replica work class summary");
+        assert_eq!(work_class_summary.accepted_closeouts, 1);
+        assert_eq!(work_class_summary.weak_device_bearing_closeouts, 1);
+        let run_summary = summary
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == training_run_id)
+            .expect("run summary");
+        assert_eq!(
+            run_summary.settlement.work_class,
+            "grouped_replica_stage_execution"
+        );
+        assert_eq!(run_summary.settlement.replica_type, "grouped_replica");
+        assert_eq!(run_summary.settlement.progress_class, "model_update");
+        assert_eq!(run_summary.settlement.accepted_closeouts, 1);
+        assert_eq!(run_summary.settlement.weak_device_bearing_closeouts, 1);
+
+        let visualization = fetch_training_visualization(&app).await?;
+        let visualized_run = visualization
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == training_run_id)
+            .expect("visualized run");
+        assert_eq!(visualized_run.required_worker_tier, "tier2_trainer");
+        assert_eq!(visualized_run.required_validator_tier, "tier1_validation");
+        assert_eq!(visualized_run.work_class, "grouped_replica_stage_execution");
+        assert_eq!(visualized_run.replica_type, "grouped_replica");
+        assert_eq!(visualized_run.weak_device_bearing_closeouts, 1);
+        assert_eq!(
+            visualized_run.latest_aggregate_ref.as_deref(),
+            Some("aggregate.window.weak.grouped")
+        );
+
+        let visualized_window = visualization
+            .windows
+            .iter()
+            .find(|window| window.window_id == window_id)
+            .expect("visualized window");
+        assert_eq!(
+            visualized_window.work_class,
+            "grouped_replica_stage_execution"
+        );
+        assert_eq!(visualized_window.replica_type, "grouped_replica");
+        assert!(visualized_window.weak_device_bearing);
+        let window_tiers = visualized_window
+            .contributor_tiers
+            .as_ref()
+            .expect("window contributor tiers");
+        assert_eq!(window_tiers.minimum_tier, "tier2_trainer");
+        assert_eq!(window_tiers.maximum_tier, "tier2_trainer");
+
+        let visualized_aggregate = visualization
+            .aggregates
+            .iter()
+            .find(|aggregate| aggregate.window_id == window_id)
+            .expect("visualized aggregate");
+        assert_eq!(
+            visualized_aggregate.aggregate_ref,
+            "aggregate.window.weak.grouped"
+        );
+        assert!(visualized_aggregate.weak_device_bearing);
+
+        let visualized_closeout = visualization
+            .closeouts
+            .iter()
+            .find(|closeout| closeout.window_id.as_deref() == Some(window_id))
+            .expect("visualized closeout");
+        assert_eq!(
+            visualized_closeout.work_class,
+            "grouped_replica_stage_execution"
+        );
+        assert_eq!(visualized_closeout.replica_type, "grouped_replica");
+        assert_eq!(visualized_closeout.progress_class, "model_update");
+        assert!(visualized_closeout.weak_device_bearing);
+        let closeout_tiers = visualized_closeout
+            .contributor_tiers
+            .as_ref()
+            .expect("closeout contributor tiers");
+        assert_eq!(closeout_tiers.minimum_tier, "tier2_trainer");
+        assert_eq!(closeout_tiers.tiers.len(), 1);
+        assert_eq!(closeout_tiers.tiers[0].tier, "tier2_trainer");
+        assert_eq!(closeout_tiers.tiers[0].participant_count, 1);
+
+        let report = publish_training_trn(&app, vec![relay_url.clone()]).await?;
+        assert_eq!(report.closeouts.len(), 1);
+        assert_eq!(report.artifact_locators.len(), 2);
+        let events = collect_training_trn_events(&mut event_rx).await;
+        let trn_events = parse_training_trn_events(events.as_slice())?;
+        let closeout = trn_events
+            .iter()
+            .find_map(|event| match event {
+                nostr::TrnEvent::Closeout(closeout) if closeout.window_id == window_id => {
+                    Some(closeout)
+                }
+                _ => None,
+            })
+            .expect("closeout event");
+        assert_eq!(closeout.status, "rewarded");
+        assert!(
+            closeout
+                .extra_tags
+                .iter()
+                .any(|tag| { tag == &vec!["weak_device_bearing".to_string(), "true".to_string()] })
+        );
+        assert!(closeout.extra_tags.iter().any(|tag| {
+            tag == &vec![
+                "minimum_contributor_tier".to_string(),
+                "tier2_trainer".to_string(),
+            ]
+        }));
+        assert_eq!(
+            closeout
+                .content
+                .get("contributor_tiers")
+                .and_then(|value| value.get("weak_device_bearing"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            closeout
+                .content
+                .get("contributor_tiers")
+                .and_then(|value| value.get("minimum_tier"))
+                .and_then(Value::as_str),
+            Some("tier2_trainer")
+        );
+
+        relay_handle.abort();
         Ok(())
     }
 

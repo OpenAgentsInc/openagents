@@ -658,6 +658,7 @@ pub(super) fn closeout_event(
     let replica_type = source.outcome.metadata.get("replica_type").cloned();
     let progress_class = source.outcome.metadata.get("progress_class").cloned();
     let payout_projection = source.outcome.metadata.get("payout_projection").cloned();
+    let contributor_tiers = source.outcome.metadata.get("contributor_tiers").cloned();
     let mut extra_tags = vec![
         vec!["run".to_string(), source.outcome.source_run_id.clone()],
         vec!["class".to_string(), "training_closeout".to_string()],
@@ -681,6 +682,24 @@ pub(super) fn closeout_event(
     {
         extra_tags.push(vec!["payout_basis".to_string(), basis.to_string()]);
     }
+    if contributor_tiers
+        .as_ref()
+        .and_then(|value| value.get("weak_device_bearing"))
+        .and_then(Value::as_bool)
+        == Some(true)
+    {
+        extra_tags.push(vec!["weak_device_bearing".to_string(), "true".to_string()]);
+    }
+    if let Some(minimum_tier) = contributor_tiers
+        .as_ref()
+        .and_then(|value| value.get("minimum_tier"))
+        .and_then(Value::as_str)
+    {
+        extra_tags.push(vec![
+            "minimum_contributor_tier".to_string(),
+            minimum_tier.to_string(),
+        ]);
+    }
     Ok(TrainingCloseoutEvent {
         network_id,
         window_id,
@@ -695,6 +714,7 @@ pub(super) fn closeout_event(
             "replica_type": replica_type,
             "progress_class": progress_class,
             "payout_projection": payout_projection,
+            "contributor_tiers": contributor_tiers,
             "training_summary": source.outcome.training_summary,
             "kernel_object_id": source.outcome.outcome_id,
             "kernel_receipt_ids": vec![source.receipt_id.clone()],
@@ -1068,11 +1088,11 @@ mod tests {
                     "work_class": "full_island_local_update_training",
                     "replica_type": "island",
                     "progress_class": "model_update",
-                    "payout_projection": {
-                        "basis": "aggregation_weight",
-                        "weight_basis": "tokens",
-                        "total_weight_value": 131072,
-                        "weighted": true,
+                "payout_projection": {
+                    "basis": "aggregation_weight",
+                    "weight_basis": "tokens",
+                    "total_weight_value": 131072,
+                    "weighted": true,
                         "shared_result": false,
                         "progress_bearing": true,
                         "participant_count": 1,
@@ -1089,6 +1109,21 @@ mod tests {
                                 "weight_value": 131072,
                                 "progress_credit": true,
                                 "validator_disposition": "accepted"
+                            }
+                        ]
+                    },
+                    "contributor_tiers": {
+                        "weak_device_bearing": true,
+                        "minimum_tier": "tier2_trainer",
+                        "maximum_tier": "tier3_island",
+                        "tiers": [
+                            {
+                                "tier": "tier2_trainer",
+                                "participant_count": 1
+                            },
+                            {
+                                "tier": "tier3_island",
+                                "participant_count": 1
                             }
                         ]
                     }
@@ -1505,6 +1540,26 @@ mod tests {
                 .iter()
                 .any(|tag| tag
                     == &vec!["payout_basis".to_string(), "aggregation_weight".to_string()])
+        );
+        assert!(
+            closeout
+                .extra_tags
+                .iter()
+                .any(|tag| { tag == &vec!["weak_device_bearing".to_string(), "true".to_string()] })
+        );
+        assert!(closeout.extra_tags.iter().any(|tag| {
+            tag == &vec![
+                "minimum_contributor_tier".to_string(),
+                "tier2_trainer".to_string(),
+            ]
+        }));
+        assert_eq!(
+            closeout
+                .content
+                .get("contributor_tiers")
+                .and_then(|value| value.get("weak_device_bearing"))
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
         );
         assert!(matches!(
             nostr::TrnEvent::from_event(&fake_event(
