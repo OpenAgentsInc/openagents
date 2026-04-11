@@ -2634,6 +2634,7 @@ impl AppShell {
     }
 
     fn sync_transcript_scroll_after_update(&mut self) {
+        self.refresh_transcript_scroll_metrics();
         if self.transcript_follow_latest {
             self.transcript_scroll_y = self.transcript_max_scroll_y;
         } else {
@@ -2657,15 +2658,23 @@ impl AppShell {
     fn update_transcript_layout(&mut self, area: Rect) {
         self.transcript_wrap_width = transcript_wrap_width(area);
         self.transcript_viewport_height = transcript_viewport_height(area);
-        self.transcript_max_scroll_y = max_transcript_scroll_y(
-            self.rendered_transcript_row_count(self.transcript_wrap_width),
-            self.transcript_viewport_height,
-        );
+        self.refresh_transcript_scroll_metrics();
         if self.transcript_follow_latest {
             self.transcript_scroll_y = self.transcript_max_scroll_y;
         } else {
             self.transcript_scroll_y = self.transcript_scroll_y.min(self.transcript_max_scroll_y);
         }
+    }
+
+    fn refresh_transcript_scroll_metrics(&mut self) {
+        if self.transcript_wrap_width == 0 || self.transcript_viewport_height == 0 {
+            self.transcript_max_scroll_y = 0;
+            return;
+        }
+        self.transcript_max_scroll_y = max_transcript_scroll_y(
+            self.rendered_transcript_row_count(self.transcript_wrap_width),
+            self.transcript_viewport_height,
+        );
     }
 
     fn rendered_transcript_row_count(&self, wrap_width: u16) -> usize {
@@ -4404,6 +4413,27 @@ mod tests {
 
         assert!(app.transcript_max_scroll_y > 0);
         assert_eq!(app.transcript_scroll_y, app.transcript_max_scroll_y);
+    }
+
+    #[test]
+    fn transcript_follow_latest_advances_immediately_when_new_output_arrives() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.update_transcript_layout(Rect::new(0, 0, 40, 10));
+        for index in 0..20 {
+            app.push_system_message("Wallet", format!("older output line {index}"));
+        }
+
+        let previous_max = app.transcript_max_scroll_y;
+        assert_eq!(app.transcript_scroll_y, previous_max);
+
+        app.push_system_message(
+            "Wallet Error",
+            "failed to send spark payment: invoice may already be paid",
+        );
+
+        assert!(app.transcript_max_scroll_y > previous_max);
+        assert_eq!(app.transcript_scroll_y, app.transcript_max_scroll_y);
+        assert!(app.transcript_panel_title() == "Transcript");
     }
 
     #[test]
