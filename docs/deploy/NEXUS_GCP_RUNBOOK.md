@@ -170,8 +170,8 @@ Why the extra two envs matter:
 - `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS=30` keeps the wallet
   refresh loop on a lighter background cadence in production; treasury stale
   detection now tracks that configured refresh budget and the stats refresh
-  path uses cached wallet balance plus local payment history instead of forcing
-  a full Spark sync
+  path uses cached wallet balance plus bounded recent payment history instead
+  of forcing a full Spark sync or full wallet-history walk every cycle
 - if `${NEXUS_CONTROL_TREASURY_STATE_PATH}` picks up a malformed cached
   snapshot during a restart, the runtime now attempts to recover from the
   remaining state and at minimum preserves the persisted payout total rather

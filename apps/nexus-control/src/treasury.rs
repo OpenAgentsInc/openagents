@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -75,6 +75,8 @@ const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
 const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
 const TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS: u64 = 5_000;
+const TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE: usize = 100;
+const TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES: usize = 16;
 const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
     &["public_snapshot"],
     &["public_snapshot", "active_continuity_alerts"],
@@ -901,6 +903,33 @@ pub struct TreasuryWalletSnapshot {
     pub payments: Vec<PaymentSummary>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TreasuryWalletRefreshPlan {
+    tracked_payment_ids: BTreeSet<String>,
+}
+
+impl TreasuryWalletRefreshPlan {
+    pub fn recent_only() -> Self {
+        Self::default()
+    }
+
+    fn track_payment_id(&mut self, payment_id: &str) {
+        let payment_id = payment_id.trim();
+        if payment_id.is_empty() {
+            return;
+        }
+        self.tracked_payment_ids.insert(payment_id.to_string());
+    }
+
+    fn tracked_payment_count(&self) -> usize {
+        self.tracked_payment_ids.len()
+    }
+
+    fn payment_page_budget(&self) -> usize {
+        wallet_refresh_payment_page_budget(self.tracked_payment_count())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TreasuryFundingMaterial {
     pub spark_address: String,
@@ -1713,6 +1742,19 @@ impl TreasuryState {
         });
     }
 
+    pub fn wallet_refresh_plan(&self) -> TreasuryWalletRefreshPlan {
+        let mut plan = TreasuryWalletRefreshPlan::recent_only();
+        for record in self.payout_records_by_key.values() {
+            if record.status != "dispatched" || record.counted_in_paid_total {
+                continue;
+            }
+            if let Some(payment_id) = record.payment_id.as_deref() {
+                plan.track_payment_id(payment_id);
+            }
+        }
+        plan
+    }
+
     pub fn note_wallet_recovery_cutover(
         &mut self,
         response: &TreasuryWalletRecoveryCutoverResponse,
@@ -2453,6 +2495,19 @@ pub async fn load_live_wallet_snapshot(
     config: &TreasuryConfig,
     create_if_missing: bool,
 ) -> Result<TreasuryWalletSnapshot> {
+    load_live_wallet_snapshot_with_plan(
+        config,
+        create_if_missing,
+        TreasuryWalletRefreshPlan::recent_only(),
+    )
+    .await
+}
+
+pub async fn load_live_wallet_snapshot_with_plan(
+    config: &TreasuryConfig,
+    create_if_missing: bool,
+    refresh_plan: TreasuryWalletRefreshPlan,
+) -> Result<TreasuryWalletSnapshot> {
     #[cfg(test)]
     if let Some(hook) = test_wallet_snapshot_hook()
         .lock()
@@ -2462,8 +2517,8 @@ pub async fn load_live_wallet_snapshot(
         return hook();
     }
 
-    with_live_wallet(config, create_if_missing, |wallet| async move {
-        wallet_snapshot_from_wallet(wallet.as_ref()).await
+    with_live_wallet(config, create_if_missing, move |wallet| async move {
+        wallet_snapshot_from_wallet_with_plan(wallet.as_ref(), &refresh_plan).await
     })
     .await
 }
@@ -3934,15 +3989,80 @@ async fn open_wallet_uncached(
     .context("failed to initialize treasury Spark wallet")
 }
 
+fn wallet_refresh_payment_page_budget(tracked_payment_count: usize) -> usize {
+    if tracked_payment_count == 0 {
+        return 1;
+    }
+
+    let tracked_pages = (tracked_payment_count
+        .saturating_add(TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE - 1))
+        / TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE;
+
+    tracked_pages
+        .saturating_add(1)
+        .clamp(1, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES)
+}
+
+async fn wallet_refresh_payments(
+    wallet: &SparkWallet,
+    plan: &TreasuryWalletRefreshPlan,
+) -> Result<Vec<PaymentSummary>> {
+    let mut payments = Vec::new();
+    let mut unresolved_payment_ids = plan.tracked_payment_ids.clone();
+    let page_budget = plan.payment_page_budget();
+    let page_size = TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE as u32;
+    let mut scanned_pages = 0usize;
+
+    for page_index in 0..page_budget {
+        let offset = (page_index * TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE) as u32;
+        let mut page = wallet
+            .list_payments(Some(page_size), Some(offset))
+            .await
+            .context("failed to list treasury Spark payments")?;
+        if page.is_empty() {
+            break;
+        }
+
+        scanned_pages = scanned_pages.saturating_add(1);
+        for payment in &page {
+            unresolved_payment_ids.remove(payment.id.as_str());
+        }
+
+        let page_len = page.len();
+        payments.append(&mut page);
+
+        if page_len < TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE || unresolved_payment_ids.is_empty()
+        {
+            break;
+        }
+    }
+
+    if !unresolved_payment_ids.is_empty() {
+        tracing::warn!(
+            tracked_payment_count = plan.tracked_payment_count(),
+            remaining_payment_count = unresolved_payment_ids.len(),
+            scanned_pages,
+            page_budget,
+            "treasury wallet refresh bounded payment scan left unresolved payouts for a later cycle",
+        );
+    }
+
+    Ok(payments)
+}
+
 async fn wallet_snapshot_from_wallet(wallet: &SparkWallet) -> Result<TreasuryWalletSnapshot> {
+    wallet_snapshot_from_wallet_with_plan(wallet, &TreasuryWalletRefreshPlan::recent_only()).await
+}
+
+async fn wallet_snapshot_from_wallet_with_plan(
+    wallet: &SparkWallet,
+    plan: &TreasuryWalletRefreshPlan,
+) -> Result<TreasuryWalletSnapshot> {
     let balance = wallet
         .get_balance_cached()
         .await
         .context("failed to fetch treasury Spark balance")?;
-    let payments = wallet
-        .list_all_payments()
-        .await
-        .context("failed to list treasury Spark payments")?;
+    let payments = wallet_refresh_payments(wallet, plan).await?;
     Ok(TreasuryWalletSnapshot {
         runtime_status: "connected".to_string(),
         runtime_detail: None,
@@ -4177,15 +4297,18 @@ pub(crate) fn set_test_wallet_send_hook(hook: Option<TestWalletSendHook>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        OnlinePylonIdentity, TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial,
-        TreasuryFundingTargetRequest, TreasuryPublicStats, TreasuryState, TreasuryWalletInspection,
+        OnlinePylonIdentity, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
+        TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TreasuryConfig, TreasuryDispatchOutcome,
+        TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryPayoutRecord,
+        TreasuryPublicStats, TreasuryState, TreasuryWalletInspection,
         TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
         TreasuryWalletRecoveryReport, TreasuryWalletSnapshot,
         apply_treasury_wallet_recovery_cutover, build_treasury_wallet_recovery_comparison,
         create_live_funding_target, dispatch_live_payouts, parse_treasury_command,
         payout_phase_offset_ms, payout_window_started_at, payout_window_started_at_for_identity,
         set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        treasury_test_hook_lock, verify_payout_target_registration_signature, write_json_file,
+        treasury_test_hook_lock, verify_payout_target_registration_signature,
+        wallet_refresh_payment_page_budget, write_json_file,
     };
     use openagents_provider_substrate::sign_provider_payout_target_registration;
     use openagents_spark::PaymentSummary;
@@ -5331,5 +5454,101 @@ mod tests {
         assert_eq!(config.max_concurrent_send_operations(4), 4);
         assert_eq!(config.max_concurrent_send_operations(16), 16);
         assert_eq!(config.max_concurrent_send_operations(128), 16);
+    }
+
+    #[test]
+    fn wallet_refresh_plan_tracks_only_unconfirmed_dispatched_payment_ids() {
+        let mut state = TreasuryState::new(PathBuf::from("var/test-treasury-state.json"));
+        state.payout_records_by_key.insert(
+            "window-a:pubkey-a".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "window-a:pubkey-a".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 2,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("pay-confirm-me".to_string()),
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: 100,
+                updated_at_unix_ms: 200,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+            },
+        );
+        state.payout_records_by_key.insert(
+            "window-b:pubkey-b".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "window-b:pubkey-b".to_string(),
+                nostr_pubkey_hex: "pubkey-b".to_string(),
+                payout_target: "spark:bob".to_string(),
+                amount_sats: 2,
+                status: "confirmed".to_string(),
+                reason: None,
+                payment_id: Some("pay-already-confirmed".to_string()),
+                window_started_at_unix_ms: 300,
+                window_ends_at_unix_ms: 400,
+                created_at_unix_ms: 300,
+                updated_at_unix_ms: 400,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: true,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: true,
+            },
+        );
+        state.payout_records_by_key.insert(
+            "window-c:pubkey-c".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "window-c:pubkey-c".to_string(),
+                nostr_pubkey_hex: "pubkey-c".to_string(),
+                payout_target: "spark:carol".to_string(),
+                amount_sats: 2,
+                status: "dispatching".to_string(),
+                reason: None,
+                payment_id: None,
+                window_started_at_unix_ms: 500,
+                window_ends_at_unix_ms: 600,
+                created_at_unix_ms: 500,
+                updated_at_unix_ms: 600,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+            },
+        );
+
+        let plan = state.wallet_refresh_plan();
+
+        assert_eq!(plan.tracked_payment_count(), 1);
+        assert!(plan.tracked_payment_ids.contains("pay-confirm-me"));
+        assert!(!plan.tracked_payment_ids.contains("pay-already-confirmed"));
+    }
+
+    #[test]
+    fn wallet_refresh_payment_page_budget_stays_bounded() {
+        assert_eq!(wallet_refresh_payment_page_budget(0), 1);
+        assert_eq!(wallet_refresh_payment_page_budget(1), 2);
+        assert_eq!(wallet_refresh_payment_page_budget(100), 2);
+        assert_eq!(wallet_refresh_payment_page_budget(101), 3);
+        assert_eq!(
+            wallet_refresh_payment_page_budget(
+                TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE
+                    * TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES
+            ),
+            TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES
+        );
+        assert_eq!(
+            wallet_refresh_payment_page_budget(10_000),
+            TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES
+        );
     }
 }
