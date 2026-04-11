@@ -847,6 +847,85 @@ impl TrainingWindowCloseoutStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TrainingWorkProgressClass {
+    ParticipationOnly,
+    ModelUpdate,
+    CheckpointAdvance,
+}
+
+impl TrainingWorkProgressClass {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::ParticipationOnly => "participation_only",
+            Self::ModelUpdate => "model_update",
+            Self::CheckpointAdvance => "checkpoint_advance",
+        }
+    }
+
+    const fn progress_bearing(self) -> bool {
+        !matches!(self, Self::ParticipationOnly)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TrainingPayoutProjectionBasis {
+    AcceptedContribution,
+    AggregationWeight,
+    GroupedStageShare,
+    ValidatorVerdict,
+    AggregateAcceptance,
+    CheckpointAuthority,
+}
+
+impl TrainingPayoutProjectionBasis {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::AcceptedContribution => "accepted_contribution",
+            Self::AggregationWeight => "aggregation_weight",
+            Self::GroupedStageShare => "grouped_stage_share",
+            Self::ValidatorVerdict => "validator_verdict",
+            Self::AggregateAcceptance => "aggregate_acceptance",
+            Self::CheckpointAuthority => "checkpoint_authority",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingPayoutProjectionParticipant {
+    contributor_node_id: String,
+    worker_id: String,
+    contribution_id: String,
+    assignment_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stage_id: Option<String>,
+    share_bps: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    weight_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    weight_value: Option<u64>,
+    progress_credit: bool,
+    validator_disposition: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingPayoutProjection {
+    basis: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    weight_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    total_weight_value: Option<u64>,
+    weighted: bool,
+    shared_result: bool,
+    progress_bearing: bool,
+    participant_count: u64,
+    progress_participant_count: u64,
+    #[serde(default)]
+    participants: Vec<TrainingPayoutProjectionParticipant>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingSchedulerRunMetadata {
     network_id: String,
@@ -1505,10 +1584,30 @@ struct TrainingOperatorProgressSummary {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingOperatorWorkClassSummary {
+    work_class: String,
+    progress_class: String,
+    run_count: u64,
+    accepted_closeouts: u64,
+    payout_eligible_closeouts: u64,
+    progress_bearing_closeouts: u64,
+    participation_only_closeouts: u64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingOperatorSettlementSummary {
+    accepted_closeouts: u64,
+    payout_eligible_closeouts: u64,
+    #[serde(default)]
+    work_classes: Vec<TrainingOperatorWorkClassSummary>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingOperatorSummaryResponse {
     generated_at_unix_ms: u64,
     participation: TrainingOperatorParticipationSummary,
     progress: TrainingOperatorProgressSummary,
+    settlement: TrainingOperatorSettlementSummary,
     admitted_nodes: u64,
     admitted_nodes_online: u64,
     active_runs: u64,
@@ -1597,6 +1696,17 @@ struct TrainingOperatorRunProgressSummary {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingOperatorRunSettlementSummary {
+    work_class: String,
+    replica_type: String,
+    progress_class: String,
+    accepted_closeouts: u64,
+    payout_eligible_closeouts: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_payout_basis: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingOperatorRunSummary {
     training_run_id: String,
     network_id: String,
@@ -1605,6 +1715,7 @@ struct TrainingOperatorRunSummary {
     current_window_id: String,
     participation: TrainingOperatorRunParticipationSummary,
     progress: TrainingOperatorRunProgressSummary,
+    settlement: TrainingOperatorRunSettlementSummary,
     admitted_nodes: u64,
     admitted_nodes_online: u64,
     worker_nodes_online: u64,
@@ -3495,6 +3606,215 @@ fn training_window_defensibility_audit(
     }
 }
 
+fn training_contribution_counts_for_settlement(
+    contribution: &ComputeAdapterContributionOutcome,
+) -> bool {
+    contribution.accepted_for_aggregation
+        || contribution.validator_disposition == ComputeAdapterContributionDisposition::Accepted
+        || contribution.aggregation_eligibility == ComputeAdapterAggregationEligibility::Eligible
+}
+
+fn training_payout_projection_basis(
+    work_class: ComputeTrainingWorkClass,
+    weighted: bool,
+) -> TrainingPayoutProjectionBasis {
+    match work_class {
+        ComputeTrainingWorkClass::ValidationReplay => {
+            TrainingPayoutProjectionBasis::ValidatorVerdict
+        }
+        ComputeTrainingWorkClass::Evaluation => TrainingPayoutProjectionBasis::AcceptedContribution,
+        ComputeTrainingWorkClass::AdapterTraining
+        | ComputeTrainingWorkClass::SmallModelLocalTraining
+        | ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => {
+            if weighted {
+                TrainingPayoutProjectionBasis::AggregationWeight
+            } else {
+                TrainingPayoutProjectionBasis::AcceptedContribution
+            }
+        }
+        ComputeTrainingWorkClass::GroupedReplicaStageExecution => {
+            TrainingPayoutProjectionBasis::GroupedStageShare
+        }
+        ComputeTrainingWorkClass::Aggregation => TrainingPayoutProjectionBasis::AggregateAcceptance,
+        ComputeTrainingWorkClass::CheckpointPromotion => {
+            TrainingPayoutProjectionBasis::CheckpointAuthority
+        }
+    }
+}
+
+fn training_payout_projection_weight_basis(
+    contributions: &[&ComputeAdapterContributionOutcome],
+) -> Option<String> {
+    let explicit = contributions
+        .iter()
+        .filter_map(|contribution| {
+            contribution
+                .aggregation_weight_basis
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .collect::<BTreeSet<_>>();
+    if explicit.len() == 1 {
+        return explicit.iter().next().map(|value| (*value).to_string());
+    }
+    if contributions
+        .iter()
+        .all(|contribution| contribution.consumed_token_count.is_some())
+    {
+        return Some("tokens".to_string());
+    }
+    if contributions
+        .iter()
+        .all(|contribution| contribution.consumed_example_count.is_some())
+    {
+        return Some("examples".to_string());
+    }
+    if contributions
+        .iter()
+        .all(|contribution| contribution.local_step_count.is_some())
+    {
+        return Some("local_steps".to_string());
+    }
+    None
+}
+
+fn training_payout_projection_weight_value(
+    contribution: &ComputeAdapterContributionOutcome,
+    weight_basis: Option<&str>,
+) -> Option<u64> {
+    let weight_basis = weight_basis?;
+    match weight_basis {
+        "tokens" => contribution
+            .aggregation_weight_value
+            .filter(|_| contribution.aggregation_weight_basis.as_deref() == Some("tokens"))
+            .or(contribution.consumed_token_count),
+        "examples" => contribution
+            .aggregation_weight_value
+            .filter(|_| contribution.aggregation_weight_basis.as_deref() == Some("examples"))
+            .or(contribution.consumed_example_count),
+        "local_steps" => contribution
+            .aggregation_weight_value
+            .filter(|_| contribution.aggregation_weight_basis.as_deref() == Some("local_steps"))
+            .or(contribution.local_step_count),
+        _ => contribution.aggregation_weight_value,
+    }
+}
+
+fn training_payout_projection_share_bps(
+    participant_weights: &[Option<u64>],
+    weighted: bool,
+) -> Vec<u32> {
+    if participant_weights.is_empty() {
+        return Vec::new();
+    }
+
+    if weighted {
+        let weights = participant_weights
+            .iter()
+            .map(|value| value.unwrap_or(0))
+            .collect::<Vec<_>>();
+        let total_weight = weights.iter().copied().sum::<u64>();
+        if total_weight > 0 {
+            let mut allocated = 0u32;
+            return weights
+                .iter()
+                .enumerate()
+                .map(|(index, weight)| {
+                    if index + 1 == weights.len() {
+                        10_000u32.saturating_sub(allocated)
+                    } else {
+                        let share =
+                            (((*weight as u128) * 10_000u128) / u128::from(total_weight)) as u32;
+                        allocated = allocated.saturating_add(share);
+                        share
+                    }
+                })
+                .collect();
+        }
+    }
+
+    let base_share = 10_000u32 / participant_weights.len() as u32;
+    let remainder = 10_000u32 % participant_weights.len() as u32;
+    participant_weights
+        .iter()
+        .enumerate()
+        .map(|(index, _)| base_share + u32::from(index < remainder as usize))
+        .collect()
+}
+
+fn training_window_closeout_payout_projection(
+    window: &ComputeAdapterTrainingWindow,
+    contributions: &[ComputeAdapterContributionOutcome],
+) -> TrainingPayoutProjection {
+    let participants = contributions
+        .iter()
+        .filter(|contribution| training_contribution_counts_for_settlement(contribution))
+        .collect::<Vec<_>>();
+    let weight_basis = training_payout_projection_weight_basis(participants.as_slice());
+    let participant_weights = participants
+        .iter()
+        .map(|contribution| {
+            training_payout_projection_weight_value(contribution, weight_basis.as_deref())
+        })
+        .collect::<Vec<_>>();
+    let weighted = weight_basis.is_some()
+        && participant_weights
+            .iter()
+            .all(|value| matches!(value, Some(weight) if *weight > 0));
+    let total_weight_value = if weighted {
+        Some(
+            participant_weights
+                .iter()
+                .map(|value| value.unwrap_or(0))
+                .sum::<u64>(),
+        )
+    } else {
+        None
+    };
+    let shared_result = window.replica_type == ComputeTrainingReplicaType::GroupedReplica
+        || window.work_class == ComputeTrainingWorkClass::GroupedReplicaStageExecution
+        || participants.len() > 1;
+    let progress_class = training_work_progress_class(window.work_class);
+    let share_bps = training_payout_projection_share_bps(participant_weights.as_slice(), weighted);
+    let participants = participants
+        .iter()
+        .enumerate()
+        .map(
+            |(index, contribution)| TrainingPayoutProjectionParticipant {
+                contributor_node_id: contribution.contributor_node_id.clone(),
+                worker_id: contribution.worker_id.clone(),
+                contribution_id: contribution.contribution_id.clone(),
+                assignment_id: contribution.assignment_id.clone(),
+                stage_id: (!contribution.stage_id.trim().is_empty())
+                    .then(|| contribution.stage_id.clone()),
+                share_bps: share_bps.get(index).copied().unwrap_or(0),
+                weight_basis: weight_basis.clone(),
+                weight_value: participant_weights.get(index).copied().flatten(),
+                progress_credit: progress_class.progress_bearing(),
+                validator_disposition: contribution.validator_disposition.label().to_string(),
+            },
+        )
+        .collect::<Vec<_>>();
+
+    TrainingPayoutProjection {
+        basis: training_payout_projection_basis(window.work_class, weighted)
+            .label()
+            .to_string(),
+        weight_basis,
+        total_weight_value,
+        weighted,
+        shared_result,
+        progress_bearing: progress_class.progress_bearing(),
+        participant_count: participants.len() as u64,
+        progress_participant_count: if progress_class.progress_bearing() {
+            participants.len() as u64
+        } else {
+            0
+        },
+        participants,
+    }
+}
+
 fn training_window_closeout_status(
     validation_summary: &TrainingWindowValidationSummary,
     gate_reason_codes: &[ComputeAdapterWindowGateReasonCode],
@@ -3632,6 +3952,7 @@ fn training_window_closeout_summary(
     closeout_status: TrainingWindowCloseoutStatus,
 ) -> ComputeTrainingSummary {
     let base_summary = training_run.summary.clone().unwrap_or_default();
+    let progress_bearing = training_work_progress_class(window.work_class).progress_bearing();
     ComputeTrainingSummary {
         completed_step_count: base_summary.completed_step_count,
         processed_token_count: base_summary.processed_token_count,
@@ -3639,7 +3960,7 @@ fn training_window_closeout_summary(
         best_eval_score_bps: window
             .held_out_average_score_bps
             .or(base_summary.best_eval_score_bps),
-        accepted_checkpoint_ref: if closeout_status.payout_eligible() {
+        accepted_checkpoint_ref: if closeout_status.payout_eligible() && progress_bearing {
             window
                 .output_checkpoint_pointer
                 .as_ref()
@@ -3658,15 +3979,21 @@ fn training_window_closeout_metadata(
     validation: &TrainingWindowValidationState,
     validation_summary: &TrainingWindowValidationSummary,
     window: &ComputeAdapterTrainingWindow,
+    contributions: &[ComputeAdapterContributionOutcome],
     closeout_status: TrainingWindowCloseoutStatus,
     defensibility: &TrainingWindowDefensibilityAudit,
 ) -> serde_json::Value {
+    let progress_class = training_work_progress_class(window.work_class);
+    let payout_projection = training_window_closeout_payout_projection(window, contributions);
     serde_json::json!({
         "network_id": network_id,
         "window_id": window.window_id,
         "closeout_scope": "sealed_window",
         "closeout_status": closeout_status.label(),
         "payout_eligible": closeout_status.payout_eligible(),
+        "work_class": window.work_class.label(),
+        "replica_type": window.replica_type.label(),
+        "progress_class": progress_class.label(),
         "window_summary_digest": window.window_summary_digest,
         "aggregated_delta_digest": window.aggregated_delta_digest,
         "gate_reason_codes": window.gate_reason_codes,
@@ -3695,6 +4022,7 @@ fn training_window_closeout_metadata(
             "rejected": window.rejected_contributions,
             "replay_required": window.replay_required_contributions,
         },
+        "payout_projection": payout_projection,
         "defensibility": defensibility.as_json(),
     })
 }
@@ -3705,6 +4033,7 @@ fn training_window_closeout_outcome(
     validation: &TrainingWindowValidationState,
     validation_summary: &TrainingWindowValidationSummary,
     window: &ComputeAdapterTrainingWindow,
+    contributions: &[ComputeAdapterContributionOutcome],
     accepted_at_ms: i64,
     closeout_status: TrainingWindowCloseoutStatus,
     defensibility: &TrainingWindowDefensibilityAudit,
@@ -3729,6 +4058,7 @@ fn training_window_closeout_outcome(
             validation,
             validation_summary,
             window,
+            contributions,
             closeout_status,
             defensibility,
         ),
@@ -5931,6 +6261,7 @@ async fn reconcile_training_window(
             &validation,
             &validation_summary,
             &updated_window,
+            contribution_outcomes.as_slice(),
             request.recorded_at_ms,
             closeout_status,
             &defensibility,
@@ -14182,19 +14513,73 @@ fn training_closeout_status_label(outcome: &ComputeAcceptedOutcome) -> Option<&s
         .and_then(Value::as_str)
 }
 
-fn training_outcome_counts_as_accepted_progress(outcome: &ComputeAcceptedOutcome) -> bool {
-    match training_closeout_status_label(outcome) {
-        Some("rewarded" | "no_reward") | None => true,
-        Some(_) => false,
+fn training_work_progress_class(work_class: ComputeTrainingWorkClass) -> TrainingWorkProgressClass {
+    match work_class {
+        ComputeTrainingWorkClass::ValidationReplay | ComputeTrainingWorkClass::Evaluation => {
+            TrainingWorkProgressClass::ParticipationOnly
+        }
+        ComputeTrainingWorkClass::AdapterTraining
+        | ComputeTrainingWorkClass::SmallModelLocalTraining
+        | ComputeTrainingWorkClass::GroupedReplicaStageExecution
+        | ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => {
+            TrainingWorkProgressClass::ModelUpdate
+        }
+        ComputeTrainingWorkClass::Aggregation | ComputeTrainingWorkClass::CheckpointPromotion => {
+            TrainingWorkProgressClass::CheckpointAdvance
+        }
     }
+}
+
+fn training_outcome_work_class(
+    outcome: &ComputeAcceptedOutcome,
+) -> Option<ComputeTrainingWorkClass> {
+    outcome
+        .metadata
+        .get("work_class")
+        .and_then(Value::as_str)
+        .and_then(ComputeTrainingWorkClass::parse)
+}
+
+fn training_outcome_payout_eligible(outcome: &ComputeAcceptedOutcome) -> bool {
+    outcome
+        .metadata
+        .get("payout_eligible")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn training_outcome_latest_payout_basis(outcome: &ComputeAcceptedOutcome) -> Option<String> {
+    outcome
+        .metadata
+        .get("payout_projection")
+        .and_then(|value| value.get("basis"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn training_outcome_counts_as_accepted_closeout(outcome: &ComputeAcceptedOutcome) -> bool {
+    match training_closeout_status_label(outcome) {
+        Some("held" | "quarantined" | "refused") => false,
+        Some(_) | None => true,
+    }
+}
+
+fn training_outcome_counts_as_accepted_progress(outcome: &ComputeAcceptedOutcome) -> bool {
+    training_outcome_counts_as_accepted_closeout(outcome)
+        && training_outcome_work_class(outcome)
+            .map(training_work_progress_class)
+            .is_some_and(TrainingWorkProgressClass::progress_bearing)
 }
 
 fn training_contribution_counts_as_accepted_progress(
     contribution: &ComputeAdapterContributionOutcome,
 ) -> bool {
-    contribution.accepted_for_aggregation
-        || contribution.validator_disposition == ComputeAdapterContributionDisposition::Accepted
-        || contribution.aggregation_eligibility == ComputeAdapterAggregationEligibility::Eligible
+    training_work_progress_class(contribution.work_class).progress_bearing()
+        && (contribution.accepted_for_aggregation
+            || contribution.validator_disposition
+                == ComputeAdapterContributionDisposition::Accepted
+            || contribution.aggregation_eligibility
+                == ComputeAdapterAggregationEligibility::Eligible)
 }
 
 fn training_outcome_advances_checkpoint_lineage(outcome: &ComputeAcceptedOutcome) -> bool {
@@ -14294,6 +14679,9 @@ fn training_operator_summary_snapshot(
     }
 
     let mut progress_contributor_ids = HashSet::<String>::new();
+    let mut settlement_accepted_closeouts = 0u64;
+    let mut settlement_payout_eligible_closeouts = 0u64;
+    let mut work_class_summaries = BTreeMap::<String, TrainingOperatorWorkClassSummary>::new();
     let mut run_summaries = training_runs
         .iter()
         .map(|run| {
@@ -14411,6 +14799,11 @@ fn training_operator_summary_snapshot(
                 .iter()
                 .filter(|outcome| outcome.source_run_id == run.training_run_id)
                 .collect::<Vec<_>>();
+            let accepted_terminal_outcomes = run_outcomes
+                .iter()
+                .copied()
+                .filter(|outcome| training_outcome_counts_as_accepted_closeout(outcome))
+                .collect::<Vec<_>>();
             let accepted_progress_outcomes = run_outcomes
                 .iter()
                 .copied()
@@ -14439,14 +14832,47 @@ fn training_operator_summary_snapshot(
             let accepted_closeouts = accepted_progress_outcomes.len() as u64;
             let payout_eligible_closeouts = accepted_progress_outcomes
                 .iter()
-                .filter(|outcome| {
-                    outcome
-                        .metadata
-                        .get("payout_eligible")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false)
-                })
+                .filter(|outcome| training_outcome_payout_eligible(outcome))
                 .count() as u64;
+            let settlement_closeouts = accepted_terminal_outcomes.len() as u64;
+            let settlement_payout_eligible_run_closeouts = accepted_terminal_outcomes
+                .iter()
+                .filter(|outcome| training_outcome_payout_eligible(outcome))
+                .count() as u64;
+            settlement_accepted_closeouts =
+                settlement_accepted_closeouts.saturating_add(settlement_closeouts);
+            settlement_payout_eligible_closeouts = settlement_payout_eligible_closeouts
+                .saturating_add(settlement_payout_eligible_run_closeouts);
+            let work_class = run.work_class.label().to_string();
+            let progress_class = training_work_progress_class(run.work_class)
+                .label()
+                .to_string();
+            let participation_only_closeouts =
+                settlement_closeouts.saturating_sub(accepted_closeouts);
+            let work_class_summary = work_class_summaries
+                .entry(work_class.clone())
+                .or_insert_with(|| TrainingOperatorWorkClassSummary {
+                    work_class: work_class.clone(),
+                    progress_class: progress_class.clone(),
+                    run_count: 0,
+                    accepted_closeouts: 0,
+                    payout_eligible_closeouts: 0,
+                    progress_bearing_closeouts: 0,
+                    participation_only_closeouts: 0,
+                });
+            work_class_summary.run_count = work_class_summary.run_count.saturating_add(1);
+            work_class_summary.accepted_closeouts = work_class_summary
+                .accepted_closeouts
+                .saturating_add(settlement_closeouts);
+            work_class_summary.payout_eligible_closeouts = work_class_summary
+                .payout_eligible_closeouts
+                .saturating_add(settlement_payout_eligible_run_closeouts);
+            work_class_summary.progress_bearing_closeouts = work_class_summary
+                .progress_bearing_closeouts
+                .saturating_add(accepted_closeouts);
+            work_class_summary.participation_only_closeouts = work_class_summary
+                .participation_only_closeouts
+                .saturating_add(participation_only_closeouts);
             let windows_advanced_checkpoint_lineage = run_windows
                 .iter()
                 .filter(|window| {
@@ -14508,6 +14934,14 @@ fn training_operator_summary_snapshot(
                     .and_then(Value::as_str)
                     .map(str::to_string)
             });
+            let settlement = TrainingOperatorRunSettlementSummary {
+                work_class,
+                replica_type: run.replica_type.label().to_string(),
+                progress_class,
+                accepted_closeouts: settlement_closeouts,
+                payout_eligible_closeouts: settlement_payout_eligible_run_closeouts,
+                latest_payout_basis: latest_closeout.and_then(training_outcome_latest_payout_basis),
+            };
             let participation = TrainingOperatorRunParticipationSummary {
                 admitted_nodes,
                 online_nodes: admitted_nodes_online,
@@ -14550,6 +14984,7 @@ fn training_operator_summary_snapshot(
                     .unwrap_or_else(|| "unknown".to_string()),
                 participation,
                 progress: progress.clone(),
+                settlement,
                 admitted_nodes,
                 admitted_nodes_online,
                 worker_nodes_online,
@@ -14651,11 +15086,17 @@ fn training_operator_summary_snapshot(
         checkpoint_max_age_ms,
         artifact_failures_open: metrics.artifact_failures_open,
     };
+    let settlement = TrainingOperatorSettlementSummary {
+        accepted_closeouts: settlement_accepted_closeouts,
+        payout_eligible_closeouts: settlement_payout_eligible_closeouts,
+        work_classes: work_class_summaries.into_values().collect(),
+    };
 
     TrainingOperatorSummaryResponse {
         generated_at_unix_ms: now_unix_ms,
         participation,
         progress,
+        settlement,
         admitted_nodes: metrics.admitted_nodes,
         admitted_nodes_online: metrics.admitted_nodes_online,
         active_runs: metrics.active_runs,
@@ -15044,8 +15485,12 @@ mod tests {
         TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND, TRN_TRAINING_WINDOW_KIND,
         TrainingOperatorSummaryResponse, TrainingSchedulerWindowState,
         TrainingTrnPublicationReport, TrainingValidatorChallengeCoordinatorResponse,
-        TrainingWindowCloseoutStatus, TrainingWindowValidationSummary,
-        training_scheduler_metadata_from_run, training_window_closeout_status, validator_service,
+        TrainingWindowCloseoutStatus, TrainingWindowDefensibilityArtifactAudit,
+        TrainingWindowDefensibilityAudit, TrainingWindowDefensibilityPromotionAudit,
+        TrainingWindowDefensibilityValidatorAudit, TrainingWindowMetadata,
+        TrainingWindowValidationState, TrainingWindowValidationSummary,
+        training_scheduler_metadata_from_run, training_window_closeout_outcome,
+        training_window_closeout_status, training_window_metadata_value, validator_service,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -24187,6 +24632,299 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn training_window_closeout_projection_tracks_grouped_replica_weighted_split() {
+        let training_run = ComputeTrainingRun {
+            training_run_id: "run.grouped.closeout".to_string(),
+            training_policy_ref: "policy://training/grouped".to_string(),
+            environment_binding: ComputeEnvironmentBinding {
+                environment_ref: PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
+                environment_version: Some("2026.04.11".to_string()),
+                dataset_ref: Some("dataset://grouped/train".to_string()),
+                rubric_ref: None,
+                evaluator_policy_ref: None,
+            },
+            checkpoint_binding: ComputeCheckpointBinding {
+                checkpoint_family: "checkpoint.family.grouped".to_string(),
+                latest_checkpoint_ref: Some("checkpoint://grouped/base".to_string()),
+                recovery_posture: Some("resume_from_latest".to_string()),
+            },
+            validator_policy_ref: "policy://validator/grouped".to_string(),
+            work_class: ComputeTrainingWorkClass::GroupedReplicaStageExecution,
+            replica_type: ComputeTrainingReplicaType::GroupedReplica,
+            benchmark_package_refs: Vec::new(),
+            product_id: Some("psionic.grouped.stage".to_string()),
+            capacity_lot_id: None,
+            instrument_id: None,
+            delivery_proof_id: None,
+            model_ref: Some("model://grouped.base".to_string()),
+            source_ref: None,
+            rollout_verification_eval_run_ids: Vec::new(),
+            created_at_ms: 1_762_491_700_000,
+            started_at_ms: Some(1_762_491_700_100),
+            finalized_at_ms: None,
+            expected_step_count: Some(1_024),
+            completed_step_count: Some(256),
+            status: ComputeTrainingRunStatus::Running,
+            final_checkpoint_ref: None,
+            promotion_checkpoint_ref: None,
+            summary: Some(ComputeTrainingSummary::default()),
+            metadata: json!({"network_id": "trainnet.grouped"}),
+        };
+        let metadata = TrainingWindowMetadata {
+            network_id: "trainnet.grouped".to_string(),
+            artifact_bucket_uri: "gs://bucket".to_string(),
+            environment_ref: PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
+            backend_family: "cuda".to_string(),
+            membership_revision: "members.rev1".to_string(),
+            assignment_plans: Vec::new(),
+            validation: None,
+            planned_at_ms: 1_762_491_700_200,
+            activated_at_ms: Some(1_762_491_700_300),
+            sealed_at_ms: Some(1_762_491_700_400),
+            reconciled_at_ms: Some(1_762_491_700_500),
+            defensibility: None,
+            seal_deadline_ms: 1_762_491_760_000,
+        };
+        let validation = TrainingWindowValidationState {
+            validator_pool_ref: "pool://grouped".to_string(),
+            sampled_assignment_ids: Vec::new(),
+            challenges: Vec::new(),
+            scheduled_at_ms: 1_762_491_700_350,
+            last_finalized_at_ms: Some(1_762_491_700_450),
+        };
+        let validation_summary = TrainingWindowValidationSummary {
+            sample_dispositions: HashMap::new(),
+            all_required_terminal: true,
+            aggregate_resolution: PylonTrainingAggregateResolution::Accept,
+            aggregate_terminal_disposition: Some(ComputeAdapterContributionDisposition::Accepted),
+            held_challenge_present: false,
+        };
+        let window = ComputeAdapterTrainingWindow {
+            window_id: "window.grouped.0001".to_string(),
+            training_run_id: training_run.training_run_id.clone(),
+            stage_id: "stage.grouped".to_string(),
+            contributor_set_revision_id: "contributors.rev1".to_string(),
+            validator_policy_ref: training_run.validator_policy_ref.clone(),
+            work_class: ComputeTrainingWorkClass::GroupedReplicaStageExecution,
+            replica_type: ComputeTrainingReplicaType::GroupedReplica,
+            round_index: Some(7),
+            base_checkpoint_ref: "checkpoint://grouped/base".to_string(),
+            planned_local_step_count: Some(32),
+            aggregation_rule: Some("weighted_avg".to_string()),
+            aggregation_weight_basis: Some("tokens".to_string()),
+            adapter_target_id: String::new(),
+            adapter_family: String::new(),
+            base_model_ref: "model://grouped.base".to_string(),
+            adapter_format: String::new(),
+            source_policy_revision: compute_adapter_policy_revision(
+                "policy-rev-grouped",
+                1_762_491_700_100,
+            ),
+            source_checkpoint_pointer: compute_adapter_checkpoint_pointer(
+                "sha256:pointer-grouped-base",
+                1_762_491_700_100,
+            ),
+            status: ComputeAdapterWindowStatus::Reconciled,
+            total_contributions: 2,
+            admitted_contributions: 2,
+            accepted_contributions: 2,
+            quarantined_contributions: 0,
+            rejected_contributions: 0,
+            replay_required_contributions: 0,
+            replay_checked_contributions: 2,
+            held_out_average_score_bps: Some(9_450),
+            benchmark_pass_rate_bps: Some(9_600),
+            runtime_smoke_passed: Some(true),
+            promotion_ready: true,
+            gate_reason_codes: Vec::new(),
+            window_summary_digest: "sha256:window-summary-grouped".to_string(),
+            promotion_disposition: None,
+            hold_reason_codes: Vec::new(),
+            aggregated_delta_digest: Some("sha256:grouped-aggregate".to_string()),
+            accepted_aggregate_id: Some("aggregate.grouped.0001".to_string()),
+            output_policy_revision: None,
+            output_checkpoint_pointer: None,
+            promoted_checkpoint_ref: None,
+            accepted_outcome_id: None,
+            recorded_at_ms: 1_762_491_700_500,
+            metadata: Value::Null,
+        };
+        let base_contribution = ComputeAdapterContributionOutcome {
+            contribution_id: "contrib.grouped.a".to_string(),
+            training_run_id: training_run.training_run_id.clone(),
+            stage_id: "stage.grouped".to_string(),
+            window_id: window.window_id.clone(),
+            contributor_set_revision_id: "contributors.rev1".to_string(),
+            assignment_id: "assign.grouped.a".to_string(),
+            contributor_node_id: "node-grouped-a".to_string(),
+            worker_id: "worker-grouped-a".to_string(),
+            validator_policy_ref: training_run.validator_policy_ref.clone(),
+            work_class: ComputeTrainingWorkClass::GroupedReplicaStageExecution,
+            replica_type: ComputeTrainingReplicaType::GroupedReplica,
+            base_checkpoint_ref: window.base_checkpoint_ref.clone(),
+            adapter_target_id: String::new(),
+            adapter_family: String::new(),
+            base_model_ref: training_run.model_ref.clone().expect("grouped base model"),
+            adapter_format: String::new(),
+            dataset_slice: ComputeAdapterDatasetSlice::default(),
+            source_policy_revision: window.source_policy_revision.clone(),
+            source_checkpoint_pointer: window.source_checkpoint_pointer.clone(),
+            submission_receipt_digest: "sha256:submit.grouped.a".to_string(),
+            artifact_id: "artifact.grouped.a".to_string(),
+            manifest_digest: "sha256:manifest.grouped.a".to_string(),
+            object_digest: "sha256:object.grouped.a".to_string(),
+            artifact_receipt_digest: "sha256:artifact.grouped.a".to_string(),
+            provenance_bundle_digest: "sha256:prov.grouped.a".to_string(),
+            security_receipt_digest: "sha256:sec.grouped.a".to_string(),
+            replay_receipt_digest: None,
+            validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+            validation_reason_codes: Vec::new(),
+            validator_receipt_digest: "sha256:validator.grouped.a".to_string(),
+            aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+            accepted_for_aggregation: true,
+            local_step_count: Some(32),
+            consumed_token_count: Some(96_000),
+            consumed_example_count: Some(192),
+            aggregation_weight_basis: Some("tokens".to_string()),
+            aggregation_weight_value: Some(96_000),
+            aggregation_weight_bps: Some(7_500),
+            promotion_receipt_digest: None,
+            recorded_at_ms: 1_762_491_700_450,
+            metadata: json!({}),
+        };
+        let mut contribution_b = base_contribution.clone();
+        contribution_b.contribution_id = "contrib.grouped.b".to_string();
+        contribution_b.assignment_id = "assign.grouped.b".to_string();
+        contribution_b.contributor_node_id = "node-grouped-b".to_string();
+        contribution_b.worker_id = "worker-grouped-b".to_string();
+        contribution_b.submission_receipt_digest = "sha256:submit.grouped.b".to_string();
+        contribution_b.artifact_id = "artifact.grouped.b".to_string();
+        contribution_b.manifest_digest = "sha256:manifest.grouped.b".to_string();
+        contribution_b.object_digest = "sha256:object.grouped.b".to_string();
+        contribution_b.artifact_receipt_digest = "sha256:artifact.grouped.b".to_string();
+        contribution_b.provenance_bundle_digest = "sha256:prov.grouped.b".to_string();
+        contribution_b.security_receipt_digest = "sha256:sec.grouped.b".to_string();
+        contribution_b.validator_receipt_digest = "sha256:validator.grouped.b".to_string();
+        contribution_b.consumed_token_count = Some(32_000);
+        contribution_b.consumed_example_count = Some(64);
+        contribution_b.aggregation_weight_value = Some(32_000);
+        contribution_b.aggregation_weight_bps = Some(2_500);
+        let defensibility = TrainingWindowDefensibilityAudit {
+            status: "satisfied".to_string(),
+            refusal_codes: Vec::new(),
+            approved_release_ids: Vec::new(),
+            persisted_audit_trails: Vec::new(),
+            node_identities: Vec::new(),
+            assignment_trail: Vec::new(),
+            validator_audit: TrainingWindowDefensibilityValidatorAudit {
+                challenge_ids: Vec::new(),
+                aggregate_challenge_count: 0,
+                sample_challenge_count: 0,
+                terminal_challenge_count: 0,
+                all_required_terminal: true,
+                sampled_replay_present: false,
+                aggregate_resolution: "accept".to_string(),
+                held_challenge_present: false,
+            },
+            artifact_audit: TrainingWindowDefensibilityArtifactAudit {
+                contribution_count: 2,
+                invalid_digest_refs: Vec::new(),
+                aggregated_delta_digest: Some("sha256:grouped-aggregate".to_string()),
+                checkpoint_pointer_regression: false,
+                output_checkpoint_manifest_digest: None,
+                output_checkpoint_pointer_digest: None,
+            },
+            promotion_audit: TrainingWindowDefensibilityPromotionAudit {
+                promotion_requested: false,
+                required_validator_count: 0,
+                distinct_validator_count: 0,
+                distinct_validator_ids: Vec::new(),
+                challenge_window_ms: None,
+                last_validator_finalized_at_ms: None,
+                challenge_window_satisfied: true,
+                quorum_satisfied: true,
+                contributor_node_ids: vec![
+                    "node-grouped-a".to_string(),
+                    "node-grouped-b".to_string(),
+                ],
+                recovery_source_node_ids: Vec::new(),
+                self_validation_validator_ids: Vec::new(),
+                self_promotion_node_ids: Vec::new(),
+            },
+        };
+
+        let outcome = training_window_closeout_outcome(
+            &training_run,
+            &metadata,
+            &validation,
+            &validation_summary,
+            &window,
+            &[base_contribution, contribution_b],
+            1_762_491_700_550,
+            TrainingWindowCloseoutStatus::Rewarded,
+            &defensibility,
+        );
+
+        assert_eq!(
+            outcome.metadata.get("work_class").and_then(Value::as_str),
+            Some("grouped_replica_stage_execution")
+        );
+        assert_eq!(
+            outcome
+                .metadata
+                .get("progress_class")
+                .and_then(Value::as_str),
+            Some("model_update")
+        );
+        let payout_projection = outcome
+            .metadata
+            .get("payout_projection")
+            .expect("payout projection");
+        assert_eq!(
+            payout_projection.get("basis").and_then(Value::as_str),
+            Some("grouped_stage_share")
+        );
+        assert_eq!(
+            payout_projection
+                .get("weight_basis")
+                .and_then(Value::as_str),
+            Some("tokens")
+        );
+        assert_eq!(
+            payout_projection
+                .get("total_weight_value")
+                .and_then(Value::as_u64),
+            Some(128_000)
+        );
+        assert_eq!(
+            payout_projection
+                .get("shared_result")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        let participants = payout_projection
+            .get("participants")
+            .and_then(Value::as_array)
+            .expect("participant list");
+        assert_eq!(participants.len(), 2);
+        assert_eq!(
+            participants[0].get("share_bps").and_then(Value::as_u64),
+            Some(7_500)
+        );
+        assert_eq!(
+            participants[1].get("share_bps").and_then(Value::as_u64),
+            Some(2_500)
+        );
+        assert_eq!(
+            outcome
+                .training_summary
+                .as_ref()
+                .and_then(|summary| summary.accepted_checkpoint_ref.as_deref()),
+            None
+        );
+    }
+
     #[tokio::test]
     async fn training_window_reconcile_refuses_stale_manifest_replay_and_bad_artifact_digest()
     -> Result<()> {
@@ -26231,6 +26969,378 @@ mod tests {
             Some("rewarded")
         );
         assert!(run_summary.latest_checkpoint_age_ms.is_some());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_summary_settlement_distinguishes_participation_only_rewards() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_640_000u64;
+
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms,
+            "run.summary.progress",
+            "window.progress.0001",
+            "trainnet.progress",
+            "node-progress",
+            "sha256:build-progress",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+            ComputeTrainingReplicaType::Island,
+            Some(512),
+        );
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms + 10_000,
+            "run.summary.validation",
+            "window.validation.0001",
+            "trainnet.validation",
+            "node-validation",
+            "sha256:build-validation",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::ValidationReplay,
+            ComputeTrainingReplicaType::SingleNode,
+            Some(128),
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let progress_run = store
+                .kernel
+                .get_compute_training_run("run.summary.progress")
+                .expect("progress run")
+                .clone();
+            let validation_run = store
+                .kernel
+                .get_compute_training_run("run.summary.validation")
+                .expect("validation run")
+                .clone();
+            let progress_window = ComputeAdapterTrainingWindow {
+                window_id: "window.progress.0001".to_string(),
+                training_run_id: progress_run.training_run_id.clone(),
+                stage_id: "stage.progress".to_string(),
+                contributor_set_revision_id: "contributors.rev1".to_string(),
+                validator_policy_ref: progress_run.validator_policy_ref.clone(),
+                work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+                replica_type: ComputeTrainingReplicaType::Island,
+                round_index: Some(1),
+                base_checkpoint_ref: "checkpoint://decoder/train.math.basic.client/promotion"
+                    .to_string(),
+                planned_local_step_count: Some(64),
+                aggregation_rule: Some("weighted_avg".to_string()),
+                aggregation_weight_basis: Some("tokens".to_string()),
+                adapter_target_id: String::new(),
+                adapter_family: String::new(),
+                base_model_ref: progress_run
+                    .model_ref
+                    .clone()
+                    .unwrap_or_else(|| "model://progress".to_string()),
+                adapter_format: String::new(),
+                source_policy_revision: compute_adapter_policy_revision(
+                    "policy-rev-summary-progress",
+                    created_at_ms as i64 + 19_000,
+                ),
+                source_checkpoint_pointer: compute_adapter_checkpoint_pointer(
+                    "sha256:pointer-summary-progress",
+                    created_at_ms as i64 + 19_100,
+                ),
+                status: ComputeAdapterWindowStatus::Reconciled,
+                total_contributions: 0,
+                admitted_contributions: 0,
+                accepted_contributions: 0,
+                quarantined_contributions: 0,
+                rejected_contributions: 0,
+                replay_required_contributions: 0,
+                replay_checked_contributions: 0,
+                held_out_average_score_bps: Some(9_500),
+                benchmark_pass_rate_bps: Some(9_700),
+                runtime_smoke_passed: Some(true),
+                promotion_ready: true,
+                gate_reason_codes: Vec::new(),
+                window_summary_digest: "sha256:window-summary-progress".to_string(),
+                promotion_disposition: None,
+                hold_reason_codes: Vec::new(),
+                aggregated_delta_digest: Some("sha256:aggregate-summary-progress".to_string()),
+                accepted_aggregate_id: Some("aggregate.summary.progress".to_string()),
+                output_policy_revision: None,
+                output_checkpoint_pointer: None,
+                promoted_checkpoint_ref: None,
+                accepted_outcome_id: None,
+                recorded_at_ms: created_at_ms as i64 + 19_200,
+                metadata: training_window_metadata_value(&TrainingWindowMetadata {
+                    network_id: "trainnet.progress".to_string(),
+                    artifact_bucket_uri: "gs://bucket".to_string(),
+                    environment_ref: PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
+                    backend_family: "cuda".to_string(),
+                    membership_revision: "members.rev1".to_string(),
+                    assignment_plans: Vec::new(),
+                    validation: None,
+                    planned_at_ms: created_at_ms as i64 + 18_000,
+                    activated_at_ms: Some(created_at_ms as i64 + 18_100),
+                    sealed_at_ms: Some(created_at_ms as i64 + 18_200),
+                    reconciled_at_ms: Some(created_at_ms as i64 + 19_200),
+                    defensibility: None,
+                    seal_deadline_ms: created_at_ms as i64 + 19_500,
+                }),
+            };
+            let validation_window = ComputeAdapterTrainingWindow {
+                window_id: "window.validation.0001".to_string(),
+                training_run_id: validation_run.training_run_id.clone(),
+                stage_id: "stage.validation".to_string(),
+                contributor_set_revision_id: "contributors.rev1".to_string(),
+                validator_policy_ref: validation_run.validator_policy_ref.clone(),
+                work_class: ComputeTrainingWorkClass::ValidationReplay,
+                replica_type: ComputeTrainingReplicaType::SingleNode,
+                round_index: Some(1),
+                base_checkpoint_ref: "checkpoint://decoder/train.math.basic.client/promotion"
+                    .to_string(),
+                planned_local_step_count: None,
+                aggregation_rule: None,
+                aggregation_weight_basis: None,
+                adapter_target_id: String::new(),
+                adapter_family: String::new(),
+                base_model_ref: validation_run
+                    .model_ref
+                    .clone()
+                    .unwrap_or_else(|| "model://validation".to_string()),
+                adapter_format: String::new(),
+                source_policy_revision: compute_adapter_policy_revision(
+                    "policy-rev-summary-validation",
+                    created_at_ms as i64 + 19_010,
+                ),
+                source_checkpoint_pointer: compute_adapter_checkpoint_pointer(
+                    "sha256:pointer-summary-validation",
+                    created_at_ms as i64 + 19_110,
+                ),
+                status: ComputeAdapterWindowStatus::Reconciled,
+                total_contributions: 0,
+                admitted_contributions: 0,
+                accepted_contributions: 0,
+                quarantined_contributions: 0,
+                rejected_contributions: 0,
+                replay_required_contributions: 0,
+                replay_checked_contributions: 0,
+                held_out_average_score_bps: None,
+                benchmark_pass_rate_bps: None,
+                runtime_smoke_passed: Some(true),
+                promotion_ready: false,
+                gate_reason_codes: Vec::new(),
+                window_summary_digest: "sha256:window-summary-validation".to_string(),
+                promotion_disposition: None,
+                hold_reason_codes: Vec::new(),
+                aggregated_delta_digest: None,
+                accepted_aggregate_id: None,
+                output_policy_revision: None,
+                output_checkpoint_pointer: None,
+                promoted_checkpoint_ref: None,
+                accepted_outcome_id: None,
+                recorded_at_ms: created_at_ms as i64 + 19_210,
+                metadata: training_window_metadata_value(&TrainingWindowMetadata {
+                    network_id: "trainnet.validation".to_string(),
+                    artifact_bucket_uri: "gs://bucket".to_string(),
+                    environment_ref: PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
+                    backend_family: "cuda".to_string(),
+                    membership_revision: "members.rev1".to_string(),
+                    assignment_plans: Vec::new(),
+                    validation: None,
+                    planned_at_ms: created_at_ms as i64 + 18_010,
+                    activated_at_ms: Some(created_at_ms as i64 + 18_110),
+                    sealed_at_ms: Some(created_at_ms as i64 + 18_210),
+                    reconciled_at_ms: Some(created_at_ms as i64 + 19_210),
+                    defensibility: None,
+                    seal_deadline_ms: created_at_ms as i64 + 19_510,
+                }),
+            };
+
+            store
+                .kernel
+                .record_compute_adapter_window(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 19_200),
+                    RecordComputeAdapterWindowRequest {
+                        idempotency_key: "idemp.summary.progress.window".to_string(),
+                        trace: TraceContext::default(),
+                        policy: kernel_policy(),
+                        window: progress_window,
+                        contribution_outcomes: Vec::new(),
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .expect("record progress window");
+            store
+                .kernel
+                .record_compute_adapter_window(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 19_210),
+                    RecordComputeAdapterWindowRequest {
+                        idempotency_key: "idemp.summary.validation.window".to_string(),
+                        trace: TraceContext::default(),
+                        policy: kernel_policy(),
+                        window: validation_window,
+                        contribution_outcomes: Vec::new(),
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .expect("record validation window");
+
+            store
+                .kernel
+                .accept_compute_outcome(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 20_000),
+                    AcceptComputeOutcomeRequest {
+                        idempotency_key: "idemp.summary.progress.closeout".to_string(),
+                        trace: TraceContext::default(),
+                        policy: kernel_policy(),
+                        outcome: ComputeAcceptedOutcome {
+                            outcome_id: "accepted.training_window.window.progress.0001".to_string(),
+                            outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+                            source_run_id: progress_run.training_run_id.clone(),
+                            environment_binding: progress_run.environment_binding.clone(),
+                            checkpoint_binding: Some(progress_run.checkpoint_binding.clone()),
+                            validator_policy_ref: Some(progress_run.validator_policy_ref.clone()),
+                            benchmark_package_refs: progress_run.benchmark_package_refs.clone(),
+                            accepted_at_ms: (created_at_ms + 20_000) as i64,
+                            evaluation_summary: None,
+                            training_summary: Some(ComputeTrainingSummary {
+                                completed_step_count: progress_run.completed_step_count,
+                                processed_token_count: Some(131_072),
+                                average_loss: Some(0.18),
+                                best_eval_score_bps: Some(9_500),
+                                accepted_checkpoint_ref: Some(
+                                    "checkpoint://progress/accepted".to_string(),
+                                ),
+                                aggregate_metrics: Vec::new(),
+                                artifacts: Vec::new(),
+                            }),
+                            metadata: json!({
+                                "network_id": "trainnet.progress",
+                                "window_id": "window.progress.0001",
+                                "closeout_status": "rewarded",
+                                "payout_eligible": true,
+                                "work_class": "full_island_local_update_training",
+                                "replica_type": "island",
+                                "progress_class": "model_update",
+                                "payout_projection": {
+                                    "basis": "aggregation_weight",
+                                    "weight_basis": "tokens",
+                                    "total_weight_value": 131072,
+                                    "weighted": true,
+                                    "shared_result": false,
+                                    "progress_bearing": true,
+                                    "participant_count": 1,
+                                    "progress_participant_count": 1,
+                                    "participants": []
+                                }
+                            }),
+                        },
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .expect("accept progress closeout");
+            store
+                .kernel
+                .accept_compute_outcome(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 20_100),
+                    AcceptComputeOutcomeRequest {
+                        idempotency_key: "idemp.summary.validation.closeout".to_string(),
+                        trace: TraceContext::default(),
+                        policy: kernel_policy(),
+                        outcome: ComputeAcceptedOutcome {
+                            outcome_id: "accepted.training_window.window.validation.0001"
+                                .to_string(),
+                            outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+                            source_run_id: validation_run.training_run_id.clone(),
+                            environment_binding: validation_run.environment_binding.clone(),
+                            checkpoint_binding: Some(validation_run.checkpoint_binding.clone()),
+                            validator_policy_ref: Some(validation_run.validator_policy_ref.clone()),
+                            benchmark_package_refs: validation_run.benchmark_package_refs.clone(),
+                            accepted_at_ms: (created_at_ms + 20_100) as i64,
+                            evaluation_summary: None,
+                            training_summary: Some(ComputeTrainingSummary {
+                                completed_step_count: None,
+                                processed_token_count: None,
+                                average_loss: None,
+                                best_eval_score_bps: None,
+                                accepted_checkpoint_ref: None,
+                                aggregate_metrics: Vec::new(),
+                                artifacts: Vec::new(),
+                            }),
+                            metadata: json!({
+                                "network_id": "trainnet.validation",
+                                "window_id": "window.validation.0001",
+                                "closeout_status": "rewarded",
+                                "payout_eligible": true,
+                                "work_class": "validation_replay",
+                                "replica_type": "single_node",
+                                "progress_class": "participation_only",
+                                "payout_projection": {
+                                    "basis": "validator_verdict",
+                                    "weighted": false,
+                                    "shared_result": false,
+                                    "progress_bearing": false,
+                                    "participant_count": 1,
+                                    "progress_participant_count": 0,
+                                    "participants": []
+                                }
+                            }),
+                        },
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .expect("accept validation closeout");
+        }
+
+        let summary = fetch_training_summary(&app).await?;
+        assert_eq!(summary.progress.accepted_closeouts, 1);
+        assert_eq!(summary.progress.payout_eligible_closeouts, 1);
+        assert_eq!(summary.settlement.accepted_closeouts, 2);
+        assert_eq!(summary.settlement.payout_eligible_closeouts, 2);
+
+        let progress_work_class = summary
+            .settlement
+            .work_classes
+            .iter()
+            .find(|entry| entry.work_class == "full_island_local_update_training")
+            .expect("progress work class summary");
+        assert_eq!(progress_work_class.accepted_closeouts, 1);
+        assert_eq!(progress_work_class.payout_eligible_closeouts, 1);
+        assert_eq!(progress_work_class.progress_bearing_closeouts, 1);
+        assert_eq!(progress_work_class.participation_only_closeouts, 0);
+
+        let validation_work_class = summary
+            .settlement
+            .work_classes
+            .iter()
+            .find(|entry| entry.work_class == "validation_replay")
+            .expect("validation work class summary");
+        assert_eq!(validation_work_class.accepted_closeouts, 1);
+        assert_eq!(validation_work_class.payout_eligible_closeouts, 1);
+        assert_eq!(validation_work_class.progress_bearing_closeouts, 0);
+        assert_eq!(validation_work_class.participation_only_closeouts, 1);
+
+        let validation_run = summary
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == "run.summary.validation")
+            .expect("validation run summary");
+        assert_eq!(validation_run.progress.accepted_closeouts, 0);
+        assert_eq!(validation_run.progress.payout_eligible_closeouts, 0);
+        assert_eq!(validation_run.settlement.work_class, "validation_replay");
+        assert_eq!(
+            validation_run.settlement.progress_class,
+            "participation_only"
+        );
+        assert_eq!(validation_run.settlement.accepted_closeouts, 1);
+        assert_eq!(validation_run.settlement.payout_eligible_closeouts, 1);
+        assert_eq!(
+            validation_run.settlement.latest_payout_basis.as_deref(),
+            Some("validator_verdict")
+        );
 
         Ok(())
     }

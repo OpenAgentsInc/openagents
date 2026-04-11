@@ -654,6 +654,33 @@ pub(super) fn closeout_event(
         .ok_or_else(|| "training_closeout_window_missing".to_string())?
         .to_string();
     let closeout_status = training_trn_closeout_status(source);
+    let work_class = source.outcome.metadata.get("work_class").cloned();
+    let replica_type = source.outcome.metadata.get("replica_type").cloned();
+    let progress_class = source.outcome.metadata.get("progress_class").cloned();
+    let payout_projection = source.outcome.metadata.get("payout_projection").cloned();
+    let mut extra_tags = vec![
+        vec!["run".to_string(), source.outcome.source_run_id.clone()],
+        vec!["class".to_string(), "training_closeout".to_string()],
+    ];
+    if let Some(work_class) = work_class.as_ref().and_then(Value::as_str) {
+        extra_tags.push(vec!["work_class".to_string(), work_class.to_string()]);
+    }
+    if let Some(replica_type) = replica_type.as_ref().and_then(Value::as_str) {
+        extra_tags.push(vec!["replica_type".to_string(), replica_type.to_string()]);
+    }
+    if let Some(progress_class) = progress_class.as_ref().and_then(Value::as_str) {
+        extra_tags.push(vec![
+            "progress_class".to_string(),
+            progress_class.to_string(),
+        ]);
+    }
+    if let Some(basis) = payout_projection
+        .as_ref()
+        .and_then(|value| value.get("basis"))
+        .and_then(Value::as_str)
+    {
+        extra_tags.push(vec!["payout_basis".to_string(), basis.to_string()]);
+    }
     Ok(TrainingCloseoutEvent {
         network_id,
         window_id,
@@ -664,6 +691,10 @@ pub(super) fn closeout_event(
             "window_id": source.outcome.metadata.get("window_id"),
             "closeout_status": closeout_status,
             "payout_eligible": source.outcome.metadata.get("payout_eligible").cloned(),
+            "work_class": work_class,
+            "replica_type": replica_type,
+            "progress_class": progress_class,
+            "payout_projection": payout_projection,
             "training_summary": source.outcome.training_summary,
             "kernel_object_id": source.outcome.outcome_id,
             "kernel_receipt_ids": vec![source.receipt_id.clone()],
@@ -675,10 +706,7 @@ pub(super) fn closeout_event(
         actors: Vec::new(),
         reason_codes: Vec::new(),
         event_refs: Vec::new(),
-        extra_tags: vec![
-            vec!["run".to_string(), source.outcome.source_run_id.clone()],
-            vec!["class".to_string(), "training_closeout".to_string()],
-        ],
+        extra_tags,
     }
     .normalize())
 }
@@ -1036,7 +1064,34 @@ mod tests {
                     "network_id": "trainnet.alpha",
                     "window_id": "window.0001",
                     "closeout_status": "rewarded",
-                    "payout_eligible": true
+                    "payout_eligible": true,
+                    "work_class": "full_island_local_update_training",
+                    "replica_type": "island",
+                    "progress_class": "model_update",
+                    "payout_projection": {
+                        "basis": "aggregation_weight",
+                        "weight_basis": "tokens",
+                        "total_weight_value": 131072,
+                        "weighted": true,
+                        "shared_result": false,
+                        "progress_bearing": true,
+                        "participant_count": 1,
+                        "progress_participant_count": 1,
+                        "participants": [
+                            {
+                                "contributor_node_id": "node-alpha",
+                                "worker_id": "worker-alpha",
+                                "contribution_id": "contrib.accepted.alpha",
+                                "assignment_id": "assign.node01.window0001",
+                                "stage_id": "stage.alpha",
+                                "share_bps": 10000,
+                                "weight_basis": "tokens",
+                                "weight_value": 131072,
+                                "progress_credit": true,
+                                "validator_disposition": "accepted"
+                            }
+                        ]
+                    }
                 }),
             ),
             receipt_id: "receipt.closeout.alpha".to_string(),
@@ -1431,6 +1486,26 @@ mod tests {
 
         let closeout = closeout_event(&accepted_outcome_source_fixture()).expect("closeout");
         assert_eq!(closeout.status, "rewarded");
+        assert_eq!(
+            closeout
+                .content
+                .get("work_class")
+                .and_then(serde_json::Value::as_str),
+            Some("full_island_local_update_training")
+        );
+        assert!(
+            closeout
+                .extra_tags
+                .iter()
+                .any(|tag| tag == &vec!["progress_class".to_string(), "model_update".to_string()])
+        );
+        assert!(
+            closeout
+                .extra_tags
+                .iter()
+                .any(|tag| tag
+                    == &vec!["payout_basis".to_string(), "aggregation_weight".to_string()])
+        );
         assert!(matches!(
             nostr::TrnEvent::from_event(&fake_event(
                 closeout.to_event_template(1_774_160_022).expect("closeout template"),

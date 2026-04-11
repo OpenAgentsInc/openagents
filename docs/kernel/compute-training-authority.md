@@ -180,6 +180,59 @@ snapshots should expose both categories without collapsing them into one
 checkpoint lineage, and a busy validator queue can exist without any accepted
 progress.
 
+## Work-Class Settlement Projection
+
+The accepted-outcome closeout record now also carries explicit settlement
+projection metadata so operators do not need private runbook knowledge to infer
+why a rewarded window paid anyone.
+
+Each training closeout should now publish:
+
+- `work_class`
+  - for example `validation_replay`, `grouped_replica_stage_execution`, or
+    `full_island_local_update_training`
+- `replica_type`
+  - `single_node`, `island`, or `grouped_replica`
+- `progress_class`
+  - `participation_only`, `model_update`, or `checkpoint_advance`
+- `payout_projection`
+  - machine-legible payout basis such as:
+    - `validator_verdict`
+    - `accepted_contribution`
+    - `aggregation_weight`
+    - `grouped_stage_share`
+    - `aggregate_acceptance`
+    - `checkpoint_authority`
+  - optional weighting basis and total weighted value
+  - whether one accepted result is shared across multiple contributors
+  - one projected participant list with contribution identity and share basis
+
+This is the public authority answer to two different questions that were
+previously conflated:
+
+- did this work advance model state?
+- did this work earn payout?
+
+For example:
+
+- validation replay can now be payout-eligible while remaining
+  `participation_only`
+- grouped replica stage execution can now surface one shared accepted result
+  with split attribution across multiple nodes
+- aggregation or checkpoint-promotion lanes can be payout-eligible and still be
+  classified as checkpoint-advance work rather than raw local training
+
+The top-level training summary should therefore expose:
+
+- progress-only counts
+  - accepted progress closeouts
+  - runs with accepted progress
+  - nodes contributing to accepted progress
+- settlement counts
+  - accepted closeouts regardless of progress class
+  - payout-eligible closeouts regardless of progress class
+  - work-class breakdowns so participation-only payout lanes stay legible
+
 ## Trust And Quorum Rules
 
 The current control plane now treats overlap and promotion authority as
