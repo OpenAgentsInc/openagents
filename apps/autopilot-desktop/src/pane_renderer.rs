@@ -5092,14 +5092,14 @@ fn mission_control_earnings_amount_color(
 fn mission_control_earnings_alert_summary(state: &EarningsScoreboardState) -> Option<String> {
     if state.load_state == PaneLoadState::Error {
         if state.source_tag.starts_with("pylon.provider-admin") {
-            return Some("PYLON AUTHORITY UNAVAILABLE".to_string());
+            return Some("PYLON SERVICE UNAVAILABLE".to_string());
         }
-        return Some("EARNINGS AUTHORITY UNAVAILABLE".to_string());
+        return Some("EARNINGS SERVICE UNAVAILABLE".to_string());
     }
     if state.load_state == PaneLoadState::Ready
         && state.pylon_desired_mode != Some(ProviderDesiredMode::Online)
     {
-        return Some("PYLON PROVIDER OFFLINE".to_string());
+        return Some("PYLON SERVICE IN OFFLINE MODE".to_string());
     }
     None
 }
@@ -11207,9 +11207,14 @@ pub(crate) fn mission_control_blocker_detail(
         // the substrate's longer diagnostic strings (which remain available
         // via `blocker.detail()` for `autopilotctl --json` and CLI surfaces).
         // Mirrors how `GptOssUnavailable` and friends already swap in short
-        // forms above for the same display reason.
-        ProviderBlocker::PylonAuthorityUnavailable => "Pylon authority unreachable".to_string(),
-        ProviderBlocker::PylonProviderOffline => "Pylon desired_mode is offline".to_string(),
+        // forms above for the same display reason. The user-facing wording
+        // says "Pylon service" rather than the internal #4266 term
+        // "Pylon authority", because operators reading the alert band do not
+        // share the maintainers' substrate vocabulary -- the ProviderBlocker
+        // variant and JSON code keep the original "authority" wording for
+        // CLI/JSON surfaces and substrate consumers.
+        ProviderBlocker::PylonAuthorityUnavailable => "Pylon service unavailable".to_string(),
+        ProviderBlocker::PylonProviderOffline => "Pylon service in offline mode".to_string(),
         _ => blocker.detail().to_string(),
     }
 }

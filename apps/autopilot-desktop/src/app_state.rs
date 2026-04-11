@@ -27196,6 +27196,31 @@ fn load_earn_job_lifecycle_projection_rows(
     Ok(normalize_earn_job_lifecycle_projection_rows(document.rows))
 }
 
+/// Maximum acceptable age of the persisted Pylon provider-admin snapshot
+/// (`ProviderPersistedSnapshot.captured_at_ms`) before
+/// `EarningsScoreboardState::refresh_from_pylon_status` treats it as a dead
+/// authority and falls into `mark_pylon_authority_unavailable`.
+///
+/// Pylon's serve loop has a nominal `sleep_duration` of 2 seconds in the
+/// main `tokio::select!` (`apps/pylon/src/lib.rs:10359`), but its actual
+/// cadence between snapshot writes is much longer when pylon is in
+/// `desired_mode = online`: each iteration also runs the Nexus presence
+/// heartbeat, the provider auto-run pass, the live announcement sync, and
+/// (periodically) the payout-target sync. Live measurement on a healthy
+/// pylon online against `wss://nexus.openagents.com` showed snapshot deltas
+/// up to **14 seconds** between writes, with bursty gaps of 4-14s being
+/// normal under load. A 15-second threshold (~1x the observed max) was
+/// found to false-positive in the wild; bumping to 60 seconds gives ~4x
+/// margin over the observed max, which absorbs jitter from slow Nexus
+/// roundtrips and bursty heartbeat scheduling without losing the ability
+/// to detect a genuinely dead `pylon serve` within a minute.
+///
+/// Without this gate, a stale provider-admin SQLite from a previous pylon
+/// session lets autopilot trust `desired_mode = online` indefinitely, even
+/// after `pylon serve` has been killed -- which would let the operator
+/// click GO ONLINE while no live job pipeline exists.
+pub const PYLON_SNAPSHOT_STALENESS_THRESHOLD_MS: i64 = 60_000;
+
 pub struct EarningsScoreboardState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -27398,6 +27423,36 @@ impl EarningsScoreboardState {
             );
             return;
         };
+        // Pylon's serve loop persists a fresh snapshot every ~2 seconds with
+        // `captured_at_ms = now_epoch_ms()`. When `pylon serve` dies, the
+        // SQLite row stays put and `captured_at_ms` stops advancing -- so a
+        // file-based reader like autopilot otherwise has no way to tell that
+        // pylon is gone. Treat any snapshot older than
+        // `PYLON_SNAPSHOT_STALENESS_THRESHOLD_MS` as a dead authority and
+        // fall into `mark_pylon_authority_unavailable` so the existing
+        // `PylonAuthorityUnavailable` blocker fires (no new variant needed:
+        // semantically a stale snapshot is the same failure as a missing
+        // store -- "we cannot trust live truth from pylon"). This catches
+        // the third Pylon liveness failure mode that the previous two
+        // commits' gates do not see: pylon serve dead, SQLite still on disk
+        // with `desired_mode = online` from a previous session.
+        let now_epoch_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0i64, |duration| {
+                i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
+            });
+        let staleness_ms = now_epoch_ms.saturating_sub(snapshot.captured_at_ms);
+        if staleness_ms > PYLON_SNAPSHOT_STALENESS_THRESHOLD_MS {
+            self.mark_pylon_authority_unavailable(
+                now,
+                source_tag,
+                format!(
+                    "Pylon provider admin snapshot is stale ({}s old); pylon serve may not be running.",
+                    staleness_ms / 1000,
+                ),
+            );
+            return;
+        }
         let Some(earnings) = snapshot.earnings.as_ref() else {
             self.mark_pylon_authority_unavailable(
                 now,
