@@ -162,6 +162,22 @@ pub(crate) use tool_bridge::{
 
 const BACKGROUND_FAST_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
 const BACKGROUND_COARSE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+/// Cadence at which `pump_background_state` enqueues a periodic
+/// `SparkWalletCommand::Refresh` so the displayed wallet balance does not
+/// drift between explicit user actions. Until this was added, the wallet
+/// only refreshed on startup convergence (which stops once the first
+/// balance arrives) and on user-driven events (refresh icon click, sidebar
+/// open, payment finished). The breez SDK syncs balance internally and
+/// emits `Synced` events on its own ~few-second cadence, but autopilot
+/// does not subscribe to those events, so the displayed balance went
+/// arbitrarily stale between user clicks. 30 seconds is well above the
+/// 3-second `REFRESH_THROTTLE_INTERVAL` in `spark_wallet.rs` (so it never
+/// gets throttled away) and well below any reasonable user expectation of
+/// "current". The worker also coalesces refresh-like command bursts via
+/// `coalesce_refresh_like_command_burst`, so an enqueue that races a
+/// pending refresh collapses safely.
+const SPARK_WALLET_PERIODIC_REFRESH_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(30);
 
 pub(crate) fn bootstrap_startup_cad_mesh(state: &mut crate::app_state::RenderState) {
     let _ = reducers::bootstrap_startup_parallel_jaw_gripper(state);
@@ -998,6 +1014,24 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
             changed = true;
         }
     }
+    if cadence_due(
+        &mut state.background_cadence.last_spark_wallet_refresh_at,
+        now,
+        SPARK_WALLET_PERIODIC_REFRESH_INTERVAL,
+    ) {
+        state.background_cadence.spark_wallet_periodic_refresh_runs = state
+            .background_cadence
+            .spark_wallet_periodic_refresh_runs
+            .saturating_add(1);
+        if record_runtime_changed_op(
+            state,
+            "spark_wallet_periodic_refresh",
+            "spark_wallet::periodic_refresh_tick",
+            |state| run_periodic_spark_wallet_refresh_tick(state),
+        ) {
+            changed = true;
+        }
+    }
     record_runtime_observer_op(
         state,
         "post_loop",
@@ -1406,6 +1440,33 @@ fn run_startup_spark_wallet_convergence_tick(state: &mut crate::app_state::Rende
         state.spark_wallet.cancel_startup_convergence();
     }
     true
+}
+
+/// Periodic Spark wallet refresh, gated by `cadence_due` against the
+/// `SPARK_WALLET_PERIODIC_REFRESH_INTERVAL` const. Skips while the startup
+/// convergence tick is still active (so the two refresh paths do not double
+/// up while the wallet is converging) and skips when the spark worker has
+/// not been initialized yet (no point queuing commands the worker cannot
+/// execute). The enqueue itself is non-blocking and the worker coalesces
+/// refresh-like command bursts via `coalesce_refresh_like_command_burst`,
+/// so a periodic enqueue that races a user-driven refresh collapses safely
+/// to a single fetch. Errors from the enqueue (e.g. worker channel
+/// dropped) are recorded on the wallet pane state for surfacing in the UI.
+fn run_periodic_spark_wallet_refresh_tick(state: &mut crate::app_state::RenderState) -> bool {
+    if state.spark_wallet.startup_convergence_active() {
+        // Startup convergence tick is already driving refreshes; do not
+        // double up while it is converging. The periodic tick takes over
+        // once the first balance has loaded and the convergence tick stops
+        // self-firing.
+        return false;
+    }
+    match state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+        Ok(()) => true,
+        Err(error) => {
+            state.spark_wallet.last_error = Some(error);
+            true
+        }
+    }
 }
 
 fn run_goal_restart_recovery(state: &mut crate::app_state::RenderState) -> bool {

@@ -346,6 +346,14 @@ impl SparkPaneState {
         self.last_action = Some("Wallet reconciling after startup sync".to_string());
     }
 
+    /// Whether the startup-convergence refresh loop is currently driving
+    /// refreshes. Read by the periodic refresh tick in `input.rs` so that
+    /// the two refresh paths do not double up while the wallet is still
+    /// converging on its first balance read.
+    pub fn startup_convergence_active(&self) -> bool {
+        self.startup_convergence_active
+    }
+
     pub fn startup_convergence_refresh_due(&self, now_epoch_seconds: u64) -> bool {
         self.startup_convergence_active
             && self
