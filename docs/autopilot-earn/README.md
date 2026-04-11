@@ -47,6 +47,8 @@ Future lanes (for example data/storage providers) are possible, but not part of 
 
 When you turn provider mode online in the current MVP, your desktop can accept paid NIP-90 jobs, execute supported tasks locally, and receive sats through the Spark wallet lane.
 
+Authoritative live provider earnings and provider runtime status now live in `Pylon`. When Autopilot shows provider earnings, it reads the maintained local Pylon provider-admin state instead of silently treating the desktop's old in-app projection as the live payout path. If the local Pylon authority is missing, Autopilot should say that explicitly rather than implying that the legacy path is current.
+
 All provider earnings land in the built-in Spark wallet first. MVP does not include a way to configure an external receive invoice for provider payouts; moving funds to another wallet happens through withdrawal.
 
 By default, the desktop should use the OpenAgents-hosted Nexus as its primary Nostr relay path, with additional relays configured as backup for resilience. Advanced users and organizations should be able to point the app at their own Nexus deployment instead.
