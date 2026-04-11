@@ -1411,7 +1411,7 @@ struct TrainingOperatorSummaryResponse {
     checkpoint_max_age_ms: Option<u64>,
     artifact_failures_open: u64,
     payout_eligible_closeouts: u64,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     runs: Vec<TrainingOperatorRunSummary>,
 }
 
@@ -1420,13 +1420,13 @@ struct NexusHomepageResponse {
     generated_at_unix_ms: u64,
     stats: PublicStatsSnapshot,
     training_summary: TrainingOperatorSummaryResponse,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     training_nodes: Vec<AdmittedTrainingNodeView>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     default_run_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     default_network_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     recent_trn_publications: Vec<NexusHomepageRecentTrainingPublication>,
 }
 
