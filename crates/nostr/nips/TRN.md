@@ -633,6 +633,10 @@ Its address is:
 39520:<publisher_pubkey>:<artifact_id>
 ```
 
+Implementations SHOULD treat `artifact_id` as a resolver-backed logical id.
+They SHOULD NOT derive it by munging a host-local path, download-cache path,
+or cloud-object relative path into a pseudo-identifier.
+
 Valid artifact classes include:
 
 - checkpoints

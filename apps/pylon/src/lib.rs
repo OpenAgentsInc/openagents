@@ -44,11 +44,12 @@ use openagents_kernel_core::{
         PYLON_TRAINING_RETRY_CAP_MS, PYLON_TRAINING_RETRY_SCHEDULE_MS,
         PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
         PylonTrainingArtifactBundleProgress, PylonTrainingArtifactBundleState,
-        PylonTrainingArtifactLayout, PylonTrainingObservabilityContext, artifact_digest_from_bytes,
-        artifact_digest_from_json, can_emit_terminal_artifact_uploaded_receipt,
-        derive_artifact_bundle_state, parse_pylon_training_run_manifest_json,
-        resolve_pylon_training_credentials, validate_redacted_retained_content,
-        validate_redacted_retained_state,
+        PylonTrainingArtifactClass, PylonTrainingArtifactLayout, PylonTrainingObservabilityContext,
+        artifact_digest_from_bytes, artifact_digest_from_json,
+        can_emit_terminal_artifact_uploaded_receipt, derive_artifact_bundle_state,
+        parse_pylon_training_run_manifest_json, pylon_training_artifact_relative_path,
+        pylon_training_resolve_artifact_for_uri, resolve_pylon_training_credentials,
+        validate_redacted_retained_content, validate_redacted_retained_state,
     },
 };
 use openagents_provider_substrate::{
@@ -6416,25 +6417,7 @@ fn training_artifact_relative_path(
     layout: &PylonTrainingArtifactLayout,
     object_uri: &str,
 ) -> Result<PathBuf> {
-    let run_root_prefix = format!("{}/", layout.run_root());
-    let relative = object_uri
-        .strip_prefix(run_root_prefix.as_str())
-        .ok_or_else(|| {
-            anyhow!("training artifact does not live under the run root: {object_uri}")
-        })?;
-    let mut path = PathBuf::new();
-    for component in Path::new(relative).components() {
-        match component {
-            std::path::Component::Normal(value) => path.push(value),
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir
-            | std::path::Component::RootDir
-            | std::path::Component::Prefix(_) => {
-                bail!("training artifact path traversal is not allowed: {object_uri}");
-            }
-        }
-    }
-    Ok(path)
+    pylon_training_artifact_relative_path(layout, object_uri).map_err(anyhow::Error::msg)
 }
 
 fn training_local_artifact_path(
@@ -8810,10 +8793,14 @@ fn training_expected_artifact_class_for_role(
     role: openagents_kernel_core::pylon_training::PylonTrainingManifestRole,
 ) -> &'static str {
     match role {
-        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Worker => "delta",
-        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Validator => "eval",
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Worker => {
+            PylonTrainingArtifactClass::LocalUpdate.label()
+        }
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Validator => {
+            PylonTrainingArtifactClass::Eval.label()
+        }
         openagents_kernel_core::pylon_training::PylonTrainingManifestRole::RecoverySource => {
-            "checkpoint"
+            PylonTrainingArtifactClass::Checkpoint.label()
         }
     }
 }
@@ -8916,41 +8903,18 @@ fn training_artifact_checkpoint_tag(
 }
 
 fn training_artifact_id(layout: PylonTrainingArtifactLayout, object_uri: &str) -> Result<String> {
-    let relative_path = training_artifact_relative_path(&layout, object_uri)?;
-    let identifier = relative_path
-        .to_string_lossy()
-        .replace(['/', '\\'], ".")
-        .replace(':', "_")
-        .replace(' ', "_");
-    Ok(identifier)
+    pylon_training_resolve_artifact_for_uri(&layout, object_uri)
+        .map(|response| response.artifact_id)
+        .map_err(anyhow::Error::msg)
 }
 
 fn training_artifact_class_for_uri(
     layout: PylonTrainingArtifactLayout,
     object_uri: &str,
 ) -> Result<String> {
-    let relative_path = training_artifact_relative_path(&layout, object_uri)?;
-    let relative = relative_path.to_string_lossy();
-    let class = if relative.ends_with("run_manifest.json") {
-        "config"
-    } else if relative.ends_with("latest_pointer.json")
-        || relative.ends_with("checkpoint_manifest.json")
-    {
-        "checkpoint"
-    } else if relative.ends_with("adapter_delta_bundle.json") {
-        "delta"
-    } else if relative.ends_with("proof_bundle.json")
-        || relative.ends_with("sealed_window_bundle.json")
-    {
-        "proof"
-    } else if relative.ends_with("verdict.json") {
-        "eval"
-    } else if relative.ends_with("score_snapshot.json") {
-        "score"
-    } else {
-        "config"
-    };
-    Ok(class.to_string())
+    pylon_training_resolve_artifact_for_uri(&layout, object_uri)
+        .map(|response| response.artifact_class.label().to_string())
+        .map_err(anyhow::Error::msg)
 }
 
 fn training_bundle_kind_from_entry(
@@ -14565,7 +14529,7 @@ fn training_capability_artifact_upload_latency_class(
         ProviderTrainingArtifactUploadLatencyClass::Slow
     } else if !state.closeout_cache.is_empty() {
         ProviderTrainingArtifactUploadLatencyClass::Fast
-    } else if !state.contribution_outcomes.is_empty() || !state.publication_pointers.is_empty() {
+    } else if !state.contribution_outcomes.is_empty() {
         ProviderTrainingArtifactUploadLatencyClass::Moderate
     } else {
         ProviderTrainingArtifactUploadLatencyClass::Unknown
@@ -17340,7 +17304,7 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 matches!(
                     event,
                     TrnEvent::ArtifactLocator(locator)
-                        if locator.artifact_class.as_deref() == Some("delta")
+                        if locator.artifact_class.as_deref() == Some("local_update")
                             && locator.manifest_digest.as_deref()
                                 == Some(manifest.manifest_digest.as_str())
                 )
@@ -17360,9 +17324,9 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             .iter()
             .find(|event| {
                 event["kind"] == json!(39520)
-                    && first_tag_value(event, "class").as_deref() == Some("delta")
+                    && first_tag_value(event, "class").as_deref() == Some("local_update")
             })
-            .expect("delta locator event");
+            .expect("local update locator event");
         ensure(
             first_tag_value(locator, "status").as_deref() == Some("staged")
                 && first_tag_value(locator, "manifest").as_deref()

@@ -14,6 +14,9 @@ The answer is `ComputeTrainingRunDefinition`.
 
 This contract extends the existing Nexus control-plane records. It does not add
 a second run-definition registry.
+The matching artifact-identity layer that windows, manifests, and closeouts
+should use lives in
+[`compute-training-artifact-resolver-contract.md`](./compute-training-artifact-resolver-contract.md).
 
 ## Why This Exists
 

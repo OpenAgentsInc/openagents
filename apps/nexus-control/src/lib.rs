@@ -78,10 +78,10 @@ use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
     PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
     PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
-    PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
-    PylonTrainingRefusalCode, PylonTrainingReputationLabel, PylonTrainingReputationNamespace,
-    PylonTrainingSchedulerEffect, pylon_training_assignment_id, pylon_training_assignment_seed,
-    pylon_training_hard_gate_reason, pylon_training_lease_id,
+    PylonTrainingArtifactResolverResponse, PylonTrainingContributionSampleCandidate,
+    PylonTrainingContributionVerdict, PylonTrainingRefusalCode, PylonTrainingReputationLabel,
+    PylonTrainingReputationNamespace, PylonTrainingSchedulerEffect, pylon_training_assignment_id,
+    pylon_training_assignment_seed, pylon_training_hard_gate_reason, pylon_training_lease_id,
     pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
     reputation_projection_for_label, resolve_aggregate_verdicts,
     validate_redacted_retained_content, validator_sample_assignments,
@@ -5451,6 +5451,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
         .route(
             "/v1/kernel/compute/training/policies/{training_policy_ref}/run-definition",
             get(get_kernel_compute_training_run_definition),
+        )
+        .route(
+            "/v1/kernel/compute/training/artifacts/{artifact_id}",
+            get(get_kernel_compute_training_artifact_resolver),
         )
         .route(
             "/v1/kernel/compute/evals",
@@ -10886,6 +10890,30 @@ async fn get_kernel_compute_training_run_definition(
             reason,
         })?;
     Ok(Json(definition))
+}
+
+async fn get_kernel_compute_training_artifact_resolver(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(artifact_id): Path<String>,
+) -> Result<Json<PylonTrainingArtifactResolverResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let artifact_id =
+        normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let response = store
+        .kernel
+        .resolve_compute_training_artifact(artifact_id.as_str())
+        .map_err(|reason| ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason,
+        })?;
+    Ok(Json(response))
 }
 
 async fn list_kernel_compute_evaluation_runs(
@@ -16899,7 +16927,8 @@ mod tests {
     };
     use openagents_kernel_core::pylon_training::{
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
-        PylonTrainingAggregateResolution, PylonTrainingContributionVerdict,
+        PylonTrainingAggregateResolution, PylonTrainingArtifactClass,
+        PylonTrainingArtifactResolverResponse, PylonTrainingContributionVerdict,
         PylonTrainingRefusalCode,
     };
     use openagents_kernel_core::receipts::{
@@ -31518,6 +31547,46 @@ mod tests {
         assert_eq!(
             definition.reference_families.trn_ref_family.as_deref(),
             Some("trn.family.diloco")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_compute_training_artifact_resolver_route_returns_logical_contract() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state);
+        let session = create_session_token(&app).await?;
+        let artifact_id = "oa.train_artifact.v1~kind~local_update~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123";
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/kernel/compute/training/artifacts/{artifact_id}"
+                    ))
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let descriptor: PylonTrainingArtifactResolverResponse = response_json(response).await?;
+        assert_eq!(descriptor.artifact_id, artifact_id);
+        assert_eq!(
+            descriptor.artifact_class,
+            PylonTrainingArtifactClass::LocalUpdate
+        );
+        assert_eq!(
+            descriptor.relative_object_path,
+            "windows/window.000123/contributions/assign.node01.window000123/adapter_delta_bundle.json"
+        );
+        assert_eq!(descriptor.scope.network_id, "trainnet.alpha");
+        assert_eq!(descriptor.scope.run_id, "run.alpha");
+        assert_eq!(descriptor.scope.window_id.as_deref(), Some("window.000123"));
+        assert_eq!(
+            descriptor.scope.assignment_id.as_deref(),
+            Some("assign.node01.window000123")
         );
         Ok(())
     }
