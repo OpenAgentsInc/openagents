@@ -726,7 +726,11 @@ mod tests {
         assert!(body.contains("Connected Pylons"));
         assert!(body.contains("Public relay heartbeat and ready capacity"));
         assert!(body.contains("Training Topology"));
-        assert!(body.contains("Run Board"));
+        assert!(body.contains("Work Class Mix"));
+        assert!(body.contains("Run Index"));
+        assert!(body.contains("Window Matrix"));
+        assert!(body.contains("Validator Pressure"));
+        assert!(body.contains("Checkpoint Lineage"));
         assert!(body.contains("/api/homepage"));
         assert!(body.contains("pylon-constellation"));
         assert!(body.contains("What connected pylons are doing right now"));

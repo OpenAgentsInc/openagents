@@ -785,11 +785,20 @@
           <div class="scene-panel__body topology-shell" id="training-topology"></div>
         </section>
 
+        <section class="scene-panel">
+          <div class="scene-panel__header">
+            <p class="panel-kicker">Work Class Mix</p>
+            <h2>Progress-bearing lanes and supporting lanes</h2>
+            <p class="scene-panel__note">The same public truth that drives closeouts and payouts also drives this lane mix, so model-progress work stays separate from supporting validator work.</p>
+          </div>
+          <div class="scene-panel__body topology-shell" id="workclass-board"></div>
+        </section>
+
         <section class="scene-panel scene-panel--span-2">
           <div class="scene-panel__header">
-            <p class="panel-kicker">Run Board</p>
-            <h2>Window progression, role fill, and checkpoint age</h2>
-            <p class="scene-panel__note">Runs render as progression rails with separate worker, validator, and recovery fill so we can see real pressure instead of a text dump.</p>
+            <p class="panel-kicker">Run Index</p>
+            <h2>Default run, companion runs, and role fill</h2>
+            <p class="scene-panel__note">Run rows stay aligned to the Nexus run truth while borrowing the same shell language as the shared Psionic remote-training surfaces.</p>
           </div>
           <div class="scene-panel__body list-shell" id="run-board"></div>
         </section>
@@ -801,6 +810,33 @@
             <p class="scene-panel__note">Load, TTFT, decode, and total runtime are shown as relative bars against the latest public diagnostic sample.</p>
           </div>
           <div class="scene-panel__body list-shell" id="diagnostic-feed"></div>
+        </section>
+
+        <section class="scene-panel scene-panel--span-2">
+          <div class="scene-panel__header">
+            <p class="panel-kicker">Window Matrix</p>
+            <h2>Assignments, aggregation, and validator closure</h2>
+            <p class="scene-panel__note">Window rows bind one base checkpoint, one aggregation posture, and one closure state so distributed progress can be traced without private operator notes.</p>
+          </div>
+          <div class="scene-panel__body list-shell" id="window-board"></div>
+        </section>
+
+        <section class="scene-panel">
+          <div class="scene-panel__header">
+            <p class="panel-kicker">Validator Pressure</p>
+            <h2>Open challenges and replay backlog</h2>
+            <p class="scene-panel__note">Challenge pressure is rendered per queue and per window so weak-device replay and strong-node aggregation do not blur together.</p>
+          </div>
+          <div class="scene-panel__body list-shell" id="validator-board"></div>
+        </section>
+
+        <section class="scene-panel scene-panel--span-2">
+          <div class="scene-panel__header">
+            <p class="panel-kicker">Checkpoint Lineage</p>
+            <h2>Accepted aggregates, promoted checkpoints, and closeouts</h2>
+            <p class="scene-panel__note">Promoted checkpoints, accepted aggregates, and payout-ready closeouts stay on one public rail so run truth and economic truth can be read together.</p>
+          </div>
+          <div class="scene-panel__body publication-shell" id="lineage-board"></div>
         </section>
 
         <section class="scene-panel scene-panel--span-2">
@@ -857,8 +893,12 @@
       const runHeroHost = document.getElementById("run-hero");
       const pylonLanesHost = document.getElementById("pylon-lanes");
       const topologyHost = document.getElementById("training-topology");
+      const workClassBoardHost = document.getElementById("workclass-board");
       const runBoardHost = document.getElementById("run-board");
       const diagnosticFeedHost = document.getElementById("diagnostic-feed");
+      const windowBoardHost = document.getElementById("window-board");
+      const validatorBoardHost = document.getElementById("validator-board");
+      const lineageBoardHost = document.getElementById("lineage-board");
       const publicationFeedHost = document.getElementById("publication-feed");
       const relayWs = "__RELAY_WS__";
       const relayHttp = "__RELAY_HTTP__";
@@ -1072,9 +1112,177 @@
         `;
       }
 
+      function boolValue(value) {
+        return value === true || value === "true" || value === 1 || value === "1";
+      }
+
+      function trainingPublicState(snapshot) {
+        return snapshot?.stats?.training_public_state ?? {};
+      }
+
+      function trainingVisualization(snapshot) {
+        return snapshot?.training_visualization ?? {};
+      }
+
+      function activeTrainingRuns(snapshot) {
+        const visualizationRuns = trainingVisualization(snapshot).runs;
+        if (Array.isArray(visualizationRuns) && visualizationRuns.length > 0) {
+          return visualizationRuns;
+        }
+        const publicRuns = trainingPublicState(snapshot).runs;
+        if (Array.isArray(publicRuns) && publicRuns.length > 0) {
+          return publicRuns;
+        }
+        return snapshot?.training_summary?.runs ?? [];
+      }
+
+      function activeTrainingWindows(snapshot) {
+        const visualizationWindows = trainingVisualization(snapshot).windows;
+        if (Array.isArray(visualizationWindows) && visualizationWindows.length > 0) {
+          return visualizationWindows;
+        }
+        const publicWindows = trainingPublicState(snapshot).windows;
+        return Array.isArray(publicWindows) ? publicWindows : [];
+      }
+
+      function workClassStates(snapshot) {
+        const publicWorkClasses = trainingPublicState(snapshot).work_classes;
+        return Array.isArray(publicWorkClasses) ? publicWorkClasses : [];
+      }
+
+      function validatorSummary(snapshot) {
+        return trainingVisualization(snapshot).validators ?? {};
+      }
+
+      function checkpointSeries(snapshot) {
+        const checkpoints = trainingVisualization(snapshot).checkpoints;
+        return Array.isArray(checkpoints) ? checkpoints : [];
+      }
+
+      function aggregateSeries(snapshot) {
+        const aggregates = trainingVisualization(snapshot).aggregates;
+        return Array.isArray(aggregates) ? aggregates : [];
+      }
+
+      function closeoutSeries(snapshot) {
+        const closeouts = trainingVisualization(snapshot).closeouts;
+        return Array.isArray(closeouts) ? closeouts : [];
+      }
+
+      function runWorkClass(run) {
+        return run?.work_class
+          ?? run?.settlement?.work_class
+          ?? run?.default_work_class
+          ?? "work class unknown";
+      }
+
+      function runProgressClass(run) {
+        return run?.progress_class
+          ?? run?.settlement?.progress_class
+          ?? "progress class unknown";
+      }
+
+      function runReplicaType(run) {
+        return run?.replica_type
+          ?? run?.settlement?.replica_type
+          ?? "replica unknown";
+      }
+
+      function runActiveWindowCount(run) {
+        return numeric(run?.active_window_count ?? run?.active_windows, 0);
+      }
+
+      function runPendingValidationCount(run) {
+        return numeric(run?.pending_validation_window_count ?? run?.pending_validation_windows, 0);
+      }
+
+      function runAssignedContributors(run) {
+        return numeric(run?.assigned_contributors, 0);
+      }
+
+      function runAcceptedContributors(run) {
+        return numeric(run?.accepted_contributors, 0);
+      }
+
+      function runModelProgressContributors(run) {
+        return numeric(run?.model_progress_contributors, 0);
+      }
+
+      function runWorkerTargetCount(run) {
+        return Math.max(
+          numeric(run?.worker_target_count, 0),
+          numeric(run?.worker_nodes_online, 0),
+          1,
+        );
+      }
+
+      function runValidatorTargetCount(run) {
+        return Math.max(
+          numeric(run?.validator_target_count, 0),
+          numeric(run?.validator_nodes_online, 0),
+          1,
+        );
+      }
+
+      function runRecoveryTargetCount(run) {
+        return Math.max(
+          numeric(run?.recovery_source_target_count, 0),
+          numeric(run?.recovery_source_nodes_online, 0),
+          1,
+        );
+      }
+
+      function windowAssignedContributors(window) {
+        return numeric(window?.assigned_contributors ?? window?.total_contributions, 0);
+      }
+
+      function windowAcceptedContributors(window) {
+        return numeric(window?.accepted_contributors ?? window?.accepted_contributions, 0);
+      }
+
+      function windowModelProgressContributors(window) {
+        return numeric(window?.model_progress_contributors ?? window?.admitted_contributions, 0);
+      }
+
+      function windowReplayRequired(window) {
+        return numeric(window?.replay_required_contributions, 0);
+      }
+
+      function windowLineageAdvanced(window) {
+        return boolValue(window?.lineage_advanced ?? window?.advances_checkpoint_lineage);
+      }
+
+      function windowHasAcceptedProgress(window) {
+        return boolValue(window?.has_accepted_progress ?? window?.accepted_contributions > 0);
+      }
+
+      function validatorWindowRows(snapshot) {
+        const rows = validatorSummary(snapshot).windows;
+        return Array.isArray(rows) ? rows : [];
+      }
+
+      function matchTrainingNode(snapshot, pylon) {
+        const nodes = Array.isArray(snapshot?.training_nodes) ? snapshot.training_nodes : [];
+        const label = String(pylon?.node_label ?? "").trim().toLowerCase();
+        if (label) {
+          const byLabel = nodes.find((node) => String(node?.node_label ?? "").trim().toLowerCase() === label);
+          if (byLabel) {
+            return byLabel;
+          }
+        }
+
+        const shortPubkey = String(pylon?.nostr_pubkey_short ?? "").replaceAll("…", "").trim().toLowerCase();
+        if (!shortPubkey) {
+          return null;
+        }
+
+        return nodes.find((node) => String(node?.node_pubkey_hex ?? "").toLowerCase().includes(shortPubkey)) ?? null;
+      }
+
       function buildNetworkScore(snapshot) {
         const stats = snapshot.stats ?? {};
         const summary = snapshot.training_summary ?? {};
+        const publicState = trainingPublicState(snapshot);
         const pylons = stats.recent_pylons ?? [];
         const sampleCount = pylons.length;
         networkScoreHost.innerHTML = `
@@ -1091,23 +1299,24 @@
             </section>
             <section class="score-pair">
               <span class="score-pair__label">Admitted Nodes</span>
-              <span class="score-pair__value">${escapeHtml(number(summary.admitted_nodes_online))}</span>
-              <p class="score-pair__detail">${escapeHtml(number(snapshot.training_nodes?.length ?? 0))} node records available for topology rendering.</p>
+              <span class="score-pair__value">${escapeHtml(number(stats.training_nodes_admitted ?? summary.admitted_nodes_online))}</span>
+              <p class="score-pair__detail">${escapeHtml(number(stats.training_admitted_contributors ?? snapshot.training_nodes?.length ?? 0))} admitted contributors and ${escapeHtml(number(stats.training_admitted_nodes_online ?? summary.admitted_nodes_online))} online now.</p>
             </section>
             <section class="score-pair">
-              <span class="score-pair__label">Active Runs</span>
-              <span class="score-pair__value">${escapeHtml(number(summary.active_runs))}</span>
-              <p class="score-pair__detail">${escapeHtml(number(summary.active_windows))} windows active and ${escapeHtml(number(summary.pending_validation_windows))} pending validation.</p>
+              <span class="score-pair__label">Assigned Contributors</span>
+              <span class="score-pair__value">${escapeHtml(number(stats.training_assigned_contributors ?? summary.assigned_contributors))}</span>
+              <p class="score-pair__detail">${escapeHtml(number(stats.training_accepted_contributors ?? summary.accepted_contributors))} accepted and ${escapeHtml(number(stats.training_model_progress_contributors ?? summary.model_progress_contributors))} model-progress contributors.</p>
             </section>
             <section class="score-pair">
-              <span class="score-pair__label">Checkpoint Age</span>
-              <span class="score-pair__value">${escapeHtml(formatMsAge(summary.checkpoint_max_age_ms))}</span>
-              <p class="score-pair__detail">${escapeHtml(number(summary.payout_eligible_closeouts))} payout-eligible closeouts tracked.</p>
+              <span class="score-pair__label">Default Lane</span>
+              <span class="score-pair__value">${escapeHtml(publicState.default_work_class || "standby")}</span>
+              <p class="score-pair__detail">${escapeHtml(publicState.default_progress_class || "progress unknown")} // ${escapeHtml(publicState.default_replica_type || "replica unknown")}</p>
             </section>
           </div>
           <div class="signal-strip">
             ${signalSegment("Presence Window", formatMsAge(stats.pylon_presence_stale_after_ms), "live")}
-            ${signalSegment("Validator Queue", number(summary.validator_challenges_queued), numeric(summary.validator_challenges_queued, 0) > 0 ? "warn" : "live")}
+            ${signalSegment("Active runs", number(stats.training_runs_active ?? summary.active_runs), numeric(stats.training_runs_active ?? summary.active_runs, 0) > 0 ? "live" : "warn")}
+            ${signalSegment("Validator Queue", number(stats.training_validator_challenges_queued ?? summary.validator_challenges_queued), numeric(stats.training_validator_challenges_queued ?? summary.validator_challenges_queued, 0) > 0 ? "warn" : "live")}
             ${signalSegment("TRN Publications", number(snapshot.recent_trn_publications?.length ?? 0), "live")}
           </div>
         `;
@@ -1198,6 +1407,8 @@
       function buildStatus(snapshot, degradedMessage = null) {
         const stats = snapshot?.stats ?? {};
         const summary = snapshot?.training_summary ?? {};
+        const publicState = trainingPublicState(snapshot);
+        const queuePressure = publicState.queue_pressure ?? {};
         const walletStatus = String(stats.nexus_wallet_runtime_status ?? "unknown");
         const payoutLoop = String(stats.nexus_payout_loop_health ?? "unknown");
         const degradedReason = degradedMessage || stats.nexus_treasury_degraded_reason || null;
@@ -1221,28 +1432,28 @@
             <span class="status-pill__dot"></span>
             <div class="status-pill__body">
               <strong>Payout loop ${escapeHtml(payoutLoop)}</strong>
-              <span class="status-pill__meta">${escapeHtml(number(summary.pending_validation_windows ?? 0))} validation windows pending</span>
+              <span class="status-pill__meta">${escapeHtml(number(queuePressure.pending_validation_windows ?? stats.training_windows_pending_validation ?? summary.pending_validation_windows ?? 0))} validation windows pending</span>
             </div>
           </div>
           <div class="status-pill">
             <span class="status-pill__dot"></span>
             <div class="status-pill__body">
-              <strong>Default run ${escapeHtml(snapshot?.default_run_id ?? "none")}</strong>
-              <span class="status-pill__meta">Default network ${escapeHtml(snapshot?.default_network_id ?? "none")}</span>
+              <strong>Default run ${escapeHtml(publicState.default_run_id ?? snapshot?.default_run_id ?? "none")}</strong>
+              <span class="status-pill__meta">Active window ${escapeHtml(publicState.active_window_id ?? "none")} // ${escapeHtml(publicState.latest_window_status ?? "window status unknown")}</span>
             </div>
           </div>
           <div class="status-pill">
             <span class="status-pill__dot"></span>
             <div class="status-pill__body">
-              <strong>Relay websocket</strong>
-              <span class="status-pill__meta"><code>${escapeHtml(relayWs)}</code></span>
+              <strong>Default network ${escapeHtml(publicState.default_network_id ?? snapshot?.default_network_id ?? "none")}</strong>
+              <span class="status-pill__meta">${escapeHtml(publicState.default_work_class ?? "work class unknown")} // ${escapeHtml(publicState.default_replica_type ?? "replica unknown")}</span>
             </div>
           </div>
           <div class="status-pill">
             <span class="status-pill__dot"></span>
             <div class="status-pill__body">
-              <strong>Homepage API</strong>
-              <span class="status-pill__meta"><code>${escapeHtml(relayHttp)}api/homepage</code></span>
+              <strong>Relay + authority</strong>
+              <span class="status-pill__meta"><code>${escapeHtml(relayWs)}</code> // <code>${escapeHtml(relayHttp)}api/homepage</code></span>
             </div>
           </div>
         `;
@@ -1289,12 +1500,13 @@
       }
 
       function pickDefaultRun(snapshot) {
-        const runs = snapshot?.training_summary?.runs ?? [];
+        const runs = activeTrainingRuns(snapshot);
         return runs.find((run) => ["queued", "preparing", "running", "finalizing"].includes(String(run.run_status ?? "").toLowerCase())) || runs[0] || null;
       }
 
       function buildRunHero(snapshot) {
         const summary = snapshot.training_summary ?? {};
+        const publicState = trainingPublicState(snapshot);
         const run = pickDefaultRun(snapshot);
         if (!run) {
           runHeroHost.innerHTML = `
@@ -1317,13 +1529,24 @@
           <section class="run-hero__summary">
             <p class="micro-label">Default Run</p>
             <span class="run-hero__value">${escapeHtml(compactId(run.training_run_id, 14, 10))}</span>
-            <p class="run-hero__detail">${escapeHtml(run.network_id)} // window ${escapeHtml(run.current_window_id || "none")} // checkpoint ${escapeHtml(run.latest_checkpoint_ref ? compactId(run.latest_checkpoint_ref, 14, 8) : "none")}</p>
+            <p class="run-hero__detail">${escapeHtml(run.network_id || publicState.default_network_id || "network unknown")} // window ${escapeHtml(run.current_window_id || run.latest_window_id || publicState.active_window_id || "none")} // checkpoint ${escapeHtml(run.latest_checkpoint_ref ? compactId(run.latest_checkpoint_ref, 14, 8) : compactId(publicState.latest_checkpoint_ref, 14, 8))}</p>
           </section>
           <div class="stage-strip">${runStageSegments(run)}</div>
+          <div class="pill-row">
+            ${chip(runWorkClass(run), "accent")}
+            ${chip(runProgressClass(run), runModelProgressContributors(run) > 0 ? "good" : "warn")}
+            ${chip(runReplicaType(run), "violet")}
+            ${chip(`closeout ${run.latest_closeout_status || publicState.latest_closeout_status || "none"}`, run.latest_closeout_status || publicState.latest_closeout_status ? "good" : "warn")}
+          </div>
           <div class="signal-strip">
-            ${signalSegment("Workers", `${number(run.worker_nodes_online)}/${number(run.worker_target_count)}`, numeric(run.worker_nodes_online, 0) > 0 ? "live" : "warn")}
-            ${signalSegment("Validators", `${number(run.validator_nodes_online)}/${number(run.validator_target_count)}`, numeric(run.validator_nodes_online, 0) > 0 ? "live" : "warn")}
-            ${signalSegment("Challenges", `${number(run.open_validator_challenges)} open`, numeric(run.open_validator_challenges, 0) > 0 ? "warn" : "live")}
+            ${signalSegment("Assigned", number(runAssignedContributors(run)), runAssignedContributors(run) > 0 ? "live" : "warn")}
+            ${signalSegment("Accepted", number(runAcceptedContributors(run)), runAcceptedContributors(run) > 0 ? "good" : "warn")}
+            ${signalSegment("Model progress", number(runModelProgressContributors(run)), runModelProgressContributors(run) > 0 ? "good" : "warn")}
+          </div>
+          <div class="signal-strip">
+            ${signalSegment("Workers", `${number(run.worker_nodes_online)}/${number(runWorkerTargetCount(run))}`, numeric(run.worker_nodes_online, 0) > 0 ? "live" : "warn")}
+            ${signalSegment("Validators", `${number(run.validator_nodes_online)}/${number(runValidatorTargetCount(run))}`, numeric(run.validator_nodes_online, 0) > 0 ? "live" : "warn")}
+            ${signalSegment("Challenges", `${number(run.open_validator_challenges ?? run.validator_challenges_open)} open`, numeric(run.open_validator_challenges ?? run.validator_challenges_open, 0) > 0 ? "warn" : "live")}
           </div>
         `;
       }
@@ -1336,11 +1559,17 @@
         }
 
         pylonLanesHost.innerHTML = pylons.map((pylon) => {
+          const trainingNode = matchTrainingNode(snapshot, pylon);
           const title = pylon.node_label || pylon.nostr_pubkey_short || "pylon";
           const products = Array.isArray(pylon.products) ? pylon.products.slice(0, 3) : [];
           const runtimeTone = toneForRuntime(pylon.runtime_state);
           const detail = pylon.ready_model || (products.length > 0 ? products.join(" // ") : "public presence only");
           const cells = meterCells(pylon.eligible_product_count, Math.max(numeric(pylon.eligible_product_count, 0), 6), pylon.eligible_product_count > 0 ? "good" : "warn");
+          const roleClaims = Array.isArray(trainingNode?.role_claims) ? trainingNode.role_claims : [];
+          const roleChips = roleClaims.slice(0, 3).map((role) => chip(role, "accent")).join("");
+          const trainingState = trainingNode
+            ? `${trainingNode.last_training_run_id || "no run"} // ${trainingNode.last_window_id || "no window"} // ${trainingNode.last_process_state || "state unknown"}`
+            : "No admitted training record matched this public presence sample.";
           return `
             <article class="lane-row">
               <div class="lane-row__head">
@@ -1352,6 +1581,7 @@
                   ${chip(pylon.runtime_state || "unknown", runtimeTone)}
                   ${chip(`${number(pylon.eligible_product_count)} eligible`, pylon.eligible_product_count > 0 ? "good" : "warn")}
                   ${chip(pylon.ready_model || "model unknown", pylon.ready_model ? "accent" : "warn")}
+                  ${trainingNode ? chip(trainingNode.eligible ? "training admitted" : "training gated", trainingNode.eligible ? "good" : "bad") : ""}
                 </div>
               </div>
               <div class="lane-meter">
@@ -1359,6 +1589,11 @@
                 <div class="lane-meter__track">${cells}</div>
               </div>
               <p class="lane-row__detail">${escapeHtml(detail)}</p>
+              <div class="lane-row__chips">
+                ${roleChips}
+                ${trainingNode?.build_digest ? chip(compactId(trainingNode.build_digest, 12, 8), "violet") : ""}
+              </div>
+              <p class="lane-row__detail">${escapeHtml(trainingState)}</p>
             </article>
           `;
         }).join("");
@@ -1384,6 +1619,7 @@
 
       function buildTrainingTopology(snapshot) {
         const nodes = snapshot.training_nodes ?? [];
+        const tiers = trainingVisualization(snapshot).tiers ?? [];
         if (nodes.length === 0) {
           topologyHost.innerHTML = emptyState("No admitted training nodes are available in the public snapshot.");
           return;
@@ -1401,11 +1637,16 @@
             ${clusterCard("Recovery", recovery.filter((node) => node.online).length, "warn", `${number(recovery.length)} recovery source claims tracked`)}
             ${clusterCard("Gated / Offline", gated.length, gated.length > 0 ? "bad" : "good", `${number(nodes.length)} nodes visible in the public snapshot`)}
           </div>
+          ${Array.isArray(tiers) && tiers.length > 0 ? `
+            <div class="pill-row">
+              ${tiers.slice(0, 4).map((tier) => chip(`${tier.tier} ${number(tier.nodes_online)}/${number(tier.nodes_total)}`, tier.nodes_online > 0 ? "good" : "warn")).join("")}
+            </div>
+          ` : ""}
         `;
       }
 
       function buildRunBoard(snapshot) {
-        const runs = snapshot.training_summary?.runs ?? [];
+        const runs = activeTrainingRuns(snapshot);
         if (runs.length === 0) {
           runBoardHost.innerHTML = emptyState("No public training runs are active.");
           return;
@@ -1416,21 +1657,208 @@
             <div class="run-row__head">
               <div>
                 <h3 class="run-row__title">${escapeHtml(compactId(run.training_run_id, 18, 10))}</h3>
-                <p class="lane-row__meta">${escapeHtml(run.network_id)} // window ${escapeHtml(run.current_window_id || "none")} // checkpoint age ${escapeHtml(formatMsAge(run.latest_checkpoint_age_ms))}</p>
+                <p class="lane-row__meta">${escapeHtml(run.network_id || "network unknown")} // window ${escapeHtml(run.current_window_id || run.latest_window_id || "none")} // checkpoint age ${escapeHtml(formatMsAge(run.latest_checkpoint_age_ms))}</p>
               </div>
               <div class="run-row__chips">
-                ${chip(run.run_status, toneForRuntime(run.run_status))}
-                ${chip(run.scheduler_window_state || "scheduler unknown", numeric(run.pending_validation_window_count, 0) > 0 ? "warn" : "accent")}
+                ${chip(run.run_status || "unknown", toneForRuntime(run.run_status))}
+                ${chip(runWorkClass(run), "accent")}
+                ${chip(runReplicaType(run), "violet")}
+                ${chip(run.scheduler_window_state || "scheduler unknown", runPendingValidationCount(run) > 0 ? "warn" : "accent")}
                 ${chip(`closeout ${run.latest_closeout_status || "none"}`, run.latest_closeout_status ? "good" : "warn")}
               </div>
             </div>
             <div class="stage-strip">${runStageSegments(run)}</div>
-            ${barMeter("Workers", run.worker_nodes_online, Math.max(run.worker_target_count, 1), "good")}
-            ${barMeter("Validators", run.validator_nodes_online, Math.max(run.validator_target_count, 1), "live")}
-            ${barMeter("Recovery", run.recovery_source_nodes_online, Math.max(run.recovery_source_target_count, 1), "warn")}
-            <p class="lane-row__detail">${escapeHtml(`pending validation ${number(run.pending_validation_window_count)} // queued challenges ${number(run.queued_validator_challenges)} // open challenges ${number(run.open_validator_challenges)} // artifact failures ${number(run.artifact_failures_open)}`)}</p>
+            ${barMeter("Workers", run.worker_nodes_online, runWorkerTargetCount(run), "good")}
+            ${barMeter("Validators", run.validator_nodes_online, runValidatorTargetCount(run), "live")}
+            ${barMeter("Recovery", run.recovery_source_nodes_online, runRecoveryTargetCount(run), "warn")}
+            <div class="signal-strip">
+              ${signalSegment("Assigned", number(runAssignedContributors(run)), runAssignedContributors(run) > 0 ? "live" : "warn")}
+              ${signalSegment("Accepted", number(runAcceptedContributors(run)), runAcceptedContributors(run) > 0 ? "good" : "warn")}
+              ${signalSegment("Model progress", number(runModelProgressContributors(run)), runModelProgressContributors(run) > 0 ? "good" : "warn")}
+            </div>
+            <p class="lane-row__detail">${escapeHtml(`active windows ${number(runActiveWindowCount(run))} // pending validation ${number(runPendingValidationCount(run))} // queued challenges ${number(run.queued_validator_challenges ?? run.validator_challenges_queued)} // open challenges ${number(run.open_validator_challenges ?? run.validator_challenges_open)} // artifact failures ${number(run.artifact_failures_open)}`)}</p>
           </article>
         `).join("");
+      }
+
+      function buildWorkClassBoard(snapshot) {
+        const workClasses = workClassStates(snapshot);
+        if (workClasses.length === 0) {
+          workClassBoardHost.innerHTML = emptyState("No public work-class summary is available yet.");
+          return;
+        }
+
+        workClassBoardHost.innerHTML = `
+          <div class="score-grid">
+            ${workClasses.slice(0, 4).map((entry) => `
+              <section class="detail-stat">
+                <span class="micro-label">${escapeHtml(entry.work_class || "work class unknown")}</span>
+                <span class="detail-stat__value">${escapeHtml(number(entry.active_run_count ?? entry.run_count))}</span>
+                <p class="score-pair__detail">${escapeHtml(`${entry.progress_class || "progress unknown"} // ${number(entry.accepted_closeouts)} accepted closeouts // ${number(entry.payout_eligible_closeouts)} payout-eligible`)}</p>
+              </section>
+            `).join("")}
+          </div>
+          <div class="signal-strip">
+            ${signalSegment("Weak-device closeouts", number(workClasses.reduce((sum, entry) => sum + numeric(entry.weak_device_bearing_closeouts, 0), 0)), "warn")}
+            ${signalSegment("Progress-bearing", number(workClasses.reduce((sum, entry) => sum + numeric(entry.progress_bearing_closeouts, 0), 0)), "good")}
+            ${signalSegment("Participation-only", number(workClasses.reduce((sum, entry) => sum + numeric(entry.participation_only_closeouts, 0), 0)), "live")}
+          </div>
+        `;
+      }
+
+      function buildWindowBoard(snapshot) {
+        const windows = activeTrainingWindows(snapshot);
+        if (windows.length === 0) {
+          windowBoardHost.innerHTML = emptyState("No public training windows are active.");
+          return;
+        }
+
+        windowBoardHost.innerHTML = windows.slice(0, 6).map((window) => `
+          <article class="run-row">
+            <div class="run-row__head">
+              <div>
+                <h3 class="run-row__title">${escapeHtml(compactId(window.window_id, 16, 8))}</h3>
+                <p class="lane-row__meta">${escapeHtml(window.training_run_id || "run unknown")} // round ${escapeHtml(window.round_index ?? "?" )} // base ${escapeHtml(window.base_checkpoint_ref ? compactId(window.base_checkpoint_ref, 14, 8) : "none")}</p>
+              </div>
+              <div class="run-row__chips">
+                ${chip(window.status || "unknown", toneForRuntime(window.status))}
+                ${chip(window.work_class || "work class unknown", "accent")}
+                ${chip(window.replica_type || "replica unknown", "violet")}
+                ${chip(`closeout ${window.closeout_status || "none"}`, window.closeout_status ? "good" : "warn")}
+              </div>
+            </div>
+            <div class="signal-strip">
+              ${signalSegment("Assigned", number(windowAssignedContributors(window)), windowAssignedContributors(window) > 0 ? "live" : "warn")}
+              ${signalSegment("Accepted", number(windowAcceptedContributors(window)), windowAcceptedContributors(window) > 0 ? "good" : "warn")}
+              ${signalSegment("Replay required", number(windowReplayRequired(window)), windowReplayRequired(window) > 0 ? "warn" : "live")}
+            </div>
+            <div class="signal-strip">
+              ${signalSegment("Model progress", number(windowModelProgressContributors(window)), windowModelProgressContributors(window) > 0 ? "good" : "warn")}
+              ${signalSegment("Validator open", number(window.validator_challenges_open), numeric(window.validator_challenges_open, 0) > 0 ? "warn" : "live")}
+              ${signalSegment("Validator queued", number(window.validator_challenges_queued), numeric(window.validator_challenges_queued, 0) > 0 ? "warn" : "live")}
+            </div>
+            <p class="lane-row__detail">${escapeHtml(`aggregate ${compactId(window.accepted_aggregate_id || window.accepted_aggregate_ref || window.aggregated_delta_digest || "none", 14, 8)} // checkpoint ${compactId(window.promoted_checkpoint_ref || window.output_checkpoint_ref || "none", 14, 8)} // lineage ${windowLineageAdvanced(window) ? "advanced" : "held"} // accepted progress ${windowHasAcceptedProgress(window) ? "yes" : "no"}`)}</p>
+          </article>
+        `).join("");
+      }
+
+      function buildValidatorBoard(snapshot) {
+        const summary = validatorSummary(snapshot);
+        const queuePressure = trainingPublicState(snapshot).queue_pressure ?? {};
+        const windows = validatorWindowRows(snapshot);
+        const open = numeric(summary.open ?? queuePressure.validator_challenges_open, 0);
+        const queued = numeric(summary.queued ?? queuePressure.validator_challenges_queued, 0);
+        const verified = numeric(summary.verified, 0);
+        const rejected = numeric(summary.rejected, 0);
+
+        validatorBoardHost.innerHTML = `
+          <div class="score-grid">
+            <section class="detail-stat">
+              <span class="micro-label">Open</span>
+              <span class="detail-stat__value">${escapeHtml(number(open))}</span>
+            </section>
+            <section class="detail-stat">
+              <span class="micro-label">Queued</span>
+              <span class="detail-stat__value">${escapeHtml(number(queued))}</span>
+            </section>
+            <section class="detail-stat">
+              <span class="micro-label">Verified</span>
+              <span class="detail-stat__value">${escapeHtml(number(verified))}</span>
+            </section>
+            <section class="detail-stat">
+              <span class="micro-label">Rejected</span>
+              <span class="detail-stat__value">${escapeHtml(number(rejected))}</span>
+            </section>
+          </div>
+          ${windows.length > 0 ? windows.slice(0, 3).map((window) => `
+            <article class="publication-row">
+              <div class="publication-row__head">
+                <div>
+                  <h3 class="publication-row__title">${escapeHtml(compactId(window.window_id, 14, 8))}</h3>
+                  <p class="publication-row__meta">${escapeHtml(window.training_run_id || "run unknown")} // pool ${escapeHtml(window.validator_pool_ref || "default")}</p>
+                </div>
+                <div class="publication-row__chips">
+                  ${chip(`${number(window.open)} open`, numeric(window.open, 0) > 0 ? "warn" : "good")}
+                  ${chip(`${number(window.queued)} queued`, numeric(window.queued, 0) > 0 ? "warn" : "accent")}
+                </div>
+              </div>
+            </article>
+          `).join("") : `<div class="empty">Per-window validator detail is not yet published in the live snapshot.</div>`}
+        `;
+      }
+
+      function buildLineageBoard(snapshot) {
+        const publicState = trainingPublicState(snapshot);
+        const checkpoints = checkpointSeries(snapshot).slice(0, 4);
+        const aggregates = aggregateSeries(snapshot).slice(0, 3);
+        const closeouts = closeoutSeries(snapshot).slice(0, 4);
+
+        if (checkpoints.length === 0 && aggregates.length === 0 && closeouts.length === 0 && !publicState.latest_checkpoint_ref) {
+          lineageBoardHost.innerHTML = emptyState("No public checkpoint or closeout lineage is available yet.");
+          return;
+        }
+
+        const latestSummary = `
+          <section class="payout-total">
+            <p class="micro-label">Latest lineage anchor</p>
+            <span class="payout-total__value">${escapeHtml(compactId(publicState.latest_promoted_checkpoint_ref || publicState.latest_checkpoint_ref || "none", 16, 10))}</span>
+            <p class="payout-total__detail">${escapeHtml(`aggregate ${compactId(publicState.latest_aggregate_ref || "none", 14, 8)} // closeout ${publicState.latest_closeout_status || "none"} // age ${formatMsAge(publicState.latest_checkpoint_age_ms)}`)}</p>
+          </section>
+        `;
+
+        const aggregateRows = aggregates.length > 0
+          ? aggregates.map((aggregate) => `
+              <article class="publication-row">
+                <div class="publication-row__head">
+                  <div>
+                    <h3 class="publication-row__title">${escapeHtml(compactId(aggregate.aggregate_ref, 16, 8))}</h3>
+                    <p class="publication-row__meta">${escapeHtml(aggregate.training_run_id)} // ${escapeHtml(aggregate.window_id)} // ${escapeHtml(aggregate.aggregation_rule || "aggregation unknown")}</p>
+                  </div>
+                  <div class="publication-row__chips">
+                    ${chip(`${number(aggregate.accepted_contributions)} accepted`, aggregate.accepted_contributions > 0 ? "good" : "warn")}
+                    ${chip(aggregate.weak_device_bearing ? "weak-device bearing" : "strong-lane", aggregate.weak_device_bearing ? "warn" : "accent")}
+                  </div>
+                </div>
+                <p class="publication-row__detail">${escapeHtml(`checkpoint ${compactId(aggregate.promoted_checkpoint_ref || "none", 14, 8)} // closeout ${aggregate.closeout_status || "none"} // recorded ${formatUnixMs(aggregate.recorded_at_ms)}`)}</p>
+              </article>
+            `).join("")
+          : "";
+
+        const checkpointRows = checkpoints.length > 0
+          ? checkpoints.map((checkpoint) => `
+              <article class="publication-row">
+                <div class="publication-row__head">
+                  <div>
+                    <h3 class="publication-row__title">${escapeHtml(compactId(checkpoint.checkpoint_ref, 16, 8))}</h3>
+                    <p class="publication-row__meta">${escapeHtml(checkpoint.training_run_id)} // ${escapeHtml(checkpoint.checkpoint_role)}${checkpoint.window_id ? ` // ${escapeHtml(checkpoint.window_id)}` : ""}</p>
+                  </div>
+                  <div class="publication-row__chips">
+                    ${chip(checkpoint.canonical ? "canonical" : "derived", checkpoint.canonical ? "good" : "accent")}
+                  </div>
+                </div>
+              </article>
+            `).join("")
+          : "";
+
+        const closeoutRows = closeouts.length > 0
+          ? closeouts.map((closeout) => `
+              <article class="publication-row">
+                <div class="publication-row__head">
+                  <div>
+                    <h3 class="publication-row__title">${escapeHtml(compactId(closeout.outcome_id, 16, 8))}</h3>
+                    <p class="publication-row__meta">${escapeHtml(closeout.training_run_id)} // ${escapeHtml(closeout.work_class)} // ${escapeHtml(closeout.progress_class)}</p>
+                  </div>
+                  <div class="publication-row__chips">
+                    ${chip(closeout.closeout_status || "unknown", toneForRuntime(closeout.closeout_status))}
+                    ${chip(closeout.payout_eligible ? "payout eligible" : "not eligible", closeout.payout_eligible ? "good" : "warn")}
+                  </div>
+                </div>
+                <p class="publication-row__detail">${escapeHtml(`checkpoint ${compactId(closeout.accepted_checkpoint_ref || "none", 14, 8)} // accepted ${formatUnixMs(closeout.accepted_at_ms)}${closeout.payout_basis ? ` // payout ${closeout.payout_basis}` : ""}`)}</p>
+              </article>
+            `).join("")
+          : "";
+
+        lineageBoardHost.innerHTML = `${latestSummary}${aggregateRows}${checkpointRows}${closeoutRows}`;
       }
 
       function buildDiagnostics(snapshot) {
@@ -1498,8 +1926,12 @@
         buildRunHero(snapshot);
         buildPylonLanes(snapshot);
         buildTrainingTopology(snapshot);
+        buildWorkClassBoard(snapshot);
         buildRunBoard(snapshot);
         buildDiagnostics(snapshot);
+        buildWindowBoard(snapshot);
+        buildValidatorBoard(snapshot);
+        buildLineageBoard(snapshot);
         buildPublications(snapshot);
       }
 
@@ -1508,6 +1940,7 @@
           generated_at_unix_ms: numeric(stats?.as_of_unix_ms, Date.now()),
           stats,
           training_summary: {},
+          training_visualization: {},
           training_nodes: [],
           recent_trn_publications: [],
           default_run_id: null,
@@ -1563,8 +1996,12 @@
           runHeroHost.innerHTML = emptyState("Run state unavailable.");
           pylonLanesHost.innerHTML = emptyState("Pylon lanes unavailable.");
           topologyHost.innerHTML = emptyState("Training topology unavailable.");
+          workClassBoardHost.innerHTML = emptyState("Work-class summary unavailable.");
           runBoardHost.innerHTML = emptyState("Run board unavailable.");
           diagnosticFeedHost.innerHTML = emptyState("Diagnostics unavailable.");
+          windowBoardHost.innerHTML = emptyState("Window matrix unavailable.");
+          validatorBoardHost.innerHTML = emptyState("Validator pressure unavailable.");
+          lineageBoardHost.innerHTML = emptyState("Checkpoint lineage unavailable.");
           publicationFeedHost.innerHTML = emptyState("TRN publication feed unavailable.");
         }
       }

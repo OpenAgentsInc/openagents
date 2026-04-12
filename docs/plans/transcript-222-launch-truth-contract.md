@@ -47,6 +47,18 @@ Current public stats fields that matter for Transcript 222 language are:
 The definitions below freeze what those fields are allowed to mean today and
 what they are not allowed to mean yet.
 
+The public Nexus homepage at `nexus.openagents.com/` now also renders WGPUI-led
+training panels from the same underlying truth sources:
+
+- `/api/stats` `training_public_state`
+- `/api/homepage` `training_visualization`
+- `/api/homepage` `training_nodes`
+- `/api/homepage` `recent_trn_publications`
+
+Those richer panels are presentational only. They do not create a second claim
+contract. Any public run, window, validator, checkpoint, or payout statement on
+that surface is still bound to the glossary below.
+
 ## Canonical Glossary
 
 ### Online node
