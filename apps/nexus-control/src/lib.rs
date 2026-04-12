@@ -62,13 +62,13 @@ use openagents_kernel_core::compute::{
     ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact, ComputeEvaluationMetric,
     ComputeEvaluationRunStatus, ComputeProductStatus, ComputeRegistryStatus,
     ComputeSyntheticDataJobStatus, ComputeTrainingReplicaType, ComputeTrainingRun,
-    ComputeTrainingRunDefinition, ComputeTrainingRunStatus, ComputeTrainingSummary,
-    ComputeTrainingWorkClass, ComputeValidatorChallengeContext,
-    ComputeValidatorChallengeFailureCode, ComputeValidatorChallengeLease,
-    ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
-    ComputeValidatorChallengeResult, ComputeValidatorChallengeSnapshot,
-    ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict, DeliveryProofStatus,
-    StructuredCapacityInstrumentStatus,
+    ComputeTrainingRunDefinition, ComputeTrainingRunDefinitionEnvironment,
+    ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeTrainingWorkClass,
+    ComputeValidatorChallengeContext, ComputeValidatorChallengeFailureCode,
+    ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
+    ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
+    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
+    ComputeValidatorChallengeVerdict, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::data::{
@@ -97,7 +97,8 @@ use openagents_kernel_proto::openagents::data::v1 as proto_data;
 use openagents_provider_substrate::{
     ProviderAdapterTrainingSettlementTrigger, ProviderDiagnosticSummary,
     ProviderHostingTelemetrySnapshot, ProviderTrainingCapabilityEnvelopeV2,
-    ProviderTrainingCapabilityTier,
+    ProviderTrainingCapabilityTier, ProviderTrainingReplayCapability,
+    ProviderTrainingThroughputBand,
 };
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
@@ -2449,6 +2450,7 @@ impl TrainingSchedulerState {
         &mut self,
         node: AdmittedTrainingNodeView,
         candidate_runs: Vec<ComputeTrainingRun>,
+        run_definitions_by_training_run_id: &HashMap<String, ComputeTrainingRunDefinition>,
         request: &RecordTrainingRunLeaseRequest,
         now_unix_ms: i64,
     ) -> Result<RecordTrainingRunLeaseResponse, String> {
@@ -2481,8 +2483,13 @@ impl TrainingSchedulerState {
             return Err("training_scheduler_network_not_allowed".to_string());
         }
 
-        let run =
-            self.select_matching_run(candidate_runs.as_slice(), &node, request, now_unix_ms)?;
+        let run = self.select_matching_run(
+            candidate_runs.as_slice(),
+            run_definitions_by_training_run_id,
+            &node,
+            request,
+            now_unix_ms,
+        )?;
         let metadata = training_scheduler_metadata_from_run(&run)?;
         let scheduled_run = self.ensure_run(&run, &metadata, now_unix_ms);
         let response = scheduled_run.claim_lease(request, &node, now_unix_ms)?;
@@ -2499,6 +2506,7 @@ impl TrainingSchedulerState {
     fn select_matching_run(
         &self,
         candidate_runs: &[ComputeTrainingRun],
+        run_definitions_by_training_run_id: &HashMap<String, ComputeTrainingRunDefinition>,
         node: &AdmittedTrainingNodeView,
         request: &RecordTrainingRunLeaseRequest,
         now_unix_ms: i64,
@@ -2513,9 +2521,17 @@ impl TrainingSchedulerState {
                 return Err("training_scheduler_run_not_schedulable".to_string());
             }
             let metadata = training_scheduler_metadata_from_run(&run)?;
-            if let Some(reason) =
-                training_node_scheduler_run_mismatch_reason(node, &run, &metadata, request.role)
-            {
+            let Some(run_definition) = run_definitions_by_training_run_id.get(training_run_id)
+            else {
+                return Err("training_scheduler_run_definition_not_found".to_string());
+            };
+            if let Some(reason) = training_node_scheduler_run_mismatch_reason_with_definition(
+                node,
+                &run,
+                &metadata,
+                request.role,
+                run_definition,
+            ) {
                 return Err(reason.to_string());
             }
             if let Some(requested_network_id) = request.requested_network_id.as_deref()
@@ -2541,8 +2557,18 @@ impl TrainingSchedulerState {
             {
                 continue;
             }
-            if training_node_scheduler_run_mismatch_reason(node, run, &metadata, request.role)
-                .is_some()
+            let Some(run_definition) = run_definitions_by_training_run_id.get(&run.training_run_id)
+            else {
+                continue;
+            };
+            if training_node_scheduler_run_mismatch_reason_with_definition(
+                node,
+                run,
+                &metadata,
+                request.role,
+                run_definition,
+            )
+            .is_some()
             {
                 continue;
             }
@@ -2988,20 +3014,119 @@ fn training_scheduler_metadata_from_run(
     })
 }
 
+fn training_scheduler_effective_work_class(
+    role: TrainingNodeRoleClaim,
+    run_work_class: ComputeTrainingWorkClass,
+) -> ComputeTrainingWorkClass {
+    match role {
+        TrainingNodeRoleClaim::Worker | TrainingNodeRoleClaim::RecoverySource => run_work_class,
+        TrainingNodeRoleClaim::Validator => ComputeTrainingWorkClass::ValidationReplay,
+    }
+}
+
+fn training_scheduler_effective_replica_type(
+    role: TrainingNodeRoleClaim,
+    run_replica_type: ComputeTrainingReplicaType,
+) -> ComputeTrainingReplicaType {
+    match role {
+        TrainingNodeRoleClaim::Worker | TrainingNodeRoleClaim::RecoverySource => run_replica_type,
+        TrainingNodeRoleClaim::Validator => ComputeTrainingReplicaType::SingleNode,
+    }
+}
+
+fn training_scheduler_throughput_band_ordinal(band: ProviderTrainingThroughputBand) -> u8 {
+    match band {
+        ProviderTrainingThroughputBand::Unknown => 0,
+        ProviderTrainingThroughputBand::Low => 1,
+        ProviderTrainingThroughputBand::Medium => 2,
+        ProviderTrainingThroughputBand::High => 3,
+        ProviderTrainingThroughputBand::Island => 4,
+    }
+}
+
+fn training_scheduler_replay_capability_ordinal(
+    capability: ProviderTrainingReplayCapability,
+) -> u8 {
+    match capability {
+        ProviderTrainingReplayCapability::None => 0,
+        ProviderTrainingReplayCapability::ShortWindow => 1,
+        ProviderTrainingReplayCapability::FullWindow => 2,
+    }
+}
+
+fn training_scheduler_run_definition(
+    kernel: &KernelState,
+    run: &ComputeTrainingRun,
+) -> Result<ComputeTrainingRunDefinition, String> {
+    kernel
+        .get_compute_training_run_definition(run.training_policy_ref.as_str(), None)
+        .map_err(|_| "training_scheduler_run_definition_not_found".to_string())
+}
+
+fn training_scheduler_run_definition_environment<'a>(
+    run_definition: &'a ComputeTrainingRunDefinition,
+    run: &ComputeTrainingRun,
+) -> Option<&'a ComputeTrainingRunDefinitionEnvironment> {
+    run_definition
+        .environments
+        .iter()
+        .find(|environment| {
+            environment.environment_ref == run.environment_binding.environment_ref
+                && run
+                    .environment_binding
+                    .environment_version
+                    .as_deref()
+                    .is_none_or(|expected| expected == environment.version)
+        })
+        .or_else(|| {
+            run_definition.environments.iter().find(|environment| {
+                environment.environment_ref == run.environment_binding.environment_ref
+            })
+        })
+}
+
+fn training_scheduler_run_definition_requires_benchmark_lane(
+    run_definition: &ComputeTrainingRunDefinition,
+) -> bool {
+    !run_definition.benchmark_packages.is_empty()
+        || run_definition.benchmark_package_set_ref.is_some()
+}
+
 fn training_node_matches_scheduler_run(
+    kernel: &KernelState,
     node: &AdmittedTrainingNodeView,
     run: &ComputeTrainingRun,
     metadata: &TrainingSchedulerRunMetadata,
     role: TrainingNodeRoleClaim,
 ) -> bool {
-    training_node_scheduler_run_mismatch_reason(node, run, metadata, role).is_none()
+    training_node_scheduler_run_mismatch_reason(kernel, node, run, metadata, role).is_none()
 }
 
 fn training_node_scheduler_run_mismatch_reason(
+    kernel: &KernelState,
     node: &AdmittedTrainingNodeView,
     run: &ComputeTrainingRun,
     metadata: &TrainingSchedulerRunMetadata,
     role: TrainingNodeRoleClaim,
+) -> Option<&'static str> {
+    let Ok(run_definition) = training_scheduler_run_definition(kernel, run) else {
+        return Some("training_scheduler_run_definition_not_found");
+    };
+    training_node_scheduler_run_mismatch_reason_with_definition(
+        node,
+        run,
+        metadata,
+        role,
+        &run_definition,
+    )
+}
+
+fn training_node_scheduler_run_mismatch_reason_with_definition(
+    node: &AdmittedTrainingNodeView,
+    run: &ComputeTrainingRun,
+    metadata: &TrainingSchedulerRunMetadata,
+    role: TrainingNodeRoleClaim,
+    run_definition: &ComputeTrainingRunDefinition,
 ) -> Option<&'static str> {
     if !node.role_claims.contains(&role) || !node.online || !node.eligible {
         return Some("training_scheduler_node_ineligible");
@@ -3014,11 +3139,21 @@ fn training_node_scheduler_run_mismatch_reason(
     {
         return Some("training_scheduler_network_not_allowed");
     }
+    if run_definition.validator_policy_ref != run.validator_policy_ref {
+        return Some("training_scheduler_run_definition_validator_policy_mismatch");
+    }
+    if run_definition.checkpoint_family != run.checkpoint_binding.checkpoint_family {
+        return Some("training_scheduler_run_definition_checkpoint_family_mismatch");
+    }
+    let Some(run_environment) = training_scheduler_run_definition_environment(&run_definition, run)
+    else {
+        return Some("training_scheduler_run_definition_environment_missing");
+    };
     if !node
         .contributor_availability
         .validator_policy_refs
         .iter()
-        .any(|value| value == &run.validator_policy_ref)
+        .any(|value| value == &run_definition.validator_policy_ref)
     {
         return Some("training_scheduler_validator_policy_mismatch");
     }
@@ -3026,7 +3161,7 @@ fn training_node_scheduler_run_mismatch_reason(
         .contributor_availability
         .checkpoint_families
         .iter()
-        .any(|value| value == &run.checkpoint_binding.checkpoint_family)
+        .any(|value| value == &run_definition.checkpoint_family)
     {
         return Some("training_scheduler_checkpoint_family_mismatch");
     }
@@ -3034,15 +3169,16 @@ fn training_node_scheduler_run_mismatch_reason(
         .contributor_availability
         .environment_refs
         .iter()
-        .any(|value| value == &run.environment_binding.environment_ref)
+        .any(|value| value == &run_environment.environment_ref)
     {
         return Some("training_scheduler_environment_mismatch");
     }
-    if let Some(required_backend_family) = training_backend_family_for_environment_ref(
-        run.environment_binding.environment_ref.as_str(),
-    ) {
+    if let Some(required_backend_family) =
+        training_backend_family_for_environment_ref(run_environment.environment_ref.as_str())
+    {
         if !node
-            .capability_tier
+            .capability_envelope_v2
+            .tier_profile
             .backend_families
             .iter()
             .any(|value| value == required_backend_family)
@@ -3055,12 +3191,14 @@ fn training_node_scheduler_run_mismatch_reason(
     {
         return Some("training_scheduler_settlement_trigger_mismatch");
     }
+    let effective_work_class = training_scheduler_effective_work_class(role, run.work_class);
+    let effective_replica_type = training_scheduler_effective_replica_type(role, run.replica_type);
     if !node
         .capability_tier
         .tier
         .meets(training_scheduler_minimum_tier_for_work_class(
             role,
-            run.work_class,
+            effective_work_class,
         ))
     {
         return Some("training_scheduler_work_class_tier_insufficient");
@@ -3070,10 +3208,72 @@ fn training_node_scheduler_run_mismatch_reason(
         .tier
         .meets(training_scheduler_minimum_tier_for_replica_type(
             role,
-            run.replica_type,
+            effective_replica_type,
         ))
     {
         return Some("training_scheduler_replica_type_tier_insufficient");
+    }
+    let Some(work_class_eligibility) = node
+        .capability_envelope_v2
+        .eligible_work_classes
+        .iter()
+        .find(|entry| entry.work_class == effective_work_class)
+    else {
+        return Some("training_scheduler_work_class_not_supported");
+    };
+    if training_scheduler_run_definition_requires_benchmark_lane(&run_definition)
+        && work_class_eligibility.benchmark_lane_required
+        && !node.capability_envelope_v2.benchmark_lane_available
+    {
+        return Some("training_scheduler_benchmark_lane_unavailable");
+    }
+    if !work_class_eligibility
+        .replica_types
+        .contains(&effective_replica_type)
+    {
+        return Some("training_scheduler_replica_type_not_supported");
+    }
+    if let Some(minimum_memory_gb) = work_class_eligibility.minimum_memory_gb
+        && node
+            .capability_envelope_v2
+            .tier_profile
+            .available_memory_gb
+            .or(node.available_memory_gb)
+            .is_some_and(|available| available < minimum_memory_gb)
+    {
+        return Some("training_scheduler_work_class_memory_insufficient");
+    }
+    if training_scheduler_throughput_band_ordinal(
+        node.capability_envelope_v2.tier_profile.throughput_band,
+    ) < training_scheduler_throughput_band_ordinal(
+        work_class_eligibility.required_throughput_band,
+    ) {
+        return Some("training_scheduler_work_class_throughput_insufficient");
+    }
+    if training_scheduler_replay_capability_ordinal(
+        node.capability_envelope_v2.tier_profile.replay_capability,
+    ) < training_scheduler_replay_capability_ordinal(
+        work_class_eligibility.required_replay_capability,
+    ) {
+        return Some("training_scheduler_work_class_replay_insufficient");
+    }
+    let Some(replica_type_eligibility) = node
+        .capability_envelope_v2
+        .eligible_replica_types
+        .iter()
+        .find(|entry| entry.replica_type == effective_replica_type)
+    else {
+        return Some("training_scheduler_replica_type_not_supported");
+    };
+    if let Some(minimum_memory_gb) = replica_type_eligibility.minimum_memory_gb
+        && node
+            .capability_envelope_v2
+            .tier_profile
+            .available_memory_gb
+            .or(node.available_memory_gb)
+            .is_some_and(|available| available < minimum_memory_gb)
+    {
+        return Some("training_scheduler_replica_type_memory_insufficient");
     }
     None
 }
@@ -3195,7 +3395,13 @@ fn training_validator_node_matches_window(
     let Ok(metadata) = training_scheduler_metadata_from_run(&run) else {
         return false;
     };
-    training_node_matches_scheduler_run(node, &run, &metadata, TrainingNodeRoleClaim::Validator)
+    training_node_matches_scheduler_run(
+        kernel,
+        node,
+        &run,
+        &metadata,
+        TrainingNodeRoleClaim::Validator,
+    )
 }
 
 fn normalize_required_training_string(value: &str, reason: &str) -> Result<String, String> {
@@ -6338,9 +6544,23 @@ async fn claim_training_run_lease(
             return Err(kernel_api_error(reason));
         }
         let candidate_runs = store.kernel.list_compute_training_runs(None, None, None);
+        let run_definitions_by_training_run_id = candidate_runs
+            .iter()
+            .filter_map(|run| {
+                training_scheduler_run_definition(&store.kernel, run)
+                    .ok()
+                    .map(|definition| (run.training_run_id.clone(), definition))
+            })
+            .collect::<HashMap<_, _>>();
         let response = store
             .training_scheduler
-            .claim_lease(node, candidate_runs, &request, request.requested_at_ms)
+            .claim_lease(
+                node,
+                candidate_runs,
+                &run_definitions_by_training_run_id,
+                &request,
+                request.requested_at_ms,
+            )
             .map_err(kernel_api_error)?;
         store
             .persist_training_scheduler_state()
@@ -18055,21 +18275,18 @@ mod tests {
                 required_replay_capability: ProviderTrainingReplayCapability::ShortWindow,
                 benchmark_lane_required: true,
             });
-        }
-        if capability_tier.tier.ordinal() >= ProviderTrainingCapabilityTier::Tier3Island.ordinal() {
             eligible_work_classes.push(ProviderTrainingWorkClassEligibility {
                 work_class: ComputeTrainingWorkClass::GroupedReplicaStageExecution,
-                minimum_tier: ProviderTrainingCapabilityTier::Tier3Island,
-                replica_types: vec![
-                    ComputeTrainingReplicaType::GroupedReplica,
-                    ComputeTrainingReplicaType::Island,
-                ],
+                minimum_tier: ProviderTrainingCapabilityTier::Tier2Trainer,
+                replica_types: vec![ComputeTrainingReplicaType::GroupedReplica],
                 required_backend_families: capability_tier.backend_families.clone(),
                 minimum_memory_gb: Some(64),
-                required_throughput_band: ProviderTrainingThroughputBand::High,
-                required_replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+                required_throughput_band: ProviderTrainingThroughputBand::Unknown,
+                required_replay_capability: ProviderTrainingReplayCapability::None,
                 benchmark_lane_required: true,
             });
+        }
+        if capability_tier.tier.ordinal() >= ProviderTrainingCapabilityTier::Tier3Island.ordinal() {
             eligible_work_classes.push(ProviderTrainingWorkClassEligibility {
                 work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
                 minimum_tier: ProviderTrainingCapabilityTier::Tier3Island,
@@ -18081,6 +18298,30 @@ mod tests {
                 benchmark_lane_required: true,
             });
         }
+        if capability_tier.tier.ordinal()
+            >= ProviderTrainingCapabilityTier::Tier4Authority.ordinal()
+        {
+            eligible_work_classes.push(ProviderTrainingWorkClassEligibility {
+                work_class: ComputeTrainingWorkClass::Aggregation,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier4Authority,
+                replica_types: vec![ComputeTrainingReplicaType::SingleNode],
+                required_backend_families: capability_tier.backend_families.clone(),
+                minimum_memory_gb: None,
+                required_throughput_band: ProviderTrainingThroughputBand::Unknown,
+                required_replay_capability: ProviderTrainingReplayCapability::None,
+                benchmark_lane_required: false,
+            });
+            eligible_work_classes.push(ProviderTrainingWorkClassEligibility {
+                work_class: ComputeTrainingWorkClass::CheckpointPromotion,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier4Authority,
+                replica_types: vec![ComputeTrainingReplicaType::SingleNode],
+                required_backend_families: capability_tier.backend_families.clone(),
+                minimum_memory_gb: None,
+                required_throughput_band: ProviderTrainingThroughputBand::Unknown,
+                required_replay_capability: ProviderTrainingReplayCapability::None,
+                benchmark_lane_required: false,
+            });
+        }
 
         let mut eligible_replica_types = vec![ProviderTrainingReplicaTypeEligibility {
             replica_type: ComputeTrainingReplicaType::SingleNode,
@@ -18088,13 +18329,16 @@ mod tests {
             required_backend_families: capability_tier.backend_families.clone(),
             minimum_memory_gb: Some(16),
         }];
-        if capability_tier.tier.ordinal() >= ProviderTrainingCapabilityTier::Tier3Island.ordinal() {
+        if capability_tier.tier.ordinal() >= ProviderTrainingCapabilityTier::Tier2Trainer.ordinal()
+        {
             eligible_replica_types.push(ProviderTrainingReplicaTypeEligibility {
                 replica_type: ComputeTrainingReplicaType::GroupedReplica,
-                minimum_tier: ProviderTrainingCapabilityTier::Tier3Island,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier2Trainer,
                 required_backend_families: capability_tier.backend_families.clone(),
                 minimum_memory_gb: Some(64),
             });
+        }
+        if capability_tier.tier.ordinal() >= ProviderTrainingCapabilityTier::Tier3Island.ordinal() {
             eligible_replica_types.push(ProviderTrainingReplicaTypeEligibility {
                 replica_type: ComputeTrainingReplicaType::Island,
                 minimum_tier: ProviderTrainingCapabilityTier::Tier3Island,
@@ -18734,6 +18978,17 @@ mod tests {
         training_policy_request
             .training_policy
             .benchmark_package_refs = Vec::new();
+        training_policy_request.training_policy.metadata = training_run_definition_metadata_value(
+            "rundef.scheduler.mvp.v1",
+            "psion_pretrain",
+            "consumer_compute_pretraining",
+            "diloco",
+            "dataset://psion/public_corpus",
+            "dataset_slice_family.public_pages_v1",
+            "psion.public_dataset_authority_contract.v1",
+            None,
+            "training_policy_version",
+        );
         store
             .kernel
             .register_compute_training_policy(
@@ -18958,6 +19213,17 @@ mod tests {
             vec!["env.openagents.cuda.train".to_string()];
         training_policy_request.training_policy.validator_policy_ref =
             "policy://validator/mvp/v1".to_string();
+        training_policy_request.training_policy.metadata = training_run_definition_metadata_value(
+            "rundef.scheduler.reference.v1",
+            "psion_pretrain",
+            "consumer_compute_pretraining",
+            "diloco",
+            "dataset://psion/public_corpus",
+            "dataset_slice_family.public_pages_v1",
+            "psion.public_dataset_authority_contract.v1",
+            Some("benchmark_set.scheduler.reference.v1"),
+            "training_policy_version",
+        );
         store
             .kernel
             .register_compute_training_policy(
@@ -19418,7 +19684,7 @@ mod tests {
         dataset_identity: &str,
         dataset_slice_family: &str,
         page_proof_family: &str,
-        benchmark_package_set_ref: &str,
+        benchmark_package_set_ref: Option<&str>,
         version_semantics: &str,
     ) -> Value {
         json!({
@@ -19431,7 +19697,7 @@ mod tests {
                 dataset_identity: dataset_identity.to_string(),
                 dataset_slice_family: Some(dataset_slice_family.to_string()),
                 page_proof_family: Some(page_proof_family.to_string()),
-                benchmark_package_set_ref: Some(benchmark_package_set_ref.to_string()),
+                benchmark_package_set_ref: benchmark_package_set_ref.map(str::to_string),
                 version_semantics: version_semantics.to_string(),
                 window_ref_family: Some("window.family.diloco_round".to_string()),
                 manifest_ref_family: Some("manifest.family.psionic_train".to_string()),
@@ -25071,6 +25337,18 @@ mod tests {
                 vec!["env.openagents.cuda.train".to_string()];
             training_policy_request.training_policy.validator_policy_ref =
                 "policy://validator/mvp/v1".to_string();
+            training_policy_request.training_policy.metadata =
+                training_run_definition_metadata_value(
+                    "rundef.scheduler.reference.v1",
+                    "psion_pretrain",
+                    "consumer_compute_pretraining",
+                    "diloco",
+                    "dataset://psion/public_corpus",
+                    "dataset_slice_family.public_pages_v1",
+                    "psion.public_dataset_authority_contract.v1",
+                    Some("benchmark_set.scheduler.reference.v1"),
+                    "training_policy_version",
+                );
             store
                 .kernel
                 .register_compute_training_policy(
@@ -25885,6 +26163,89 @@ mod tests {
         assert_eq!(
             body.get("reason").and_then(serde_json::Value::as_str),
             Some("training_scheduler_work_class_tier_insufficient")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_refuses_requested_run_when_benchmark_lane_is_unavailable()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_485_000u64;
+        let training_run_id = "run.scheduler.benchmark";
+        let build_digest = "sha256:build-benchmark";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.benchmark.0001",
+            "node-benchmark",
+            build_digest,
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut node = training_node_admission_request(
+                "node-benchmark",
+                build_digest,
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(64),
+            );
+            node.idempotency_key =
+                "idemp.training.admission.node-benchmark.no-benchmark-lane".to_string();
+            node.requested_at_ms = created_at_ms as i64 + 760;
+            node.capability_envelope_v2.benchmark_lane_available = false;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-benchmark", created_at_ms + 760),
+                    node,
+                )
+                .expect("re-admit node without benchmark lane");
+            let mut heartbeat = training_node_heartbeat_request_for_scope(
+                "node-benchmark",
+                build_digest,
+                training_run_id,
+                "window.benchmark.0001",
+            );
+            heartbeat.idempotency_key =
+                "idemp.training.heartbeat.node-benchmark.no-benchmark-lane".to_string();
+            heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-benchmark", created_at_ms + 770),
+                    heartbeat,
+                )
+                .expect("heartbeat benchmark-limited node");
+        }
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.benchmark.unavailable",
+                            created_at_ms as i64 + 1_000,
+                            "node-benchmark",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            body.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_scheduler_benchmark_lane_unavailable")
         );
         Ok(())
     }
@@ -29644,6 +30005,7 @@ mod tests {
             let metadata =
                 training_scheduler_metadata_from_run(&run).expect("training scheduler metadata");
             let mismatch_reason = super::training_node_scheduler_run_mismatch_reason(
+                &store.kernel,
                 &validator,
                 &run,
                 &metadata,
@@ -32056,7 +32418,7 @@ mod tests {
                     "dataset://psion/public_corpus",
                     "dataset_slice_family.public_pages_v1",
                     "psion.public_dataset_authority_contract.v1",
-                    "benchmark_set.math.reference.v1",
+                    Some("benchmark_set.math.reference.v1"),
                     "training_policy_version",
                 );
             store
