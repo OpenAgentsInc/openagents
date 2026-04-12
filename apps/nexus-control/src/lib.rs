@@ -78,10 +78,11 @@ use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
     PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
     PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
-    PylonTrainingArtifactResolverResponse, PylonTrainingContributionSampleCandidate,
-    PylonTrainingContributionVerdict, PylonTrainingRefusalCode, PylonTrainingReputationLabel,
-    PylonTrainingReputationNamespace, PylonTrainingSchedulerEffect, pylon_training_assignment_id,
-    pylon_training_assignment_seed, pylon_training_hard_gate_reason, pylon_training_lease_id,
+    PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactResolverResponse,
+    PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
+    PylonTrainingRefusalCode, PylonTrainingReputationLabel, PylonTrainingReputationNamespace,
+    PylonTrainingSchedulerEffect, pylon_training_assignment_id, pylon_training_assignment_seed,
+    pylon_training_hard_gate_reason, pylon_training_lease_id,
     pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
     reputation_projection_for_label, resolve_aggregate_verdicts,
     validate_redacted_retained_content, validator_sample_assignments,
@@ -5455,6 +5456,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
         .route(
             "/v1/kernel/compute/training/artifacts/{artifact_id}",
             get(get_kernel_compute_training_artifact_resolver),
+        )
+        .route(
+            "/v1/kernel/compute/training/artifact-storage-layout",
+            get(get_kernel_compute_training_artifact_gcs_layout),
         )
         .route(
             "/v1/kernel/compute/evals",
@@ -10914,6 +10919,19 @@ async fn get_kernel_compute_training_artifact_resolver(
             reason,
         })?;
     Ok(Json(response))
+}
+
+async fn get_kernel_compute_training_artifact_gcs_layout(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<PylonTrainingArtifactGcsLayoutPolicy>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.compute_training_artifact_gcs_layout()))
 }
 
 async fn list_kernel_compute_evaluation_runs(
@@ -16928,8 +16946,8 @@ mod tests {
     use openagents_kernel_core::pylon_training::{
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
         PylonTrainingAggregateResolution, PylonTrainingArtifactClass,
-        PylonTrainingArtifactResolverResponse, PylonTrainingContributionVerdict,
-        PylonTrainingRefusalCode,
+        PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactResolverResponse,
+        PylonTrainingContributionVerdict, PylonTrainingRefusalCode,
     };
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, Receipt, ReceiptHints, TraceContext,
@@ -31588,6 +31606,38 @@ mod tests {
             descriptor.scope.assignment_id.as_deref(),
             Some("assign.node01.window000123")
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_compute_training_artifact_gcs_layout_route_returns_frozen_policy() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state);
+        let session = create_session_token(&app).await?;
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/training/artifact-storage-layout")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let policy: PylonTrainingArtifactGcsLayoutPolicy = response_json(response).await?;
+        assert_eq!(policy.bucket_uri_pattern, "gs://<bucket>");
+        assert_eq!(
+            policy.run_prefix_pattern,
+            "networks/<network_id>/runs/<run_id>"
+        );
+        assert_eq!(
+            policy.window_prefix_pattern,
+            "networks/<network_id>/runs/<run_id>/windows/<window_id>"
+        );
+        assert!(policy.accepted_artifacts_immutable);
+        assert!(policy.resumable_upload_required);
         Ok(())
     }
 

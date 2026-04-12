@@ -10,8 +10,23 @@ use crate::{compute::ComputeAdapterDatasetSlice, ids::sha256_prefixed_bytes};
 pub const PYLON_TRAINING_RUN_MANIFEST_V1: &str = "openagents.pylon_training_run_manifest.v1";
 pub const PYLON_TRAINING_ARTIFACT_RESOLVER_SCHEMA_V1: &str =
     "openagents.pylon_training_artifact_resolver.v1";
+pub const PYLON_TRAINING_GCS_LAYOUT_SCHEMA_V1: &str = "openagents.pylon_training_gcs_layout.v1";
 pub const PYLON_TRAINING_ARTIFACT_ID_PREFIX_V1: &str = "oa.train_artifact.v1";
 pub const PYLON_TRAINING_ARTIFACT_DIGEST_ALGORITHM: &str = "sha256";
+pub const PYLON_TRAINING_GCS_BUCKET_URI_PATTERN_V1: &str = "gs://<bucket>";
+pub const PYLON_TRAINING_GCS_BUCKET_NAME_CONVENTION_V1: &str =
+    "<gcp-project>-openagents-training-<environment>";
+pub const PYLON_TRAINING_GCS_RUN_PREFIX_PATTERN_V1: &str = "networks/<network_id>/runs/<run_id>";
+pub const PYLON_TRAINING_GCS_WINDOW_PREFIX_PATTERN_V1: &str =
+    "networks/<network_id>/runs/<run_id>/windows/<window_id>";
+pub const PYLON_TRAINING_GCS_TEMP_PREFIX_PATTERN_V1: &str =
+    "networks/<network_id>/runs/<run_id>/_tmp/<artifact_id>/";
+pub const PYLON_TRAINING_GCS_RESUMABLE_UPLOAD_REQUIRED: bool = true;
+pub const PYLON_TRAINING_GCS_SHARD_THRESHOLD_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+pub const PYLON_TRAINING_GCS_SHARD_TARGET_BYTES: u64 = 512 * 1024 * 1024;
+pub const PYLON_TRAINING_GCS_PRIVATE_STAGING_GC_AFTER_SECONDS: u64 = 72 * 60 * 60;
+pub const PYLON_TRAINING_GCS_PUBLIC_VERIFICATION_GC_AFTER_SECONDS: u64 = 90 * 24 * 60 * 60;
+pub const PYLON_TRAINING_GCS_EPHEMERAL_TRANSPORT_GC_AFTER_SECONDS: u64 = 24 * 60 * 60;
 pub const PYLON_TRAINING_EXECUTION_BACKEND_PSIONIC_TRAIN: &str = "psionic_train";
 pub const PYLON_TRAINING_GCS_CREDENTIAL_SOURCE: &str = "google_application_default_credentials";
 pub const PYLON_TRAINING_TRN_ASSIGNMENT_RECEIPT_KIND: u32 = 39_511;
@@ -471,6 +486,52 @@ pub struct PylonTrainingArtifactResolverResponse {
     pub relative_object_path: String,
     pub locator_kind: u32,
     pub scope: PylonTrainingArtifactScope,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactOverwritePolicy {
+    Deny,
+    MutablePointerOnly,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactDataPlaneAccessPolicy {
+    SignedUrl,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactControlPlaneAuthPolicy {
+    Nip98,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingArtifactRetentionPolicy {
+    pub retention_class: PylonTrainingArtifactRetentionClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gc_after_seconds: Option<u64>,
+    pub immutable_after_acceptance: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingArtifactGcsLayoutPolicy {
+    pub schema_version: String,
+    pub bucket_uri_pattern: String,
+    pub bucket_name_convention: String,
+    pub run_prefix_pattern: String,
+    pub window_prefix_pattern: String,
+    pub temporary_prefix_pattern: String,
+    pub accepted_artifacts_immutable: bool,
+    pub overwrite_policy: PylonTrainingArtifactOverwritePolicy,
+    pub mutable_pointer_kinds: Vec<PylonTrainingArtifactKind>,
+    pub resumable_upload_required: bool,
+    pub sharding_threshold_bytes: u64,
+    pub shard_target_bytes: u64,
+    pub data_plane_access_policy: PylonTrainingArtifactDataPlaneAccessPolicy,
+    pub control_plane_auth_policy: PylonTrainingArtifactControlPlaneAuthPolicy,
+    pub retention_policies: Vec<PylonTrainingArtifactRetentionPolicy>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -998,13 +1059,10 @@ impl PylonTrainingArtifactLayout {
     }
 
     pub fn validate(&self) -> ContractResult<()> {
-        require_non_empty(self.bucket_uri.as_str(), "bucket_uri")?;
-        if !self.bucket_uri.starts_with("gs://") {
-            return Err("pylon_training_bucket_uri_invalid".to_string());
-        }
-        require_non_empty(self.network_id.as_str(), "network_id")?;
-        require_non_empty(self.run_id.as_str(), "run_id")?;
-        require_non_empty(self.window_id.as_str(), "window_id")?;
+        parse_gcs_bucket_name(self.bucket_uri.as_str())?;
+        require_storage_path_component(self.network_id.as_str(), "network_id")?;
+        require_storage_path_component(self.run_id.as_str(), "run_id")?;
+        require_storage_path_component(self.window_id.as_str(), "window_id")?;
         Ok(())
     }
 
@@ -1073,8 +1131,74 @@ impl PylonTrainingArtifactLayout {
     }
 }
 
-fn require_artifact_scope_component(value: &str, field: &str) -> ContractResult<()> {
+pub fn pylon_training_artifact_gcs_layout_policy() -> PylonTrainingArtifactGcsLayoutPolicy {
+    PylonTrainingArtifactGcsLayoutPolicy {
+        schema_version: PYLON_TRAINING_GCS_LAYOUT_SCHEMA_V1.to_string(),
+        bucket_uri_pattern: PYLON_TRAINING_GCS_BUCKET_URI_PATTERN_V1.to_string(),
+        bucket_name_convention: PYLON_TRAINING_GCS_BUCKET_NAME_CONVENTION_V1.to_string(),
+        run_prefix_pattern: PYLON_TRAINING_GCS_RUN_PREFIX_PATTERN_V1.to_string(),
+        window_prefix_pattern: PYLON_TRAINING_GCS_WINDOW_PREFIX_PATTERN_V1.to_string(),
+        temporary_prefix_pattern: PYLON_TRAINING_GCS_TEMP_PREFIX_PATTERN_V1.to_string(),
+        accepted_artifacts_immutable: true,
+        overwrite_policy: PylonTrainingArtifactOverwritePolicy::MutablePointerOnly,
+        mutable_pointer_kinds: vec![PylonTrainingArtifactKind::LatestCheckpointPointer],
+        resumable_upload_required: PYLON_TRAINING_GCS_RESUMABLE_UPLOAD_REQUIRED,
+        sharding_threshold_bytes: PYLON_TRAINING_GCS_SHARD_THRESHOLD_BYTES,
+        shard_target_bytes: PYLON_TRAINING_GCS_SHARD_TARGET_BYTES,
+        data_plane_access_policy: PylonTrainingArtifactDataPlaneAccessPolicy::SignedUrl,
+        control_plane_auth_policy: PylonTrainingArtifactControlPlaneAuthPolicy::Nip98,
+        retention_policies: vec![
+            PylonTrainingArtifactRetentionPolicy {
+                retention_class: PylonTrainingArtifactRetentionClass::PrivateStaging,
+                gc_after_seconds: Some(PYLON_TRAINING_GCS_PRIVATE_STAGING_GC_AFTER_SECONDS),
+                immutable_after_acceptance: false,
+            },
+            PylonTrainingArtifactRetentionPolicy {
+                retention_class: PylonTrainingArtifactRetentionClass::AcceptedAuthority,
+                gc_after_seconds: None,
+                immutable_after_acceptance: true,
+            },
+            PylonTrainingArtifactRetentionPolicy {
+                retention_class: PylonTrainingArtifactRetentionClass::PublicVerification,
+                gc_after_seconds: Some(PYLON_TRAINING_GCS_PUBLIC_VERIFICATION_GC_AFTER_SECONDS),
+                immutable_after_acceptance: true,
+            },
+            PylonTrainingArtifactRetentionPolicy {
+                retention_class: PylonTrainingArtifactRetentionClass::EphemeralTransport,
+                gc_after_seconds: Some(PYLON_TRAINING_GCS_EPHEMERAL_TRANSPORT_GC_AFTER_SECONDS),
+                immutable_after_acceptance: false,
+            },
+        ],
+    }
+}
+
+fn require_storage_path_component(value: &str, field: &str) -> ContractResult<()> {
     require_non_empty(value, field)?;
+    if value.contains('/') || value.contains('\\') || value == "." || value == ".." {
+        return Err(format!("pylon_training_{field}_invalid"));
+    }
+    Ok(())
+}
+
+fn parse_gcs_bucket_name(bucket_uri: &str) -> ContractResult<String> {
+    require_non_empty(bucket_uri, "bucket_uri")?;
+    let normalized = bucket_uri.trim_end_matches('/');
+    let bucket_name = normalized
+        .strip_prefix("gs://")
+        .ok_or_else(|| "pylon_training_bucket_uri_invalid".to_string())?;
+    if bucket_name.is_empty() || bucket_name.contains('/') {
+        return Err("pylon_training_bucket_uri_must_be_bucket_root".to_string());
+    }
+    if bucket_name.chars().any(|ch| {
+        !(ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '.' | '_' | '-'))
+    }) {
+        return Err("pylon_training_bucket_name_invalid".to_string());
+    }
+    Ok(bucket_name.to_string())
+}
+
+fn require_artifact_scope_component(value: &str, field: &str) -> ContractResult<()> {
+    require_storage_path_component(value, field)?;
     if value.contains('~') {
         return Err(format!("pylon_training_artifact_{field}_invalid"));
     }
@@ -2673,6 +2797,78 @@ mod tests {
     }
 
     #[test]
+    fn gcs_layout_policy_matches_frozen_launch_contract() {
+        let policy = pylon_training_artifact_gcs_layout_policy();
+        assert_eq!(policy.schema_version, PYLON_TRAINING_GCS_LAYOUT_SCHEMA_V1);
+        assert_eq!(
+            policy.bucket_uri_pattern,
+            PYLON_TRAINING_GCS_BUCKET_URI_PATTERN_V1
+        );
+        assert_eq!(
+            policy.bucket_name_convention,
+            PYLON_TRAINING_GCS_BUCKET_NAME_CONVENTION_V1
+        );
+        assert_eq!(
+            policy.run_prefix_pattern,
+            PYLON_TRAINING_GCS_RUN_PREFIX_PATTERN_V1
+        );
+        assert_eq!(
+            policy.window_prefix_pattern,
+            PYLON_TRAINING_GCS_WINDOW_PREFIX_PATTERN_V1
+        );
+        assert_eq!(
+            policy.temporary_prefix_pattern,
+            PYLON_TRAINING_GCS_TEMP_PREFIX_PATTERN_V1
+        );
+        assert!(policy.accepted_artifacts_immutable);
+        assert_eq!(
+            policy.overwrite_policy,
+            PylonTrainingArtifactOverwritePolicy::MutablePointerOnly
+        );
+        assert_eq!(
+            policy.mutable_pointer_kinds,
+            vec![PylonTrainingArtifactKind::LatestCheckpointPointer]
+        );
+        assert!(policy.resumable_upload_required);
+        assert_eq!(
+            policy.sharding_threshold_bytes,
+            PYLON_TRAINING_GCS_SHARD_THRESHOLD_BYTES
+        );
+        assert_eq!(
+            policy.shard_target_bytes,
+            PYLON_TRAINING_GCS_SHARD_TARGET_BYTES
+        );
+        assert_eq!(
+            policy.data_plane_access_policy,
+            PylonTrainingArtifactDataPlaneAccessPolicy::SignedUrl
+        );
+        assert_eq!(
+            policy.control_plane_auth_policy,
+            PylonTrainingArtifactControlPlaneAuthPolicy::Nip98
+        );
+        assert!(policy.retention_policies.iter().any(|entry| {
+            entry.retention_class == PylonTrainingArtifactRetentionClass::PrivateStaging
+                && entry.gc_after_seconds
+                    == Some(PYLON_TRAINING_GCS_PRIVATE_STAGING_GC_AFTER_SECONDS)
+        }));
+        assert!(policy.retention_policies.iter().any(|entry| {
+            entry.retention_class == PylonTrainingArtifactRetentionClass::AcceptedAuthority
+                && entry.gc_after_seconds.is_none()
+                && entry.immutable_after_acceptance
+        }));
+        assert!(policy.retention_policies.iter().any(|entry| {
+            entry.retention_class == PylonTrainingArtifactRetentionClass::PublicVerification
+                && entry.gc_after_seconds
+                    == Some(PYLON_TRAINING_GCS_PUBLIC_VERIFICATION_GC_AFTER_SECONDS)
+        }));
+        assert!(policy.retention_policies.iter().any(|entry| {
+            entry.retention_class == PylonTrainingArtifactRetentionClass::EphemeralTransport
+                && entry.gc_after_seconds
+                    == Some(PYLON_TRAINING_GCS_EPHEMERAL_TRANSPORT_GC_AFTER_SECONDS)
+        }));
+    }
+
+    #[test]
     fn artifact_resolver_roundtrips_launch_critical_object_paths() {
         let manifest = worker_manifest();
         let layout = PylonTrainingArtifactLayout::from_manifest(&manifest).expect("layout");
@@ -2745,6 +2941,35 @@ mod tests {
                 .expect("artifact id roundtrip");
             assert_eq!(roundtrip, response);
         }
+    }
+
+    #[test]
+    fn artifact_layout_rejects_bucket_prefixes_and_path_traversal() {
+        let invalid_bucket = PylonTrainingArtifactLayout {
+            bucket_uri: "gs://bucket/training".to_string(),
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: "window.000123".to_string(),
+        };
+        assert_eq!(
+            invalid_bucket
+                .validate()
+                .expect_err("bucket prefix must fail"),
+            "pylon_training_bucket_uri_must_be_bucket_root"
+        );
+
+        let invalid_window = PylonTrainingArtifactLayout {
+            bucket_uri: "gs://bucket".to_string(),
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: "../window.000123".to_string(),
+        };
+        assert_eq!(
+            invalid_window
+                .validate()
+                .expect_err("path traversal must fail"),
+            "pylon_training_window_id_invalid"
+        );
     }
 
     #[test]

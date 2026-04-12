@@ -27,6 +27,9 @@ issuance. Those land in the next issues:
 - `openagents#4298` for GCS object layout, lifecycle, and retention policy
 - `openagents#4299` for signed read and write URL issuance
 
+The matching launch-grade GCS policy now lives in
+[`compute-training-gcs-layout-contract.md`](./compute-training-gcs-layout-contract.md).
+
 ## Canonical Types
 
 The shared kernel-core contract now lives in:
