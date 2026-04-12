@@ -1651,36 +1651,35 @@ impl TreasuryState {
         let mut active_alerts = Vec::new();
         let latest_eligible_window_started_at_unix_ms =
             self.latest_eligible_window_started_at_unix_ms;
+        let oldest_dispatch_pending_at_unix_ms =
+            self.oldest_pending_payout_updated_at_unix_ms(&["queued", "dispatching"]);
+        let oldest_confirmation_pending_at_unix_ms =
+            self.oldest_pending_payout_updated_at_unix_ms(&["queued", "dispatching", "dispatched"]);
         let policy = self.active_policy(config);
 
         if policy.treasury_enabled {
-            if latest_eligible_window_started_at_unix_ms.is_some_and(|window_started_at| {
-                self.eligible_online_payout_targets > 0
-                    && window_started_at > self.last_dispatch_at_unix_ms.unwrap_or(0)
-                    && now_unix_ms.saturating_sub(window_started_at)
-                        >= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
+            if oldest_dispatch_pending_at_unix_ms.is_some_and(|pending_since_unix_ms| {
+                now_unix_ms.saturating_sub(pending_since_unix_ms)
+                    >= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
             }) {
                 active_alerts.push(TreasuryContinuityAlert {
                     alert_id: "dispatch_stalled".to_string(),
                     severity: "critical".to_string(),
-                    reason: "eligible_windows_not_dispatching".to_string(),
-                    started_at_unix_ms: latest_eligible_window_started_at_unix_ms
-                        .unwrap_or(now_unix_ms),
+                    reason: "pending_payouts_not_dispatching".to_string(),
+                    started_at_unix_ms: oldest_dispatch_pending_at_unix_ms.unwrap_or(now_unix_ms),
                     observed_at_unix_ms: now_unix_ms,
                 });
             }
 
-            if latest_eligible_window_started_at_unix_ms.is_some_and(|window_started_at| {
-                self.eligible_online_payout_targets > 0
-                    && window_started_at > self.last_confirmed_payout_at_unix_ms.unwrap_or(0)
-                    && now_unix_ms.saturating_sub(window_started_at)
-                        >= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
+            if oldest_confirmation_pending_at_unix_ms.is_some_and(|pending_since_unix_ms| {
+                now_unix_ms.saturating_sub(pending_since_unix_ms)
+                    >= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
             }) {
                 active_alerts.push(TreasuryContinuityAlert {
                     alert_id: "confirmations_stalled".to_string(),
                     severity: "critical".to_string(),
-                    reason: "eligible_windows_not_confirming".to_string(),
-                    started_at_unix_ms: latest_eligible_window_started_at_unix_ms
+                    reason: "pending_payouts_not_confirming".to_string(),
+                    started_at_unix_ms: oldest_confirmation_pending_at_unix_ms
                         .unwrap_or(now_unix_ms),
                     observed_at_unix_ms: now_unix_ms,
                 });
@@ -1796,6 +1795,14 @@ impl TreasuryState {
         receipts
     }
 
+    fn oldest_pending_payout_updated_at_unix_ms(&self, statuses: &[&str]) -> Option<u64> {
+        self.payout_records_by_key
+            .values()
+            .filter(|record| statuses.contains(&record.status.as_str()))
+            .map(|record| record.updated_at_unix_ms)
+            .min()
+    }
+
     fn impossible_zero_balance_with_receive_history(&self) -> bool {
         self.wallet_balance_sats == 0
             && self.completed_funding_receive_total_sats()
@@ -1842,6 +1849,7 @@ impl TreasuryState {
     fn degraded_reason(&self, config: &TreasuryConfig, now_unix_ms: u64) -> Option<String> {
         let (wallet_runtime_status, wallet_last_error) =
             self.wallet_runtime_view(config, now_unix_ms);
+        let active_continuity_alerts = self.continuity_signal_snapshot(config, now_unix_ms);
         if matches!(self.policy_runtime_status.as_deref(), Some("blocked")) {
             return self
                 .policy_last_error
@@ -1857,8 +1865,8 @@ impl TreasuryState {
                 .clone()
                 .or_else(|| Some("payout_loop_unhealthy".to_string()));
         }
-        if let Some(alert) = self
-            .active_continuity_alerts
+        if let Some(alert) = active_continuity_alerts
+            .active_alerts
             .iter()
             .find(|alert| alert.severity == "critical")
         {
@@ -2043,6 +2051,7 @@ impl TreasuryState {
             .public_snapshot
             .clone()
             .unwrap_or_else(|| self.build_public_snapshot(config, now_unix_ms));
+        let continuity = self.continuity_signal_snapshot(config, now_unix_ms);
         let (wallet_runtime_status, wallet_last_error) =
             self.wallet_runtime_view(config, now_unix_ms);
         let wallet_sync_lag_ms = self
@@ -2104,7 +2113,7 @@ impl TreasuryState {
             payouts_skipped_24h: snapshot.payouts_skipped_24h,
             skip_reason_metrics_24h: snapshot.skip_reason_metrics_24h,
             fail_reason_metrics_24h: snapshot.fail_reason_metrics_24h,
-            active_continuity_alerts: snapshot.active_continuity_alerts,
+            active_continuity_alerts: continuity.active_alerts,
         }
     }
 
@@ -6223,30 +6232,36 @@ mod tests {
     fn continuity_alerts_raise_and_clear_for_stalled_windows() {
         let mut state = TreasuryState::default();
         let config = test_treasury_config();
-        state.payout_targets_by_identity.insert(
-            "pubkey-a".to_string(),
-            super::RegisteredPayoutTarget {
+        let eligible_at_unix_ms = 1_800_000;
+        state.eligible_online_payout_targets = 1;
+        state.sellable_pylons_online_now = 1;
+        state.latest_eligible_window_started_at_unix_ms = Some(eligible_at_unix_ms);
+        state.payout_records_by_key.insert(
+            "pending-a".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "pending-a".to_string(),
                 nostr_pubkey_hex: "pubkey-a".to_string(),
-                source_session_id: "session-a".to_string(),
-                spark_address: "spark:alice".to_string(),
-                bitcoin_address: None,
-                registered_at_unix_ms: 10,
-                last_verified_at_unix_ms: 10,
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 2,
+                status: "dispatching".to_string(),
+                reason: None,
+                payment_id: None,
+                window_started_at_unix_ms: eligible_at_unix_ms,
+                window_ends_at_unix_ms: eligible_at_unix_ms.saturating_add(20_000),
+                created_at_unix_ms: eligible_at_unix_ms,
+                updated_at_unix_ms: eligible_at_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
             },
         );
 
-        let eligible_at_unix_ms = 1_800_000;
-        state.observe_payout_eligibility(
-            &config,
-            &[OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
-            }],
-            eligible_at_unix_ms,
-        );
-
         let alert_at_unix_ms =
-            eligible_at_unix_ms + super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 1;
+            eligible_at_unix_ms + super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000;
         let raised = state.sync_continuity_alerts(&config, alert_at_unix_ms);
         assert_eq!(raised.len(), 2);
         assert!(
@@ -6256,6 +6271,10 @@ mod tests {
         );
         assert_eq!(state.active_continuity_alerts.len(), 2);
 
+        if let Some(record) = state.payout_records_by_key.get_mut("pending-a") {
+            record.status = "confirmed".to_string();
+            record.updated_at_unix_ms = alert_at_unix_ms;
+        }
         state.last_dispatch_at_unix_ms = Some(alert_at_unix_ms);
         state.last_confirmed_payout_at_unix_ms = Some(alert_at_unix_ms);
         let cleared = state.sync_continuity_alerts(&config, alert_at_unix_ms + 1);
@@ -6266,6 +6285,68 @@ mod tests {
                 .all(|event| event.receipt_type == "treasury.alert.cleared")
         );
         assert!(state.active_continuity_alerts.is_empty());
+    }
+
+    #[test]
+    fn continuity_alerts_detect_backlog_even_when_latest_window_is_recent() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 2_000_000u64;
+
+        state.eligible_online_payout_targets = 120;
+        state.sellable_pylons_online_now = 120;
+        state.latest_eligible_window_started_at_unix_ms = Some(now_unix_ms.saturating_sub(1_000));
+        state.last_dispatch_at_unix_ms = Some(
+            now_unix_ms.saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000),
+        );
+        state.last_confirmed_payout_at_unix_ms = Some(
+            now_unix_ms.saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000),
+        );
+        state.payout_records_by_key.insert(
+            "dispatch-backlog".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "dispatch-backlog".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 2,
+                status: "dispatching".to_string(),
+                reason: None,
+                payment_id: None,
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(40_000),
+                created_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
+                updated_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(
+            stats.degraded_reason.as_deref(),
+            Some("continuity_alert:dispatch_stalled")
+        );
+        assert!(
+            stats.active_continuity_alerts.iter().any(|alert| {
+                alert.alert_id == "dispatch_stalled"
+                    && alert.reason == "pending_payouts_not_dispatching"
+            }),
+            "dispatch backlog should raise a critical continuity alert"
+        );
+        assert!(
+            stats.active_continuity_alerts.iter().any(|alert| {
+                alert.alert_id == "confirmations_stalled"
+                    && alert.reason == "pending_payouts_not_confirming"
+            }),
+            "confirmation backlog should raise a critical continuity alert"
+        );
     }
 
     #[test]
