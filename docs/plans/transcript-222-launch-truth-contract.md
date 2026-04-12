@@ -187,6 +187,42 @@ Weak-device work is not automatically:
 - model-progress-bearing work
 - dense local-update training
 
+### Launch default weak-device lane
+
+For launch week, the default weak-device lane is `validation_replay`.
+
+That freeze means:
+
+- weak-device launch truth does not depend on grouped-replica stage execution
+- weak-device launch truth does not depend on adapter training landing first
+- the public weak-device claim is satisfied when weaker nodes receive real
+  replay assignments, return retained validator artifacts, and reach accepted
+  or payout-eligible closeout under the defined validator path
+
+This is the current honest launch choice because the existing runtime and
+handoff work already supports the bounded validator replay path, while
+grouped-replica stage execution still belongs to the next expansion step rather
+than the minimum launch contract.
+
+The current weak-device floor is therefore:
+
+- enough network posture to reach the admitted training coordinator
+- enough durable local storage to materialize the challenged receipt,
+  artifact-manifest, and checkpoint family used by replay
+- one admitted replay capability posture on the node record
+
+It is explicitly not:
+
+- a claim that every weak device is a dense trainer
+- a claim that weak-device work advances canonical model state directly
+- a claim that grouped-replica execution is required before Transcript 222 can
+  be described honestly
+
+Grouped-replica stage execution and the existing Psionic weak-device accepted
+outcome proof remain relevant evidence for the broader architecture, but they
+are not the default launch lane and they are not the minimum public proof bar
+for next week.
+
 ### Accepted work
 
 `Accepted work` is real work whose output has been accepted into Nexus truth by

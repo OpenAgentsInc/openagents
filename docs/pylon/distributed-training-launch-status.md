@@ -177,12 +177,21 @@ story.
 
 The strongest version is:
 
-- one weaker device or weak-device-bearing lane gets real work
+- one weaker device gets real `validation_replay` work
 - that work reaches accepted closeout or accepted contribution state
 - the public surfaces and receipts make that visible
 
 Without that, the small-machine claim stays technically plausible but socially
 harder to defend.
+
+For launch, that default matters more than the broader architecture ambitions.
+`Psionic` already contains grouped-stage and weak-device-proof surfaces, but the
+next-week public contract should not quietly depend on grouped-replica work
+landing as a launch blocker. The bounded validator replay lane is the honest
+default because it already has the retained manifest, artifact rematerialization,
+receipt, and refusal vocabulary needed for weak-device real work. Grouped
+replicas remain a later expansion lane unless the launch docs change
+explicitly.
 
 ## Honest Launch Statement
 
@@ -193,9 +202,9 @@ real retained runtime, checkpoint handoff, resume, validator, and public-state
 surfaces across `Nexus`, `Pylon`, and `Psionic`. The next public launch should
 be described as a live distributed-training beta where nodes begin receiving
 real admitted work, stronger nodes can do checkpoint-bearing training-class
-work, weaker nodes can participate through bounded accepted work classes, and
-the public stats surfaces begin showing accepted progress rather than just
-presence.
+work, weaker nodes can participate through bounded accepted work classes with
+`validation_replay` as the default weak-device lane, and the public stats
+surfaces begin showing accepted progress rather than just presence.
 
 The weaker but still honest fallback statement is:
 
