@@ -127,6 +127,7 @@ pub const ENV_TRAINING_GCS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_GCS_B
 pub const ENV_GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_AUTO_RUN_INTERVAL_MS: u64 = 2_000;
+const DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS: u64 = 1;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
@@ -430,7 +431,17 @@ pub struct PylonTrainingLeaseCacheEntry {
     pub training_run_id: String,
     pub window_id: String,
     pub membership_revision: String,
+    #[serde(default = "default_training_role_claim")]
+    pub role: PylonTrainingRoleClaim,
     pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_id: Option<String>,
     pub updated_at_ms: i64,
 }
 
@@ -680,6 +691,14 @@ pub struct PylonTrainingRunLeaseResponse {
     pub manifest_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub membership_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -881,6 +900,8 @@ pub struct TrainingOperatorStatusReport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     active_runtime: Option<TrainingOperatorActiveRuntimeStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    leased_assignment: Option<TrainingOperatorLeasedAssignmentStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     current_window: Option<TrainingOperatorWindowStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     last_checkpoint: Option<TrainingOperatorCheckpointStatus>,
@@ -916,6 +937,26 @@ pub struct TrainingOperatorActiveRuntimeStatus {
     run_root: String,
     launch_count: u64,
     restart_count: u64,
+    updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorLeasedAssignmentStatus {
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    membership_revision: String,
+    role: String,
+    state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    expires_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    network_id: Option<String>,
     updated_at_ms: i64,
 }
 
@@ -5896,6 +5937,343 @@ fn training_coordination_retry_delay(attempt: usize) -> Duration {
     )
 }
 
+fn training_lease_state_is_terminal(state: &str) -> bool {
+    matches!(
+        state.trim(),
+        "drained" | "expired" | "failed" | "released" | "superseded"
+    )
+}
+
+fn training_lease_state_is_acknowledged(state: &str) -> bool {
+    matches!(state.trim(), "acked" | "accepted" | "assignment_acked")
+}
+
+fn newest_training_lease_cache_entry(
+    state: &PylonTrainingRuntimeState,
+) -> Option<PylonTrainingLeaseCacheEntry> {
+    state
+        .lease_cache
+        .values()
+        .max_by(|left, right| {
+            left.updated_at_ms
+                .cmp(&right.updated_at_ms)
+                .then_with(|| left.lease_id.cmp(&right.lease_id))
+        })
+        .cloned()
+}
+
+fn newest_pending_training_lease_cache_entry(
+    state: &PylonTrainingRuntimeState,
+) -> Option<PylonTrainingLeaseCacheEntry> {
+    state
+        .lease_cache
+        .values()
+        .filter(|lease| !training_lease_state_is_terminal(lease.state.as_str()))
+        .max_by(|left, right| {
+            left.updated_at_ms
+                .cmp(&right.updated_at_ms)
+                .then_with(|| left.lease_id.cmp(&right.lease_id))
+        })
+        .cloned()
+}
+
+fn training_cached_membership_revision_for_role(
+    state: &PylonTrainingRuntimeState,
+    role: PylonTrainingRoleClaim,
+) -> Option<String> {
+    state
+        .active_runtime
+        .as_ref()
+        .filter(|runtime| runtime.role == role)
+        .map(|runtime| runtime.membership_revision.clone())
+        .or_else(|| {
+            state
+                .lease_cache
+                .values()
+                .filter(|lease| lease.role == role)
+                .max_by(|left, right| {
+                    left.updated_at_ms
+                        .cmp(&right.updated_at_ms)
+                        .then_with(|| left.lease_id.cmp(&right.lease_id))
+                })
+                .map(|lease| lease.membership_revision.clone())
+        })
+}
+
+fn training_requested_networks(config: &PylonConfig) -> Vec<Option<String>> {
+    if config.training.allowed_networks.is_empty() {
+        return vec![None];
+    }
+    config
+        .training
+        .allowed_networks
+        .iter()
+        .map(|network_id| Some(network_id.clone()))
+        .collect()
+}
+
+fn supported_training_role_claims(
+    config: &PylonConfig,
+    availability: &ProviderAdapterTrainingContributorAvailability,
+    capability_tier: &ProviderTrainingCapabilityTierProfile,
+) -> Vec<PylonTrainingRoleClaim> {
+    config
+        .training
+        .role_claims
+        .iter()
+        .copied()
+        .filter(|role| match role {
+            PylonTrainingRoleClaim::Worker => availability.contributor_supported,
+            PylonTrainingRoleClaim::Validator => {
+                config.training.validator_enabled
+                    || capability_tier.replay_capability != ProviderTrainingReplayCapability::None
+            }
+            PylonTrainingRoleClaim::RecoverySource => availability.authority_receipt_supported,
+        })
+        .collect()
+}
+
+fn training_lease_claim_error_is_nonfatal(error: &str) -> bool {
+    error.contains("training_scheduler_assignment_unavailable")
+        || error.contains("training_node_not_eligible")
+        || error.contains("training_scheduler_role_overlap_forbidden")
+}
+
+fn cache_training_run_lease(
+    state: &mut PylonTrainingRuntimeState,
+    lease: &PylonTrainingRunLeaseResponse,
+    updated_at_ms: i64,
+) {
+    state.lease_cache.retain(|cached_lease_id, cached| {
+        *cached_lease_id == lease.lease_id || cached.assignment_id != lease.assignment_id
+    });
+    let membership_revision = lease
+        .membership_revision
+        .clone()
+        .or_else(|| {
+            state
+                .lease_cache
+                .get(lease.lease_id.as_str())
+                .map(|cached| cached.membership_revision.clone())
+        })
+        .unwrap_or_else(|| "members.unknown".to_string());
+    state.lease_cache.insert(
+        lease.lease_id.clone(),
+        PylonTrainingLeaseCacheEntry {
+            lease_id: lease.lease_id.clone(),
+            assignment_id: lease.assignment_id.clone(),
+            training_run_id: lease.training_run_id.clone(),
+            window_id: lease.window_id.clone(),
+            membership_revision,
+            role: lease.role,
+            state: lease
+                .assignment_state
+                .clone()
+                .unwrap_or_else(|| "leased".to_string()),
+            manifest_digest: lease.manifest_digest.clone(),
+            checkpoint_ref: lease.checkpoint_ref.clone(),
+            expires_at_ms: Some(lease.expires_at_ms),
+            network_id: lease.network_id.clone(),
+            updated_at_ms,
+        },
+    );
+    state.window_cache.insert(
+        lease.window_id.clone(),
+        PylonTrainingWindowCacheEntry {
+            window_id: lease.window_id.clone(),
+            training_run_id: lease.training_run_id.clone(),
+            state: lease
+                .window_state
+                .clone()
+                .unwrap_or_else(|| "leased".to_string()),
+            manifest_digest: lease.manifest_digest.clone(),
+            updated_at_ms,
+        },
+    );
+}
+
+fn update_cached_training_lease_state(
+    state: &mut PylonTrainingRuntimeState,
+    lease_id: &str,
+    lease_state: &str,
+    updated_at_ms: i64,
+) {
+    if let Some(cached) = state.lease_cache.get_mut(lease_id) {
+        cached.state = lease_state.to_string();
+        cached.updated_at_ms = updated_at_ms;
+    }
+}
+
+async fn run_training_assignment_intake_once_with_context(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    state: &mut PylonTrainingRuntimeState,
+    host: &ProviderHostTelemetrySnapshot,
+    runtime_surface: Option<&PsionicTrainRuntimeSurface>,
+) -> Result<()> {
+    if state
+        .active_runtime
+        .as_ref()
+        .is_some_and(|runtime| training_supervision_is_active(runtime.process_state))
+    {
+        return Ok(());
+    }
+    if !training_runtime_blocked_label_keys(state).is_empty() {
+        return Ok(());
+    }
+
+    let contributor_availability =
+        derive_adapter_training_contributor_availability(host, runtime_surface);
+    let capability_tier =
+        derive_training_capability_tier_profile(config, state, host, &contributor_availability);
+    let supported_roles =
+        supported_training_role_claims(config, &contributor_availability, &capability_tier);
+    if supported_roles.is_empty() {
+        return Ok(());
+    }
+
+    let client = PylonTrainingCoordinatorClient::new(config)?;
+    if let Some(existing_lease) = newest_pending_training_lease_cache_entry(state) {
+        if training_lease_state_is_acknowledged(existing_lease.state.as_str()) {
+            return Ok(());
+        }
+        let acked_at_ms = now_epoch_ms();
+        let ack = client
+            .ack_assignment(&PylonTrainingAssignmentAckRequest {
+                idempotency_key: format!(
+                    "training-assignment-ack:{}:{}",
+                    existing_lease.lease_id, acked_at_ms
+                ),
+                acked_at_ms,
+                node_pubkey_hex: identity.public_key_hex.clone(),
+                training_run_id: existing_lease.training_run_id.clone(),
+                window_id: existing_lease.window_id.clone(),
+                assignment_id: existing_lease.assignment_id.clone(),
+                lease_id: existing_lease.lease_id.clone(),
+                manifest_digest: existing_lease.manifest_digest.clone(),
+                manifest_path: None,
+            })
+            .await?;
+        update_cached_training_lease_state(
+            state,
+            existing_lease.lease_id.as_str(),
+            ack.lease_state
+                .as_deref()
+                .unwrap_or(if ack.accepted { "acked" } else { "rejected" }),
+            acked_at_ms,
+        );
+        return Ok(());
+    }
+
+    let admission_request = PylonTrainingNodeAdmissionRequest {
+        idempotency_key: format!(
+            "training-admission:{}:{}",
+            identity.public_key_hex,
+            now_epoch_ms()
+        ),
+        requested_at_ms: now_epoch_ms(),
+        node_pubkey_hex: identity.public_key_hex.clone(),
+        release_id: local_training_release_id(),
+        node_label: Some(config.node_label.clone()),
+        role_claims: supported_roles.clone(),
+        allowed_networks: config.training.allowed_networks.clone(),
+        build_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        build_digest: Some(local_training_build_digest()),
+        contributor_availability,
+        capability_tier,
+        host_telemetry: Some(host.clone()),
+        active_reputation_labels: training_runtime_blocked_label_keys(state),
+        settlement_destination: training_settlement_destination(config),
+    };
+    let admission = client.admit_node(&admission_request).await?;
+    if !admission.admitted {
+        bail!(
+            "training node admission rejected: {}",
+            admission
+                .reason
+                .unwrap_or_else(|| "training_node_not_admitted".to_string())
+        );
+    }
+
+    for role in supported_roles {
+        let membership_revision = training_cached_membership_revision_for_role(state, role);
+        for requested_network_id in training_requested_networks(config) {
+            let requested_at_ms = now_epoch_ms();
+            match client
+                .request_run_lease(&PylonTrainingRunLeaseRequest {
+                    idempotency_key: format!(
+                        "training-lease:{}:{}:{}",
+                        role.label(),
+                        requested_network_id.as_deref().unwrap_or("any"),
+                        requested_at_ms
+                    ),
+                    requested_at_ms,
+                    node_pubkey_hex: identity.public_key_hex.clone(),
+                    role,
+                    requested_network_id: requested_network_id.clone(),
+                    requested_training_run_id: None,
+                    membership_revision: membership_revision.clone(),
+                })
+                .await
+            {
+                Ok(lease) => {
+                    cache_training_run_lease(state, &lease, requested_at_ms);
+                    let acked_at_ms = now_epoch_ms();
+                    let ack = client
+                        .ack_assignment(&PylonTrainingAssignmentAckRequest {
+                            idempotency_key: format!(
+                                "training-assignment-ack:{}:{}",
+                                lease.lease_id, acked_at_ms
+                            ),
+                            acked_at_ms,
+                            node_pubkey_hex: identity.public_key_hex.clone(),
+                            training_run_id: lease.training_run_id.clone(),
+                            window_id: lease.window_id.clone(),
+                            assignment_id: lease.assignment_id.clone(),
+                            lease_id: lease.lease_id.clone(),
+                            manifest_digest: lease.manifest_digest.clone(),
+                            manifest_path: None,
+                        })
+                        .await?;
+                    update_cached_training_lease_state(
+                        state,
+                        lease.lease_id.as_str(),
+                        ack.lease_state
+                            .as_deref()
+                            .unwrap_or(if ack.accepted { "acked" } else { "rejected" }),
+                        acked_at_ms,
+                    );
+                    return Ok(());
+                }
+                Err(error) if training_lease_claim_error_is_nonfatal(&error.to_string()) => {
+                    continue;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn run_training_assignment_intake_once(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+) -> Result<()> {
+    let mut state = load_or_create_training_runtime_state(config)?;
+    let host = load_training_host_telemetry(config);
+    let runtime_surface = inspect_psionic_train_runtime_surface().ok();
+    run_training_assignment_intake_once_with_context(
+        config,
+        identity,
+        &mut state,
+        &host,
+        runtime_surface.as_ref(),
+    )
+    .await?;
+    save_training_runtime_state(config, &state)
+}
+
 #[derive(Clone, Debug)]
 struct TrainingManifestInspectionContext {
     manifest: openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
@@ -6850,16 +7228,20 @@ fn load_training_status_report_with_config(
         .active_runtime
         .as_ref()
         .map(training_operator_active_runtime_status);
+    let leased_assignment = newest_training_lease_cache_entry(&state)
+        .map(training_operator_leased_assignment_status);
     let current_run_id = active_runtime
         .as_ref()
         .map(|runtime| runtime.training_run_id.clone())
         .or_else(|| {
             newest_training_manifest_cache_entry(&state).map(|entry| entry.training_run_id)
-        });
+        })
+        .or_else(|| newest_training_lease_cache_entry(&state).map(|entry| entry.training_run_id));
     let active_window_id = active_runtime
         .as_ref()
         .map(|runtime| runtime.window_id.clone())
-        .or_else(|| newest_training_manifest_cache_entry(&state).map(|entry| entry.window_id));
+        .or_else(|| newest_training_manifest_cache_entry(&state).map(|entry| entry.window_id))
+        .or_else(|| newest_training_lease_cache_entry(&state).map(|entry| entry.window_id));
     let current_window = resolve_training_current_window_status(&state, contexts.as_slice());
     let last_checkpoint = resolve_training_last_checkpoint_status(
         contexts.as_slice(),
@@ -6936,6 +7318,7 @@ fn load_training_status_report_with_config(
         active_window_id,
         blocked_label_keys,
         active_runtime,
+        leased_assignment,
         current_window,
         last_checkpoint,
         validator_queue,
@@ -6983,6 +7366,25 @@ fn training_operator_active_runtime_status(
     }
 }
 
+fn training_operator_leased_assignment_status(
+    lease: PylonTrainingLeaseCacheEntry,
+) -> TrainingOperatorLeasedAssignmentStatus {
+    TrainingOperatorLeasedAssignmentStatus {
+        training_run_id: lease.training_run_id,
+        window_id: lease.window_id,
+        assignment_id: lease.assignment_id,
+        lease_id: lease.lease_id,
+        membership_revision: lease.membership_revision,
+        role: lease.role.label().to_string(),
+        state: lease.state,
+        manifest_digest: lease.manifest_digest,
+        checkpoint_ref: lease.checkpoint_ref,
+        expires_at_ms: lease.expires_at_ms,
+        network_id: lease.network_id,
+        updated_at_ms: lease.updated_at_ms,
+    }
+}
+
 fn resolve_training_current_window_status(
     state: &PylonTrainingRuntimeState,
     contexts: &[TrainingManifestInspectionContext],
@@ -6991,14 +7393,16 @@ fn resolve_training_current_window_status(
         .active_runtime
         .as_ref()
         .map(|runtime| runtime.window_id.clone())
-        .or_else(|| newest_training_manifest_cache_entry(state).map(|entry| entry.window_id))?;
+        .or_else(|| newest_training_manifest_cache_entry(state).map(|entry| entry.window_id))
+        .or_else(|| newest_training_lease_cache_entry(state).map(|entry| entry.window_id))?;
     let target_run_id = state
         .active_runtime
         .as_ref()
         .map(|runtime| runtime.training_run_id.clone())
         .or_else(|| {
             newest_training_manifest_cache_entry(state).map(|entry| entry.training_run_id)
-        })?;
+        })
+        .or_else(|| newest_training_lease_cache_entry(state).map(|entry| entry.training_run_id))?;
     if let Some(window) = state.window_cache.get(target_window_id.as_str()) {
         return Some(TrainingOperatorWindowStatus {
             training_run_id: window.training_run_id.clone(),
@@ -9255,6 +9659,21 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
         if let Some(last_failure_reason) = active_runtime.last_failure_reason.as_deref() {
             lines.push(format!("- last failure: {last_failure_reason}"));
         }
+    } else if let Some(leased_assignment) = report.leased_assignment.as_ref() {
+        lines.push(String::new());
+        lines.push("leased assignment:".to_string());
+        lines.push(format!(
+            "- {} {} {} {}",
+            leased_assignment.training_run_id,
+            leased_assignment.window_id,
+            leased_assignment.role,
+            leased_assignment.state
+        ));
+        lines.push(format!("- assignment: {}", leased_assignment.assignment_id));
+        lines.push(format!("- lease: {}", leased_assignment.lease_id));
+        if let Some(expires_at_ms) = leased_assignment.expires_at_ms {
+            lines.push(format!("- expires at ms: {expires_at_ms}"));
+        }
     }
     if let Some(current_window) = report.current_window.as_ref() {
         lines.push(String::new());
@@ -9309,6 +9728,8 @@ fn training_status_headline(report: &TrainingOperatorStatusReport) -> &'static s
         "blocked"
     } else if report.active_runtime.is_some() {
         "active"
+    } else if report.leased_assignment.is_some() {
+        "leased"
     } else if report.contributor_supported {
         "ready"
     } else if report.runtime_surface_detected || report.manifest_count > 0 {
@@ -10075,6 +10496,10 @@ fn default_training_role_claims() -> Vec<PylonTrainingRoleClaim> {
     vec![PylonTrainingRoleClaim::Worker]
 }
 
+const fn default_training_role_claim() -> PylonTrainingRoleClaim {
+    PylonTrainingRoleClaim::Worker
+}
+
 fn default_training_artifact_credential_source_names() -> Vec<String> {
     vec!["google_application_default_credentials".to_string()]
 }
@@ -10121,6 +10546,10 @@ pub fn provider_presence_heartbeat_interval() -> Duration {
 
 pub fn provider_auto_run_interval() -> Duration {
     Duration::from_millis(DEFAULT_PROVIDER_AUTO_RUN_INTERVAL_MS)
+}
+
+pub fn training_assignment_intake_interval() -> Duration {
+    Duration::from_millis(DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS)
 }
 
 pub fn new_provider_presence_session_id() -> String {
@@ -10198,9 +10627,11 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
     let provider_presence_session_id = new_provider_presence_session_id();
     let provider_presence_heartbeat_interval = provider_presence_heartbeat_interval();
     let provider_auto_run_interval = provider_auto_run_interval();
+    let training_assignment_intake_interval = training_assignment_intake_interval();
     let provider_payout_target_sync_interval = provider_payout_target_sync_interval();
     let mut next_provider_presence_heartbeat_at = Instant::now();
     let mut next_provider_auto_run_at = Instant::now();
+    let mut next_training_assignment_intake_at = Instant::now();
     let mut next_provider_payout_target_sync_at = Instant::now();
     let mut provider_presence_online = false;
     let mut previous_snapshot = None::<ProviderPersistedSnapshot>;
@@ -10254,6 +10685,7 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
             provider_presence_online = false;
             next_provider_presence_heartbeat_at = Instant::now();
             next_provider_auto_run_at = Instant::now();
+            next_training_assignment_intake_at = Instant::now();
             next_provider_payout_target_sync_at = Instant::now();
         }
 
@@ -10303,6 +10735,18 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                         eprintln!("warning: automatic pylon provider intake pass failed: {error}");
                     }
                     next_provider_auto_run_at = Instant::now() + provider_auto_run_interval;
+                }
+                if desired_mode == ProviderDesiredMode::Online
+                    && Instant::now() >= next_training_assignment_intake_at
+                {
+                    if let Err(error) = run_training_assignment_intake_once(&config, &identity).await
+                    {
+                        eprintln!(
+                            "warning: automatic pylon training assignment intake failed: {error}"
+                        );
+                    }
+                    next_training_assignment_intake_at =
+                        Instant::now() + training_assignment_intake_interval;
                 }
 
                 if desired_mode == ProviderDesiredMode::Online
@@ -15038,7 +15482,8 @@ mod tests {
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
-        save_config, save_gemma_diagnostic_report, save_training_runtime_state,
+        run_training_assignment_intake_once_with_context, save_config,
+        save_gemma_diagnostic_report, save_training_runtime_state,
         scan_provider_requests, serve, snapshot_training_status_report,
         start_training_checkpoint_server, start_training_supervisor, submit_buyer_job,
         sync_live_announcement, sync_provider_payout_target_with_report,
@@ -16442,7 +16887,12 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 training_run_id: "run.alpha".to_string(),
                 window_id: "window.0001".to_string(),
                 membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
                 state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_260_020),
+                network_id: Some("trainnet.alpha".to_string()),
                 updated_at_ms: 1_762_491_200_020,
             },
         );
@@ -16876,6 +17326,221 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             counts.get("/api/training/heartbeats") == Some(&2)
                 && counts.get("/api/training/nodes/admission") == Some(&2),
             "heartbeat should retry on a transient server error and repeated node-admission calls should hit the same idempotent route safely",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_assignment_intake_claims_and_acks_assignment_and_updates_status()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let base_url = start_mock_http_server(move |method, path, _body| {
+            if method != "POST" {
+                return (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed","reason":method}).to_string(),
+                );
+            }
+            let mut counts = request_counts_for_server
+                .lock()
+                .expect("training assignment intake request counts");
+            let count = counts.entry(path.clone()).or_insert(0);
+            *count += 1;
+            let response = match path.as_str() {
+                "/api/training/nodes/admission" => json!({
+                    "ack": {
+                        "idempotency_key": "idemp.training.assignment_intake.admission",
+                        "recorded_at_ms": 1_762_491_200_500_i64,
+                        "authority_state": "admitted"
+                    },
+                    "admission_id": "admission.alpha",
+                    "admitted": true,
+                    "reason": null
+                }),
+                "/api/training/leases/claim" => json!({
+                    "ack": {
+                        "idempotency_key": "idemp.training.assignment_intake.lease",
+                        "recorded_at_ms": 1_762_491_200_600_i64,
+                        "authority_state": "leased"
+                    },
+                    "lease_id": "lease.node01.window0001",
+                    "training_run_id": "run.alpha",
+                    "window_id": "window.0001",
+                    "assignment_id": "assign.node01.window0001",
+                    "role": "worker",
+                    "issued_at_ms": 1_762_491_200_600_i64,
+                    "expires_at_ms": 1_762_491_260_600_i64,
+                    "manifest_digest": "sha256:manifest-alpha",
+                    "checkpoint_ref": "checkpoint://run.alpha/0001",
+                    "membership_revision": "members.rev2",
+                    "assignment_state": "leased",
+                    "window_state": "active",
+                    "network_id": "trainnet.alpha"
+                }),
+                "/api/training/assignments/ack" => json!({
+                    "ack": {
+                        "idempotency_key": "idemp.training.assignment_intake.ack",
+                        "recorded_at_ms": 1_762_491_200_700_i64,
+                        "authority_state": "assignment_acked"
+                    },
+                    "accepted": true,
+                    "lease_state": "acked"
+                }),
+                _ => json!({"error":"unexpected_path","reason":path}),
+            };
+            (200, "application/json", response.to_string())
+        })
+        .await?;
+
+        let (temp_dir, mut config, identity) = training_coordinator_fixture(base_url.as_str())?;
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Worker];
+        save_config(temp_dir.path().join("config.json").as_path(), &config)?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let host = training_host_snapshot(Some("NVIDIA H100 SXM5 80GB"), Some(80), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        run_training_assignment_intake_once_with_context(
+            &config,
+            &identity,
+            &mut state,
+            &host,
+            Some(&runtime_surface),
+        )
+        .await?;
+        save_training_runtime_state(&config, &state)?;
+
+        let lease = state
+            .lease_cache
+            .get("lease.node01.window0001")
+            .ok_or_else(|| std::io::Error::other("missing cached lease"))?;
+        ensure(
+            lease.assignment_id == "assign.node01.window0001"
+                && lease.membership_revision == "members.rev2"
+                && lease.role == PylonTrainingRoleClaim::Worker
+                && lease.state == "acked"
+                && lease.network_id.as_deref() == Some("trainnet.alpha"),
+            "automatic training assignment intake should persist the leased assignment and its acked state",
+        )?;
+        ensure(
+            state
+                .window_cache
+                .get("window.0001")
+                .is_some_and(|window| window.state == "active"),
+            "automatic training assignment intake should retain the window state from the lease response",
+        )?;
+
+        let report = load_training_status_report_local(temp_dir.path().join("config.json").as_path())?;
+        ensure(
+            report.current_run_id.as_deref() == Some("run.alpha")
+                && report.active_window_id.as_deref() == Some("window.0001")
+                && report.leased_assignment.as_ref().is_some_and(|assignment| {
+                    assignment.assignment_id == "assign.node01.window0001"
+                        && assignment.lease_id == "lease.node01.window0001"
+                        && assignment.state == "acked"
+                }),
+            "training status should surface the leased assignment before the runtime launches",
+        )?;
+        ensure(
+            render_training_status_report(&report).contains("leased assignment:")
+                && render_training_status_report(&report).contains("training state: leased"),
+            "the human training status renderer should surface the retained leased assignment",
+        )?;
+
+        let counts = request_counts
+            .lock()
+            .expect("training assignment intake request counts")
+            .clone();
+        ensure(
+            counts.get("/api/training/nodes/admission") == Some(&1)
+                && counts.get("/api/training/leases/claim") == Some(&1)
+                && counts.get("/api/training/assignments/ack") == Some(&1),
+            "training assignment intake should admit, claim, and acknowledge exactly once for one new lease",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_assignment_intake_retries_cached_lease_ack_without_new_claim()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let base_url = start_mock_http_server(move |method, path, _body| {
+            if method != "POST" {
+                return (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed","reason":method}).to_string(),
+                );
+            }
+            let mut counts = request_counts_for_server
+                .lock()
+                .expect("training assignment ack retry request counts");
+            let count = counts.entry(path.clone()).or_insert(0);
+            *count += 1;
+            let response = match path.as_str() {
+                "/api/training/assignments/ack" => json!({
+                    "ack": {
+                        "idempotency_key": "idemp.training.assignment_retry.ack",
+                        "recorded_at_ms": 1_762_491_210_700_i64,
+                        "authority_state": "assignment_acked"
+                    },
+                    "accepted": true,
+                    "lease_state": "acked"
+                }),
+                _ => json!({"error":"unexpected_path","reason":path}),
+            };
+            (200, "application/json", response.to_string())
+        })
+        .await?;
+
+        let (_temp_dir, config, identity) = training_coordinator_fixture(base_url.as_str())?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.lease_cache.insert(
+            "lease.node01.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.node01.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev2".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "leased".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_260_600),
+                network_id: Some("trainnet.alpha".to_string()),
+                updated_at_ms: 1_762_491_210_600,
+            },
+        );
+
+        let host = training_host_snapshot(Some("NVIDIA H100 SXM5 80GB"), Some(80), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        run_training_assignment_intake_once_with_context(
+            &config,
+            &identity,
+            &mut state,
+            &host,
+            Some(&runtime_surface),
+        )
+        .await?;
+
+        ensure(
+            state
+                .lease_cache
+                .get("lease.node01.window0001")
+                .is_some_and(|lease| lease.state == "acked"),
+            "retained leased assignments should be acknowledged on the next intake pass instead of forcing a new claim",
+        )?;
+
+        let counts = request_counts
+            .lock()
+            .expect("training assignment ack retry request counts")
+            .clone();
+        ensure(
+            counts.get("/api/training/assignments/ack") == Some(&1)
+                && !counts.contains_key("/api/training/nodes/admission")
+                && !counts.contains_key("/api/training/leases/claim"),
+            "cached leased assignments should retry only the missing assignment ack on restart",
         )
     }
 
