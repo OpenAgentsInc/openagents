@@ -19385,7 +19385,8 @@ mod tests {
         TrainingWindowDefensibilityArtifactAudit, TrainingWindowDefensibilityAudit,
         TrainingWindowDefensibilityPromotionAudit, TrainingWindowDefensibilityValidatorAudit,
         TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
-        training_fleet_abuse_snapshot, training_scheduler_metadata_from_run,
+        training_contributor_tier_projection, training_fleet_abuse_snapshot,
+        training_scheduler_metadata_from_run,
         training_window_closeout_outcome, training_window_closeout_status,
         training_window_closeout_treasury_payout_requests, training_window_metadata_value,
         validator_service,
@@ -19509,7 +19510,7 @@ mod tests {
     };
     use serde_json::{Value, json};
     use std::sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
     use tempfile::tempdir;
@@ -19535,7 +19536,7 @@ mod tests {
     };
 
     use super::{
-        AdmittedTrainingNodeView, AppState, DEFAULT_COMPUTE_POLICY_BUNDLE_ID,
+        AdmittedTrainingNodeView, AppState, ControlStore, DEFAULT_COMPUTE_POLICY_BUNDLE_ID,
         DEFAULT_COMPUTE_POLICY_VERSION, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
         DesktopSessionCreateRequest, DesktopSessionResponse, FinalizeValidatorChallengeRequest,
         LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse, NexusHomepageResponse,
@@ -34567,6 +34568,580 @@ mod tests {
         );
 
         relay_handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn transcript_222_crowd_threshold_projects_public_truth_and_payouts() -> Result<()> {
+        const TARGET_PARTICIPANT_THRESHOLD: usize = 71;
+        const STRONG_COUNT: usize = 11;
+        const WEAK_COUNT: usize = TARGET_PARTICIPANT_THRESHOLD - STRONG_COUNT;
+        const ONLINE_ONLY_COUNT: usize = 9;
+        const PAYOUT_SATS_PER_WINDOW: u64 = 21;
+
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = PAYOUT_SATS_PER_WINDOW;
+        config.treasury.daily_budget_cap_sats =
+            TARGET_PARTICIPANT_THRESHOLD as u64 * PAYOUT_SATS_PER_WINDOW;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = now_unix_ms().saturating_sub(120_000);
+        let network_id = "trainnet.transcript222.threshold";
+
+        let accept_outcome = |store: &mut ControlStore,
+                              accepted_at_ms: u64,
+                              outcome_id: String,
+                              run_id: String,
+                              window_id: String,
+                              assignment_id: String,
+                              node_pubkey_hex: String,
+                              environment_ref: &str,
+                              work_class: ComputeTrainingWorkClass,
+                              replica_type: ComputeTrainingReplicaType,
+                              progress_class: &str,
+                              weak_device_bearing: bool,
+                              progress_bearing: bool,
+                              payout_basis: &str,
+                              weight_basis: Option<&str>,
+                              weight_value: Option<u64>,
+                              checkpoint_ref: Option<String>|
+         -> Result<()> {
+            let run = store
+                .kernel
+                .get_compute_training_run(run_id.as_str())
+                .ok_or_else(|| anyhow::anyhow!("missing training run: {run_id}"))?;
+            let slug = crate::sanitize_identifier(run_id.as_str());
+            let backend_family = if weak_device_bearing { "metal" } else { "cuda" };
+            let dataset_slice = training_window_dataset_slice(
+                format!("slice://{slug}").as_str(),
+                format!("sha256:slice-{slug}").as_str(),
+            );
+            let stage_id = if progress_bearing {
+                "stage.threshold.strong"
+            } else {
+                "stage.threshold.weak"
+            };
+            let source_policy_revision =
+                compute_adapter_policy_revision(format!("policy-rev-{slug}").as_str(), accepted_at_ms as i64 - 50);
+            let source_checkpoint_pointer =
+                compute_adapter_checkpoint_pointer(format!("sha256:pointer-{slug}").as_str(), accepted_at_ms as i64 - 25);
+            let base_checkpoint_ref = source_checkpoint_pointer.checkpoint_ref.clone();
+            let window = ComputeAdapterTrainingWindow {
+                window_id: window_id.clone(),
+                training_run_id: run_id.clone(),
+                stage_id: stage_id.to_string(),
+                contributor_set_revision_id: "contributors.rev1".to_string(),
+                validator_policy_ref: run.validator_policy_ref.clone(),
+                work_class,
+                replica_type,
+                round_index: Some(1),
+                base_checkpoint_ref: base_checkpoint_ref.clone(),
+                planned_local_step_count: progress_bearing.then_some(64),
+                aggregation_rule: progress_bearing.then_some("weighted_avg".to_string()),
+                aggregation_weight_basis: progress_bearing.then_some("tokens".to_string()),
+                adapter_target_id: String::new(),
+                adapter_family: String::new(),
+                base_model_ref: run
+                    .model_ref
+                    .clone()
+                    .unwrap_or_else(|| format!("model://{slug}")),
+                adapter_format: String::new(),
+                source_policy_revision,
+                source_checkpoint_pointer,
+                status: ComputeAdapterWindowStatus::Reconciled,
+                total_contributions: 1,
+                admitted_contributions: 1,
+                accepted_contributions: 1,
+                quarantined_contributions: 0,
+                rejected_contributions: 0,
+                replay_required_contributions: 0,
+                replay_checked_contributions: 0,
+                held_out_average_score_bps: progress_bearing.then_some(9_550),
+                benchmark_pass_rate_bps: progress_bearing.then_some(9_700),
+                runtime_smoke_passed: Some(true),
+                promotion_ready: progress_bearing,
+                gate_reason_codes: Vec::new(),
+                window_summary_digest: format!("sha256:window-summary-{slug}"),
+                promotion_disposition: None,
+                hold_reason_codes: Vec::new(),
+                aggregated_delta_digest: progress_bearing
+                    .then_some(format!("sha256:aggregate-{slug}")),
+                accepted_aggregate_id: progress_bearing.then_some(format!("aggregate.{slug}")),
+                output_policy_revision: None,
+                output_checkpoint_pointer: None,
+                promoted_checkpoint_ref: None,
+                accepted_outcome_id: None,
+                recorded_at_ms: accepted_at_ms as i64,
+                metadata: training_window_metadata_value(&TrainingWindowMetadata {
+                    network_id: network_id.to_string(),
+                    artifact_bucket_uri: "gs://bucket".to_string(),
+                    environment_ref: environment_ref.to_string(),
+                    backend_family: backend_family.to_string(),
+                    membership_revision: "members.rev1".to_string(),
+                    assignment_plans: vec![super::TrainingWindowAssignmentPlan {
+                        assignment_id: assignment_id.clone(),
+                        node_pubkey_hex: node_pubkey_hex.clone(),
+                        contributor_node_id: node_pubkey_hex.clone(),
+                        worker_id: format!("worker.{slug}"),
+                        dataset_slice: dataset_slice.clone(),
+                        assignment_seed: format!("seed.{slug}"),
+                    }],
+                    validation: None,
+                    planned_at_ms: accepted_at_ms as i64 - 200,
+                    activated_at_ms: Some(accepted_at_ms as i64 - 150),
+                    sealed_at_ms: Some(accepted_at_ms as i64 - 100),
+                    reconciled_at_ms: Some(accepted_at_ms as i64),
+                    defensibility: None,
+                    seal_deadline_ms: accepted_at_ms as i64 + 300_000,
+                }),
+            };
+            let contribution = ComputeAdapterContributionOutcome {
+                contribution_id: format!("contrib.{slug}"),
+                training_run_id: run_id.clone(),
+                stage_id: stage_id.to_string(),
+                window_id: window_id.clone(),
+                contributor_set_revision_id: "contributors.rev1".to_string(),
+                assignment_id: assignment_id.clone(),
+                contributor_node_id: node_pubkey_hex.clone(),
+                worker_id: format!("worker.{slug}"),
+                validator_policy_ref: run.validator_policy_ref.clone(),
+                work_class,
+                replica_type,
+                base_checkpoint_ref: window.base_checkpoint_ref.clone(),
+                adapter_target_id: String::new(),
+                adapter_family: String::new(),
+                base_model_ref: window.base_model_ref.clone(),
+                adapter_format: String::new(),
+                dataset_slice,
+                source_policy_revision: window.source_policy_revision.clone(),
+                source_checkpoint_pointer: window.source_checkpoint_pointer.clone(),
+                submission_receipt_digest: format!("sha256:submission-{slug}"),
+                artifact_id: format!("artifact.{slug}"),
+                manifest_digest: format!("sha256:manifest-{slug}"),
+                object_digest: format!("sha256:object-{slug}"),
+                artifact_receipt_digest: format!("sha256:artifact-receipt-{slug}"),
+                provenance_bundle_digest: format!("sha256:provenance-{slug}"),
+                security_receipt_digest: format!("sha256:security-{slug}"),
+                replay_receipt_digest: Some(format!("sha256:replay-{slug}")),
+                validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+                validation_reason_codes: Vec::new(),
+                validator_receipt_digest: format!("sha256:validator-{slug}"),
+                aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+                accepted_for_aggregation: true,
+                local_step_count: progress_bearing.then_some(64),
+                consumed_token_count: progress_bearing.then_some(131_072),
+                consumed_example_count: progress_bearing.then_some(256),
+                aggregation_weight_basis: progress_bearing.then_some("tokens".to_string()),
+                aggregation_weight_value: progress_bearing.then_some(131_072),
+                aggregation_weight_bps: progress_bearing.then_some(10_000),
+                promotion_receipt_digest: None,
+                recorded_at_ms: accepted_at_ms as i64,
+                metadata: json!({
+                    "contributor_capability_tier": if progress_bearing {
+                        "tier3_island"
+                    } else {
+                        "tier1_validation"
+                    },
+                    "contributor_weak_device_bearing": weak_device_bearing,
+                }),
+            };
+            let contribution_outcomes = vec![contribution.clone()];
+            let contributor_tiers = training_contributor_tier_projection(
+                contribution_outcomes.as_slice(),
+            );
+            let closeout_status = TrainingWindowCloseoutStatus::Rewarded;
+            let abuse_controls = store.training_scheduler.rollout_policy().abuse_controls.clone();
+            let abuse_snapshot = training_fleet_abuse_snapshot(
+                &store.kernel,
+                &store.training_scheduler,
+                &abuse_controls,
+                accepted_at_ms,
+            );
+            let treasury_payout_requests = training_window_closeout_treasury_payout_requests(
+                PAYOUT_SATS_PER_WINDOW,
+                &window,
+                contribution_outcomes.as_slice(),
+                accepted_at_ms as i64,
+                closeout_status,
+                &abuse_controls,
+                &abuse_snapshot,
+            );
+            store
+                .kernel
+                .record_compute_adapter_window(
+                    &training_kernel_mutation_context("scheduler", accepted_at_ms),
+                    RecordComputeAdapterWindowRequest {
+                        idempotency_key: format!("idemp.window.{slug}"),
+                        trace: TraceContext::default(),
+                        policy: kernel_policy(),
+                        window,
+                        contribution_outcomes,
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .map_err(anyhow::Error::msg)?;
+            store
+                .kernel
+                .accept_compute_outcome(
+                &training_kernel_mutation_context("scheduler", accepted_at_ms),
+                AcceptComputeOutcomeRequest {
+                    idempotency_key: format!("idemp.accept.{outcome_id}"),
+                    trace: TraceContext::default(),
+                    policy: kernel_policy(),
+                    outcome: ComputeAcceptedOutcome {
+                        outcome_id,
+                        outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+                        source_run_id: run_id.clone(),
+                        environment_binding: ComputeEnvironmentBinding {
+                            environment_ref: environment_ref.to_string(),
+                            environment_version: Some("2026.04.12".to_string()),
+                            dataset_ref: Some("dataset://psion/public_corpus".to_string()),
+                            rubric_ref: None,
+                            evaluator_policy_ref: None,
+                        },
+                        checkpoint_binding: Some(ComputeCheckpointBinding {
+                            checkpoint_family: "decoder".to_string(),
+                            latest_checkpoint_ref: Some(
+                                checkpoint_ref
+                                    .clone()
+                                    .unwrap_or_else(|| "checkpoint://decoder/base".to_string()),
+                            ),
+                            recovery_posture: Some(
+                                "resume_from_last_stable_checkpoint".to_string(),
+                            ),
+                        }),
+                        validator_policy_ref: Some("policy://validator/mvp/v1".to_string()),
+                        benchmark_package_refs: Vec::new(),
+                        accepted_at_ms: accepted_at_ms as i64,
+                        evaluation_summary: None,
+                        training_summary: Some(ComputeTrainingSummary {
+                            completed_step_count: progress_bearing.then_some(64),
+                            processed_token_count: progress_bearing.then_some(131_072),
+                            average_loss: progress_bearing.then_some(0.19),
+                            best_eval_score_bps: progress_bearing.then_some(9_550),
+                            accepted_checkpoint_ref: checkpoint_ref,
+                            aggregate_metrics: Vec::new(),
+                            artifacts: Vec::new(),
+                        }),
+                        metadata: json!({
+                            "network_id": network_id,
+                            "window_id": window_id,
+                            "closeout_status": "rewarded",
+                            "payout_eligible": true,
+                            "contributor_tiers": contributor_tiers,
+                            "work_class": work_class.label(),
+                            "replica_type": replica_type.label(),
+                            "progress_class": progress_class,
+                            "weak_device_bearing": weak_device_bearing,
+                            "payout_projection": {
+                                "basis": payout_basis,
+                                "weight_basis": weight_basis,
+                                "total_weight_value": weight_value,
+                                "weighted": weight_basis.is_some(),
+                                "shared_result": false,
+                                "progress_bearing": progress_bearing,
+                                "participant_count": 1,
+                                "progress_participant_count": if progress_bearing { 1 } else { 0 },
+                                "participants": []
+                            }
+                        }),
+                    },
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+                .map_err(anyhow::Error::msg)?;
+            if !treasury_payout_requests.is_empty() {
+                store.treasury.queue_payout_requests(
+                    &state.config.treasury,
+                    treasury_payout_requests.as_slice(),
+                    accepted_at_ms,
+                );
+            }
+            Ok(())
+        };
+
+        for ordinal in 0..TARGET_PARTICIPANT_THRESHOLD {
+            let strong_lane = ordinal < STRONG_COUNT;
+            let training_run_id = format!("run.transcript222.threshold.{ordinal:03}");
+            let window_id = format!("window.transcript222.threshold.{ordinal:03}");
+            let node_pubkey_hex = format!("node-threshold-{ordinal:03}");
+            let build_digest = format!("sha256:build-threshold-{ordinal:03}");
+            let environment_ref = if strong_lane {
+                PYLON_TRAINING_CUDA_ENVIRONMENT_REF
+            } else {
+                PYLON_TRAINING_APPLE_ENVIRONMENT_REF
+            };
+            let work_class = if strong_lane {
+                ComputeTrainingWorkClass::FullIslandLocalUpdateTraining
+            } else {
+                ComputeTrainingWorkClass::ValidationReplay
+            };
+            let replica_type = if strong_lane {
+                ComputeTrainingReplicaType::Island
+            } else {
+                ComputeTrainingReplicaType::SingleNode
+            };
+            let available_memory_gb = if strong_lane { Some(512) } else { Some(32) };
+            seed_training_scheduler_run_with_environment_contract_and_topology(
+                &state,
+                created_at_ms + ordinal as u64 * 10,
+                training_run_id.as_str(),
+                window_id.as_str(),
+                network_id,
+                node_pubkey_hex.as_str(),
+                build_digest.as_str(),
+                environment_ref,
+                work_class,
+                replica_type,
+                available_memory_gb,
+            );
+            {
+                let mut store = state.store.write().expect("write store");
+                store.treasury.payout_targets_by_identity.insert(
+                    node_pubkey_hex.clone(),
+                    RegisteredPayoutTarget {
+                        nostr_pubkey_hex: node_pubkey_hex.clone(),
+                        source_session_id: format!("session-{node_pubkey_hex}"),
+                        spark_address: format!("spark:{node_pubkey_hex}"),
+                        bitcoin_address: None,
+                        registered_at_unix_ms: created_at_ms + ordinal as u64 * 10 + 5,
+                        last_verified_at_unix_ms: created_at_ms + ordinal as u64 * 10 + 5,
+                    },
+                );
+            }
+
+            let lease_response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/training/leases/claim")
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&training_run_lease_request(
+                            format!("idemp.training.lease.transcript222.threshold.{ordinal:03}")
+                                .as_str(),
+                            created_at_ms as i64 + 1_000 + ordinal as i64,
+                            node_pubkey_hex.as_str(),
+                            training_run_id.as_str(),
+                            network_id,
+                        ))?))?,
+                )
+                .await?;
+            assert_eq!(lease_response.status(), StatusCode::OK);
+            let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+            {
+                let mut store = state.store.write().expect("write store");
+                accept_outcome(
+                    &mut store,
+                    created_at_ms + 2_000 + ordinal as u64,
+                    format!("accepted.training_window.{window_id}"),
+                    training_run_id.clone(),
+                    window_id.clone(),
+                    lease.assignment_id.clone(),
+                    node_pubkey_hex.clone(),
+                    environment_ref,
+                    work_class,
+                    replica_type,
+                    if strong_lane {
+                        "model_update"
+                    } else {
+                        "participation_only"
+                    },
+                    !strong_lane,
+                    strong_lane,
+                    if strong_lane {
+                        "aggregation_weight"
+                    } else {
+                        "validator_verdict"
+                    },
+                    strong_lane.then_some("tokens"),
+                    strong_lane.then_some(131_072),
+                    strong_lane.then(|| format!("checkpoint://threshold/{ordinal:03}")),
+                )?;
+            }
+        }
+
+        {
+            for ordinal in 0..ONLINE_ONLY_COUNT {
+                let node_pubkey_hex = format!("node-online-only-{ordinal:03}");
+                let build_digest = format!("sha256:build-online-only-{ordinal:03}");
+                let training_run_id = format!("run.transcript222.online_only.{ordinal:03}");
+                let window_id = format!("window.transcript222.online_only.{ordinal:03}");
+                seed_training_scheduler_run_with_environment_contract_and_topology(
+                    &state,
+                    created_at_ms + 10_000 + ordinal as u64 * 10,
+                    training_run_id.as_str(),
+                    window_id.as_str(),
+                    network_id,
+                    node_pubkey_hex.as_str(),
+                    build_digest.as_str(),
+                    PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+                    ComputeTrainingWorkClass::ValidationReplay,
+                    ComputeTrainingReplicaType::SingleNode,
+                    Some(32),
+                );
+            }
+        }
+
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let payment_counter = Arc::new(Mutex::new(0u64));
+        let payment_counter_for_hook = Arc::clone(&payment_counter);
+        set_test_wallet_send_hook(Some(Arc::new(move |_target, amount_sats| {
+            assert_eq!(amount_sats, PAYOUT_SATS_PER_WINDOW);
+            let mut counter = payment_counter_for_hook.lock().expect("payment counter");
+            *counter = counter.saturating_add(1);
+            Ok(format!("payment-send-transcript222-{:03}", *counter))
+        })));
+        run_treasury_dispatch_cycle(&state).await;
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(
+            stats.training_nodes_online,
+            (TARGET_PARTICIPANT_THRESHOLD + ONLINE_ONLY_COUNT) as u64
+        );
+        assert_eq!(
+            stats.training_admitted_contributors,
+            (TARGET_PARTICIPANT_THRESHOLD + ONLINE_ONLY_COUNT) as u64
+        );
+        assert_eq!(
+            stats.training_assigned_contributors,
+            TARGET_PARTICIPANT_THRESHOLD as u64
+        );
+        assert_eq!(
+            stats.training_accepted_contributors,
+            TARGET_PARTICIPANT_THRESHOLD as u64
+        );
+        assert_eq!(stats.training_model_progress_contributors, STRONG_COUNT as u64);
+        assert_eq!(stats.training_weak_device_assigned_contributors, WEAK_COUNT as u64);
+        assert_eq!(stats.training_weak_device_accepted_contributors, WEAK_COUNT as u64);
+        assert_eq!(stats.training_payout_eligible_closeouts, STRONG_COUNT as u64);
+        assert_eq!(
+            stats.nexus_payout_sats_paid_total,
+            TARGET_PARTICIPANT_THRESHOLD as u64 * PAYOUT_SATS_PER_WINDOW
+        );
+        assert_eq!(
+            stats.nexus_accepted_work_payout_sats_paid_total,
+            TARGET_PARTICIPANT_THRESHOLD as u64 * PAYOUT_SATS_PER_WINDOW
+        );
+        assert_eq!(
+            stats.nexus_weak_device_accepted_work_payout_sats_paid_total,
+            WEAK_COUNT as u64 * PAYOUT_SATS_PER_WINDOW
+        );
+        assert_eq!(
+            stats.nexus_strong_lane_accepted_work_payout_sats_paid_total,
+            STRONG_COUNT as u64 * PAYOUT_SATS_PER_WINDOW
+        );
+        assert_eq!(stats.nexus_placeholder_payout_sats_paid_total, 0);
+        assert_eq!(stats.nexus_beta_bonus_payout_sats_paid_total, 0);
+
+        let summary = fetch_training_summary(&app).await?;
+        assert_eq!(
+            summary.participation.admitted_nodes,
+            (TARGET_PARTICIPANT_THRESHOLD + ONLINE_ONLY_COUNT) as u64
+        );
+        assert_eq!(
+            summary.participation.assigned_contributors,
+            TARGET_PARTICIPANT_THRESHOLD as u64
+        );
+        assert_eq!(
+            summary.participation.weak_device_assigned_contributors,
+            WEAK_COUNT as u64
+        );
+        assert_eq!(
+            summary.progress.accepted_contributors,
+            TARGET_PARTICIPANT_THRESHOLD as u64
+        );
+        assert_eq!(
+            summary.progress.weak_device_accepted_contributors,
+            WEAK_COUNT as u64
+        );
+        assert_eq!(
+            summary.progress.model_progress_contributors,
+            STRONG_COUNT as u64
+        );
+        assert_eq!(summary.progress.accepted_closeouts, STRONG_COUNT as u64);
+        assert_eq!(summary.progress.payout_eligible_closeouts, STRONG_COUNT as u64);
+        assert_eq!(
+            summary.settlement.accepted_closeouts,
+            TARGET_PARTICIPANT_THRESHOLD as u64
+        );
+        assert_eq!(
+            summary.settlement.payout_eligible_closeouts,
+            TARGET_PARTICIPANT_THRESHOLD as u64
+        );
+        assert_eq!(
+            summary.settlement.weak_device_bearing_closeouts,
+            WEAK_COUNT as u64
+        );
+        assert!(
+            summary
+                .settlement
+                .work_classes
+                .iter()
+                .any(|entry| entry.work_class == "validation_replay"
+                    && entry.accepted_closeouts == WEAK_COUNT as u64
+                    && entry.payout_eligible_closeouts == WEAK_COUNT as u64
+                    && entry.participation_only_closeouts == WEAK_COUNT as u64)
+        );
+        assert!(
+            summary
+                .settlement
+                .work_classes
+                .iter()
+                .any(|entry| entry.work_class == "full_island_local_update_training"
+                    && entry.accepted_closeouts == STRONG_COUNT as u64
+                    && entry.payout_eligible_closeouts == STRONG_COUNT as u64
+                    && entry.progress_bearing_closeouts == STRONG_COUNT as u64)
+        );
+
+        let homepage = fetch_homepage(&app).await?;
+        assert_eq!(
+            homepage.stats.training_nodes_online,
+            (TARGET_PARTICIPANT_THRESHOLD + ONLINE_ONLY_COUNT) as u64
+        );
+        assert_eq!(
+            homepage.stats.training_assigned_contributors,
+            TARGET_PARTICIPANT_THRESHOLD as u64
+        );
+        assert_eq!(
+            homepage.stats.training_accepted_contributors,
+            TARGET_PARTICIPANT_THRESHOLD as u64
+        );
+        assert_eq!(
+            homepage.stats.training_model_progress_contributors,
+            STRONG_COUNT as u64
+        );
+        assert_eq!(
+            homepage.stats.nexus_accepted_work_payout_sats_paid_total,
+            TARGET_PARTICIPANT_THRESHOLD as u64 * PAYOUT_SATS_PER_WINDOW
+        );
+        assert_eq!(homepage.default_network_id.as_deref(), Some(network_id));
+        assert_eq!(
+            homepage.training_summary.progress.accepted_contributors,
+            TARGET_PARTICIPANT_THRESHOLD as u64
+        );
+        assert_eq!(
+            homepage.training_summary.progress.model_progress_contributors,
+            STRONG_COUNT as u64
+        );
+
+        set_test_wallet_send_hook(None);
         Ok(())
     }
 
