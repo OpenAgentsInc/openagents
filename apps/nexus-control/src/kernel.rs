@@ -82,7 +82,8 @@ use openagents_kernel_core::liquidity::{
     RoutePlan, RoutePlanStatus, SettlementIntent, SettlementIntentStatus,
 };
 use openagents_kernel_core::pylon_training::{
-    PylonTrainingArtifactResolverResponse, pylon_training_hard_gate_reason,
+    PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactResolverResponse,
+    pylon_training_artifact_gcs_layout_policy, pylon_training_hard_gate_reason,
     pylon_training_resolve_artifact_id,
 };
 use openagents_kernel_core::receipts::{
@@ -2971,6 +2972,10 @@ impl KernelState {
         artifact_id: &str,
     ) -> Result<PylonTrainingArtifactResolverResponse, String> {
         pylon_training_resolve_artifact_id(artifact_id)
+    }
+
+    pub fn compute_training_artifact_gcs_layout(&self) -> PylonTrainingArtifactGcsLayoutPolicy {
+        pylon_training_artifact_gcs_layout_policy()
     }
 
     pub fn list_compute_evaluation_runs(
