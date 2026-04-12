@@ -60,12 +60,13 @@ use openagents_kernel_core::compute::{
     ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact, ComputeEvaluationMetric,
     ComputeEvaluationRunStatus, ComputeProductStatus, ComputeRegistryStatus,
     ComputeSyntheticDataJobStatus, ComputeTrainingReplicaType, ComputeTrainingRun,
-    ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeTrainingWorkClass,
-    ComputeValidatorChallengeContext, ComputeValidatorChallengeFailureCode,
-    ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
-    ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
-    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
-    ComputeValidatorChallengeVerdict, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
+    ComputeTrainingRunDefinition, ComputeTrainingRunStatus, ComputeTrainingSummary,
+    ComputeTrainingWorkClass, ComputeValidatorChallengeContext,
+    ComputeValidatorChallengeFailureCode, ComputeValidatorChallengeLease,
+    ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
+    ComputeValidatorChallengeResult, ComputeValidatorChallengeSnapshot,
+    ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict, DeliveryProofStatus,
+    StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::data::{
@@ -5446,6 +5447,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
         .route(
             "/v1/kernel/compute/training/policies/{training_policy_ref}",
             get(get_kernel_compute_training_policy),
+        )
+        .route(
+            "/v1/kernel/compute/training/policies/{training_policy_ref}/run-definition",
+            get(get_kernel_compute_training_run_definition),
         )
         .route(
             "/v1/kernel/compute/evals",
@@ -10846,6 +10851,41 @@ async fn get_kernel_compute_training_policy(
         compute_contracts::get_compute_training_policy_response_to_proto(&training_policy)
             .map_err(kernel_contract_error)?;
     Ok(Json(response))
+}
+
+async fn get_kernel_compute_training_run_definition(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(training_policy_ref): Path<String>,
+    Query(query): Query<ComputeRegistryVersionQuery>,
+) -> Result<Json<ComputeTrainingRunDefinition>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let training_policy_ref = normalize_required_field(
+        training_policy_ref.as_str(),
+        "compute_training_policy_ref_missing",
+    )?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let definition = store
+        .kernel
+        .get_compute_training_run_definition(training_policy_ref.as_str(), query.version.as_deref())
+        .map_err(|reason| ApiError {
+            status: if reason.ends_with("_not_found") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::BAD_REQUEST
+            },
+            error: if reason.ends_with("_not_found") {
+                "not_found"
+            } else {
+                "invalid_request"
+            },
+            reason,
+        })?;
+    Ok(Json(definition))
 }
 
 async fn list_kernel_compute_evaluation_runs(
@@ -16814,7 +16854,8 @@ mod tests {
         SubmitOutputRequest, SubmitOutputResponse,
     };
     use openagents_kernel_core::compute::{
-        ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument,
+        ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION,
+        COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION, CapacityInstrument,
         CapacityInstrumentClosureReason, CapacityInstrumentKind, CapacityInstrumentStatus,
         CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState,
         ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeAdapterAggregationEligibility,
@@ -16835,8 +16876,9 @@ mod tests {
         ComputeSettlementFailureReason, ComputeSettlementMode, ComputeSyntheticDataJob,
         ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
         ComputeSyntheticDataSampleStatus, ComputeTrainingPolicy, ComputeTrainingReplicaType,
-        ComputeTrainingRun, ComputeTrainingRunStatus, ComputeTrainingSummary,
-        ComputeTrainingWorkClass, ComputeValidatorChallengeLease, ComputeValidatorChallengeResult,
+        ComputeTrainingRun, ComputeTrainingRunDefinition, ComputeTrainingRunDefinitionMetadata,
+        ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeTrainingWorkClass,
+        ComputeValidatorChallengeLease, ComputeValidatorChallengeResult,
         ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict, ComputeValidatorPolicy,
         DeliveryProof, DeliveryProofStatus, DeliveryVerificationEvidence, GptOssRuntimeCapability,
         StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
@@ -16933,7 +16975,7 @@ mod tests {
         SyncTokenResponse, TrainingAssignmentState, TrainingVisualizationResponse,
         TrainingWindowContributionInput, TrainingWindowCoordinatorResponse,
         TransitionTrainingWindowRequest, TreasuryConfig, build_api_router_with_state,
-        build_app_state, build_router, build_router_with_state, random_token,
+        build_app_state, build_router, build_router_with_state, now_unix_ms, random_token,
         run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
         training_kernel_mutation_context,
     };
@@ -18784,6 +18826,37 @@ mod tests {
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
+    }
+
+    fn training_run_definition_metadata_value(
+        run_definition_ref: &str,
+        training_family: &str,
+        objective: &str,
+        sync_profile: &str,
+        dataset_identity: &str,
+        dataset_slice_family: &str,
+        page_proof_family: &str,
+        benchmark_package_set_ref: &str,
+        version_semantics: &str,
+    ) -> Value {
+        json!({
+            "run_definition": serde_json::to_value(ComputeTrainingRunDefinitionMetadata {
+                abi_version: COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION.to_string(),
+                run_definition_ref: run_definition_ref.to_string(),
+                training_family: training_family.to_string(),
+                objective: objective.to_string(),
+                sync_profile: sync_profile.to_string(),
+                dataset_identity: dataset_identity.to_string(),
+                dataset_slice_family: Some(dataset_slice_family.to_string()),
+                page_proof_family: Some(page_proof_family.to_string()),
+                benchmark_package_set_ref: Some(benchmark_package_set_ref.to_string()),
+                version_semantics: version_semantics.to_string(),
+                window_ref_family: Some("window.family.diloco_round".to_string()),
+                manifest_ref_family: Some("manifest.family.psionic_train".to_string()),
+                trn_ref_family: Some("trn.family.diloco".to_string()),
+                closeout_ref_family: Some("closeout.family.accepted_training".to_string()),
+            }).expect("run definition metadata")
+        })
     }
 
     fn compute_evaluation_run_request(
@@ -31287,6 +31360,165 @@ mod tests {
         );
 
         server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_compute_training_run_definition_route_projects_registered_contracts()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let created_at_ms = now_unix_ms() as i64;
+
+        {
+            let mut store = state.store.write().expect("write store");
+            store
+                .kernel
+                .register_compute_environment_package(
+                    &training_kernel_mutation_context("route-test", (created_at_ms + 100) as u64),
+                    compute_environment_package_request(
+                        "env.openagents.math.basic",
+                        "2026.03.13",
+                        "idemp.compute.route.environment",
+                        created_at_ms + 100,
+                    ),
+                )
+                .expect("register environment package");
+            let mut checkpoint_request = compute_checkpoint_family_policy_request(
+                "idemp.compute.route.checkpoint",
+                created_at_ms + 200,
+            );
+            checkpoint_request.policy_record.validator_policy_ref =
+                Some("policy.validator.training".to_string());
+            store
+                .kernel
+                .register_compute_checkpoint_family_policy(
+                    &training_kernel_mutation_context("route-test", (created_at_ms + 200) as u64),
+                    checkpoint_request,
+                )
+                .expect("register checkpoint policy");
+            let mut validator_request = compute_validator_policy_request(
+                "idemp.compute.route.validator",
+                created_at_ms + 300,
+            );
+            validator_request.policy_record.policy_ref = "policy.validator.training".to_string();
+            validator_request.policy_record.benchmark_package_refs =
+                vec!["benchmark.mmlu.reference".to_string()];
+            store
+                .kernel
+                .register_compute_validator_policy(
+                    &training_kernel_mutation_context("route-test", (created_at_ms + 300) as u64),
+                    validator_request,
+                )
+                .expect("register validator policy");
+            let mut benchmark_request = compute_benchmark_package_request(
+                "idemp.compute.route.benchmark",
+                created_at_ms + 400,
+            );
+            benchmark_request.benchmark_package.benchmark_package_ref =
+                "benchmark.mmlu.reference".to_string();
+            store
+                .kernel
+                .register_compute_benchmark_package(
+                    &training_kernel_mutation_context("route-test", (created_at_ms + 400) as u64),
+                    benchmark_request,
+                )
+                .expect("register benchmark package");
+            let mut training_policy_request = compute_training_policy_request(
+                "idemp.compute.route.training_policy",
+                created_at_ms + 500,
+            );
+            training_policy_request.training_policy.training_policy_ref =
+                "policy.training.math.basic".to_string();
+            training_policy_request.training_policy.validator_policy_ref =
+                "policy.validator.training".to_string();
+            training_policy_request
+                .training_policy
+                .benchmark_package_refs = vec!["benchmark.mmlu.reference".to_string()];
+            training_policy_request.training_policy.metadata =
+                training_run_definition_metadata_value(
+                    "rundef.psion.math.basic.v1",
+                    "psion_pretrain",
+                    "consumer_compute_pretraining",
+                    "diloco",
+                    "dataset://psion/public_corpus",
+                    "dataset_slice_family.public_pages_v1",
+                    "psion.public_dataset_authority_contract.v1",
+                    "benchmark_set.math.reference.v1",
+                    "training_policy_version",
+                );
+            store
+                .kernel
+                .register_compute_training_policy(
+                    &training_kernel_mutation_context("route-test", (created_at_ms + 500) as u64),
+                    training_policy_request,
+                )
+                .expect("register training policy");
+        }
+
+        let app = build_router_with_state(state);
+        let session = create_session_token(&app).await?;
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/training/policies/policy.training.math.basic/run-definition?version=2026.03.14")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let definition: ComputeTrainingRunDefinition = response_json(response).await?;
+        assert_eq!(definition.run_definition_ref, "rundef.psion.math.basic.v1");
+        assert_eq!(definition.training_policy_ref, "policy.training.math.basic");
+        assert_eq!(definition.training_policy_version, "2026.03.14");
+        assert_eq!(definition.training_family, "psion_pretrain");
+        assert_eq!(definition.objective, "consumer_compute_pretraining");
+        assert_eq!(definition.sync_profile, "diloco");
+        assert_eq!(definition.checkpoint_family, "decoder");
+        assert_eq!(definition.validator_policy_ref, "policy.validator.training");
+        assert_eq!(
+            definition.validator_policy_version.as_deref(),
+            Some("2026.03.14")
+        );
+        assert_eq!(definition.dataset_identity, "dataset://psion/public_corpus");
+        assert_eq!(
+            definition.dataset_slice_family.as_deref(),
+            Some("dataset_slice_family.public_pages_v1")
+        );
+        assert_eq!(
+            definition.page_proof_family.as_deref(),
+            Some("psion.public_dataset_authority_contract.v1")
+        );
+        assert_eq!(
+            definition.benchmark_package_set_ref.as_deref(),
+            Some("benchmark_set.math.reference.v1")
+        );
+        assert_eq!(definition.version_semantics, "training_policy_version");
+        assert_eq!(definition.environments.len(), 1);
+        assert_eq!(
+            definition.environments[0].environment_ref,
+            "env.openagents.math.basic"
+        );
+        assert_eq!(definition.environments[0].version, "2026.03.13");
+        assert_eq!(definition.dataset_bindings.len(), 1);
+        assert_eq!(
+            definition.dataset_bindings[0].dataset_ref,
+            "dataset://math/basic"
+        );
+        assert_eq!(
+            definition.dataset_bindings[0].integrity_ref.as_deref(),
+            Some("sha256:dataset.math.basic")
+        );
+        assert_eq!(definition.benchmark_packages.len(), 1);
+        assert_eq!(
+            definition.benchmark_packages[0].benchmark_package_ref,
+            "benchmark.mmlu.reference"
+        );
+        assert_eq!(
+            definition.reference_families.trn_ref_family.as_deref(),
+            Some("trn.family.diloco")
+        );
         Ok(())
     }
 

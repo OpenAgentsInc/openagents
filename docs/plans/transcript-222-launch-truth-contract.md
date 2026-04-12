@@ -22,6 +22,9 @@ sheet for:
 
 This document complements
 [`compute-market-launch-truth-checklist.md`](./compute-market-launch-truth-checklist.md).
+The canonical run contract that later stats, manifests, and closeouts should
+reference is
+[`compute-training-run-definition-contract.md`](./compute-training-run-definition-contract.md).
 
 ## Current Public Truth Surfaces
 
