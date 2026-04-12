@@ -297,6 +297,10 @@ and public stats consumers can read:
 - eligible replica types such as `single_node`, `grouped_replica`, and
   `island`
 
+For the current public launch explanation of weaker-device work classes and how
+accepted-work payout differs from uptime or presence alone, use
+`docs/pylon/WEAK_DEVICE_WORK_CLASSES_FAQ.md`.
+
 This is still the node-side claim lane, not the final authoritative `Nexus`
 publication lane. The current locator status is intentionally `staged`, and
 `Nexus` closeout state still remains the authoritative settlement boundary.

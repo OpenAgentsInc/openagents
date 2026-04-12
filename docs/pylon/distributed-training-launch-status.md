@@ -283,6 +283,9 @@ Read the current docs this way:
   - the frozen admitted-node MVP architecture and implementation plan
 - `docs/pylon/distributed-training-phase-tracker.md`
   - the phase closure state for that original implementation program
+- `docs/pylon/WEAK_DEVICE_WORK_CLASSES_FAQ.md`
+  - the public-language explanation of weak-device work classes, accepted-work
+    truth, and why those counters differ from online presence alone
 - `docs/training/distributed-llm-training-runs-diloco-distro-demo-sparseloco-audit.md`
   - the prior-art and terminology map for DiLoCo, DisTrO/DeMo, SparseLoCo,
     Templar, Prime, and related public distributed-training systems
