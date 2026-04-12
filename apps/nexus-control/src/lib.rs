@@ -96,7 +96,8 @@ use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
 use openagents_kernel_proto::openagents::data::v1 as proto_data;
 use openagents_provider_substrate::{
     ProviderAdapterTrainingSettlementTrigger, ProviderDiagnosticSummary,
-    ProviderHostingTelemetrySnapshot, ProviderTrainingCapabilityTier,
+    ProviderHostingTelemetrySnapshot, ProviderTrainingCapabilityEnvelopeV2,
+    ProviderTrainingCapabilityTier,
 };
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
@@ -899,6 +900,8 @@ pub struct ProviderPresenceHeartbeatRequest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub diagnostic_summaries: Vec<ProviderDiagnosticSummary>,
     pub hosting_telemetry: ProviderHostingTelemetrySnapshot,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_capability_envelope_v2: Option<ProviderTrainingCapabilityEnvelopeV2>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -5230,6 +5233,7 @@ struct ProviderPresenceRecord {
     diagnostic_summaries: Vec<ProviderDiagnosticSummary>,
     #[allow(dead_code)]
     hosting_telemetry: ProviderHostingTelemetrySnapshot,
+    training_capability_envelope_v2: Option<ProviderTrainingCapabilityEnvelopeV2>,
     online: bool,
     last_seen_at_unix_ms: u64,
 }
@@ -5370,6 +5374,7 @@ impl ProviderPresenceState {
                 request.diagnostic_summaries,
             ),
             hosting_telemetry: request.hosting_telemetry,
+            training_capability_envelope_v2: request.training_capability_envelope_v2,
             online: true,
             last_seen_at_unix_ms: recorded_at_unix_ms,
         };
@@ -5404,6 +5409,7 @@ impl ProviderPresenceState {
                 runtime_state: None,
                 diagnostic_summaries: Vec::new(),
                 hosting_telemetry: ProviderHostingTelemetrySnapshot::default(),
+                training_capability_envelope_v2: None,
                 online: false,
                 last_seen_at_unix_ms: recorded_at_unix_ms,
             });
@@ -5531,6 +5537,7 @@ impl ProviderPresenceState {
                     products: record.products,
                     ready_model: record.ready_model,
                     runtime_state: record.runtime_state,
+                    training_capability_envelope_v2: record.training_capability_envelope_v2,
                 })
                 .collect(),
             recent_pylon_diagnostics,
@@ -6062,6 +6069,7 @@ async fn record_provider_presence_heartbeat(
         runtime_state: normalize_optional_field(request.runtime_state.as_deref()),
         diagnostic_summaries: normalize_provider_diagnostic_summaries(request.diagnostic_summaries),
         hosting_telemetry: request.hosting_telemetry,
+        training_capability_envelope_v2: request.training_capability_envelope_v2,
     };
     let now = now_unix_ms();
     if query.dry_run {
@@ -17323,10 +17331,11 @@ mod tests {
         ProviderHostSwapTelemetry, ProviderHostTelemetrySnapshot,
         ProviderHostThermalComponentTelemetry, ProviderHostingTelemetrySnapshot,
         ProviderInventoryRow, ProviderRuntimeStatusSnapshot,
-        ProviderTrainingArtifactUploadLatencyClass, ProviderTrainingCapabilityTier,
-        ProviderTrainingCapabilityTierProfile, ProviderTrainingLeaseReliabilityClass,
-        ProviderTrainingReplayCapability, ProviderTrainingThroughputBand,
-        sign_provider_payout_target_registration,
+        ProviderTrainingArtifactUploadLatencyClass, ProviderTrainingCapabilityEnvelopeV2,
+        ProviderTrainingCapabilityTier, ProviderTrainingCapabilityTierProfile,
+        ProviderTrainingLeaseReliabilityClass, ProviderTrainingReplayCapability,
+        ProviderTrainingReplicaTypeEligibility, ProviderTrainingThroughputBand,
+        ProviderTrainingWorkClassEligibility, sign_provider_payout_target_registration,
     };
     use openagents_validator_service::{
         GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeRequest,
@@ -17665,6 +17674,51 @@ mod tests {
         eligible_product_count: u64,
         runtime_state: &str,
     ) -> ProviderPresenceHeartbeatRequest {
+        let training_capability_envelope_v2 = ProviderTrainingCapabilityEnvelopeV2 {
+            schema_version: "provider.training_capability_envelope.v2".to_string(),
+            tier_profile: ProviderTrainingCapabilityTierProfile {
+                tier: ProviderTrainingCapabilityTier::Tier2Trainer,
+                backend_families: vec!["cuda".to_string()],
+                accelerator_inventory: Vec::new(),
+                memory_floor_gb: Some(32),
+                available_memory_gb: Some(64),
+                throughput_band: ProviderTrainingThroughputBand::Medium,
+                lease_reliability: Default::default(),
+                replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+                artifact_upload_latency_class: Default::default(),
+            },
+            runtime_surface_detected: true,
+            contributor_supported: true,
+            benchmark_lane_available: true,
+            eligible_work_classes: vec![
+                ProviderTrainingWorkClassEligibility {
+                    work_class: ComputeTrainingWorkClass::ValidationReplay,
+                    minimum_tier: ProviderTrainingCapabilityTier::Tier1Validation,
+                    replica_types: vec![ComputeTrainingReplicaType::SingleNode],
+                    required_backend_families: vec!["cuda".to_string()],
+                    minimum_memory_gb: Some(16),
+                    required_throughput_band: ProviderTrainingThroughputBand::Unknown,
+                    required_replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+                    benchmark_lane_required: true,
+                },
+                ProviderTrainingWorkClassEligibility {
+                    work_class: ComputeTrainingWorkClass::AdapterTraining,
+                    minimum_tier: ProviderTrainingCapabilityTier::Tier2Trainer,
+                    replica_types: vec![ComputeTrainingReplicaType::SingleNode],
+                    required_backend_families: vec!["cuda".to_string()],
+                    minimum_memory_gb: Some(32),
+                    required_throughput_band: ProviderTrainingThroughputBand::Medium,
+                    required_replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+                    benchmark_lane_required: true,
+                },
+            ],
+            eligible_replica_types: vec![ProviderTrainingReplicaTypeEligibility {
+                replica_type: ComputeTrainingReplicaType::SingleNode,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier1Validation,
+                required_backend_families: vec!["cuda".to_string()],
+                minimum_memory_gb: Some(16),
+            }],
+        };
         ProviderPresenceHeartbeatRequest {
             nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
             session_id: session_id.to_string(),
@@ -17685,6 +17739,7 @@ mod tests {
             runtime_state: Some(runtime_state.to_string()),
             diagnostic_summaries: Vec::new(),
             hosting_telemetry: provider_hosting_telemetry_fixture(),
+            training_capability_envelope_v2: Some(training_capability_envelope_v2),
         }
     }
 
@@ -17871,6 +17926,8 @@ mod tests {
     ) -> RecordTrainingNodeAdmissionRequest {
         let now = super::now_unix_ms() as i64;
         let role_claims = vec![TrainingNodeRoleClaim::Worker];
+        let capability_tier =
+            training_capability_tier_profile(role_claims.as_slice(), available_memory_gb);
         RecordTrainingNodeAdmissionRequest {
             idempotency_key: format!("idemp.training.admission.{node_pubkey_hex}.{build_digest}"),
             requested_at_ms: now,
@@ -17899,10 +17956,8 @@ mod tests {
                     ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow,
                 ),
             },
-            capability_tier: training_capability_tier_profile(
-                role_claims.as_slice(),
-                available_memory_gb,
-            ),
+            capability_tier: capability_tier.clone(),
+            capability_envelope_v2: training_capability_envelope_v2(&capability_tier, true, true),
             host_telemetry: provider_hosting_telemetry_fixture().host,
             active_reputation_labels: active_reputation_labels
                 .into_iter()
@@ -17955,7 +18010,108 @@ mod tests {
             .find_map(|value| super::training_backend_family_for_environment_ref(value))
             .map(|value| vec![value.to_string()])
             .unwrap_or_default();
+        request.capability_envelope_v2 = training_capability_envelope_v2(
+            &request.capability_tier,
+            request.contributor_availability.contributor_supported,
+            !request.contributor_availability.environment_refs.is_empty(),
+        );
         request
+    }
+
+    fn training_capability_envelope_v2(
+        capability_tier: &ProviderTrainingCapabilityTierProfile,
+        contributor_supported: bool,
+        benchmark_lane_available: bool,
+    ) -> ProviderTrainingCapabilityEnvelopeV2 {
+        let mut eligible_work_classes = vec![ProviderTrainingWorkClassEligibility {
+            work_class: ComputeTrainingWorkClass::ValidationReplay,
+            minimum_tier: ProviderTrainingCapabilityTier::Tier1Validation,
+            replica_types: vec![ComputeTrainingReplicaType::SingleNode],
+            required_backend_families: capability_tier.backend_families.clone(),
+            minimum_memory_gb: Some(16),
+            required_throughput_band: ProviderTrainingThroughputBand::Unknown,
+            required_replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+            benchmark_lane_required: true,
+        }];
+        if capability_tier.tier.ordinal() >= ProviderTrainingCapabilityTier::Tier2Trainer.ordinal()
+        {
+            eligible_work_classes.push(ProviderTrainingWorkClassEligibility {
+                work_class: ComputeTrainingWorkClass::Evaluation,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier2Trainer,
+                replica_types: vec![ComputeTrainingReplicaType::SingleNode],
+                required_backend_families: capability_tier.backend_families.clone(),
+                minimum_memory_gb: Some(32),
+                required_throughput_band: ProviderTrainingThroughputBand::Medium,
+                required_replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+                benchmark_lane_required: true,
+            });
+            eligible_work_classes.push(ProviderTrainingWorkClassEligibility {
+                work_class: ComputeTrainingWorkClass::AdapterTraining,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier2Trainer,
+                replica_types: vec![ComputeTrainingReplicaType::SingleNode],
+                required_backend_families: capability_tier.backend_families.clone(),
+                minimum_memory_gb: Some(32),
+                required_throughput_band: ProviderTrainingThroughputBand::Medium,
+                required_replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+                benchmark_lane_required: true,
+            });
+        }
+        if capability_tier.tier.ordinal() >= ProviderTrainingCapabilityTier::Tier3Island.ordinal() {
+            eligible_work_classes.push(ProviderTrainingWorkClassEligibility {
+                work_class: ComputeTrainingWorkClass::GroupedReplicaStageExecution,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier3Island,
+                replica_types: vec![
+                    ComputeTrainingReplicaType::GroupedReplica,
+                    ComputeTrainingReplicaType::Island,
+                ],
+                required_backend_families: capability_tier.backend_families.clone(),
+                minimum_memory_gb: Some(64),
+                required_throughput_band: ProviderTrainingThroughputBand::High,
+                required_replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+                benchmark_lane_required: true,
+            });
+            eligible_work_classes.push(ProviderTrainingWorkClassEligibility {
+                work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier3Island,
+                replica_types: vec![ComputeTrainingReplicaType::Island],
+                required_backend_families: capability_tier.backend_families.clone(),
+                minimum_memory_gb: Some(80),
+                required_throughput_band: ProviderTrainingThroughputBand::Island,
+                required_replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+                benchmark_lane_required: true,
+            });
+        }
+
+        let mut eligible_replica_types = vec![ProviderTrainingReplicaTypeEligibility {
+            replica_type: ComputeTrainingReplicaType::SingleNode,
+            minimum_tier: ProviderTrainingCapabilityTier::Tier1Validation,
+            required_backend_families: capability_tier.backend_families.clone(),
+            minimum_memory_gb: Some(16),
+        }];
+        if capability_tier.tier.ordinal() >= ProviderTrainingCapabilityTier::Tier3Island.ordinal() {
+            eligible_replica_types.push(ProviderTrainingReplicaTypeEligibility {
+                replica_type: ComputeTrainingReplicaType::GroupedReplica,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier3Island,
+                required_backend_families: capability_tier.backend_families.clone(),
+                minimum_memory_gb: Some(64),
+            });
+            eligible_replica_types.push(ProviderTrainingReplicaTypeEligibility {
+                replica_type: ComputeTrainingReplicaType::Island,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier3Island,
+                required_backend_families: capability_tier.backend_families.clone(),
+                minimum_memory_gb: Some(80),
+            });
+        }
+
+        ProviderTrainingCapabilityEnvelopeV2 {
+            schema_version: "provider.training_capability_envelope.v2".to_string(),
+            tier_profile: capability_tier.clone(),
+            runtime_surface_detected: contributor_supported,
+            contributor_supported,
+            benchmark_lane_available,
+            eligible_work_classes,
+            eligible_replica_types,
+        }
     }
 
     fn training_node_heartbeat_request(
@@ -21500,6 +21656,20 @@ mod tests {
         assert_eq!(fresh.pylons_seen_24h, 2);
         assert_eq!(fresh.pylon_sessions_online_now, 3);
         assert_eq!(fresh.sellable_pylons_online_now, 2);
+        assert_eq!(
+            fresh.recent_pylons[0]
+                .training_capability_envelope_v2
+                .as_ref()
+                .map(|envelope| envelope.schema_version.as_str()),
+            Some("provider.training_capability_envelope.v2")
+        );
+        assert!(
+            fresh.recent_pylons[0]
+                .training_capability_envelope_v2
+                .as_ref()
+                .is_some_and(|envelope| envelope
+                    .supports_work_class(ComputeTrainingWorkClass::ValidationReplay))
+        );
 
         presence.record_offline(
             "aabbccdd00112233".to_string(),
@@ -24760,6 +24930,18 @@ mod tests {
             node.capability_tier.replay_capability,
             ProviderTrainingReplayCapability::ShortWindow
         );
+        assert_eq!(
+            node.capability_envelope_v2.schema_version,
+            "provider.training_capability_envelope.v2"
+        );
+        assert!(
+            node.capability_envelope_v2
+                .supports_work_class(ComputeTrainingWorkClass::FullIslandLocalUpdateTraining)
+        );
+        assert!(
+            node.capability_envelope_v2
+                .supports_replica_type(ComputeTrainingReplicaType::Island)
+        );
 
         let reloaded_app = build_router(config);
         let reloaded_nodes_response = reloaded_app
@@ -24779,6 +24961,11 @@ mod tests {
         assert_eq!(
             reloaded_nodes[0].capability_tier.tier,
             ProviderTrainingCapabilityTier::Tier3Island
+        );
+        assert!(
+            reloaded_nodes[0]
+                .capability_envelope_v2
+                .supports_work_class(ComputeTrainingWorkClass::AdapterTraining)
         );
 
         let _ = std::fs::remove_file(kernel_state_path.as_path());

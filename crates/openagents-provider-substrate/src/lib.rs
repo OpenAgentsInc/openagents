@@ -17,7 +17,8 @@ pub use sandbox_execution::*;
 
 use openagents_kernel_core::compute::{
     ComputeAdapterAggregationEligibility, ComputeAdapterContributionDisposition,
-    ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow,
+    ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow, ComputeTrainingReplicaType,
+    ComputeTrainingWorkClass,
 };
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -665,6 +666,9 @@ impl ProviderTrainingArtifactUploadLatencyClass {
     }
 }
 
+pub const PROVIDER_TRAINING_CAPABILITY_ENVELOPE_V2_SCHEMA_VERSION: &str =
+    "provider.training_capability_envelope.v2";
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderTrainingAcceleratorInventoryEntry {
     pub backend_family: String,
@@ -696,6 +700,95 @@ pub struct ProviderTrainingCapabilityTierProfile {
     pub replay_capability: ProviderTrainingReplayCapability,
     #[serde(default)]
     pub artifact_upload_latency_class: ProviderTrainingArtifactUploadLatencyClass,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderTrainingWorkClassEligibility {
+    pub work_class: ComputeTrainingWorkClass,
+    #[serde(default)]
+    pub minimum_tier: ProviderTrainingCapabilityTier,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replica_types: Vec<ComputeTrainingReplicaType>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_backend_families: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_memory_gb: Option<u32>,
+    #[serde(default)]
+    pub required_throughput_band: ProviderTrainingThroughputBand,
+    #[serde(default)]
+    pub required_replay_capability: ProviderTrainingReplayCapability,
+    #[serde(default)]
+    pub benchmark_lane_required: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderTrainingReplicaTypeEligibility {
+    pub replica_type: ComputeTrainingReplicaType,
+    #[serde(default)]
+    pub minimum_tier: ProviderTrainingCapabilityTier,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_backend_families: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_memory_gb: Option<u32>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderTrainingCapabilityEnvelopeV2 {
+    pub schema_version: String,
+    #[serde(default)]
+    pub tier_profile: ProviderTrainingCapabilityTierProfile,
+    #[serde(default)]
+    pub runtime_surface_detected: bool,
+    #[serde(default)]
+    pub contributor_supported: bool,
+    #[serde(default)]
+    pub benchmark_lane_available: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub eligible_work_classes: Vec<ProviderTrainingWorkClassEligibility>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub eligible_replica_types: Vec<ProviderTrainingReplicaTypeEligibility>,
+}
+
+impl Default for ProviderTrainingCapabilityEnvelopeV2 {
+    fn default() -> Self {
+        Self {
+            schema_version: PROVIDER_TRAINING_CAPABILITY_ENVELOPE_V2_SCHEMA_VERSION.to_string(),
+            tier_profile: ProviderTrainingCapabilityTierProfile::default(),
+            runtime_surface_detected: false,
+            contributor_supported: false,
+            benchmark_lane_available: false,
+            eligible_work_classes: Vec::new(),
+            eligible_replica_types: Vec::new(),
+        }
+    }
+}
+
+impl ProviderTrainingCapabilityEnvelopeV2 {
+    pub fn supports_work_class(&self, work_class: ComputeTrainingWorkClass) -> bool {
+        self.eligible_work_classes
+            .iter()
+            .any(|entry| entry.work_class == work_class)
+    }
+
+    pub fn supports_replica_type(&self, replica_type: ComputeTrainingReplicaType) -> bool {
+        self.eligible_replica_types
+            .iter()
+            .any(|entry| entry.replica_type == replica_type)
+    }
+
+    pub fn eligible_work_class_labels(&self) -> Vec<String> {
+        self.eligible_work_classes
+            .iter()
+            .map(|entry| entry.work_class.label().to_string())
+            .collect()
+    }
+
+    pub fn eligible_replica_type_labels(&self) -> Vec<String> {
+        self.eligible_replica_types
+            .iter()
+            .map(|entry| entry.replica_type.label().to_string())
+            .collect()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

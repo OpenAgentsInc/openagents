@@ -132,10 +132,11 @@ presence tracking with training language layered on top.
 
 ### 2. `Pylon` still needs launch-grade automatic work intake
 
-`Pylon` now has truthful training capability publication, internal
-`psionic-train` supervision, retained artifact courier primitives, and
-authority-sync hooks. What it still needs for the launch story is smoother
-automatic assignment intake and runtime packaging.
+`Pylon` now has truthful training capability publication, an explicit
+`provider.training_capability_envelope.v2` surface for work-class and
+replica-type eligibility, internal `psionic-train` supervision, retained
+artifact courier primitives, and authority-sync hooks. What it still needs for
+the launch story is smoother automatic assignment intake and runtime packaging.
 
 The next-week public claim assumes a running `Pylon` can:
 
@@ -149,6 +150,15 @@ The next-week public claim assumes a running `Pylon` can:
 Today that path is not yet fully equivalent to "operator handcrafted a manifest
 for a known machine." The node-side pieces are present, but the full public
 experience still depends too much on operator discipline.
+
+That new capability envelope matters because it freezes one measurable machine
+contract for launch:
+
+- `validation_replay` remains the default weak-device lane
+- `evaluation` and `adapter_training` require a real trainer-tier machine
+- `grouped_replica_stage_execution` and
+  `full_island_local_update_training` require island-grade posture
+- replica-type eligibility is explicit instead of being inferred from prose
 
 ### 3. `Psionic` still needs a cleaner artifact mobility story
 

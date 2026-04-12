@@ -100,7 +100,7 @@ use openagents_kernel_core::snapshots::{
 use openagents_kernel_core::time::{floor_to_minute_utc, snapshot_id_for_minute};
 use openagents_provider_substrate::{
     ProviderAdapterTrainingContributorAvailability, ProviderHostTelemetrySnapshot,
-    ProviderTrainingCapabilityTierProfile,
+    ProviderTrainingCapabilityEnvelopeV2, ProviderTrainingCapabilityTierProfile,
 };
 use openagents_validator_service::{
     ValidatorChallengeLease, ValidatorChallengeRequest, ValidatorChallengeResult,
@@ -662,6 +662,8 @@ pub struct RecordTrainingNodeAdmissionRequest {
     pub contributor_availability: ProviderAdapterTrainingContributorAvailability,
     #[serde(default)]
     pub capability_tier: ProviderTrainingCapabilityTierProfile,
+    #[serde(default)]
+    pub capability_envelope_v2: ProviderTrainingCapabilityEnvelopeV2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_telemetry: Option<ProviderHostTelemetrySnapshot>,
     #[serde(default)]
@@ -737,6 +739,8 @@ pub struct AdmittedTrainingNode {
     pub contributor_availability: ProviderAdapterTrainingContributorAvailability,
     #[serde(default)]
     pub capability_tier: ProviderTrainingCapabilityTierProfile,
+    #[serde(default)]
+    pub capability_envelope_v2: ProviderTrainingCapabilityEnvelopeV2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_telemetry: Option<ProviderHostTelemetrySnapshot>,
     #[serde(default)]
@@ -784,6 +788,8 @@ pub struct AdmittedTrainingNodeView {
     pub contributor_availability: ProviderAdapterTrainingContributorAvailability,
     #[serde(default)]
     pub capability_tier: ProviderTrainingCapabilityTierProfile,
+    #[serde(default)]
+    pub capability_envelope_v2: ProviderTrainingCapabilityEnvelopeV2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available_memory_gb: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -14659,6 +14665,7 @@ fn admitted_training_node_view(
         build_digest: node.build_digest.clone(),
         contributor_availability: node.contributor_availability.clone(),
         capability_tier: node.capability_tier.clone(),
+        capability_envelope_v2: node.capability_envelope_v2.clone(),
         available_memory_gb: node
             .contributor_availability
             .available_memory_gb
@@ -14707,6 +14714,7 @@ fn admitted_training_node_from_request(
         build_digest,
         contributor_availability: req.contributor_availability.clone(),
         capability_tier: req.capability_tier.clone(),
+        capability_envelope_v2: req.capability_envelope_v2.clone(),
         host_telemetry: req.host_telemetry.clone(),
         active_reputation_labels: req.active_reputation_labels.clone(),
         settlement_destination: req.settlement_destination.clone(),

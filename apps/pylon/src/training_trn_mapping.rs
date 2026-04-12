@@ -5,7 +5,9 @@ use nostr::{
     TrainingArtifactLocatorEvent, TrainingNodeRecordEvent, TrainingReceiptEvent,
     TrnAddressReference, TrnCapability, TrnPubkeyReference,
 };
-use openagents_provider_substrate::ProviderTrainingCapabilityTierProfile;
+use openagents_provider_substrate::{
+    ProviderTrainingCapabilityEnvelopeV2, ProviderTrainingCapabilityTierProfile,
+};
 use serde_json::{Map, Value, json};
 
 use super::{
@@ -39,6 +41,7 @@ pub(super) fn node_record_event(
     state: &PylonTrainingRuntimeState,
     contexts: &[&TrainingManifestInspectionContext],
     capability_tier: &ProviderTrainingCapabilityTierProfile,
+    capability_envelope_v2: &ProviderTrainingCapabilityEnvelopeV2,
 ) -> Result<(String, TrainingNodeRecordEvent)> {
     let network_id = contexts
         .first()
@@ -107,6 +110,12 @@ pub(super) fn node_record_event(
         "training_artifact_upload_latency_class",
         capability_tier.artifact_upload_latency_class.label(),
     ));
+    for work_class in capability_envelope_v2.eligible_work_class_labels() {
+        capabilities.push(TrnCapability::new("training_work_class", work_class));
+    }
+    for replica_type in capability_envelope_v2.eligible_replica_type_labels() {
+        capabilities.push(TrnCapability::new("training_replica_type", replica_type));
+    }
     for accelerator in &capability_tier.accelerator_inventory {
         capabilities.push(TrnCapability::new(
             "training_accelerator",
@@ -157,6 +166,8 @@ pub(super) fn node_record_event(
             .collect::<Vec<_>>(),
         "capability_tier": serde_json::to_value(capability_tier)
             .context("failed to encode capability tier")?,
+        "capability_envelope_v2": serde_json::to_value(capability_envelope_v2)
+            .context("failed to encode capability envelope")?,
         "active_runtime": active_runtime,
     });
     let mut extra_tags = Vec::new();
@@ -197,6 +208,12 @@ pub(super) fn node_record_event(
             .label()
             .to_string(),
     ]);
+    for work_class in capability_envelope_v2.eligible_work_class_labels() {
+        extra_tags.push(vec!["training_work_class".to_string(), work_class]);
+    }
+    for replica_type in capability_envelope_v2.eligible_replica_type_labels() {
+        extra_tags.push(vec!["training_replica_type".to_string(), replica_type]);
+    }
     Ok((
         status.to_string(),
         TrainingNodeRecordEvent {
@@ -610,6 +627,61 @@ mod tests {
         }
     }
 
+    fn capability_envelope_fixture(
+        profile: &ProviderTrainingCapabilityTierProfile,
+    ) -> ProviderTrainingCapabilityEnvelopeV2 {
+        ProviderTrainingCapabilityEnvelopeV2 {
+            schema_version:
+                openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_ENVELOPE_V2_SCHEMA_VERSION
+                    .to_string(),
+            tier_profile: profile.clone(),
+            runtime_surface_detected: true,
+            contributor_supported: true,
+            benchmark_lane_available: true,
+            eligible_work_classes: vec![
+                openagents_provider_substrate::ProviderTrainingWorkClassEligibility {
+                    work_class: openagents_kernel_core::compute::ComputeTrainingWorkClass::ValidationReplay,
+                    minimum_tier:
+                        openagents_provider_substrate::ProviderTrainingCapabilityTier::Tier1Validation,
+                    replica_types: vec![
+                        openagents_kernel_core::compute::ComputeTrainingReplicaType::SingleNode,
+                    ],
+                    required_backend_families: profile.backend_families.clone(),
+                    minimum_memory_gb: None,
+                    required_throughput_band:
+                        openagents_provider_substrate::ProviderTrainingThroughputBand::Unknown,
+                    required_replay_capability:
+                        openagents_provider_substrate::ProviderTrainingReplayCapability::ShortWindow,
+                    benchmark_lane_required: true,
+                },
+                openagents_provider_substrate::ProviderTrainingWorkClassEligibility {
+                    work_class: openagents_kernel_core::compute::ComputeTrainingWorkClass::AdapterTraining,
+                    minimum_tier:
+                        openagents_provider_substrate::ProviderTrainingCapabilityTier::Tier2Trainer,
+                    replica_types: vec![
+                        openagents_kernel_core::compute::ComputeTrainingReplicaType::SingleNode,
+                    ],
+                    required_backend_families: profile.backend_families.clone(),
+                    minimum_memory_gb: profile.memory_floor_gb,
+                    required_throughput_band:
+                        openagents_provider_substrate::ProviderTrainingThroughputBand::Unknown,
+                    required_replay_capability:
+                        openagents_provider_substrate::ProviderTrainingReplayCapability::None,
+                    benchmark_lane_required: true,
+                },
+            ],
+            eligible_replica_types: vec![
+                openagents_provider_substrate::ProviderTrainingReplicaTypeEligibility {
+                    replica_type: openagents_kernel_core::compute::ComputeTrainingReplicaType::SingleNode,
+                    minimum_tier:
+                        openagents_provider_substrate::ProviderTrainingCapabilityTier::Tier1Validation,
+                    required_backend_families: profile.backend_families.clone(),
+                    minimum_memory_gb: None,
+                },
+            ],
+        }
+    }
+
     #[test]
     fn training_trn_mapping_preserves_apple_backend_capabilities_in_node_records() -> Result<()> {
         let (temp_dir, context) = worker_manifest_context_with_topology(
@@ -623,12 +695,14 @@ mod tests {
             openagents_provider_substrate::ProviderTrainingCapabilityTier::Tier2Trainer,
             "metal",
         );
+        let capability_envelope_v2 = capability_envelope_fixture(&capability_tier);
 
         let (status, node_record) = node_record_event(
             &config,
             &PylonTrainingRuntimeState::default(),
             &[&context],
             &capability_tier,
+            &capability_envelope_v2,
         )?;
         assert_eq!(status, "degraded");
         assert!(
@@ -662,6 +736,14 @@ mod tests {
                 .contains(&nostr::TrnCapability::new(
                     "training_capability_tier",
                     "tier2_trainer"
+                ))
+        );
+        assert!(
+            node_record
+                .capabilities
+                .contains(&nostr::TrnCapability::new(
+                    "training_work_class",
+                    "validation_replay"
                 ))
         );
         Ok(())
@@ -713,9 +795,15 @@ mod tests {
             openagents_provider_substrate::ProviderTrainingCapabilityTier::Tier3Island,
             "cuda",
         );
+        let capability_envelope_v2 = capability_envelope_fixture(&capability_tier);
 
-        let (status, node_record) =
-            node_record_event(&config, &state, &[&context], &capability_tier)?;
+        let (status, node_record) = node_record_event(
+            &config,
+            &state,
+            &[&context],
+            &capability_tier,
+            &capability_envelope_v2,
+        )?;
         assert_eq!(status, "online");
         assert_eq!(node_record.status, "online");
         assert_eq!(node_record.roles, vec!["worker".to_string()]);
@@ -790,12 +878,25 @@ mod tests {
                 .and_then(Value::as_str),
             Some("tier3_island")
         );
+        assert_eq!(
+            node_record
+                .content
+                .get("capability_envelope_v2")
+                .and_then(|value| value.get("schema_version"))
+                .and_then(Value::as_str),
+            Some("provider.training_capability_envelope.v2")
+        );
         assert!(
             node_record
                 .extra_tags
                 .iter()
                 .any(|tag| tag == &vec!["tier".to_string(), "tier3_island".to_string()])
         );
+        assert!(node_record.extra_tags.iter().any(|tag| tag
+            == &vec![
+                "training_replica_type".to_string(),
+                "single_node".to_string()
+            ]));
         assert!(matches!(
             TrnEvent::from_event(&fake_event(node_record.to_event_template(1_774_160_010)?))?,
             TrnEvent::NodeRecord(event) if event == node_record
