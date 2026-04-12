@@ -215,8 +215,14 @@ training artifact resolver, requests signed read URLs, verifies the returned
 payload digests and sizes when authority metadata is available, and stages the
 materialized bytes into the retained run root plus the local resolved-artifact
 cache under `training/runs/<run_id>/artifacts/resolved/` and
-`training/download-cache/resolved/`. The next roadmap item still needs to
-launch the retained manifest without operator intervention.
+`training/download-cache/resolved/`. When `pylon serve` stays online after that
+lease is acknowledged, the same retained state now also drives the existing
+`psionic-train` supervisor path automatically: `Pylon` launches the retained
+manifest, captures stdout and stderr into attempt-scoped logs under
+`training/runs/<run_id>/supervisor/`, updates retained process state and exit
+status, and preserves the runtime status packets already emitted by
+`psionic-train`. The next roadmap item still needs to publish the resulting
+runtime receipts and failure notices back to Nexus automatically.
 
 `Pylon` now also has the first training-coordination HTTP client in
 `apps/pylon/src/lib.rs`. It wraps the existing kernel training-policy and

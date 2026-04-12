@@ -11002,6 +11002,134 @@ fn training_start_request_from_active_runtime(
 }
 
 #[allow(dead_code)]
+fn newest_launchable_training_lease_cache_entry(
+    state: &PylonTrainingRuntimeState,
+) -> Option<PylonTrainingLeaseCacheEntry> {
+    state
+        .lease_cache
+        .values()
+        .filter(|lease| {
+            training_lease_state_is_acknowledged(lease.state.as_str())
+                && lease
+                    .runtime_manifest_path
+                    .as_deref()
+                    .is_some_and(|path| Path::new(path).is_file())
+        })
+        .max_by(|left, right| {
+            left.updated_at_ms
+                .cmp(&right.updated_at_ms)
+                .then_with(|| left.lease_id.cmp(&right.lease_id))
+        })
+        .cloned()
+}
+
+#[allow(dead_code)]
+fn training_start_request_from_retained_lease(
+    config: &PylonConfig,
+    lease: &PylonTrainingLeaseCacheEntry,
+) -> Result<PylonTrainingSupervisorStartRequest> {
+    let manifest_path = PathBuf::from(
+        lease
+            .runtime_manifest_path
+            .clone()
+            .ok_or_else(|| anyhow!("training lease `{}` is missing a runtime manifest path", lease.lease_id))?,
+    );
+    if !manifest_path.is_file() {
+        bail!(
+            "training runtime manifest {} is missing for lease `{}`",
+            manifest_path.display(),
+            lease.lease_id
+        );
+    }
+    Ok(PylonTrainingSupervisorStartRequest {
+        manifest_path,
+        run_root: training_run_root_for_id(config, lease.training_run_id.as_str()),
+        training_run_id: lease.training_run_id.clone(),
+        window_id: lease.window_id.clone(),
+        assignment_id: lease.assignment_id.clone(),
+        lease_id: lease.lease_id.clone(),
+        membership_revision: lease.membership_revision.clone(),
+        role: lease.role,
+    })
+}
+
+#[allow(dead_code)]
+async fn maybe_start_training_supervisor_from_retained_assignment(
+    config: &PylonConfig,
+    state: &mut PylonTrainingRuntimeState,
+    process_slot: &mut Option<PylonTrainingSupervisorProcess>,
+    command_override: Option<&PylonTrainingSupervisorCommand>,
+) -> Result<bool> {
+    if process_slot.is_some() {
+        return Ok(false);
+    }
+    let Some(lease) = newest_launchable_training_lease_cache_entry(state) else {
+        return Ok(false);
+    };
+    if state.active_runtime.as_ref().is_some_and(|active| {
+        active.assignment_id == lease.assignment_id
+            || training_supervision_is_active(active.process_state)
+    }) {
+        return Ok(false);
+    }
+    let request = training_start_request_from_retained_lease(config, &lease)?;
+    let owned_command = if command_override.is_none() {
+        Some(default_psionic_train_supervisor_command(
+            request.manifest_path.as_path(),
+        )?)
+    } else {
+        None
+    };
+    let command = command_override.unwrap_or_else(|| {
+        owned_command
+            .as_ref()
+            .expect("default training supervisor command should exist")
+    });
+    let process = start_training_supervisor(config, state, &request, command).await?;
+    *process_slot = Some(process);
+    Ok(true)
+}
+
+#[allow(dead_code)]
+async fn drive_training_supervisor_once(
+    config: &PylonConfig,
+    desired_mode: ProviderDesiredMode,
+    state: &mut PylonTrainingRuntimeState,
+    process_slot: &mut Option<PylonTrainingSupervisorProcess>,
+    command_override: Option<&PylonTrainingSupervisorCommand>,
+) -> Result<bool> {
+    let mut changed = false;
+    if let Some(process) = process_slot.as_mut() {
+        if desired_mode != ProviderDesiredMode::Online
+            && state.active_runtime.as_ref().is_some_and(|active| {
+                active.desired_state == PylonTrainingSupervisorDesiredState::Running
+                    && training_supervision_is_active(active.process_state)
+            })
+        {
+            drain_training_supervisor(config, state, process).await?;
+        }
+        if poll_training_supervisor(config, state, process).await? {
+            *process_slot = None;
+        }
+        return Ok(true);
+    }
+    if desired_mode != ProviderDesiredMode::Online {
+        return Ok(changed);
+    }
+    if maybe_start_training_supervisor_from_retained_assignment(
+        config,
+        state,
+        process_slot,
+        command_override,
+    )
+    .await?
+    {
+        changed = true;
+    }
+    Ok(changed)
+}
+
+#[allow(dead_code)]
 async fn start_training_supervisor(
     config: &PylonConfig,
     state: &mut PylonTrainingRuntimeState,
@@ -11622,6 +11750,7 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
     let mut next_provider_payout_target_sync_at = Instant::now();
     let mut provider_presence_online = false;
     let mut previous_snapshot = None::<ProviderPersistedSnapshot>;
+    let mut training_supervisor_process = None::<PylonTrainingSupervisorProcess>;
     let mut needs_sync = true;
     loop {
         for update in runtime.drain_updates() {
@@ -11655,6 +11784,21 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                     let _ = runtime.sync_snapshot(snapshot);
                     return Err(anyhow!("provider admin runtime error: {error}"));
                 }
+            }
+        }
+
+        {
+            let mut training_state = load_or_create_training_runtime_state(&config)?;
+            if drive_training_supervisor_once(
+                &config,
+                desired_mode,
+                &mut training_state,
+                &mut training_supervisor_process,
+                None,
+            )
+            .await?
+            {
+                needs_sync = true;
             }
         }
 
@@ -11726,12 +11870,24 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                 if desired_mode == ProviderDesiredMode::Online
                     && Instant::now() >= next_training_assignment_intake_at
                 {
-                    if let Err(error) =
-                        run_training_assignment_intake_once(&config, &identity).await
+                    if let Err(error) = run_training_assignment_intake_once(&config, &identity).await
                     {
                         eprintln!(
                             "warning: automatic pylon training assignment intake failed: {error}"
                         );
+                    } else {
+                        let mut training_state = load_or_create_training_runtime_state(&config)?;
+                        if drive_training_supervisor_once(
+                            &config,
+                            desired_mode,
+                            &mut training_state,
+                            &mut training_supervisor_process,
+                            None,
+                        )
+                        .await?
+                        {
+                            needs_sync = true;
+                        }
                     }
                     next_training_assignment_intake_at =
                         Instant::now() + training_assignment_intake_interval;
@@ -16462,9 +16618,10 @@ mod tests {
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
         load_relay_report, load_sandbox_report, load_status_or_detect,
         load_training_artifact_inspection_report, load_training_status_report_local,
-        local_training_release_id, merge_ledger_earnings, merge_ledger_recent_jobs, mutate_ledger,
-        now_epoch_ms, parse_args, planned_gemma_benchmark_modes, poll_training_supervisor,
-        provider_admin_config, provider_presence_client, psionic_gemma_benchmark_command_args,
+        local_training_release_id, maybe_start_training_supervisor_from_retained_assignment,
+        merge_ledger_earnings, merge_ledger_recent_jobs, mutate_ledger, now_epoch_ms, parse_args,
+        planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
+        provider_presence_client, psionic_gemma_benchmark_command_args,
         publish_announcement_report, publish_training_trn_state, refresh_relay_report,
         remove_configured_relay, render_earnings_report, render_human_status, render_jobs_report,
         render_public_config_json, render_sandbox_report, render_training_status_report,
@@ -16474,9 +16631,9 @@ mod tests {
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
         run_training_assignment_intake_once_with_context, save_config,
         save_gemma_diagnostic_report, save_training_runtime_state, scan_provider_requests, serve,
-        snapshot_training_status_report, start_training_checkpoint_server,
-        start_training_supervisor, submit_buyer_job, sync_live_announcement,
-        sync_provider_payout_target_with_report, sync_training_authority_state,
+        snapshot_training_status_report, start_training_checkpoint_server, start_training_supervisor,
+        submit_buyer_job, sync_live_announcement, sync_provider_payout_target_with_report,
+        sync_training_authority_state,
         training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
         training_download_cache_root, training_run_root_for_id, training_runtime_state_path,
         training_settlement_destination, watch_buyer_jobs,
@@ -17793,6 +17950,138 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 && failure_receipt.exit_code == Some(7)
                 && failure_receipt.failure_reason == "psionic-train exited with code 7",
             "failed exits should persist a machine-readable failure receipt beside the attempt logs",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn auto_launch_starts_supervisor_from_retained_assignment_and_preserves_packets()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp_dir, config, mut state, request) = training_supervisor_fixture()?;
+        state.lease_cache.insert(
+            request.lease_id.clone(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: request.lease_id.clone(),
+                assignment_id: request.assignment_id.clone(),
+                training_run_id: request.training_run_id.clone(),
+                window_id: request.window_id.clone(),
+                membership_revision: request.membership_revision.clone(),
+                role: request.role,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_260_600),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(request.manifest_path.display().to_string()),
+                runtime_manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                runtime_lane_id: Some(PSION_ACTUAL_PRETRAINING_LANE_ID.to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("full_island_local_update_training".to_string()),
+                updated_at_ms: 1_762_491_210_600,
+            },
+        );
+        let script_path = config.training.run_root.join("supervisor_auto_launch.sh");
+        std::fs::write(
+            script_path.as_path(),
+            format!(
+                "#!/bin/sh\nset -eu\nrun_root='{}'\nmkdir -p \"$run_root/status\"\necho 'stdout: auto-launch'\necho '{{\"membership_revision\":\"members.rev1\"}}' > \"$run_root/status/psionic_train_run_status_packet.json\"\nsleep 0.05\nexit 0\n",
+                request.run_root.display()
+            ),
+        )?;
+        let command = supervisor_shell_command(script_path.as_path());
+        let mut process = None::<super::PylonTrainingSupervisorProcess>;
+        ensure(
+            maybe_start_training_supervisor_from_retained_assignment(
+                &config,
+                &mut state,
+                &mut process,
+                Some(&command),
+            )
+            .await?
+                && process.is_some()
+                && state.active_runtime.as_ref().is_some_and(|active| {
+                    active.assignment_id == request.assignment_id
+                        && active.lease_id == request.lease_id
+                        && active.process_state == PylonTrainingSupervisorProcessState::Running
+                }),
+            "auto launch should start the retained psionic-train assignment and mark it active in retained state",
+        )?;
+        let mut process = process.ok_or("missing launched training supervisor process")?;
+        poll_training_supervisor_until_exit(&config, &mut state, &mut process).await?;
+        let active = state
+            .active_runtime
+            .as_ref()
+            .ok_or("missing retained runtime after auto-launch exit")?;
+        ensure(
+            active.process_state == PylonTrainingSupervisorProcessState::Stopped
+                && active.last_failure_reason.is_none()
+                && Path::new(active.run_root.as_str())
+                    .join("status/psionic_train_run_status_packet.json")
+                    .is_file(),
+            "auto launch should preserve the retained status packet path emitted by the runtime after a successful exit",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn auto_launch_does_not_restart_the_same_failed_assignment()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp_dir, config, mut state, request) = training_supervisor_fixture()?;
+        state.lease_cache.insert(
+            request.lease_id.clone(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: request.lease_id.clone(),
+                assignment_id: request.assignment_id.clone(),
+                training_run_id: request.training_run_id.clone(),
+                window_id: request.window_id.clone(),
+                membership_revision: request.membership_revision.clone(),
+                role: request.role,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_260_600),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(request.manifest_path.display().to_string()),
+                runtime_manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                runtime_lane_id: Some(PSION_ACTUAL_PRETRAINING_LANE_ID.to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("full_island_local_update_training".to_string()),
+                updated_at_ms: 1_762_491_210_600,
+            },
+        );
+        state.active_runtime = Some(PylonTrainingActiveRuntimeState {
+            manifest_path: request.manifest_path.display().to_string(),
+            run_root: request.run_root.display().to_string(),
+            desired_state: PylonTrainingSupervisorDesiredState::Running,
+            process_state: PylonTrainingSupervisorProcessState::Failed,
+            last_exit_code: Some(7),
+            last_failure_reason: Some("psionic-train exited with code 7".to_string()),
+            updated_at_ms: 1_762_491_220_000,
+            ..training_active_runtime_fixture()
+        });
+        let mut process = None::<super::PylonTrainingSupervisorProcess>;
+        ensure(
+            !maybe_start_training_supervisor_from_retained_assignment(
+                &config,
+                &mut state,
+                &mut process,
+                None,
+            )
+            .await?
+                && process.is_none(),
+            "auto launch should not immediately relaunch the same failed assignment without a new retained lease",
         )
     }
 
