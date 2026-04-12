@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use openagents_kernel_core::snapshots::{
     ComputeBreakerStatusRow, ComputeRolloutGateRow, ComputeTruthLabelRow,
 };
+use openagents_provider_substrate::ProviderTrainingCapabilityEnvelopeV2;
 use serde::{Deserialize, Serialize};
 
 const AUTHORITY_NAME: &str = "openagents-hosted-nexus";
@@ -82,6 +83,8 @@ pub struct PublicRecentPylon {
     pub ready_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_capability_envelope_v2: Option<ProviderTrainingCapabilityEnvelopeV2>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

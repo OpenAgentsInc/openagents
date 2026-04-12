@@ -35,8 +35,8 @@ use openagents_kernel_core::{
     compute::{
         ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeAdapterContributionDisposition,
         ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow,
-        ComputeAdapterWindowStatus, ComputeTrainingPolicy, ComputeTrainingRun,
-        ComputeTrainingWorkClass,
+        ComputeAdapterWindowStatus, ComputeTrainingPolicy, ComputeTrainingReplicaType,
+        ComputeTrainingRun, ComputeTrainingWorkClass,
     },
     ids::sha256_prefixed_text,
     pylon_training::{
@@ -72,12 +72,13 @@ use openagents_provider_substrate::{
     ProviderRuntimeStatusSnapshot, ProviderSandboxDetectionConfig, ProviderSandboxProfile,
     ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSnapshotParts,
     ProviderStatusResponse, ProviderTrainingAcceleratorInventoryEntry,
-    ProviderTrainingArtifactUploadLatencyClass, ProviderTrainingCapabilityTier,
-    ProviderTrainingCapabilityTierProfile, ProviderTrainingLeaseReliabilityClass,
-    ProviderTrainingReplayCapability, ProviderTrainingThroughputBand,
-    assemble_provider_persisted_snapshot, derive_provider_products, detect_sandbox_supply,
-    provider_runtime_state_label, sign_provider_payout_target_registration,
-    validate_provider_control_action,
+    ProviderTrainingArtifactUploadLatencyClass, ProviderTrainingCapabilityEnvelopeV2,
+    ProviderTrainingCapabilityTier, ProviderTrainingCapabilityTierProfile,
+    ProviderTrainingLeaseReliabilityClass, ProviderTrainingReplayCapability,
+    ProviderTrainingReplicaTypeEligibility, ProviderTrainingThroughputBand,
+    ProviderTrainingWorkClassEligibility, assemble_provider_persisted_snapshot,
+    derive_provider_products, detect_sandbox_supply, provider_runtime_state_label,
+    sign_provider_payout_target_registration, validate_provider_control_action,
 };
 use psionic_train::{
     PSION_ACTUAL_PRETRAINING_LANE_ID, PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
@@ -768,6 +769,8 @@ pub struct PylonTrainingNodeAdmissionRequest {
     pub contributor_availability: ProviderAdapterTrainingContributorAvailability,
     #[serde(default)]
     pub capability_tier: ProviderTrainingCapabilityTierProfile,
+    #[serde(default)]
+    pub capability_envelope_v2: ProviderTrainingCapabilityEnvelopeV2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_telemetry: Option<ProviderHostTelemetrySnapshot>,
     #[serde(default)]
@@ -1006,6 +1009,8 @@ pub struct TrainingOperatorStatusReport {
     runtime_surface_detected: bool,
     contributor_supported: bool,
     capability_tier: ProviderTrainingCapabilityTierProfile,
+    #[serde(default)]
+    capability_envelope_v2: ProviderTrainingCapabilityEnvelopeV2,
     manifest_count: usize,
     publication_pointer_count: usize,
     publication_record_count: usize,
@@ -1626,6 +1631,8 @@ struct TrainingDoctorStatus {
     runtime_surface_detected: bool,
     contributor_supported: bool,
     capability_tier: ProviderTrainingCapabilityTierProfile,
+    #[serde(default)]
+    capability_envelope_v2: ProviderTrainingCapabilityEnvelopeV2,
     checkpoint_serve_url: String,
     role_claims: Vec<String>,
     retention_limit_gb: u64,
@@ -7139,6 +7146,11 @@ async fn run_training_assignment_intake_once_with_context(
         derive_adapter_training_contributor_availability(host, runtime_surface);
     let capability_tier =
         derive_training_capability_tier_profile(config, state, host, &contributor_availability);
+    let capability_envelope_v2 = derive_training_capability_envelope_v2(
+        &capability_tier,
+        &contributor_availability,
+        runtime_surface.is_some(),
+    );
     let supported_roles =
         supported_training_role_claims(config, &contributor_availability, &capability_tier);
     if supported_roles.is_empty() {
@@ -7206,6 +7218,7 @@ async fn run_training_assignment_intake_once_with_context(
         build_digest: Some(local_training_build_digest()),
         contributor_availability,
         capability_tier,
+        capability_envelope_v2,
         host_telemetry: Some(host.clone()),
         active_reputation_labels: training_runtime_blocked_label_keys(state),
         settlement_destination: training_settlement_destination(config),
@@ -8252,6 +8265,11 @@ fn load_training_status_report_with_config(
         derive_adapter_training_contributor_availability(&host, runtime_surface.as_ref());
     let capability_tier =
         derive_training_capability_tier_profile(config, &state, &host, &contributor_availability);
+    let capability_envelope_v2 = derive_training_capability_envelope_v2(
+        &capability_tier,
+        &contributor_availability,
+        runtime_surface.is_some(),
+    );
     let contexts = load_training_manifest_inspection_contexts(config, &state)?;
     let provider_pubkey = config
         .identity_path
@@ -8346,6 +8364,7 @@ fn load_training_status_report_with_config(
         runtime_surface_detected: runtime_surface.is_some(),
         contributor_supported: contributor_availability.contributor_supported,
         capability_tier,
+        capability_envelope_v2,
         manifest_count: contexts.len(),
         publication_pointer_count: state.publication_pointers.len(),
         publication_record_count: state.publication_records.len(),
@@ -8787,7 +8806,8 @@ fn build_training_doctor_status(
     Ok(TrainingDoctorStatus {
         runtime_surface_detected: report.runtime_surface_detected,
         contributor_supported: report.contributor_supported,
-        capability_tier: report.capability_tier,
+        capability_tier: report.capability_tier.clone(),
+        capability_envelope_v2: report.capability_envelope_v2.clone(),
         checkpoint_serve_url: report.checkpoint_serve_url.clone(),
         role_claims: config
             .training
@@ -9565,9 +9585,14 @@ where
     Ok(Some(decoded))
 }
 
-fn load_training_run_status_packet(run_root: &Path) -> Result<Option<PylonTrainingRunStatusPacket>> {
+fn load_training_run_status_packet(
+    run_root: &Path,
+) -> Result<Option<PylonTrainingRunStatusPacket>> {
     load_training_status_packet(
-        run_root.join("status").join("psionic_train_run_status_packet.json").as_path(),
+        run_root
+            .join("status")
+            .join("psionic_train_run_status_packet.json")
+            .as_path(),
         "training run-status packet",
     )
 }
@@ -9637,20 +9662,23 @@ fn training_context_has_pending_publication(
     }
 
     for bundle in inspect_manifest_local_artifacts(context)? {
-        if bundle.state != artifact_bundle_state_label(PylonTrainingArtifactBundleState::LocalOnly) {
+        if bundle.state != artifact_bundle_state_label(PylonTrainingArtifactBundleState::LocalOnly)
+        {
             continue;
         }
         for object in &bundle.objects {
-            let artifact_id = training_artifact_id(
-                context.layout.clone(),
-                object.object_uri.as_str(),
-            )?;
+            let artifact_id =
+                training_artifact_id(context.layout.clone(), object.object_uri.as_str())?;
             let locator_key =
                 training_publication_pointer_key("artifact_locator", artifact_id.as_str());
             let receipt_key =
                 training_publication_pointer_key("artifact_uploaded", artifact_id.as_str());
-            if !state.publication_pointers.contains_key(locator_key.as_str())
-                || !state.publication_pointers.contains_key(receipt_key.as_str())
+            if !state
+                .publication_pointers
+                .contains_key(locator_key.as_str())
+                || !state
+                    .publication_pointers
+                    .contains_key(receipt_key.as_str())
             {
                 return Ok(true);
             }
@@ -9936,16 +9964,17 @@ async fn report_training_terminal_runtime_to_authority(
         }
     } else if training_run_completed_successfully(active, run_status.as_ref()) {
         if let Some(candidate) = checkpoint_candidate.as_ref() {
-            let receipt_subject =
-                format!("{}::{}", candidate.checkpoint_ref, candidate.artifact_digest);
+            let receipt_subject = format!(
+                "{}::{}",
+                candidate.checkpoint_ref, candidate.artifact_digest
+            );
             let receipt_key =
                 training_authority_receipt_key("checkpoint_publication", receipt_subject.as_str());
             if training_authority_receipt_needs_attempt(state, receipt_key.as_str()) {
                 let request = PylonTrainingCheckpointPublicationRequest {
                     idempotency_key: format!(
                         "training.checkpoint_publication.{}.{}",
-                        active.training_run_id,
-                        candidate.artifact_digest
+                        active.training_run_id, candidate.artifact_digest
                     ),
                     published_at_ms: now_epoch_ms(),
                     node_pubkey_hex: identity.public_key_hex.clone(),
@@ -9995,7 +10024,11 @@ async fn report_training_terminal_runtime_to_authority(
                 state,
                 training_authority_receipt_key(
                     "checkpoint_publication",
-                    format!("{}::{}", candidate.checkpoint_ref, candidate.artifact_digest).as_str(),
+                    format!(
+                        "{}::{}",
+                        candidate.checkpoint_ref, candidate.artifact_digest
+                    )
+                    .as_str(),
                 )
                 .as_str(),
             )
@@ -10045,7 +10078,8 @@ async fn sync_training_terminal_runtime_once(
         return Ok(false);
     }
     let manifest_path = PathBuf::from(active.manifest_path.clone());
-    let Some(context) = training_manifest_context_for_path(config, &state, manifest_path.as_path())?
+    let Some(context) =
+        training_manifest_context_for_path(config, &state, manifest_path.as_path())?
     else {
         return Ok(false);
     };
@@ -10065,13 +10099,16 @@ async fn sync_training_terminal_runtime_once(
     if !training_supervision_is_terminal(active.process_state) {
         return Ok(changed);
     }
-    let Some(context) = training_manifest_context_for_path(config, &state, manifest_path.as_path())?
+    let Some(context) =
+        training_manifest_context_for_path(config, &state, manifest_path.as_path())?
     else {
         return Ok(changed);
     };
 
-    if report_training_terminal_runtime_to_authority(config, identity, &mut state, &active, &context)
-        .await?
+    if report_training_terminal_runtime_to_authority(
+        config, identity, &mut state, &active, &context,
+    )
+    .await?
     {
         save_training_runtime_state(config, &state)?;
         changed = true;
@@ -10762,8 +10799,18 @@ fn build_training_node_record_template(
         derive_adapter_training_contributor_availability(&host, runtime_surface.as_ref());
     let capability_tier =
         derive_training_capability_tier_profile(config, state, &host, &contributor_availability);
-    let (status, event) =
-        training_trn_mapping::node_record_event(config, state, contexts, &capability_tier)?;
+    let capability_envelope_v2 = derive_training_capability_envelope_v2(
+        &capability_tier,
+        &contributor_availability,
+        runtime_surface.is_some(),
+    );
+    let (status, event) = training_trn_mapping::node_record_event(
+        config,
+        state,
+        contexts,
+        &capability_tier,
+        &capability_envelope_v2,
+    )?;
     let a_ref = event
         .coordinate(identity.public_key_hex.as_str())
         .map_err(|error| anyhow!(error.to_string()))?;
@@ -11308,6 +11355,10 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
             "capability tier: {}",
             render_training_capability_tier_summary(&report.capability_tier)
         ),
+        format!(
+            "capability envelope: {}",
+            render_training_capability_envelope_summary(&report.capability_envelope_v2)
+        ),
         format!("tracked manifests: {}", report.manifest_count),
         format!("tracked TRN events: {}", report.publication_pointer_count),
         format!("tracked TRN records: {}", report.publication_record_count),
@@ -11460,6 +11511,27 @@ fn render_training_capability_tier_summary(
     segments.push(format!("replay={}", profile.replay_capability.label()));
     segments.push(format!("reliability={}", profile.lease_reliability.label()));
     segments.join(" ")
+}
+
+fn render_training_capability_envelope_summary(
+    envelope: &ProviderTrainingCapabilityEnvelopeV2,
+) -> String {
+    let work_classes = envelope.eligible_work_class_labels();
+    let replica_types = envelope.eligible_replica_type_labels();
+    let work_classes = if work_classes.is_empty() {
+        "none".to_string()
+    } else {
+        work_classes.join(",")
+    };
+    let replica_types = if replica_types.is_empty() {
+        "none".to_string()
+    } else {
+        replica_types.join(",")
+    };
+    format!(
+        "schema={} benchmark_lane={} work_classes={} replica_types={}",
+        envelope.schema_version, envelope.benchmark_lane_available, work_classes, replica_types
+    )
 }
 
 fn render_training_artifact_inspection_report(report: &TrainingArtifactInspectionReport) -> String {
@@ -11748,12 +11820,12 @@ fn training_start_request_from_retained_lease(
     config: &PylonConfig,
     lease: &PylonTrainingLeaseCacheEntry,
 ) -> Result<PylonTrainingSupervisorStartRequest> {
-    let manifest_path = PathBuf::from(
-        lease
-            .runtime_manifest_path
-            .clone()
-            .ok_or_else(|| anyhow!("training lease `{}` is missing a runtime manifest path", lease.lease_id))?,
-    );
+    let manifest_path = PathBuf::from(lease.runtime_manifest_path.clone().ok_or_else(|| {
+        anyhow!(
+            "training lease `{}` is missing a runtime manifest path",
+            lease.lease_id
+        )
+    })?);
     if !manifest_path.is_file() {
         bail!(
             "training runtime manifest {} is missing for lease `{}`",
@@ -12602,7 +12674,8 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                 if desired_mode == ProviderDesiredMode::Online
                     && Instant::now() >= next_training_assignment_intake_at
                 {
-                    if let Err(error) = run_training_assignment_intake_once(&config, &identity).await
+                    if let Err(error) =
+                        run_training_assignment_intake_once(&config, &identity).await
                     {
                         eprintln!(
                             "warning: automatic pylon training assignment intake failed: {error}"
@@ -13394,6 +13467,23 @@ fn render_human_status(status: &ProviderStatusResponse) -> String {
                 "training_tier: {}",
                 render_training_capability_tier_summary(&training.capability_tier)
             ));
+            let training_work_classes =
+                training.capability_envelope_v2.eligible_work_class_labels();
+            if !training_work_classes.is_empty() {
+                lines.push(format!(
+                    "training_work_classes: {}",
+                    training_work_classes.join(", ")
+                ));
+            }
+            let training_replica_types = training
+                .capability_envelope_v2
+                .eligible_replica_type_labels();
+            if !training_replica_types.is_empty() {
+                lines.push(format!(
+                    "training_replica_types: {}",
+                    training_replica_types.join(", ")
+                ));
+            }
             if let Some(active_runtime) = training.active_runtime.as_ref() {
                 lines.push(format!(
                     "training_active: {} {} {} {}",
@@ -15715,6 +15805,8 @@ struct NexusProviderPresenceHeartbeatRequest {
     runtime_state: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     diagnostic_summaries: Vec<ProviderDiagnosticSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    training_capability_envelope_v2: Option<ProviderTrainingCapabilityEnvelopeV2>,
     hosting_telemetry: ProviderHostingTelemetrySnapshot,
 }
 
@@ -15754,7 +15846,24 @@ async fn report_provider_presence_heartbeat(
     session_id: &str,
     snapshot: &ProviderPersistedSnapshot,
 ) -> Result<()> {
-    let hosting_telemetry = build_provider_hosting_telemetry(config_path, snapshot);
+    let host = load_cached_provider_host_telemetry(config_path);
+    let hosting_telemetry = ProviderHostingTelemetrySnapshot {
+        captured_at_unix_ms: host.captured_at_unix_ms,
+        runtime: snapshot.runtime.clone(),
+        availability: snapshot.availability.clone(),
+        inventory_rows: snapshot.inventory_rows.clone(),
+        host: Some(host.clone()),
+    };
+    let training_state = load_or_create_training_runtime_state(config)?;
+    let runtime_surface = inspect_psionic_train_runtime_surface().ok();
+    let contributor_availability =
+        derive_adapter_training_contributor_availability(&host, runtime_surface.as_ref());
+    let capability_tier = derive_training_capability_tier_profile(
+        config,
+        &training_state,
+        &host,
+        &contributor_availability,
+    );
     let request = NexusProviderPresenceHeartbeatRequest {
         nostr_pubkey_hex: identity.public_key_hex.clone(),
         session_id: session_id.to_string(),
@@ -15774,6 +15883,11 @@ async fn report_provider_presence_heartbeat(
             .clone()
             .or_else(|| Some(snapshot.runtime.mode.label().to_string())),
         diagnostic_summaries: load_latest_provider_diagnostic_summaries(config_path),
+        training_capability_envelope_v2: Some(derive_training_capability_envelope_v2(
+            &capability_tier,
+            &contributor_availability,
+            runtime_surface.is_some(),
+        )),
         hosting_telemetry,
     };
     post_nexus_provider_presence(
@@ -16913,6 +17027,217 @@ fn derive_training_capability_tier_profile(
     }
 }
 
+fn training_capability_minimum_tier_for_work_class(
+    work_class: ComputeTrainingWorkClass,
+) -> ProviderTrainingCapabilityTier {
+    match work_class {
+        ComputeTrainingWorkClass::ValidationReplay | ComputeTrainingWorkClass::Evaluation => {
+            ProviderTrainingCapabilityTier::Tier1Validation
+        }
+        ComputeTrainingWorkClass::AdapterTraining
+        | ComputeTrainingWorkClass::SmallModelLocalTraining
+        | ComputeTrainingWorkClass::GroupedReplicaStageExecution => {
+            ProviderTrainingCapabilityTier::Tier2Trainer
+        }
+        ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => {
+            ProviderTrainingCapabilityTier::Tier3Island
+        }
+        ComputeTrainingWorkClass::Aggregation | ComputeTrainingWorkClass::CheckpointPromotion => {
+            ProviderTrainingCapabilityTier::Tier4Authority
+        }
+    }
+}
+
+fn training_capability_replica_types_for_work_class(
+    work_class: ComputeTrainingWorkClass,
+) -> Vec<ComputeTrainingReplicaType> {
+    match work_class {
+        ComputeTrainingWorkClass::GroupedReplicaStageExecution => {
+            vec![ComputeTrainingReplicaType::GroupedReplica]
+        }
+        ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => {
+            vec![ComputeTrainingReplicaType::Island]
+        }
+        _ => vec![ComputeTrainingReplicaType::SingleNode],
+    }
+}
+
+fn training_capability_minimum_memory_for_work_class(
+    profile: &ProviderTrainingCapabilityTierProfile,
+    work_class: ComputeTrainingWorkClass,
+) -> Option<u32> {
+    match work_class {
+        ComputeTrainingWorkClass::ValidationReplay | ComputeTrainingWorkClass::Evaluation => None,
+        _ => profile.memory_floor_gb,
+    }
+}
+
+fn training_capability_required_throughput_for_work_class(
+    work_class: ComputeTrainingWorkClass,
+) -> ProviderTrainingThroughputBand {
+    match work_class {
+        ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => {
+            ProviderTrainingThroughputBand::Island
+        }
+        _ => ProviderTrainingThroughputBand::Unknown,
+    }
+}
+
+fn training_capability_required_replay_for_work_class(
+    work_class: ComputeTrainingWorkClass,
+) -> ProviderTrainingReplayCapability {
+    match work_class {
+        ComputeTrainingWorkClass::ValidationReplay | ComputeTrainingWorkClass::Evaluation => {
+            ProviderTrainingReplayCapability::ShortWindow
+        }
+        _ => ProviderTrainingReplayCapability::None,
+    }
+}
+
+fn training_capability_eligible_work_class(
+    profile: &ProviderTrainingCapabilityTierProfile,
+    contributor_availability: &ProviderAdapterTrainingContributorAvailability,
+    benchmark_lane_available: bool,
+    work_class: ComputeTrainingWorkClass,
+) -> Option<ProviderTrainingWorkClassEligibility> {
+    let minimum_tier = training_capability_minimum_tier_for_work_class(work_class);
+    if !profile.tier.meets(minimum_tier) {
+        return None;
+    }
+    let contributor_gate = matches!(
+        work_class,
+        ComputeTrainingWorkClass::AdapterTraining
+            | ComputeTrainingWorkClass::SmallModelLocalTraining
+            | ComputeTrainingWorkClass::GroupedReplicaStageExecution
+            | ComputeTrainingWorkClass::FullIslandLocalUpdateTraining
+    );
+    if contributor_gate && !contributor_availability.contributor_supported {
+        return None;
+    }
+    let required_replay_capability = training_capability_required_replay_for_work_class(work_class);
+    if required_replay_capability != ProviderTrainingReplayCapability::None
+        && profile.replay_capability == ProviderTrainingReplayCapability::None
+    {
+        return None;
+    }
+    let required_throughput_band =
+        training_capability_required_throughput_for_work_class(work_class);
+    if required_throughput_band == ProviderTrainingThroughputBand::Island
+        && profile.throughput_band != ProviderTrainingThroughputBand::Island
+    {
+        return None;
+    }
+    if matches!(
+        work_class,
+        ComputeTrainingWorkClass::ValidationReplay
+            | ComputeTrainingWorkClass::Evaluation
+            | ComputeTrainingWorkClass::AdapterTraining
+            | ComputeTrainingWorkClass::GroupedReplicaStageExecution
+            | ComputeTrainingWorkClass::FullIslandLocalUpdateTraining
+    ) && !benchmark_lane_available
+    {
+        return None;
+    }
+    Some(ProviderTrainingWorkClassEligibility {
+        work_class,
+        minimum_tier,
+        replica_types: training_capability_replica_types_for_work_class(work_class),
+        required_backend_families: profile.backend_families.clone(),
+        minimum_memory_gb: training_capability_minimum_memory_for_work_class(profile, work_class),
+        required_throughput_band,
+        required_replay_capability,
+        benchmark_lane_required: matches!(
+            work_class,
+            ComputeTrainingWorkClass::ValidationReplay
+                | ComputeTrainingWorkClass::Evaluation
+                | ComputeTrainingWorkClass::AdapterTraining
+                | ComputeTrainingWorkClass::GroupedReplicaStageExecution
+                | ComputeTrainingWorkClass::FullIslandLocalUpdateTraining
+        ),
+    })
+}
+
+fn training_capability_eligible_replica_types(
+    profile: &ProviderTrainingCapabilityTierProfile,
+    work_classes: &[ProviderTrainingWorkClassEligibility],
+) -> Vec<ProviderTrainingReplicaTypeEligibility> {
+    let mut replica_types = Vec::new();
+    for replica_type in [
+        ComputeTrainingReplicaType::SingleNode,
+        ComputeTrainingReplicaType::GroupedReplica,
+        ComputeTrainingReplicaType::Island,
+    ] {
+        if !work_classes
+            .iter()
+            .any(|entry| entry.replica_types.contains(&replica_type))
+        {
+            continue;
+        }
+        let minimum_tier = match replica_type {
+            ComputeTrainingReplicaType::SingleNode => {
+                ProviderTrainingCapabilityTier::Tier1Validation
+            }
+            ComputeTrainingReplicaType::GroupedReplica => {
+                ProviderTrainingCapabilityTier::Tier2Trainer
+            }
+            ComputeTrainingReplicaType::Island => ProviderTrainingCapabilityTier::Tier3Island,
+        };
+        replica_types.push(ProviderTrainingReplicaTypeEligibility {
+            replica_type,
+            minimum_tier,
+            required_backend_families: profile.backend_families.clone(),
+            minimum_memory_gb: match replica_type {
+                ComputeTrainingReplicaType::SingleNode => None,
+                _ => profile.memory_floor_gb,
+            },
+        });
+    }
+    replica_types
+}
+
+fn derive_training_capability_envelope_v2(
+    capability_tier: &ProviderTrainingCapabilityTierProfile,
+    contributor_availability: &ProviderAdapterTrainingContributorAvailability,
+    runtime_surface_detected: bool,
+) -> ProviderTrainingCapabilityEnvelopeV2 {
+    let benchmark_lane_available = runtime_surface_detected
+        && (!capability_tier.backend_families.is_empty()
+            || capability_tier.replay_capability != ProviderTrainingReplayCapability::None);
+    let eligible_work_classes = [
+        ComputeTrainingWorkClass::ValidationReplay,
+        ComputeTrainingWorkClass::Evaluation,
+        ComputeTrainingWorkClass::AdapterTraining,
+        ComputeTrainingWorkClass::SmallModelLocalTraining,
+        ComputeTrainingWorkClass::GroupedReplicaStageExecution,
+        ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+        ComputeTrainingWorkClass::Aggregation,
+        ComputeTrainingWorkClass::CheckpointPromotion,
+    ]
+    .into_iter()
+    .filter_map(|work_class| {
+        training_capability_eligible_work_class(
+            capability_tier,
+            contributor_availability,
+            benchmark_lane_available,
+            work_class,
+        )
+    })
+    .collect::<Vec<_>>();
+    let eligible_replica_types =
+        training_capability_eligible_replica_types(capability_tier, &eligible_work_classes);
+    ProviderTrainingCapabilityEnvelopeV2 {
+        schema_version:
+            openagents_provider_substrate::PROVIDER_TRAINING_CAPABILITY_ENVELOPE_V2_SCHEMA_VERSION
+                .to_string(),
+        tier_profile: capability_tier.clone(),
+        runtime_surface_detected,
+        contributor_supported: contributor_availability.contributor_supported,
+        benchmark_lane_available,
+        eligible_work_classes,
+        eligible_replica_types,
+    }
+}
+
 fn host_has_training_network_posture(host: &ProviderHostTelemetrySnapshot) -> bool {
     !host.network_interfaces.is_empty()
 }
@@ -17363,12 +17688,13 @@ mod tests {
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
         run_training_assignment_intake_once_with_context, save_config,
         save_gemma_diagnostic_report, save_training_runtime_state, scan_provider_requests, serve,
-        snapshot_training_status_report, start_training_checkpoint_server, start_training_supervisor,
-        submit_buyer_job, sync_live_announcement, sync_provider_payout_target_with_report,
-        sync_training_authority_state, sync_training_terminal_runtime_once,
-        training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
-        training_download_cache_root, training_run_root_for_id, training_runtime_state_path,
-        training_settlement_destination, watch_buyer_jobs,
+        snapshot_training_status_report, start_training_checkpoint_server,
+        start_training_supervisor, submit_buyer_job, sync_live_announcement,
+        sync_provider_payout_target_with_report, sync_training_authority_state,
+        sync_training_terminal_runtime_once, training_artifact_digest_from_locator_payload,
+        training_artifact_resolved_cache_key, training_download_cache_root,
+        training_run_root_for_id, training_runtime_state_path, training_settlement_destination,
+        watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -19345,6 +19671,12 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             &host,
             Some(&psionic_train_runtime_surface_fixture()),
         );
+        let capability_tier = derive_training_capability_tier_profile(
+            &config,
+            &PylonTrainingRuntimeState::default(),
+            &host,
+            &availability,
+        );
 
         let admission_request = PylonTrainingNodeAdmissionRequest {
             idempotency_key: "idemp.training.admission.alpha".to_string(),
@@ -19357,11 +19689,11 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             build_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             build_digest: Some("sha256:build-alpha".to_string()),
             contributor_availability: availability.clone(),
-            capability_tier: derive_training_capability_tier_profile(
-                &config,
-                &PylonTrainingRuntimeState::default(),
-                &host,
+            capability_tier: capability_tier.clone(),
+            capability_envelope_v2: super::derive_training_capability_envelope_v2(
+                &capability_tier,
                 &availability,
+                true,
             ),
             host_telemetry: Some(host),
             active_reputation_labels: Vec::new(),
@@ -21448,11 +21780,11 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
         ensure(
             counts.get("/api/training/windows/progress") == Some(&1)
                 && counts.get("/api/training/failures")
-                    == Some(&(
-                        usize::try_from(super::DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS)
+                    == Some(
+                        &(usize::try_from(super::DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS)
                             .unwrap_or(3)
-                            + 1
-                    )),
+                            + 1),
+                    ),
             "refusal sync should report the window state once and retry the failure notice across serve passes until the coordinator accepts it",
         )?;
 
@@ -22541,6 +22873,22 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                     .as_u64()
                     .is_some_and(|value| value > 0),
             "heartbeat should include host CPU and memory telemetry",
+        )?;
+        ensure(
+            heartbeat_request.1["training_capability_envelope_v2"]["schema_version"]
+                == "provider.training_capability_envelope.v2"
+                && heartbeat_request.1["training_capability_envelope_v2"]["tier_profile"]["tier"]
+                    .as_str()
+                    .is_some_and(|tier| !tier.trim().is_empty())
+                && heartbeat_request.1["training_capability_envelope_v2"]
+                    ["eligible_work_classes"]
+                    .as_array()
+                    .is_none_or(|rows| !rows.is_empty())
+                && heartbeat_request.1["training_capability_envelope_v2"]
+                    ["eligible_replica_types"]
+                    .as_array()
+                    .is_none_or(|rows| !rows.is_empty()),
+            "heartbeat should include the training capability envelope with work-class and replica-type eligibility",
         )?;
         ensure(
             offline_request.1["nostr_pubkey_hex"] == json!(identity.public_key_hex)

@@ -277,11 +277,12 @@ same `apps/pylon/src/lib.rs` surface can now:
   `pylon training publish [--manifest <path>]`
 
 The retained training node record now also carries one scheduler-readable
-capability-tier profile derived from local host telemetry and retained
-training runtime state. That profile is published both in the TRN
+training capability envelope derived from local host telemetry and retained
+training runtime state. That envelope is published both in the TRN
 `kind:39501` content and in explicit capability tags so downstream schedulers
-can read:
+and public stats consumers can read:
 
+- schema version (`provider.training_capability_envelope.v2`)
 - capability tier (`tier0_presence` through `tier4_authority`)
 - backend families and accelerator inventory
 - memory floor and currently available memory
@@ -289,6 +290,12 @@ can read:
 - lease reliability class
 - replay capability
 - artifact upload latency class
+- benchmark-lane availability and runtime-surface detection
+- eligible work classes such as `validation_replay`, `evaluation`,
+  `adapter_training`, `grouped_replica_stage_execution`, and
+  `full_island_local_update_training`
+- eligible replica types such as `single_node`, `grouped_replica`, and
+  `island`
 
 This is still the node-side claim lane, not the final authoritative `Nexus`
 publication lane. The current locator status is intentionally `staged`, and
@@ -327,7 +334,8 @@ staying buried in `state/runtime-state.json` only:
     and the most recent retained training issue
 - `pylon doctor`
   - now includes a dedicated `training` block covering runtime-surface
-    discovery, contributor readiness, retained capability tier,
+    discovery, contributor readiness, retained capability tier and capability
+    envelope,
     checkpoint-serve URL, retained role claims, retention limits, blocked
     reputation labels, and recent retained issues
 
