@@ -375,6 +375,14 @@ Allowed:
 These fields now expose payout-class truth on the public stats path. They are
 the canonical public counters for Transcript 222 payout qualification.
 
+Interpretation:
+
+- `nexusWeakDeviceAcceptedWorkPayoutSatsPaidTotal` covers accepted supporting
+  work that is explicitly weak-device-bearing
+- `nexusStrongLaneAcceptedWorkPayoutSatsPaidTotal` covers accepted
+  progress-bearing strong-lane work such as the current model-update closeout
+  lanes
+
 Important qualifier:
 
 - these counters are still settled by the shared hosted Nexus treasury loop
