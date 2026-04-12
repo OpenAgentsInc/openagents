@@ -152,18 +152,23 @@ sends can be dispatched concurrently inside one payout cycle. The default is
 `16`, clamped to `64`. This matters in production because too-low concurrency
 can hold the wallet-operation lock long enough that a nominal `20s` payout
 interval stretches into `40-60s` effective receive spacing once many Pylons are
-eligible at the same time.
+eligible at the same time. The hosted production Nexus should currently pin
+this lower than the default to avoid wedging entire send batches behind a
+Spark-side stall.
 
 For the hosted production Nexus, the current safe reference treasury policy is:
 
 - `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=25`
 - `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600`
 - `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000`
+- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4`
 
 That policy keeps the hosted treasury under `864000 sats/day` even if the
 eligible set reaches `240` providers and holds the steady-state Spark send rate
 to `0.4` transfers/second instead of the unsustainable `5+` transfers/second
 range that a `2 sats / 20s` policy reaches once the provider set crosses `100`.
+The lower concurrent-send cap keeps a single wedged Spark batch from occupying
+all live payout slots at once.
 
 For the production VM, `scripts/deploy/nexus/03-configure-and-start.sh` now
 loads the persisted policy from `${NEXUS_CONTROL_TREASURY_STATE_PATH}` by
