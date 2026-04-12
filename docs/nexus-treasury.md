@@ -452,4 +452,5 @@ Deployment gating:
   alerts are active
 - the deploy receipt now includes explicit gate pass/fail rows, endpoint
   latency, tail-latency samples, treasury policy evidence, recent payout
-  activity, snapshot freshness, and active continuity alerts
+  activity, snapshot freshness, active continuity alerts, and the current
+  training rollout-policy snapshot from `/api/training/rollout`

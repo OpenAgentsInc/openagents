@@ -1049,9 +1049,181 @@ struct StarterDemandState {
 struct TrainingSchedulerState {
     runs_by_training_run_id: HashMap<String, ScheduledTrainingRun>,
     lease_idempotency: HashMap<String, TrainingLeaseIdempotentRecord>,
+    rollout_policy: TrainingRolloutPolicy,
 }
 
 const TRAINING_SCHEDULER_STATE_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TrainingRolloutChannel {
+    Canary,
+    Beta,
+    Broad,
+}
+
+impl Default for TrainingRolloutChannel {
+    fn default() -> Self {
+        Self::Broad
+    }
+}
+
+impl TrainingRolloutChannel {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Canary => "canary",
+            Self::Beta => "beta",
+            Self::Broad => "broad",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TrainingRolloutTargetKind {
+    WorkClass,
+    BackendFamily,
+    EnvironmentRef,
+    TrainingRun,
+}
+
+impl TrainingRolloutTargetKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::WorkClass => "work_class",
+            Self::BackendFamily => "backend_family",
+            Self::EnvironmentRef => "environment_ref",
+            Self::TrainingRun => "training_run",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingRolloutGate {
+    target_kind: TrainingRolloutTargetKind,
+    target_ref: String,
+    #[serde(default)]
+    max_channel: TrainingRolloutChannel,
+    #[serde(default = "training_rollout_gate_enabled_default")]
+    enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingRolloutCohort {
+    cohort_id: String,
+    channel: TrainingRolloutChannel,
+    #[serde(default = "training_rollout_cohort_enabled_default")]
+    enabled: bool,
+    #[serde(default)]
+    node_pubkey_hexes: Vec<String>,
+    #[serde(default)]
+    release_ids: Vec<String>,
+    #[serde(default)]
+    build_digests: Vec<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingRolloutPolicy {
+    revision: u64,
+    updated_at_ms: i64,
+    pause_new_leases: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pause_reason: Option<String>,
+    #[serde(default)]
+    gates: Vec<TrainingRolloutGate>,
+    #[serde(default)]
+    cohorts: Vec<TrainingRolloutCohort>,
+    #[serde(default)]
+    blocked_release_ids: Vec<String>,
+    #[serde(default)]
+    blocked_build_digests: Vec<String>,
+}
+
+impl Default for TrainingRolloutPolicy {
+    fn default() -> Self {
+        Self {
+            revision: 0,
+            updated_at_ms: 0,
+            pause_new_leases: false,
+            pause_reason: None,
+            gates: Vec::new(),
+            cohorts: Vec::new(),
+            blocked_release_ids: Vec::new(),
+            blocked_build_digests: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingRolloutPolicyUpdateRequest {
+    pause_new_leases: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pause_reason: Option<String>,
+    #[serde(default)]
+    gates: Vec<TrainingRolloutGate>,
+    #[serde(default)]
+    cohorts: Vec<TrainingRolloutCohort>,
+    #[serde(default)]
+    blocked_release_ids: Vec<String>,
+    #[serde(default)]
+    blocked_build_digests: Vec<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingRolloutChannelNodeSummary {
+    channel: String,
+    nodes_total: u64,
+    nodes_online: u64,
+    nodes_eligible: u64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingRolloutGateResponse {
+    target_kind: String,
+    target_ref: String,
+    max_channel: String,
+    enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingRolloutCohortResponse {
+    cohort_id: String,
+    channel: String,
+    enabled: bool,
+    #[serde(default)]
+    node_pubkey_hexes: Vec<String>,
+    #[serde(default)]
+    release_ids: Vec<String>,
+    #[serde(default)]
+    build_digests: Vec<String>,
+    matched_nodes: u64,
+    matched_online_nodes: u64,
+    matched_eligible_nodes: u64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingRolloutPolicyResponse {
+    revision: u64,
+    updated_at_unix_ms: u64,
+    pause_new_leases: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pause_reason: Option<String>,
+    default_channel: String,
+    #[serde(default)]
+    gates: Vec<TrainingRolloutGateResponse>,
+    #[serde(default)]
+    cohorts: Vec<TrainingRolloutCohortResponse>,
+    #[serde(default)]
+    blocked_release_ids: Vec<String>,
+    #[serde(default)]
+    blocked_build_digests: Vec<String>,
+    #[serde(default)]
+    channels: Vec<TrainingRolloutChannelNodeSummary>,
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingLeaseIdempotentRecord {
@@ -1066,6 +1238,8 @@ struct PersistedTrainingSchedulerState {
     runs_by_training_run_id: HashMap<String, ScheduledTrainingRun>,
     #[serde(default)]
     lease_idempotency: HashMap<String, TrainingLeaseIdempotentRecord>,
+    #[serde(default)]
+    rollout_policy: TrainingRolloutPolicy,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -2380,6 +2554,7 @@ impl TrainingSchedulerState {
             schema_version: TRAINING_SCHEDULER_STATE_SCHEMA_VERSION,
             runs_by_training_run_id: self.runs_by_training_run_id.clone(),
             lease_idempotency: self.lease_idempotency.clone(),
+            rollout_policy: self.rollout_policy.clone(),
         }
     }
 
@@ -2387,7 +2562,70 @@ impl TrainingSchedulerState {
         Self {
             runs_by_training_run_id: persisted.runs_by_training_run_id,
             lease_idempotency: persisted.lease_idempotency,
+            rollout_policy: persisted.rollout_policy,
         }
+    }
+
+    fn rollout_policy(&self) -> &TrainingRolloutPolicy {
+        &self.rollout_policy
+    }
+
+    fn replace_rollout_policy(
+        &mut self,
+        request: TrainingRolloutPolicyUpdateRequest,
+        now_unix_ms: i64,
+    ) -> TrainingRolloutPolicy {
+        let revision = self.rollout_policy.revision.saturating_add(1);
+        let mut blocked_release_ids = normalize_string_vec(request.blocked_release_ids);
+        blocked_release_ids.sort();
+        blocked_release_ids.dedup();
+        let mut blocked_build_digests = normalize_string_vec(request.blocked_build_digests);
+        blocked_build_digests.sort();
+        blocked_build_digests.dedup();
+        let mut gates = request
+            .gates
+            .into_iter()
+            .filter_map(|mut gate| {
+                gate.target_ref = normalize_optional_field(Some(gate.target_ref.as_str()))?;
+                gate.reason = normalize_optional_field(gate.reason.as_deref());
+                Some(gate)
+            })
+            .collect::<Vec<_>>();
+        gates.sort_by(|lhs, rhs| {
+            lhs.target_kind
+                .cmp(&rhs.target_kind)
+                .then_with(|| lhs.target_ref.cmp(&rhs.target_ref))
+        });
+        gates.dedup_by(|lhs, rhs| {
+            lhs.target_kind == rhs.target_kind && lhs.target_ref == rhs.target_ref
+        });
+
+        let mut cohorts = request
+            .cohorts
+            .into_iter()
+            .filter_map(|mut cohort| {
+                cohort.cohort_id = normalize_optional_field(Some(cohort.cohort_id.as_str()))?;
+                cohort.node_pubkey_hexes = normalize_string_vec(cohort.node_pubkey_hexes);
+                cohort.release_ids = normalize_string_vec(cohort.release_ids);
+                cohort.build_digests = normalize_string_vec(cohort.build_digests);
+                Some(cohort)
+            })
+            .collect::<Vec<_>>();
+        cohorts.sort_by(|lhs, rhs| lhs.cohort_id.cmp(&rhs.cohort_id));
+        cohorts.dedup_by(|lhs, rhs| lhs.cohort_id == rhs.cohort_id);
+
+        let policy = TrainingRolloutPolicy {
+            revision,
+            updated_at_ms: now_unix_ms,
+            pause_new_leases: request.pause_new_leases,
+            pause_reason: normalize_optional_field(request.pause_reason.as_deref()),
+            gates,
+            cohorts,
+            blocked_release_ids,
+            blocked_build_digests,
+        };
+        self.rollout_policy = policy.clone();
+        policy
     }
 
     fn load_from_path(path: &PathBuf) -> Result<Option<Self>, String> {
@@ -2559,6 +2797,7 @@ impl TrainingSchedulerState {
                 return Err("training_scheduler_run_definition_not_found".to_string());
             };
             if let Some(reason) = training_node_scheduler_run_mismatch_reason_with_definition(
+                self.rollout_policy(),
                 node,
                 &run,
                 &metadata,
@@ -2595,6 +2834,7 @@ impl TrainingSchedulerState {
                 continue;
             };
             if training_node_scheduler_run_mismatch_reason_with_definition(
+                self.rollout_policy(),
                 node,
                 run,
                 &metadata,
@@ -3125,18 +3365,110 @@ fn training_scheduler_run_definition_requires_benchmark_lane(
         || run_definition.benchmark_package_set_ref.is_some()
 }
 
+const fn training_rollout_gate_enabled_default() -> bool {
+    true
+}
+
+const fn training_rollout_cohort_enabled_default() -> bool {
+    true
+}
+
+fn training_rollout_cohort_matches_node(
+    cohort: &TrainingRolloutCohort,
+    node: &AdmittedTrainingNodeView,
+) -> bool {
+    cohort
+        .node_pubkey_hexes
+        .iter()
+        .any(|value| value == &node.node_pubkey_hex)
+        || cohort
+            .release_ids
+            .iter()
+            .any(|value| value == &node.release_id)
+        || cohort
+            .build_digests
+            .iter()
+            .any(|value| value == &node.build_digest)
+}
+
+fn training_rollout_channel_for_node(
+    policy: &TrainingRolloutPolicy,
+    node: &AdmittedTrainingNodeView,
+) -> TrainingRolloutChannel {
+    policy
+        .cohorts
+        .iter()
+        .filter(|cohort| cohort.enabled && training_rollout_cohort_matches_node(cohort, node))
+        .map(|cohort| cohort.channel)
+        .min()
+        .unwrap_or_default()
+}
+
+fn training_rollout_gate_reason_label(
+    gate: &TrainingRolloutGate,
+    suffix: &'static str,
+) -> &'static str {
+    match (gate.target_kind, suffix) {
+        (TrainingRolloutTargetKind::WorkClass, "disabled") => {
+            "training_scheduler_rollout_work_class_disabled"
+        }
+        (TrainingRolloutTargetKind::BackendFamily, "disabled") => {
+            "training_scheduler_rollout_backend_family_disabled"
+        }
+        (TrainingRolloutTargetKind::EnvironmentRef, "disabled") => {
+            "training_scheduler_rollout_environment_disabled"
+        }
+        (TrainingRolloutTargetKind::TrainingRun, "disabled") => {
+            "training_scheduler_rollout_training_run_disabled"
+        }
+        (TrainingRolloutTargetKind::WorkClass, "channel_mismatch") => {
+            "training_scheduler_rollout_work_class_channel_mismatch"
+        }
+        (TrainingRolloutTargetKind::BackendFamily, "channel_mismatch") => {
+            "training_scheduler_rollout_backend_family_channel_mismatch"
+        }
+        (TrainingRolloutTargetKind::EnvironmentRef, "channel_mismatch") => {
+            "training_scheduler_rollout_environment_channel_mismatch"
+        }
+        (TrainingRolloutTargetKind::TrainingRun, "channel_mismatch") => {
+            "training_scheduler_rollout_training_run_channel_mismatch"
+        }
+        _ => "training_scheduler_rollout_invalid",
+    }
+}
+
+fn training_rollout_gate_matches(
+    gate: &TrainingRolloutGate,
+    effective_work_class: ComputeTrainingWorkClass,
+    training_run_id: &str,
+    environment_ref: &str,
+    backend_family: Option<&str>,
+) -> bool {
+    match gate.target_kind {
+        TrainingRolloutTargetKind::WorkClass => gate.target_ref == effective_work_class.label(),
+        TrainingRolloutTargetKind::BackendFamily => {
+            backend_family.is_some_and(|value| gate.target_ref == value)
+        }
+        TrainingRolloutTargetKind::EnvironmentRef => gate.target_ref == environment_ref,
+        TrainingRolloutTargetKind::TrainingRun => gate.target_ref == training_run_id,
+    }
+}
+
 fn training_node_matches_scheduler_run(
     kernel: &KernelState,
+    rollout_policy: &TrainingRolloutPolicy,
     node: &AdmittedTrainingNodeView,
     run: &ComputeTrainingRun,
     metadata: &TrainingSchedulerRunMetadata,
     role: TrainingNodeRoleClaim,
 ) -> bool {
-    training_node_scheduler_run_mismatch_reason(kernel, node, run, metadata, role).is_none()
+    training_node_scheduler_run_mismatch_reason(kernel, rollout_policy, node, run, metadata, role)
+        .is_none()
 }
 
 fn training_node_scheduler_run_mismatch_reason(
     kernel: &KernelState,
+    rollout_policy: &TrainingRolloutPolicy,
     node: &AdmittedTrainingNodeView,
     run: &ComputeTrainingRun,
     metadata: &TrainingSchedulerRunMetadata,
@@ -3146,6 +3478,7 @@ fn training_node_scheduler_run_mismatch_reason(
         return Some("training_scheduler_run_definition_not_found");
     };
     training_node_scheduler_run_mismatch_reason_with_definition(
+        rollout_policy,
         node,
         run,
         metadata,
@@ -3155,6 +3488,7 @@ fn training_node_scheduler_run_mismatch_reason(
 }
 
 fn training_node_scheduler_run_mismatch_reason_with_definition(
+    rollout_policy: &TrainingRolloutPolicy,
     node: &AdmittedTrainingNodeView,
     run: &ComputeTrainingRun,
     metadata: &TrainingSchedulerRunMetadata,
@@ -3182,6 +3516,23 @@ fn training_node_scheduler_run_mismatch_reason_with_definition(
     else {
         return Some("training_scheduler_run_definition_environment_missing");
     };
+    if rollout_policy.pause_new_leases {
+        return Some("training_scheduler_rollout_paused");
+    }
+    if rollout_policy
+        .blocked_release_ids
+        .iter()
+        .any(|value| value == &node.release_id)
+    {
+        return Some("training_scheduler_rollout_release_blocked");
+    }
+    if rollout_policy
+        .blocked_build_digests
+        .iter()
+        .any(|value| value == &node.build_digest)
+    {
+        return Some("training_scheduler_rollout_build_digest_blocked");
+    }
     if !node
         .contributor_availability
         .validator_policy_refs
@@ -3226,6 +3577,23 @@ fn training_node_scheduler_run_mismatch_reason_with_definition(
     }
     let effective_work_class = training_scheduler_effective_work_class(role, run.work_class);
     let effective_replica_type = training_scheduler_effective_replica_type(role, run.replica_type);
+    let node_channel = training_rollout_channel_for_node(rollout_policy, node);
+    for gate in rollout_policy.gates.iter().filter(|gate| {
+        training_rollout_gate_matches(
+            gate,
+            effective_work_class,
+            run.training_run_id.as_str(),
+            run_environment.environment_ref.as_str(),
+            training_backend_family_for_environment_ref(run_environment.environment_ref.as_str()),
+        )
+    }) {
+        if !gate.enabled {
+            return Some(training_rollout_gate_reason_label(gate, "disabled"));
+        }
+        if node_channel > gate.max_channel {
+            return Some(training_rollout_gate_reason_label(gate, "channel_mismatch"));
+        }
+    }
     if !node
         .capability_tier
         .tier
@@ -3419,6 +3787,7 @@ fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<
 
 fn training_validator_node_matches_window(
     kernel: &KernelState,
+    rollout_policy: &TrainingRolloutPolicy,
     node: &AdmittedTrainingNodeView,
     window: &ComputeAdapterTrainingWindow,
 ) -> bool {
@@ -3430,6 +3799,7 @@ fn training_validator_node_matches_window(
     };
     training_node_matches_scheduler_run(
         kernel,
+        rollout_policy,
         node,
         &run,
         &metadata,
@@ -6017,6 +6387,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
             "/api/training/trn/publish",
             post(publish_training_trn_state),
         )
+        .route(
+            "/api/training/rollout",
+            get(training_rollout_policy).post(update_training_rollout_policy),
+        )
         .route("/api/training/summary", get(training_operator_summary))
         .route("/api/training/visualization", get(training_visualization))
         .route("/api/training/nodes", get(list_training_nodes))
@@ -6383,6 +6757,40 @@ async fn training_operator_summary(
         reason: "session_store_poisoned".to_string(),
     })?;
     Ok(Json(training_operator_summary_snapshot(&store, now)))
+}
+
+async fn training_rollout_policy(
+    State(state): State<AppState>,
+) -> Result<Json<TrainingRolloutPolicyResponse>, ApiError> {
+    let now = now_unix_ms();
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(training_rollout_policy_snapshot(&store, now)))
+}
+
+async fn update_training_rollout_policy(
+    State(state): State<AppState>,
+    Json(request): Json<TrainingRolloutPolicyUpdateRequest>,
+) -> Result<Json<TrainingRolloutPolicyResponse>, ApiError> {
+    let now = now_unix_ms();
+    let response = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .training_scheduler
+            .replace_rollout_policy(request, now as i64);
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
+        training_rollout_policy_snapshot(&store, now)
+    };
+    Ok(Json(response))
 }
 
 async fn training_visualization(
@@ -7487,7 +7895,12 @@ async fn claim_training_validator_challenge(
             {
                 continue;
             }
-            if !training_validator_node_matches_window(&store.kernel, &node, &window) {
+            if !training_validator_node_matches_window(
+                &store.kernel,
+                store.training_scheduler.rollout_policy(),
+                &node,
+                &window,
+            ) {
                 continue;
             }
             if !node.allowed_networks.is_empty()
@@ -15854,6 +16267,112 @@ fn training_window_advances_checkpoint_lineage<'a>(
         .is_some_and(training_outcome_advances_checkpoint_lineage)
 }
 
+fn training_rollout_policy_snapshot(
+    store: &ControlStore,
+    now_unix_ms: u64,
+) -> TrainingRolloutPolicyResponse {
+    let admitted_nodes = store.kernel.list_admitted_training_nodes(
+        &TrainingNodeQuery {
+            network_id: None,
+            role: None,
+            online_only: false,
+            eligible_only: false,
+        },
+        now_unix_ms as i64,
+    );
+    let policy = store.training_scheduler.rollout_policy().clone();
+    let mut channels = [
+        (
+            TrainingRolloutChannel::Canary,
+            TrainingRolloutChannelNodeSummary {
+                channel: TrainingRolloutChannel::Canary.label().to_string(),
+                nodes_total: 0,
+                nodes_online: 0,
+                nodes_eligible: 0,
+            },
+        ),
+        (
+            TrainingRolloutChannel::Beta,
+            TrainingRolloutChannelNodeSummary {
+                channel: TrainingRolloutChannel::Beta.label().to_string(),
+                nodes_total: 0,
+                nodes_online: 0,
+                nodes_eligible: 0,
+            },
+        ),
+        (
+            TrainingRolloutChannel::Broad,
+            TrainingRolloutChannelNodeSummary {
+                channel: TrainingRolloutChannel::Broad.label().to_string(),
+                nodes_total: 0,
+                nodes_online: 0,
+                nodes_eligible: 0,
+            },
+        ),
+    ]
+    .into_iter()
+    .collect::<BTreeMap<_, _>>();
+    for node in &admitted_nodes {
+        let channel = training_rollout_channel_for_node(&policy, node);
+        if let Some(summary) = channels.get_mut(&channel) {
+            summary.nodes_total = summary.nodes_total.saturating_add(1);
+            if node.online {
+                summary.nodes_online = summary.nodes_online.saturating_add(1);
+            }
+            if node.eligible {
+                summary.nodes_eligible = summary.nodes_eligible.saturating_add(1);
+            }
+        }
+    }
+
+    let cohorts = policy
+        .cohorts
+        .iter()
+        .map(|cohort| {
+            let matched_nodes = admitted_nodes
+                .iter()
+                .filter(|node| training_rollout_cohort_matches_node(cohort, node))
+                .collect::<Vec<_>>();
+            TrainingRolloutCohortResponse {
+                cohort_id: cohort.cohort_id.clone(),
+                channel: cohort.channel.label().to_string(),
+                enabled: cohort.enabled,
+                node_pubkey_hexes: cohort.node_pubkey_hexes.clone(),
+                release_ids: cohort.release_ids.clone(),
+                build_digests: cohort.build_digests.clone(),
+                matched_nodes: matched_nodes.len() as u64,
+                matched_online_nodes: matched_nodes.iter().filter(|node| node.online).count()
+                    as u64,
+                matched_eligible_nodes: matched_nodes.iter().filter(|node| node.eligible).count()
+                    as u64,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    TrainingRolloutPolicyResponse {
+        revision: policy.revision,
+        updated_at_unix_ms: u64::try_from(policy.updated_at_ms.max(0)).unwrap_or_default(),
+        pause_new_leases: policy.pause_new_leases,
+        pause_reason: policy.pause_reason.clone(),
+        default_channel: TrainingRolloutChannel::Broad.label().to_string(),
+        gates: policy
+            .gates
+            .iter()
+            .map(|gate| TrainingRolloutGateResponse {
+                target_kind: gate.target_kind.label().to_string(),
+                target_ref: gate.target_ref.clone(),
+                max_channel: gate.max_channel.label().to_string(),
+                enabled: gate.enabled,
+                reason: gate.reason.clone(),
+            })
+            .collect(),
+        cohorts,
+        blocked_release_ids: policy.blocked_release_ids.clone(),
+        blocked_build_digests: policy.blocked_build_digests.clone(),
+        channels: channels.into_values().collect(),
+    }
+}
+
 fn training_operator_summary_snapshot(
     store: &ControlStore,
     now_unix_ms: u64,
@@ -18065,12 +18584,13 @@ mod tests {
         PublishTrainingTrnStateRequest, RetryTrainingValidatorChallengeRequest,
         ScheduledTrainingRun, TRN_TRAINING_ARTIFACT_LOCATOR_KIND, TRN_TRAINING_CLOSEOUT_KIND,
         TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND, TRN_TRAINING_WINDOW_KIND,
-        TrainingOperatorSummaryResponse, TrainingSchedulerWindowState,
-        TrainingTrnPublicationReport, TrainingValidatorChallengeCoordinatorResponse,
-        TrainingWindowCloseoutStatus, TrainingWindowDefensibilityArtifactAudit,
-        TrainingWindowDefensibilityAudit, TrainingWindowDefensibilityPromotionAudit,
-        TrainingWindowDefensibilityValidatorAudit, TrainingWindowMetadata,
-        TrainingWindowValidationState, TrainingWindowValidationSummary,
+        TrainingOperatorSummaryResponse, TrainingRolloutChannel, TrainingRolloutCohort,
+        TrainingRolloutGate, TrainingRolloutPolicyResponse, TrainingRolloutPolicyUpdateRequest,
+        TrainingRolloutTargetKind, TrainingSchedulerWindowState, TrainingTrnPublicationReport,
+        TrainingValidatorChallengeCoordinatorResponse, TrainingWindowCloseoutStatus,
+        TrainingWindowDefensibilityArtifactAudit, TrainingWindowDefensibilityAudit,
+        TrainingWindowDefensibilityPromotionAudit, TrainingWindowDefensibilityValidatorAudit,
+        TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
         training_scheduler_metadata_from_run, training_window_closeout_outcome,
         training_window_closeout_status, training_window_metadata_value, validator_service,
     };
@@ -18464,6 +18984,40 @@ mod tests {
                     .method("GET")
                     .uri("/api/training/visualization")
                     .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        response_json(response).await
+    }
+
+    async fn fetch_training_rollout_policy(
+        app: &axum::Router,
+    ) -> Result<TrainingRolloutPolicyResponse> {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/rollout")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        response_json(response).await
+    }
+
+    async fn update_training_rollout_policy_request(
+        app: &axum::Router,
+        request: &TrainingRolloutPolicyUpdateRequest,
+    ) -> Result<TrainingRolloutPolicyResponse> {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/rollout")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(request)?))?,
             )
             .await?;
         assert_eq!(response.status(), StatusCode::OK);
@@ -22834,7 +23388,9 @@ mod tests {
             "spark:alice"
         );
         assert_eq!(
-            treasury_status.training_payout_ledger_summary.reconciliation_status,
+            treasury_status
+                .training_payout_ledger_summary
+                .reconciliation_status,
             "clean"
         );
         Ok(())
@@ -26909,6 +27465,439 @@ mod tests {
         assert_eq!(
             body.get("reason").and_then(serde_json::Value::as_str),
             Some("training_scheduler_benchmark_lane_unavailable")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_rollout_policy_endpoint_persists_and_reports_channels() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let kernel_state_path = temp_dir.path().join("training-kernel-state.json");
+        let mut config = test_config()?;
+        config.kernel_state_path = Some(kernel_state_path.clone());
+        let scheduler_state_path =
+            super::training_scheduler_state_path(config.kernel_state_path.as_ref())
+                .expect("scheduler state path");
+
+        let state = build_app_state(config.clone());
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_486_000u64;
+        let training_run_id = "run.scheduler.rollout.persist";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.rollout.persist.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut node_beta = training_node_admission_request(
+                "node-beta",
+                "sha256:build-beta",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_beta.idempotency_key = "idemp.training.admission.node-beta.rollout".to_string();
+            node_beta.requested_at_ms = created_at_ms as i64 + 760;
+            node_beta.release_id = "openagents.pylon@0.2.0".to_string();
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 760),
+                    node_beta,
+                )
+                .expect("admit node beta");
+            let mut heartbeat_beta = training_node_heartbeat_request_for_scope(
+                "node-beta",
+                "sha256:build-beta",
+                training_run_id,
+                "window.rollout.persist.0001",
+            );
+            heartbeat_beta.idempotency_key =
+                "idemp.training.heartbeat.node-beta.rollout".to_string();
+            heartbeat_beta.recorded_at_ms = created_at_ms as i64 + 770;
+            heartbeat_beta.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 770),
+                    heartbeat_beta,
+                )
+                .expect("heartbeat node beta");
+        }
+
+        let updated = update_training_rollout_policy_request(
+            &app,
+            &TrainingRolloutPolicyUpdateRequest {
+                pause_new_leases: false,
+                pause_reason: None,
+                gates: vec![TrainingRolloutGate {
+                    target_kind: TrainingRolloutTargetKind::WorkClass,
+                    target_ref: "adapter_training".to_string(),
+                    max_channel: TrainingRolloutChannel::Beta,
+                    enabled: true,
+                    reason: Some("beta rollout".to_string()),
+                }],
+                cohorts: vec![
+                    TrainingRolloutCohort {
+                        cohort_id: "canary.alpha".to_string(),
+                        channel: TrainingRolloutChannel::Canary,
+                        enabled: true,
+                        node_pubkey_hexes: vec!["node-alpha".to_string()],
+                        release_ids: Vec::new(),
+                        build_digests: Vec::new(),
+                    },
+                    TrainingRolloutCohort {
+                        cohort_id: "beta.release".to_string(),
+                        channel: TrainingRolloutChannel::Beta,
+                        enabled: true,
+                        node_pubkey_hexes: Vec::new(),
+                        release_ids: vec!["openagents.pylon@0.2.0".to_string()],
+                        build_digests: Vec::new(),
+                    },
+                ],
+                blocked_release_ids: vec!["openagents.pylon@0.0.9".to_string()],
+                blocked_build_digests: vec!["sha256:bad-build".to_string()],
+            },
+        )
+        .await?;
+
+        assert!(scheduler_state_path.is_file());
+        assert_eq!(updated.revision, 1);
+        assert_eq!(updated.default_channel, "broad");
+        assert_eq!(updated.gates.len(), 1);
+        assert_eq!(updated.gates[0].target_kind, "work_class");
+        assert_eq!(updated.gates[0].max_channel, "beta");
+        assert_eq!(updated.gates[0].reason.as_deref(), Some("beta rollout"));
+        assert_eq!(updated.cohorts.len(), 2);
+        let canary_cohort = updated
+            .cohorts
+            .iter()
+            .find(|cohort| cohort.cohort_id == "canary.alpha")
+            .expect("canary cohort");
+        assert_eq!(canary_cohort.channel, "canary");
+        assert_eq!(canary_cohort.matched_nodes, 1);
+        let beta_cohort = updated
+            .cohorts
+            .iter()
+            .find(|cohort| cohort.cohort_id == "beta.release")
+            .expect("beta cohort");
+        assert_eq!(beta_cohort.channel, "beta");
+        assert_eq!(beta_cohort.matched_nodes, 1);
+        assert_eq!(
+            updated
+                .channels
+                .iter()
+                .find(|summary| summary.channel == "canary")
+                .map(|summary| summary.nodes_total),
+            Some(1)
+        );
+        assert_eq!(
+            updated
+                .channels
+                .iter()
+                .find(|summary| summary.channel == "beta")
+                .map(|summary| summary.nodes_total),
+            Some(1)
+        );
+        assert_eq!(
+            updated.blocked_build_digests,
+            vec!["sha256:bad-build".to_string()]
+        );
+
+        drop(app);
+        drop(state);
+
+        let reloaded_state = build_app_state(config);
+        let reloaded_app = build_api_router_with_state(reloaded_state);
+        let reloaded = fetch_training_rollout_policy(&reloaded_app).await?;
+        assert_eq!(reloaded.revision, 1);
+        assert_eq!(reloaded.gates.len(), 1);
+        assert_eq!(reloaded.gates[0].target_ref, "adapter_training");
+        assert_eq!(reloaded.cohorts.len(), 2);
+        assert_eq!(
+            reloaded.blocked_release_ids,
+            vec!["openagents.pylon@0.0.9".to_string()]
+        );
+        assert_eq!(
+            reloaded.blocked_build_digests,
+            vec!["sha256:bad-build".to_string()]
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_rollout_policy_gates_leases() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_487_000u64;
+        let training_run_id = "run.scheduler.rollout.gated";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.rollout.gated.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut node_beta = training_node_admission_request(
+                "node-beta",
+                "sha256:build-beta",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_beta.idempotency_key = "idemp.training.admission.node-beta.rollout.gated".into();
+            node_beta.requested_at_ms = created_at_ms as i64 + 760;
+            node_beta.release_id = "openagents.pylon@0.2.0".to_string();
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 760),
+                    node_beta,
+                )
+                .expect("admit node beta");
+            let mut heartbeat_beta = training_node_heartbeat_request_for_scope(
+                "node-beta",
+                "sha256:build-beta",
+                training_run_id,
+                "window.rollout.gated.0001",
+            );
+            heartbeat_beta.idempotency_key =
+                "idemp.training.heartbeat.node-beta.rollout.gated".to_string();
+            heartbeat_beta.recorded_at_ms = created_at_ms as i64 + 770;
+            heartbeat_beta.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 770),
+                    heartbeat_beta,
+                )
+                .expect("heartbeat node beta");
+        }
+
+        update_training_rollout_policy_request(
+            &app,
+            &TrainingRolloutPolicyUpdateRequest {
+                pause_new_leases: true,
+                pause_reason: Some("manual pause".to_string()),
+                gates: Vec::new(),
+                cohorts: Vec::new(),
+                blocked_release_ids: Vec::new(),
+                blocked_build_digests: Vec::new(),
+            },
+        )
+        .await?;
+        let paused = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.rollout.paused",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(paused.status(), StatusCode::BAD_REQUEST);
+        let paused_body = response_json::<serde_json::Value>(paused).await?;
+        assert_eq!(
+            paused_body
+                .get("reason")
+                .and_then(serde_json::Value::as_str),
+            Some("training_scheduler_rollout_paused")
+        );
+
+        update_training_rollout_policy_request(
+            &app,
+            &TrainingRolloutPolicyUpdateRequest {
+                pause_new_leases: false,
+                pause_reason: None,
+                gates: vec![TrainingRolloutGate {
+                    target_kind: TrainingRolloutTargetKind::WorkClass,
+                    target_ref: "adapter_training".to_string(),
+                    max_channel: TrainingRolloutChannel::Canary,
+                    enabled: true,
+                    reason: Some("canary only".to_string()),
+                }],
+                cohorts: vec![
+                    TrainingRolloutCohort {
+                        cohort_id: "canary.alpha".to_string(),
+                        channel: TrainingRolloutChannel::Canary,
+                        enabled: true,
+                        node_pubkey_hexes: vec!["node-alpha".to_string()],
+                        release_ids: Vec::new(),
+                        build_digests: Vec::new(),
+                    },
+                    TrainingRolloutCohort {
+                        cohort_id: "beta.release".to_string(),
+                        channel: TrainingRolloutChannel::Beta,
+                        enabled: true,
+                        node_pubkey_hexes: Vec::new(),
+                        release_ids: vec!["openagents.pylon@0.2.0".to_string()],
+                        build_digests: Vec::new(),
+                    },
+                ],
+                blocked_release_ids: Vec::new(),
+                blocked_build_digests: Vec::new(),
+            },
+        )
+        .await?;
+
+        let beta_blocked = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.rollout.beta_blocked",
+                            created_at_ms as i64 + 1_010,
+                            "node-beta",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(beta_blocked.status(), StatusCode::BAD_REQUEST);
+        let beta_blocked_body = response_json::<serde_json::Value>(beta_blocked).await?;
+        assert_eq!(
+            beta_blocked_body
+                .get("reason")
+                .and_then(serde_json::Value::as_str),
+            Some("training_scheduler_rollout_work_class_channel_mismatch")
+        );
+
+        let canary_ok = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.rollout.canary_ok",
+                            created_at_ms as i64 + 1_020,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(canary_ok.status(), StatusCode::OK);
+
+        update_training_rollout_policy_request(
+            &app,
+            &TrainingRolloutPolicyUpdateRequest {
+                pause_new_leases: false,
+                pause_reason: None,
+                gates: vec![TrainingRolloutGate {
+                    target_kind: TrainingRolloutTargetKind::BackendFamily,
+                    target_ref: "cuda".to_string(),
+                    max_channel: TrainingRolloutChannel::Broad,
+                    enabled: false,
+                    reason: Some("backend paused".to_string()),
+                }],
+                cohorts: vec![TrainingRolloutCohort {
+                    cohort_id: "canary.alpha".to_string(),
+                    channel: TrainingRolloutChannel::Canary,
+                    enabled: true,
+                    node_pubkey_hexes: vec!["node-alpha".to_string()],
+                    release_ids: Vec::new(),
+                    build_digests: Vec::new(),
+                }],
+                blocked_release_ids: Vec::new(),
+                blocked_build_digests: Vec::new(),
+            },
+        )
+        .await?;
+
+        let backend_disabled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.rollout.backend_disabled",
+                            created_at_ms as i64 + 1_030,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(backend_disabled.status(), StatusCode::BAD_REQUEST);
+        let backend_disabled_body = response_json::<serde_json::Value>(backend_disabled).await?;
+        assert_eq!(
+            backend_disabled_body
+                .get("reason")
+                .and_then(serde_json::Value::as_str),
+            Some("training_scheduler_rollout_backend_family_disabled")
+        );
+
+        update_training_rollout_policy_request(
+            &app,
+            &TrainingRolloutPolicyUpdateRequest {
+                pause_new_leases: false,
+                pause_reason: None,
+                gates: Vec::new(),
+                cohorts: Vec::new(),
+                blocked_release_ids: Vec::new(),
+                blocked_build_digests: vec!["sha256:build-alpha".to_string()],
+            },
+        )
+        .await?;
+
+        let build_blocked = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.rollout.build_blocked",
+                            created_at_ms as i64 + 1_040,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(build_blocked.status(), StatusCode::BAD_REQUEST);
+        let build_blocked_body = response_json::<serde_json::Value>(build_blocked).await?;
+        assert_eq!(
+            build_blocked_body
+                .get("reason")
+                .and_then(serde_json::Value::as_str),
+            Some("training_scheduler_rollout_build_digest_blocked")
         );
         Ok(())
     }
@@ -31059,6 +32048,7 @@ mod tests {
                 training_scheduler_metadata_from_run(&run).expect("training scheduler metadata");
             let mismatch_reason = super::training_node_scheduler_run_mismatch_reason(
                 &store.kernel,
+                store.training_scheduler.rollout_policy(),
                 &validator,
                 &run,
                 &metadata,
@@ -31072,6 +32062,7 @@ mod tests {
             assert_eq!(challenges.len(), 2, "scheduled challenges: {challenges:#?}");
             assert!(super::training_validator_node_matches_window(
                 &store.kernel,
+                store.training_scheduler.rollout_policy(),
                 &validator,
                 &window,
             ));

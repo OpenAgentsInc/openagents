@@ -22,6 +22,7 @@ VERIFY_HEALTH_LATENCY_P95_MAX_MS="${VERIFY_HEALTH_LATENCY_P95_MAX_MS:-1000}"
 VERIFY_HEALTH_LATENCY_P99_MAX_MS="${VERIFY_HEALTH_LATENCY_P99_MAX_MS:-2000}"
 VERIFY_STATS_LATENCY_P95_MAX_MS="${VERIFY_STATS_LATENCY_P95_MAX_MS:-1000}"
 VERIFY_STATS_LATENCY_P99_MAX_MS="${VERIFY_STATS_LATENCY_P99_MAX_MS:-2000}"
+VERIFY_TRAINING_ROLLOUT_LATENCY_MAX_MS="${VERIFY_TRAINING_ROLLOUT_LATENCY_MAX_MS:-1000}"
 VERIFY_PROVIDER_PRESENCE_LATENCY_P95_MAX_MS="${VERIFY_PROVIDER_PRESENCE_LATENCY_P95_MAX_MS:-1000}"
 VERIFY_PROVIDER_PRESENCE_LATENCY_P99_MAX_MS="${VERIFY_PROVIDER_PRESENCE_LATENCY_P99_MAX_MS:-2000}"
 VERIFY_TREASURY_SNAPSHOT_MAX_AGE_MS="${VERIFY_TREASURY_SNAPSHOT_MAX_AGE_MS:-15000}"
@@ -232,6 +233,7 @@ PROVIDER_PRESENCE_DRY_RUN_REQUEST="$(jq -nc --arg relay_url "$NEXUS_PUBLIC_WS_UR
 
 HEALTH_RESULT="$(fetch_json_probe "http://127.0.0.1:8080/healthz")"
 STATS_RESULT="$(fetch_json_probe "http://127.0.0.1:8080/api/stats")"
+TRAINING_ROLLOUT_RESULT="$(fetch_json_probe "http://127.0.0.1:8080/api/training/rollout")"
 HEALTH_SERIES_RESULT="$(fetch_json_probe_series "http://127.0.0.1:8080/healthz")"
 STATS_SERIES_RESULT="$(fetch_json_probe_series "http://127.0.0.1:8080/api/stats")"
 PROVIDER_PRESENCE_SERIES_RESULT="$(fetch_json_probe_series \
@@ -260,6 +262,7 @@ jq -n \
   --arg data_mount "$DATA_DIR_STATUS_RAW" \
   --argjson health_result "$HEALTH_RESULT" \
   --argjson stats_result "$STATS_RESULT" \
+  --argjson training_rollout_result "$TRAINING_ROLLOUT_RESULT" \
   --argjson health_series_result "$HEALTH_SERIES_RESULT" \
   --argjson stats_series_result "$STATS_SERIES_RESULT" \
   --argjson provider_presence_series_result "$PROVIDER_PRESENCE_SERIES_RESULT" \
@@ -273,6 +276,7 @@ jq -n \
   --argjson verify_health_latency_p99_max_ms "$VERIFY_HEALTH_LATENCY_P99_MAX_MS" \
   --argjson verify_stats_latency_p95_max_ms "$VERIFY_STATS_LATENCY_P95_MAX_MS" \
   --argjson verify_stats_latency_p99_max_ms "$VERIFY_STATS_LATENCY_P99_MAX_MS" \
+  --argjson verify_training_rollout_latency_max_ms "$VERIFY_TRAINING_ROLLOUT_LATENCY_MAX_MS" \
   --argjson verify_provider_presence_latency_p95_max_ms "$VERIFY_PROVIDER_PRESENCE_LATENCY_P95_MAX_MS" \
   --argjson verify_provider_presence_latency_p99_max_ms "$VERIFY_PROVIDER_PRESENCE_LATENCY_P99_MAX_MS" \
   --argjson verify_treasury_snapshot_max_age_ms "$VERIFY_TREASURY_SNAPSHOT_MAX_AGE_MS" \
@@ -363,6 +367,26 @@ jq -n \
         ($stats_result.latency_ms <= $verify_stats_latency_max_ms);
         (if $stats_result.latency_ms > $verify_stats_latency_max_ms then "stats_latency_exceeded" else null end);
         {latency_ms: $stats_result.latency_ms, max_latency_ms: $verify_stats_latency_max_ms}
+      ),
+      gate(
+        "training_rollout_endpoint";
+        ($training_rollout_result.latency_ms <= $verify_training_rollout_latency_max_ms);
+        (
+          if $training_rollout_result.latency_ms > $verify_training_rollout_latency_max_ms
+          then "training_rollout_latency_exceeded"
+          else null
+          end
+        );
+        {
+          latency_ms: $training_rollout_result.latency_ms,
+          max_latency_ms: $verify_training_rollout_latency_max_ms,
+          revision: ($training_rollout_result.body.revision // 0),
+          pause_new_leases: ($training_rollout_result.body.pause_new_leases // false),
+          gate_count: (($training_rollout_result.body.gates // []) | length),
+          cohort_count: (($training_rollout_result.body.cohorts // []) | length),
+          blocked_release_ids: ($training_rollout_result.body.blocked_release_ids // []),
+          blocked_build_digests: ($training_rollout_result.body.blocked_build_digests // [])
+        }
       ),
       gate(
         "health_endpoint_tail_latency";
@@ -485,10 +509,12 @@ jq -n \
     image: $image,
     health: $health_result.body,
     stats: $stats_result.body,
+    training_rollout: $training_rollout_result.body,
     treasury: $treasury_result.body,
     endpoint_latency_ms: {
       healthz: $health_result.latency_ms,
       stats: $stats_result.latency_ms,
+      training_rollout: $training_rollout_result.latency_ms,
       treasury_status: $treasury_result.latency_ms
     },
     tail_latency_ms: {
