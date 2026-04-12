@@ -154,6 +154,17 @@ can hold the wallet-operation lock long enough that a nominal `20s` payout
 interval stretches into `40-60s` effective receive spacing once many Pylons are
 eligible at the same time.
 
+For the hosted production Nexus, the current safe reference treasury policy is:
+
+- `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=25`
+- `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600`
+- `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000`
+
+That policy keeps the hosted treasury under `864000 sats/day` even if the
+eligible set reaches `240` providers and holds the steady-state Spark send rate
+to `0.4` transfers/second instead of the unsustainable `5+` transfers/second
+range that a `2 sats / 20s` policy reaches once the provider set crosses `100`.
+
 For the production VM, `scripts/deploy/nexus/03-configure-and-start.sh` now
 loads the persisted policy from `${NEXUS_CONTROL_TREASURY_STATE_PATH}` by
 default and writes those values back into the container env file. That keeps
@@ -412,6 +423,10 @@ Continuity alerts:
   breakage such as dispatch stalls, confirmation stalls, budget-cap exhaustion,
   policy-runtime blocking, or stale treasury snapshots.
 - `treasury.alert.cleared` receipts fire when that condition recovers.
+- dispatch and confirmation stall detection now keys off the oldest still-
+  pending payout work and is recomputed live from current treasury state, so a
+  hung dispatch cycle still surfaces a critical alert through
+  `/v1/treasury/status` and `/api/stats`.
 - critical alerts are also reflected directly in `payout_loop_health` and
   `degraded_reason`, so operators do not need to infer failures from homepage
   behavior.

@@ -171,8 +171,8 @@ Treasury deployment note:
 
 ```bash
 export NEXUS_CONTROL_TREASURY_ENABLED=true
-export NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=2
-export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=20
+export NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=25
+export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600
 export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=true
 export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000
 export NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS=30
@@ -190,10 +190,15 @@ Why the extra two envs matter:
   snapshot during a restart, the runtime now attempts to recover from the
   remaining state and at minimum preserves the persisted payout total rather
   than silently zeroing the public counter
-- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=16` prevents the live treasury
-  dispatch loop from batching too few sends under one wallet-operation lock,
-  which had stretched per-pylon credits from the configured `20s` interval to
-  roughly `40-60s` once the eligible target set grew into the twenties
+- `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=25` and
+  `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600` are the current
+  production-safe reference values for the hosted Nexus treasury. That policy
+  reduces Spark transfer pressure to `0.4` sends/second even if the eligible
+  set reaches `240` providers, while keeping the daily ceiling under
+  `864000 sats` at that scale.
+- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=16` remains sufficient at that
+  wider cadence because the staggered per-identity phase offsets keep the due
+  set small per dispatch cycle.
 - `scripts/deploy/nexus/10-install-treasury-watchdog.sh` installs a systemd
   timer on the VM that runs every 5 minutes, checks the local treasury status
   plus recent completed-send journal entries, and restarts `nexus-relay` only
