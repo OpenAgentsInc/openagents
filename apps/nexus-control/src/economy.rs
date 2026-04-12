@@ -217,6 +217,18 @@ pub struct PublicStatsSnapshot {
     #[serde(default)]
     pub training_nodes_admitted: u64,
     #[serde(default)]
+    pub training_admitted_contributors: u64,
+    #[serde(default)]
+    pub training_assigned_contributors: u64,
+    #[serde(default)]
+    pub training_accepted_contributors: u64,
+    #[serde(default)]
+    pub training_model_progress_contributors: u64,
+    #[serde(default)]
+    pub training_weak_device_assigned_contributors: u64,
+    #[serde(default)]
+    pub training_weak_device_accepted_contributors: u64,
+    #[serde(default)]
     pub training_nodes_online: u64,
     #[serde(default)]
     pub training_admitted_nodes_online: u64,
@@ -360,6 +372,12 @@ pub struct PublicRuntimeSnapshot {
     pub nexus_payouts_failed_24h: u64,
     pub nexus_payouts_skipped_24h: u64,
     pub training_nodes_admitted: u64,
+    pub training_admitted_contributors: u64,
+    pub training_assigned_contributors: u64,
+    pub training_accepted_contributors: u64,
+    pub training_model_progress_contributors: u64,
+    pub training_weak_device_assigned_contributors: u64,
+    pub training_weak_device_accepted_contributors: u64,
     pub training_nodes_online: u64,
     pub training_admitted_nodes_online: u64,
     pub training_runs_active: u64,
@@ -640,6 +658,14 @@ impl ReceiptLedger {
             nexus_payouts_failed_24h: runtime.nexus_payouts_failed_24h,
             nexus_payouts_skipped_24h: runtime.nexus_payouts_skipped_24h,
             training_nodes_admitted: runtime.training_nodes_admitted,
+            training_admitted_contributors: runtime.training_admitted_contributors,
+            training_assigned_contributors: runtime.training_assigned_contributors,
+            training_accepted_contributors: runtime.training_accepted_contributors,
+            training_model_progress_contributors: runtime.training_model_progress_contributors,
+            training_weak_device_assigned_contributors: runtime
+                .training_weak_device_assigned_contributors,
+            training_weak_device_accepted_contributors: runtime
+                .training_weak_device_accepted_contributors,
             training_nodes_online: runtime.training_nodes_online,
             training_admitted_nodes_online: runtime.training_admitted_nodes_online,
             training_runs_active: runtime.training_runs_active,
@@ -966,6 +992,12 @@ mod tests {
                 nexus_payouts_failed_24h: 0,
                 nexus_payouts_skipped_24h: 0,
                 training_nodes_admitted: 0,
+                training_admitted_contributors: 0,
+                training_assigned_contributors: 0,
+                training_accepted_contributors: 0,
+                training_model_progress_contributors: 0,
+                training_weak_device_assigned_contributors: 0,
+                training_weak_device_accepted_contributors: 0,
                 training_nodes_online: 0,
                 training_admitted_nodes_online: 0,
                 training_runs_active: 0,

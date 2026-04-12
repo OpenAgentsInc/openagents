@@ -1879,6 +1879,8 @@ struct TrainingCloseoutReputationContext {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingOperatorParticipationSummary {
     admitted_nodes: u64,
+    assigned_contributors: u64,
+    weak_device_assigned_contributors: u64,
     online_nodes: u64,
     active_runs: u64,
     active_windows: u64,
@@ -1889,6 +1891,9 @@ struct TrainingOperatorParticipationSummary {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingOperatorProgressSummary {
+    accepted_contributors: u64,
+    weak_device_accepted_contributors: u64,
+    model_progress_contributors: u64,
     runs_with_accepted_progress: u64,
     windows_advanced_checkpoint_lineage: u64,
     nodes_contributing_to_accepted_progress: u64,
@@ -1927,6 +1932,11 @@ struct TrainingOperatorSummaryResponse {
     progress: TrainingOperatorProgressSummary,
     settlement: TrainingOperatorSettlementSummary,
     admitted_nodes: u64,
+    assigned_contributors: u64,
+    weak_device_assigned_contributors: u64,
+    accepted_contributors: u64,
+    weak_device_accepted_contributors: u64,
+    model_progress_contributors: u64,
     admitted_nodes_online: u64,
     active_runs: u64,
     active_windows: u64,
@@ -2003,6 +2013,11 @@ struct TrainingVisualizationRun {
     #[serde(default)]
     window_ids: Vec<String>,
     admitted_nodes: u64,
+    assigned_contributors: u64,
+    weak_device_assigned_contributors: u64,
+    accepted_contributors: u64,
+    weak_device_accepted_contributors: u64,
+    model_progress_contributors: u64,
     admitted_nodes_online: u64,
     worker_nodes_online: u64,
     validator_nodes_online: u64,
@@ -2241,6 +2256,8 @@ struct NexusHomepageRecentTrainingPublication {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingOperatorRunParticipationSummary {
     admitted_nodes: u64,
+    assigned_contributors: u64,
+    weak_device_assigned_contributors: u64,
     online_nodes: u64,
     worker_nodes_online: u64,
     validator_nodes_online: u64,
@@ -2256,6 +2273,9 @@ struct TrainingOperatorRunParticipationSummary {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingOperatorRunProgressSummary {
+    accepted_contributors: u64,
+    weak_device_accepted_contributors: u64,
+    model_progress_contributors: u64,
     nodes_contributing_to_accepted_progress: u64,
     windows_advanced_checkpoint_lineage: u64,
     accepted_closeouts: u64,
@@ -2296,6 +2316,11 @@ struct TrainingOperatorRunSummary {
     progress: TrainingOperatorRunProgressSummary,
     settlement: TrainingOperatorRunSettlementSummary,
     admitted_nodes: u64,
+    assigned_contributors: u64,
+    weak_device_assigned_contributors: u64,
+    accepted_contributors: u64,
+    weak_device_accepted_contributors: u64,
+    model_progress_contributors: u64,
     admitted_nodes_online: u64,
     worker_nodes_online: u64,
     validator_nodes_online: u64,
@@ -2327,6 +2352,11 @@ struct TrainingOperatorRunSummary {
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 struct TrainingOperatorMetrics {
     admitted_nodes: u64,
+    assigned_contributors: u64,
+    weak_device_assigned_contributors: u64,
+    accepted_contributors: u64,
+    weak_device_accepted_contributors: u64,
+    model_progress_contributors: u64,
     admitted_nodes_online: u64,
     active_runs: u64,
     active_windows: u64,
@@ -15558,6 +15588,14 @@ fn runtime_snapshot(
         nexus_payouts_failed_24h: treasury_runtime.payouts_failed_24h,
         nexus_payouts_skipped_24h: treasury_runtime.payouts_skipped_24h,
         training_nodes_admitted: training_metrics.admitted_nodes,
+        training_admitted_contributors: training_metrics.admitted_nodes,
+        training_assigned_contributors: training_metrics.assigned_contributors,
+        training_accepted_contributors: training_metrics.accepted_contributors,
+        training_model_progress_contributors: training_metrics.model_progress_contributors,
+        training_weak_device_assigned_contributors: training_metrics
+            .weak_device_assigned_contributors,
+        training_weak_device_accepted_contributors: training_metrics
+            .weak_device_accepted_contributors,
         training_nodes_online: training_metrics.admitted_nodes_online,
         training_admitted_nodes_online: training_metrics.admitted_nodes_online,
         training_runs_active: training_metrics.active_runs,
@@ -15732,6 +15770,12 @@ fn training_outcome_counts_as_accepted_progress(outcome: &ComputeAcceptedOutcome
             .is_some_and(TrainingWorkProgressClass::progress_bearing)
 }
 
+fn training_work_class_weak_device_bearing(work_class: ComputeTrainingWorkClass) -> bool {
+    training_scheduler_minimum_tier_for_work_class(TrainingNodeRoleClaim::Worker, work_class)
+        .ordinal()
+        < ProviderTrainingCapabilityTier::Tier3Island.ordinal()
+}
+
 fn training_contribution_counts_as_accepted_progress(
     contribution: &ComputeAdapterContributionOutcome,
 ) -> bool {
@@ -15840,6 +15884,10 @@ fn training_operator_summary_snapshot(
     }
 
     let mut progress_contributor_ids = HashSet::<String>::new();
+    let mut assigned_contributor_ids = HashSet::<String>::new();
+    let mut weak_device_assigned_contributor_ids = HashSet::<String>::new();
+    let mut accepted_contributor_ids = HashSet::<String>::new();
+    let mut weak_device_accepted_contributor_ids = HashSet::<String>::new();
     let mut settlement_accepted_closeouts = 0u64;
     let mut settlement_payout_eligible_closeouts = 0u64;
     let mut settlement_weak_device_bearing_closeouts = 0u64;
@@ -15911,6 +15959,59 @@ fn training_operator_summary_snapshot(
                 .iter()
                 .filter(|window| window.training_run_id == run.training_run_id)
                 .collect::<Vec<_>>();
+            let run_window_metadata = run_windows
+                .iter()
+                .filter_map(|window| {
+                    training_window_metadata_from_value(&window.metadata)
+                        .ok()
+                        .map(|metadata| (*window, metadata))
+                })
+                .collect::<Vec<_>>();
+            let weak_device_bearing_run =
+                training_work_class_weak_device_bearing(run.work_class);
+            let mut run_assigned_contributor_ids = HashSet::<String>::new();
+            for assignment in scheduler_state
+                .into_iter()
+                .flat_map(|value| value.assignments.iter())
+                .filter(|assignment| assignment.role == TrainingNodeRoleClaim::Worker)
+            {
+                let Some(node_pubkey_hex) = assignment.node_pubkey_hex.as_deref() else {
+                    continue;
+                };
+                let node_pubkey_hex = node_pubkey_hex.trim();
+                if node_pubkey_hex.is_empty() {
+                    continue;
+                }
+                run_assigned_contributor_ids.insert(node_pubkey_hex.to_string());
+            }
+            for (_, metadata) in &run_window_metadata {
+                for assignment in &metadata.assignment_plans {
+                    let contributor_node_id = if assignment.contributor_node_id.trim().is_empty() {
+                        assignment.node_pubkey_hex.trim()
+                    } else {
+                        assignment.contributor_node_id.trim()
+                    };
+                    if contributor_node_id.is_empty() {
+                        continue;
+                    }
+                    run_assigned_contributor_ids.insert(contributor_node_id.to_string());
+                }
+            }
+            for contribution in contribution_outcomes
+                .iter()
+                .filter(|contribution| contribution.training_run_id == run.training_run_id)
+            {
+                let contributor_node_id = contribution.contributor_node_id.trim();
+                if contributor_node_id.is_empty() {
+                    continue;
+                }
+                run_assigned_contributor_ids.insert(contributor_node_id.to_string());
+            }
+            assigned_contributor_ids.extend(run_assigned_contributor_ids.iter().cloned());
+            if weak_device_bearing_run {
+                weak_device_assigned_contributor_ids
+                    .extend(run_assigned_contributor_ids.iter().cloned());
+            }
             let active_window_count = run_windows
                 .iter()
                 .filter(|window| window.status != ComputeAdapterWindowStatus::Reconciled)
@@ -15971,10 +16072,45 @@ fn training_operator_summary_snapshot(
                 .copied()
                 .filter(|outcome| training_outcome_counts_as_accepted_progress(outcome))
                 .collect::<Vec<_>>();
+            let accepted_terminal_window_ids = accepted_terminal_outcomes
+                .iter()
+                .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
+                .collect::<HashSet<_>>();
             let accepted_progress_window_ids = accepted_progress_outcomes
                 .iter()
                 .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
                 .collect::<HashSet<_>>();
+            let accepted_contributors = contribution_outcomes
+                .iter()
+                .filter(|contribution| contribution.training_run_id == run.training_run_id)
+                .filter(|contribution| {
+                    accepted_terminal_window_ids.contains(contribution.window_id.as_str())
+                })
+                .filter(|contribution| training_contribution_counts_for_settlement(contribution))
+                .filter_map(|contribution| {
+                    let contributor_node_id = contribution.contributor_node_id.trim();
+                    (!contributor_node_id.is_empty()).then(|| contributor_node_id.to_string())
+                })
+                .collect::<HashSet<_>>();
+            accepted_contributor_ids.extend(accepted_contributors.iter().cloned());
+            let weak_device_accepted_contributors = contribution_outcomes
+                .iter()
+                .filter(|contribution| contribution.training_run_id == run.training_run_id)
+                .filter(|contribution| {
+                    accepted_terminal_window_ids.contains(contribution.window_id.as_str())
+                })
+                .filter(|contribution| training_contribution_counts_for_settlement(contribution))
+                .filter(|contribution| {
+                    training_contribution_weak_device_bearing(contribution)
+                        || training_work_class_weak_device_bearing(contribution.work_class)
+                })
+                .filter_map(|contribution| {
+                    let contributor_node_id = contribution.contributor_node_id.trim();
+                    (!contributor_node_id.is_empty()).then(|| contributor_node_id.to_string())
+                })
+                .collect::<HashSet<_>>();
+            weak_device_accepted_contributor_ids
+                .extend(weak_device_accepted_contributors.iter().cloned());
             let nodes_contributing_to_accepted_progress = contribution_outcomes
                 .iter()
                 .filter(|contribution| contribution.training_run_id == run.training_run_id)
@@ -16117,6 +16253,12 @@ fn training_operator_summary_snapshot(
             };
             let participation = TrainingOperatorRunParticipationSummary {
                 admitted_nodes,
+                assigned_contributors: run_assigned_contributor_ids.len() as u64,
+                weak_device_assigned_contributors: if weak_device_bearing_run {
+                    run_assigned_contributor_ids.len() as u64
+                } else {
+                    0
+                },
                 online_nodes: admitted_nodes_online,
                 worker_nodes_online,
                 validator_nodes_online,
@@ -16130,6 +16272,9 @@ fn training_operator_summary_snapshot(
                 queued_validator_challenges,
             };
             let progress = TrainingOperatorRunProgressSummary {
+                accepted_contributors: accepted_contributors.len() as u64,
+                weak_device_accepted_contributors: weak_device_accepted_contributors.len() as u64,
+                model_progress_contributors: nodes_contributing_to_accepted_progress.len() as u64,
                 nodes_contributing_to_accepted_progress: nodes_contributing_to_accepted_progress
                     .len() as u64,
                 windows_advanced_checkpoint_lineage,
@@ -16159,6 +16304,15 @@ fn training_operator_summary_snapshot(
                 progress: progress.clone(),
                 settlement,
                 admitted_nodes,
+                assigned_contributors: run_assigned_contributor_ids.len() as u64,
+                weak_device_assigned_contributors: if weak_device_bearing_run {
+                    run_assigned_contributor_ids.len() as u64
+                } else {
+                    0
+                },
+                accepted_contributors: progress.accepted_contributors,
+                weak_device_accepted_contributors: progress.weak_device_accepted_contributors,
+                model_progress_contributors: progress.model_progress_contributors,
                 admitted_nodes_online,
                 worker_nodes_online,
                 validator_nodes_online,
@@ -16192,6 +16346,11 @@ fn training_operator_summary_snapshot(
         .max();
     let metrics = TrainingOperatorMetrics {
         admitted_nodes: admitted_nodes.len() as u64,
+        assigned_contributors: assigned_contributor_ids.len() as u64,
+        weak_device_assigned_contributors: weak_device_assigned_contributor_ids.len() as u64,
+        accepted_contributors: accepted_contributor_ids.len() as u64,
+        weak_device_accepted_contributors: weak_device_accepted_contributor_ids.len() as u64,
+        model_progress_contributors: progress_contributor_ids.len() as u64,
         admitted_nodes_online: admitted_nodes.iter().filter(|node| node.online).count() as u64,
         active_runs: training_runs
             .iter()
@@ -16243,6 +16402,8 @@ fn training_operator_summary_snapshot(
     };
     let participation = TrainingOperatorParticipationSummary {
         admitted_nodes: metrics.admitted_nodes,
+        assigned_contributors: metrics.assigned_contributors,
+        weak_device_assigned_contributors: metrics.weak_device_assigned_contributors,
         online_nodes: metrics.admitted_nodes_online,
         active_runs: metrics.active_runs,
         active_windows: metrics.active_windows,
@@ -16251,9 +16412,12 @@ fn training_operator_summary_snapshot(
         validator_challenges_queued: metrics.validator_challenges_queued,
     };
     let progress = TrainingOperatorProgressSummary {
+        accepted_contributors: metrics.accepted_contributors,
+        weak_device_accepted_contributors: metrics.weak_device_accepted_contributors,
+        model_progress_contributors: metrics.model_progress_contributors,
         runs_with_accepted_progress: metrics.runs_with_accepted_progress,
         windows_advanced_checkpoint_lineage: metrics.windows_advanced_checkpoint_lineage,
-        nodes_contributing_to_accepted_progress: metrics.nodes_contributing_to_accepted_progress,
+        nodes_contributing_to_accepted_progress: metrics.model_progress_contributors,
         accepted_closeouts: metrics.accepted_closeouts,
         payout_eligible_closeouts: metrics.payout_eligible_closeouts,
         checkpoint_max_age_ms,
@@ -16272,6 +16436,11 @@ fn training_operator_summary_snapshot(
         progress,
         settlement,
         admitted_nodes: metrics.admitted_nodes,
+        assigned_contributors: metrics.assigned_contributors,
+        weak_device_assigned_contributors: metrics.weak_device_assigned_contributors,
+        accepted_contributors: metrics.accepted_contributors,
+        weak_device_accepted_contributors: metrics.weak_device_accepted_contributors,
+        model_progress_contributors: metrics.model_progress_contributors,
         admitted_nodes_online: metrics.admitted_nodes_online,
         active_runs: metrics.active_runs,
         active_windows: metrics.active_windows,
@@ -16282,7 +16451,7 @@ fn training_operator_summary_snapshot(
         artifact_failures_open: metrics.artifact_failures_open,
         accepted_closeouts: metrics.accepted_closeouts,
         payout_eligible_closeouts: metrics.payout_eligible_closeouts,
-        nodes_contributing_to_accepted_progress: metrics.nodes_contributing_to_accepted_progress,
+        nodes_contributing_to_accepted_progress: metrics.model_progress_contributors,
         windows_advanced_checkpoint_lineage: metrics.windows_advanced_checkpoint_lineage,
         runs_with_accepted_progress: metrics.runs_with_accepted_progress,
         runs: run_summaries,
@@ -16293,6 +16462,15 @@ fn training_operator_metrics(store: &ControlStore, now_unix_ms: u64) -> Training
     let summary = training_operator_summary_snapshot(store, now_unix_ms);
     TrainingOperatorMetrics {
         admitted_nodes: summary.participation.admitted_nodes,
+        assigned_contributors: summary.participation.assigned_contributors,
+        weak_device_assigned_contributors: summary
+            .participation
+            .weak_device_assigned_contributors,
+        accepted_contributors: summary.progress.accepted_contributors,
+        weak_device_accepted_contributors: summary
+            .progress
+            .weak_device_accepted_contributors,
+        model_progress_contributors: summary.progress.model_progress_contributors,
         admitted_nodes_online: summary.participation.online_nodes,
         active_runs: summary.participation.active_runs,
         active_windows: summary.participation.active_windows,
@@ -17018,6 +17196,16 @@ fn training_visualization_snapshot_with_summary(
                 required_recovery_source_tier,
                 window_ids,
                 admitted_nodes: run_summary.map_or(0, |summary| summary.admitted_nodes),
+                assigned_contributors: run_summary
+                    .map_or(0, |summary| summary.assigned_contributors),
+                weak_device_assigned_contributors: run_summary
+                    .map_or(0, |summary| summary.weak_device_assigned_contributors),
+                accepted_contributors: run_summary
+                    .map_or(0, |summary| summary.accepted_contributors),
+                weak_device_accepted_contributors: run_summary
+                    .map_or(0, |summary| summary.weak_device_accepted_contributors),
+                model_progress_contributors: run_summary
+                    .map_or(0, |summary| summary.model_progress_contributors),
                 admitted_nodes_online: run_summary
                     .map_or(0, |summary| summary.admitted_nodes_online),
                 worker_nodes_online: run_summary.map_or(0, |summary| summary.worker_nodes_online),
@@ -29166,6 +29354,12 @@ mod tests {
         assert_eq!(stats_response.status(), StatusCode::OK);
         let initial_stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(initial_stats.training_nodes_admitted, 2);
+        assert_eq!(initial_stats.training_admitted_contributors, 2);
+        assert_eq!(initial_stats.training_assigned_contributors, 1);
+        assert_eq!(initial_stats.training_accepted_contributors, 0);
+        assert_eq!(initial_stats.training_model_progress_contributors, 0);
+        assert_eq!(initial_stats.training_weak_device_assigned_contributors, 1);
+        assert_eq!(initial_stats.training_weak_device_accepted_contributors, 0);
         assert_eq!(initial_stats.training_nodes_online, 2);
         assert_eq!(initial_stats.training_admitted_nodes_online, 2);
         assert_eq!(initial_stats.training_runs_active, 1);
@@ -29189,7 +29383,15 @@ mod tests {
 
         let initial_summary = fetch_training_summary(&app).await?;
         assert_eq!(initial_summary.participation.admitted_nodes, 2);
+        assert_eq!(initial_summary.participation.assigned_contributors, 1);
+        assert_eq!(
+            initial_summary.participation.weak_device_assigned_contributors,
+            1
+        );
         assert_eq!(initial_summary.participation.online_nodes, 2);
+        assert_eq!(initial_summary.progress.accepted_contributors, 0);
+        assert_eq!(initial_summary.progress.weak_device_accepted_contributors, 0);
+        assert_eq!(initial_summary.progress.model_progress_contributors, 0);
         assert_eq!(initial_summary.progress.accepted_closeouts, 0);
         assert_eq!(
             initial_summary
@@ -29203,6 +29405,11 @@ mod tests {
         );
         assert_eq!(initial_summary.progress.runs_with_accepted_progress, 0);
         assert_eq!(initial_summary.admitted_nodes, 2);
+        assert_eq!(initial_summary.assigned_contributors, 1);
+        assert_eq!(initial_summary.weak_device_assigned_contributors, 1);
+        assert_eq!(initial_summary.accepted_contributors, 0);
+        assert_eq!(initial_summary.weak_device_accepted_contributors, 0);
+        assert_eq!(initial_summary.model_progress_contributors, 0);
         assert_eq!(initial_summary.admitted_nodes_online, 2);
         assert_eq!(initial_summary.active_runs, 1);
         assert_eq!(initial_summary.active_windows, 1);
@@ -29217,7 +29424,12 @@ mod tests {
         assert_eq!(run_summary.scheduler_window_state, "validating");
         assert_eq!(run_summary.current_window_id, "window.0001");
         assert_eq!(run_summary.participation.admitted_nodes, 2);
+        assert_eq!(run_summary.participation.assigned_contributors, 1);
+        assert_eq!(run_summary.participation.weak_device_assigned_contributors, 1);
         assert_eq!(run_summary.participation.online_nodes, 2);
+        assert_eq!(run_summary.progress.accepted_contributors, 0);
+        assert_eq!(run_summary.progress.weak_device_accepted_contributors, 0);
+        assert_eq!(run_summary.progress.model_progress_contributors, 0);
         assert_eq!(run_summary.worker_nodes_online, 1);
         assert_eq!(run_summary.validator_nodes_online, 1);
         assert_eq!(run_summary.recovery_source_nodes_online, 0);
@@ -29225,6 +29437,11 @@ mod tests {
         assert_eq!(run_summary.pending_validation_window_count, 1);
         assert_eq!(run_summary.open_validator_challenges, 2);
         assert_eq!(run_summary.queued_validator_challenges, 2);
+        assert_eq!(run_summary.assigned_contributors, 1);
+        assert_eq!(run_summary.weak_device_assigned_contributors, 1);
+        assert_eq!(run_summary.accepted_contributors, 0);
+        assert_eq!(run_summary.weak_device_accepted_contributors, 0);
+        assert_eq!(run_summary.model_progress_contributors, 0);
         assert_eq!(run_summary.accepted_closeouts, 0);
         assert_eq!(run_summary.nodes_contributing_to_accepted_progress, 0);
         assert_eq!(run_summary.windows_advanced_checkpoint_lineage, 0);
@@ -29416,6 +29633,12 @@ mod tests {
         assert_eq!(stats_response.status(), StatusCode::OK);
         let final_stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(final_stats.training_nodes_admitted, 2);
+        assert_eq!(final_stats.training_admitted_contributors, 2);
+        assert_eq!(final_stats.training_assigned_contributors, 1);
+        assert_eq!(final_stats.training_accepted_contributors, 1);
+        assert_eq!(final_stats.training_model_progress_contributors, 1);
+        assert_eq!(final_stats.training_weak_device_assigned_contributors, 1);
+        assert_eq!(final_stats.training_weak_device_accepted_contributors, 1);
         assert_eq!(final_stats.training_nodes_online, 2);
         assert_eq!(final_stats.training_admitted_nodes_online, 2);
         assert_eq!(final_stats.training_runs_active, 1);
@@ -29436,7 +29659,15 @@ mod tests {
 
         let final_summary = fetch_training_summary(&app).await?;
         assert_eq!(final_summary.participation.admitted_nodes, 2);
+        assert_eq!(final_summary.participation.assigned_contributors, 1);
+        assert_eq!(
+            final_summary.participation.weak_device_assigned_contributors,
+            1
+        );
         assert_eq!(final_summary.participation.online_nodes, 2);
+        assert_eq!(final_summary.progress.accepted_contributors, 1);
+        assert_eq!(final_summary.progress.weak_device_accepted_contributors, 1);
+        assert_eq!(final_summary.progress.model_progress_contributors, 1);
         assert_eq!(final_summary.active_runs, 1);
         assert_eq!(final_summary.active_windows, 0);
         assert_eq!(final_summary.pending_validation_windows, 0);
@@ -29455,17 +29686,32 @@ mod tests {
             0
         );
         assert_eq!(final_summary.progress.runs_with_accepted_progress, 1);
+        assert_eq!(final_summary.assigned_contributors, 1);
+        assert_eq!(final_summary.weak_device_assigned_contributors, 1);
+        assert_eq!(final_summary.accepted_contributors, 1);
+        assert_eq!(final_summary.weak_device_accepted_contributors, 1);
+        assert_eq!(final_summary.model_progress_contributors, 1);
         assert_eq!(final_summary.payout_eligible_closeouts, 1);
         assert_eq!(final_summary.runs.len(), 1);
         let run_summary = &final_summary.runs[0];
         assert_eq!(run_summary.scheduler_window_state, "accepted");
         assert_eq!(run_summary.current_window_id, "window.0002");
         assert_eq!(run_summary.participation.admitted_nodes, 2);
+        assert_eq!(run_summary.participation.assigned_contributors, 1);
+        assert_eq!(run_summary.participation.weak_device_assigned_contributors, 1);
         assert_eq!(run_summary.participation.online_nodes, 2);
+        assert_eq!(run_summary.progress.accepted_contributors, 1);
+        assert_eq!(run_summary.progress.weak_device_accepted_contributors, 1);
+        assert_eq!(run_summary.progress.model_progress_contributors, 1);
         assert_eq!(run_summary.active_window_count, 0);
         assert_eq!(run_summary.pending_validation_window_count, 0);
         assert_eq!(run_summary.open_validator_challenges, 0);
         assert_eq!(run_summary.queued_validator_challenges, 0);
+        assert_eq!(run_summary.assigned_contributors, 1);
+        assert_eq!(run_summary.weak_device_assigned_contributors, 1);
+        assert_eq!(run_summary.accepted_contributors, 1);
+        assert_eq!(run_summary.weak_device_accepted_contributors, 1);
+        assert_eq!(run_summary.model_progress_contributors, 1);
         assert_eq!(run_summary.accepted_closeouts, 1);
         assert_eq!(run_summary.nodes_contributing_to_accepted_progress, 1);
         assert_eq!(run_summary.windows_advanced_checkpoint_lineage, 0);
@@ -29608,6 +29854,14 @@ mod tests {
                 .get_compute_training_run("run.summary.validation")
                 .expect("validation run")
                 .clone();
+            let progress_slice = training_window_dataset_slice(
+                "slice://summary-progress-0001",
+                "sha256:slice-summary-progress-0001",
+            );
+            let validation_slice = training_window_dataset_slice(
+                "slice://summary-validation-0001",
+                "sha256:slice-summary-validation-0001",
+            );
             let progress_window = ComputeAdapterTrainingWindow {
                 window_id: "window.progress.0001".to_string(),
                 training_run_id: progress_run.training_run_id.clone(),
@@ -29638,9 +29892,9 @@ mod tests {
                     created_at_ms as i64 + 19_100,
                 ),
                 status: ComputeAdapterWindowStatus::Reconciled,
-                total_contributions: 0,
-                admitted_contributions: 0,
-                accepted_contributions: 0,
+                total_contributions: 1,
+                admitted_contributions: 1,
+                accepted_contributions: 1,
                 quarantined_contributions: 0,
                 rejected_contributions: 0,
                 replay_required_contributions: 0,
@@ -29666,7 +29920,14 @@ mod tests {
                     environment_ref: PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
                     backend_family: "cuda".to_string(),
                     membership_revision: "members.rev1".to_string(),
-                    assignment_plans: Vec::new(),
+                    assignment_plans: vec![super::TrainingWindowAssignmentPlan {
+                        assignment_id: "assignment.summary.progress".to_string(),
+                        node_pubkey_hex: "node-progress".to_string(),
+                        contributor_node_id: "node-progress".to_string(),
+                        worker_id: "worker.summary.progress".to_string(),
+                        dataset_slice: progress_slice.clone(),
+                        assignment_seed: "seed.summary.progress".to_string(),
+                    }],
                     validation: None,
                     planned_at_ms: created_at_ms as i64 + 18_000,
                     activated_at_ms: Some(created_at_ms as i64 + 18_100),
@@ -29706,9 +29967,9 @@ mod tests {
                     created_at_ms as i64 + 19_110,
                 ),
                 status: ComputeAdapterWindowStatus::Reconciled,
-                total_contributions: 0,
-                admitted_contributions: 0,
-                accepted_contributions: 0,
+                total_contributions: 1,
+                admitted_contributions: 1,
+                accepted_contributions: 1,
                 quarantined_contributions: 0,
                 rejected_contributions: 0,
                 replay_required_contributions: 0,
@@ -29734,7 +29995,14 @@ mod tests {
                     environment_ref: PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
                     backend_family: "cuda".to_string(),
                     membership_revision: "members.rev1".to_string(),
-                    assignment_plans: Vec::new(),
+                    assignment_plans: vec![super::TrainingWindowAssignmentPlan {
+                        assignment_id: "assignment.summary.validation".to_string(),
+                        node_pubkey_hex: "node-validation".to_string(),
+                        contributor_node_id: "node-validation".to_string(),
+                        worker_id: "worker.summary.validation".to_string(),
+                        dataset_slice: validation_slice.clone(),
+                        assignment_seed: "seed.summary.validation".to_string(),
+                    }],
                     validation: None,
                     planned_at_ms: created_at_ms as i64 + 18_010,
                     activated_at_ms: Some(created_at_ms as i64 + 18_110),
@@ -29742,6 +30010,98 @@ mod tests {
                     reconciled_at_ms: Some(created_at_ms as i64 + 19_210),
                     defensibility: None,
                     seal_deadline_ms: created_at_ms as i64 + 19_510,
+                }),
+            };
+            let progress_contribution = ComputeAdapterContributionOutcome {
+                contribution_id: "contrib.summary.progress".to_string(),
+                training_run_id: progress_run.training_run_id.clone(),
+                stage_id: "stage.progress".to_string(),
+                window_id: "window.progress.0001".to_string(),
+                contributor_set_revision_id: "contributors.rev1".to_string(),
+                assignment_id: "assignment.summary.progress".to_string(),
+                contributor_node_id: "node-progress".to_string(),
+                worker_id: "worker.summary.progress".to_string(),
+                validator_policy_ref: progress_run.validator_policy_ref.clone(),
+                work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+                replica_type: ComputeTrainingReplicaType::Island,
+                base_checkpoint_ref: progress_window.base_checkpoint_ref.clone(),
+                adapter_target_id: String::new(),
+                adapter_family: String::new(),
+                base_model_ref: progress_window.base_model_ref.clone(),
+                adapter_format: String::new(),
+                dataset_slice: progress_slice,
+                source_policy_revision: progress_window.source_policy_revision.clone(),
+                source_checkpoint_pointer: progress_window.source_checkpoint_pointer.clone(),
+                submission_receipt_digest: "sha256:submission-summary-progress".to_string(),
+                artifact_id: "artifact.summary.progress".to_string(),
+                manifest_digest: "sha256:manifest-summary-progress".to_string(),
+                object_digest: "sha256:object-summary-progress".to_string(),
+                artifact_receipt_digest: "sha256:artifact-receipt-summary-progress".to_string(),
+                provenance_bundle_digest: "sha256:provenance-summary-progress".to_string(),
+                security_receipt_digest: "sha256:security-summary-progress".to_string(),
+                replay_receipt_digest: Some("sha256:replay-summary-progress".to_string()),
+                validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+                validation_reason_codes: Vec::new(),
+                validator_receipt_digest: "sha256:validator-summary-progress".to_string(),
+                aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+                accepted_for_aggregation: true,
+                local_step_count: Some(64),
+                consumed_token_count: Some(131_072),
+                consumed_example_count: Some(256),
+                aggregation_weight_basis: Some("tokens".to_string()),
+                aggregation_weight_value: Some(131_072),
+                aggregation_weight_bps: Some(10_000),
+                promotion_receipt_digest: None,
+                recorded_at_ms: created_at_ms as i64 + 19_205,
+                metadata: json!({
+                    "contributor_capability_tier": "tier3_island",
+                    "contributor_weak_device_bearing": false,
+                }),
+            };
+            let validation_contribution = ComputeAdapterContributionOutcome {
+                contribution_id: "contrib.summary.validation".to_string(),
+                training_run_id: validation_run.training_run_id.clone(),
+                stage_id: "stage.validation".to_string(),
+                window_id: "window.validation.0001".to_string(),
+                contributor_set_revision_id: "contributors.rev1".to_string(),
+                assignment_id: "assignment.summary.validation".to_string(),
+                contributor_node_id: "node-validation".to_string(),
+                worker_id: "worker.summary.validation".to_string(),
+                validator_policy_ref: validation_run.validator_policy_ref.clone(),
+                work_class: ComputeTrainingWorkClass::ValidationReplay,
+                replica_type: ComputeTrainingReplicaType::SingleNode,
+                base_checkpoint_ref: validation_window.base_checkpoint_ref.clone(),
+                adapter_target_id: String::new(),
+                adapter_family: String::new(),
+                base_model_ref: validation_window.base_model_ref.clone(),
+                adapter_format: String::new(),
+                dataset_slice: validation_slice,
+                source_policy_revision: validation_window.source_policy_revision.clone(),
+                source_checkpoint_pointer: validation_window.source_checkpoint_pointer.clone(),
+                submission_receipt_digest: "sha256:submission-summary-validation".to_string(),
+                artifact_id: "artifact.summary.validation".to_string(),
+                manifest_digest: "sha256:manifest-summary-validation".to_string(),
+                object_digest: "sha256:object-summary-validation".to_string(),
+                artifact_receipt_digest: "sha256:artifact-receipt-summary-validation".to_string(),
+                provenance_bundle_digest: "sha256:provenance-summary-validation".to_string(),
+                security_receipt_digest: "sha256:security-summary-validation".to_string(),
+                replay_receipt_digest: Some("sha256:replay-summary-validation".to_string()),
+                validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+                validation_reason_codes: Vec::new(),
+                validator_receipt_digest: "sha256:validator-summary-validation".to_string(),
+                aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+                accepted_for_aggregation: true,
+                local_step_count: None,
+                consumed_token_count: None,
+                consumed_example_count: None,
+                aggregation_weight_basis: None,
+                aggregation_weight_value: None,
+                aggregation_weight_bps: None,
+                promotion_receipt_digest: None,
+                recorded_at_ms: created_at_ms as i64 + 19_215,
+                metadata: json!({
+                    "contributor_capability_tier": "tier1_validation",
+                    "contributor_weak_device_bearing": true,
                 }),
             };
 
@@ -29754,7 +30114,7 @@ mod tests {
                         trace: TraceContext::default(),
                         policy: kernel_policy(),
                         window: progress_window,
-                        contribution_outcomes: Vec::new(),
+                        contribution_outcomes: vec![progress_contribution],
                         evidence: Vec::new(),
                         hints: ReceiptHints::default(),
                     },
@@ -29769,7 +30129,7 @@ mod tests {
                         trace: TraceContext::default(),
                         policy: kernel_policy(),
                         window: validation_window,
-                        contribution_outcomes: Vec::new(),
+                        contribution_outcomes: vec![validation_contribution],
                         evidence: Vec::new(),
                         hints: ReceiptHints::default(),
                     },
@@ -29885,7 +30245,31 @@ mod tests {
                 .expect("accept validation closeout");
         }
 
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.training_admitted_contributors, 2);
+        assert_eq!(stats.training_assigned_contributors, 2);
+        assert_eq!(stats.training_accepted_contributors, 2);
+        assert_eq!(stats.training_model_progress_contributors, 1);
+        assert_eq!(stats.training_weak_device_assigned_contributors, 1);
+        assert_eq!(stats.training_weak_device_accepted_contributors, 1);
+
         let summary = fetch_training_summary(&app).await?;
+        assert_eq!(summary.participation.admitted_nodes, 2);
+        assert_eq!(summary.participation.assigned_contributors, 2);
+        assert_eq!(summary.participation.weak_device_assigned_contributors, 1);
+        assert_eq!(summary.progress.accepted_contributors, 2);
+        assert_eq!(summary.progress.weak_device_accepted_contributors, 1);
+        assert_eq!(summary.progress.model_progress_contributors, 1);
         assert_eq!(summary.progress.accepted_closeouts, 1);
         assert_eq!(summary.progress.payout_eligible_closeouts, 1);
         assert_eq!(summary.settlement.accepted_closeouts, 2);
@@ -29913,11 +30297,27 @@ mod tests {
         assert_eq!(validation_work_class.progress_bearing_closeouts, 0);
         assert_eq!(validation_work_class.participation_only_closeouts, 1);
 
+        let progress_run = summary
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == "run.summary.progress")
+            .expect("progress run summary");
+        assert_eq!(progress_run.participation.assigned_contributors, 1);
+        assert_eq!(progress_run.participation.weak_device_assigned_contributors, 0);
+        assert_eq!(progress_run.progress.accepted_contributors, 1);
+        assert_eq!(progress_run.progress.weak_device_accepted_contributors, 0);
+        assert_eq!(progress_run.progress.model_progress_contributors, 1);
+
         let validation_run = summary
             .runs
             .iter()
             .find(|run| run.training_run_id == "run.summary.validation")
             .expect("validation run summary");
+        assert_eq!(validation_run.participation.assigned_contributors, 1);
+        assert_eq!(validation_run.participation.weak_device_assigned_contributors, 1);
+        assert_eq!(validation_run.progress.accepted_contributors, 1);
+        assert_eq!(validation_run.progress.weak_device_accepted_contributors, 1);
+        assert_eq!(validation_run.progress.model_progress_contributors, 0);
         assert_eq!(validation_run.progress.accepted_closeouts, 0);
         assert_eq!(validation_run.progress.payout_eligible_closeouts, 0);
         assert_eq!(validation_run.settlement.work_class, "validation_replay");
@@ -29934,6 +30334,14 @@ mod tests {
 
         let visualization = fetch_training_visualization(&app).await?;
         assert_eq!(visualization.participation.active_runs, 2);
+        assert_eq!(visualization.participation.assigned_contributors, 2);
+        assert_eq!(
+            visualization.participation.weak_device_assigned_contributors,
+            1
+        );
+        assert_eq!(visualization.progress.accepted_contributors, 2);
+        assert_eq!(visualization.progress.weak_device_accepted_contributors, 1);
+        assert_eq!(visualization.progress.model_progress_contributors, 1);
         assert_eq!(visualization.progress.accepted_closeouts, 1);
         assert_eq!(visualization.settlement.accepted_closeouts, 2);
         assert_eq!(visualization.runs.len(), 2);

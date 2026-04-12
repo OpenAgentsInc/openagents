@@ -451,15 +451,23 @@ surfaces.
 
 ## Fields Required Before Widening Claims
 
-The public stats contract still must grow these fields before stronger
-Transcript 222 claims are allowed:
+The public stats contract now exposes these participant-count fields on the
+canonical `/api/stats` path:
 
-- admitted contributor count
-- assigned contributor count
-- accepted contributor count
-- model-progress contributor count
-- weak-device assigned contributor count
-- weak-device accepted contributor count
+- `training_admitted_contributors`
+- `training_assigned_contributors`
+- `training_accepted_contributors`
+- `training_model_progress_contributors`
+- `training_weak_device_assigned_contributors`
+- `training_weak_device_accepted_contributors`
+
+These fields are the current source of truth for participant-count claims. They
+must be used instead of inferring contribution from `pylonsOnlineNow`,
+`pylonsSeen24h`, `sellablePylonsOnlineNow`, or generic payout totals.
+
+The public stats contract still must grow these fields before stronger
+Transcript 222 run/window claims are allowed:
+
 - active run id or run family
 - active window id or window family
 
