@@ -126,6 +126,64 @@ pub struct PublicTrainingQueuePressure {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingLaunchAlert {
+    #[serde(default)]
+    pub alert_id: String,
+    #[serde(default)]
+    pub severity: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingLaunchHealthSnapshot {
+    #[serde(default)]
+    pub generated_at_unix_ms: u64,
+    #[serde(default)]
+    pub overall_status: String,
+    #[serde(default)]
+    pub public_snapshot_source: String,
+    #[serde(default)]
+    pub public_stats_age_ms: u64,
+    #[serde(default)]
+    pub public_state_drift_from_kernel_ms: u64,
+    #[serde(default)]
+    pub active_runs: u64,
+    #[serde(default)]
+    pub run_backlog_slots: u64,
+    #[serde(default)]
+    pub pending_validation_windows: u64,
+    #[serde(default)]
+    pub validator_challenges_open: u64,
+    #[serde(default)]
+    pub validator_challenges_queued: u64,
+    #[serde(default)]
+    pub accepted_work_pending_payout_count: u64,
+    #[serde(default)]
+    pub accepted_work_attention_payout_count: u64,
+    #[serde(default)]
+    pub payouts_failed_24h: u64,
+    #[serde(default)]
+    pub payouts_skipped_24h: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolver_lookup_latency_p95_ms: Option<u64>,
+    #[serde(default)]
+    pub resolver_lookup_sample_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_access_latency_p95_ms: Option<u64>,
+    #[serde(default)]
+    pub signed_access_sample_count: u64,
+    #[serde(default)]
+    pub active_alert_count: u64,
+    #[serde(default)]
+    pub critical_alert_count: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alerts: Vec<PublicTrainingLaunchAlert>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PublicTrainingWorkClassState {
     #[serde(default)]
     pub work_class: String,
@@ -299,6 +357,8 @@ pub struct PublicTrainingStatsSnapshot {
     pub latest_closeout_status: Option<String>,
     #[serde(default)]
     pub queue_pressure: PublicTrainingQueuePressure,
+    #[serde(default)]
+    pub launch_health: PublicTrainingLaunchHealthSnapshot,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub work_classes: Vec<PublicTrainingWorkClassState>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -796,6 +796,15 @@
 
         <section class="scene-panel scene-panel--span-2">
           <div class="scene-panel__header">
+            <p class="panel-kicker">Launch Health</p>
+            <h2>Launch-critical training alerts and backlog state</h2>
+            <p class="scene-panel__note">This board condenses the current Transcript 222 launch-health packet: run backlog, validator backlog, payout lag, artifact resolver latency, stale snapshot state, and public-truth drift risk.</p>
+          </div>
+          <div class="scene-panel__body list-shell" id="launch-health"></div>
+        </section>
+
+        <section class="scene-panel scene-panel--span-2">
+          <div class="scene-panel__header">
             <p class="panel-kicker">Run Index</p>
             <h2>Default run, companion runs, and role fill</h2>
             <p class="scene-panel__note">Run rows stay aligned to the Nexus run truth while borrowing the same shell language as the shared Psionic remote-training surfaces.</p>
@@ -894,6 +903,7 @@
       const pylonLanesHost = document.getElementById("pylon-lanes");
       const topologyHost = document.getElementById("training-topology");
       const workClassBoardHost = document.getElementById("workclass-board");
+      const launchHealthHost = document.getElementById("launch-health");
       const runBoardHost = document.getElementById("run-board");
       const diagnosticFeedHost = document.getElementById("diagnostic-feed");
       const windowBoardHost = document.getElementById("window-board");
@@ -1122,6 +1132,10 @@
 
       function trainingVisualization(snapshot) {
         return snapshot?.training_visualization ?? {};
+      }
+
+      function trainingLaunchHealth(snapshot) {
+        return trainingPublicState(snapshot).launch_health ?? {};
       }
 
       function activeTrainingRuns(snapshot) {
@@ -1645,6 +1659,73 @@
         `;
       }
 
+      function buildLaunchHealth(snapshot) {
+        const health = trainingLaunchHealth(snapshot);
+        const alerts = Array.isArray(health.alerts) ? health.alerts : [];
+        const overallTone = ["good", "warn", "bad"].includes(String(health.overall_status || ""))
+          ? health.overall_status
+          : "warn";
+        const snapshotAge = numeric(health.public_stats_age_ms, 0);
+        const resolverP95 = health.resolver_lookup_latency_p95_ms;
+        const signedAccessP95 = health.signed_access_latency_p95_ms;
+        const alertRows = alerts.length > 0
+          ? alerts.map((alert) => `
+              <article class="publication-row">
+                <div class="publication-row__head">
+                  <div>
+                    <h3 class="publication-row__title">${escapeHtml(alert.title || alert.alert_id || "alert")}</h3>
+                    <p class="publication-row__meta">${escapeHtml(alert.detail || "No detail published.")}</p>
+                  </div>
+                  <div class="publication-row__chips">
+                    ${chip(alert.severity || "warning", alert.severity === "critical" ? "bad" : "warn")}
+                    ${chip(alert.alert_id || "launch-health", "accent")}
+                  </div>
+                </div>
+              </article>
+            `).join("")
+          : `<div class="empty">No active launch-health alerts are currently published.</div>`;
+
+        launchHealthHost.innerHTML = `
+          <section class="payout-total">
+            <p class="micro-label">Overall launch state</p>
+            <span class="payout-total__value">${escapeHtml(String(health.overall_status || "unknown"))}</span>
+            <p class="payout-total__detail">${escapeHtml(`snapshot ${health.public_snapshot_source || "live"} // age ${number(snapshotAge)} ms // alerts ${number(health.active_alert_count ?? alerts.length)}`)}</p>
+          </section>
+          <div class="score-grid">
+            <section class="detail-stat">
+              <span class="micro-label">Resolver p95</span>
+              <span class="detail-stat__value">${escapeHtml(resolverP95 === null || resolverP95 === undefined ? "n/a" : `${number(resolverP95)} ms`)}</span>
+            </section>
+            <section class="detail-stat">
+              <span class="micro-label">Signed access p95</span>
+              <span class="detail-stat__value">${escapeHtml(signedAccessP95 === null || signedAccessP95 === undefined ? "n/a" : `${number(signedAccessP95)} ms`)}</span>
+            </section>
+            <section class="detail-stat">
+              <span class="micro-label">Pending accepted-work payouts</span>
+              <span class="detail-stat__value">${escapeHtml(number(health.accepted_work_pending_payout_count))}</span>
+            </section>
+            <section class="detail-stat">
+              <span class="micro-label">Attention payouts</span>
+              <span class="detail-stat__value">${escapeHtml(number(health.accepted_work_attention_payout_count))}</span>
+            </section>
+          </div>
+          <div class="pill-row">
+            ${chip(`status ${health.overall_status || "unknown"}`, overallTone)}
+            ${chip(`source ${health.public_snapshot_source || "live"}`, health.public_snapshot_source === "cached" ? "warn" : "good")}
+            ${chip(`${number(health.active_alert_count)} alerts`, numeric(health.active_alert_count, 0) > 0 ? "warn" : "good")}
+            ${chip(`${number(health.critical_alert_count)} critical`, numeric(health.critical_alert_count, 0) > 0 ? "bad" : "good")}
+          </div>
+          <div class="signal-strip">
+            ${signalSegment("Run backlog", number(health.run_backlog_slots), numeric(health.run_backlog_slots, 0) > 0 ? "warn" : "good")}
+            ${signalSegment("Pending validation", number(health.pending_validation_windows), numeric(health.pending_validation_windows, 0) > 0 ? "warn" : "good")}
+            ${signalSegment("Validator queue", number(health.validator_challenges_queued), numeric(health.validator_challenges_queued, 0) > 0 ? "warn" : "good")}
+            ${signalSegment("Snapshot age", `${number(snapshotAge)} ms`, snapshotAge > 15000 ? "bad" : snapshotAge > 0 ? "warn" : "good")}
+            ${signalSegment("Kernel drift", `${number(health.public_state_drift_from_kernel_ms)} ms`, numeric(health.public_state_drift_from_kernel_ms, 0) > 15000 ? "bad" : numeric(health.public_state_drift_from_kernel_ms, 0) > 0 ? "warn" : "good")}
+          </div>
+          ${alertRows}
+        `;
+      }
+
       function buildRunBoard(snapshot) {
         const runs = activeTrainingRuns(snapshot);
         if (runs.length === 0) {
@@ -1927,6 +2008,7 @@
         buildPylonLanes(snapshot);
         buildTrainingTopology(snapshot);
         buildWorkClassBoard(snapshot);
+        buildLaunchHealth(snapshot);
         buildRunBoard(snapshot);
         buildDiagnostics(snapshot);
         buildWindowBoard(snapshot);
@@ -1997,6 +2079,7 @@
           pylonLanesHost.innerHTML = emptyState("Pylon lanes unavailable.");
           topologyHost.innerHTML = emptyState("Training topology unavailable.");
           workClassBoardHost.innerHTML = emptyState("Work-class summary unavailable.");
+          launchHealthHost.innerHTML = emptyState("Launch-health board unavailable.");
           runBoardHost.innerHTML = emptyState("Run board unavailable.");
           diagnosticFeedHost.innerHTML = emptyState("Diagnostics unavailable.");
           windowBoardHost.innerHTML = emptyState("Window matrix unavailable.");

@@ -1983,9 +1983,7 @@ impl TreasuryState {
                 .saturating_add(unconfirmed_visible_totals.placeholder_payout_sats_paid_total),
             placeholder_payout_sats_paid_24h: confirmed_24h_totals
                 .placeholder_payout_sats_paid_total
-                .saturating_add(
-                    unconfirmed_visible_24h_totals.placeholder_payout_sats_paid_total,
-                ),
+                .saturating_add(unconfirmed_visible_24h_totals.placeholder_payout_sats_paid_total),
             beta_bonus_payout_sats_paid_total: cumulative_totals
                 .beta_bonus_payout_sats_paid_total
                 .saturating_add(unconfirmed_visible_totals.beta_bonus_payout_sats_paid_total),
@@ -1995,26 +1993,22 @@ impl TreasuryState {
             weak_device_accepted_work_payout_sats_paid_total: cumulative_totals
                 .weak_device_accepted_work_payout_sats_paid_total
                 .saturating_add(
-                    unconfirmed_visible_totals
-                        .weak_device_accepted_work_payout_sats_paid_total,
+                    unconfirmed_visible_totals.weak_device_accepted_work_payout_sats_paid_total,
                 ),
             weak_device_accepted_work_payout_sats_paid_24h: confirmed_24h_totals
                 .weak_device_accepted_work_payout_sats_paid_total
                 .saturating_add(
-                    unconfirmed_visible_24h_totals
-                        .weak_device_accepted_work_payout_sats_paid_total,
+                    unconfirmed_visible_24h_totals.weak_device_accepted_work_payout_sats_paid_total,
                 ),
             strong_lane_accepted_work_payout_sats_paid_total: cumulative_totals
                 .strong_lane_accepted_work_payout_sats_paid_total
                 .saturating_add(
-                    unconfirmed_visible_totals
-                        .strong_lane_accepted_work_payout_sats_paid_total,
+                    unconfirmed_visible_totals.strong_lane_accepted_work_payout_sats_paid_total,
                 ),
             strong_lane_accepted_work_payout_sats_paid_24h: confirmed_24h_totals
                 .strong_lane_accepted_work_payout_sats_paid_total
                 .saturating_add(
-                    unconfirmed_visible_24h_totals
-                        .strong_lane_accepted_work_payout_sats_paid_total,
+                    unconfirmed_visible_24h_totals.strong_lane_accepted_work_payout_sats_paid_total,
                 ),
             payouts_dispatched_24h,
             payouts_confirmed_24h,
@@ -2127,9 +2121,11 @@ impl TreasuryState {
                     last_payout_at_unix_ms: None,
                 };
 
-                for record in self.payout_records_by_key.values().filter(|record| {
-                    record.nostr_pubkey_hex == target.nostr_pubkey_hex
-                }) {
+                for record in self
+                    .payout_records_by_key
+                    .values()
+                    .filter(|record| record.nostr_pubkey_hex == target.nostr_pubkey_hex)
+                {
                     row.payout_record_count = row.payout_record_count.saturating_add(1);
                     row.last_payout_at_unix_ms = Some(
                         row.last_payout_at_unix_ms
@@ -2139,9 +2135,8 @@ impl TreasuryState {
 
                     if record.status == "confirmed" {
                         row.confirmed_payout_count = row.confirmed_payout_count.saturating_add(1);
-                        row.confirmed_payout_sats = row
-                            .confirmed_payout_sats
-                            .saturating_add(record.amount_sats);
+                        row.confirmed_payout_sats =
+                            row.confirmed_payout_sats.saturating_add(record.amount_sats);
                         if record.classification.accepted_work() {
                             row.confirmed_accepted_work_payout_sats = row
                                 .confirmed_accepted_work_payout_sats
@@ -2182,12 +2177,10 @@ impl TreasuryState {
                     }
                 }
                 "queued" | "dispatching" | "dispatched" => {
-                    summary.pending_payout_count =
-                        summary.pending_payout_count.saturating_add(1);
+                    summary.pending_payout_count = summary.pending_payout_count.saturating_add(1);
                     if record.classification.accepted_work() {
-                        summary.accepted_work_pending_payout_count = summary
-                            .accepted_work_pending_payout_count
-                            .saturating_add(1);
+                        summary.accepted_work_pending_payout_count =
+                            summary.accepted_work_pending_payout_count.saturating_add(1);
                     }
                 }
                 "failed" => {
@@ -2201,12 +2194,10 @@ impl TreasuryState {
                     }
                 }
                 "skipped" => {
-                    summary.skipped_payout_count =
-                        summary.skipped_payout_count.saturating_add(1);
+                    summary.skipped_payout_count = summary.skipped_payout_count.saturating_add(1);
                     if record.reason.as_deref() == Some("missing_payout_target") {
-                        summary.missing_payout_target_count = summary
-                            .missing_payout_target_count
-                            .saturating_add(1);
+                        summary.missing_payout_target_count =
+                            summary.missing_payout_target_count.saturating_add(1);
                     }
                     if record.classification.accepted_work() {
                         summary.accepted_work_attention_payout_count = summary
@@ -2218,16 +2209,15 @@ impl TreasuryState {
             }
         }
 
-        summary.reconciliation_status =
-            if summary.accepted_work_attention_payout_count > 0
-                || summary.missing_payout_target_count > 0
-            {
-                "attention_required".to_string()
-            } else if summary.accepted_work_pending_payout_count > 0 {
-                "pending".to_string()
-            } else {
-                "clean".to_string()
-            };
+        summary.reconciliation_status = if summary.accepted_work_attention_payout_count > 0
+            || summary.missing_payout_target_count > 0
+        {
+            "attention_required".to_string()
+        } else if summary.accepted_work_pending_payout_count > 0 {
+            "pending".to_string()
+        } else {
+            "clean".to_string()
+        };
 
         summary
     }
@@ -4294,7 +4284,9 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         ),
         format!(
             "training_payout_reconciliation_status: {}",
-            response.training_payout_ledger_summary.reconciliation_status
+            response
+                .training_payout_ledger_summary
+                .reconciliation_status
         ),
         format!(
             "training_payout_record_count: {}",
@@ -4306,7 +4298,9 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         ),
         format!(
             "training_attention_payout_count: {}",
-            response.training_payout_ledger_summary.attention_payout_count
+            response
+                .training_payout_ledger_summary
+                .attention_payout_count
         ),
         format!(
             "accepted_work_pending_payout_count: {}",
@@ -5193,8 +5187,8 @@ mod tests {
     use super::{
         OnlinePylonIdentity, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
         TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TreasuryConfig, TreasuryDispatchOutcome,
-        TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryPayoutRecord,
-        TreasuryPayoutClass, TreasuryPayoutClassification, TreasuryPublicStats,
+        TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryPayoutClass,
+        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPublicStats,
         TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
         TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
         TreasuryWalletRecoveryReport, TreasuryWalletSnapshot,
@@ -5682,7 +5676,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -5768,7 +5762,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -5811,7 +5805,9 @@ mod tests {
                     payout_basis: Some("validator_verdict".to_string()),
                     work_class: Some("validation_replay".to_string()),
                     progress_class: Some("participation_only".to_string()),
-                    accepted_outcome_id: Some("accepted.training_window.window.weak.0001".to_string()),
+                    accepted_outcome_id: Some(
+                        "accepted.training_window.window.weak.0001".to_string(),
+                    ),
                     training_run_id: Some("run.weak.validation".to_string()),
                     window_id: Some("window.weak.0001".to_string()),
                     contribution_id: Some("contrib-001".to_string()),
@@ -5982,7 +5978,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -6068,7 +6064,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: true,
                 counted_in_paid_total: false,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
         state.payout_records_by_key.insert(
@@ -6091,7 +6087,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: true,
                 counted_in_paid_total: false,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
         state.payout_records_by_key.insert(
@@ -6114,7 +6110,7 @@ mod tests {
                 fail_receipt_recorded: true,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -6220,7 +6216,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: true,
                 counted_in_paid_total: false,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -6449,7 +6445,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -6596,7 +6592,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
         state.payout_records_by_key.insert(
@@ -6619,7 +6615,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: true,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
         state.payout_records_by_key.insert(
@@ -6642,7 +6638,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
-            classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification::default(),
             },
         );
 
