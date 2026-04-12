@@ -292,6 +292,25 @@ The top-level training summary should therefore expose:
   - payout-eligible closeouts regardless of progress class
   - work-class breakdowns so participation-only payout lanes stay legible
 
+## Launch default weak-device lane
+
+For the current Transcript 222 launch-hardening window, the default weak-device
+lane is `validation_replay`.
+
+That launch freeze means the authority, stats, and payout surfaces should treat
+`validation_replay` as the first weak-device work class that is expected to:
+
+- admit lower-tier nodes than the dense training lane
+- produce real retained validator artifacts and receipts
+- count toward assigned and accepted weak-device work
+- remain `participation_only` unless a later closeout contract explicitly says
+  otherwise
+
+The launch freeze also means grouped-replica stage execution is not a hidden
+launch dependency. The authority schema should keep supporting it, but launch
+truth, product language, and public stats must not imply that grouped replicas
+are already required before the weak-device claim is honest.
+
 ## Trust And Quorum Rules
 
 The current control plane now treats overlap and promotion authority as
