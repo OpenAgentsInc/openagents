@@ -986,6 +986,7 @@ pub struct TreasuryQueuedPayoutRequest {
     pub window_started_at_unix_ms: u64,
     pub window_ends_at_unix_ms: u64,
     pub classification: TreasuryPayoutClassification,
+    pub queue_block_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1369,6 +1370,7 @@ impl TreasuryState {
                 continue;
             }
             inserted = true;
+            let skipped = request.queue_block_reason.is_some();
             self.payout_records_by_key.insert(
                 request.payout_key.clone(),
                 TreasuryPayoutRecord {
@@ -1376,8 +1378,12 @@ impl TreasuryState {
                     nostr_pubkey_hex: request.nostr_pubkey_hex.clone(),
                     payout_target: String::new(),
                     amount_sats: request.amount_sats,
-                    status: "queued".to_string(),
-                    reason: None,
+                    status: if skipped {
+                        "skipped".to_string()
+                    } else {
+                        "queued".to_string()
+                    },
+                    reason: request.queue_block_reason.clone(),
                     payment_id: None,
                     window_started_at_unix_ms: request.window_started_at_unix_ms,
                     window_ends_at_unix_ms: request.window_ends_at_unix_ms,
@@ -1387,7 +1393,7 @@ impl TreasuryState {
                     dispatch_receipt_recorded: false,
                     confirm_receipt_recorded: false,
                     fail_receipt_recorded: false,
-                    skip_receipt_recorded: false,
+                    skip_receipt_recorded: skipped,
                     counted_in_paid_total: false,
                     classification: request.classification.clone(),
                 },
@@ -5818,6 +5824,7 @@ mod tests {
                     weak_device_bearing: true,
                     progress_bearing: false,
                 },
+                queue_block_reason: None,
             }],
             now_unix_ms,
         );
@@ -6039,6 +6046,86 @@ mod tests {
         assert_eq!(stats.wallet_last_error, None);
         assert_eq!(stats.wallet_sync_lag_ms, Some(5_000));
         assert_eq!(stats.degraded_reason, None);
+    }
+
+    #[test]
+    fn queued_accepted_work_payout_holds_insert_skipped_records() {
+        let config = test_treasury_config();
+        let mut state = TreasuryState::default();
+        let now_unix_ms = super::now_unix_ms();
+
+        state.queue_payout_requests(
+            &config,
+            &[TreasuryQueuedPayoutRequest {
+                payout_key: "accepted_work:closeout-002:contrib-002:pubkey-hold".to_string(),
+                nostr_pubkey_hex: "pubkey-hold".to_string(),
+                amount_sats: 240,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("aggregation_weight".to_string()),
+                    work_class: Some("full_island_local_update_training".to_string()),
+                    progress_class: Some("model_progress".to_string()),
+                    accepted_outcome_id: Some(
+                        "accepted.training_window.window.strong.hold.0001".to_string(),
+                    ),
+                    training_run_id: Some("run.strong.hold".to_string()),
+                    window_id: Some("window.strong.hold.0001".to_string()),
+                    contribution_id: Some("contrib-002".to_string()),
+                    assignment_id: Some("assign-002".to_string()),
+                    share_bps: Some(10_000),
+                    weight_basis: Some("tokens".to_string()),
+                    weight_value: Some(131_072),
+                    weak_device_bearing: false,
+                    progress_bearing: true,
+                },
+                queue_block_reason: Some(
+                    "training_payout_hold_recent_non_useful_contributions".to_string(),
+                ),
+            }],
+            now_unix_ms,
+        );
+
+        let record = state
+            .payout_records_by_key
+            .get("accepted_work:closeout-002:contrib-002:pubkey-hold")
+            .expect("held payout record");
+        assert_eq!(record.status, "skipped");
+        assert_eq!(
+            record.reason.as_deref(),
+            Some("training_payout_hold_recent_non_useful_contributions")
+        );
+        assert!(record.skip_receipt_recorded);
+
+        let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms.saturating_add(1));
+        assert!(prepared.dispatch_plans.is_empty());
+
+        state.refresh_public_snapshot(&config, now_unix_ms.saturating_add(1));
+        let stats = state.public_stats(&config, now_unix_ms.saturating_add(1));
+        assert_eq!(stats.payout_sats_paid_total, 0);
+        assert_eq!(stats.accepted_work_payout_sats_paid_total, 0);
+        assert_eq!(stats.payouts_skipped_24h, 1);
+        assert_eq!(stats.skip_reason_metrics_24h.len(), 1);
+        assert_eq!(
+            stats.skip_reason_metrics_24h[0].reason,
+            "training_payout_hold_recent_non_useful_contributions"
+        );
+        let status = state.status_response(&config, now_unix_ms.saturating_add(1));
+        assert_eq!(
+            status.training_payout_ledger_summary.skipped_payout_count,
+            1
+        );
+        assert_eq!(
+            status
+                .training_payout_ledger_summary
+                .accepted_work_attention_payout_count,
+            1
+        );
+        assert_eq!(
+            status.training_payout_ledger_summary.reconciliation_status,
+            "attention_required"
+        );
     }
 
     #[test]
