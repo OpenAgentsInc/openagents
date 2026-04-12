@@ -221,8 +221,16 @@ lease is acknowledged, the same retained state now also drives the existing
 manifest, captures stdout and stderr into attempt-scoped logs under
 `training/runs/<run_id>/supervisor/`, updates retained process state and exit
 status, and preserves the runtime status packets already emitted by
-`psionic-train`. The next roadmap item still needs to publish the resulting
-runtime receipts and failure notices back to Nexus automatically.
+`psionic-train`. Once that retained runtime reaches a terminal state, `Pylon`
+now runs the existing training artifact courier and TRN publication sweep
+automatically, then posts the matching Nexus coordination notices for window
+progress, checkpoint publication, and failures or refusals. Those receipt
+attempts persist retry state in the retained training runtime journal so later
+`pylon serve` loops can finish the handoff without an operator moving files by
+hand. `dashboard/current_dashboard.json` and `alerts/active_alerts.json` still
+remain local operator surfaces today; the automated Nexus intake path currently
+tracks the kernel-owned artifact families already modeled in the retained
+training layout.
 
 `Pylon` now also has the first training-coordination HTTP client in
 `apps/pylon/src/lib.rs`. It wraps the existing kernel training-policy and
