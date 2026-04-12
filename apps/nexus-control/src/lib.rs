@@ -1152,6 +1152,57 @@ struct TrainingRolloutCohort {
     build_digests: Vec<String>,
 }
 
+const TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS: u64 = 86_400_000;
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingRolloutAbuseControls {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    max_active_leases_per_settlement_destination: u32,
+    #[serde(default)]
+    max_recent_expired_leases_per_node: u32,
+    #[serde(default)]
+    max_recent_non_useful_contributions_per_node: u32,
+    #[serde(default)]
+    payout_hold_after_non_useful_contributions: u32,
+    #[serde(default = "training_rollout_abuse_default_lookback_ms")]
+    lookback_window_ms: u64,
+}
+
+impl Default for TrainingRolloutAbuseControls {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_active_leases_per_settlement_destination: 0,
+            max_recent_expired_leases_per_node: 0,
+            max_recent_non_useful_contributions_per_node: 0,
+            payout_hold_after_non_useful_contributions: 0,
+            lookback_window_ms: TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS,
+        }
+    }
+}
+
+const fn training_rollout_abuse_default_lookback_ms() -> u64 {
+    TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS
+}
+
+const fn training_rollout_abuse_reason_active_lease_limit() -> &'static str {
+    "training_scheduler_abuse_active_lease_limit"
+}
+
+const fn training_rollout_abuse_reason_recent_expired_leases() -> &'static str {
+    "training_scheduler_abuse_recent_expired_leases"
+}
+
+const fn training_rollout_abuse_reason_recent_non_useful_contributions() -> &'static str {
+    "training_scheduler_abuse_recent_non_useful_contributions"
+}
+
+const fn training_payout_hold_reason_recent_non_useful_contributions() -> &'static str {
+    "training_payout_hold_recent_non_useful_contributions"
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingRolloutPolicy {
     revision: u64,
@@ -1167,6 +1218,8 @@ struct TrainingRolloutPolicy {
     blocked_release_ids: Vec<String>,
     #[serde(default)]
     blocked_build_digests: Vec<String>,
+    #[serde(default)]
+    abuse_controls: TrainingRolloutAbuseControls,
 }
 
 impl Default for TrainingRolloutPolicy {
@@ -1180,6 +1233,7 @@ impl Default for TrainingRolloutPolicy {
             cohorts: Vec::new(),
             blocked_release_ids: Vec::new(),
             blocked_build_digests: Vec::new(),
+            abuse_controls: TrainingRolloutAbuseControls::default(),
         }
     }
 }
@@ -1197,6 +1251,8 @@ struct TrainingRolloutPolicyUpdateRequest {
     blocked_release_ids: Vec<String>,
     #[serde(default)]
     blocked_build_digests: Vec<String>,
+    #[serde(default)]
+    abuse_controls: TrainingRolloutAbuseControls,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -1249,8 +1305,73 @@ struct TrainingRolloutPolicyResponse {
     blocked_release_ids: Vec<String>,
     #[serde(default)]
     blocked_build_digests: Vec<String>,
+    abuse_controls: TrainingRolloutAbuseControls,
+    abuse_summary: TrainingRolloutAbuseSummaryResponse,
     #[serde(default)]
     channels: Vec<TrainingRolloutChannelNodeSummary>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingRolloutAbuseSummaryResponse {
+    enabled: bool,
+    lookback_window_ms: u64,
+    settlement_destinations_with_multiple_nodes: u64,
+    nodes_over_active_lease_limit: u64,
+    nodes_over_recent_expired_lease_limit: u64,
+    nodes_over_recent_non_useful_limit: u64,
+    payout_hold_nodes: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TrainingFleetAbuseNodeSnapshot {
+    active_leases_sharing_settlement_destination: u32,
+    recent_expired_leases: u32,
+    recent_non_useful_contributions: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TrainingFleetAbuseSnapshot {
+    nodes: HashMap<String, TrainingFleetAbuseNodeSnapshot>,
+    settlement_destinations_with_multiple_nodes: u64,
+    nodes_over_active_lease_limit: u64,
+    nodes_over_recent_expired_lease_limit: u64,
+    nodes_over_recent_non_useful_limit: u64,
+    payout_hold_nodes: u64,
+}
+
+fn training_rollout_abuse_effective_lookback_ms(controls: &TrainingRolloutAbuseControls) -> u64 {
+    if controls.lookback_window_ms == 0 {
+        TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS
+    } else {
+        controls.lookback_window_ms
+    }
+}
+
+fn training_fleet_abuse_node_snapshot(
+    snapshot: &TrainingFleetAbuseSnapshot,
+    node_pubkey_hex: &str,
+) -> TrainingFleetAbuseNodeSnapshot {
+    snapshot
+        .nodes
+        .get(node_pubkey_hex)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn training_rollout_abuse_summary_response(
+    controls: &TrainingRolloutAbuseControls,
+    snapshot: &TrainingFleetAbuseSnapshot,
+) -> TrainingRolloutAbuseSummaryResponse {
+    TrainingRolloutAbuseSummaryResponse {
+        enabled: controls.enabled,
+        lookback_window_ms: training_rollout_abuse_effective_lookback_ms(controls),
+        settlement_destinations_with_multiple_nodes: snapshot
+            .settlement_destinations_with_multiple_nodes,
+        nodes_over_active_lease_limit: snapshot.nodes_over_active_lease_limit,
+        nodes_over_recent_expired_lease_limit: snapshot.nodes_over_recent_expired_lease_limit,
+        nodes_over_recent_non_useful_limit: snapshot.nodes_over_recent_non_useful_limit,
+        payout_hold_nodes: snapshot.payout_hold_nodes,
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -2642,6 +2763,25 @@ impl TrainingSchedulerState {
         cohorts.sort_by(|lhs, rhs| lhs.cohort_id.cmp(&rhs.cohort_id));
         cohorts.dedup_by(|lhs, rhs| lhs.cohort_id == rhs.cohort_id);
 
+        let abuse_controls = TrainingRolloutAbuseControls {
+            enabled: request.abuse_controls.enabled,
+            max_active_leases_per_settlement_destination: request
+                .abuse_controls
+                .max_active_leases_per_settlement_destination,
+            max_recent_expired_leases_per_node: request
+                .abuse_controls
+                .max_recent_expired_leases_per_node,
+            max_recent_non_useful_contributions_per_node: request
+                .abuse_controls
+                .max_recent_non_useful_contributions_per_node,
+            payout_hold_after_non_useful_contributions: request
+                .abuse_controls
+                .payout_hold_after_non_useful_contributions,
+            lookback_window_ms: training_rollout_abuse_effective_lookback_ms(
+                &request.abuse_controls,
+            ),
+        };
+
         let policy = TrainingRolloutPolicy {
             revision,
             updated_at_ms: now_unix_ms,
@@ -2651,6 +2791,7 @@ impl TrainingSchedulerState {
             cohorts,
             blocked_release_ids,
             blocked_build_digests,
+            abuse_controls,
         };
         self.rollout_policy = policy.clone();
         policy
@@ -2745,11 +2886,38 @@ impl TrainingSchedulerState {
         });
     }
 
+    fn active_assignment_response_for_node(
+        &self,
+        node_pubkey_hex: &str,
+        role: TrainingNodeRoleClaim,
+        idempotency_key: &str,
+        recorded_at_ms: i64,
+    ) -> Option<RecordTrainingRunLeaseResponse> {
+        self.runs_by_training_run_id
+            .values()
+            .filter_map(|run| {
+                run.active_assignment_for_node(node_pubkey_hex, role)
+                    .map(|assignment| {
+                        (
+                            assignment.issued_at_ms.unwrap_or_default(),
+                            run.response_for_assignment(
+                                assignment,
+                                idempotency_key,
+                                recorded_at_ms,
+                            ),
+                        )
+                    })
+            })
+            .max_by(|lhs, rhs| lhs.0.cmp(&rhs.0))
+            .map(|(_, response)| response)
+    }
+
     fn claim_lease(
         &mut self,
         node: AdmittedTrainingNodeView,
         candidate_runs: Vec<ComputeTrainingRun>,
         run_definitions_by_training_run_id: &HashMap<String, ComputeTrainingRunDefinition>,
+        abuse_snapshot: &TrainingFleetAbuseSnapshot,
         request: &RecordTrainingRunLeaseRequest,
         now_unix_ms: i64,
     ) -> Result<RecordTrainingRunLeaseResponse, String> {
@@ -2762,6 +2930,15 @@ impl TrainingSchedulerState {
         }
 
         self.expire_stale_assignments(now_unix_ms);
+
+        if let Some(existing) = self.active_assignment_response_for_node(
+            node.node_pubkey_hex.as_str(),
+            request.role,
+            request.idempotency_key.as_str(),
+            request.requested_at_ms,
+        ) {
+            return Ok(existing);
+        }
 
         if !node.role_claims.contains(&request.role) {
             return Err("training_scheduler_role_not_admitted".to_string());
@@ -2780,6 +2957,13 @@ impl TrainingSchedulerState {
                 .any(|value| value == requested_network_id)
         {
             return Err("training_scheduler_network_not_allowed".to_string());
+        }
+        if let Some(reason) = training_fleet_abuse_refusal_reason(
+            &self.rollout_policy.abuse_controls,
+            abuse_snapshot,
+            &node,
+        ) {
+            return Err(reason.to_string());
         }
 
         let run = self.select_matching_run(
@@ -5077,12 +5261,242 @@ fn training_closeout_payout_key(
     format!("accepted_work:{accepted_outcome_id}:{contribution_id}:{nostr_pubkey_hex}")
 }
 
+fn training_fleet_abuse_snapshot(
+    kernel: &KernelState,
+    scheduler: &TrainingSchedulerState,
+    controls: &TrainingRolloutAbuseControls,
+    now_unix_ms: u64,
+) -> TrainingFleetAbuseSnapshot {
+    let lookback_window_ms = training_rollout_abuse_effective_lookback_ms(controls);
+    let lookback_cutoff_ms = now_unix_ms.saturating_sub(lookback_window_ms);
+    let admitted_nodes = kernel.list_admitted_training_nodes(
+        &TrainingNodeQuery {
+            network_id: None,
+            role: None,
+            online_only: false,
+            eligible_only: false,
+        },
+        now_unix_ms as i64,
+    );
+    let mut nodes = admitted_nodes
+        .iter()
+        .map(|node| {
+            (
+                node.node_pubkey_hex.clone(),
+                TrainingFleetAbuseNodeSnapshot::default(),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let mut settlement_destinations = HashMap::<String, Vec<String>>::new();
+    let mut settlement_destination_by_node = HashMap::<String, String>::new();
+    for node in &admitted_nodes {
+        let Some(settlement_destination) =
+            normalize_optional_field(node.settlement_destination.as_deref())
+        else {
+            continue;
+        };
+        settlement_destination_by_node
+            .insert(node.node_pubkey_hex.clone(), settlement_destination.clone());
+        settlement_destinations
+            .entry(settlement_destination)
+            .or_default()
+            .push(node.node_pubkey_hex.clone());
+    }
+
+    let mut active_leases_per_settlement_destination = HashMap::<String, u32>::new();
+    for run in scheduler.runs_by_training_run_id.values() {
+        for assignment in &run.assignments {
+            let Some(node_pubkey_hex) = assignment.node_pubkey_hex.as_deref() else {
+                continue;
+            };
+            match assignment.state {
+                TrainingAssignmentState::Leased
+                | TrainingAssignmentState::Acked
+                | TrainingAssignmentState::Active => {
+                    if assignment
+                        .expires_at_ms
+                        .is_some_and(|expires_at_ms| expires_at_ms < now_unix_ms as i64)
+                    {
+                        if assignment.expires_at_ms.is_some_and(|expires_at_ms| {
+                            expires_at_ms.max(0) as u64 >= lookback_cutoff_ms
+                        }) {
+                            let snapshot = nodes.entry(node_pubkey_hex.to_string()).or_default();
+                            snapshot.recent_expired_leases =
+                                snapshot.recent_expired_leases.saturating_add(1);
+                        }
+                        continue;
+                    }
+                    if let Some(settlement_destination) =
+                        settlement_destination_by_node.get(node_pubkey_hex)
+                    {
+                        let active_lease_count = active_leases_per_settlement_destination
+                            .entry(settlement_destination.clone())
+                            .or_default();
+                        *active_lease_count = active_lease_count.saturating_add(1);
+                    }
+                }
+                TrainingAssignmentState::Expired => {
+                    if assignment.expires_at_ms.is_some_and(|expires_at_ms| {
+                        expires_at_ms.max(0) as u64 >= lookback_cutoff_ms
+                    }) {
+                        let snapshot = nodes.entry(node_pubkey_hex.to_string()).or_default();
+                        snapshot.recent_expired_leases =
+                            snapshot.recent_expired_leases.saturating_add(1);
+                    }
+                }
+                TrainingAssignmentState::Planned
+                | TrainingAssignmentState::Completed
+                | TrainingAssignmentState::Drained
+                | TrainingAssignmentState::Failed => {}
+            }
+        }
+    }
+
+    for contribution in kernel.list_compute_adapter_contribution_outcomes(None, None, None) {
+        if (contribution.recorded_at_ms.max(0) as u64) < lookback_cutoff_ms {
+            continue;
+        }
+        if matches!(
+            contribution.validator_disposition,
+            ComputeAdapterContributionDisposition::Quarantined
+                | ComputeAdapterContributionDisposition::Rejected
+                | ComputeAdapterContributionDisposition::ReplayRequired
+        ) {
+            let snapshot = nodes
+                .entry(contribution.contributor_node_id.clone())
+                .or_default();
+            snapshot.recent_non_useful_contributions =
+                snapshot.recent_non_useful_contributions.saturating_add(1);
+        }
+    }
+
+    let settlement_destinations_with_multiple_nodes = settlement_destinations
+        .values()
+        .filter(|node_ids| node_ids.len() > 1)
+        .count() as u64;
+    for (settlement_destination, node_ids) in settlement_destinations {
+        let active_lease_count = active_leases_per_settlement_destination
+            .get(settlement_destination.as_str())
+            .copied()
+            .unwrap_or_default();
+        for node_pubkey_hex in node_ids {
+            nodes
+                .entry(node_pubkey_hex)
+                .or_default()
+                .active_leases_sharing_settlement_destination = active_lease_count;
+        }
+    }
+
+    let nodes_over_active_lease_limit = if controls.max_active_leases_per_settlement_destination > 0
+    {
+        nodes
+            .values()
+            .filter(|node| {
+                node.active_leases_sharing_settlement_destination
+                    >= controls.max_active_leases_per_settlement_destination
+            })
+            .count() as u64
+    } else {
+        0
+    };
+    let nodes_over_recent_expired_lease_limit = if controls.max_recent_expired_leases_per_node > 0 {
+        nodes
+            .values()
+            .filter(|node| {
+                node.recent_expired_leases >= controls.max_recent_expired_leases_per_node
+            })
+            .count() as u64
+    } else {
+        0
+    };
+    let nodes_over_recent_non_useful_limit =
+        if controls.max_recent_non_useful_contributions_per_node > 0 {
+            nodes
+                .values()
+                .filter(|node| {
+                    node.recent_non_useful_contributions
+                        >= controls.max_recent_non_useful_contributions_per_node
+                })
+                .count() as u64
+        } else {
+            0
+        };
+    let payout_hold_nodes = if controls.payout_hold_after_non_useful_contributions > 0 {
+        nodes
+            .values()
+            .filter(|node| {
+                node.recent_non_useful_contributions
+                    >= controls.payout_hold_after_non_useful_contributions
+            })
+            .count() as u64
+    } else {
+        0
+    };
+
+    TrainingFleetAbuseSnapshot {
+        nodes,
+        settlement_destinations_with_multiple_nodes,
+        nodes_over_active_lease_limit,
+        nodes_over_recent_expired_lease_limit,
+        nodes_over_recent_non_useful_limit,
+        payout_hold_nodes,
+    }
+}
+
+fn training_fleet_abuse_refusal_reason(
+    controls: &TrainingRolloutAbuseControls,
+    snapshot: &TrainingFleetAbuseSnapshot,
+    node: &AdmittedTrainingNodeView,
+) -> Option<&'static str> {
+    if !controls.enabled {
+        return None;
+    }
+    let node_snapshot = training_fleet_abuse_node_snapshot(snapshot, node.node_pubkey_hex.as_str());
+    if controls.max_active_leases_per_settlement_destination > 0
+        && node_snapshot.active_leases_sharing_settlement_destination
+            >= controls.max_active_leases_per_settlement_destination
+    {
+        return Some(training_rollout_abuse_reason_active_lease_limit());
+    }
+    if controls.max_recent_expired_leases_per_node > 0
+        && node_snapshot.recent_expired_leases >= controls.max_recent_expired_leases_per_node
+    {
+        return Some(training_rollout_abuse_reason_recent_expired_leases());
+    }
+    if controls.max_recent_non_useful_contributions_per_node > 0
+        && node_snapshot.recent_non_useful_contributions
+            >= controls.max_recent_non_useful_contributions_per_node
+    {
+        return Some(training_rollout_abuse_reason_recent_non_useful_contributions());
+    }
+    None
+}
+
+fn training_fleet_abuse_payout_hold_reason(
+    controls: &TrainingRolloutAbuseControls,
+    snapshot: &TrainingFleetAbuseSnapshot,
+    contributor_node_id: &str,
+) -> Option<&'static str> {
+    if !controls.enabled || controls.payout_hold_after_non_useful_contributions == 0 {
+        return None;
+    }
+    let node_snapshot = training_fleet_abuse_node_snapshot(snapshot, contributor_node_id);
+    if node_snapshot.recent_non_useful_contributions
+        >= controls.payout_hold_after_non_useful_contributions
+    {
+        return Some(training_payout_hold_reason_recent_non_useful_contributions());
+    }
+    None
+}
+
 fn training_window_closeout_treasury_payout_requests(
     payout_sats_per_window: u64,
     window: &ComputeAdapterTrainingWindow,
     contributions: &[ComputeAdapterContributionOutcome],
     accepted_at_ms: i64,
     closeout_status: TrainingWindowCloseoutStatus,
+    abuse_controls: &TrainingRolloutAbuseControls,
+    abuse_snapshot: &TrainingFleetAbuseSnapshot,
 ) -> Vec<TreasuryQueuedPayoutRequest> {
     if !closeout_status.payout_eligible() || payout_sats_per_window == 0 {
         return Vec::new();
@@ -5147,6 +5561,12 @@ fn training_window_closeout_treasury_payout_requests(
                     weak_device_bearing,
                     progress_bearing: participant.progress_credit,
                 },
+                queue_block_reason: training_fleet_abuse_payout_hold_reason(
+                    abuse_controls,
+                    abuse_snapshot,
+                    participant.contributor_node_id.as_str(),
+                )
+                .map(str::to_string),
             })
         })
         .collect()
@@ -7155,12 +7575,19 @@ async fn claim_training_run_lease(
                     .map(|definition| (run.training_run_id.clone(), definition))
             })
             .collect::<HashMap<_, _>>();
+        let abuse_snapshot = training_fleet_abuse_snapshot(
+            &store.kernel,
+            &store.training_scheduler,
+            &store.training_scheduler.rollout_policy().abuse_controls,
+            request.requested_at_ms as u64,
+        );
         let response = store
             .training_scheduler
             .claim_lease(
                 node,
                 candidate_runs,
                 &run_definitions_by_training_run_id,
+                &abuse_snapshot,
                 &request,
                 request.requested_at_ms,
             )
@@ -7751,12 +8178,25 @@ async fn reconcile_training_window(
             closeout_status,
             &defensibility,
         );
+        let abuse_controls = store
+            .training_scheduler
+            .rollout_policy()
+            .abuse_controls
+            .clone();
+        let abuse_snapshot = training_fleet_abuse_snapshot(
+            &store.kernel,
+            &store.training_scheduler,
+            &abuse_controls,
+            request.recorded_at_ms.max(0) as u64,
+        );
         let treasury_payout_requests = training_window_closeout_treasury_payout_requests(
             state.config.treasury.payout_sats_per_window,
             &updated_window,
             contribution_outcomes.as_slice(),
             request.recorded_at_ms,
             closeout_status,
+            &abuse_controls,
+            &abuse_snapshot,
         );
         updated_window.accepted_outcome_id = Some(closeout_outcome.outcome_id.clone());
         let accepted_outcome_result = store
@@ -16348,6 +16788,12 @@ fn training_rollout_policy_snapshot(
         now_unix_ms as i64,
     );
     let policy = store.training_scheduler.rollout_policy().clone();
+    let abuse_snapshot = training_fleet_abuse_snapshot(
+        &store.kernel,
+        &store.training_scheduler,
+        &policy.abuse_controls,
+        now_unix_ms,
+    );
     let mut channels = [
         (
             TrainingRolloutChannel::Canary,
@@ -16436,6 +16882,11 @@ fn training_rollout_policy_snapshot(
         cohorts,
         blocked_release_ids: policy.blocked_release_ids.clone(),
         blocked_build_digests: policy.blocked_build_digests.clone(),
+        abuse_controls: policy.abuse_controls.clone(),
+        abuse_summary: training_rollout_abuse_summary_response(
+            &policy.abuse_controls,
+            &abuse_snapshot,
+        ),
         channels: channels.into_values().collect(),
     }
 }
@@ -18922,17 +19373,22 @@ mod tests {
     use super::{
         ClaimTrainingValidatorChallengeRequest, FinalizeTrainingValidatorChallengeRequest,
         PublishTrainingTrnStateRequest, RetryTrainingValidatorChallengeRequest,
-        ScheduledTrainingRun, TRN_TRAINING_ARTIFACT_LOCATOR_KIND, TRN_TRAINING_CLOSEOUT_KIND,
+        ScheduledTrainingRun, TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS,
+        TRN_TRAINING_ARTIFACT_LOCATOR_KIND, TRN_TRAINING_CLOSEOUT_KIND,
         TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND, TRN_TRAINING_WINDOW_KIND,
-        TrainingOperatorSummaryResponse, TrainingRolloutChannel, TrainingRolloutCohort,
-        TrainingRolloutGate, TrainingRolloutPolicyResponse, TrainingRolloutPolicyUpdateRequest,
-        TrainingRolloutTargetKind, TrainingSchedulerWindowState, TrainingTrnPublicationReport,
+        TrainingFleetAbuseNodeSnapshot, TrainingFleetAbuseSnapshot,
+        TrainingOperatorSummaryResponse, TrainingRolloutAbuseControls, TrainingRolloutChannel,
+        TrainingRolloutCohort, TrainingRolloutGate, TrainingRolloutPolicyResponse,
+        TrainingRolloutPolicyUpdateRequest, TrainingRolloutTargetKind,
+        TrainingSchedulerWindowState, TrainingTrnPublicationReport,
         TrainingValidatorChallengeCoordinatorResponse, TrainingWindowCloseoutStatus,
         TrainingWindowDefensibilityArtifactAudit, TrainingWindowDefensibilityAudit,
         TrainingWindowDefensibilityPromotionAudit, TrainingWindowDefensibilityValidatorAudit,
         TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
-        training_scheduler_metadata_from_run, training_window_closeout_outcome,
-        training_window_closeout_status, training_window_metadata_value, validator_service,
+        training_fleet_abuse_snapshot, training_scheduler_metadata_from_run,
+        training_window_closeout_outcome, training_window_closeout_status,
+        training_window_closeout_treasury_payout_requests, training_window_metadata_value,
+        validator_service,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -27903,6 +28359,14 @@ mod tests {
                 ],
                 blocked_release_ids: vec!["openagents.pylon@0.0.9".to_string()],
                 blocked_build_digests: vec!["sha256:bad-build".to_string()],
+                abuse_controls: TrainingRolloutAbuseControls {
+                    enabled: true,
+                    max_active_leases_per_settlement_destination: 1,
+                    max_recent_expired_leases_per_node: 2,
+                    max_recent_non_useful_contributions_per_node: 3,
+                    payout_hold_after_non_useful_contributions: 4,
+                    lookback_window_ms: 90_000,
+                },
             },
         )
         .await?;
@@ -27949,6 +28413,37 @@ mod tests {
             updated.blocked_build_digests,
             vec!["sha256:bad-build".to_string()]
         );
+        assert!(updated.abuse_controls.enabled);
+        assert_eq!(
+            updated
+                .abuse_controls
+                .max_active_leases_per_settlement_destination,
+            1
+        );
+        assert_eq!(updated.abuse_controls.max_recent_expired_leases_per_node, 2);
+        assert_eq!(
+            updated
+                .abuse_controls
+                .max_recent_non_useful_contributions_per_node,
+            3
+        );
+        assert_eq!(
+            updated
+                .abuse_controls
+                .payout_hold_after_non_useful_contributions,
+            4
+        );
+        assert_eq!(updated.abuse_controls.lookback_window_ms, 90_000);
+        assert!(updated.abuse_summary.enabled);
+        assert_eq!(updated.abuse_summary.lookback_window_ms, 90_000);
+        assert_eq!(
+            updated
+                .abuse_summary
+                .settlement_destinations_with_multiple_nodes,
+            1
+        );
+        assert_eq!(updated.abuse_summary.nodes_over_active_lease_limit, 0);
+        assert_eq!(updated.abuse_summary.payout_hold_nodes, 0);
 
         drop(app);
         drop(state);
@@ -27968,6 +28463,14 @@ mod tests {
             reloaded.blocked_build_digests,
             vec!["sha256:bad-build".to_string()]
         );
+        assert!(reloaded.abuse_controls.enabled);
+        assert_eq!(
+            reloaded
+                .abuse_controls
+                .max_active_leases_per_settlement_destination,
+            1
+        );
+        assert_eq!(reloaded.abuse_summary.lookback_window_ms, 90_000);
         Ok(())
     }
 
@@ -28034,6 +28537,7 @@ mod tests {
                 cohorts: Vec::new(),
                 blocked_release_ids: Vec::new(),
                 blocked_build_digests: Vec::new(),
+                abuse_controls: TrainingRolloutAbuseControls::default(),
             },
         )
         .await?;
@@ -28096,6 +28600,7 @@ mod tests {
                 ],
                 blocked_release_ids: Vec::new(),
                 blocked_build_digests: Vec::new(),
+                abuse_controls: TrainingRolloutAbuseControls::default(),
             },
         )
         .await?;
@@ -28169,6 +28674,7 @@ mod tests {
                 }],
                 blocked_release_ids: Vec::new(),
                 blocked_build_digests: Vec::new(),
+                abuse_controls: TrainingRolloutAbuseControls::default(),
             },
         )
         .await?;
@@ -28184,7 +28690,7 @@ mod tests {
                         &training_run_lease_request(
                             "idemp.training.lease.rollout.backend_disabled",
                             created_at_ms as i64 + 1_030,
-                            "node-alpha",
+                            "node-beta",
                             training_run_id,
                             "trainnet.alpha",
                         ),
@@ -28208,7 +28714,8 @@ mod tests {
                 gates: Vec::new(),
                 cohorts: Vec::new(),
                 blocked_release_ids: Vec::new(),
-                blocked_build_digests: vec!["sha256:build-alpha".to_string()],
+                blocked_build_digests: vec!["sha256:build-beta".to_string()],
+                abuse_controls: TrainingRolloutAbuseControls::default(),
             },
         )
         .await?;
@@ -28224,7 +28731,7 @@ mod tests {
                         &training_run_lease_request(
                             "idemp.training.lease.rollout.build_blocked",
                             created_at_ms as i64 + 1_040,
-                            "node-alpha",
+                            "node-beta",
                             training_run_id,
                             "trainnet.alpha",
                         ),
@@ -28239,6 +28746,257 @@ mod tests {
                 .and_then(serde_json::Value::as_str),
             Some("training_scheduler_rollout_build_digest_blocked")
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_abuse_controls_block_shared_settlement_destinations() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_488_000u64;
+        let network_id = "trainnet.abuse.shared";
+        let first_run_id = "run.scheduler.abuse.shared.one";
+        let second_run_id = "run.scheduler.abuse.shared.two";
+
+        seed_training_scheduler_run_with_environment_contract(
+            &state,
+            created_at_ms,
+            first_run_id,
+            "window.abuse.shared.one.0001",
+            network_id,
+            "node-alpha",
+            "sha256:build-alpha",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+        );
+        seed_training_scheduler_run_with_environment_contract(
+            &state,
+            created_at_ms + 10_000,
+            second_run_id,
+            "window.abuse.shared.two.0001",
+            network_id,
+            "node-beta",
+            "sha256:build-beta",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+        );
+
+        update_training_rollout_policy_request(
+            &app,
+            &TrainingRolloutPolicyUpdateRequest {
+                pause_new_leases: false,
+                pause_reason: None,
+                gates: Vec::new(),
+                cohorts: Vec::new(),
+                blocked_release_ids: Vec::new(),
+                blocked_build_digests: Vec::new(),
+                abuse_controls: TrainingRolloutAbuseControls {
+                    enabled: true,
+                    max_active_leases_per_settlement_destination: 1,
+                    max_recent_expired_leases_per_node: 0,
+                    max_recent_non_useful_contributions_per_node: 0,
+                    payout_hold_after_non_useful_contributions: 0,
+                    lookback_window_ms: TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS,
+                },
+            },
+        )
+        .await?;
+
+        let first_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.abuse.shared.one",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            first_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_claim.status(), StatusCode::OK);
+
+        let second_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.abuse.shared.two",
+                            created_at_ms as i64 + 11_000,
+                            "node-beta",
+                            second_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(second_claim.status(), StatusCode::BAD_REQUEST);
+        let second_claim_body = response_json::<serde_json::Value>(second_claim).await?;
+        assert_eq!(
+            second_claim_body
+                .get("reason")
+                .and_then(serde_json::Value::as_str),
+            Some("training_scheduler_abuse_active_lease_limit")
+        );
+
+        {
+            let store = state.store.read().expect("read store");
+            let abuse_snapshot = training_fleet_abuse_snapshot(
+                &store.kernel,
+                &store.training_scheduler,
+                &store.training_scheduler.rollout_policy().abuse_controls,
+                created_at_ms + 11_000,
+            );
+            assert_eq!(abuse_snapshot.nodes_over_active_lease_limit, 2);
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_abuse_controls_block_nodes_with_recent_expired_leases() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_489_000u64;
+        let network_id = "trainnet.abuse.expired";
+        let first_run_id = "run.scheduler.abuse.expired.one";
+        let second_run_id = "run.scheduler.abuse.expired.two";
+
+        seed_training_scheduler_run_with_environment_contract(
+            &state,
+            created_at_ms,
+            first_run_id,
+            "window.abuse.expired.one.0001",
+            network_id,
+            "node-alpha",
+            "sha256:build-alpha",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+        );
+        seed_training_scheduler_run_with_environment_contract(
+            &state,
+            created_at_ms + 10_000,
+            second_run_id,
+            "window.abuse.expired.two.0001",
+            network_id,
+            "node-beta",
+            "sha256:build-beta",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+        );
+
+        let first_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.abuse.expired.one",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            first_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_claim.status(), StatusCode::OK);
+
+        update_training_rollout_policy_request(
+            &app,
+            &TrainingRolloutPolicyUpdateRequest {
+                pause_new_leases: false,
+                pause_reason: None,
+                gates: Vec::new(),
+                cohorts: Vec::new(),
+                blocked_release_ids: Vec::new(),
+                blocked_build_digests: Vec::new(),
+                abuse_controls: TrainingRolloutAbuseControls {
+                    enabled: true,
+                    max_active_leases_per_settlement_destination: 0,
+                    max_recent_expired_leases_per_node: 1,
+                    max_recent_non_useful_contributions_per_node: 0,
+                    payout_hold_after_non_useful_contributions: 0,
+                    lookback_window_ms: TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS,
+                },
+            },
+        )
+        .await?;
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut refreshed_heartbeat = training_node_heartbeat_request_for_scope(
+                "node-alpha",
+                "sha256:build-alpha",
+                second_run_id,
+                "window.abuse.expired.two.0001",
+            );
+            refreshed_heartbeat.idempotency_key =
+                "idemp.training.heartbeat.abuse.expired.refresh".to_string();
+            refreshed_heartbeat.recorded_at_ms =
+                created_at_ms as i64 + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 19_000;
+            refreshed_heartbeat.last_heartbeat_at_ms = Some(refreshed_heartbeat.recorded_at_ms);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "node-alpha",
+                        refreshed_heartbeat.recorded_at_ms.max(0) as u64,
+                    ),
+                    refreshed_heartbeat,
+                )
+                .expect("refresh heartbeat");
+        }
+
+        let expired_follow_up_claim = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.abuse.expired.two",
+                            created_at_ms as i64 + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 20_000,
+                            "node-alpha",
+                            second_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(expired_follow_up_claim.status(), StatusCode::BAD_REQUEST);
+        let expired_claim_body =
+            response_json::<serde_json::Value>(expired_follow_up_claim).await?;
+        assert_eq!(
+            expired_claim_body
+                .get("reason")
+                .and_then(serde_json::Value::as_str),
+            Some("training_scheduler_abuse_recent_expired_leases")
+        );
+
+        {
+            let store = state.store.read().expect("read store");
+            let abuse_snapshot = training_fleet_abuse_snapshot(
+                &store.kernel,
+                &store.training_scheduler,
+                &store.training_scheduler.rollout_policy().abuse_controls,
+                (created_at_ms as i64 + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 20_000).max(0)
+                    as u64,
+            );
+            assert_eq!(abuse_snapshot.nodes_over_recent_expired_lease_limit, 1);
+        }
         Ok(())
     }
 
@@ -29264,6 +30022,142 @@ mod tests {
                 .as_ref()
                 .and_then(|summary| summary.accepted_checkpoint_ref.as_deref()),
             None
+        );
+    }
+
+    #[test]
+    fn training_window_closeout_payout_requests_apply_abuse_hold_reason() {
+        let window = ComputeAdapterTrainingWindow {
+            window_id: "window.payout.hold.0001".to_string(),
+            training_run_id: "run.payout.hold".to_string(),
+            stage_id: "stage.payout".to_string(),
+            contributor_set_revision_id: "contributors.rev1".to_string(),
+            validator_policy_ref: "policy://validator/mvp/v1".to_string(),
+            work_class: ComputeTrainingWorkClass::ValidationReplay,
+            replica_type: ComputeTrainingReplicaType::SingleNode,
+            round_index: Some(1),
+            base_checkpoint_ref: "checkpoint://hold/base".to_string(),
+            planned_local_step_count: Some(16),
+            aggregation_rule: Some("weighted_avg".to_string()),
+            aggregation_weight_basis: Some("tokens".to_string()),
+            adapter_target_id: String::new(),
+            adapter_family: String::new(),
+            base_model_ref: "model://hold.base".to_string(),
+            adapter_format: String::new(),
+            source_policy_revision: compute_adapter_policy_revision(
+                "policy-rev-payout-hold",
+                1_762_491_800_000,
+            ),
+            source_checkpoint_pointer: compute_adapter_checkpoint_pointer(
+                "sha256:pointer-payout-hold",
+                1_762_491_800_000,
+            ),
+            status: ComputeAdapterWindowStatus::Reconciled,
+            total_contributions: 1,
+            admitted_contributions: 1,
+            accepted_contributions: 1,
+            quarantined_contributions: 0,
+            rejected_contributions: 0,
+            replay_required_contributions: 0,
+            replay_checked_contributions: 1,
+            held_out_average_score_bps: Some(9_400),
+            benchmark_pass_rate_bps: Some(9_600),
+            runtime_smoke_passed: Some(true),
+            promotion_ready: true,
+            gate_reason_codes: Vec::new(),
+            window_summary_digest: "sha256:window-summary-payout-hold".to_string(),
+            promotion_disposition: None,
+            hold_reason_codes: Vec::new(),
+            aggregated_delta_digest: None,
+            accepted_aggregate_id: None,
+            output_policy_revision: None,
+            output_checkpoint_pointer: None,
+            promoted_checkpoint_ref: None,
+            accepted_outcome_id: None,
+            recorded_at_ms: 1_762_491_800_500,
+            metadata: Value::Null,
+        };
+        let contribution = ComputeAdapterContributionOutcome {
+            contribution_id: "contrib.payout.hold".to_string(),
+            training_run_id: window.training_run_id.clone(),
+            stage_id: window.stage_id.clone(),
+            window_id: window.window_id.clone(),
+            contributor_set_revision_id: window.contributor_set_revision_id.clone(),
+            assignment_id: "assign.payout.hold".to_string(),
+            contributor_node_id: "node-payout-hold".to_string(),
+            worker_id: "worker-payout-hold".to_string(),
+            validator_policy_ref: window.validator_policy_ref.clone(),
+            work_class: window.work_class,
+            replica_type: window.replica_type,
+            base_checkpoint_ref: window.base_checkpoint_ref.clone(),
+            adapter_target_id: String::new(),
+            adapter_family: String::new(),
+            base_model_ref: window.base_model_ref.clone(),
+            adapter_format: String::new(),
+            dataset_slice: ComputeAdapterDatasetSlice::default(),
+            source_policy_revision: window.source_policy_revision.clone(),
+            source_checkpoint_pointer: window.source_checkpoint_pointer.clone(),
+            submission_receipt_digest: "sha256:submit.payout.hold".to_string(),
+            artifact_id: "artifact.payout.hold".to_string(),
+            manifest_digest: "sha256:manifest.payout.hold".to_string(),
+            object_digest: "sha256:object.payout.hold".to_string(),
+            artifact_receipt_digest: "sha256:artifact.payout.hold".to_string(),
+            provenance_bundle_digest: "sha256:prov.payout.hold".to_string(),
+            security_receipt_digest: "sha256:sec.payout.hold".to_string(),
+            replay_receipt_digest: Some("sha256:replay.payout.hold".to_string()),
+            validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+            validation_reason_codes: Vec::new(),
+            validator_receipt_digest: "sha256:validator.payout.hold".to_string(),
+            aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+            accepted_for_aggregation: true,
+            local_step_count: Some(16),
+            consumed_token_count: Some(64_000),
+            consumed_example_count: Some(128),
+            aggregation_weight_basis: Some("tokens".to_string()),
+            aggregation_weight_value: Some(64_000),
+            aggregation_weight_bps: Some(10_000),
+            promotion_receipt_digest: None,
+            recorded_at_ms: 1_762_491_800_450,
+            metadata: json!({}),
+        };
+        let abuse_controls = TrainingRolloutAbuseControls {
+            enabled: true,
+            max_active_leases_per_settlement_destination: 0,
+            max_recent_expired_leases_per_node: 0,
+            max_recent_non_useful_contributions_per_node: 0,
+            payout_hold_after_non_useful_contributions: 1,
+            lookback_window_ms: TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS,
+        };
+        let abuse_snapshot = TrainingFleetAbuseSnapshot {
+            nodes: HashMap::from([(
+                "node-payout-hold".to_string(),
+                TrainingFleetAbuseNodeSnapshot {
+                    active_leases_sharing_settlement_destination: 0,
+                    recent_expired_leases: 0,
+                    recent_non_useful_contributions: 1,
+                },
+            )]),
+            settlement_destinations_with_multiple_nodes: 0,
+            nodes_over_active_lease_limit: 0,
+            nodes_over_recent_expired_lease_limit: 0,
+            nodes_over_recent_non_useful_limit: 0,
+            payout_hold_nodes: 1,
+        };
+
+        let requests = training_window_closeout_treasury_payout_requests(
+            120,
+            &window,
+            &[contribution],
+            1_762_491_800_550,
+            TrainingWindowCloseoutStatus::Rewarded,
+            &abuse_controls,
+            &abuse_snapshot,
+        );
+
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0].queue_block_reason.as_deref(),
+            Some("training_payout_hold_recent_non_useful_contributions")
         );
     }
 
@@ -32302,7 +33196,7 @@ mod tests {
             PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
             ComputeTrainingWorkClass::GroupedReplicaStageExecution,
             ComputeTrainingReplicaType::GroupedReplica,
-            Some(32),
+            Some(64),
         );
         {
             let mut store = state.store.write().expect("write store");
