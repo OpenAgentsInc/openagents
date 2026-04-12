@@ -15,7 +15,7 @@ mod kernel;
 mod training_trn_mapping;
 mod treasury;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::convert::Infallible;
 use std::fs;
 use std::net::SocketAddr;
@@ -114,9 +114,9 @@ use tokio_stream::wrappers::BroadcastStream;
 
 use crate::economy::{
     AuthorityReceiptContext, PublicRecentPylon, PublicRecentPylonDiagnostic, PublicRuntimeSnapshot,
-    PublicStatsSnapshot, PublicTrainingQueuePressure, PublicTrainingRunState,
-    PublicTrainingStatsSnapshot, PublicTrainingWindowState, PublicTrainingWorkClassState,
-    ReceiptLedger,
+    PublicStatsSnapshot, PublicTrainingLaunchAlert, PublicTrainingLaunchHealthSnapshot,
+    PublicTrainingQueuePressure, PublicTrainingRunState, PublicTrainingStatsSnapshot,
+    PublicTrainingWindowState, PublicTrainingWorkClassState, ReceiptLedger,
 };
 use crate::kernel::{
     AdmittedTrainingNodeView, ComputeAcceptedOutcomePublicationSource,
@@ -136,9 +136,10 @@ use crate::treasury::{
     ProviderPayoutTargetChallengeResponse, ProviderPayoutTargetRegistrationRequest,
     ProviderPayoutTargetRegistrationResponse, TreasuryConfig, TreasuryDispatchBatchResult,
     TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryPayoutClass,
-    TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryQueuedPayoutRequest,
-    TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse, create_live_funding_target,
-    dispatch_live_payouts, load_live_wallet_snapshot_with_plan,
+    TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPublicStats,
+    TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse,
+    TreasuryTrainingPayoutLedgerSummary, create_live_funding_target, dispatch_live_payouts,
+    load_live_wallet_snapshot_with_plan,
 };
 
 pub use crate::treasury::{
@@ -943,11 +944,38 @@ struct ErrorResponse {
     reason: String,
 }
 
+const TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS: u64 = 15_000;
+const TRAINING_PUBLIC_MIRROR_MAX_AGE_MS: u64 = 120_000;
+const TRAINING_ARTIFACT_RESOLVER_P95_MAX_MS: u64 = 750;
+const TRAINING_ARTIFACT_SIGNED_ACCESS_P95_MAX_MS: u64 = 1_000;
+const TRAINING_LAUNCH_LATENCY_SAMPLE_LIMIT: usize = 64;
+
+#[derive(Debug, Clone, Default)]
+struct TrainingLaunchLiveMetrics {
+    resolver_lookup_latency_ms: VecDeque<u64>,
+    signed_access_latency_ms: VecDeque<u64>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TrainingLaunchLiveMetricsSnapshot {
+    resolver_lookup_latency_p95_ms: Option<u64>,
+    resolver_lookup_sample_count: u64,
+    signed_access_latency_p95_ms: Option<u64>,
+    signed_access_sample_count: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TrainingLaunchLatencyMetricKind {
+    ResolverLookup,
+    SignedAccess,
+}
+
 #[derive(Debug, Clone)]
 struct AppState {
     config: ServiceConfig,
     store: Arc<RwLock<ControlStore>>,
     public_stats_cache: Arc<RwLock<PublicStatsSnapshot>>,
+    training_launch_metrics: Arc<RwLock<TrainingLaunchLiveMetrics>>,
     kernel_receipt_tx: broadcast::Sender<ReceiptProjectionEvent>,
     kernel_snapshot_tx: broadcast::Sender<SnapshotProjectionEvent>,
 }
@@ -6310,12 +6338,17 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
 
 fn build_app_state(config: ServiceConfig) -> AppState {
     let store = ControlStore::new(&config);
-    let initial_public_stats = build_public_stats_snapshot(&config, &store, now_unix_ms());
+    let now = now_unix_ms();
+    let launch_metrics = TrainingLaunchLiveMetricsSnapshot::default();
+    let mut initial_public_stats =
+        build_public_stats_snapshot(&config, &store, &launch_metrics, now);
+    apply_public_stats_cache_context(&mut initial_public_stats, now, "live");
     let (kernel_receipt_tx, _) = broadcast::channel(256);
     let (kernel_snapshot_tx, _) = broadcast::channel(256);
     AppState {
         store: Arc::new(RwLock::new(store)),
         public_stats_cache: Arc::new(RwLock::new(initial_public_stats)),
+        training_launch_metrics: Arc::new(RwLock::new(TrainingLaunchLiveMetrics::default())),
         config,
         kernel_receipt_tx,
         kernel_snapshot_tx,
@@ -6726,13 +6759,16 @@ async fn public_stats(
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
     if let Ok(store) = state.store.try_read() {
-        let stats = build_public_stats_snapshot(&state.config, &store, now);
+        let launch_metrics = training_launch_live_metrics_snapshot(&state);
+        let mut stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
+        apply_public_stats_cache_context(&mut stats, now, "live");
         replace_public_stats_cache(&state, stats.clone());
 
         return Ok(Json(stats));
     }
 
-    if let Some(stats) = cached_public_stats_snapshot(&state) {
+    if let Some(mut stats) = cached_public_stats_snapshot(&state) {
+        apply_public_stats_cache_context(&mut stats, now, "cached");
         return Ok(Json(stats));
     }
 
@@ -6741,7 +6777,9 @@ async fn public_stats(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    let stats = build_public_stats_snapshot(&state.config, &store, now);
+    let launch_metrics = training_launch_live_metrics_snapshot(&state);
+    let mut stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
+    apply_public_stats_cache_context(&mut stats, now, "live");
     replace_public_stats_cache(&state, stats.clone());
 
     Ok(Json(stats))
@@ -6814,7 +6852,8 @@ async fn homepage_snapshot(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    let snapshot = build_homepage_snapshot(&state.config, &store, now);
+    let launch_metrics = training_launch_live_metrics_snapshot(&state);
+    let snapshot = build_homepage_snapshot(&state.config, &store, &launch_metrics, now);
     replace_public_stats_cache(&state, snapshot.stats.clone());
     Ok(Json(snapshot))
 }
@@ -12011,35 +12050,11 @@ async fn get_kernel_compute_training_artifact_resolver(
     headers: HeaderMap,
     Path(artifact_id): Path<String>,
 ) -> Result<Json<PylonTrainingArtifactResolverResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
-    let artifact_id =
-        normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
-    let store = state.store.read().map_err(|_| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "session_store_poisoned".to_string(),
-    })?;
-    let response = store
-        .kernel
-        .resolve_compute_training_artifact(artifact_id.as_str())
-        .map_err(|reason| ApiError {
-            status: StatusCode::BAD_REQUEST,
-            error: "invalid_request",
-            reason,
-        })?;
-    Ok(Json(response))
-}
-
-async fn post_kernel_compute_training_artifact_signed_access(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(artifact_id): Path<String>,
-    Json(request): Json<PylonTrainingArtifactSignedAccessRequest>,
-) -> Result<Json<PylonTrainingArtifactSignedAccessResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
-    let artifact_id =
-        normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
-    let resolver = {
+    let started = std::time::Instant::now();
+    let result = (|| -> Result<PylonTrainingArtifactResolverResponse, ApiError> {
+        let _session = authenticate_session(&state, &headers)?;
+        let artifact_id =
+            normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
         let store = state.store.read().map_err(|_| ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             error: "internal_error",
@@ -12052,21 +12067,54 @@ async fn post_kernel_compute_training_artifact_signed_access(
                 status: StatusCode::BAD_REQUEST,
                 error: "invalid_request",
                 reason,
-            })?
-    };
-    let config = state
-        .config
-        .training_artifact_signed_url
-        .as_ref()
-        .ok_or(ApiError {
-            status: StatusCode::SERVICE_UNAVAILABLE,
-            error: "service_unavailable",
-            reason: "compute_training_artifact_signed_access_unconfigured".to_string(),
-        })?;
-    let issued_at_unix = now_unix_ms() / 1_000;
-    let response =
-        issue_training_artifact_signed_access(config, &resolver, &request, issued_at_unix)
-            .map_err(|reason| ApiError {
+            })
+    })();
+    record_training_launch_latency_sample(
+        &state,
+        TrainingLaunchLatencyMetricKind::ResolverLookup,
+        started.elapsed().as_millis() as u64,
+    );
+    result.map(Json)
+}
+
+async fn post_kernel_compute_training_artifact_signed_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(artifact_id): Path<String>,
+    Json(request): Json<PylonTrainingArtifactSignedAccessRequest>,
+) -> Result<Json<PylonTrainingArtifactSignedAccessResponse>, ApiError> {
+    let started = std::time::Instant::now();
+    let result = (|| -> Result<PylonTrainingArtifactSignedAccessResponse, ApiError> {
+        let _session = authenticate_session(&state, &headers)?;
+        let artifact_id =
+            normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
+        let resolver = {
+            let store = state.store.read().map_err(|_| ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error: "internal_error",
+                reason: "session_store_poisoned".to_string(),
+            })?;
+            store
+                .kernel
+                .resolve_compute_training_artifact(artifact_id.as_str())
+                .map_err(|reason| ApiError {
+                    status: StatusCode::BAD_REQUEST,
+                    error: "invalid_request",
+                    reason,
+                })?
+        };
+        let config = state
+            .config
+            .training_artifact_signed_url
+            .as_ref()
+            .ok_or(ApiError {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                error: "service_unavailable",
+                reason: "compute_training_artifact_signed_access_unconfigured".to_string(),
+            })?;
+        let issued_at_unix = now_unix_ms() / 1_000;
+        issue_training_artifact_signed_access(config, &resolver, &request, issued_at_unix).map_err(
+            |reason| ApiError {
                 status: if reason.starts_with("pylon_training_artifact_signed_access_") {
                     StatusCode::BAD_REQUEST
                 } else {
@@ -12078,8 +12126,15 @@ async fn post_kernel_compute_training_artifact_signed_access(
                     "service_unavailable"
                 },
                 reason,
-            })?;
-    Ok(Json(response))
+            },
+        )
+    })();
+    record_training_launch_latency_sample(
+        &state,
+        TrainingLaunchLatencyMetricKind::SignedAccess,
+        started.elapsed().as_millis() as u64,
+    );
+    result.map(Json)
 }
 
 async fn get_kernel_compute_training_artifact_gcs_layout(
@@ -16114,12 +16169,24 @@ fn runtime_snapshot(
 fn build_public_stats_snapshot(
     config: &ServiceConfig,
     store: &ControlStore,
+    launch_metrics: &TrainingLaunchLiveMetricsSnapshot,
     now_unix_ms: u64,
 ) -> PublicStatsSnapshot {
     let treasury_runtime = store.treasury.public_stats(&config.treasury, now_unix_ms);
+    let training_payout_ledger_summary = store
+        .treasury
+        .status_response(&config.treasury, now_unix_ms)
+        .training_payout_ledger_summary;
     let training_summary = training_operator_summary_snapshot(store, now_unix_ms);
-    let training_public_state =
+    let mut training_public_state =
         training_public_stats_snapshot(store, now_unix_ms, &training_summary);
+    training_public_state.launch_health = build_training_launch_health_snapshot(
+        &training_summary,
+        &treasury_runtime,
+        &training_payout_ledger_summary,
+        launch_metrics,
+        now_unix_ms,
+    );
     store.economy.snapshot(
         &runtime_snapshot(
             config,
@@ -17298,10 +17365,59 @@ fn training_public_stats_snapshot(
             validator_challenges_open: summary.validator_challenges_open,
             validator_challenges_queued: summary.validator_challenges_queued,
         },
+        launch_health: PublicTrainingLaunchHealthSnapshot::default(),
         work_classes,
         runs,
         windows,
     }
+}
+
+fn build_training_launch_health_snapshot(
+    summary: &TrainingOperatorSummaryResponse,
+    treasury_runtime: &TreasuryPublicStats,
+    training_payout_ledger_summary: &TreasuryTrainingPayoutLedgerSummary,
+    launch_metrics: &TrainingLaunchLiveMetricsSnapshot,
+    now_unix_ms: u64,
+) -> PublicTrainingLaunchHealthSnapshot {
+    let run_backlog_slots = summary
+        .runs
+        .iter()
+        .filter(|run| {
+            training_run_state_counts_as_active(
+                run.run_status.as_str(),
+                run.active_window_count,
+                run.pending_validation_window_count,
+            )
+        })
+        .map(|run| u64::from(run.worker_target_count).saturating_sub(run.assigned_contributors))
+        .sum();
+    let mut health = PublicTrainingLaunchHealthSnapshot {
+        generated_at_unix_ms: now_unix_ms,
+        overall_status: "good".to_string(),
+        public_snapshot_source: "live".to_string(),
+        public_stats_age_ms: 0,
+        public_state_drift_from_kernel_ms: 0,
+        active_runs: summary.active_runs,
+        run_backlog_slots,
+        pending_validation_windows: summary.pending_validation_windows,
+        validator_challenges_open: summary.validator_challenges_open,
+        validator_challenges_queued: summary.validator_challenges_queued,
+        accepted_work_pending_payout_count: training_payout_ledger_summary
+            .accepted_work_pending_payout_count,
+        accepted_work_attention_payout_count: training_payout_ledger_summary
+            .accepted_work_attention_payout_count,
+        payouts_failed_24h: treasury_runtime.payouts_failed_24h,
+        payouts_skipped_24h: treasury_runtime.payouts_skipped_24h,
+        resolver_lookup_latency_p95_ms: launch_metrics.resolver_lookup_latency_p95_ms,
+        resolver_lookup_sample_count: launch_metrics.resolver_lookup_sample_count,
+        signed_access_latency_p95_ms: launch_metrics.signed_access_latency_p95_ms,
+        signed_access_sample_count: launch_metrics.signed_access_sample_count,
+        active_alert_count: 0,
+        critical_alert_count: 0,
+        alerts: Vec::new(),
+    };
+    sync_training_launch_health_alerts(&mut health);
+    health
 }
 
 fn serialized_label<T: Serialize>(value: &T) -> String {
@@ -18245,9 +18361,10 @@ fn training_visualization_snapshot_with_summary(
 fn build_homepage_snapshot(
     config: &ServiceConfig,
     store: &ControlStore,
+    launch_metrics: &TrainingLaunchLiveMetricsSnapshot,
     now_unix_ms: u64,
 ) -> NexusHomepageResponse {
-    let stats = build_public_stats_snapshot(config, store, now_unix_ms);
+    let stats = build_public_stats_snapshot(config, store, launch_metrics, now_unix_ms);
     let training_summary = training_operator_summary_snapshot(store, now_unix_ms);
     let training_visualization =
         training_visualization_snapshot_with_summary(store, now_unix_ms, training_summary.clone());
@@ -18334,6 +18451,226 @@ fn replace_public_stats_cache(state: &AppState, snapshot: PublicStatsSnapshot) {
     }
 }
 
+fn record_training_launch_latency_sample(
+    state: &AppState,
+    kind: TrainingLaunchLatencyMetricKind,
+    latency_ms: u64,
+) {
+    let Ok(mut metrics) = state.training_launch_metrics.write() else {
+        return;
+    };
+    let samples = match kind {
+        TrainingLaunchLatencyMetricKind::ResolverLookup => &mut metrics.resolver_lookup_latency_ms,
+        TrainingLaunchLatencyMetricKind::SignedAccess => &mut metrics.signed_access_latency_ms,
+    };
+    if samples.len() >= TRAINING_LAUNCH_LATENCY_SAMPLE_LIMIT {
+        samples.pop_front();
+    }
+    samples.push_back(latency_ms);
+}
+
+fn training_launch_latency_p95(samples: &VecDeque<u64>) -> Option<u64> {
+    if samples.is_empty() {
+        return None;
+    }
+    let mut values = samples.iter().copied().collect::<Vec<_>>();
+    values.sort_unstable();
+    let index = ((values.len() - 1) * 95) / 100;
+    values.get(index).copied()
+}
+
+fn training_launch_live_metrics_snapshot(state: &AppState) -> TrainingLaunchLiveMetricsSnapshot {
+    let Ok(metrics) = state.training_launch_metrics.read() else {
+        return TrainingLaunchLiveMetricsSnapshot::default();
+    };
+    TrainingLaunchLiveMetricsSnapshot {
+        resolver_lookup_latency_p95_ms: training_launch_latency_p95(
+            &metrics.resolver_lookup_latency_ms,
+        ),
+        resolver_lookup_sample_count: metrics.resolver_lookup_latency_ms.len() as u64,
+        signed_access_latency_p95_ms: training_launch_latency_p95(
+            &metrics.signed_access_latency_ms,
+        ),
+        signed_access_sample_count: metrics.signed_access_latency_ms.len() as u64,
+    }
+}
+
+fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSnapshot) {
+    let mut alerts = Vec::<PublicTrainingLaunchAlert>::new();
+
+    if health.active_runs > 0 && health.run_backlog_slots > 0 {
+        let severity = if health.run_backlog_slots >= health.active_runs {
+            "critical"
+        } else {
+            "warning"
+        };
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "run_backlog".to_string(),
+            severity: severity.to_string(),
+            title: "Run backlog".to_string(),
+            detail: format!(
+                "{} worker slots remain unfilled across {} active run(s).",
+                health.run_backlog_slots, health.active_runs
+            ),
+        });
+    }
+
+    if health.pending_validation_windows > 0 || health.validator_challenges_queued > 0 {
+        let severity = if health.pending_validation_windows > 0
+            && health.validator_challenges_queued >= health.validator_challenges_open
+        {
+            "critical"
+        } else {
+            "warning"
+        };
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "validator_backlog".to_string(),
+            severity: severity.to_string(),
+            title: "Validator backlog".to_string(),
+            detail: format!(
+                "{} pending window(s) // {} open challenge(s) // {} queued challenge(s).",
+                health.pending_validation_windows,
+                health.validator_challenges_open,
+                health.validator_challenges_queued
+            ),
+        });
+    }
+
+    if health.accepted_work_attention_payout_count > 0
+        || health.payouts_failed_24h > 0
+        || health.payouts_skipped_24h > 0
+    {
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "payout_lag".to_string(),
+            severity: "critical".to_string(),
+            title: "Payout attention required".to_string(),
+            detail: format!(
+                "{} accepted-work payout(s) need attention // failed 24h {} // skipped 24h {}.",
+                health.accepted_work_attention_payout_count,
+                health.payouts_failed_24h,
+                health.payouts_skipped_24h
+            ),
+        });
+    } else if health.accepted_work_pending_payout_count > 0 {
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "payout_pending".to_string(),
+            severity: "warning".to_string(),
+            title: "Accepted-work payouts pending".to_string(),
+            detail: format!(
+                "{} accepted-work payout(s) are still pending dispatch or confirmation.",
+                health.accepted_work_pending_payout_count
+            ),
+        });
+    }
+
+    if health
+        .resolver_lookup_latency_p95_ms
+        .is_some_and(|value| value > TRAINING_ARTIFACT_RESOLVER_P95_MAX_MS)
+    {
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "resolver_latency".to_string(),
+            severity: if health
+                .resolver_lookup_latency_p95_ms
+                .is_some_and(|value| value > TRAINING_ARTIFACT_RESOLVER_P95_MAX_MS * 2)
+            {
+                "critical".to_string()
+            } else {
+                "warning".to_string()
+            },
+            title: "Artifact resolver latency".to_string(),
+            detail: format!(
+                "Resolver p95 is {} ms across {} recent sample(s).",
+                health.resolver_lookup_latency_p95_ms.unwrap_or_default(),
+                health.resolver_lookup_sample_count
+            ),
+        });
+    }
+
+    if health
+        .signed_access_latency_p95_ms
+        .is_some_and(|value| value > TRAINING_ARTIFACT_SIGNED_ACCESS_P95_MAX_MS)
+    {
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "signed_access_latency".to_string(),
+            severity: if health
+                .signed_access_latency_p95_ms
+                .is_some_and(|value| value > TRAINING_ARTIFACT_SIGNED_ACCESS_P95_MAX_MS * 2)
+            {
+                "critical".to_string()
+            } else {
+                "warning".to_string()
+            },
+            title: "Signed access latency".to_string(),
+            detail: format!(
+                "Signed-access p95 is {} ms across {} recent sample(s).",
+                health.signed_access_latency_p95_ms.unwrap_or_default(),
+                health.signed_access_sample_count
+            ),
+        });
+    }
+
+    if health.public_stats_age_ms > TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS {
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "stale_snapshot".to_string(),
+            severity: if health.public_stats_age_ms > TRAINING_PUBLIC_MIRROR_MAX_AGE_MS {
+                "critical".to_string()
+            } else {
+                "warning".to_string()
+            },
+            title: "Public snapshot stale".to_string(),
+            detail: format!(
+                "Public stats are {} ms old from the {} snapshot path.",
+                health.public_stats_age_ms, health.public_snapshot_source
+            ),
+        });
+    }
+
+    if health.public_state_drift_from_kernel_ms > TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS {
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "public_state_drift".to_string(),
+            severity: if health.public_state_drift_from_kernel_ms > TRAINING_PUBLIC_MIRROR_MAX_AGE_MS
+            {
+                "critical".to_string()
+            } else {
+                "warning".to_string()
+            },
+            title: "Public-state drift from kernel truth".to_string(),
+            detail: format!(
+                "The public training state may be drifting by {} ms because the snapshot is being served from cache.",
+                health.public_state_drift_from_kernel_ms
+            ),
+        });
+    }
+
+    health.critical_alert_count = alerts
+        .iter()
+        .filter(|alert| alert.severity == "critical")
+        .count() as u64;
+    health.active_alert_count = alerts.len() as u64;
+    health.overall_status = if health.critical_alert_count > 0 {
+        "bad".to_string()
+    } else if health.active_alert_count > 0 {
+        "warn".to_string()
+    } else {
+        "good".to_string()
+    };
+    health.alerts = alerts;
+}
+
+fn apply_public_stats_cache_context(
+    stats: &mut PublicStatsSnapshot,
+    now_unix_ms: u64,
+    source: &str,
+) {
+    let age_ms = now_unix_ms.saturating_sub(stats.as_of_unix_ms);
+    let health = &mut stats.training_public_state.launch_health;
+    health.generated_at_unix_ms = now_unix_ms;
+    health.public_snapshot_source = source.to_string();
+    health.public_stats_age_ms = age_ms;
+    health.public_state_drift_from_kernel_ms = if source == "live" { 0 } else { age_ms };
+    sync_training_launch_health_alerts(health);
+}
+
 fn cached_public_stats_snapshot(state: &AppState) -> Option<PublicStatsSnapshot> {
     state
         .public_stats_cache
@@ -18344,8 +18681,11 @@ fn cached_public_stats_snapshot(state: &AppState) -> Option<PublicStatsSnapshot>
 
 fn refresh_public_stats_cache(state: &AppState, now_unix_ms: u64) -> Option<PublicStatsSnapshot> {
     let store = state.store.read().ok()?;
-    let snapshot = build_public_stats_snapshot(&state.config, &store, now_unix_ms);
+    let launch_metrics = training_launch_live_metrics_snapshot(state);
+    let mut snapshot =
+        build_public_stats_snapshot(&state.config, &store, &launch_metrics, now_unix_ms);
     drop(store);
+    apply_public_stats_cache_context(&mut snapshot, now_unix_ms, "live");
     replace_public_stats_cache(state, snapshot.clone());
     Some(snapshot)
 }
@@ -30754,6 +31094,42 @@ mod tests {
         assert_eq!(initial_stats.training_public_state.runs.len(), 1);
         assert_eq!(initial_stats.training_public_state.windows.len(), 1);
         assert_eq!(
+            initial_stats
+                .training_public_state
+                .launch_health
+                .overall_status,
+            "bad"
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .launch_health
+                .public_snapshot_source,
+            "live"
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .launch_health
+                .pending_validation_windows,
+            1
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .launch_health
+                .validator_challenges_queued,
+            2
+        );
+        assert!(
+            initial_stats
+                .training_public_state
+                .launch_health
+                .alerts
+                .iter()
+                .any(|alert| alert.alert_id == "validator_backlog")
+        );
+        assert_eq!(
             initial_stats.training_public_state.runs[0].validator_challenges_open,
             2
         );
@@ -31100,6 +31476,27 @@ mod tests {
         assert_eq!(final_stats.training_public_state.work_classes.len(), 1);
         assert_eq!(final_stats.training_public_state.runs.len(), 1);
         assert_eq!(final_stats.training_public_state.windows.len(), 1);
+        assert_eq!(
+            final_stats
+                .training_public_state
+                .launch_health
+                .overall_status,
+            "good"
+        );
+        assert_eq!(
+            final_stats
+                .training_public_state
+                .launch_health
+                .active_alert_count,
+            0
+        );
+        assert_eq!(
+            final_stats
+                .training_public_state
+                .launch_health
+                .pending_validation_windows,
+            0
+        );
         assert_eq!(
             final_stats.training_public_state.runs[0]
                 .latest_aggregate_ref
@@ -33230,6 +33627,38 @@ mod tests {
         assert_eq!(homepage.training_summary.active_runs, 1);
         assert_eq!(homepage.training_summary.runs.len(), 1);
         assert_eq!(homepage.training_nodes.len(), 1);
+        assert_eq!(
+            homepage
+                .stats
+                .training_public_state
+                .launch_health
+                .overall_status,
+            "bad"
+        );
+        assert_eq!(
+            homepage
+                .stats
+                .training_public_state
+                .launch_health
+                .public_snapshot_source,
+            "live"
+        );
+        assert_eq!(
+            homepage
+                .stats
+                .training_public_state
+                .launch_health
+                .active_runs,
+            1
+        );
+        assert_eq!(
+            homepage
+                .stats
+                .training_public_state
+                .launch_health
+                .active_alert_count,
+            1
+        );
         assert_eq!(homepage.default_run_id.as_deref(), Some(training_run_id));
         assert_eq!(
             homepage.default_network_id.as_deref(),
@@ -35488,6 +35917,75 @@ mod tests {
                 .contains("X-Goog-Algorithm=GOOG4-RSA-SHA256")
         );
         assert!(signed_access.signed_url.contains("X-Goog-Signature="));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_launch_health_tracks_artifact_resolver_and_signed_access_latency()
+    -> Result<()> {
+        let (training_artifact_signed_url, _dir) = test_training_artifact_signed_url_config()?;
+        let mut config = test_config()?;
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        let state = build_app_state(config);
+        let app = build_router_with_state(state);
+        let session = create_session_token(&app).await?;
+        let artifact_id = "oa.train_artifact.v1~kind~local_update~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123";
+
+        let resolver_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/kernel/compute/training/artifacts/{artifact_id}"
+                    ))
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(resolver_response.status(), StatusCode::OK);
+
+        let signed_access_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/kernel/compute/training/artifacts/{artifact_id}/signed-access"
+                    ))
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "mode": "write",
+                            "ttl_seconds": 7200,
+                            "digest": "sha256:adapter-delta",
+                            "size_bytes": 4096,
+                        })
+                        .to_string(),
+                    ))?,
+            )
+            .await?;
+        assert_eq!(signed_access_response.status(), StatusCode::OK);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        let health = stats.training_public_state.launch_health;
+        assert_eq!(health.public_snapshot_source, "live");
+        assert!(health.resolver_lookup_latency_p95_ms.is_some());
+        assert!(health.signed_access_latency_p95_ms.is_some());
+        assert!(health.resolver_lookup_sample_count >= 1);
+        assert!(health.signed_access_sample_count >= 1);
+
         Ok(())
     }
 
