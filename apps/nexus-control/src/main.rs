@@ -10,6 +10,7 @@ fn main() -> Result<()> {
 
 async fn async_main(worker_threads: usize) -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    ensure_rustls_crypto_provider()?;
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -48,6 +49,16 @@ fn build_runtime(worker_threads: usize) -> Result<tokio::runtime::Runtime> {
         .worker_threads(worker_threads)
         .build()
         .context("failed to build nexus-control tokio runtime")
+}
+
+fn ensure_rustls_crypto_provider() -> Result<()> {
+    if rustls::crypto::CryptoProvider::get_default().is_some() {
+        return Ok(());
+    }
+
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .map_err(|error| anyhow::anyhow!("failed to install rustls crypto provider: {error:?}"))
 }
 
 fn configured_tokio_worker_threads() -> Result<usize> {
