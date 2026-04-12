@@ -25,6 +25,10 @@ This document complements
 The canonical run contract that later stats, manifests, and closeouts should
 reference is
 [`compute-training-run-definition-contract.md`](./compute-training-run-definition-contract.md).
+The operational launch envelope for those claims now lives in
+[`transcript-222-training-launch-slos.md`](./transcript-222-training-launch-slos.md)
+and
+[`transcript-222-training-incident-taxonomy.md`](./transcript-222-training-incident-taxonomy.md).
 
 ## Current Public Truth Surfaces
 

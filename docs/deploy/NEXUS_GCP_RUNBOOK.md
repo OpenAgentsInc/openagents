@@ -126,6 +126,12 @@ snapshot so operators can see the active rollout revision, pause state, cohort
 count, and blocked build or release breakers in the same artifact as the
 latency gates.
 
+Before crowd expansion, treat
+`docs/plans/transcript-222-training-launch-slos.md` as the normative threshold
+sheet for those gates and
+`docs/plans/transcript-222-training-incident-taxonomy.md` as the containment
+taxonomy when one of them breaks.
+
 ## 4) Runtime model
 
 The deployed service is the `nexus-relay` container built from `apps/nexus-relay/Dockerfile`.

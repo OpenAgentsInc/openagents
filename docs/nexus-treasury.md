@@ -454,3 +454,8 @@ Deployment gating:
   latency, tail-latency samples, treasury policy evidence, recent payout
   activity, snapshot freshness, active continuity alerts, and the current
   training rollout-policy snapshot from `/api/training/rollout`
+- Transcript 222 launch operations now use
+  `docs/plans/transcript-222-training-launch-slos.md` for accepted-work payout
+  latency thresholds and
+  `docs/plans/transcript-222-training-incident-taxonomy.md` for payout backlog
+  and reconciliation incident classification
