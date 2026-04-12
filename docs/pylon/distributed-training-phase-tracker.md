@@ -14,6 +14,16 @@ This tracker is a control document, not a second roadmap. If implementation
 details drift, the roadmap remains the spec and this file is updated to reflect
 the current phase status against that spec.
 
+Read this file narrowly:
+
+- it records closure against the original admitted-node MVP phase plan
+- it does not by itself mean the broader public launch story is already fully
+  automatic
+- the current launch comparison lives in
+  `docs/pylon/distributed-training-launch-status.md`
+- the literature and terminology comparison lives in
+  `docs/training/distributed-llm-training-runs-diloco-distro-demo-sparseloco-audit.md`
+
 ## Launch Gates
 
 - MVP launch is blocked until every issue mapped into Phases 0 through 5 is
@@ -31,7 +41,7 @@ the current phase status against that spec.
 
 ## Current Status
 
-Status snapshot as of `2026-04-10`:
+Status snapshot as of `2026-04-11`:
 
 | Phase | Status | Open blockers | Gate |
 | --- | --- | --- | --- |
@@ -42,6 +52,14 @@ Status snapshot as of `2026-04-10`:
 | Phase 4 TRN Publication And Reputation | complete | none | satisfied |
 | Phase 5 Dress Rehearsal And Launch | complete | none | satisfied |
 | Phase 6 Apple Silicon And Metal Support | complete | none | satisfied |
+| Launch Hardening Against Transcript 222 | in progress | automatic assignment packaging, relocatable artifact handoff, and public-state clarity | not yet satisfied |
+
+The original phase set is complete. The remaining row above is not a rewrite of
+the roadmap. It is the operational comparison between the closed MVP and the
+stronger public launch claim now being made around the live `Pylon` network.
+
+The details of that comparison are recorded in
+`docs/pylon/distributed-training-launch-status.md`.
 
 ## Phase Ownership
 

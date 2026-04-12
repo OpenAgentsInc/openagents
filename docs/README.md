@@ -24,8 +24,10 @@ This directory is organized around a small number of canonical entry points.
 - `codex/`: Codex-specific docs and plans.
 - `deploy/`: deployment runbooks and packaging notes.
 - `kernel/`: current kernel and marketplace architecture docs.
+- `pylon/`: standalone Pylon docs plus the admitted-node distributed-training roadmap, tracker, and launch-status docs.
 - `plans/deprecated/`: archived historical plans and superseded design drafts.
 - `reports/`: generated or captured report artifacts.
+- `training/`: distributed-training prior-art, terminology, and algorithm-comparison docs.
 - `wgpui/`: WGPUI-specific docs.
 
 ## Top-Level Docs
