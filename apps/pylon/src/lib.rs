@@ -45,7 +45,10 @@ use openagents_kernel_core::{
         PYLON_TRAINING_RETRY_CAP_MS, PYLON_TRAINING_RETRY_SCHEDULE_MS,
         PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
         PylonTrainingArtifactBundleProgress, PylonTrainingArtifactBundleState,
-        PylonTrainingArtifactClass, PylonTrainingArtifactLayout, PylonTrainingObservabilityContext,
+        PylonTrainingArtifactClass, PylonTrainingArtifactKind, PylonTrainingArtifactLayout,
+        PylonTrainingArtifactResolverResponse, PylonTrainingArtifactScope,
+        PylonTrainingArtifactSignedAccessMode, PylonTrainingArtifactSignedAccessRequest,
+        PylonTrainingArtifactSignedAccessResponse, PylonTrainingObservabilityContext,
         artifact_digest_from_bytes, artifact_digest_from_json,
         can_emit_terminal_artifact_uploaded_receipt, derive_artifact_bundle_state,
         parse_pylon_training_run_manifest_json, pylon_training_artifact_relative_path,
@@ -184,6 +187,15 @@ struct MaterializedPsionicTrainInvocationManifest {
     lane_id: String,
     operation: String,
     work_class: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MaterializedTrainingArtifact {
+    resolver: PylonTrainingArtifactResolverResponse,
+    local_path: PathBuf,
+    digest: String,
+    size_bytes: u64,
+    payload: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -3647,6 +3659,400 @@ fn training_runtime_manifest_path_for_run(run_root: &Path) -> PathBuf {
     run_root.join("manifests").join("invocation_manifest.json")
 }
 
+fn training_artifact_resolved_cache_key(artifact_id: &str) -> String {
+    let mut sanitized = artifact_id
+        .chars()
+        .map(|value| {
+            if value.is_ascii_alphanumeric() {
+                value.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    while sanitized.contains("__") {
+        sanitized = sanitized.replace("__", "_");
+    }
+    let sanitized = sanitized.trim_matches('_');
+    if sanitized.is_empty() {
+        String::from("artifact")
+    } else {
+        sanitized.to_string()
+    }
+}
+
+fn training_resolved_artifact_cache_relative_path(
+    artifact_id: &str,
+    relative_object_path: &str,
+) -> PathBuf {
+    let cache_key = training_artifact_resolved_cache_key(artifact_id);
+    if relative_object_path.ends_with(".json") {
+        PathBuf::from(format!("{cache_key}.json"))
+    } else {
+        PathBuf::from(cache_key)
+    }
+}
+
+fn training_assignment_artifact_scope(
+    training_run: &ComputeTrainingRun,
+    lease: &PylonTrainingLeaseCacheEntry,
+) -> Result<PylonTrainingArtifactScope> {
+    let network_id = lease
+        .network_id
+        .clone()
+        .or_else(|| {
+            training_run
+                .metadata
+                .get("network_id")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
+        .ok_or_else(|| anyhow!("training assignment missing network_id"))?;
+    Ok(PylonTrainingArtifactScope {
+        network_id,
+        run_id: training_run.training_run_id.clone(),
+        window_id: Some(lease.window_id.clone()),
+        assignment_id: Some(lease.assignment_id.clone()),
+        challenge_id: lease.challenge_id.clone(),
+        optimizer_step: None,
+    })
+}
+
+fn training_checkpoint_manifest_step(payload: &[u8], source_path: &Path) -> Result<Option<u64>> {
+    let decoded: Value = serde_json::from_slice(payload).with_context(|| {
+        format!(
+            "failed to decode latest checkpoint pointer {}",
+            source_path.display()
+        )
+    })?;
+    Ok(decoded.get("optimizer_step").and_then(Value::as_u64))
+}
+
+fn write_training_artifact_destination(path: &Path, payload: &[u8]) -> Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        anyhow!(
+            "training artifact destination {} has no parent directory",
+            path.display()
+        )
+    })?;
+    std::fs::create_dir_all(parent).with_context(|| {
+        format!(
+            "failed to create training artifact destination dir {}",
+            parent.display()
+        )
+    })?;
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("artifact");
+    let temp_path = parent.join(format!(".{file_name}.partial-{}", now_epoch_ms()));
+    std::fs::write(temp_path.as_path(), payload).with_context(|| {
+        format!(
+            "failed to write temporary training artifact {}",
+            temp_path.display()
+        )
+    })?;
+    if let Err(error) = std::fs::rename(temp_path.as_path(), path) {
+        let _ = std::fs::remove_file(temp_path.as_path());
+        return Err(error)
+            .with_context(|| format!("failed to finalize training artifact {}", path.display()));
+    }
+    Ok(())
+}
+
+fn write_training_artifact_destinations(destinations: &[PathBuf], payload: &[u8]) -> Result<()> {
+    for destination in destinations {
+        write_training_artifact_destination(destination.as_path(), payload)?;
+    }
+    Ok(())
+}
+
+async fn materialize_training_artifact(
+    config: &PylonConfig,
+    client: &PylonTrainingCoordinatorClient,
+    resolver: PylonTrainingArtifactResolverResponse,
+    run_root: &Path,
+    local_path: &Path,
+) -> Result<MaterializedTrainingArtifact> {
+    let expected_digest = resolver.digest.clone();
+    let expected_size_bytes = resolver.size_bytes;
+    if local_path.is_file() {
+        let payload = std::fs::read(local_path).with_context(|| {
+            format!("failed to read training artifact {}", local_path.display())
+        })?;
+        let local_digest = training_artifact_digest_from_locator_payload(
+            resolver.relative_object_path.as_str(),
+            payload.as_slice(),
+        )?;
+        let local_size_bytes = u64::try_from(payload.len()).unwrap_or(u64::MAX);
+        if expected_digest
+            .as_deref()
+            .is_some_and(|digest| digest == local_digest)
+            && expected_size_bytes.is_none_or(|size| size == local_size_bytes)
+        {
+            let cache_relative = training_resolved_artifact_cache_relative_path(
+                resolver.artifact_id.as_str(),
+                resolver.relative_object_path.as_str(),
+            );
+            let destinations = BTreeSet::from([
+                local_path.to_path_buf(),
+                run_root
+                    .join("artifacts")
+                    .join("resolved")
+                    .join(cache_relative.as_path()),
+                training_download_cache_root(config)
+                    .join("resolved")
+                    .join(cache_relative),
+            ])
+            .into_iter()
+            .collect::<Vec<_>>();
+            write_training_artifact_destinations(&destinations, payload.as_slice())?;
+            return Ok(MaterializedTrainingArtifact {
+                resolver,
+                local_path: local_path.to_path_buf(),
+                digest: local_digest,
+                size_bytes: local_size_bytes,
+                payload,
+            });
+        }
+    }
+
+    let signed_access = client
+        .request_training_artifact_signed_access(
+            resolver.artifact_id.as_str(),
+            &PylonTrainingArtifactSignedAccessRequest {
+                mode: PylonTrainingArtifactSignedAccessMode::Read,
+                ttl_seconds: None,
+                digest: expected_digest.clone(),
+                size_bytes: expected_size_bytes,
+            },
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "{}: failed to request signed artifact access for {}",
+                openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactIncomplete
+                    .label(),
+                resolver.artifact_id
+            )
+        })?;
+    let response = client
+        .client
+        .get(signed_access.signed_url.as_str())
+        .send()
+        .await
+        .with_context(|| {
+            format!(
+                "{}: failed to fetch signed artifact {}",
+                openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactIncomplete
+                    .label(),
+                resolver.artifact_id
+            )
+        })?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode training artifact error".to_string());
+        bail!(
+            "{}: signed artifact fetch failed with status {}: {detail}",
+            openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactIncomplete
+                .label(),
+            status.as_u16()
+        );
+    }
+    let payload = response.bytes().await.with_context(|| {
+        format!(
+            "{}: failed to read signed artifact body {}",
+            openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactIncomplete
+                .label(),
+            resolver.artifact_id
+        )
+    })?;
+    let payload = payload.to_vec();
+    let digest = training_artifact_digest_from_locator_payload(
+        resolver.relative_object_path.as_str(),
+        payload.as_slice(),
+    )?;
+    let size_bytes = u64::try_from(payload.len()).unwrap_or(u64::MAX);
+    if signed_access
+        .expected_digest
+        .as_deref()
+        .or(expected_digest.as_deref())
+        .is_some_and(|expected| expected != digest)
+    {
+        bail!(
+            "{}: expected {} for {}, got {digest}",
+            openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactDigestMismatch
+                .label(),
+            signed_access
+                .expected_digest
+                .clone()
+                .or(expected_digest.clone())
+                .unwrap_or_default(),
+            resolver.artifact_id
+        );
+    }
+    if signed_access
+        .expected_size_bytes
+        .or(expected_size_bytes)
+        .is_some_and(|expected| expected != size_bytes)
+    {
+        bail!(
+            "{}: expected {} bytes for {}, got {size_bytes}",
+            openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactIncomplete
+                .label(),
+            signed_access
+                .expected_size_bytes
+                .or(expected_size_bytes)
+                .unwrap_or_default(),
+            resolver.artifact_id
+        );
+    }
+
+    let cache_relative = training_resolved_artifact_cache_relative_path(
+        resolver.artifact_id.as_str(),
+        resolver.relative_object_path.as_str(),
+    );
+    let destinations = BTreeSet::from([
+        local_path.to_path_buf(),
+        run_root
+            .join("artifacts")
+            .join("resolved")
+            .join(cache_relative.as_path()),
+        training_download_cache_root(config)
+            .join("resolved")
+            .join(cache_relative),
+    ])
+    .into_iter()
+    .collect::<Vec<_>>();
+    write_training_artifact_destinations(&destinations, payload.as_slice())?;
+    Ok(MaterializedTrainingArtifact {
+        resolver,
+        local_path: local_path.to_path_buf(),
+        digest,
+        size_bytes,
+        payload,
+    })
+}
+
+async fn resolve_and_materialize_training_artifact(
+    config: &PylonConfig,
+    client: &PylonTrainingCoordinatorClient,
+    kind: PylonTrainingArtifactKind,
+    scope: PylonTrainingArtifactScope,
+    run_root: &Path,
+    local_path: &Path,
+) -> Result<MaterializedTrainingArtifact> {
+    let expected =
+        PylonTrainingArtifactResolverResponse::new(kind, scope).map_err(anyhow::Error::msg)?;
+    let resolver = client
+        .resolve_training_artifact(expected.artifact_id.as_str())
+        .await
+        .with_context(|| {
+            format!(
+                "{}: failed to resolve training artifact {}",
+                openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactIncomplete
+                    .label(),
+                expected.artifact_id
+            )
+        })?;
+    if resolver.artifact_kind != kind || resolver.scope != expected.scope {
+        bail!(
+            "{}: training artifact {} resolved with unexpected kind or scope",
+            openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactIncomplete
+                .label(),
+            resolver.artifact_id
+        );
+    }
+    materialize_training_artifact(config, client, resolver, run_root, local_path).await
+}
+
+async fn ensure_training_assignment_runtime_artifacts(
+    config: &PylonConfig,
+    client: &PylonTrainingCoordinatorClient,
+    training_run: &ComputeTrainingRun,
+    lease: &PylonTrainingLeaseCacheEntry,
+    run_root: &Path,
+) -> Result<()> {
+    let scope = training_assignment_artifact_scope(training_run, lease)?;
+    resolve_and_materialize_training_artifact(
+        config,
+        client,
+        PylonTrainingArtifactKind::RunManifest,
+        PylonTrainingArtifactScope {
+            network_id: scope.network_id.clone(),
+            run_id: scope.run_id.clone(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: None,
+        },
+        run_root,
+        run_root
+            .join("manifests")
+            .join("run_manifest.json")
+            .as_path(),
+    )
+    .await?;
+    if training_run
+        .checkpoint_binding
+        .latest_checkpoint_ref
+        .is_none()
+        && training_run.checkpoint_binding.recovery_posture.as_deref() != Some("resume_from_latest")
+    {
+        return Ok(());
+    }
+    let pointer = resolve_and_materialize_training_artifact(
+        config,
+        client,
+        PylonTrainingArtifactKind::LatestCheckpointPointer,
+        PylonTrainingArtifactScope {
+            network_id: scope.network_id.clone(),
+            run_id: scope.run_id.clone(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: None,
+        },
+        run_root,
+        run_root
+            .join("checkpoints")
+            .join("latest_pointer.json")
+            .as_path(),
+    )
+    .await?;
+    let Some(optimizer_step) = training_checkpoint_manifest_step(
+        pointer.payload.as_slice(),
+        pointer.local_path.as_path(),
+    )?
+    else {
+        return Ok(());
+    };
+    resolve_and_materialize_training_artifact(
+        config,
+        client,
+        PylonTrainingArtifactKind::CheckpointManifest,
+        PylonTrainingArtifactScope {
+            network_id: scope.network_id,
+            run_id: scope.run_id,
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: Some(optimizer_step),
+        },
+        run_root,
+        run_root
+            .join("checkpoints")
+            .join(format!("step-{optimizer_step}"))
+            .join("checkpoint_manifest.json")
+            .as_path(),
+    )
+    .await?;
+    Ok(())
+}
+
 fn training_psionic_role_for_claim(role: PylonTrainingRoleClaim) -> PsionicTrainRole {
     match role {
         PylonTrainingRoleClaim::Worker => PsionicTrainRole::Worker,
@@ -3872,6 +4278,18 @@ async fn ensure_training_assignment_runtime_manifest(
     let Some(lease) = state.lease_cache.get(lease_id).cloned() else {
         bail!("missing cached training lease `{lease_id}`");
     };
+    let training_run = client
+        .get_training_run(lease.training_run_id.as_str())
+        .await?;
+    let run_root = training_run_root_for_id(config, training_run.training_run_id.as_str());
+    ensure_training_assignment_runtime_artifacts(
+        config,
+        client,
+        &training_run,
+        &lease,
+        run_root.as_path(),
+    )
+    .await?;
     if let (
         Some(runtime_manifest_path),
         Some(runtime_manifest_digest),
@@ -3896,10 +4314,6 @@ async fn ensure_training_assignment_runtime_manifest(
             });
         }
     }
-
-    let training_run = client
-        .get_training_run(lease.training_run_id.as_str())
-        .await?;
     let (manifest, run_root) = build_psionic_train_invocation_manifest(
         config,
         runtime_surface,
@@ -6115,6 +6529,114 @@ impl PylonTrainingCoordinatorClient {
         self.kernel_authority
             .get_compute_training_run(training_run_id)
             .await
+    }
+
+    pub async fn resolve_training_artifact(
+        &self,
+        artifact_id: &str,
+    ) -> Result<PylonTrainingArtifactResolverResponse> {
+        let url = self.training_authority_url(&format!(
+            "/v1/kernel/compute/training/artifacts/{artifact_id}"
+        ));
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let mut request = self.client.get(url.as_str());
+            if let Some(token) = self.bearer_auth.as_deref() {
+                request = request.bearer_auth(token);
+            }
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<PylonTrainingArtifactResolverResponse>().await.with_context(
+                            || format!("failed to decode training artifact resolver response for {artifact_id}"),
+                        );
+                    }
+                    let status = response.status();
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!(
+                            "failed to decode training artifact resolver error for {artifact_id}"
+                        )
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "training artifact resolver failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to resolve training artifact {artifact_id}")
+                    });
+                }
+            }
+        }
+        bail!("training artifact resolver exhausted retry budget")
+    }
+
+    pub async fn request_training_artifact_signed_access(
+        &self,
+        artifact_id: &str,
+        payload: &PylonTrainingArtifactSignedAccessRequest,
+    ) -> Result<PylonTrainingArtifactSignedAccessResponse> {
+        let url = self.training_authority_url(&format!(
+            "/v1/kernel/compute/training/artifacts/{artifact_id}/signed-access"
+        ));
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let mut request = self.client.post(url.as_str()).json(payload);
+            if let Some(token) = self.bearer_auth.as_deref() {
+                request = request.bearer_auth(token);
+            }
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response
+                            .json::<PylonTrainingArtifactSignedAccessResponse>()
+                            .await
+                            .with_context(|| {
+                                format!(
+                                    "failed to decode training artifact signed access response for {artifact_id}"
+                                )
+                            });
+                    }
+                    let status = response.status();
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!(
+                            "failed to decode training artifact signed access error for {artifact_id}"
+                        )
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "training artifact signed access failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!(
+                            "failed to request signed training artifact access for {artifact_id}"
+                        )
+                    });
+                }
+            }
+        }
+        bail!("training artifact signed access exhausted retry budget")
     }
 
     pub async fn get_adapter_training_window(
@@ -15955,8 +16477,9 @@ mod tests {
         snapshot_training_status_report, start_training_checkpoint_server,
         start_training_supervisor, submit_buyer_job, sync_live_announcement,
         sync_provider_payout_target_with_report, sync_training_authority_state,
-        training_download_cache_root, training_runtime_state_path, training_settlement_destination,
-        watch_buyer_jobs,
+        training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
+        training_download_cache_root, training_run_root_for_id, training_runtime_state_path,
+        training_settlement_destination, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -15973,9 +16496,12 @@ mod tests {
         compute_contracts,
         pylon_training::{
             PYLON_TRAINING_GCS_CREDENTIAL_SOURCE, PylonTrainingArtifactBundleKind,
-            PylonTrainingArtifactLayout, PylonTrainingArtifacts, PylonTrainingCheckpointBinding,
-            PylonTrainingCollectiveKind, PylonTrainingDatasetAssignment,
-            PylonTrainingElasticBoundary, PylonTrainingManifestRole, PylonTrainingReputationLabel,
+            PylonTrainingArtifactKind, PylonTrainingArtifactLayout,
+            PylonTrainingArtifactResolverResponse, PylonTrainingArtifactScope,
+            PylonTrainingArtifactSignedAccessRequest, PylonTrainingArtifactSignedAccessResponse,
+            PylonTrainingArtifacts, PylonTrainingCheckpointBinding, PylonTrainingCollectiveKind,
+            PylonTrainingDatasetAssignment, PylonTrainingElasticBoundary,
+            PylonTrainingManifestRole, PylonTrainingReputationLabel,
             PylonTrainingReputationNamespace, PylonTrainingReputationRecord,
             PylonTrainingRunManifestCommon, PylonTrainingTopology,
             PylonTrainingTopologyBackendFamily, PylonTrainingTrn,
@@ -17855,8 +18381,62 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
     -> Result<(), Box<dyn std::error::Error>> {
         let training_run = training_run_fixture();
         let training_run_for_server = training_run.clone();
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Worker];
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let run_root = training_run_root_for_id(&config, "run.alpha");
+        let base_scope = PylonTrainingArtifactScope {
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: None,
+        };
+        let run_manifest_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::RunManifest,
+            base_scope.clone(),
+        )
+        .expect("run manifest resolver");
+        let latest_pointer_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::LatestCheckpointPointer,
+            base_scope.clone(),
+        )
+        .expect("latest pointer resolver");
+        let checkpoint_manifest_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::CheckpointManifest,
+            PylonTrainingArtifactScope {
+                optimizer_step: Some(42),
+                ..base_scope.clone()
+            },
+        )
+        .expect("checkpoint manifest resolver");
+        let latest_pointer_payload = json!({
+            "schema_version":"openagents.pylon_training.latest_pointer.v1",
+            "checkpoint_ref":"checkpoint://run.alpha/0042",
+            "checkpoint_label":"checkpoint-0042",
+            "optimizer_step":42
+        })
+        .to_string();
+        let checkpoint_manifest_payload = json!({
+            "schema_version":"openagents.pylon_training.checkpoint_manifest.v1",
+            "checkpoint_ref":"checkpoint://run.alpha/0042",
+            "checkpoint_label":"checkpoint-0042",
+            "optimizer_step":42
+        })
+        .to_string();
+        let run_manifest_payload = String::from_utf8(
+            training_manifest_fixture(run_root.as_path(), "gs://bucket")?.canonical_json_bytes()?,
+        )?;
         let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
         let request_counts_for_server = Arc::clone(&request_counts);
+        let signed_base_url = Arc::new(Mutex::new(None::<String>));
+        let signed_base_url_for_server = Arc::clone(&signed_base_url);
+        let run_manifest_resolver_for_server = run_manifest_resolver.clone();
+        let latest_pointer_resolver_for_server = latest_pointer_resolver.clone();
+        let checkpoint_manifest_resolver_for_server = checkpoint_manifest_resolver.clone();
         let base_url = start_mock_http_server(move |method, path, _body| {
             if method == "GET" && path == "/v1/kernel/compute/training/runs/run.alpha" {
                 let response = compute_contracts::get_compute_training_run_response_to_proto(
@@ -17869,6 +18449,63 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                     serde_json::to_string(&response).expect("training run json"),
                 );
             }
+            let mut counts = request_counts_for_server
+                .lock()
+                .expect("training assignment intake request counts");
+            let count = counts.entry(path.clone()).or_insert(0);
+            *count += 1;
+            drop(counts);
+            if method == "GET"
+                && path
+                    == format!(
+                        "/v1/kernel/compute/training/artifacts/{}",
+                        run_manifest_resolver_for_server.artifact_id
+                    )
+            {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&run_manifest_resolver_for_server)
+                        .expect("run manifest resolver json"),
+                );
+            }
+            if method == "GET"
+                && path
+                    == format!(
+                        "/v1/kernel/compute/training/artifacts/{}",
+                        latest_pointer_resolver_for_server.artifact_id
+                    )
+            {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&latest_pointer_resolver_for_server)
+                        .expect("latest pointer resolver json"),
+                );
+            }
+            if method == "GET"
+                && path
+                    == format!(
+                        "/v1/kernel/compute/training/artifacts/{}",
+                        checkpoint_manifest_resolver_for_server.artifact_id
+                    )
+            {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&checkpoint_manifest_resolver_for_server)
+                        .expect("checkpoint manifest resolver json"),
+                );
+            }
+            if method == "GET" && path == "/signed/training/run-manifest" {
+                return (200, "application/json", run_manifest_payload.clone());
+            }
+            if method == "GET" && path == "/signed/training/latest-pointer" {
+                return (200, "application/json", latest_pointer_payload.clone());
+            }
+            if method == "GET" && path == "/signed/training/checkpoint-manifest-42" {
+                return (200, "application/json", checkpoint_manifest_payload.clone());
+            }
             if method != "POST" {
                 return (
                     405,
@@ -17876,11 +18513,11 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                     json!({"error":"method_not_allowed","reason":method}).to_string(),
                 );
             }
-            let mut counts = request_counts_for_server
+            let signed_base_url = signed_base_url_for_server
                 .lock()
-                .expect("training assignment intake request counts");
-            let count = counts.entry(path.clone()).or_insert(0);
-            *count += 1;
+                .expect("signed base url")
+                .clone()
+                .unwrap_or_else(|| "http://127.0.0.1:1".to_string());
             let response = match path.as_str() {
                 "/api/training/nodes/admission" => json!({
                     "ack": {
@@ -17921,15 +18558,79 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                     "accepted": true,
                     "lease_state": "acked"
                 }),
+                value
+                    if value
+                        == format!(
+                            "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                            run_manifest_resolver_for_server.artifact_id
+                        ) =>
+                {
+                    let request: PylonTrainingArtifactSignedAccessRequest =
+                        serde_json::from_str(_body.as_str())
+                            .expect("run manifest signed access request");
+                    json!(
+                        PylonTrainingArtifactSignedAccessResponse::new(
+                            &run_manifest_resolver_for_server,
+                            &request,
+                            format!("{signed_base_url}/signed/training/run-manifest"),
+                            1_762_491_200,
+                            3_600,
+                        )
+                        .expect("run manifest signed access response")
+                    )
+                }
+                value
+                    if value
+                        == format!(
+                            "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                            latest_pointer_resolver_for_server.artifact_id
+                        ) =>
+                {
+                    let request: PylonTrainingArtifactSignedAccessRequest =
+                        serde_json::from_str(_body.as_str())
+                            .expect("latest pointer signed access request");
+                    json!(
+                        PylonTrainingArtifactSignedAccessResponse::new(
+                            &latest_pointer_resolver_for_server,
+                            &request,
+                            format!("{signed_base_url}/signed/training/latest-pointer"),
+                            1_762_491_200,
+                            3_600,
+                        )
+                        .expect("latest pointer signed access response")
+                    )
+                }
+                value
+                    if value
+                        == format!(
+                            "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                            checkpoint_manifest_resolver_for_server.artifact_id
+                        ) =>
+                {
+                    let request: PylonTrainingArtifactSignedAccessRequest =
+                        serde_json::from_str(_body.as_str())
+                            .expect("checkpoint manifest signed access request");
+                    json!(
+                        PylonTrainingArtifactSignedAccessResponse::new(
+                            &checkpoint_manifest_resolver_for_server,
+                            &request,
+                            format!("{signed_base_url}/signed/training/checkpoint-manifest-42"),
+                            1_762_491_200,
+                            3_600,
+                        )
+                        .expect("checkpoint manifest signed access response")
+                    )
+                }
                 _ => json!({"error":"unexpected_path","reason":path}),
             };
             (200, "application/json", response.to_string())
         })
         .await?;
-
-        let (temp_dir, mut config, identity) = training_coordinator_fixture(base_url.as_str())?;
-        config.training.role_claims = vec![PylonTrainingRoleClaim::Worker];
-        save_config(temp_dir.path().join("config.json").as_path(), &config)?;
+        *signed_base_url
+            .lock()
+            .expect("signed base url after server start") = Some(base_url.clone());
+        config.training.nexus_authority_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
 
         let mut state = load_or_create_training_runtime_state(&config)?;
         let host = training_host_snapshot(Some("NVIDIA H100 SXM5 80GB"), Some(80), Some(512), true);
@@ -17969,6 +18670,14 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
         let manifest: PsionicTrainInvocationManifest =
             serde_json::from_slice(&std::fs::read(manifest_path.as_path())?)?;
         manifest.validate_machine_contract()?;
+        let run_manifest_path = run_root.join("manifests").join("run_manifest.json");
+        let latest_pointer_path = run_root.join("checkpoints").join("latest_pointer.json");
+        let checkpoint_manifest_path = run_root
+            .join("checkpoints")
+            .join("step-42")
+            .join("checkpoint_manifest.json");
+        let resolved_cache_root = run_root.join("artifacts").join("resolved");
+        let download_cache_root = training_download_cache_root(&config).join("resolved");
         ensure(
             manifest.lane_id == PSION_ACTUAL_PRETRAINING_LANE_ID
                 && manifest.role == PsionicTrainRole::Worker
@@ -17985,6 +18694,36 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                     == Some("assign.node01.window0001")
                 && manifest.coordination.membership_revision == Some(2),
             "assignment intake should materialize one valid psionic-train invocation manifest for the leased worker assignment",
+        )?;
+        ensure(
+            run_manifest_path.is_file()
+                && latest_pointer_path.is_file()
+                && checkpoint_manifest_path.is_file()
+                && resolved_cache_root
+                    .join(format!(
+                        "{}.json",
+                        training_artifact_resolved_cache_key(
+                            run_manifest_resolver.artifact_id.as_str()
+                        )
+                    ))
+                    .is_file()
+                && resolved_cache_root
+                    .join(format!(
+                        "{}.json",
+                        training_artifact_resolved_cache_key(
+                            latest_pointer_resolver.artifact_id.as_str()
+                        )
+                    ))
+                    .is_file()
+                && download_cache_root
+                    .join(format!(
+                        "{}.json",
+                        training_artifact_resolved_cache_key(
+                            checkpoint_manifest_resolver.artifact_id.as_str()
+                        )
+                    ))
+                    .is_file(),
+            "assignment intake should resolve and materialize the run manifest, latest pointer, checkpoint manifest, and resolver-backed cache entries",
         )?;
         ensure(
             state
@@ -18024,6 +18763,24 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 && counts.get("/api/training/leases/claim") == Some(&1)
                 && counts.get("/api/training/assignments/ack") == Some(&1),
             "training assignment intake should admit, claim, and acknowledge exactly once for one new lease",
+        )?;
+        ensure(
+            counts.get(
+                format!(
+                    "/v1/kernel/compute/training/artifacts/{}",
+                    run_manifest_resolver.artifact_id
+                )
+                .as_str(),
+            ) == Some(&1)
+                && counts.get(
+                    format!(
+                        "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                        latest_pointer_resolver.artifact_id
+                    )
+                    .as_str(),
+                ) == Some(&1)
+                && counts.get("/signed/training/checkpoint-manifest-42") == Some(&1),
+            "assignment intake should resolve signed artifact access and fetch the retained runtime inputs once",
         )
     }
 
@@ -18032,8 +18789,95 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
     -> Result<(), Box<dyn std::error::Error>> {
         let training_run = training_run_fixture();
         let training_run_for_server = training_run.clone();
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let run_root = training_run_root_for_id(&config, "run.alpha");
+        let run_manifest_payload =
+            training_manifest_fixture(run_root.as_path(), "gs://bucket")?.canonical_json_bytes()?;
+        let latest_pointer_payload = json!({
+            "schema_version":"openagents.pylon_training.latest_pointer.v1",
+            "checkpoint_ref":"checkpoint://run.alpha/0042",
+            "checkpoint_label":"checkpoint-0042",
+            "optimizer_step":42
+        })
+        .to_string()
+        .into_bytes();
+        let checkpoint_manifest_payload = json!({
+            "schema_version":"openagents.pylon_training.checkpoint_manifest.v1",
+            "checkpoint_ref":"checkpoint://run.alpha/0042",
+            "checkpoint_label":"checkpoint-0042",
+            "optimizer_step":42
+        })
+        .to_string()
+        .into_bytes();
+        std::fs::create_dir_all(run_root.join("manifests"))?;
+        std::fs::create_dir_all(run_root.join("checkpoints").join("step-42"))?;
+        std::fs::write(
+            run_root.join("manifests").join("run_manifest.json"),
+            run_manifest_payload.as_slice(),
+        )?;
+        std::fs::write(
+            run_root.join("checkpoints").join("latest_pointer.json"),
+            latest_pointer_payload.as_slice(),
+        )?;
+        std::fs::write(
+            run_root
+                .join("checkpoints")
+                .join("step-42")
+                .join("checkpoint_manifest.json"),
+            checkpoint_manifest_payload.as_slice(),
+        )?;
+        let base_scope = PylonTrainingArtifactScope {
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: None,
+        };
+        let mut run_manifest_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::RunManifest,
+            base_scope.clone(),
+        )
+        .expect("run manifest resolver");
+        run_manifest_resolver.digest = Some(training_artifact_digest_from_locator_payload(
+            run_manifest_resolver.relative_object_path.as_str(),
+            run_manifest_payload.as_slice(),
+        )?);
+        run_manifest_resolver.size_bytes =
+            Some(u64::try_from(run_manifest_payload.len()).unwrap_or(u64::MAX));
+        let mut latest_pointer_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::LatestCheckpointPointer,
+            base_scope.clone(),
+        )
+        .expect("latest pointer resolver");
+        latest_pointer_resolver.digest = Some(training_artifact_digest_from_locator_payload(
+            latest_pointer_resolver.relative_object_path.as_str(),
+            latest_pointer_payload.as_slice(),
+        )?);
+        latest_pointer_resolver.size_bytes =
+            Some(u64::try_from(latest_pointer_payload.len()).unwrap_or(u64::MAX));
+        let mut checkpoint_manifest_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::CheckpointManifest,
+            PylonTrainingArtifactScope {
+                optimizer_step: Some(42),
+                ..base_scope.clone()
+            },
+        )
+        .expect("checkpoint manifest resolver");
+        checkpoint_manifest_resolver.digest = Some(training_artifact_digest_from_locator_payload(
+            checkpoint_manifest_resolver.relative_object_path.as_str(),
+            checkpoint_manifest_payload.as_slice(),
+        )?);
+        checkpoint_manifest_resolver.size_bytes =
+            Some(u64::try_from(checkpoint_manifest_payload.len()).unwrap_or(u64::MAX));
         let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
         let request_counts_for_server = Arc::clone(&request_counts);
+        let run_manifest_resolver_for_server = run_manifest_resolver.clone();
+        let latest_pointer_resolver_for_server = latest_pointer_resolver.clone();
+        let checkpoint_manifest_resolver_for_server = checkpoint_manifest_resolver.clone();
         let base_url = start_mock_http_server(move |method, path, _body| {
             if method == "GET" && path == "/v1/kernel/compute/training/runs/run.alpha" {
                 let response = compute_contracts::get_compute_training_run_response_to_proto(
@@ -18044,6 +18888,48 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                     200,
                     "application/json",
                     serde_json::to_string(&response).expect("training run json"),
+                );
+            }
+            if method == "GET"
+                && path
+                    == format!(
+                        "/v1/kernel/compute/training/artifacts/{}",
+                        run_manifest_resolver_for_server.artifact_id
+                    )
+            {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&run_manifest_resolver_for_server)
+                        .expect("run manifest resolver json"),
+                );
+            }
+            if method == "GET"
+                && path
+                    == format!(
+                        "/v1/kernel/compute/training/artifacts/{}",
+                        latest_pointer_resolver_for_server.artifact_id
+                    )
+            {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&latest_pointer_resolver_for_server)
+                        .expect("latest pointer resolver json"),
+                );
+            }
+            if method == "GET"
+                && path
+                    == format!(
+                        "/v1/kernel/compute/training/artifacts/{}",
+                        checkpoint_manifest_resolver_for_server.artifact_id
+                    )
+            {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&checkpoint_manifest_resolver_for_server)
+                        .expect("checkpoint manifest resolver json"),
                 );
             }
             if method != "POST" {
@@ -18073,8 +18959,8 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             (200, "application/json", response.to_string())
         })
         .await?;
-
-        let (_temp_dir, config, identity) = training_coordinator_fixture(base_url.as_str())?;
+        config.training.nexus_authority_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
         let mut state = load_or_create_training_runtime_state(&config)?;
         state.lease_cache.insert(
             "lease.node01.window0001".to_string(),
@@ -18137,7 +19023,14 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
         ensure(
             counts.get("/api/training/assignments/ack") == Some(&1)
                 && !counts.contains_key("/api/training/nodes/admission")
-                && !counts.contains_key("/api/training/leases/claim"),
+                && !counts.contains_key("/api/training/leases/claim")
+                && !counts.contains_key(
+                    format!(
+                        "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                        run_manifest_resolver.artifact_id
+                    )
+                    .as_str(),
+                ),
             "cached leased assignments should retry only the missing assignment ack on restart",
         )
     }

@@ -209,9 +209,14 @@ validates and acknowledges Nexus with that retained machine-manifest path. The
 runtime projection freezes the admitted lane, role, operation, work class,
 coordination envelope, and current Psionic release/build/environment identity
 derived from the sibling checkout, including dirty-tree override posture when
-the local Psionic checkout is not clean. The next roadmap items still need to
-fetch assignment artifacts automatically and launch the retained manifest
-without operator intervention.
+the local Psionic checkout is not clean. Assignment intake now also resolves
+the canonical run manifest and latest checkpoint artifacts through the Nexus
+training artifact resolver, requests signed read URLs, verifies the returned
+payload digests and sizes when authority metadata is available, and stages the
+materialized bytes into the retained run root plus the local resolved-artifact
+cache under `training/runs/<run_id>/artifacts/resolved/` and
+`training/download-cache/resolved/`. The next roadmap item still needs to
+launch the retained manifest without operator intervention.
 
 `Pylon` now also has the first training-coordination HTTP client in
 `apps/pylon/src/lib.rs`. It wraps the existing kernel training-policy and
@@ -230,6 +235,9 @@ checkpoint-serving foundation. `apps/pylon/src/lib.rs` can now:
 
 - upload checkpoint, contribution-proof, and score bundles to the frozen
   `gs://` layout with retry and digest verification
+- resolve retained training run bootstrap artifacts through Nexus-issued signed
+  read URLs and materialize `run_manifest.json`, `latest_pointer.json`, and the
+  current `checkpoint_manifest.json` into the run-scoped local filesystem shape
 - download and verify those same bundles into the retained download cache under
   `training/download-cache/`
 - expose a bounded local checkpoint HTTP path for recovery clients
