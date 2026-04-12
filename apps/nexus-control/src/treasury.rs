@@ -78,6 +78,8 @@ const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
 const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
 const TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS: u64 = 5_000;
+const TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES: usize = 1;
+const TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES: usize = 16;
 const TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE: usize = 100;
 const TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES: usize = 16;
 const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
@@ -1030,6 +1032,8 @@ pub struct TreasuryState {
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_wallet_sync_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "is_zero_usize")]
+    pub wallet_refresh_history_page_offset: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payout_loop_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1167,6 +1171,7 @@ pub struct TreasuryWalletSnapshot {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TreasuryWalletRefreshPlan {
     tracked_payment_ids: BTreeSet<String>,
+    history_scan_page_offset: usize,
 }
 
 impl TreasuryWalletRefreshPlan {
@@ -1187,8 +1192,26 @@ impl TreasuryWalletRefreshPlan {
     }
 
     fn payment_page_budget(&self) -> usize {
-        wallet_refresh_payment_page_budget(self.tracked_payment_count())
+        let budget = wallet_refresh_payment_page_budget(self.tracked_payment_count());
+        if self.history_scan_page_offset > 0 {
+            return budget.max(TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES);
+        }
+
+        budget
     }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TreasuryWalletRefreshProgress {
+    history_scan_page_offset: usize,
+    history_pages_scanned: usize,
+    history_hit_end_of_history: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TreasuryWalletRefreshResult {
+    pub snapshot: TreasuryWalletSnapshot,
+    pub progress: TreasuryWalletRefreshProgress,
 }
 
 #[derive(Debug, Clone)]
@@ -1211,6 +1234,10 @@ fn json_value_to_u64(value: Option<&serde_json::Value>) -> Option<u64> {
         .as_u64()
         .or_else(|| value.as_i64().and_then(|value| u64::try_from(value).ok()))
         .or_else(|| value.as_str().and_then(|value| value.parse::<u64>().ok()))
+}
+
+fn is_zero_usize(value: &usize) -> bool {
+    *value == 0
 }
 
 fn treasury_state_salvaged_totals_from_payload(payload: &str) -> TreasuryStateSalvagedTotals {
@@ -2399,6 +2426,7 @@ impl TreasuryState {
 
     pub fn wallet_refresh_plan(&self) -> TreasuryWalletRefreshPlan {
         let mut plan = TreasuryWalletRefreshPlan::recent_only();
+        plan.history_scan_page_offset = self.wallet_refresh_history_page_offset;
         for record in self.payout_records_by_key.values() {
             if record.status != "dispatched" || record.counted_in_paid_total {
                 continue;
@@ -2408,6 +2436,34 @@ impl TreasuryState {
             }
         }
         plan
+    }
+
+    pub fn note_wallet_refresh_progress(
+        &mut self,
+        plan: &TreasuryWalletRefreshPlan,
+        progress: &TreasuryWalletRefreshProgress,
+    ) {
+        let has_unconfirmed_dispatched_payouts =
+            self.payout_records_by_key.values().any(|record| {
+                record.status == "dispatched"
+                    && !record.counted_in_paid_total
+                    && record.payment_id.is_some()
+            });
+        if !has_unconfirmed_dispatched_payouts {
+            self.wallet_refresh_history_page_offset = 0;
+            return;
+        }
+
+        let history_scan_page_offset = plan
+            .history_scan_page_offset
+            .max(TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES);
+        if progress.history_pages_scanned == 0 || progress.history_hit_end_of_history {
+            self.wallet_refresh_history_page_offset = TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES;
+            return;
+        }
+
+        self.wallet_refresh_history_page_offset =
+            history_scan_page_offset.saturating_add(progress.history_pages_scanned);
     }
 
     pub fn note_wallet_recovery_cutover(
@@ -3254,11 +3310,35 @@ pub async fn load_live_wallet_snapshot(
     config: &TreasuryConfig,
     create_if_missing: bool,
 ) -> Result<TreasuryWalletSnapshot> {
-    load_live_wallet_snapshot_with_plan(
+    load_live_wallet_refresh_result_with_plan(
         config,
         create_if_missing,
         TreasuryWalletRefreshPlan::recent_only(),
     )
+    .await
+    .map(|result| result.snapshot)
+}
+
+pub async fn load_live_wallet_refresh_result_with_plan(
+    config: &TreasuryConfig,
+    create_if_missing: bool,
+    refresh_plan: TreasuryWalletRefreshPlan,
+) -> Result<TreasuryWalletRefreshResult> {
+    #[cfg(test)]
+    if let Some(hook) = test_wallet_snapshot_hook()
+        .lock()
+        .expect("treasury snapshot hook")
+        .as_ref()
+    {
+        return hook().map(|snapshot| TreasuryWalletRefreshResult {
+            snapshot,
+            progress: TreasuryWalletRefreshProgress::default(),
+        });
+    }
+
+    with_live_wallet(config, create_if_missing, move |wallet| async move {
+        wallet_snapshot_from_wallet_with_plan_result(wallet.as_ref(), &refresh_plan).await
+    })
     .await
 }
 
@@ -3267,19 +3347,9 @@ pub async fn load_live_wallet_snapshot_with_plan(
     create_if_missing: bool,
     refresh_plan: TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletSnapshot> {
-    #[cfg(test)]
-    if let Some(hook) = test_wallet_snapshot_hook()
-        .lock()
-        .expect("treasury snapshot hook")
-        .as_ref()
-    {
-        return hook();
-    }
-
-    with_live_wallet(config, create_if_missing, move |wallet| async move {
-        wallet_snapshot_from_wallet_with_plan(wallet.as_ref(), &refresh_plan).await
-    })
-    .await
+    load_live_wallet_refresh_result_with_plan(config, create_if_missing, refresh_plan)
+        .await
+        .map(|result| result.snapshot)
 }
 
 pub async fn dispatch_live_payouts(
@@ -4933,24 +5003,34 @@ fn wallet_refresh_payment_page_budget(tracked_payment_count: usize) -> usize {
 async fn wallet_refresh_payments(
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
-) -> Result<Vec<PaymentSummary>> {
+) -> Result<WalletRefreshPaymentsResult> {
     let mut payments = Vec::new();
     let mut unresolved_payment_ids = plan.tracked_payment_ids.clone();
-    let page_budget = plan.payment_page_budget();
+    let page_offsets = wallet_refresh_page_offsets(plan);
     let page_size = TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE as u32;
     let mut scanned_pages = 0usize;
+    let mut progress = TreasuryWalletRefreshProgress {
+        history_scan_page_offset: plan
+            .history_scan_page_offset
+            .max(TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES),
+        ..TreasuryWalletRefreshProgress::default()
+    };
 
-    for page_index in 0..page_budget {
-        let offset = (page_index * TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE) as u32;
+    for page_offset in page_offsets {
+        let offset = (page_offset * TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE) as u32;
         let mut page = wallet
             .list_payments(Some(page_size), Some(offset))
             .await
             .context("failed to list treasury Spark payments")?;
         if page.is_empty() {
+            progress.history_hit_end_of_history = true;
             break;
         }
 
         scanned_pages = scanned_pages.saturating_add(1);
+        if page_offset >= TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES {
+            progress.history_pages_scanned = progress.history_pages_scanned.saturating_add(1);
+        }
         for payment in &page {
             unresolved_payment_ids.remove(payment.id.as_str());
         }
@@ -4960,6 +5040,9 @@ async fn wallet_refresh_payments(
 
         if page_len < TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE || unresolved_payment_ids.is_empty()
         {
+            if page_len < TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE {
+                progress.history_hit_end_of_history = true;
+            }
             break;
         }
     }
@@ -4969,33 +5052,73 @@ async fn wallet_refresh_payments(
             tracked_payment_count = plan.tracked_payment_count(),
             remaining_payment_count = unresolved_payment_ids.len(),
             scanned_pages,
-            page_budget,
+            page_budget = plan.payment_page_budget(),
             "treasury wallet refresh bounded payment scan left unresolved payouts for a later cycle",
         );
     }
 
-    Ok(payments)
+    Ok(WalletRefreshPaymentsResult { payments, progress })
+}
+
+#[derive(Debug, Clone, Default)]
+struct WalletRefreshPaymentsResult {
+    payments: Vec<PaymentSummary>,
+    progress: TreasuryWalletRefreshProgress,
+}
+
+fn wallet_refresh_page_offsets(plan: &TreasuryWalletRefreshPlan) -> Vec<usize> {
+    let mut page_offsets = Vec::with_capacity(plan.payment_page_budget());
+    page_offsets.extend(0..TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES);
+
+    if plan.tracked_payment_count() == 0 {
+        return page_offsets;
+    }
+
+    let history_scan_page_offset = plan
+        .history_scan_page_offset
+        .max(TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES);
+    let history_page_budget = plan
+        .payment_page_budget()
+        .saturating_sub(TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES);
+    page_offsets.extend(
+        history_scan_page_offset..history_scan_page_offset.saturating_add(history_page_budget),
+    );
+    page_offsets
 }
 
 async fn wallet_snapshot_from_wallet(wallet: &SparkWallet) -> Result<TreasuryWalletSnapshot> {
-    wallet_snapshot_from_wallet_with_plan(wallet, &TreasuryWalletRefreshPlan::recent_only()).await
+    wallet_snapshot_from_wallet_with_plan_result(wallet, &TreasuryWalletRefreshPlan::recent_only())
+        .await
+        .map(|result| result.snapshot)
+}
+
+async fn wallet_snapshot_from_wallet_with_plan_result(
+    wallet: &SparkWallet,
+    plan: &TreasuryWalletRefreshPlan,
+) -> Result<TreasuryWalletRefreshResult> {
+    let balance = wallet
+        .get_balance_cached()
+        .await
+        .context("failed to fetch treasury Spark balance")?;
+    let refresh = wallet_refresh_payments(wallet, plan).await?;
+    Ok(TreasuryWalletRefreshResult {
+        snapshot: TreasuryWalletSnapshot {
+            runtime_status: "connected".to_string(),
+            runtime_detail: None,
+            balance_sats: balance.total_sats(),
+            payments: refresh.payments,
+        },
+        progress: refresh.progress,
+    })
 }
 
 async fn wallet_snapshot_from_wallet_with_plan(
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletSnapshot> {
-    let balance = wallet
-        .get_balance_cached()
+    wallet_snapshot_from_wallet_with_plan_result(wallet, plan)
         .await
-        .context("failed to fetch treasury Spark balance")?;
-    let payments = wallet_refresh_payments(wallet, plan).await?;
-    Ok(TreasuryWalletSnapshot {
-        runtime_status: "connected".to_string(),
-        runtime_detail: None,
-        balance_sats: balance.total_sats(),
-        payments,
-    })
+        .map(|result| result.snapshot)
 }
 
 fn wallet_network_status_label(status: &openagents_spark::NetworkStatusReport) -> &'static str {
@@ -5224,19 +5347,21 @@ pub(crate) fn set_test_wallet_send_hook(hook: Option<TestWalletSendHook>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        OnlinePylonIdentity, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
-        TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TreasuryConfig, TreasuryDispatchOutcome,
+        OnlinePylonIdentity, TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES,
+        TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE,
+        TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES, TreasuryConfig, TreasuryDispatchOutcome,
         TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryPayoutClass,
         TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPublicStats,
         TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
         TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
-        TreasuryWalletRecoveryReport, TreasuryWalletSnapshot,
-        apply_treasury_wallet_recovery_cutover, build_treasury_wallet_recovery_comparison,
-        create_live_funding_target, dispatch_live_payouts, parse_treasury_command,
-        payout_phase_offset_ms, payout_window_started_at, payout_window_started_at_for_identity,
+        TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan, TreasuryWalletRefreshProgress,
+        TreasuryWalletSnapshot, apply_treasury_wallet_recovery_cutover,
+        build_treasury_wallet_recovery_comparison, create_live_funding_target,
+        dispatch_live_payouts, parse_treasury_command, payout_phase_offset_ms,
+        payout_window_started_at, payout_window_started_at_for_identity,
         set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
         treasury_test_hook_lock, verify_payout_target_registration_signature,
-        wallet_refresh_payment_page_budget, write_json_file,
+        wallet_refresh_page_offsets, wallet_refresh_payment_page_budget, write_json_file,
     };
     use openagents_provider_substrate::sign_provider_payout_target_registration;
     use openagents_spark::PaymentSummary;
@@ -6874,6 +6999,7 @@ mod tests {
         assert_eq!(plan.tracked_payment_count(), 1);
         assert!(plan.tracked_payment_ids.contains("pay-confirm-me"));
         assert!(!plan.tracked_payment_ids.contains("pay-already-confirmed"));
+        assert_eq!(plan.history_scan_page_offset, 0);
     }
 
     #[test]
@@ -6892,6 +7018,124 @@ mod tests {
         assert_eq!(
             wallet_refresh_payment_page_budget(10_000),
             TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES
+        );
+    }
+
+    #[test]
+    fn wallet_refresh_page_offsets_follow_the_history_cursor() {
+        let mut plan = TreasuryWalletRefreshPlan::recent_only();
+        plan.track_payment_id("pay-confirm-me");
+        plan.history_scan_page_offset = 8;
+
+        let page_offsets = wallet_refresh_page_offsets(&plan);
+
+        assert_eq!(page_offsets[0], 0);
+        assert_eq!(page_offsets[1], 8);
+        assert_eq!(
+            page_offsets.len(),
+            TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES
+        );
+    }
+
+    #[test]
+    fn wallet_refresh_progress_advances_history_cursor_while_backlog_remains() {
+        let mut state = TreasuryState::default();
+        state.payout_records_by_key.insert(
+            "window-a:pubkey-a".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "window-a:pubkey-a".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 2,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("pay-confirm-me".to_string()),
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: 100,
+                updated_at_unix_ms: 200,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        let plan = state.wallet_refresh_plan();
+        state.note_wallet_refresh_progress(
+            &plan,
+            &TreasuryWalletRefreshProgress {
+                history_scan_page_offset: 1,
+                history_pages_scanned: 7,
+                history_hit_end_of_history: false,
+            },
+        );
+
+        assert_eq!(state.wallet_refresh_history_page_offset, 8);
+    }
+
+    #[test]
+    fn wallet_refresh_progress_resets_history_cursor_when_backlog_clears() {
+        let mut state = TreasuryState::default();
+        state.wallet_refresh_history_page_offset = 12;
+        let plan = state.wallet_refresh_plan();
+
+        state.note_wallet_refresh_progress(
+            &plan,
+            &TreasuryWalletRefreshProgress {
+                history_scan_page_offset: 12,
+                history_pages_scanned: 4,
+                history_hit_end_of_history: false,
+            },
+        );
+
+        assert_eq!(state.wallet_refresh_history_page_offset, 0);
+    }
+
+    #[test]
+    fn wallet_refresh_progress_restarts_history_scan_after_reaching_the_end() {
+        let mut state = TreasuryState::default();
+        state.payout_records_by_key.insert(
+            "window-a:pubkey-a".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "window-a:pubkey-a".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 2,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("pay-confirm-me".to_string()),
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: 100,
+                updated_at_unix_ms: 200,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+        state.wallet_refresh_history_page_offset = 24;
+        let plan = state.wallet_refresh_plan();
+
+        state.note_wallet_refresh_progress(
+            &plan,
+            &TreasuryWalletRefreshProgress {
+                history_scan_page_offset: 24,
+                history_pages_scanned: 3,
+                history_hit_end_of_history: true,
+            },
+        );
+
+        assert_eq!(
+            state.wallet_refresh_history_page_offset,
+            TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES
         );
     }
 }
