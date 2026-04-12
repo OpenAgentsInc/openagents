@@ -111,6 +111,202 @@ pub struct PublicRecentPylonDiagnostic {
     pub repeats: u64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingQueuePressure {
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub active_windows: u64,
+    #[serde(default)]
+    pub pending_validation_windows: u64,
+    #[serde(default)]
+    pub validator_challenges_open: u64,
+    #[serde(default)]
+    pub validator_challenges_queued: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingWorkClassState {
+    #[serde(default)]
+    pub work_class: String,
+    #[serde(default)]
+    pub progress_class: String,
+    #[serde(default)]
+    pub run_count: u64,
+    #[serde(default)]
+    pub active_run_count: u64,
+    #[serde(default)]
+    pub accepted_closeouts: u64,
+    #[serde(default)]
+    pub payout_eligible_closeouts: u64,
+    #[serde(default)]
+    pub weak_device_bearing_closeouts: u64,
+    #[serde(default)]
+    pub progress_bearing_closeouts: u64,
+    #[serde(default)]
+    pub participation_only_closeouts: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingRunState {
+    #[serde(default)]
+    pub training_run_id: String,
+    #[serde(default)]
+    pub network_id: String,
+    #[serde(default)]
+    pub run_status: String,
+    #[serde(default)]
+    pub scheduler_window_state: String,
+    #[serde(default)]
+    pub current_window_id: String,
+    #[serde(default)]
+    pub work_class: String,
+    #[serde(default)]
+    pub progress_class: String,
+    #[serde(default)]
+    pub replica_type: String,
+    #[serde(default)]
+    pub assigned_contributors: u64,
+    #[serde(default)]
+    pub weak_device_assigned_contributors: u64,
+    #[serde(default)]
+    pub accepted_contributors: u64,
+    #[serde(default)]
+    pub weak_device_accepted_contributors: u64,
+    #[serde(default)]
+    pub model_progress_contributors: u64,
+    #[serde(default)]
+    pub active_window_count: u64,
+    #[serde(default)]
+    pub pending_validation_window_count: u64,
+    #[serde(default)]
+    pub validator_challenges_open: u64,
+    #[serde(default)]
+    pub validator_challenges_queued: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_checkpoint_age_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_window_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_closeout_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_aggregate_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_promoted_checkpoint_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingWindowState {
+    #[serde(default)]
+    pub window_id: String,
+    #[serde(default)]
+    pub training_run_id: String,
+    #[serde(default)]
+    pub network_id: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub stage_id: String,
+    #[serde(default)]
+    pub work_class: String,
+    #[serde(default)]
+    pub progress_class: String,
+    #[serde(default)]
+    pub replica_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub round_index: Option<u64>,
+    #[serde(default)]
+    pub base_checkpoint_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_local_step_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aggregation_rule: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aggregation_weight_basis: Option<String>,
+    #[serde(default)]
+    pub total_contributions: u32,
+    #[serde(default)]
+    pub admitted_contributions: u32,
+    #[serde(default)]
+    pub accepted_contributions: u32,
+    #[serde(default)]
+    pub replay_required_contributions: u32,
+    #[serde(default)]
+    pub validator_challenges_open: u64,
+    #[serde(default)]
+    pub validator_challenges_queued: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aggregated_delta_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_aggregate_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promoted_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_outcome_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closeout_status: Option<String>,
+    #[serde(default)]
+    pub payout_eligible: bool,
+    #[serde(default)]
+    pub weak_device_bearing: bool,
+    #[serde(default)]
+    pub lineage_advanced: bool,
+    #[serde(default)]
+    pub planned_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activated_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reconciled_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingStatsSnapshot {
+    #[serde(default)]
+    pub generated_at_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_work_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_progress_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_replica_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_checkpoint_age_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_aggregate_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_promoted_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_window_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_closeout_status: Option<String>,
+    #[serde(default)]
+    pub queue_pressure: PublicTrainingQueuePressure,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub work_classes: Vec<PublicTrainingWorkClassState>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runs: Vec<PublicTrainingRunState>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub windows: Vec<PublicTrainingWindowState>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PublicStatsSnapshot {
     pub service: String,
@@ -256,6 +452,8 @@ pub struct PublicStatsSnapshot {
     pub training_artifact_failures_open: u64,
     #[serde(default)]
     pub training_payout_eligible_closeouts: u64,
+    #[serde(default)]
+    pub training_public_state: PublicTrainingStatsSnapshot,
     pub compute_products_active: u64,
     pub compute_capacity_lots_open: u64,
     pub compute_capacity_lots_delivering: u64,
@@ -392,6 +590,7 @@ pub struct PublicRuntimeSnapshot {
     pub training_checkpoint_max_age_ms: Option<u64>,
     pub training_artifact_failures_open: u64,
     pub training_payout_eligible_closeouts: u64,
+    pub training_public_state: PublicTrainingStatsSnapshot,
     pub compute_products_active: u64,
     pub compute_capacity_lots_open: u64,
     pub compute_capacity_lots_delivering: u64,
@@ -639,12 +838,10 @@ impl ReceiptLedger {
                 .nexus_accepted_work_payout_sats_paid_24h,
             nexus_placeholder_payout_sats_paid_total: runtime
                 .nexus_placeholder_payout_sats_paid_total,
-            nexus_placeholder_payout_sats_paid_24h: runtime
-                .nexus_placeholder_payout_sats_paid_24h,
+            nexus_placeholder_payout_sats_paid_24h: runtime.nexus_placeholder_payout_sats_paid_24h,
             nexus_beta_bonus_payout_sats_paid_total: runtime
                 .nexus_beta_bonus_payout_sats_paid_total,
-            nexus_beta_bonus_payout_sats_paid_24h: runtime
-                .nexus_beta_bonus_payout_sats_paid_24h,
+            nexus_beta_bonus_payout_sats_paid_24h: runtime.nexus_beta_bonus_payout_sats_paid_24h,
             nexus_weak_device_accepted_work_payout_sats_paid_total: runtime
                 .nexus_weak_device_accepted_work_payout_sats_paid_total,
             nexus_weak_device_accepted_work_payout_sats_paid_24h: runtime
@@ -682,6 +879,7 @@ impl ReceiptLedger {
             training_checkpoint_max_age_ms: runtime.training_checkpoint_max_age_ms,
             training_artifact_failures_open: runtime.training_artifact_failures_open,
             training_payout_eligible_closeouts: runtime.training_payout_eligible_closeouts,
+            training_public_state: runtime.training_public_state.clone(),
             compute_products_active: runtime.compute_products_active,
             compute_capacity_lots_open: runtime.compute_capacity_lots_open,
             compute_capacity_lots_delivering: runtime.compute_capacity_lots_delivering,
@@ -909,7 +1107,9 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{AuthorityReceiptContext, PublicRuntimeSnapshot, ReceiptLedger};
+    use super::{
+        AuthorityReceiptContext, PublicRuntimeSnapshot, PublicTrainingStatsSnapshot, ReceiptLedger,
+    };
 
     #[test]
     fn snapshot_aggregates_receipts_by_type() {
@@ -1012,6 +1212,7 @@ mod tests {
                 training_checkpoint_max_age_ms: None,
                 training_artifact_failures_open: 0,
                 training_payout_eligible_closeouts: 0,
+                training_public_state: PublicTrainingStatsSnapshot::default(),
                 compute_products_active: 0,
                 compute_capacity_lots_open: 0,
                 compute_capacity_lots_delivering: 0,
