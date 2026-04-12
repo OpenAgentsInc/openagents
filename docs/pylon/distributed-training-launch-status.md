@@ -118,6 +118,28 @@ training, but the launch story requires it to behave like a live work
 coordinator for many heterogeneous `Pylon` nodes. It needs to make explicit,
 durable work-class decisions and project them publicly.
 
+That gap is now narrower than it was at the start of the launch-hardening pass.
+The scheduler no longer relies only on coarse tier prose. It now resolves one
+canonical training run definition from the kernel training-policy surfaces and
+combines that with each admitted node's
+`provider.training_capability_envelope.v2` to decide whether the node can lease
+the requested run at all. That admission check now enforces:
+
+- validator policy match
+- checkpoint family match
+- environment binding match
+- backend-family match
+- work-class eligibility
+- replica-type eligibility
+- memory floor
+- throughput band
+- replay capability
+- benchmark-lane availability when the run definition carries benchmark truth
+
+That means the remaining scheduler work is less about inventing admission logic
+and more about projecting those durable decisions into automatic assignment,
+quota planning, and public state.
+
 The next-week launch claim is strongest when `Nexus` can visibly answer:
 
 - which nodes are merely online
@@ -156,9 +178,15 @@ contract for launch:
 
 - `validation_replay` remains the default weak-device lane
 - `evaluation` and `adapter_training` require a real trainer-tier machine
-- `grouped_replica_stage_execution` and
-  `full_island_local_update_training` require island-grade posture
+- `grouped_replica_stage_execution` requires grouped-replica eligibility on a
+  trainer-tier machine
+- `full_island_local_update_training` requires island-grade posture
 - replica-type eligibility is explicit instead of being inferred from prose
+
+Just as important, `Nexus` now actually consumes that envelope when leasing
+work. A node that lacks the benchmark lane, the right backend family, the
+required throughput, or the required replay posture is now refused for that run
+instead of being treated as scheduler-compatible by default.
 
 ### 3. `Psionic` still needs a cleaner artifact mobility story
 
