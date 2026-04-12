@@ -51,18 +51,22 @@ use openagents_kernel_core::compute::{
     ComputeProduct, ComputeProductStatus, ComputeRegistryStatus, ComputeSettlementFailureReason,
     ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus, ComputeSyntheticDataSample,
     ComputeSyntheticDataSampleStatus, ComputeTrainingPolicy, ComputeTrainingRun,
-    ComputeTrainingRunStatus, ComputeValidatorPolicy, DeliveryProof, DeliveryProofStatus,
-    DeliveryRejectionReason, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    ComputeTrainingRunDefinition, ComputeTrainingRunDefinitionBenchmarkPackage,
+    ComputeTrainingRunDefinitionDatasetBinding, ComputeTrainingRunDefinitionEnvironment,
+    ComputeTrainingRunDefinitionReferenceFamilies, ComputeTrainingRunStatus,
+    ComputeValidatorPolicy, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
+    StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
     StructuredCapacityInstrumentStatus, StructuredCapacityLegRole, canonical_compute_product_id,
     compute_apple_benchmark_package_metadata, compute_apple_training_run_metadata,
-    validate_compute_accepted_outcome, validate_compute_adapter_contribution_outcome,
-    validate_compute_adapter_training_window, validate_compute_benchmark_package,
-    validate_compute_capability_envelope, validate_compute_checkpoint_family_policy,
-    validate_compute_environment_package, validate_compute_evaluation_artifact,
-    validate_compute_evaluation_run, validate_compute_evaluation_sample,
-    validate_compute_synthetic_data_job, validate_compute_synthetic_data_sample,
-    validate_compute_training_policy, validate_compute_training_run,
-    validate_compute_validator_policy, validate_delivery_proof, validate_launch_compute_product,
+    compute_training_run_definition_metadata, validate_compute_accepted_outcome,
+    validate_compute_adapter_contribution_outcome, validate_compute_adapter_training_window,
+    validate_compute_benchmark_package, validate_compute_capability_envelope,
+    validate_compute_checkpoint_family_policy, validate_compute_environment_package,
+    validate_compute_evaluation_artifact, validate_compute_evaluation_run,
+    validate_compute_evaluation_sample, validate_compute_synthetic_data_job,
+    validate_compute_synthetic_data_sample, validate_compute_training_policy,
+    validate_compute_training_run, validate_compute_validator_policy, validate_delivery_proof,
+    validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DataMarketSnapshot, DeliveryBundle,
@@ -2870,6 +2874,93 @@ impl KernelState {
                     .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
                     .then_with(|| lhs.version.cmp(&rhs.version))
             })
+    }
+
+    pub fn get_compute_training_run_definition(
+        &self,
+        training_policy_ref: &str,
+        version: Option<&str>,
+    ) -> Result<ComputeTrainingRunDefinition, String> {
+        let policy = self
+            .get_compute_training_policy(training_policy_ref, version)
+            .ok_or_else(|| "kernel_compute_training_policy_not_found".to_string())?;
+        let metadata = compute_training_run_definition_metadata(&policy)?
+            .ok_or_else(|| "compute_training_run_definition_metadata_missing".to_string())?;
+        let validator_policy = self
+            .get_compute_validator_policy(policy.validator_policy_ref.as_str(), None)
+            .ok_or_else(|| "kernel_compute_validator_policy_not_found".to_string())?;
+
+        let mut environments = Vec::with_capacity(policy.environment_refs.len());
+        let mut dataset_bindings = Vec::new();
+        for environment_ref in &policy.environment_refs {
+            let environment = self
+                .get_compute_environment_package(environment_ref.as_str(), None)
+                .ok_or_else(|| "kernel_compute_environment_package_not_found".to_string())?;
+            for binding in &environment.dataset_bindings {
+                dataset_bindings.push(ComputeTrainingRunDefinitionDatasetBinding {
+                    environment_ref: environment.environment_ref.clone(),
+                    environment_version: environment.version.clone(),
+                    dataset_ref: binding.dataset_ref.clone(),
+                    split_ref: binding.split_ref.clone(),
+                    mount_path: binding.mount_path.clone(),
+                    integrity_ref: binding.integrity_ref.clone(),
+                    access_policy_ref: binding.access_policy_ref.clone(),
+                    required: binding.required,
+                    metadata: binding.metadata.clone(),
+                });
+            }
+            environments.push(ComputeTrainingRunDefinitionEnvironment {
+                environment_ref: environment.environment_ref.clone(),
+                version: environment.version.clone(),
+                family: environment.family.clone(),
+                display_name: Some(environment.display_name.clone()),
+                package_digest: environment.package_digest.clone(),
+                dataset_bindings: environment.dataset_bindings.clone(),
+                policy_refs: environment.policy_refs.clone(),
+            });
+        }
+
+        let mut benchmark_packages = Vec::with_capacity(policy.benchmark_package_refs.len());
+        for benchmark_package_ref in &policy.benchmark_package_refs {
+            let package = self
+                .get_compute_benchmark_package(benchmark_package_ref.as_str(), None)
+                .ok_or_else(|| "kernel_compute_benchmark_package_not_found".to_string())?;
+            benchmark_packages.push(ComputeTrainingRunDefinitionBenchmarkPackage {
+                benchmark_package_ref: package.benchmark_package_ref.clone(),
+                version: package.version.clone(),
+                family: package.family.clone(),
+                environment_ref: package.environment_ref.clone(),
+                environment_version: package.environment_version.clone(),
+                artifact_refs: package.artifact_refs.clone(),
+            });
+        }
+
+        Ok(ComputeTrainingRunDefinition {
+            schema_version: metadata.abi_version.clone(),
+            run_definition_ref: metadata.run_definition_ref,
+            training_policy_ref: policy.training_policy_ref.clone(),
+            training_policy_version: policy.version.clone(),
+            training_family: metadata.training_family,
+            objective: metadata.objective,
+            sync_profile: metadata.sync_profile,
+            checkpoint_family: policy.checkpoint_family.clone(),
+            validator_policy_ref: validator_policy.policy_ref.clone(),
+            validator_policy_version: Some(validator_policy.version.clone()),
+            dataset_identity: metadata.dataset_identity,
+            dataset_slice_family: metadata.dataset_slice_family,
+            page_proof_family: metadata.page_proof_family,
+            benchmark_package_set_ref: metadata.benchmark_package_set_ref,
+            version_semantics: metadata.version_semantics,
+            environments,
+            dataset_bindings,
+            benchmark_packages,
+            reference_families: ComputeTrainingRunDefinitionReferenceFamilies {
+                window_ref_family: metadata.window_ref_family,
+                manifest_ref_family: metadata.manifest_ref_family,
+                trn_ref_family: metadata.trn_ref_family,
+                closeout_ref_family: metadata.closeout_ref_family,
+            },
+        })
     }
 
     pub fn list_compute_evaluation_runs(

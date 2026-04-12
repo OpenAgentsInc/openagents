@@ -13,8 +13,11 @@ pub const COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION: &str =
     "compute.apple_adapter_training_run.v1";
 pub const COMPUTE_APPLE_ACCEPTED_TRAINING_OUTCOME_METADATA_ABI_VERSION: &str =
     "compute.apple_adapter_accepted_training_outcome.v1";
+pub const COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION: &str =
+    "compute.training_run_definition.v1";
 
 const COMPUTE_APPLE_METADATA_KEY: &str = "apple_adapter";
+const COMPUTE_TRAINING_RUN_DEFINITION_METADATA_KEY: &str = "run_definition";
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -555,6 +558,120 @@ pub struct ComputeAppleAcceptedTrainingOutcomeMetadata {
     pub held_out_eval_run_id: String,
     #[serde(default)]
     pub runtime_validation_eval_run_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ComputeTrainingRunDefinitionMetadata {
+    pub abi_version: String,
+    pub run_definition_ref: String,
+    pub training_family: String,
+    pub objective: String,
+    pub sync_profile: String,
+    pub dataset_identity: String,
+    #[serde(default)]
+    pub dataset_slice_family: Option<String>,
+    #[serde(default)]
+    pub page_proof_family: Option<String>,
+    #[serde(default)]
+    pub benchmark_package_set_ref: Option<String>,
+    pub version_semantics: String,
+    #[serde(default)]
+    pub window_ref_family: Option<String>,
+    #[serde(default)]
+    pub manifest_ref_family: Option<String>,
+    #[serde(default)]
+    pub trn_ref_family: Option<String>,
+    #[serde(default)]
+    pub closeout_ref_family: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeTrainingRunDefinitionEnvironment {
+    pub environment_ref: String,
+    pub version: String,
+    pub family: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub package_digest: Option<String>,
+    #[serde(default)]
+    pub dataset_bindings: Vec<ComputeEnvironmentDatasetBinding>,
+    #[serde(default)]
+    pub policy_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeTrainingRunDefinitionDatasetBinding {
+    pub environment_ref: String,
+    pub environment_version: String,
+    pub dataset_ref: String,
+    #[serde(default)]
+    pub split_ref: Option<String>,
+    #[serde(default)]
+    pub mount_path: Option<String>,
+    #[serde(default)]
+    pub integrity_ref: Option<String>,
+    #[serde(default)]
+    pub access_policy_ref: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeTrainingRunDefinitionBenchmarkPackage {
+    pub benchmark_package_ref: String,
+    pub version: String,
+    pub family: String,
+    pub environment_ref: String,
+    #[serde(default)]
+    pub environment_version: Option<String>,
+    #[serde(default)]
+    pub artifact_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeTrainingRunDefinitionReferenceFamilies {
+    #[serde(default)]
+    pub window_ref_family: Option<String>,
+    #[serde(default)]
+    pub manifest_ref_family: Option<String>,
+    #[serde(default)]
+    pub trn_ref_family: Option<String>,
+    #[serde(default)]
+    pub closeout_ref_family: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ComputeTrainingRunDefinition {
+    pub schema_version: String,
+    pub run_definition_ref: String,
+    pub training_policy_ref: String,
+    pub training_policy_version: String,
+    pub training_family: String,
+    pub objective: String,
+    pub sync_profile: String,
+    pub checkpoint_family: String,
+    pub validator_policy_ref: String,
+    #[serde(default)]
+    pub validator_policy_version: Option<String>,
+    pub dataset_identity: String,
+    #[serde(default)]
+    pub dataset_slice_family: Option<String>,
+    #[serde(default)]
+    pub page_proof_family: Option<String>,
+    #[serde(default)]
+    pub benchmark_package_set_ref: Option<String>,
+    pub version_semantics: String,
+    #[serde(default)]
+    pub environments: Vec<ComputeTrainingRunDefinitionEnvironment>,
+    #[serde(default)]
+    pub dataset_bindings: Vec<ComputeTrainingRunDefinitionDatasetBinding>,
+    #[serde(default)]
+    pub benchmark_packages: Vec<ComputeTrainingRunDefinitionBenchmarkPackage>,
+    #[serde(default)]
+    pub reference_families: ComputeTrainingRunDefinitionReferenceFamilies,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
@@ -2281,12 +2398,27 @@ fn apple_metadata_object(metadata: &Value) -> Option<&Value> {
         .and_then(|object| object.get(COMPUTE_APPLE_METADATA_KEY))
 }
 
+fn training_run_definition_metadata_object(metadata: &Value) -> Option<&Value> {
+    metadata
+        .as_object()
+        .and_then(|object| object.get(COMPUTE_TRAINING_RUN_DEFINITION_METADATA_KEY))
+}
+
 fn deserialize_apple_metadata<T: DeserializeOwned>(
     metadata: &Value,
     missing_reason: &str,
     invalid_prefix: &str,
 ) -> Result<T, String> {
     let payload = apple_metadata_object(metadata).ok_or_else(|| missing_reason.to_string())?;
+    serde_json::from_value(payload.clone()).map_err(|error| format!("{invalid_prefix}:{error}"))
+}
+
+fn deserialize_training_run_definition_metadata<T: DeserializeOwned>(
+    metadata: &Value,
+    invalid_prefix: &str,
+) -> Result<T, String> {
+    let payload = training_run_definition_metadata_object(metadata)
+        .ok_or_else(|| "compute_training_run_definition_metadata_missing".to_string())?;
     serde_json::from_value(payload.clone()).map_err(|error| format!("{invalid_prefix}:{error}"))
 }
 
@@ -2429,6 +2561,47 @@ pub fn compute_apple_training_policy_metadata(
         "compute_apple_training_policy_metadata_invalid",
     )?;
     Ok(Some(metadata))
+}
+
+pub fn compute_training_run_definition_metadata(
+    policy: &ComputeTrainingPolicy,
+) -> Result<Option<ComputeTrainingRunDefinitionMetadata>, String> {
+    if training_run_definition_metadata_object(&policy.metadata).is_none() {
+        return Ok(None);
+    }
+    let metadata =
+        deserialize_training_run_definition_metadata::<ComputeTrainingRunDefinitionMetadata>(
+            &policy.metadata,
+            "compute_training_run_definition_metadata_invalid",
+        )?;
+    Ok(Some(metadata))
+}
+
+fn validate_compute_training_run_definition_metadata(
+    metadata: &ComputeTrainingRunDefinitionMetadata,
+) -> Result<(), String> {
+    if metadata.abi_version != COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION {
+        return Err("compute_training_run_definition_abi_version_invalid".to_string());
+    }
+    if metadata.run_definition_ref.trim().is_empty() {
+        return Err("compute_training_run_definition_ref_missing".to_string());
+    }
+    if metadata.training_family.trim().is_empty() {
+        return Err("compute_training_run_definition_family_missing".to_string());
+    }
+    if metadata.objective.trim().is_empty() {
+        return Err("compute_training_run_definition_objective_missing".to_string());
+    }
+    if metadata.sync_profile.trim().is_empty() {
+        return Err("compute_training_run_definition_sync_profile_missing".to_string());
+    }
+    if metadata.dataset_identity.trim().is_empty() {
+        return Err("compute_training_run_definition_dataset_identity_missing".to_string());
+    }
+    if metadata.version_semantics.trim().is_empty() {
+        return Err("compute_training_run_definition_version_semantics_missing".to_string());
+    }
+    Ok(())
 }
 
 fn validate_compute_apple_training_policy_metadata(
@@ -2615,6 +2788,9 @@ pub fn validate_compute_training_policy(policy: &ComputeTrainingPolicy) -> Resul
     }
     if let Some(metadata) = compute_apple_training_policy_metadata(policy)? {
         validate_compute_apple_training_policy_metadata(policy, &metadata)?;
+    }
+    if let Some(metadata) = compute_training_run_definition_metadata(policy)? {
+        validate_compute_training_run_definition_metadata(&metadata)?;
     }
     Ok(())
 }
