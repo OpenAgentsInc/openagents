@@ -3473,9 +3473,48 @@ pub async fn dispatch_live_payouts(
         }
     };
 
+    let send_timeout_ms = config.dispatch_result_timeout_ms(config.payout_interval_ms());
+    // Force the live wallet through one full sync in this process before we
+    // attempt a payout batch. Cached account-info balance can be non-zero while
+    // the in-memory Spark leaf set is still cold after startup or recovery.
+    match tokio::time::timeout(Duration::from_millis(send_timeout_ms), wallet.get_balance()).await
+    {
+        Ok(Ok(_)) => {}
+        Ok(Err(error)) => {
+            let reason = format!("failed to sync treasury wallet before dispatch: {error}");
+            return TreasuryDispatchBatchResult {
+                outcomes: plans
+                    .iter()
+                    .map(|plan| TreasuryDispatchOutcome::Failed {
+                        payout_key: plan.payout_key.clone(),
+                        reason: reason.clone(),
+                    })
+                    .collect(),
+                wallet_snapshot: None,
+                wallet_error: Some(reason),
+            };
+        }
+        Err(_) => {
+            let reason = format!(
+                "timed out syncing treasury wallet before dispatch after {} ms",
+                send_timeout_ms
+            );
+            return TreasuryDispatchBatchResult {
+                outcomes: plans
+                    .iter()
+                    .map(|plan| TreasuryDispatchOutcome::Failed {
+                        payout_key: plan.payout_key.clone(),
+                        reason: reason.clone(),
+                    })
+                    .collect(),
+                wallet_snapshot: None,
+                wallet_error: Some(reason),
+            };
+        }
+    }
+
     // Keep the wallet-operation lock held for a bounded window even when the
     // upstream Spark send path stalls or many Pylons become due together.
-    let send_timeout_ms = config.dispatch_result_timeout_ms(config.payout_interval_ms());
     let max_concurrent_sends = config.max_concurrent_send_operations(plans.len());
     let mut indexed_outcomes = stream::iter(plans.iter().cloned().enumerate())
         .map(|(index, plan)| {
