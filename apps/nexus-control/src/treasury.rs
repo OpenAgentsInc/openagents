@@ -584,6 +584,26 @@ pub struct TreasuryStatusResponse {
     pub recent_policy_changes: Vec<TreasuryPolicyChangeRecord>,
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub accepted_work_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub placeholder_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub placeholder_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub beta_bonus_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub beta_bonus_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub weak_device_accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub weak_device_accepted_work_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub strong_lane_accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub strong_lane_accepted_work_payout_sats_paid_24h: u64,
     pub payouts_dispatched_24h: u64,
     pub payouts_confirmed_24h: u64,
     pub payouts_failed_24h: u64,
@@ -629,6 +649,26 @@ pub struct TreasuryPublicSnapshot {
     pub payout_loop_last_completed_at_unix_ms: Option<u64>,
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub accepted_work_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub placeholder_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub placeholder_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub beta_bonus_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub beta_bonus_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub weak_device_accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub weak_device_accepted_work_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub strong_lane_accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub strong_lane_accepted_work_payout_sats_paid_24h: u64,
     pub payouts_dispatched_24h: u64,
     pub payouts_confirmed_24h: u64,
     pub payouts_failed_24h: u64,
@@ -706,6 +746,16 @@ pub struct TreasuryPublicStats {
     pub degraded_reason: Option<String>,
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
+    pub accepted_work_payout_sats_paid_total: u64,
+    pub accepted_work_payout_sats_paid_24h: u64,
+    pub placeholder_payout_sats_paid_total: u64,
+    pub placeholder_payout_sats_paid_24h: u64,
+    pub beta_bonus_payout_sats_paid_total: u64,
+    pub beta_bonus_payout_sats_paid_24h: u64,
+    pub weak_device_accepted_work_payout_sats_paid_total: u64,
+    pub weak_device_accepted_work_payout_sats_paid_24h: u64,
+    pub strong_lane_accepted_work_payout_sats_paid_total: u64,
+    pub strong_lane_accepted_work_payout_sats_paid_24h: u64,
     pub payouts_dispatched_24h: u64,
     pub payouts_confirmed_24h: u64,
     pub payouts_failed_24h: u64,
@@ -719,6 +769,71 @@ pub struct TreasuryPublicStats {
 pub struct OnlinePylonIdentity {
     pub nostr_pubkey_hex: String,
     pub sellable: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TreasuryPayoutClass {
+    #[default]
+    PlaceholderLiveness,
+    AcceptedWork,
+    BetaBonus,
+}
+
+impl TreasuryPayoutClass {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::PlaceholderLiveness => "placeholder_liveness",
+            Self::AcceptedWork => "accepted_work",
+            Self::BetaBonus => "beta_bonus",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct TreasuryPayoutClassification {
+    #[serde(default)]
+    pub payout_class: TreasuryPayoutClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_outcome_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub share_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight_value: Option<u64>,
+    #[serde(default)]
+    pub weak_device_bearing: bool,
+    #[serde(default)]
+    pub progress_bearing: bool,
+}
+
+impl TreasuryPayoutClassification {
+    fn accepted_work(&self) -> bool {
+        self.payout_class == TreasuryPayoutClass::AcceptedWork
+    }
+
+    fn weak_device_accepted_work(&self) -> bool {
+        self.accepted_work() && self.weak_device_bearing
+    }
+
+    fn strong_lane_accepted_work(&self) -> bool {
+        self.accepted_work() && !self.weak_device_bearing
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -780,6 +895,18 @@ pub struct TreasuryPayoutRecord {
     pub skip_receipt_recorded: bool,
     #[serde(default)]
     pub counted_in_paid_total: bool,
+    #[serde(default)]
+    pub classification: TreasuryPayoutClassification,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreasuryQueuedPayoutRequest {
+    pub payout_key: String,
+    pub nostr_pubkey_hex: String,
+    pub amount_sats: u64,
+    pub window_started_at_unix_ms: u64,
+    pub window_ends_at_unix_ms: u64,
+    pub classification: TreasuryPayoutClassification,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -847,6 +974,16 @@ pub struct TreasuryState {
     #[serde(default)]
     pub payout_sats_paid_total: u64,
     #[serde(default)]
+    pub accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub placeholder_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub beta_bonus_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub weak_device_accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub strong_lane_accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
     pub next_challenge_nonce: u64,
     #[serde(default)]
     pub registration_challenges_by_key: BTreeMap<String, TreasuryRegistrationChallenge>,
@@ -893,6 +1030,49 @@ pub struct TreasuryDispatchBatchResult {
     pub outcomes: Vec<TreasuryDispatchOutcome>,
     pub wallet_snapshot: Option<TreasuryWalletSnapshot>,
     pub wallet_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct TreasuryPayoutTotals {
+    payout_sats_paid_total: u64,
+    accepted_work_payout_sats_paid_total: u64,
+    placeholder_payout_sats_paid_total: u64,
+    beta_bonus_payout_sats_paid_total: u64,
+    weak_device_accepted_work_payout_sats_paid_total: u64,
+    strong_lane_accepted_work_payout_sats_paid_total: u64,
+}
+
+impl TreasuryPayoutTotals {
+    fn add_amount(&mut self, amount_sats: u64, classification: &TreasuryPayoutClassification) {
+        self.payout_sats_paid_total = self.payout_sats_paid_total.saturating_add(amount_sats);
+        match classification.payout_class {
+            TreasuryPayoutClass::PlaceholderLiveness => {
+                self.placeholder_payout_sats_paid_total = self
+                    .placeholder_payout_sats_paid_total
+                    .saturating_add(amount_sats);
+            }
+            TreasuryPayoutClass::AcceptedWork => {
+                self.accepted_work_payout_sats_paid_total = self
+                    .accepted_work_payout_sats_paid_total
+                    .saturating_add(amount_sats);
+                if classification.weak_device_accepted_work() {
+                    self.weak_device_accepted_work_payout_sats_paid_total = self
+                        .weak_device_accepted_work_payout_sats_paid_total
+                        .saturating_add(amount_sats);
+                }
+                if classification.strong_lane_accepted_work() {
+                    self.strong_lane_accepted_work_payout_sats_paid_total = self
+                        .strong_lane_accepted_work_payout_sats_paid_total
+                        .saturating_add(amount_sats);
+                }
+            }
+            TreasuryPayoutClass::BetaBonus => {
+                self.beta_bonus_payout_sats_paid_total = self
+                    .beta_bonus_payout_sats_paid_total
+                    .saturating_add(amount_sats);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1008,6 +1188,7 @@ fn recovered_treasury_state_from_payload(
             .visible_payout_sats_paid_total
             .or(salvaged_totals.payout_sats_paid_total)
             .unwrap_or_default();
+        state.placeholder_payout_sats_paid_total = state.payout_sats_paid_total;
         (state, "recovered_from=salvaged_totals_only".to_string())
     };
     let detail = format!("treasury_state_deserialize_failed:{error}:{recovery_detail}");
@@ -1032,6 +1213,8 @@ impl TreasuryState {
         if loaded.next_challenge_nonce == 0 {
             loaded.next_challenge_nonce = 1;
         }
+        loaded.backfill_classified_payout_totals();
+        loaded.public_snapshot = None;
         loaded.trim_policy_change_history();
         loaded.trim_retention();
         loaded.rebuild_payment_index();
@@ -1044,13 +1227,98 @@ impl TreasuryState {
         }
         let previous_total = self.payout_sats_paid_total;
         self.payout_sats_paid_total = payout_sats_paid_total_floor;
+        if self.accepted_work_payout_sats_paid_total == 0
+            && self.beta_bonus_payout_sats_paid_total == 0
+            && self.placeholder_payout_sats_paid_total <= previous_total
+        {
+            self.placeholder_payout_sats_paid_total = payout_sats_paid_total_floor;
+        }
         if let Some(snapshot) = self.public_snapshot.as_mut() {
             snapshot.payout_sats_paid_total = snapshot
                 .payout_sats_paid_total
                 .max(payout_sats_paid_total_floor);
+            if snapshot.accepted_work_payout_sats_paid_total == 0
+                && snapshot.beta_bonus_payout_sats_paid_total == 0
+            {
+                snapshot.placeholder_payout_sats_paid_total = snapshot
+                    .placeholder_payout_sats_paid_total
+                    .max(payout_sats_paid_total_floor);
+            }
         }
         self.persist();
         Some(previous_total)
+    }
+
+    fn backfill_classified_payout_totals(&mut self) {
+        if self.payout_sats_paid_total == 0 {
+            return;
+        }
+        if self.accepted_work_payout_sats_paid_total > 0
+            || self.beta_bonus_payout_sats_paid_total > 0
+            || self.placeholder_payout_sats_paid_total > 0
+        {
+            return;
+        }
+        self.placeholder_payout_sats_paid_total = self.payout_sats_paid_total;
+    }
+
+    fn cumulative_payout_totals(&self) -> TreasuryPayoutTotals {
+        TreasuryPayoutTotals {
+            payout_sats_paid_total: self.payout_sats_paid_total,
+            accepted_work_payout_sats_paid_total: self.accepted_work_payout_sats_paid_total,
+            placeholder_payout_sats_paid_total: self.placeholder_payout_sats_paid_total,
+            beta_bonus_payout_sats_paid_total: self.beta_bonus_payout_sats_paid_total,
+            weak_device_accepted_work_payout_sats_paid_total: self
+                .weak_device_accepted_work_payout_sats_paid_total,
+            strong_lane_accepted_work_payout_sats_paid_total: self
+                .strong_lane_accepted_work_payout_sats_paid_total,
+        }
+    }
+
+    pub fn queue_payout_requests(
+        &mut self,
+        config: &TreasuryConfig,
+        requests: &[TreasuryQueuedPayoutRequest],
+        now_unix_ms: u64,
+    ) {
+        let mut inserted = false;
+        for request in requests {
+            if self
+                .payout_records_by_key
+                .contains_key(request.payout_key.as_str())
+            {
+                continue;
+            }
+            inserted = true;
+            self.payout_records_by_key.insert(
+                request.payout_key.clone(),
+                TreasuryPayoutRecord {
+                    payout_key: request.payout_key.clone(),
+                    nostr_pubkey_hex: request.nostr_pubkey_hex.clone(),
+                    payout_target: String::new(),
+                    amount_sats: request.amount_sats,
+                    status: "queued".to_string(),
+                    reason: None,
+                    payment_id: None,
+                    window_started_at_unix_ms: request.window_started_at_unix_ms,
+                    window_ends_at_unix_ms: request.window_ends_at_unix_ms,
+                    created_at_unix_ms: now_unix_ms,
+                    updated_at_unix_ms: now_unix_ms,
+                    sellable_at_window_open: true,
+                    dispatch_receipt_recorded: false,
+                    confirm_receipt_recorded: false,
+                    fail_receipt_recorded: false,
+                    skip_receipt_recorded: false,
+                    counted_in_paid_total: false,
+                    classification: request.classification.clone(),
+                },
+            );
+        }
+        if inserted {
+            self.refresh_public_snapshot(config, now_unix_ms);
+        } else {
+            self.persist();
+        }
     }
 
     pub fn initialize_runtime_policy(
@@ -1559,9 +1827,10 @@ impl TreasuryState {
         let continuity = self.continuity_signal_snapshot(config, now_unix_ms);
         let policy = self.active_policy(config);
         let window_started_at_unix_ms = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
-        let mut payout_sats_paid_24h = 0u64;
-        let mut unconfirmed_dispatched_sats_total = 0u64;
-        let mut unconfirmed_dispatched_sats_24h = 0u64;
+        let cumulative_totals = self.cumulative_payout_totals();
+        let mut confirmed_24h_totals = TreasuryPayoutTotals::default();
+        let mut unconfirmed_visible_totals = TreasuryPayoutTotals::default();
+        let mut unconfirmed_visible_24h_totals = TreasuryPayoutTotals::default();
         let mut payouts_dispatched_24h = 0u64;
         let mut payouts_confirmed_24h = 0u64;
         let mut payouts_failed_24h = 0u64;
@@ -1569,11 +1838,10 @@ impl TreasuryState {
 
         for record in self.payout_records_by_key.values() {
             if record.status == "dispatched" && !record.counted_in_paid_total {
-                unconfirmed_dispatched_sats_total =
-                    unconfirmed_dispatched_sats_total.saturating_add(record.amount_sats);
+                unconfirmed_visible_totals.add_amount(record.amount_sats, &record.classification);
                 if record.updated_at_unix_ms >= window_started_at_unix_ms {
-                    unconfirmed_dispatched_sats_24h =
-                        unconfirmed_dispatched_sats_24h.saturating_add(record.amount_sats);
+                    unconfirmed_visible_24h_totals
+                        .add_amount(record.amount_sats, &record.classification);
                 }
             }
             if record.updated_at_unix_ms < window_started_at_unix_ms {
@@ -1585,7 +1853,7 @@ impl TreasuryState {
                 }
                 "confirmed" => {
                     payouts_confirmed_24h = payouts_confirmed_24h.saturating_add(1);
-                    payout_sats_paid_24h = payout_sats_paid_24h.saturating_add(record.amount_sats);
+                    confirmed_24h_totals.add_amount(record.amount_sats, &record.classification);
                 }
                 "failed" => {
                     payouts_failed_24h = payouts_failed_24h.saturating_add(1);
@@ -1617,11 +1885,58 @@ impl TreasuryState {
             last_payout_reconciliation_at_unix_ms: self.last_payout_reconciliation_at_unix_ms,
             payout_loop_last_started_at_unix_ms: self.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: self.payout_loop_last_completed_at_unix_ms,
-            payout_sats_paid_total: self
+            payout_sats_paid_total: cumulative_totals
                 .payout_sats_paid_total
-                .saturating_add(unconfirmed_dispatched_sats_total),
-            payout_sats_paid_24h: payout_sats_paid_24h
-                .saturating_add(unconfirmed_dispatched_sats_24h),
+                .saturating_add(unconfirmed_visible_totals.payout_sats_paid_total),
+            payout_sats_paid_24h: confirmed_24h_totals
+                .payout_sats_paid_total
+                .saturating_add(unconfirmed_visible_24h_totals.payout_sats_paid_total),
+            accepted_work_payout_sats_paid_total: cumulative_totals
+                .accepted_work_payout_sats_paid_total
+                .saturating_add(unconfirmed_visible_totals.accepted_work_payout_sats_paid_total),
+            accepted_work_payout_sats_paid_24h: confirmed_24h_totals
+                .accepted_work_payout_sats_paid_total
+                .saturating_add(
+                    unconfirmed_visible_24h_totals.accepted_work_payout_sats_paid_total,
+                ),
+            placeholder_payout_sats_paid_total: cumulative_totals
+                .placeholder_payout_sats_paid_total
+                .saturating_add(unconfirmed_visible_totals.placeholder_payout_sats_paid_total),
+            placeholder_payout_sats_paid_24h: confirmed_24h_totals
+                .placeholder_payout_sats_paid_total
+                .saturating_add(
+                    unconfirmed_visible_24h_totals.placeholder_payout_sats_paid_total,
+                ),
+            beta_bonus_payout_sats_paid_total: cumulative_totals
+                .beta_bonus_payout_sats_paid_total
+                .saturating_add(unconfirmed_visible_totals.beta_bonus_payout_sats_paid_total),
+            beta_bonus_payout_sats_paid_24h: confirmed_24h_totals
+                .beta_bonus_payout_sats_paid_total
+                .saturating_add(unconfirmed_visible_24h_totals.beta_bonus_payout_sats_paid_total),
+            weak_device_accepted_work_payout_sats_paid_total: cumulative_totals
+                .weak_device_accepted_work_payout_sats_paid_total
+                .saturating_add(
+                    unconfirmed_visible_totals
+                        .weak_device_accepted_work_payout_sats_paid_total,
+                ),
+            weak_device_accepted_work_payout_sats_paid_24h: confirmed_24h_totals
+                .weak_device_accepted_work_payout_sats_paid_total
+                .saturating_add(
+                    unconfirmed_visible_24h_totals
+                        .weak_device_accepted_work_payout_sats_paid_total,
+                ),
+            strong_lane_accepted_work_payout_sats_paid_total: cumulative_totals
+                .strong_lane_accepted_work_payout_sats_paid_total
+                .saturating_add(
+                    unconfirmed_visible_totals
+                        .strong_lane_accepted_work_payout_sats_paid_total,
+                ),
+            strong_lane_accepted_work_payout_sats_paid_24h: confirmed_24h_totals
+                .strong_lane_accepted_work_payout_sats_paid_total
+                .saturating_add(
+                    unconfirmed_visible_24h_totals
+                        .strong_lane_accepted_work_payout_sats_paid_total,
+                ),
             payouts_dispatched_24h,
             payouts_confirmed_24h,
             payouts_failed_24h,
@@ -1690,6 +2005,20 @@ impl TreasuryState {
             degraded_reason: self.degraded_reason(config, now_unix_ms),
             payout_sats_paid_total: snapshot.payout_sats_paid_total,
             payout_sats_paid_24h: snapshot.payout_sats_paid_24h,
+            accepted_work_payout_sats_paid_total: snapshot.accepted_work_payout_sats_paid_total,
+            accepted_work_payout_sats_paid_24h: snapshot.accepted_work_payout_sats_paid_24h,
+            placeholder_payout_sats_paid_total: snapshot.placeholder_payout_sats_paid_total,
+            placeholder_payout_sats_paid_24h: snapshot.placeholder_payout_sats_paid_24h,
+            beta_bonus_payout_sats_paid_total: snapshot.beta_bonus_payout_sats_paid_total,
+            beta_bonus_payout_sats_paid_24h: snapshot.beta_bonus_payout_sats_paid_24h,
+            weak_device_accepted_work_payout_sats_paid_total: snapshot
+                .weak_device_accepted_work_payout_sats_paid_total,
+            weak_device_accepted_work_payout_sats_paid_24h: snapshot
+                .weak_device_accepted_work_payout_sats_paid_24h,
+            strong_lane_accepted_work_payout_sats_paid_total: snapshot
+                .strong_lane_accepted_work_payout_sats_paid_total,
+            strong_lane_accepted_work_payout_sats_paid_24h: snapshot
+                .strong_lane_accepted_work_payout_sats_paid_24h,
             payouts_dispatched_24h: snapshot.payouts_dispatched_24h,
             payouts_confirmed_24h: snapshot.payouts_confirmed_24h,
             payouts_failed_24h: snapshot.payouts_failed_24h,
@@ -1763,6 +2092,20 @@ impl TreasuryState {
                 .collect(),
             payout_sats_paid_total: stats.payout_sats_paid_total,
             payout_sats_paid_24h: stats.payout_sats_paid_24h,
+            accepted_work_payout_sats_paid_total: stats.accepted_work_payout_sats_paid_total,
+            accepted_work_payout_sats_paid_24h: stats.accepted_work_payout_sats_paid_24h,
+            placeholder_payout_sats_paid_total: stats.placeholder_payout_sats_paid_total,
+            placeholder_payout_sats_paid_24h: stats.placeholder_payout_sats_paid_24h,
+            beta_bonus_payout_sats_paid_total: stats.beta_bonus_payout_sats_paid_total,
+            beta_bonus_payout_sats_paid_24h: stats.beta_bonus_payout_sats_paid_24h,
+            weak_device_accepted_work_payout_sats_paid_total: stats
+                .weak_device_accepted_work_payout_sats_paid_total,
+            weak_device_accepted_work_payout_sats_paid_24h: stats
+                .weak_device_accepted_work_payout_sats_paid_24h,
+            strong_lane_accepted_work_payout_sats_paid_total: stats
+                .strong_lane_accepted_work_payout_sats_paid_total,
+            strong_lane_accepted_work_payout_sats_paid_24h: stats
+                .strong_lane_accepted_work_payout_sats_paid_24h,
             payouts_dispatched_24h: stats.payouts_dispatched_24h,
             payouts_confirmed_24h: stats.payouts_confirmed_24h,
             payouts_failed_24h: stats.payouts_failed_24h,
@@ -1978,6 +2321,60 @@ impl TreasuryState {
         ))
     }
 
+    fn claim_queued_payouts_for_dispatch(
+        &mut self,
+        policy: &TreasuryRuntimePolicy,
+        now_unix_ms: u64,
+        reserved_budget_sats: &mut u64,
+    ) -> Vec<TreasuryDispatchPlan> {
+        let mut queued = self
+            .payout_records_by_key
+            .values()
+            .filter(|record| record.status == "queued")
+            .map(|record| {
+                (
+                    record.created_at_unix_ms,
+                    record.updated_at_unix_ms,
+                    record.payout_key.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        queued.sort();
+
+        let mut dispatch_plans = Vec::new();
+        for (_, _, payout_key) in queued {
+            let Some(record) = self.payout_records_by_key.get_mut(payout_key.as_str()) else {
+                continue;
+            };
+            let Some(target) = self
+                .payout_targets_by_identity
+                .get(record.nostr_pubkey_hex.as_str())
+                .cloned()
+            else {
+                record.reason = Some("missing_payout_target".to_string());
+                continue;
+            };
+            if policy.daily_budget_cap_sats > 0
+                && reserved_budget_sats.saturating_add(record.amount_sats)
+                    > policy.daily_budget_cap_sats
+            {
+                record.reason = Some("daily_budget_cap_reached".to_string());
+                continue;
+            }
+            *reserved_budget_sats = reserved_budget_sats.saturating_add(record.amount_sats);
+            record.payout_target = target.spark_address.clone();
+            record.status = "dispatching".to_string();
+            record.reason = None;
+            record.updated_at_unix_ms = now_unix_ms;
+            dispatch_plans.push(TreasuryDispatchPlan {
+                payout_key,
+                payment_request: target.spark_address,
+                amount_sats: record.amount_sats,
+            });
+        }
+        dispatch_plans
+    }
+
     pub fn prepare_due_payouts(
         &mut self,
         config: &TreasuryConfig,
@@ -1990,7 +2387,6 @@ impl TreasuryState {
         if !policy.treasury_enabled
             || policy.payout_sats_per_window == 0
             || policy.payout_interval_seconds == 0
-            || online_identities.is_empty()
         {
             self.refresh_public_snapshot(config, now_unix_ms);
             return TreasuryPayoutPreparation {
@@ -2000,11 +2396,21 @@ impl TreasuryState {
             };
         }
 
+        let mut reserved_budget_sats = self.reserved_budget_last_24h(now_unix_ms);
+        let mut dispatch_plans =
+            self.claim_queued_payouts_for_dispatch(&policy, now_unix_ms, &mut reserved_budget_sats);
+        if online_identities.is_empty() {
+            self.refresh_public_snapshot(config, now_unix_ms);
+            return TreasuryPayoutPreparation {
+                dispatch_plans,
+                receipt_events,
+                reconciliation_degraded_reason: None,
+            };
+        }
+
         let payout_interval_ms = policy.payout_interval_ms();
         let (reconciliation_started_at_unix_ms, reconciliation_degraded_reason) =
             self.payout_reconciliation_started_at(config, now_unix_ms);
-        let mut reserved_budget_sats = self.reserved_budget_last_24h(now_unix_ms);
-        let mut dispatch_plans = Vec::new();
 
         for identity in online_identities {
             let current_window_started_at_unix_ms = payout_window_started_at_for_identity(
@@ -2049,6 +2455,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: true,
                             counted_in_paid_total: false,
+                            classification: TreasuryPayoutClassification::default(),
                         };
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
@@ -2080,6 +2487,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: true,
                             counted_in_paid_total: false,
+                            classification: TreasuryPayoutClassification::default(),
                         };
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
@@ -2114,6 +2522,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: true,
                             counted_in_paid_total: false,
+                            classification: TreasuryPayoutClassification::default(),
                         };
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
@@ -2148,6 +2557,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: false,
                             counted_in_paid_total: false,
+                            classification: TreasuryPayoutClassification::default(),
                         },
                     );
                     dispatch_plans.push(TreasuryDispatchPlan {
@@ -2282,6 +2692,33 @@ impl TreasuryState {
                     self.payout_sats_paid_total = self
                         .payout_sats_paid_total
                         .saturating_add(record.amount_sats);
+                    match record.classification.payout_class {
+                        TreasuryPayoutClass::PlaceholderLiveness => {
+                            self.placeholder_payout_sats_paid_total = self
+                                .placeholder_payout_sats_paid_total
+                                .saturating_add(record.amount_sats);
+                        }
+                        TreasuryPayoutClass::AcceptedWork => {
+                            self.accepted_work_payout_sats_paid_total = self
+                                .accepted_work_payout_sats_paid_total
+                                .saturating_add(record.amount_sats);
+                            if record.classification.weak_device_accepted_work() {
+                                self.weak_device_accepted_work_payout_sats_paid_total = self
+                                    .weak_device_accepted_work_payout_sats_paid_total
+                                    .saturating_add(record.amount_sats);
+                            }
+                            if record.classification.strong_lane_accepted_work() {
+                                self.strong_lane_accepted_work_payout_sats_paid_total = self
+                                    .strong_lane_accepted_work_payout_sats_paid_total
+                                    .saturating_add(record.amount_sats);
+                            }
+                        }
+                        TreasuryPayoutClass::BetaBonus => {
+                            self.beta_bonus_payout_sats_paid_total = self
+                                .beta_bonus_payout_sats_paid_total
+                                .saturating_add(record.amount_sats);
+                        }
+                    }
                 }
             } else if wallet_payment_is_failed(payment) {
                 record.status = "failed".to_string();
@@ -3553,6 +3990,46 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         ),
         format!("payout_sats_paid_24h: {}", response.payout_sats_paid_24h),
         format!(
+            "accepted_work_payout_sats_paid_total: {}",
+            response.accepted_work_payout_sats_paid_total
+        ),
+        format!(
+            "accepted_work_payout_sats_paid_24h: {}",
+            response.accepted_work_payout_sats_paid_24h
+        ),
+        format!(
+            "placeholder_payout_sats_paid_total: {}",
+            response.placeholder_payout_sats_paid_total
+        ),
+        format!(
+            "placeholder_payout_sats_paid_24h: {}",
+            response.placeholder_payout_sats_paid_24h
+        ),
+        format!(
+            "beta_bonus_payout_sats_paid_total: {}",
+            response.beta_bonus_payout_sats_paid_total
+        ),
+        format!(
+            "beta_bonus_payout_sats_paid_24h: {}",
+            response.beta_bonus_payout_sats_paid_24h
+        ),
+        format!(
+            "weak_device_accepted_work_payout_sats_paid_total: {}",
+            response.weak_device_accepted_work_payout_sats_paid_total
+        ),
+        format!(
+            "weak_device_accepted_work_payout_sats_paid_24h: {}",
+            response.weak_device_accepted_work_payout_sats_paid_24h
+        ),
+        format!(
+            "strong_lane_accepted_work_payout_sats_paid_total: {}",
+            response.strong_lane_accepted_work_payout_sats_paid_total
+        ),
+        format!(
+            "strong_lane_accepted_work_payout_sats_paid_24h: {}",
+            response.strong_lane_accepted_work_payout_sats_paid_24h
+        ),
+        format!(
             "registered_payout_identities: {}",
             response.registered_payout_identities
         ),
@@ -3895,12 +4372,60 @@ fn payout_receipt_attributes(record: &TreasuryPayoutRecord) -> BTreeMap<String, 
         "window_ends_at_unix_ms".to_string(),
         record.window_ends_at_unix_ms.to_string(),
     );
+    attributes.insert(
+        "payout_class".to_string(),
+        record.classification.payout_class.label().to_string(),
+    );
     if !record.payout_target.is_empty() {
         attributes.insert(
             "payout_target".to_string(),
             truncate_target(record.payout_target.as_str()),
         );
     }
+    if let Some(payout_basis) = record.classification.payout_basis.as_deref() {
+        attributes.insert("payout_basis".to_string(), payout_basis.to_owned());
+    }
+    if let Some(work_class) = record.classification.work_class.as_deref() {
+        attributes.insert("work_class".to_string(), work_class.to_owned());
+    }
+    if let Some(progress_class) = record.classification.progress_class.as_deref() {
+        attributes.insert("progress_class".to_string(), progress_class.to_owned());
+    }
+    if let Some(accepted_outcome_id) = record.classification.accepted_outcome_id.as_deref() {
+        attributes.insert(
+            "accepted_outcome_id".to_string(),
+            accepted_outcome_id.to_owned(),
+        );
+    }
+    if let Some(training_run_id) = record.classification.training_run_id.as_deref() {
+        attributes.insert("training_run_id".to_string(), training_run_id.to_owned());
+    }
+    if let Some(window_id) = record.classification.window_id.as_deref() {
+        attributes.insert("window_id".to_string(), window_id.to_owned());
+    }
+    if let Some(contribution_id) = record.classification.contribution_id.as_deref() {
+        attributes.insert("contribution_id".to_string(), contribution_id.to_owned());
+    }
+    if let Some(assignment_id) = record.classification.assignment_id.as_deref() {
+        attributes.insert("assignment_id".to_string(), assignment_id.to_owned());
+    }
+    if let Some(share_bps) = record.classification.share_bps {
+        attributes.insert("share_bps".to_string(), share_bps.to_string());
+    }
+    if let Some(weight_basis) = record.classification.weight_basis.as_deref() {
+        attributes.insert("weight_basis".to_string(), weight_basis.to_string());
+    }
+    if let Some(weight_value) = record.classification.weight_value {
+        attributes.insert("weight_value".to_string(), weight_value.to_string());
+    }
+    attributes.insert(
+        "weak_device_bearing".to_string(),
+        record.classification.weak_device_bearing.to_string(),
+    );
+    attributes.insert(
+        "progress_bearing".to_string(),
+        record.classification.progress_bearing.to_string(),
+    );
     attributes
 }
 
@@ -4374,7 +4899,8 @@ mod tests {
         OnlinePylonIdentity, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
         TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TreasuryConfig, TreasuryDispatchOutcome,
         TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryPayoutRecord,
-        TreasuryPublicStats, TreasuryState, TreasuryWalletInspection,
+        TreasuryPayoutClass, TreasuryPayoutClassification, TreasuryPublicStats,
+        TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
         TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
         TreasuryWalletRecoveryReport, TreasuryWalletSnapshot,
         apply_treasury_wallet_recovery_cutover, build_treasury_wallet_recovery_comparison,
@@ -4861,6 +5387,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -4946,6 +5473,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -4954,6 +5482,99 @@ mod tests {
         assert_eq!(stats.payout_sats_paid_24h, 2);
         assert_eq!(stats.payouts_dispatched_24h, 1);
         assert_eq!(stats.payouts_confirmed_24h, 0);
+    }
+
+    #[test]
+    fn queued_accepted_work_payouts_dispatch_without_online_presence_and_split_public_totals() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.enabled = true;
+        config.payout_sats_per_window = 120;
+        let now_unix_ms = super::now_unix_ms();
+
+        state.payout_targets_by_identity.insert(
+            "pubkey-replay".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-replay".to_string(),
+                source_session_id: "session-replay".to_string(),
+                spark_address: "spark:replay".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: now_unix_ms.saturating_sub(10),
+                last_verified_at_unix_ms: now_unix_ms.saturating_sub(10),
+            },
+        );
+        state.queue_payout_requests(
+            &config,
+            &[TreasuryQueuedPayoutRequest {
+                payout_key: "accepted_work:closeout-001:contrib-001:pubkey-replay".to_string(),
+                nostr_pubkey_hex: "pubkey-replay".to_string(),
+                amount_sats: 120,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("validator_verdict".to_string()),
+                    work_class: Some("validation_replay".to_string()),
+                    progress_class: Some("participation_only".to_string()),
+                    accepted_outcome_id: Some("accepted.training_window.window.weak.0001".to_string()),
+                    training_run_id: Some("run.weak.validation".to_string()),
+                    window_id: Some("window.weak.0001".to_string()),
+                    contribution_id: Some("contrib-001".to_string()),
+                    assignment_id: Some("assign-001".to_string()),
+                    share_bps: Some(10_000),
+                    weight_basis: None,
+                    weight_value: None,
+                    weak_device_bearing: true,
+                    progress_bearing: false,
+                },
+            }],
+            now_unix_ms,
+        );
+
+        let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms.saturating_add(1));
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:replay");
+        assert_eq!(prepared.dispatch_plans[0].amount_sats, 120);
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get("accepted_work:closeout-001:contrib-001:pubkey-replay")
+                .map(|record| record.status.as_str()),
+            Some("dispatching")
+        );
+
+        let dispatch_receipts = state.apply_dispatch_outcome(
+            TreasuryDispatchOutcome::Dispatched {
+                payout_key: "accepted_work:closeout-001:contrib-001:pubkey-replay".to_string(),
+                payment_id: "payment-replay-001".to_string(),
+            },
+            now_unix_ms.saturating_add(2),
+        );
+        assert_eq!(dispatch_receipts.len(), 1);
+        state.refresh_public_snapshot(&config, now_unix_ms.saturating_add(2));
+        let stats = state.public_stats(&config, now_unix_ms.saturating_add(2));
+        assert_eq!(stats.payout_sats_paid_total, 120);
+        assert_eq!(stats.accepted_work_payout_sats_paid_total, 120);
+        assert_eq!(stats.weak_device_accepted_work_payout_sats_paid_total, 120);
+        assert_eq!(stats.placeholder_payout_sats_paid_total, 0);
+        assert_eq!(stats.beta_bonus_payout_sats_paid_total, 0);
+        assert_eq!(stats.payouts_dispatched_24h, 1);
+        assert_eq!(
+            dispatch_receipts[0]
+                .context
+                .attributes
+                .get("accepted_outcome_id")
+                .map(String::as_str),
+            Some("accepted.training_window.window.weak.0001")
+        );
+        assert_eq!(
+            dispatch_receipts[0]
+                .context
+                .attributes
+                .get("payout_class")
+                .map(String::as_str),
+            Some("accepted_work")
+        );
     }
 
     #[test]
@@ -5036,6 +5657,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -5121,6 +5743,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: true,
                 counted_in_paid_total: false,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
         state.payout_records_by_key.insert(
@@ -5143,6 +5766,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: true,
                 counted_in_paid_total: false,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
         state.payout_records_by_key.insert(
@@ -5165,6 +5789,7 @@ mod tests {
                 fail_receipt_recorded: true,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -5270,6 +5895,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: true,
                 counted_in_paid_total: false,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -5498,6 +6124,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
 
@@ -5644,6 +6271,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
         state.payout_records_by_key.insert(
@@ -5666,6 +6294,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: true,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
         state.payout_records_by_key.insert(
@@ -5688,6 +6317,7 @@ mod tests {
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
+            classification: TreasuryPayoutClassification::default(),
             },
         );
 

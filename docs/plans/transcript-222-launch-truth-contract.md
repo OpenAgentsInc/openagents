@@ -359,8 +359,31 @@ Not allowed:
 - weak-device accepted-work payout total
 - strong-lane accepted-work payout total
 
-Until the payout path is split explicitly, this number may include placeholder
-or liveness payouts and must be described that way.
+This number may include placeholder, accepted-work, and beta-bonus payouts and
+must still be described that way.
+
+### Split payout fields
+
+Allowed:
+
+- `nexusAcceptedWorkPayoutSatsPaidTotal`
+- `nexusPlaceholderPayoutSatsPaidTotal`
+- `nexusBetaBonusPayoutSatsPaidTotal`
+- `nexusWeakDeviceAcceptedWorkPayoutSatsPaidTotal`
+- `nexusStrongLaneAcceptedWorkPayoutSatsPaidTotal`
+
+These fields now expose payout-class truth on the public stats path. They are
+the canonical public counters for Transcript 222 payout qualification.
+
+Important qualifier:
+
+- these counters are still settled by the shared hosted Nexus treasury loop
+- they are not a second training-only wallet or ledger
+- the current launch-default accepted-work basis still fans out from the shared
+  `payout_sats_per_window` treasury setting
+
+So the public split is real now, but the settlement substrate remains one
+hosted treasury system.
 
 ## Canonical Claim Rules
 
@@ -413,13 +436,15 @@ Transcript 222 launch language therefore must separate:
 - public payout display
 - accepted-work payout accounting
 
-Until explicit payout classes exist, public wording must not collapse those
-three into one number.
+Even with explicit payout classes now exposed, public wording must not collapse
+those three layers into one number. The generic treasury total, the split
+accepted-work totals, and the website presentation remain distinct truth
+surfaces.
 
 ## Fields Required Before Widening Claims
 
-The public stats contract must grow these fields before stronger Transcript 222
-claims are allowed:
+The public stats contract still must grow these fields before stronger
+Transcript 222 claims are allowed:
 
 - admitted contributor count
 - assigned contributor count
@@ -427,11 +452,11 @@ claims are allowed:
 - model-progress contributor count
 - weak-device assigned contributor count
 - weak-device accepted contributor count
-- accepted-work sats total
-- placeholder sats total
-- beta-bonus sats total
 - active run id or run family
 - active window id or window family
+
+The payout split fields above are now present and should be used instead of
+overloading `nexusPayoutSatsPaidTotal`.
 
 ## Downstream Issues That Must Use This Contract
 

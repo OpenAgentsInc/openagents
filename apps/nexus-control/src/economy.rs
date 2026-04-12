@@ -187,6 +187,26 @@ pub struct PublicStatsSnapshot {
     pub nexus_payout_sats_paid_total: u64,
     pub nexus_payout_sats_paid_24h: u64,
     #[serde(default)]
+    pub nexus_accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub nexus_accepted_work_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub nexus_placeholder_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub nexus_placeholder_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub nexus_beta_bonus_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub nexus_beta_bonus_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub nexus_weak_device_accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub nexus_weak_device_accepted_work_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub nexus_strong_lane_accepted_work_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub nexus_strong_lane_accepted_work_payout_sats_paid_24h: u64,
+    #[serde(default)]
     pub nexus_payouts_dispatched_24h: u64,
     #[serde(default)]
     pub nexus_payouts_confirmed_24h: u64,
@@ -325,6 +345,16 @@ pub struct PublicRuntimeSnapshot {
     pub nexus_registered_payout_identities: u64,
     pub nexus_payout_sats_paid_total: u64,
     pub nexus_payout_sats_paid_24h: u64,
+    pub nexus_accepted_work_payout_sats_paid_total: u64,
+    pub nexus_accepted_work_payout_sats_paid_24h: u64,
+    pub nexus_placeholder_payout_sats_paid_total: u64,
+    pub nexus_placeholder_payout_sats_paid_24h: u64,
+    pub nexus_beta_bonus_payout_sats_paid_total: u64,
+    pub nexus_beta_bonus_payout_sats_paid_24h: u64,
+    pub nexus_weak_device_accepted_work_payout_sats_paid_total: u64,
+    pub nexus_weak_device_accepted_work_payout_sats_paid_24h: u64,
+    pub nexus_strong_lane_accepted_work_payout_sats_paid_total: u64,
+    pub nexus_strong_lane_accepted_work_payout_sats_paid_24h: u64,
     pub nexus_payouts_dispatched_24h: u64,
     pub nexus_payouts_confirmed_24h: u64,
     pub nexus_payouts_failed_24h: u64,
@@ -585,6 +615,26 @@ impl ReceiptLedger {
             nexus_registered_payout_identities: runtime.nexus_registered_payout_identities,
             nexus_payout_sats_paid_total: runtime.nexus_payout_sats_paid_total,
             nexus_payout_sats_paid_24h: runtime.nexus_payout_sats_paid_24h,
+            nexus_accepted_work_payout_sats_paid_total: runtime
+                .nexus_accepted_work_payout_sats_paid_total,
+            nexus_accepted_work_payout_sats_paid_24h: runtime
+                .nexus_accepted_work_payout_sats_paid_24h,
+            nexus_placeholder_payout_sats_paid_total: runtime
+                .nexus_placeholder_payout_sats_paid_total,
+            nexus_placeholder_payout_sats_paid_24h: runtime
+                .nexus_placeholder_payout_sats_paid_24h,
+            nexus_beta_bonus_payout_sats_paid_total: runtime
+                .nexus_beta_bonus_payout_sats_paid_total,
+            nexus_beta_bonus_payout_sats_paid_24h: runtime
+                .nexus_beta_bonus_payout_sats_paid_24h,
+            nexus_weak_device_accepted_work_payout_sats_paid_total: runtime
+                .nexus_weak_device_accepted_work_payout_sats_paid_total,
+            nexus_weak_device_accepted_work_payout_sats_paid_24h: runtime
+                .nexus_weak_device_accepted_work_payout_sats_paid_24h,
+            nexus_strong_lane_accepted_work_payout_sats_paid_total: runtime
+                .nexus_strong_lane_accepted_work_payout_sats_paid_total,
+            nexus_strong_lane_accepted_work_payout_sats_paid_24h: runtime
+                .nexus_strong_lane_accepted_work_payout_sats_paid_24h,
             nexus_payouts_dispatched_24h: runtime.nexus_payouts_dispatched_24h,
             nexus_payouts_confirmed_24h: runtime.nexus_payouts_confirmed_24h,
             nexus_payouts_failed_24h: runtime.nexus_payouts_failed_24h,
@@ -901,6 +951,16 @@ mod tests {
                 nexus_registered_payout_identities: 0,
                 nexus_payout_sats_paid_total: 0,
                 nexus_payout_sats_paid_24h: 0,
+                nexus_accepted_work_payout_sats_paid_total: 0,
+                nexus_accepted_work_payout_sats_paid_24h: 0,
+                nexus_placeholder_payout_sats_paid_total: 0,
+                nexus_placeholder_payout_sats_paid_24h: 0,
+                nexus_beta_bonus_payout_sats_paid_total: 0,
+                nexus_beta_bonus_payout_sats_paid_24h: 0,
+                nexus_weak_device_accepted_work_payout_sats_paid_total: 0,
+                nexus_weak_device_accepted_work_payout_sats_paid_24h: 0,
+                nexus_strong_lane_accepted_work_payout_sats_paid_total: 0,
+                nexus_strong_lane_accepted_work_payout_sats_paid_24h: 0,
                 nexus_payouts_dispatched_24h: 0,
                 nexus_payouts_confirmed_24h: 0,
                 nexus_payouts_failed_24h: 0,

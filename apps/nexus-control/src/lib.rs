@@ -134,6 +134,7 @@ use crate::treasury::{
     ProviderPayoutTargetChallengeResponse, ProviderPayoutTargetRegistrationRequest,
     ProviderPayoutTargetRegistrationResponse, TreasuryConfig, TreasuryDispatchBatchResult,
     TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryPayoutPreparation,
+    TreasuryPayoutClass, TreasuryPayoutClassification, TreasuryQueuedPayoutRequest,
     TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse, create_live_funding_target,
     dispatch_live_payouts, load_live_wallet_snapshot_with_plan,
 };
@@ -4151,10 +4152,16 @@ fn training_window_defensibility_audit(
         );
     }
 
-    if matches!(
-        candidate_closeout_status,
-        TrainingWindowCloseoutStatus::Rewarded
-    ) {
+    let requires_aggregated_delta = matches!(
+        training_work_progress_class(window.work_class),
+        TrainingWorkProgressClass::ModelUpdate
+    );
+    if requires_aggregated_delta
+        && matches!(
+            candidate_closeout_status,
+            TrainingWindowCloseoutStatus::Rewarded
+        )
+    {
         match window.aggregated_delta_digest.as_deref() {
             Some(digest) if is_prefixed_sha256_digest(digest) => {}
             Some(_) => {
@@ -4596,6 +4603,122 @@ fn training_window_closeout_payout_projection(
         },
         participants,
     }
+}
+
+fn training_closeout_participant_amounts(
+    total_amount_sats: u64,
+    participants: &[TrainingPayoutProjectionParticipant],
+) -> Vec<u64> {
+    if participants.is_empty() || total_amount_sats == 0 {
+        return Vec::new();
+    }
+    let mut allocated = 0u64;
+    participants
+        .iter()
+        .enumerate()
+        .map(|(index, participant)| {
+            if index + 1 == participants.len() {
+                total_amount_sats.saturating_sub(allocated)
+            } else {
+                let amount =
+                    ((u128::from(total_amount_sats) * u128::from(participant.share_bps)) / 10_000)
+                        as u64;
+                allocated = allocated.saturating_add(amount);
+                amount
+            }
+        })
+        .collect()
+}
+
+fn training_contribution_weak_device_bearing(
+    contribution: &ComputeAdapterContributionOutcome,
+) -> bool {
+    contribution
+        .metadata
+        .get("contributor_weak_device_bearing")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn training_closeout_payout_key(
+    accepted_outcome_id: &str,
+    contribution_id: &str,
+    nostr_pubkey_hex: &str,
+) -> String {
+    format!("accepted_work:{accepted_outcome_id}:{contribution_id}:{nostr_pubkey_hex}")
+}
+
+fn training_window_closeout_treasury_payout_requests(
+    payout_sats_per_window: u64,
+    window: &ComputeAdapterTrainingWindow,
+    contributions: &[ComputeAdapterContributionOutcome],
+    accepted_at_ms: i64,
+    closeout_status: TrainingWindowCloseoutStatus,
+) -> Vec<TreasuryQueuedPayoutRequest> {
+    if !closeout_status.payout_eligible() || payout_sats_per_window == 0 {
+        return Vec::new();
+    }
+
+    let payout_projection = training_window_closeout_payout_projection(window, contributions);
+    if payout_projection.participants.is_empty() {
+        return Vec::new();
+    }
+
+    let outcome_id = training_window_closeout_outcome_id(window.window_id.as_str());
+    let amount_sats = training_closeout_participant_amounts(
+        payout_sats_per_window,
+        payout_projection.participants.as_slice(),
+    );
+    let contributions_by_id = contributions
+        .iter()
+        .map(|contribution| (contribution.contribution_id.as_str(), contribution))
+        .collect::<HashMap<_, _>>();
+    let work_class = window.work_class.label().to_string();
+    let progress_class = training_work_progress_class(window.work_class)
+        .label()
+        .to_string();
+    let settled_at_unix_ms = accepted_at_ms.max(0) as u64;
+
+    payout_projection
+        .participants
+        .iter()
+        .zip(amount_sats)
+        .filter_map(|(participant, amount_sats)| {
+            if amount_sats == 0 {
+                return None;
+            }
+            let weak_device_bearing = contributions_by_id
+                .get(participant.contribution_id.as_str())
+                .is_some_and(|contribution| training_contribution_weak_device_bearing(contribution));
+            Some(TreasuryQueuedPayoutRequest {
+                payout_key: training_closeout_payout_key(
+                    outcome_id.as_str(),
+                    participant.contribution_id.as_str(),
+                    participant.contributor_node_id.as_str(),
+                ),
+                nostr_pubkey_hex: participant.contributor_node_id.clone(),
+                amount_sats,
+                window_started_at_unix_ms: settled_at_unix_ms,
+                window_ends_at_unix_ms: settled_at_unix_ms,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some(payout_projection.basis.clone()),
+                    work_class: Some(work_class.clone()),
+                    progress_class: Some(progress_class.clone()),
+                    accepted_outcome_id: Some(outcome_id.clone()),
+                    training_run_id: Some(window.training_run_id.clone()),
+                    window_id: Some(window.window_id.clone()),
+                    contribution_id: Some(participant.contribution_id.clone()),
+                    assignment_id: Some(participant.assignment_id.clone()),
+                    share_bps: Some(participant.share_bps),
+                    weight_basis: participant.weight_basis.clone(),
+                    weight_value: participant.weight_value,
+                    weak_device_bearing,
+                    progress_bearing: participant.progress_credit,
+                },
+            })
+        })
+        .collect()
 }
 
 fn training_window_closeout_status(
@@ -7148,6 +7271,13 @@ async fn reconcile_training_window(
             closeout_status,
             &defensibility,
         );
+        let treasury_payout_requests = training_window_closeout_treasury_payout_requests(
+            state.config.treasury.payout_sats_per_window,
+            &updated_window,
+            contribution_outcomes.as_slice(),
+            request.recorded_at_ms,
+            closeout_status,
+        );
         updated_window.accepted_outcome_id = Some(closeout_outcome.outcome_id.clone());
         let accepted_outcome_result = store
             .kernel
@@ -7196,6 +7326,13 @@ async fn reconcile_training_window(
         store
             .persist_training_scheduler_state()
             .map_err(kernel_api_error)?;
+        if !treasury_payout_requests.is_empty() {
+            store.treasury.queue_payout_requests(
+                &state.config.treasury,
+                treasury_payout_requests.as_slice(),
+                request.recorded_at_ms as u64,
+            );
+        }
         (
             training_window_response(result.response, assignment_plans),
             accepted_outcome_result.receipt_event,
@@ -15398,6 +15535,24 @@ fn runtime_snapshot(
         nexus_registered_payout_identities: treasury_runtime.registered_payout_identities,
         nexus_payout_sats_paid_total: treasury_runtime.payout_sats_paid_total,
         nexus_payout_sats_paid_24h: treasury_runtime.payout_sats_paid_24h,
+        nexus_accepted_work_payout_sats_paid_total: treasury_runtime
+            .accepted_work_payout_sats_paid_total,
+        nexus_accepted_work_payout_sats_paid_24h: treasury_runtime
+            .accepted_work_payout_sats_paid_24h,
+        nexus_placeholder_payout_sats_paid_total: treasury_runtime
+            .placeholder_payout_sats_paid_total,
+        nexus_placeholder_payout_sats_paid_24h: treasury_runtime
+            .placeholder_payout_sats_paid_24h,
+        nexus_beta_bonus_payout_sats_paid_total: treasury_runtime.beta_bonus_payout_sats_paid_total,
+        nexus_beta_bonus_payout_sats_paid_24h: treasury_runtime.beta_bonus_payout_sats_paid_24h,
+        nexus_weak_device_accepted_work_payout_sats_paid_total: treasury_runtime
+            .weak_device_accepted_work_payout_sats_paid_total,
+        nexus_weak_device_accepted_work_payout_sats_paid_24h: treasury_runtime
+            .weak_device_accepted_work_payout_sats_paid_24h,
+        nexus_strong_lane_accepted_work_payout_sats_paid_total: treasury_runtime
+            .strong_lane_accepted_work_payout_sats_paid_total,
+        nexus_strong_lane_accepted_work_payout_sats_paid_24h: treasury_runtime
+            .strong_lane_accepted_work_payout_sats_paid_24h,
         nexus_payouts_dispatched_24h: treasury_runtime.payouts_dispatched_24h,
         nexus_payouts_confirmed_24h: treasury_runtime.payouts_confirmed_24h,
         nexus_payouts_failed_24h: treasury_runtime.payouts_failed_24h,
@@ -17584,8 +17739,8 @@ mod tests {
         ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
         RegisteredPayoutTarget, TreasuryFundingMaterial, TreasuryFundingTargetRequest,
         TreasuryFundingTargetResponse, TreasuryState, TreasuryStatusResponse,
-        TreasuryWalletSnapshot, set_test_wallet_funding_hook, set_test_wallet_send_hook,
-        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
+        TreasuryPayoutClass, TreasuryWalletSnapshot, set_test_wallet_funding_hook,
+        set_test_wallet_send_hook, set_test_wallet_snapshot_hook, treasury_test_hook_lock,
     };
 
     use super::{
@@ -18642,8 +18797,15 @@ mod tests {
                     )?))?,
             )
             .await?;
-        assert_eq!(lease_response.status(), StatusCode::OK);
-        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+        let lease_status = lease_response.status();
+        let lease_bytes = to_bytes(lease_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            lease_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(lease_bytes.as_ref())
+        );
+        let lease: RecordTrainingRunLeaseResponse = serde_json::from_slice(lease_bytes.as_ref())?;
 
         let planned = app
             .clone()
@@ -30305,6 +30467,387 @@ mod tests {
         );
 
         relay_handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn validation_replay_closeout_queues_and_dispatches_weak_device_payout() -> Result<()>
+    {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = 120;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = now_unix_ms().saturating_sub(10_000);
+        let training_run_id = "run.weak.validation.replay";
+        let window_id = "window.weak.validation.0001";
+        let network_id = "trainnet.weak.validation";
+
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            network_id,
+            "node-tier2-replay",
+            "sha256:build-tier2-replay",
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::ValidationReplay,
+            ComputeTrainingReplicaType::SingleNode,
+            Some(32),
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            store.treasury.payout_targets_by_identity.insert(
+                "node-tier2-replay".to_string(),
+                RegisteredPayoutTarget {
+                    nostr_pubkey_hex: "node-tier2-replay".to_string(),
+                    source_session_id: "session-tier2-replay".to_string(),
+                    spark_address: "spark:node-tier2-replay".to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: created_at_ms + 50,
+                    last_verified_at_unix_ms: created_at_ms + 50,
+                },
+            );
+            let mut validator = training_node_admission_request_with_environment_refs(
+                "validator-replay",
+                "sha256:validator-replay",
+                vec![network_id],
+                Vec::new(),
+                Some(32),
+                vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF],
+            );
+            validator.requested_at_ms = created_at_ms as i64 + 760;
+            validator.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            validator.capability_tier =
+                training_capability_tier_profile(validator.role_claims.as_slice(), Some(32));
+            validator.capability_tier.backend_families = vec!["metal".to_string()];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-replay", created_at_ms + 760),
+                    validator,
+                )
+                .expect("admit validator");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-replay", "sha256:validator-replay");
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-replay", created_at_ms + 770),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator");
+        }
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.weak.validation",
+                            created_at_ms as i64 + 1_000,
+                            "node-tier2-replay",
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.weak.validation",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://weak-validation-0001",
+                                "sha256:slice-weak-validation-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/activate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.weak.validation",
+                            created_at_ms as i64 + 1_200,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/seal"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.weak.validation"
+                                .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.weak.validation",
+                                    &lease,
+                                    "sha256:validator-pending-weak-validation",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let claimed_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request_for_scope(
+                            "idemp.training.validator.claim.weak.validation.1",
+                            created_at_ms as i64 + 1_310,
+                            "validator-replay",
+                            Some(network_id),
+                            Some(training_run_id),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_one.status(), StatusCode::OK);
+        let claimed_one =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_one).await?;
+        let finalized_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        claimed_one.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.weak.validation.1",
+                            created_at_ms as i64 + 1_320,
+                            "validator-replay",
+                            claimed_one.lease.clone().expect("claim lease"),
+                            claimed_one
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            claimed_one.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-weak-validation-one",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_one.status(), StatusCode::OK);
+
+        let claimed_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request_for_scope(
+                            "idemp.training.validator.claim.weak.validation.2",
+                            created_at_ms as i64 + 1_330,
+                            "validator-replay",
+                            Some(network_id),
+                            Some(training_run_id),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_two.status(), StatusCode::OK);
+        let claimed_two =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_two).await?;
+        let finalized_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        claimed_two.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.weak.validation.2",
+                            created_at_ms as i64 + 1_340,
+                            "validator-replay",
+                            claimed_two.lease.clone().expect("second claim lease"),
+                            claimed_two
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            claimed_two.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-weak-validation-two",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_two.status(), StatusCode::OK);
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/reconcile"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.weak.validation"
+                                .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_400,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.weak.validation",
+                                    &lease,
+                                    "sha256:validator-final-weak-validation",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_420),
+                            benchmark_pass_rate_bps: Some(9_610),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: None,
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+
+        {
+            let store = state.store.read().expect("read store");
+            let payout = store
+                .treasury
+                .payout_records_by_key
+                .values()
+                .find(|record| {
+                    record.classification.accepted_outcome_id.as_deref()
+                        == Some("accepted.training_window.window.weak.validation.0001")
+                })
+                .expect("queued accepted-work payout");
+            assert_eq!(payout.status, "queued");
+            assert_eq!(payout.amount_sats, 120);
+            assert_eq!(payout.classification.payout_class, TreasuryPayoutClass::AcceptedWork);
+            assert_eq!(
+                payout.classification.work_class.as_deref(),
+                Some("validation_replay")
+            );
+            assert_eq!(
+                payout.classification.payout_basis.as_deref(),
+                Some("validator_verdict")
+            );
+            assert!(payout.classification.weak_device_bearing);
+            assert!(!payout.classification.progress_bearing);
+        }
+
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        set_test_wallet_send_hook(Some(Arc::new(|target, amount_sats| {
+            assert_eq!(target, "spark:node-tier2-replay");
+            assert_eq!(amount_sats, 120);
+            Ok("payment-send-weak-validation-001".to_string())
+        })));
+        run_treasury_dispatch_cycle(&state).await;
+        {
+            let store = state.store.read().expect("read store");
+            let payout = store
+                .treasury
+                .payout_records_by_key
+                .values()
+                .find(|record| {
+                    record.classification.accepted_outcome_id.as_deref()
+                        == Some("accepted.training_window.window.weak.validation.0001")
+                })
+                .expect("dispatched accepted-work payout");
+            assert_eq!(payout.status, "dispatched");
+            let treasury_stats =
+                store.treasury.public_stats(&state.config.treasury, now_unix_ms());
+            assert_eq!(treasury_stats.payout_sats_paid_total, 120);
+            assert_eq!(treasury_stats.accepted_work_payout_sats_paid_total, 120);
+            assert_eq!(
+                treasury_stats.weak_device_accepted_work_payout_sats_paid_total,
+                120
+            );
+        }
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_payout_sats_paid_total, 120);
+        assert_eq!(stats.nexus_accepted_work_payout_sats_paid_total, 120);
+        assert_eq!(stats.nexus_weak_device_accepted_work_payout_sats_paid_total, 120);
+        assert_eq!(stats.nexus_placeholder_payout_sats_paid_total, 0);
+        assert_eq!(stats.nexus_beta_bonus_payout_sats_paid_total, 0);
+
+        set_test_wallet_send_hook(None);
         Ok(())
     }
 
