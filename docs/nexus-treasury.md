@@ -56,6 +56,8 @@ Interpretation rules:
 - `nexus_beta_bonus_*` is the bonus / operator-adjusted slice.
 - `nexus_weak_device_accepted_work_*` and
   `nexus_strong_lane_accepted_work_*` subdivide accepted-work payouts by lane.
+- the strong-lane slice is where progress-bearing closeouts such as
+  adapter/full-island/grouped-stage training land today
 
 Training closeouts do not use a second payout system. Accepted training work is
 queued into the existing hosted Nexus treasury loop with receipt metadata that
