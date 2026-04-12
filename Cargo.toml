@@ -219,7 +219,7 @@ psionic-research = { git = "https://github.com/OpenAgentsInc/psionic.git", rev =
 psionic-runtime = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "d001e792ee0b4e973a8411a4e7be6666aef01919" }
 psionic-sandbox = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "d001e792ee0b4e973a8411a4e7be6666aef01919" }
 psionic-serve = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "d001e792ee0b4e973a8411a4e7be6666aef01919" }
-psionic-train = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "d001e792ee0b4e973a8411a4e7be6666aef01919" }
+psionic-train = { git = "https://github.com/OpenAgentsInc/psionic.git", rev = "d96d48acf1e5a2b891254988766af1fc95f31239" }
 probe-client = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "0eb62f56e86ea2191f9812e10b3c6d0f97e719c7" }
 probe-core = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "0eb62f56e86ea2191f9812e10b3c6d0f97e719c7" }
 probe-protocol = { git = "https://github.com/OpenAgentsInc/probe.git", rev = "0eb62f56e86ea2191f9812e10b3c6d0f97e719c7" }

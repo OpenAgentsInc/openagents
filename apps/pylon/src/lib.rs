@@ -36,6 +36,7 @@ use openagents_kernel_core::{
         ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeAdapterContributionDisposition,
         ComputeAdapterContributionOutcome, ComputeAdapterTrainingWindow,
         ComputeAdapterWindowStatus, ComputeTrainingPolicy, ComputeTrainingRun,
+        ComputeTrainingWorkClass,
     },
     ids::sha256_prefixed_text,
     pylon_training::{
@@ -75,9 +76,18 @@ use openagents_provider_substrate::{
     provider_runtime_state_label, sign_provider_payout_target_registration,
     validate_provider_control_action,
 };
+use psionic_train::{
+    PSION_ACTUAL_PRETRAINING_LANE_ID, PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
+    PSIONIC_TRAIN_ACTUAL_PRETRAINING_ENVIRONMENT_REF,
+    PSIONIC_TRAIN_INVOCATION_MANIFEST_SCHEMA_VERSION, PSIONIC_TRAIN_RUNTIME_SURFACE_ID,
+    PsionicTrainAdmissionIdentity, PsionicTrainCoordinationContext, PsionicTrainInvocationManifest,
+    PsionicTrainOperation, PsionicTrainRole, PsionicTrainWorkClass,
+    admitted_environment_ref_for_lane, admitted_release_id_for_lane, runtime_build_digest,
+};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use sysinfo::{Components, CpuRefreshKind, Disks, Networks, RefreshKind, System};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
@@ -165,6 +175,15 @@ static PROVIDER_HOST_TELEMETRY_CACHE: OnceLock<Mutex<Option<ProviderHostTelemetr
 struct PsionicTrainRuntimeSurface {
     repo_root: PathBuf,
     supports_apple_windowed_training: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MaterializedPsionicTrainInvocationManifest {
+    manifest_path: PathBuf,
+    manifest_digest: String,
+    lane_id: String,
+    operation: String,
+    work_class: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -442,6 +461,30 @@ pub struct PylonTrainingLeaseCacheEntry {
     pub expires_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub challenge_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peer_node_pubkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peer_checkpoint_handoff_receipt_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validator_target_contribution_receipt_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validator_target_contribution_artifact_manifest_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validator_target_work_class: Option<ComputeTrainingWorkClass>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grouped_stage_input_transport_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_manifest_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_lane_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_operation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_work_class: Option<String>,
     pub updated_at_ms: i64,
 }
 
@@ -957,6 +1000,16 @@ pub struct TrainingOperatorLeasedAssignmentStatus {
     expires_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_manifest_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_lane_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_operation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_work_class: Option<String>,
     updated_at_ms: i64,
 }
 
@@ -3538,6 +3591,365 @@ fn inspect_psionic_train_runtime_surface_at(
     })
 }
 
+fn git_output(repo_root: &Path, args: &[&str]) -> Result<String> {
+    let output = StdCommand::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(args)
+        .output()
+        .with_context(|| {
+            format!(
+                "failed to execute git -C {} {}",
+                repo_root.display(),
+                args.join(" ")
+            )
+        })?;
+    if !output.status.success() {
+        bail!(
+            "git command failed for Psionic runtime identity: git -C {} {}",
+            repo_root.display(),
+            args.join(" ")
+        );
+    }
+    String::from_utf8(output.stdout)
+        .map(|value| value.trim().to_string())
+        .context("Psionic git output was not valid UTF-8")
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut digest = Sha256::new();
+    digest.update(bytes);
+    format!("{:x}", digest.finalize())
+}
+
+fn psionic_dirty_tree_admission(repo_root: &Path) -> Result<(bool, String, Option<String>)> {
+    let porcelain = git_output(repo_root, &["status", "--porcelain"])?;
+    if porcelain.is_empty() {
+        return Ok((false, String::from("refuse_by_default"), None));
+    }
+    let status_snapshot = git_output(repo_root, &["status", "--short", "--branch"])?;
+    Ok((
+        true,
+        String::from("allowed_by_operator_override"),
+        Some(sha256_hex(status_snapshot.as_bytes())),
+    ))
+}
+
+fn parse_training_membership_revision_label(value: &str) -> Option<u64> {
+    value.strip_prefix("members.rev")?.parse::<u64>().ok()
+}
+
+fn training_run_root_for_id(config: &PylonConfig, training_run_id: &str) -> PathBuf {
+    config.training.run_root.join("runs").join(training_run_id)
+}
+
+fn training_runtime_manifest_path_for_run(run_root: &Path) -> PathBuf {
+    run_root.join("manifests").join("invocation_manifest.json")
+}
+
+fn training_psionic_role_for_claim(role: PylonTrainingRoleClaim) -> PsionicTrainRole {
+    match role {
+        PylonTrainingRoleClaim::Worker => PsionicTrainRole::Worker,
+        PylonTrainingRoleClaim::Validator => PsionicTrainRole::Validator,
+        PylonTrainingRoleClaim::RecoverySource => PsionicTrainRole::RecoverySource,
+    }
+}
+
+fn training_psionic_operation_label(operation: PsionicTrainOperation) -> &'static str {
+    match operation {
+        PsionicTrainOperation::Start => "start",
+        PsionicTrainOperation::Resume => "resume",
+        PsionicTrainOperation::ServeCheckpoint => "serve_checkpoint",
+        PsionicTrainOperation::ValidateContribution => "validate_contribution",
+        PsionicTrainOperation::RecordCheckpoint => "record_checkpoint",
+        PsionicTrainOperation::Backup => "backup",
+        PsionicTrainOperation::DecideContinueRestart => "decide_continue_restart",
+        PsionicTrainOperation::RehearseBaseLane => "rehearse_base_lane",
+    }
+}
+
+fn training_psionic_work_class_for_compute(
+    work_class: ComputeTrainingWorkClass,
+) -> PsionicTrainWorkClass {
+    match work_class {
+        ComputeTrainingWorkClass::ValidationReplay => PsionicTrainWorkClass::ValidationReplay,
+        ComputeTrainingWorkClass::Evaluation => PsionicTrainWorkClass::Evaluation,
+        ComputeTrainingWorkClass::AdapterTraining => PsionicTrainWorkClass::AdapterTraining,
+        ComputeTrainingWorkClass::SmallModelLocalTraining => {
+            PsionicTrainWorkClass::SmallModelLocalTraining
+        }
+        ComputeTrainingWorkClass::GroupedReplicaStageExecution => {
+            PsionicTrainWorkClass::GroupedReplicaStageExecution
+        }
+        ComputeTrainingWorkClass::FullIslandLocalUpdateTraining => {
+            PsionicTrainWorkClass::FullIslandLocalUpdateTraining
+        }
+        ComputeTrainingWorkClass::Aggregation => PsionicTrainWorkClass::Aggregation,
+        ComputeTrainingWorkClass::CheckpointPromotion => PsionicTrainWorkClass::CheckpointPromotion,
+    }
+}
+
+fn training_psionic_lane_id_for_environment_ref(
+    environment_ref: &str,
+    runtime_surface: &PsionicTrainRuntimeSurface,
+) -> Result<&'static str> {
+    match environment_ref {
+        PYLON_TRAINING_ENVIRONMENT_REF | PSIONIC_TRAIN_ACTUAL_PRETRAINING_ENVIRONMENT_REF => {
+            Ok(PSION_ACTUAL_PRETRAINING_LANE_ID)
+        }
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF => {
+            if !runtime_surface.supports_apple_windowed_training {
+                bail!(
+                    "Psionic checkout at {} does not advertise the Apple windowed training lane",
+                    runtime_surface.repo_root.display()
+                );
+            }
+            Ok(PSION_APPLE_WINDOWED_TRAINING_LANE_ID)
+        }
+        other => bail!(
+            "training environment_ref `{other}` is not mapped to a machine-admitted psionic-train lane"
+        ),
+    }
+}
+
+fn resolve_psionic_train_admission_identity(
+    runtime_surface: &PsionicTrainRuntimeSurface,
+    lane_id: &str,
+) -> Result<(PsionicTrainAdmissionIdentity, bool, String)> {
+    let selected_git_ref = String::from("HEAD");
+    let git_commit_sha = git_output(
+        runtime_surface.repo_root.as_path(),
+        &["rev-parse", selected_git_ref.as_str()],
+    )?;
+    let (allow_dirty_tree, dirty_tree_admission, workspace_status_sha256) =
+        psionic_dirty_tree_admission(runtime_surface.repo_root.as_path())?;
+    let release_id =
+        admitted_release_id_for_lane(lane_id).map_err(|error| anyhow!(error.to_string()))?;
+    let environment_ref =
+        admitted_environment_ref_for_lane(lane_id).map_err(|error| anyhow!(error.to_string()))?;
+    let build_digest = runtime_build_digest(
+        release_id,
+        PSIONIC_TRAIN_RUNTIME_SURFACE_ID,
+        lane_id,
+        git_commit_sha.as_str(),
+        dirty_tree_admission.as_str(),
+        workspace_status_sha256.as_deref(),
+        environment_ref,
+    );
+    Ok((
+        PsionicTrainAdmissionIdentity {
+            release_id: release_id.to_string(),
+            build_digest,
+            environment_ref: environment_ref.to_string(),
+        },
+        allow_dirty_tree,
+        selected_git_ref,
+    ))
+}
+
+fn build_psionic_train_invocation_manifest(
+    config: &PylonConfig,
+    runtime_surface: &PsionicTrainRuntimeSurface,
+    training_run: &ComputeTrainingRun,
+    lease: &PylonTrainingLeaseCacheEntry,
+    node_pubkey: &str,
+) -> Result<(PsionicTrainInvocationManifest, PathBuf)> {
+    let role = training_psionic_role_for_claim(lease.role);
+    let lane_id = training_psionic_lane_id_for_environment_ref(
+        training_run.environment_binding.environment_ref.as_str(),
+        runtime_surface,
+    )?;
+    let (admission_identity, allow_dirty_tree, selected_git_ref) =
+        resolve_psionic_train_admission_identity(runtime_surface, lane_id)?;
+    let run_root = training_run_root_for_id(config, training_run.training_run_id.as_str());
+    let operation = match role {
+        PsionicTrainRole::Worker => PsionicTrainOperation::Start,
+        PsionicTrainRole::Validator => PsionicTrainOperation::ValidateContribution,
+        PsionicTrainRole::RecoverySource => {
+            if lease.peer_checkpoint_handoff_receipt_path.is_some() {
+                PsionicTrainOperation::Resume
+            } else if lease.peer_node_pubkey.is_some() {
+                PsionicTrainOperation::ServeCheckpoint
+            } else {
+                PsionicTrainOperation::Resume
+            }
+        }
+    };
+    let work_class = if role == PsionicTrainRole::Validator {
+        PsionicTrainWorkClass::ValidationReplay
+    } else {
+        training_psionic_work_class_for_compute(training_run.work_class)
+    };
+    let network_id = lease.network_id.clone().or_else(|| {
+        training_run
+            .metadata
+            .get("network_id")
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+    });
+    let mut manifest = PsionicTrainInvocationManifest {
+        schema_version: String::from(PSIONIC_TRAIN_INVOCATION_MANIFEST_SCHEMA_VERSION),
+        runtime_surface_id: String::from(PSIONIC_TRAIN_RUNTIME_SURFACE_ID),
+        lane_id: lane_id.to_string(),
+        role,
+        operation,
+        work_class,
+        coordination: PsionicTrainCoordinationContext {
+            network_id,
+            window_id: Some(lease.window_id.clone()),
+            assignment_id: Some(lease.assignment_id.clone()),
+            challenge_id: lease.challenge_id.clone(),
+            node_pubkey: Some(node_pubkey.to_string()),
+            membership_revision: parse_training_membership_revision_label(
+                lease.membership_revision.as_str(),
+            ),
+        },
+        grouped_stage_assignment: None,
+        admission_identity,
+        run_id: Some(training_run.training_run_id.clone()),
+        output_root: matches!(
+            operation,
+            PsionicTrainOperation::Start | PsionicTrainOperation::RehearseBaseLane
+        )
+        .then(|| run_root.display().to_string()),
+        run_root: matches!(
+            operation,
+            PsionicTrainOperation::Resume
+                | PsionicTrainOperation::ServeCheckpoint
+                | PsionicTrainOperation::ValidateContribution
+                | PsionicTrainOperation::RecordCheckpoint
+                | PsionicTrainOperation::Backup
+                | PsionicTrainOperation::DecideContinueRestart
+        )
+        .then(|| run_root.display().to_string()),
+        peer_node_pubkey: lease.peer_node_pubkey.clone(),
+        peer_checkpoint_handoff_receipt_path: lease.peer_checkpoint_handoff_receipt_path.clone(),
+        validator_target_contribution_receipt_path: lease
+            .validator_target_contribution_receipt_path
+            .clone(),
+        validator_target_contribution_artifact_manifest_path: lease
+            .validator_target_contribution_artifact_manifest_path
+            .clone(),
+        validator_target_work_class: (role == PsionicTrainRole::Validator).then(|| {
+            training_psionic_work_class_for_compute(
+                lease
+                    .validator_target_work_class
+                    .unwrap_or(training_run.work_class),
+            )
+        }),
+        grouped_stage_input_transport_path: lease.grouped_stage_input_transport_path.clone(),
+        selected_git_ref: Some(selected_git_ref),
+        hardware_observation_path: None,
+        run_shape_observation_path: None,
+        allow_dirty_tree,
+        dry_run: false,
+        checkpoint_label: None,
+        optimizer_step: None,
+        checkpoint_ref: None,
+        checkpoint_object_digest: None,
+        checkpoint_total_bytes: None,
+        inject_failed_upload: false,
+        inject_eval_worker_unavailable: false,
+        manifest_digest: None,
+    };
+    manifest
+        .populate_manifest_digest()
+        .map_err(|error| anyhow!(error.to_string()))?;
+    manifest
+        .validate_machine_contract()
+        .map_err(|error| anyhow!(error.to_string()))?;
+    Ok((manifest, run_root))
+}
+
+async fn ensure_training_assignment_runtime_manifest(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    state: &mut PylonTrainingRuntimeState,
+    client: &PylonTrainingCoordinatorClient,
+    runtime_surface: &PsionicTrainRuntimeSurface,
+    lease_id: &str,
+) -> Result<MaterializedPsionicTrainInvocationManifest> {
+    let Some(lease) = state.lease_cache.get(lease_id).cloned() else {
+        bail!("missing cached training lease `{lease_id}`");
+    };
+    if let (
+        Some(runtime_manifest_path),
+        Some(runtime_manifest_digest),
+        Some(runtime_lane_id),
+        Some(runtime_operation),
+        Some(runtime_work_class),
+    ) = (
+        lease.runtime_manifest_path.clone(),
+        lease.runtime_manifest_digest.clone(),
+        lease.runtime_lane_id.clone(),
+        lease.runtime_operation.clone(),
+        lease.runtime_work_class.clone(),
+    ) {
+        let manifest_path = PathBuf::from(runtime_manifest_path);
+        if manifest_path.is_file() {
+            return Ok(MaterializedPsionicTrainInvocationManifest {
+                manifest_path,
+                manifest_digest: runtime_manifest_digest,
+                lane_id: runtime_lane_id,
+                operation: runtime_operation,
+                work_class: runtime_work_class,
+            });
+        }
+    }
+
+    let training_run = client
+        .get_training_run(lease.training_run_id.as_str())
+        .await?;
+    let (manifest, run_root) = build_psionic_train_invocation_manifest(
+        config,
+        runtime_surface,
+        &training_run,
+        &lease,
+        identity.public_key_hex.as_str(),
+    )?;
+    let manifest_path = training_runtime_manifest_path_for_run(run_root.as_path());
+    if let Some(parent) = manifest_path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create training invocation manifest dir {}",
+                parent.display()
+            )
+        })?;
+    }
+    std::fs::write(
+        manifest_path.as_path(),
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&manifest)
+                .context("failed to serialize psionic-train invocation manifest")?
+        ),
+    )
+    .with_context(|| {
+        format!(
+            "failed to write psionic-train invocation manifest {}",
+            manifest_path.display()
+        )
+    })?;
+    if let Some(cached) = state.lease_cache.get_mut(lease_id) {
+        cached.runtime_manifest_path = Some(manifest_path.display().to_string());
+        cached.runtime_manifest_digest = manifest.manifest_digest.clone();
+        cached.runtime_lane_id = Some(manifest.lane_id.clone());
+        cached.runtime_operation =
+            Some(training_psionic_operation_label(manifest.operation).to_string());
+        cached.runtime_work_class = Some(manifest.work_class.label().to_string());
+    }
+    Ok(MaterializedPsionicTrainInvocationManifest {
+        manifest_path,
+        manifest_digest: manifest
+            .manifest_digest
+            .clone()
+            .ok_or_else(|| anyhow!("psionic-train invocation manifest digest was not populated"))?,
+        lane_id: manifest.lane_id,
+        operation: training_psionic_operation_label(manifest.operation).to_string(),
+        work_class: manifest.work_class.label().to_string(),
+    })
+}
+
 fn resolve_psionic_repo_root() -> Result<PathBuf> {
     let repo_root = configured_psionic_repo_root();
     ensure_psionic_repo_root_exists(repo_root.as_path())?;
@@ -6074,6 +6486,18 @@ fn cache_training_run_lease(
             checkpoint_ref: lease.checkpoint_ref.clone(),
             expires_at_ms: Some(lease.expires_at_ms),
             network_id: lease.network_id.clone(),
+            challenge_id: None,
+            peer_node_pubkey: None,
+            peer_checkpoint_handoff_receipt_path: None,
+            validator_target_contribution_receipt_path: None,
+            validator_target_contribution_artifact_manifest_path: None,
+            validator_target_work_class: None,
+            grouped_stage_input_transport_path: None,
+            runtime_manifest_path: None,
+            runtime_manifest_digest: None,
+            runtime_lane_id: None,
+            runtime_operation: None,
+            runtime_work_class: None,
             updated_at_ms,
         },
     );
@@ -6134,6 +6558,18 @@ async fn run_training_assignment_intake_once_with_context(
 
     let client = PylonTrainingCoordinatorClient::new(config)?;
     if let Some(existing_lease) = newest_pending_training_lease_cache_entry(state) {
+        let runtime_surface = runtime_surface.ok_or_else(|| {
+            anyhow!("psionic-train runtime surface is required to materialize a leased assignment")
+        })?;
+        let materialized = ensure_training_assignment_runtime_manifest(
+            config,
+            identity,
+            state,
+            &client,
+            runtime_surface,
+            existing_lease.lease_id.as_str(),
+        )
+        .await?;
         if training_lease_state_is_acknowledged(existing_lease.state.as_str()) {
             return Ok(());
         }
@@ -6151,7 +6587,7 @@ async fn run_training_assignment_intake_once_with_context(
                 assignment_id: existing_lease.assignment_id.clone(),
                 lease_id: existing_lease.lease_id.clone(),
                 manifest_digest: existing_lease.manifest_digest.clone(),
-                manifest_path: None,
+                manifest_path: Some(materialized.manifest_path.display().to_string()),
             })
             .await?;
         update_cached_training_lease_state(
@@ -6218,6 +6654,20 @@ async fn run_training_assignment_intake_once_with_context(
             {
                 Ok(lease) => {
                     cache_training_run_lease(state, &lease, requested_at_ms);
+                    let runtime_surface = runtime_surface.ok_or_else(|| {
+                        anyhow!(
+                            "psionic-train runtime surface is required to materialize a leased assignment"
+                        )
+                    })?;
+                    let materialized = ensure_training_assignment_runtime_manifest(
+                        config,
+                        identity,
+                        state,
+                        &client,
+                        runtime_surface,
+                        lease.lease_id.as_str(),
+                    )
+                    .await?;
                     let acked_at_ms = now_epoch_ms();
                     let ack = client
                         .ack_assignment(&PylonTrainingAssignmentAckRequest {
@@ -6232,15 +6682,17 @@ async fn run_training_assignment_intake_once_with_context(
                             assignment_id: lease.assignment_id.clone(),
                             lease_id: lease.lease_id.clone(),
                             manifest_digest: lease.manifest_digest.clone(),
-                            manifest_path: None,
+                            manifest_path: Some(materialized.manifest_path.display().to_string()),
                         })
                         .await?;
                     update_cached_training_lease_state(
                         state,
                         lease.lease_id.as_str(),
-                        ack.lease_state
-                            .as_deref()
-                            .unwrap_or(if ack.accepted { "acked" } else { "rejected" }),
+                        ack.lease_state.as_deref().unwrap_or(if ack.accepted {
+                            "acked"
+                        } else {
+                            "rejected"
+                        }),
                         acked_at_ms,
                     );
                     return Ok(());
@@ -7228,14 +7680,12 @@ fn load_training_status_report_with_config(
         .active_runtime
         .as_ref()
         .map(training_operator_active_runtime_status);
-    let leased_assignment = newest_training_lease_cache_entry(&state)
-        .map(training_operator_leased_assignment_status);
+    let leased_assignment =
+        newest_training_lease_cache_entry(&state).map(training_operator_leased_assignment_status);
     let current_run_id = active_runtime
         .as_ref()
         .map(|runtime| runtime.training_run_id.clone())
-        .or_else(|| {
-            newest_training_manifest_cache_entry(&state).map(|entry| entry.training_run_id)
-        })
+        .or_else(|| newest_training_manifest_cache_entry(&state).map(|entry| entry.training_run_id))
         .or_else(|| newest_training_lease_cache_entry(&state).map(|entry| entry.training_run_id));
     let active_window_id = active_runtime
         .as_ref()
@@ -7381,6 +7831,11 @@ fn training_operator_leased_assignment_status(
         checkpoint_ref: lease.checkpoint_ref,
         expires_at_ms: lease.expires_at_ms,
         network_id: lease.network_id,
+        runtime_manifest_path: lease.runtime_manifest_path,
+        runtime_manifest_digest: lease.runtime_manifest_digest,
+        runtime_lane_id: lease.runtime_lane_id,
+        runtime_operation: lease.runtime_operation,
+        runtime_work_class: lease.runtime_work_class,
         updated_at_ms: lease.updated_at_ms,
     }
 }
@@ -7399,9 +7854,7 @@ fn resolve_training_current_window_status(
         .active_runtime
         .as_ref()
         .map(|runtime| runtime.training_run_id.clone())
-        .or_else(|| {
-            newest_training_manifest_cache_entry(state).map(|entry| entry.training_run_id)
-        })
+        .or_else(|| newest_training_manifest_cache_entry(state).map(|entry| entry.training_run_id))
         .or_else(|| newest_training_lease_cache_entry(state).map(|entry| entry.training_run_id))?;
     if let Some(window) = state.window_cache.get(target_window_id.as_str()) {
         return Some(TrainingOperatorWindowStatus {
@@ -9674,6 +10127,18 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
         if let Some(expires_at_ms) = leased_assignment.expires_at_ms {
             lines.push(format!("- expires at ms: {expires_at_ms}"));
         }
+        if let Some(runtime_manifest_path) = leased_assignment.runtime_manifest_path.as_deref() {
+            lines.push(format!("- runtime manifest: {runtime_manifest_path}"));
+        }
+        if let (Some(runtime_lane_id), Some(runtime_operation), Some(runtime_work_class)) = (
+            leased_assignment.runtime_lane_id.as_deref(),
+            leased_assignment.runtime_operation.as_deref(),
+            leased_assignment.runtime_work_class.as_deref(),
+        ) {
+            lines.push(format!(
+                "- runtime lane/op/work: {runtime_lane_id} {runtime_operation} {runtime_work_class}"
+            ));
+        }
     }
     if let Some(current_window) = report.current_window.as_ref() {
         lines.push(String::new());
@@ -10739,7 +11204,8 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                 if desired_mode == ProviderDesiredMode::Online
                     && Instant::now() >= next_training_assignment_intake_at
                 {
-                    if let Err(error) = run_training_assignment_intake_once(&config, &identity).await
+                    if let Err(error) =
+                        run_training_assignment_intake_once(&config, &identity).await
                     {
                         eprintln!(
                             "warning: automatic pylon training assignment intake failed: {error}"
@@ -15423,7 +15889,8 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+    use std::process::Command as StdCommand;
     use std::sync::{Arc, Mutex, OnceLock};
     use std::time::{Duration, Instant};
 
@@ -15460,11 +15927,12 @@ mod tests {
         TrainingTrnPublicationReport, WalletAddressReport, WalletInvoiceReport,
         WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
         apply_control_command, apply_training_reputation_gate_to_availability,
-        build_pylon_training_admin_router, build_snapshot_from_availability, bytes_to_gib_ceil,
-        default_config, derive_adapter_training_contributor_availability,
-        derive_training_capability_tier_profile, detect_availability,
-        download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
-        drain_training_supervisor, ensure_identity, ensure_no_conflicting_training_assignment,
+        build_psionic_train_invocation_manifest, build_pylon_training_admin_router,
+        build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
+        derive_adapter_training_contributor_availability, derive_training_capability_tier_profile,
+        detect_availability, download_gemma_model_from_base_url,
+        download_gemma_model_from_base_url_with_transport, drain_training_supervisor,
+        ensure_identity, ensure_no_conflicting_training_assignment,
         garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
         gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
         inventory_rows, load_backend_report, load_earnings_report, load_inventory_report,
@@ -15483,12 +15951,12 @@ mod tests {
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
         run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
         run_training_assignment_intake_once_with_context, save_config,
-        save_gemma_diagnostic_report, save_training_runtime_state,
-        scan_provider_requests, serve, snapshot_training_status_report,
-        start_training_checkpoint_server, start_training_supervisor, submit_buyer_job,
-        sync_live_announcement, sync_provider_payout_target_with_report,
-        sync_training_authority_state, training_download_cache_root, training_runtime_state_path,
-        training_settlement_destination, watch_buyer_jobs,
+        save_gemma_diagnostic_report, save_training_runtime_state, scan_provider_requests, serve,
+        snapshot_training_status_report, start_training_checkpoint_server,
+        start_training_supervisor, submit_buyer_job, sync_live_announcement,
+        sync_provider_payout_target_with_report, sync_training_authority_state,
+        training_download_cache_root, training_runtime_state_path, training_settlement_destination,
+        watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -15528,6 +15996,10 @@ mod tests {
         ProviderTrainingCapabilityTier, ProviderTrainingLeaseReliabilityClass,
         ProviderTrainingReplayCapability, ProviderTrainingThroughputBand,
         provider_runtime_state_label,
+    };
+    use psionic_train::{
+        PSION_ACTUAL_PRETRAINING_LANE_ID, PsionicTrainInvocationManifest, PsionicTrainOperation,
+        PsionicTrainRole, PsionicTrainWorkClass,
     };
     use serde_json::{Value, json};
     use tempfile::tempdir;
@@ -15806,8 +16278,43 @@ mod tests {
     }
 
     fn psionic_train_runtime_surface_fixture() -> PsionicTrainRuntimeSurface {
+        static FIXTURE_REPO_ROOT: OnceLock<std::path::PathBuf> = OnceLock::new();
+        let repo_root = FIXTURE_REPO_ROOT
+            .get_or_init(|| {
+                let repo_root =
+                    std::env::temp_dir().join("openagents-pylon-psionic-runtime-fixture");
+                let _ = std::fs::create_dir_all(repo_root.as_path());
+                let _ = std::fs::write(repo_root.join("README.md"), "psionic runtime fixture\n");
+                if !repo_root.join(".git").exists() {
+                    let _ = StdCommand::new("git")
+                        .arg("init")
+                        .arg(repo_root.as_os_str())
+                        .status();
+                    let _ = StdCommand::new("git")
+                        .arg("-C")
+                        .arg(repo_root.as_os_str())
+                        .arg("add")
+                        .arg(".")
+                        .status();
+                    let _ = StdCommand::new("git")
+                        .arg("-C")
+                        .arg(repo_root.as_os_str())
+                        .args([
+                            "-c",
+                            "user.name=OpenAgents Test",
+                            "-c",
+                            "user.email=test@openagents.invalid",
+                            "commit",
+                            "-m",
+                            "fixture",
+                        ])
+                        .status();
+                }
+                repo_root
+            })
+            .clone();
         PsionicTrainRuntimeSurface {
-            repo_root: std::path::PathBuf::from("/tmp/psionic"),
+            repo_root,
             supports_apple_windowed_training: true,
         }
     }
@@ -16893,6 +17400,20 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
                 expires_at_ms: Some(1_762_491_260_020),
                 network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(
+                    "/tmp/run.alpha/manifests/invocation_manifest.json".to_string(),
+                ),
+                runtime_manifest_digest: Some("sha256:runtime-manifest-alpha".to_string()),
+                runtime_lane_id: Some(PSION_ACTUAL_PRETRAINING_LANE_ID.to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("full_island_local_update_training".to_string()),
                 updated_at_ms: 1_762_491_200_020,
             },
         );
@@ -17332,9 +17853,22 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
     #[tokio::test(flavor = "current_thread")]
     async fn training_assignment_intake_claims_and_acks_assignment_and_updates_status()
     -> Result<(), Box<dyn std::error::Error>> {
+        let training_run = training_run_fixture();
+        let training_run_for_server = training_run.clone();
         let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
         let request_counts_for_server = Arc::clone(&request_counts);
         let base_url = start_mock_http_server(move |method, path, _body| {
+            if method == "GET" && path == "/v1/kernel/compute/training/runs/run.alpha" {
+                let response = compute_contracts::get_compute_training_run_response_to_proto(
+                    &training_run_for_server,
+                )
+                .expect("training run proto response");
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&response).expect("training run json"),
+                );
+            }
             if method != "POST" {
                 return (
                     405,
@@ -17419,8 +17953,38 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 && lease.membership_revision == "members.rev2"
                 && lease.role == PylonTrainingRoleClaim::Worker
                 && lease.state == "acked"
-                && lease.network_id.as_deref() == Some("trainnet.alpha"),
+                && lease.network_id.as_deref() == Some("trainnet.alpha")
+                && lease.runtime_manifest_path.is_some()
+                && lease.runtime_lane_id.as_deref() == Some(PSION_ACTUAL_PRETRAINING_LANE_ID)
+                && lease.runtime_operation.as_deref() == Some("start")
+                && lease.runtime_work_class.as_deref() == Some("full_island_local_update_training"),
             "automatic training assignment intake should persist the leased assignment and its acked state",
+        )?;
+        let manifest_path = PathBuf::from(
+            lease
+                .runtime_manifest_path
+                .clone()
+                .ok_or_else(|| std::io::Error::other("missing runtime manifest path"))?,
+        );
+        let manifest: PsionicTrainInvocationManifest =
+            serde_json::from_slice(&std::fs::read(manifest_path.as_path())?)?;
+        manifest.validate_machine_contract()?;
+        ensure(
+            manifest.lane_id == PSION_ACTUAL_PRETRAINING_LANE_ID
+                && manifest.role == PsionicTrainRole::Worker
+                && manifest.operation == PsionicTrainOperation::Start
+                && manifest.work_class == PsionicTrainWorkClass::FullIslandLocalUpdateTraining
+                && manifest.run_id.as_deref() == Some("run.alpha")
+                && manifest
+                    .output_root
+                    .as_deref()
+                    .is_some_and(|path: &str| path.ends_with("runs/run.alpha"))
+                && manifest.run_root.is_none()
+                && manifest.coordination.network_id.as_deref() == Some("trainnet.alpha")
+                && manifest.coordination.assignment_id.as_deref()
+                    == Some("assign.node01.window0001")
+                && manifest.coordination.membership_revision == Some(2),
+            "assignment intake should materialize one valid psionic-train invocation manifest for the leased worker assignment",
         )?;
         ensure(
             state
@@ -17430,7 +17994,8 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             "automatic training assignment intake should retain the window state from the lease response",
         )?;
 
-        let report = load_training_status_report_local(temp_dir.path().join("config.json").as_path())?;
+        let report =
+            load_training_status_report_local(temp_dir.path().join("config.json").as_path())?;
         ensure(
             report.current_run_id.as_deref() == Some("run.alpha")
                 && report.active_window_id.as_deref() == Some("window.0001")
@@ -17443,7 +18008,10 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
         )?;
         ensure(
             render_training_status_report(&report).contains("leased assignment:")
-                && render_training_status_report(&report).contains("training state: leased"),
+                && render_training_status_report(&report).contains("training state: leased")
+                && render_training_status_report(&report).contains("runtime manifest:")
+                && render_training_status_report(&report)
+                    .contains("runtime lane/op/work: psion_actual_pretraining_v1 start full_island_local_update_training"),
             "the human training status renderer should surface the retained leased assignment",
         )?;
 
@@ -17462,9 +18030,22 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
     #[tokio::test(flavor = "current_thread")]
     async fn training_assignment_intake_retries_cached_lease_ack_without_new_claim()
     -> Result<(), Box<dyn std::error::Error>> {
+        let training_run = training_run_fixture();
+        let training_run_for_server = training_run.clone();
         let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
         let request_counts_for_server = Arc::clone(&request_counts);
         let base_url = start_mock_http_server(move |method, path, _body| {
+            if method == "GET" && path == "/v1/kernel/compute/training/runs/run.alpha" {
+                let response = compute_contracts::get_compute_training_run_response_to_proto(
+                    &training_run_for_server,
+                )
+                .expect("training run proto response");
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&response).expect("training run json"),
+                );
+            }
             if method != "POST" {
                 return (
                     405,
@@ -17509,6 +18090,18 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
                 expires_at_ms: Some(1_762_491_260_600),
                 network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: None,
+                runtime_manifest_digest: None,
+                runtime_lane_id: None,
+                runtime_operation: None,
+                runtime_work_class: None,
                 updated_at_ms: 1_762_491_210_600,
             },
         );
@@ -17528,7 +18121,12 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
             state
                 .lease_cache
                 .get("lease.node01.window0001")
-                .is_some_and(|lease| lease.state == "acked"),
+                .is_some_and(|lease| {
+                    lease.state == "acked"
+                        && lease.runtime_manifest_path.is_some()
+                        && lease.runtime_lane_id.as_deref()
+                            == Some(PSION_ACTUAL_PRETRAINING_LANE_ID)
+                }),
             "retained leased assignments should be acknowledged on the next intake pass instead of forcing a new claim",
         )?;
 
@@ -17541,6 +18139,101 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 && !counts.contains_key("/api/training/nodes/admission")
                 && !counts.contains_key("/api/training/leases/claim"),
             "cached leased assignments should retry only the missing assignment ack on restart",
+        )
+    }
+
+    #[test]
+    fn build_psionic_train_invocation_manifest_supports_resume_and_validator_inputs()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+
+        let mut lease = PylonTrainingLeaseCacheEntry {
+            lease_id: "lease.node01.window0001".to_string(),
+            assignment_id: "assign.node01.window0001".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            membership_revision: "members.rev3".to_string(),
+            role: PylonTrainingRoleClaim::RecoverySource,
+            state: "acked".to_string(),
+            manifest_digest: Some("sha256:manifest-alpha".to_string()),
+            checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+            expires_at_ms: Some(1_762_491_260_600),
+            network_id: Some("trainnet.alpha".to_string()),
+            challenge_id: None,
+            peer_node_pubkey: None,
+            peer_checkpoint_handoff_receipt_path: Some(
+                "/tmp/run.alpha/status/peer_checkpoint_handoff_receipt.json".to_string(),
+            ),
+            validator_target_contribution_receipt_path: None,
+            validator_target_contribution_artifact_manifest_path: None,
+            validator_target_work_class: None,
+            grouped_stage_input_transport_path: None,
+            runtime_manifest_path: None,
+            runtime_manifest_digest: None,
+            runtime_lane_id: None,
+            runtime_operation: None,
+            runtime_work_class: None,
+            updated_at_ms: 1_762_491_210_600,
+        };
+        let (resume_manifest, _) = build_psionic_train_invocation_manifest(
+            &config,
+            &runtime_surface,
+            &training_run_fixture(),
+            &lease,
+            &"11".repeat(32),
+        )?;
+        ensure(
+            resume_manifest.operation == PsionicTrainOperation::Resume
+                && resume_manifest.role == PsionicTrainRole::RecoverySource
+                && resume_manifest
+                    .run_root
+                    .as_deref()
+                    .is_some_and(|path: &str| path.ends_with("runs/run.alpha"))
+                && resume_manifest.output_root.is_none()
+                && resume_manifest
+                    .peer_checkpoint_handoff_receipt_path
+                    .as_deref()
+                    == Some("/tmp/run.alpha/status/peer_checkpoint_handoff_receipt.json"),
+            "recovery-source leases with peer handoff input should map to psionic-train resume manifests",
+        )?;
+
+        lease.role = PylonTrainingRoleClaim::Validator;
+        lease.challenge_id = Some("challenge.alpha".to_string());
+        lease.peer_checkpoint_handoff_receipt_path = None;
+        lease.validator_target_contribution_receipt_path = Some(
+            "/tmp/run.alpha/windows/window.0001/contributions/source/contribution_receipt.json"
+                .to_string(),
+        );
+        lease.validator_target_contribution_artifact_manifest_path = Some(
+            "/tmp/run.alpha/windows/window.0001/contributions/source/artifact_manifest.json"
+                .to_string(),
+        );
+        lease.validator_target_work_class = Some(ComputeTrainingWorkClass::AdapterTraining);
+        let (validator_manifest, _) = build_psionic_train_invocation_manifest(
+            &config,
+            &runtime_surface,
+            &training_run_fixture(),
+            &lease,
+            &"11".repeat(32),
+        )?;
+        ensure(
+            validator_manifest.role == PsionicTrainRole::Validator
+                && validator_manifest.operation == PsionicTrainOperation::ValidateContribution
+                && validator_manifest.work_class == PsionicTrainWorkClass::ValidationReplay
+                && validator_manifest.coordination.challenge_id.as_deref()
+                    == Some("challenge.alpha")
+                && validator_manifest
+                    .validator_target_contribution_receipt_path
+                    .as_deref()
+                    == Some(
+                        "/tmp/run.alpha/windows/window.0001/contributions/source/contribution_receipt.json",
+                    )
+                && validator_manifest.validator_target_work_class
+                    == Some(PsionicTrainWorkClass::AdapterTraining),
+            "validator leases should map replay target inputs into the psionic-train machine manifest",
         )
     }
 
