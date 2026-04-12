@@ -176,7 +176,7 @@ export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600
 export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=true
 export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000
 export NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS=30
-export NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=16
+export NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4
 ```
 
 Why the extra two envs matter:
@@ -196,9 +196,9 @@ Why the extra two envs matter:
   reduces Spark transfer pressure to `0.4` sends/second even if the eligible
   set reaches `240` providers, while keeping the daily ceiling under
   `864000 sats` at that scale.
-- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=16` remains sufficient at that
-  wider cadence because the staggered per-identity phase offsets keep the due
-  set small per dispatch cycle.
+- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4` caps the per-cycle Spark
+  fan-out so one stalled upstream batch cannot occupy all live payout slots at
+  once.
 - `scripts/deploy/nexus/10-install-treasury-watchdog.sh` installs a systemd
   timer on the VM that runs every 5 minutes, checks the local treasury status
   plus recent completed-send journal entries, and restarts `nexus-relay` only

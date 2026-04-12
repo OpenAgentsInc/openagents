@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(test)]
 use std::sync::Mutex;
@@ -229,9 +230,9 @@ impl TreasuryConfig {
     }
 
     pub fn dispatch_result_timeout_ms(&self, payout_interval_ms: u64) -> u64 {
+        let _ = payout_interval_ms;
         TREASURY_DISPATCH_RESULT_TIMEOUT_MS
             .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
-            .max(payout_interval_ms.saturating_mul(2))
     }
 
     pub fn max_concurrent_send_operations(&self, plan_count: usize) -> usize {
@@ -3324,26 +3325,24 @@ pub async fn dispatch_live_payouts(
         }
     };
 
-    // Keep the wallet lock held for less than one payout interval even when a
-    // large provider set becomes due in the same cycle.
+    // Keep the wallet-operation lock held for a bounded window even when the
+    // upstream Spark send path stalls or many Pylons become due together.
+    let send_timeout_ms = config.dispatch_result_timeout_ms(config.payout_interval_ms());
     let max_concurrent_sends = config.max_concurrent_send_operations(plans.len());
     let mut indexed_outcomes = stream::iter(plans.iter().cloned().enumerate())
         .map(|(index, plan)| {
             let wallet = wallet.clone();
             async move {
-                let outcome = match wallet
-                    .send_payment_simple(plan.payment_request.as_str(), Some(plan.amount_sats))
-                    .await
-                {
-                    Ok(payment_id) => TreasuryDispatchOutcome::Dispatched {
-                        payout_key: plan.payout_key,
-                        payment_id,
-                    },
-                    Err(error) => TreasuryDispatchOutcome::Failed {
-                        payout_key: plan.payout_key,
-                        reason: error.to_string(),
-                    },
-                };
+                let outcome =
+                    dispatch_outcome_from_send_future(plan.clone(), send_timeout_ms, async move {
+                        wallet
+                            .send_payment_simple(
+                                plan.payment_request.as_str(),
+                                Some(plan.amount_sats),
+                            )
+                            .await
+                    })
+                    .await;
                 (index, outcome)
             }
         })
@@ -3363,6 +3362,31 @@ pub async fn dispatch_live_payouts(
         // intended payout cadence even when many Pylons are online.
         wallet_snapshot: None,
         wallet_error: None,
+    }
+}
+
+async fn dispatch_outcome_from_send_future<F, E>(
+    plan: TreasuryDispatchPlan,
+    send_timeout_ms: u64,
+    send_future: F,
+) -> TreasuryDispatchOutcome
+where
+    F: Future<Output = std::result::Result<String, E>>,
+    E: std::fmt::Display,
+{
+    match tokio::time::timeout(Duration::from_millis(send_timeout_ms), send_future).await {
+        Ok(Ok(payment_id)) => TreasuryDispatchOutcome::Dispatched {
+            payout_key: plan.payout_key,
+            payment_id,
+        },
+        Ok(Err(error)) => TreasuryDispatchOutcome::Failed {
+            payout_key: plan.payout_key,
+            reason: error.to_string(),
+        },
+        Err(_) => TreasuryDispatchOutcome::Failed {
+            payout_key: plan.payout_key,
+            reason: format!("wallet_send_timeout:{send_timeout_ms}"),
+        },
     }
 }
 
@@ -6641,6 +6665,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn dispatch_result_timeout_stays_bounded_when_payout_interval_increases() {
+        let mut config = test_treasury_config();
+        config.payout_interval_seconds = 600;
+        config.wallet_status_refresh_seconds = 30;
+
+        assert_eq!(
+            config.dispatch_result_timeout_ms(config.payout_interval_ms()),
+            60_000
+        );
+    }
+
     #[tokio::test]
     async fn funding_and_dispatch_hooks_cover_happy_path() {
         let _lock = treasury_test_hook_lock().lock().expect("guard");
@@ -6723,6 +6759,29 @@ mod tests {
 
         set_test_wallet_send_hook(None);
         set_test_wallet_snapshot_hook(None);
+    }
+
+    #[tokio::test]
+    async fn dispatch_send_timeout_returns_failed_outcome() {
+        let outcome = super::dispatch_outcome_from_send_future(
+            super::TreasuryDispatchPlan {
+                payout_key: "window-a:pubkey-a".to_string(),
+                payment_request: "spark:alice".to_string(),
+                amount_sats: 120,
+            },
+            5,
+            async {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                Ok::<_, anyhow::Error>("payment-send-001".to_string())
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            outcome,
+            TreasuryDispatchOutcome::Failed { ref reason, .. }
+                if reason == "wallet_send_timeout:5"
+        ));
     }
 
     #[test]
