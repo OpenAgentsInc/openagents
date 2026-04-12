@@ -198,9 +198,13 @@ manifest-bound child process, retain per-attempt stdout and stderr logs, watch
 heartbeat files under the assigned run root, refuse conflicting assignments,
 persist exit state and machine-readable failure receipts, and rotate preserved
 attempt history across drain and restart. That foundation is intentionally
-internal for now. The later roadmap items still need to wire it into live
-`Nexus` coordination, operator/admin control surfaces, and published training
-status.
+internal for now, but it is no longer isolated from the live coordinator path.
+When `pylon serve` is online, the retained training state now also drives an
+automatic `Nexus` intake pass: `Pylon` admits the node, claims one compatible
+lease, acknowledges the assignment, and persists the leased window state into
+`training/state/runtime-state.json` without requiring an operator-crafted
+command. The next roadmap items still need to translate that accepted lease
+into the exact `psionic-train` manifest and automatic launch path.
 
 `Pylon` now also has the first training-coordination HTTP client in
 `apps/pylon/src/lib.rs`. It wraps the existing kernel training-policy and
@@ -209,7 +213,10 @@ lane for node admission, run lease, heartbeat, assignment ack, drain notice,
 failure notice, window progress, and checkpoint publication. The client keeps
 the `Nexus` bearer token env-only through
 `OPENAGENTS_PYLON_TRAINING_NEXUS_BEARER_TOKEN`; it does not persist that secret
-into `PylonConfig` or the retained runtime-state store.
+into `PylonConfig` or the retained runtime-state store. `pylon serve` now calls
+that same client automatically on a short interval whenever the provider is in
+`online` mode, so training assignment discovery and acceptance use the existing
+retained Pylon process instead of a second launcher or a manual operator loop.
 
 `Pylon` now also carries the first retained training artifact courier and
 checkpoint-serving foundation. `apps/pylon/src/lib.rs` can now:
@@ -279,15 +286,16 @@ staying buried in `state/runtime-state.json` only:
 
 - `pylon training status [--json]`
   - renders the retained training operator report directly: current run,
-    active window, current runtime state, last checkpoint pointer, validator
+    active window, current runtime state, any retained leased assignment that
+    has been accepted but not launched yet, last checkpoint pointer, validator
     queue, retained capability tier, retained TRN publication pointers, recent
     closeouts, and recent refusals or failures
 - `pylon status`
   - now appends a concise training summary to the top-level provider status,
-    including the training headline (`active`, `blocked`, `ready`, or
-    `inactive`), the retained capability tier, the active run/window when
-    present, the last checkpoint ref, validator-queue depth, and the most
-    recent retained training issue
+    including the training headline (`active`, `leased`, `blocked`, `ready`,
+    or `inactive`), the retained capability tier, the active or leased
+    run/window when present, the last checkpoint ref, validator-queue depth,
+    and the most recent retained training issue
 - `pylon doctor`
   - now includes a dedicated `training` block covering runtime-surface
     discovery, contributor readiness, retained capability tier,
