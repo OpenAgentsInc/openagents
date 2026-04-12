@@ -81,7 +81,10 @@ use openagents_kernel_core::liquidity::{
     Envelope, EnvelopeStatus, Quote, QuoteStatus, ReservePartition, ReservePartitionStatus,
     RoutePlan, RoutePlanStatus, SettlementIntent, SettlementIntentStatus,
 };
-use openagents_kernel_core::pylon_training::pylon_training_hard_gate_reason;
+use openagents_kernel_core::pylon_training::{
+    PylonTrainingArtifactResolverResponse, pylon_training_hard_gate_reason,
+    pylon_training_resolve_artifact_id,
+};
 use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, Receipt, ReceiptBuilder, ReceiptHints,
     ReceiptRef, TraceContext,
@@ -2961,6 +2964,13 @@ impl KernelState {
                 closeout_ref_family: metadata.closeout_ref_family,
             },
         })
+    }
+
+    pub fn resolve_compute_training_artifact(
+        &self,
+        artifact_id: &str,
+    ) -> Result<PylonTrainingArtifactResolverResponse, String> {
+        pylon_training_resolve_artifact_id(artifact_id)
     }
 
     pub fn list_compute_evaluation_runs(

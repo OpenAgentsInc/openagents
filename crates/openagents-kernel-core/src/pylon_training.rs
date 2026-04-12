@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
@@ -7,9 +8,14 @@ use serde_json::{Map, Value, json};
 use crate::{compute::ComputeAdapterDatasetSlice, ids::sha256_prefixed_bytes};
 
 pub const PYLON_TRAINING_RUN_MANIFEST_V1: &str = "openagents.pylon_training_run_manifest.v1";
+pub const PYLON_TRAINING_ARTIFACT_RESOLVER_SCHEMA_V1: &str =
+    "openagents.pylon_training_artifact_resolver.v1";
+pub const PYLON_TRAINING_ARTIFACT_ID_PREFIX_V1: &str = "oa.train_artifact.v1";
+pub const PYLON_TRAINING_ARTIFACT_DIGEST_ALGORITHM: &str = "sha256";
 pub const PYLON_TRAINING_EXECUTION_BACKEND_PSIONIC_TRAIN: &str = "psionic_train";
 pub const PYLON_TRAINING_GCS_CREDENTIAL_SOURCE: &str = "google_application_default_credentials";
 pub const PYLON_TRAINING_TRN_ASSIGNMENT_RECEIPT_KIND: u32 = 39_511;
+pub const PYLON_TRAINING_TRN_ARTIFACT_LOCATOR_KIND: u32 = 39_520;
 pub const PYLON_TRAINING_MVP_SETTLEMENT_TRIGGER: &str = "accepted_sealed_window";
 pub const PYLON_TRAINING_CUDA_ENVIRONMENT_REF: &str = "env.openagents.cuda.train";
 pub const PYLON_TRAINING_APPLE_ENVIRONMENT_REF: &str =
@@ -260,6 +266,211 @@ pub enum PylonTrainingArtifactBundleKind {
     ValidatorVerdict { challenge_id: String },
     SealedWindow,
     ScoreSnapshot,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactClass {
+    Config,
+    Checkpoint,
+    Weights,
+    Optimizer,
+    LocalUpdate,
+    Aggregate,
+    Eval,
+    Proof,
+    Score,
+}
+
+impl PylonTrainingArtifactClass {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Config => "config",
+            Self::Checkpoint => "checkpoint",
+            Self::Weights => "weights",
+            Self::Optimizer => "optimizer",
+            Self::LocalUpdate => "local_update",
+            Self::Aggregate => "aggregate",
+            Self::Eval => "eval",
+            Self::Proof => "proof",
+            Self::Score => "score",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "config" => Some(Self::Config),
+            "checkpoint" => Some(Self::Checkpoint),
+            "weights" => Some(Self::Weights),
+            "optimizer" => Some(Self::Optimizer),
+            "local_update" => Some(Self::LocalUpdate),
+            "aggregate" => Some(Self::Aggregate),
+            "eval" => Some(Self::Eval),
+            "proof" => Some(Self::Proof),
+            "score" => Some(Self::Score),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactKind {
+    RunManifest,
+    LatestCheckpointPointer,
+    CheckpointManifest,
+    LocalUpdate,
+    ProofBundle,
+    ValidatorVerdict,
+    SealedWindow,
+    ScoreSnapshot,
+}
+
+impl PylonTrainingArtifactKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::RunManifest => "run_manifest",
+            Self::LatestCheckpointPointer => "latest_checkpoint_pointer",
+            Self::CheckpointManifest => "checkpoint_manifest",
+            Self::LocalUpdate => "local_update",
+            Self::ProofBundle => "proof_bundle",
+            Self::ValidatorVerdict => "validator_verdict",
+            Self::SealedWindow => "sealed_window",
+            Self::ScoreSnapshot => "score_snapshot",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "run_manifest" => Some(Self::RunManifest),
+            "latest_checkpoint_pointer" => Some(Self::LatestCheckpointPointer),
+            "checkpoint_manifest" => Some(Self::CheckpointManifest),
+            "local_update" => Some(Self::LocalUpdate),
+            "proof_bundle" => Some(Self::ProofBundle),
+            "validator_verdict" => Some(Self::ValidatorVerdict),
+            "sealed_window" => Some(Self::SealedWindow),
+            "score_snapshot" => Some(Self::ScoreSnapshot),
+            _ => None,
+        }
+    }
+
+    pub const fn artifact_class(self) -> PylonTrainingArtifactClass {
+        match self {
+            Self::RunManifest => PylonTrainingArtifactClass::Config,
+            Self::LatestCheckpointPointer | Self::CheckpointManifest => {
+                PylonTrainingArtifactClass::Checkpoint
+            }
+            Self::LocalUpdate => PylonTrainingArtifactClass::LocalUpdate,
+            Self::ProofBundle | Self::SealedWindow => PylonTrainingArtifactClass::Proof,
+            Self::ValidatorVerdict => PylonTrainingArtifactClass::Eval,
+            Self::ScoreSnapshot => PylonTrainingArtifactClass::Score,
+        }
+    }
+
+    pub const fn retention_class(self) -> PylonTrainingArtifactRetentionClass {
+        match self {
+            Self::RunManifest => PylonTrainingArtifactRetentionClass::EphemeralTransport,
+            Self::LatestCheckpointPointer => {
+                PylonTrainingArtifactRetentionClass::PublicVerification
+            }
+            Self::CheckpointManifest => PylonTrainingArtifactRetentionClass::AcceptedAuthority,
+            Self::LocalUpdate => PylonTrainingArtifactRetentionClass::PrivateStaging,
+            Self::ProofBundle
+            | Self::ValidatorVerdict
+            | Self::SealedWindow
+            | Self::ScoreSnapshot => PylonTrainingArtifactRetentionClass::PublicVerification,
+        }
+    }
+
+    pub const fn mirror_policy(self) -> PylonTrainingArtifactMirrorPolicy {
+        match self {
+            Self::RunManifest | Self::CheckpointManifest | Self::LocalUpdate => {
+                PylonTrainingArtifactMirrorPolicy::Never
+            }
+            Self::LatestCheckpointPointer
+            | Self::ProofBundle
+            | Self::ValidatorVerdict
+            | Self::SealedWindow
+            | Self::ScoreSnapshot => PylonTrainingArtifactMirrorPolicy::Allowlisted,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactCanonicalStore {
+    GoogleCloudStorage,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactRetentionClass {
+    PrivateStaging,
+    AcceptedAuthority,
+    PublicVerification,
+    EphemeralTransport,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactMirrorPolicy {
+    Never,
+    Allowlisted,
+    Required,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactStorageState {
+    LocalMaterialized,
+    UploadInitiated,
+    UploadCompleteUnverified,
+    DigestVerified,
+    ResolverRegistered,
+    LocatorPublished,
+    Accepted,
+    GarbageCollectable,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingArtifactScope {
+    pub network_id: String,
+    pub run_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub challenge_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub optimizer_step: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingArtifactResolverResponse {
+    pub schema_version: String,
+    pub artifact_id: String,
+    pub artifact_kind: PylonTrainingArtifactKind,
+    pub artifact_class: PylonTrainingArtifactClass,
+    pub digest_algorithm: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_state: Option<PylonTrainingArtifactStorageState>,
+    pub canonical_store: PylonTrainingArtifactCanonicalStore,
+    pub retention_class: PylonTrainingArtifactRetentionClass,
+    pub mirror_policy: PylonTrainingArtifactMirrorPolicy,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub public_mirror_urls: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_read_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_write_url: Option<String>,
+    pub relative_object_path: String,
+    pub locator_kind: u32,
+    pub scope: PylonTrainingArtifactScope,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -860,6 +1071,356 @@ impl PylonTrainingArtifactLayout {
     pub fn score_snapshot_path(&self) -> String {
         format!("{}/score_snapshot.json", self.window_root())
     }
+}
+
+fn require_artifact_scope_component(value: &str, field: &str) -> ContractResult<()> {
+    require_non_empty(value, field)?;
+    if value.contains('~') {
+        return Err(format!("pylon_training_artifact_{field}_invalid"));
+    }
+    Ok(())
+}
+
+fn push_artifact_scope_segment(
+    segments: &mut Vec<String>,
+    key: &str,
+    value: &Option<String>,
+) -> ContractResult<()> {
+    if let Some(value) = value.as_ref() {
+        require_artifact_scope_component(value.as_str(), key)?;
+        segments.push(key.to_string());
+        segments.push(value.clone());
+    }
+    Ok(())
+}
+
+impl PylonTrainingArtifactScope {
+    fn validate_for_kind(&self, kind: PylonTrainingArtifactKind) -> ContractResult<()> {
+        require_artifact_scope_component(self.network_id.as_str(), "network_id")?;
+        require_artifact_scope_component(self.run_id.as_str(), "run_id")?;
+        if matches!(
+            kind,
+            PylonTrainingArtifactKind::LocalUpdate
+                | PylonTrainingArtifactKind::ProofBundle
+                | PylonTrainingArtifactKind::ValidatorVerdict
+                | PylonTrainingArtifactKind::SealedWindow
+                | PylonTrainingArtifactKind::ScoreSnapshot
+        ) {
+            require_artifact_scope_component(
+                self.window_id
+                    .as_deref()
+                    .ok_or_else(|| "pylon_training_artifact_window_id_missing".to_string())?,
+                "window_id",
+            )?;
+        }
+        if matches!(
+            kind,
+            PylonTrainingArtifactKind::LocalUpdate | PylonTrainingArtifactKind::ProofBundle
+        ) {
+            require_artifact_scope_component(
+                self.assignment_id
+                    .as_deref()
+                    .ok_or_else(|| "pylon_training_artifact_assignment_id_missing".to_string())?,
+                "assignment_id",
+            )?;
+        }
+        if kind == PylonTrainingArtifactKind::ValidatorVerdict {
+            require_artifact_scope_component(
+                self.challenge_id
+                    .as_deref()
+                    .ok_or_else(|| "pylon_training_artifact_challenge_id_missing".to_string())?,
+                "challenge_id",
+            )?;
+        }
+        if kind == PylonTrainingArtifactKind::CheckpointManifest && self.optimizer_step.is_none() {
+            return Err("pylon_training_artifact_optimizer_step_missing".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl PylonTrainingArtifactResolverResponse {
+    pub fn new(
+        kind: PylonTrainingArtifactKind,
+        scope: PylonTrainingArtifactScope,
+    ) -> ContractResult<Self> {
+        scope.validate_for_kind(kind)?;
+        let artifact_id = pylon_training_artifact_id(kind, &scope)?;
+        let relative_object_path = pylon_training_artifact_relative_path_from_scope(kind, &scope)?;
+        Ok(Self {
+            schema_version: PYLON_TRAINING_ARTIFACT_RESOLVER_SCHEMA_V1.to_string(),
+            artifact_id,
+            artifact_kind: kind,
+            artifact_class: kind.artifact_class(),
+            digest_algorithm: PYLON_TRAINING_ARTIFACT_DIGEST_ALGORITHM.to_string(),
+            digest: None,
+            size_bytes: None,
+            storage_state: None,
+            canonical_store: PylonTrainingArtifactCanonicalStore::GoogleCloudStorage,
+            retention_class: kind.retention_class(),
+            mirror_policy: kind.mirror_policy(),
+            public_mirror_urls: Vec::new(),
+            signed_read_url: None,
+            signed_write_url: None,
+            relative_object_path,
+            locator_kind: PYLON_TRAINING_TRN_ARTIFACT_LOCATOR_KIND,
+            scope,
+        })
+    }
+}
+
+pub fn pylon_training_artifact_id(
+    kind: PylonTrainingArtifactKind,
+    scope: &PylonTrainingArtifactScope,
+) -> ContractResult<String> {
+    scope.validate_for_kind(kind)?;
+    let mut segments = vec![
+        PYLON_TRAINING_ARTIFACT_ID_PREFIX_V1.to_string(),
+        "kind".to_string(),
+        kind.label().to_string(),
+        "network".to_string(),
+        scope.network_id.clone(),
+        "run".to_string(),
+        scope.run_id.clone(),
+    ];
+    push_artifact_scope_segment(&mut segments, "window", &scope.window_id)?;
+    push_artifact_scope_segment(&mut segments, "assignment", &scope.assignment_id)?;
+    push_artifact_scope_segment(&mut segments, "challenge", &scope.challenge_id)?;
+    if let Some(optimizer_step) = scope.optimizer_step {
+        segments.push("optimizer_step".to_string());
+        segments.push(optimizer_step.to_string());
+    }
+    Ok(segments.join("~"))
+}
+
+pub fn pylon_training_artifact_relative_path_from_scope(
+    kind: PylonTrainingArtifactKind,
+    scope: &PylonTrainingArtifactScope,
+) -> ContractResult<String> {
+    scope.validate_for_kind(kind)?;
+    Ok(match kind {
+        PylonTrainingArtifactKind::RunManifest => "manifests/run_manifest.json".to_string(),
+        PylonTrainingArtifactKind::LatestCheckpointPointer => {
+            "checkpoints/latest_pointer.json".to_string()
+        }
+        PylonTrainingArtifactKind::CheckpointManifest => format!(
+            "checkpoints/step-{}/checkpoint_manifest.json",
+            scope.optimizer_step.unwrap_or_default()
+        ),
+        PylonTrainingArtifactKind::LocalUpdate => format!(
+            "windows/{}/contributions/{}/adapter_delta_bundle.json",
+            scope.window_id.as_deref().unwrap_or_default(),
+            scope.assignment_id.as_deref().unwrap_or_default()
+        ),
+        PylonTrainingArtifactKind::ProofBundle => format!(
+            "windows/{}/contributions/{}/proof_bundle.json",
+            scope.window_id.as_deref().unwrap_or_default(),
+            scope.assignment_id.as_deref().unwrap_or_default()
+        ),
+        PylonTrainingArtifactKind::ValidatorVerdict => format!(
+            "windows/{}/validators/{}/verdict.json",
+            scope.window_id.as_deref().unwrap_or_default(),
+            scope.challenge_id.as_deref().unwrap_or_default()
+        ),
+        PylonTrainingArtifactKind::SealedWindow => format!(
+            "windows/{}/sealed_window_bundle.json",
+            scope.window_id.as_deref().unwrap_or_default()
+        ),
+        PylonTrainingArtifactKind::ScoreSnapshot => format!(
+            "windows/{}/score_snapshot.json",
+            scope.window_id.as_deref().unwrap_or_default()
+        ),
+    })
+}
+
+pub fn pylon_training_artifact_relative_path(
+    layout: &PylonTrainingArtifactLayout,
+    object_uri: &str,
+) -> ContractResult<PathBuf> {
+    let run_root_prefix = format!("{}/", layout.run_root());
+    let relative = object_uri
+        .strip_prefix(run_root_prefix.as_str())
+        .ok_or_else(|| format!("pylon_training_artifact_outside_run_root:{object_uri}"))?;
+    let mut path = PathBuf::new();
+    for component in Path::new(relative).components() {
+        match component {
+            std::path::Component::Normal(value) => path.push(value),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(format!(
+                    "pylon_training_artifact_path_traversal_invalid:{object_uri}"
+                ));
+            }
+        }
+    }
+    Ok(path)
+}
+
+fn pylon_training_artifact_scope_from_relative_path(
+    layout: &PylonTrainingArtifactLayout,
+    relative_path: &Path,
+) -> ContractResult<(PylonTrainingArtifactKind, PylonTrainingArtifactScope)> {
+    let parts = relative_path
+        .iter()
+        .map(|component| component.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    let scope = |window_id: Option<String>,
+                 assignment_id: Option<String>,
+                 challenge_id: Option<String>,
+                 optimizer_step: Option<u64>| PylonTrainingArtifactScope {
+        network_id: layout.network_id.clone(),
+        run_id: layout.run_id.clone(),
+        window_id,
+        assignment_id,
+        challenge_id,
+        optimizer_step,
+    };
+    match parts.as_slice() {
+        [manifests, file] if manifests == "manifests" && file == "run_manifest.json" => Ok((
+            PylonTrainingArtifactKind::RunManifest,
+            scope(None, None, None, None),
+        )),
+        [checkpoints, file] if checkpoints == "checkpoints" && file == "latest_pointer.json" => {
+            Ok((
+                PylonTrainingArtifactKind::LatestCheckpointPointer,
+                scope(None, None, None, None),
+            ))
+        }
+        [checkpoints, step_dir, file]
+            if checkpoints == "checkpoints" && file == "checkpoint_manifest.json" =>
+        {
+            let optimizer_step = step_dir
+                .strip_prefix("step-")
+                .ok_or_else(|| "pylon_training_artifact_step_dir_invalid".to_string())?
+                .parse::<u64>()
+                .map_err(|error| format!("pylon_training_artifact_step_parse_failed:{error}"))?;
+            Ok((
+                PylonTrainingArtifactKind::CheckpointManifest,
+                scope(None, None, None, Some(optimizer_step)),
+            ))
+        }
+        [windows, window_id, contributions, assignment_id, file]
+            if windows == "windows"
+                && contributions == "contributions"
+                && file == "adapter_delta_bundle.json" =>
+        {
+            Ok((
+                PylonTrainingArtifactKind::LocalUpdate,
+                scope(
+                    Some(window_id.clone()),
+                    Some(assignment_id.clone()),
+                    None,
+                    None,
+                ),
+            ))
+        }
+        [windows, window_id, contributions, assignment_id, file]
+            if windows == "windows"
+                && contributions == "contributions"
+                && file == "proof_bundle.json" =>
+        {
+            Ok((
+                PylonTrainingArtifactKind::ProofBundle,
+                scope(
+                    Some(window_id.clone()),
+                    Some(assignment_id.clone()),
+                    None,
+                    None,
+                ),
+            ))
+        }
+        [windows, window_id, validators, challenge_id, file]
+            if windows == "windows" && validators == "validators" && file == "verdict.json" =>
+        {
+            Ok((
+                PylonTrainingArtifactKind::ValidatorVerdict,
+                scope(
+                    Some(window_id.clone()),
+                    None,
+                    Some(challenge_id.clone()),
+                    None,
+                ),
+            ))
+        }
+        [windows, window_id, file]
+            if windows == "windows" && file == "sealed_window_bundle.json" =>
+        {
+            Ok((
+                PylonTrainingArtifactKind::SealedWindow,
+                scope(Some(window_id.clone()), None, None, None),
+            ))
+        }
+        [windows, window_id, file] if windows == "windows" && file == "score_snapshot.json" => {
+            Ok((
+                PylonTrainingArtifactKind::ScoreSnapshot,
+                scope(Some(window_id.clone()), None, None, None),
+            ))
+        }
+        _ => Err(format!(
+            "pylon_training_artifact_relative_path_unrecognized:{}",
+            relative_path.display()
+        )),
+    }
+}
+
+pub fn pylon_training_resolve_artifact_id(
+    artifact_id: &str,
+) -> ContractResult<PylonTrainingArtifactResolverResponse> {
+    let mut parts = artifact_id.split('~');
+    let Some(prefix) = parts.next() else {
+        return Err("pylon_training_artifact_id_missing".to_string());
+    };
+    if prefix != PYLON_TRAINING_ARTIFACT_ID_PREFIX_V1 {
+        return Err("pylon_training_artifact_id_prefix_invalid".to_string());
+    }
+    let remainder = parts.collect::<Vec<_>>();
+    if remainder.len() % 2 != 0 {
+        return Err("pylon_training_artifact_id_segments_invalid".to_string());
+    }
+    let mut values = BTreeMap::<String, String>::new();
+    for chunk in remainder.chunks_exact(2) {
+        values.insert(chunk[0].to_string(), chunk[1].to_string());
+    }
+    let kind = PylonTrainingArtifactKind::parse(
+        values
+            .get("kind")
+            .ok_or_else(|| "pylon_training_artifact_kind_missing".to_string())?,
+    )
+    .ok_or_else(|| "pylon_training_artifact_kind_invalid".to_string())?;
+    let scope = PylonTrainingArtifactScope {
+        network_id: values
+            .get("network")
+            .cloned()
+            .ok_or_else(|| "pylon_training_artifact_network_missing".to_string())?,
+        run_id: values
+            .get("run")
+            .cloned()
+            .ok_or_else(|| "pylon_training_artifact_run_missing".to_string())?,
+        window_id: values.get("window").cloned(),
+        assignment_id: values.get("assignment").cloned(),
+        challenge_id: values.get("challenge").cloned(),
+        optimizer_step: values
+            .get("optimizer_step")
+            .map(|value| {
+                value.parse::<u64>().map_err(|error| {
+                    format!("pylon_training_artifact_optimizer_step_invalid:{error}")
+                })
+            })
+            .transpose()?,
+    };
+    PylonTrainingArtifactResolverResponse::new(kind, scope)
+}
+
+pub fn pylon_training_resolve_artifact_for_uri(
+    layout: &PylonTrainingArtifactLayout,
+    object_uri: &str,
+) -> ContractResult<PylonTrainingArtifactResolverResponse> {
+    let relative_path = pylon_training_artifact_relative_path(layout, object_uri)?;
+    let (kind, scope) =
+        pylon_training_artifact_scope_from_relative_path(layout, relative_path.as_path())?;
+    PylonTrainingArtifactResolverResponse::new(kind, scope)
 }
 
 impl PylonTrainingArtifacts {
@@ -2109,6 +2670,81 @@ mod tests {
             PylonTrainingArtifactBundleKind::ScoreSnapshot.bundle_kind_label(),
             "score_snapshot"
         );
+    }
+
+    #[test]
+    fn artifact_resolver_roundtrips_launch_critical_object_paths() {
+        let manifest = worker_manifest();
+        let layout = PylonTrainingArtifactLayout::from_manifest(&manifest).expect("layout");
+        let cases = vec![
+            (
+                layout.run_manifest_path(),
+                PylonTrainingArtifactKind::RunManifest,
+                PylonTrainingArtifactClass::Config,
+                "manifests/run_manifest.json",
+            ),
+            (
+                layout.latest_pointer_path(),
+                PylonTrainingArtifactKind::LatestCheckpointPointer,
+                PylonTrainingArtifactClass::Checkpoint,
+                "checkpoints/latest_pointer.json",
+            ),
+            (
+                layout.checkpoint_manifest_path(42),
+                PylonTrainingArtifactKind::CheckpointManifest,
+                PylonTrainingArtifactClass::Checkpoint,
+                "checkpoints/step-42/checkpoint_manifest.json",
+            ),
+            (
+                layout.contribution_bundle_path("assign.node01.window000123"),
+                PylonTrainingArtifactKind::LocalUpdate,
+                PylonTrainingArtifactClass::LocalUpdate,
+                "windows/window.000123/contributions/assign.node01.window000123/adapter_delta_bundle.json",
+            ),
+            (
+                layout.contribution_proof_bundle_path("assign.node01.window000123"),
+                PylonTrainingArtifactKind::ProofBundle,
+                PylonTrainingArtifactClass::Proof,
+                "windows/window.000123/contributions/assign.node01.window000123/proof_bundle.json",
+            ),
+            (
+                layout.validator_verdict_path("challenge.alpha"),
+                PylonTrainingArtifactKind::ValidatorVerdict,
+                PylonTrainingArtifactClass::Eval,
+                "windows/window.000123/validators/challenge.alpha/verdict.json",
+            ),
+            (
+                layout.sealed_window_bundle_path(),
+                PylonTrainingArtifactKind::SealedWindow,
+                PylonTrainingArtifactClass::Proof,
+                "windows/window.000123/sealed_window_bundle.json",
+            ),
+            (
+                layout.score_snapshot_path(),
+                PylonTrainingArtifactKind::ScoreSnapshot,
+                PylonTrainingArtifactClass::Score,
+                "windows/window.000123/score_snapshot.json",
+            ),
+        ];
+
+        for (object_uri, expected_kind, expected_class, expected_relative_path) in cases {
+            let response = pylon_training_resolve_artifact_for_uri(&layout, object_uri.as_str())
+                .expect("resolver response for object uri");
+            assert_eq!(response.artifact_kind, expected_kind);
+            assert_eq!(response.artifact_class, expected_class);
+            assert_eq!(response.relative_object_path, expected_relative_path);
+            assert_eq!(
+                response.canonical_store,
+                PylonTrainingArtifactCanonicalStore::GoogleCloudStorage
+            );
+            assert_eq!(
+                response.digest_algorithm,
+                PYLON_TRAINING_ARTIFACT_DIGEST_ALGORITHM
+            );
+            let roundtrip = pylon_training_resolve_artifact_id(response.artifact_id.as_str())
+                .expect("artifact id roundtrip");
+            assert_eq!(roundtrip, response);
+        }
     }
 
     #[test]

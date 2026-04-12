@@ -807,7 +807,7 @@ mod tests {
             assignment_ack.reason_codes,
             vec!["dataset_slice_assigned".to_string()]
         );
-        assert_eq!(assignment_ack.classes, vec!["delta".to_string()]);
+        assert_eq!(assignment_ack.classes, vec!["local_update".to_string()]);
         assert_eq!(assignment_ack.actors.len(), 2);
         let actor_markers = assignment_ack
             .actors
