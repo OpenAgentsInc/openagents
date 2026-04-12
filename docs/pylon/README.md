@@ -7,9 +7,22 @@ Current distributed-training planning lives here too:
 - `docs/pylon/2026-04-09-pylon-distributed-training-reference-audit.md`
 - `docs/pylon/distributed-training-mvp-roadmap.md`
 - `docs/pylon/distributed-training-phase-tracker.md`
+- `docs/pylon/distributed-training-launch-status.md`
 - `docs/pylon/PYLON_DISTRIBUTED_TRAINING_REHEARSAL_MATRIX.md`
 - `docs/pylon/PYLON_DISTRIBUTED_TRAINING_APPLE_REHEARSAL_MATRIX.md`
 - `docs/pylon/distributed-training-non-blockers.md`
+
+The matching prior-art and terminology review lives outside `docs/pylon/`:
+
+- `docs/training/distributed-llm-training-runs-diloco-distro-demo-sparseloco-audit.md`
+
+Use those docs for different questions:
+
+- roadmap and phase tracker: what the admitted-node MVP implementation closed
+- launch status: what is still needed for the stronger public launch story to
+  be literally true
+- training audit: how DiLoCo, DisTrO/DeMo, SparseLoCo, Prime, Templar, and
+  other public systems actually relate
 
 The frozen Phase 0 machine-readable contract for that roadmap now lives in:
 

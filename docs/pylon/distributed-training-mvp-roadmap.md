@@ -3,6 +3,18 @@
 Status: openagents cross-repo implementation roadmap  
 Scope date: 2026-04-09
 
+Current reading note as of `2026-04-11`:
+
+- this file is the frozen admitted-node distributed-training MVP architecture
+  and implementation roadmap
+- `docs/pylon/distributed-training-phase-tracker.md` records closure against
+  that roadmap
+- `docs/pylon/distributed-training-launch-status.md` records the gap between
+  that closed roadmap and the stronger public launch story now described in
+  `docs/transcripts/222.md`
+- `docs/training/distributed-llm-training-runs-diloco-distro-demo-sparseloco-audit.md`
+  is the prior-art and terminology document, not the MVP status document
+
 Distributed training across many machines has two different problems that often
 get flattened into one "decentralization" label. One problem is runtime
 execution: launching workers, pinning environments, moving checkpoints,
