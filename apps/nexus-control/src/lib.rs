@@ -22,7 +22,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -30,7 +30,9 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use base64::Engine as _;
 use bip39::{Language, Mnemonic};
+use chrono::{TimeZone, Utc};
 use nostr::{
     Event as NostrEvent, EventTemplate, NostrIdentity, finalize_event, load_identity_from_path,
 };
@@ -79,10 +81,11 @@ use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
     PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
     PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactResolverResponse,
+    PylonTrainingArtifactSignedAccessRequest, PylonTrainingArtifactSignedAccessResponse,
     PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
     PylonTrainingRefusalCode, PylonTrainingReputationLabel, PylonTrainingReputationNamespace,
-    PylonTrainingSchedulerEffect, pylon_training_assignment_id, pylon_training_assignment_seed,
-    pylon_training_hard_gate_reason, pylon_training_lease_id,
+    PylonTrainingSchedulerEffect, pylon_training_artifact_object_uri, pylon_training_assignment_id,
+    pylon_training_assignment_seed, pylon_training_hard_gate_reason, pylon_training_lease_id,
     pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
     reputation_projection_for_label, resolve_aggregate_verdicts,
     validate_redacted_retained_content, validator_sample_assignments,
@@ -97,8 +100,12 @@ use openagents_provider_substrate::{
 };
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
+use reqwest::Url;
+use ring::rand::SystemRandom;
+use ring::signature::{self, RsaKeyPair};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
@@ -163,6 +170,15 @@ const ENV_STARTER_DEMAND_START_CONFIRM_SECONDS: &str =
 const ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS";
 const ENV_PROVIDER_PRESENCE_STALE_AFTER_MS: &str = "NEXUS_CONTROL_PROVIDER_PRESENCE_STALE_AFTER_MS";
+const ENV_TRAINING_GCS_BUCKET_URI: &str = "NEXUS_CONTROL_TRAINING_GCS_BUCKET_URI";
+const ENV_TRAINING_GCS_ENDPOINT: &str = "NEXUS_CONTROL_TRAINING_GCS_ENDPOINT";
+const ENV_TRAINING_GCS_SIGNED_URL_TTL_SECONDS: &str =
+    "NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_TTL_SECONDS";
+const ENV_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS: &str =
+    "NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS";
+const ENV_TRAINING_GCS_SIGNING_CREDENTIALS_PATH: &str =
+    "NEXUS_CONTROL_TRAINING_GCS_SIGNING_CREDENTIALS_PATH";
+const ENV_GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
 
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42020";
 const DEFAULT_SESSION_TTL_SECONDS: u64 = 86_400;
@@ -181,6 +197,9 @@ const DEFAULT_STARTER_DEMAND_START_CONFIRM_SECONDS: u64 = 15;
 const DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 120_000;
+const DEFAULT_TRAINING_GCS_ENDPOINT: &str = "https://storage.googleapis.com";
+const DEFAULT_TRAINING_GCS_SIGNED_URL_TTL_SECONDS: u64 = 900;
+const DEFAULT_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS: u64 = 3_600;
 const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
 const TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS: u64 = 1_000;
 #[cfg(test)]
@@ -188,6 +207,21 @@ const TREASURY_PUBLIC_STATS_LATENCY_SLO_MS: u64 = 250;
 const PROVIDER_PRESENCE_RETENTION_WINDOW_MS: u64 = 86_400_000;
 const PUBLIC_RECENT_PYLON_LIMIT: usize = 8;
 const MAX_PROVIDER_DIAGNOSTIC_SUMMARIES: usize = 16;
+
+#[derive(Debug, Clone)]
+pub struct TrainingArtifactSignedUrlConfig {
+    pub bucket_uri: String,
+    pub endpoint: String,
+    pub credentials_path: PathBuf,
+    pub default_ttl_seconds: u64,
+    pub max_ttl_seconds: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GoogleServiceAccountCredential {
+    client_email: String,
+    private_key: String,
+}
 const PUBLIC_RECENT_PYLON_DIAGNOSTIC_LIMIT: usize = 24;
 const DEFAULT_SYNC_STREAM_GRANTS: [&str; 2] = [
     "stream.activity_projection.v1",
@@ -228,6 +262,7 @@ pub struct ServiceConfig {
     pub starter_demand_start_confirm_seconds: u64,
     pub starter_demand_heartbeat_timeout_seconds: u64,
     pub provider_presence_stale_after_ms: u64,
+    pub training_artifact_signed_url: Option<TrainingArtifactSignedUrlConfig>,
     pub treasury: TreasuryConfig,
 }
 
@@ -357,6 +392,7 @@ impl ServiceConfig {
             ENV_PROVIDER_PRESENCE_STALE_AFTER_MS,
             DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
         )?;
+        let training_artifact_signed_url = training_artifact_signed_url_config_from_env()?;
         if starter_demand_dispatch_interval_seconds == 0 {
             return Err(format!(
                 "{ENV_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS} must be greater than zero"
@@ -423,9 +459,267 @@ impl ServiceConfig {
             starter_demand_start_confirm_seconds,
             starter_demand_heartbeat_timeout_seconds,
             provider_presence_stale_after_ms,
+            training_artifact_signed_url,
             treasury,
         })
     }
+}
+
+fn training_artifact_signed_url_config_from_env()
+-> Result<Option<TrainingArtifactSignedUrlConfig>, String> {
+    let bucket_uri = std::env::var(ENV_TRAINING_GCS_BUCKET_URI)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let Some(bucket_uri) = bucket_uri else {
+        return Ok(None);
+    };
+    let endpoint = std::env::var(ENV_TRAINING_GCS_ENDPOINT)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_TRAINING_GCS_ENDPOINT.to_string());
+    Url::parse(endpoint.as_str())
+        .map_err(|error| format!("invalid {ENV_TRAINING_GCS_ENDPOINT}: {error}"))?;
+    let default_ttl_seconds = parse_u64_env(
+        ENV_TRAINING_GCS_SIGNED_URL_TTL_SECONDS,
+        DEFAULT_TRAINING_GCS_SIGNED_URL_TTL_SECONDS,
+    )?;
+    let max_ttl_seconds = parse_u64_env(
+        ENV_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS,
+        DEFAULT_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS,
+    )?;
+    if default_ttl_seconds == 0 || max_ttl_seconds == 0 || default_ttl_seconds > max_ttl_seconds {
+        return Err("training artifact signed-url ttl configuration is invalid".to_string());
+    }
+    let credentials_path = std::env::var(ENV_TRAINING_GCS_SIGNING_CREDENTIALS_PATH)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var(ENV_GOOGLE_APPLICATION_CREDENTIALS)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            format!(
+                "{ENV_TRAINING_GCS_SIGNING_CREDENTIALS_PATH} or {ENV_GOOGLE_APPLICATION_CREDENTIALS} must be set when {ENV_TRAINING_GCS_BUCKET_URI} is configured"
+            )
+        })?;
+    Ok(Some(TrainingArtifactSignedUrlConfig {
+        bucket_uri,
+        endpoint,
+        credentials_path,
+        default_ttl_seconds,
+        max_ttl_seconds,
+    }))
+}
+
+fn issue_training_artifact_signed_access(
+    config: &TrainingArtifactSignedUrlConfig,
+    resolver: &PylonTrainingArtifactResolverResponse,
+    request: &PylonTrainingArtifactSignedAccessRequest,
+    issued_at_unix: u64,
+) -> Result<PylonTrainingArtifactSignedAccessResponse, String> {
+    let ttl_seconds =
+        request.effective_ttl_seconds(config.default_ttl_seconds, config.max_ttl_seconds)?;
+    let signed_url = build_google_cloud_storage_signed_url(
+        config,
+        resolver,
+        request,
+        issued_at_unix,
+        ttl_seconds,
+    )?;
+    PylonTrainingArtifactSignedAccessResponse::new(
+        resolver,
+        request,
+        signed_url,
+        issued_at_unix,
+        ttl_seconds,
+    )
+}
+
+fn build_google_cloud_storage_signed_url(
+    config: &TrainingArtifactSignedUrlConfig,
+    resolver: &PylonTrainingArtifactResolverResponse,
+    request: &PylonTrainingArtifactSignedAccessRequest,
+    issued_at_unix: u64,
+    ttl_seconds: u64,
+) -> Result<String, String> {
+    let credentials = load_training_artifact_signing_credentials(&config.credentials_path)?;
+    let object_uri = pylon_training_artifact_object_uri(config.bucket_uri.as_str(), resolver)?;
+    let bucket_name = parse_training_gcs_bucket_name(config.bucket_uri.as_str())?;
+    let object_path = parse_training_gcs_object_path(object_uri.as_str(), bucket_name.as_str())?;
+    let endpoint = Url::parse(config.endpoint.as_str()).map_err(|error| {
+        format!("compute_training_artifact_signed_access_endpoint_invalid:{error}")
+    })?;
+    let host = endpoint.host_str().ok_or_else(|| {
+        "compute_training_artifact_signed_access_endpoint_host_missing".to_string()
+    })?;
+    let authority = endpoint
+        .port()
+        .map_or_else(|| host.to_string(), |port| format!("{host}:{port}"));
+    let endpoint_path = endpoint.path().trim_end_matches('/');
+    let encoded_object_path = percent_encode_path(object_path.as_str());
+    let canonical_uri = if endpoint_path.is_empty() || endpoint_path == "/" {
+        format!("/{bucket_name}/{encoded_object_path}")
+    } else {
+        format!("{endpoint_path}/{bucket_name}/{encoded_object_path}")
+    };
+    let timestamp = Utc
+        .timestamp_opt(issued_at_unix as i64, 0)
+        .single()
+        .ok_or_else(|| "compute_training_artifact_signed_access_time_invalid".to_string())?;
+    let date_stamp = timestamp.format("%Y%m%d").to_string();
+    let goog_date = timestamp.format("%Y%m%dT%H%M%SZ").to_string();
+    let credential_scope = format!("{date_stamp}/auto/storage/goog4_request");
+    let credential = format!("{}/{}", credentials.client_email, credential_scope);
+    let mut query_pairs = vec![
+        (
+            "X-Goog-Algorithm".to_string(),
+            "GOOG4-RSA-SHA256".to_string(),
+        ),
+        ("X-Goog-Credential".to_string(), credential),
+        ("X-Goog-Date".to_string(), goog_date.clone()),
+        ("X-Goog-Expires".to_string(), ttl_seconds.to_string()),
+        ("X-Goog-SignedHeaders".to_string(), "host".to_string()),
+    ];
+    query_pairs.sort();
+    let canonical_query = query_pairs
+        .iter()
+        .map(|(key, value)| {
+            format!(
+                "{}={}",
+                percent_encode_query_component(key.as_str()),
+                percent_encode_query_component(value.as_str())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    let canonical_headers = format!("host:{authority}\n");
+    let method = match request.mode.method() {
+        openagents_kernel_core::pylon_training::PylonTrainingArtifactSignedAccessMethod::Get => {
+            "GET"
+        }
+        openagents_kernel_core::pylon_training::PylonTrainingArtifactSignedAccessMethod::Put => {
+            "PUT"
+        }
+    };
+    let canonical_request = format!(
+        "{method}\n{canonical_uri}\n{canonical_query}\n{canonical_headers}\nhost\nUNSIGNED-PAYLOAD"
+    );
+    let canonical_request_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
+    let string_to_sign =
+        format!("GOOG4-RSA-SHA256\n{goog_date}\n{credential_scope}\n{canonical_request_hash}");
+    let signature =
+        sign_google_storage_string(credentials.private_key.as_str(), string_to_sign.as_bytes())?;
+    Ok(format!(
+        "{}://{}{}?{}&X-Goog-Signature={signature}",
+        endpoint.scheme(),
+        authority,
+        canonical_uri,
+        canonical_query
+    ))
+}
+
+fn load_training_artifact_signing_credentials(
+    path: &PathBuf,
+) -> Result<GoogleServiceAccountCredential, String> {
+    let payload = fs::read_to_string(path).map_err(|error| {
+        format!(
+            "compute_training_artifact_signed_access_credentials_read_failed:{}:{error}",
+            path.display()
+        )
+    })?;
+    let credentials: GoogleServiceAccountCredential = serde_json::from_str(payload.as_str())
+        .map_err(|error| {
+            format!(
+                "compute_training_artifact_signed_access_credentials_invalid:{}:{error}",
+                path.display()
+            )
+        })?;
+    if credentials.client_email.trim().is_empty() || credentials.private_key.trim().is_empty() {
+        return Err(
+            "compute_training_artifact_signed_access_credentials_fields_missing".to_string(),
+        );
+    }
+    Ok(credentials)
+}
+
+fn parse_training_gcs_bucket_name(bucket_uri: &str) -> Result<String, String> {
+    let normalized = bucket_uri.trim().trim_end_matches('/');
+    let bucket_name = normalized
+        .strip_prefix("gs://")
+        .ok_or_else(|| "compute_training_artifact_bucket_uri_invalid".to_string())?;
+    if bucket_name.is_empty() || bucket_name.contains('/') {
+        return Err("compute_training_artifact_bucket_uri_invalid".to_string());
+    }
+    Ok(bucket_name.to_string())
+}
+
+fn parse_training_gcs_object_path(object_uri: &str, bucket_name: &str) -> Result<String, String> {
+    let prefix = format!("gs://{bucket_name}/");
+    let object_path = object_uri
+        .strip_prefix(prefix.as_str())
+        .ok_or_else(|| "compute_training_artifact_object_uri_invalid".to_string())?;
+    if object_path.is_empty() {
+        return Err("compute_training_artifact_object_path_missing".to_string());
+    }
+    Ok(object_path.to_string())
+}
+
+fn sign_google_storage_string(private_key_pem: &str, payload: &[u8]) -> Result<String, String> {
+    let key_der = decode_private_key_der(private_key_pem)?;
+    let key_pair = RsaKeyPair::from_pkcs8(key_der.as_slice())
+        .map_err(|_| "compute_training_artifact_signing_key_invalid".to_string())?;
+    let mut signature_bytes = vec![0_u8; key_pair.public().modulus_len()];
+    key_pair
+        .sign(
+            &signature::RSA_PKCS1_SHA256,
+            &SystemRandom::new(),
+            payload,
+            signature_bytes.as_mut_slice(),
+        )
+        .map_err(|_| "compute_training_artifact_signing_failed".to_string())?;
+    Ok(hex::encode(signature_bytes))
+}
+
+fn decode_private_key_der(private_key_pem: &str) -> Result<Vec<u8>, String> {
+    let payload = private_key_pem
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with("-----"))
+        .collect::<String>();
+    base64::engine::general_purpose::STANDARD
+        .decode(payload.as_bytes())
+        .map_err(|error| format!("compute_training_artifact_signing_key_base64_invalid:{error}"))
+}
+
+fn percent_encode_query_component(value: &str) -> String {
+    percent_encode_bytes(value.as_bytes())
+}
+
+fn percent_encode_path(value: &str) -> String {
+    value
+        .split('/')
+        .map(percent_encode_query_component)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn percent_encode_bytes(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len());
+    for byte in bytes {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                output.push(char::from(*byte));
+            }
+            _ => output.push_str(format!("%{:02X}", byte).as_str()),
+        }
+    }
+    output
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -5456,6 +5750,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
         .route(
             "/v1/kernel/compute/training/artifacts/{artifact_id}",
             get(get_kernel_compute_training_artifact_resolver),
+        )
+        .route(
+            "/v1/kernel/compute/training/artifacts/{artifact_id}/signed-access",
+            post(post_kernel_compute_training_artifact_signed_access),
         )
         .route(
             "/v1/kernel/compute/training/artifact-storage-layout",
@@ -10918,6 +11216,58 @@ async fn get_kernel_compute_training_artifact_resolver(
             error: "invalid_request",
             reason,
         })?;
+    Ok(Json(response))
+}
+
+async fn post_kernel_compute_training_artifact_signed_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(artifact_id): Path<String>,
+    Json(request): Json<PylonTrainingArtifactSignedAccessRequest>,
+) -> Result<Json<PylonTrainingArtifactSignedAccessResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let artifact_id =
+        normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
+    let resolver = {
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .resolve_compute_training_artifact(artifact_id.as_str())
+            .map_err(|reason| ApiError {
+                status: StatusCode::BAD_REQUEST,
+                error: "invalid_request",
+                reason,
+            })?
+    };
+    let config = state
+        .config
+        .training_artifact_signed_url
+        .as_ref()
+        .ok_or(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: "compute_training_artifact_signed_access_unconfigured".to_string(),
+        })?;
+    let issued_at_unix = now_unix_ms() / 1_000;
+    let response =
+        issue_training_artifact_signed_access(config, &resolver, &request, issued_at_unix)
+            .map_err(|reason| ApiError {
+                status: if reason.starts_with("pylon_training_artifact_signed_access_") {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::SERVICE_UNAVAILABLE
+                },
+                error: if reason.starts_with("pylon_training_artifact_signed_access_") {
+                    "invalid_request"
+                } else {
+                    "service_unavailable"
+                },
+                reason,
+            })?;
     Ok(Json(response))
 }
 
@@ -16844,12 +17194,14 @@ fn random_token() -> String {
 
 fn now_unix_ms() -> u64 {
     std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+        .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_millis() as u64)
 }
 
 #[cfg(test)]
 mod tests {
+    const TEST_GCS_SERVICE_ACCOUNT_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC9YHg+P4UZig1h\nzoW/m8IbzylR9O6/9xrqmIzlSfA2S1Cz7w0P+viRoyzLBmYhTmI0p3RmNAMKWwph\nly6a0UkdsGbWsoKoWt8r+gB1zUyP+1tG4A7HDTcTnxG+T2dtJcwE/A0Y8rF4PKEt\nV0qTdHYjRZrEorBYKJdgUbdv1Pgkw0U9SuCJciRLs3SI3PPrKNhNyWERS5Ta0Hnr\nXtwzZ7e44KNJ8F8iMOgh70p0nLN/KtKl+2Gb/CuJh3Mfodkoc+sADKoofBXZct2+\nsGSw66S08q7WfuPkseaqxDlOgSfaHEjzTIMyoxvjyjRWjulVbUIz8i+JWSZUglfP\nIBsQcN1pAgMBAAECggEAAR3yRH5byNkVX4mXVscdkaBZQ35/6qLkz5cZ/3+VeXrA\nUP8uPYGoXQMOEfuoyfFhTZ0OTxRz0lVpmNX63oZ72kWS+jIPUqqeDt/YNwVeQIrp\nCAYGEwV8I+K+Si69sIm9kf2dYEJndw4Zd/QtYGrC+8R+vBaXRagvV2k0wggXVdzx\n7Wq5zqOz9QkeoG11hTkYAgTmVl5PBnAoRE/sNMtYUOf6JnQWmFpEwOTdTf+F8NL1\nFg+ecNH7tjoqsTBjD/lMSaA/kr10fUw4KoITkn2IvtuF2ZFZp2R/Viy9KnfsLyF7\nyb1NJSP2cn3gYp4+BEe5wOdQNO2+lZN7EQKmRzS7uwKBgQD7dtqD6pAw9VFSiLWN\nW8EcDevKOP48lOP++2esUCsXfip3Omn0lmyb+8i11GRz0QwiMywQ21p7sEUwn9HE\nTk2ZjPnaNdPN+i/vZ+RgcmHVeEzeTPNAXeAQ5zAlrJ8Ibh3239BeWHLxCa/p2nsD\nPL3dPXg/CQm68Ph/UjG9XiXSbwKBgQDAyuzEzrqgdc51x2Z40lcQ56zUZVVtW+A8\n485dS5VQMdwFglXzC5QTQ4T3zI1qT+Dd5ATtCkyMNpL07nC/9rQhI0+HTsRZE8P+\nKeSGIFOSvkA2ZwHWKKcctO8n1vOlAwJnjqYEJAZMIg01MtpOFRN0qrDd/9BDUbHi\nHO2smCRZpwKBgAn28r/Jer9F6VwQ6MjaOvPGpXJVAdYavFItWjVc0+hRapNg8DPu\nBg3EU3bJHNXuEcIFLxjX6GUAXi2IF8Lkq3SLPpdkDKmb4WxmPImJ3tCbvMgOWpFR\nZwCkeKb1iTPHUU6oHdSvQpbEoIDu1HMTZB6xQeOVkxoiVGaPNkNfyLXnAoGAeEXg\nQcNKUFJOM9HqzpNCN8ygWHzDN48qrDHeCvvdMYN5ZIJ0BkUB4qarrD+TNXCRszvO\nCuby7EIbmeuqsUdCBq5Vre7otT2MduJBq589I/3GZ2oJjkYcQt9pl2wU4aun81zd\nmxWyTAquPLL11+J0GcNmxYgSr/ymQY6Ug6kCfF8CgYEA2fSIcskydJ94TpX8Dpqm\nBwDXhRIZo6hkLjAqt6hHa7Fs/2qZXAeeX7/oxxfHBWqtPcTnp3N91xgfkPjarPeM\nth0qg1Cu4Y4ZyQfpaVaZB3aWIJB0PdWdMBZa/EUZDu9kFoaExF3BdzA2j7pmMDj4\nOZi9gzTa10z894ZuBJJkMPA=\n-----END PRIVATE KEY-----\n";
+
     use super::{
         ClaimTrainingValidatorChallengeRequest, FinalizeTrainingValidatorChallengeRequest,
         PublishTrainingTrnStateRequest, RetryTrainingValidatorChallengeRequest,
@@ -16865,6 +17217,7 @@ mod tests {
         training_window_closeout_status, training_window_metadata_value, validator_service,
     };
     use std::collections::HashMap;
+    use std::fs;
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
@@ -16947,7 +17300,8 @@ mod tests {
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
         PylonTrainingAggregateResolution, PylonTrainingArtifactClass,
         PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactResolverResponse,
-        PylonTrainingContributionVerdict, PylonTrainingRefusalCode,
+        PylonTrainingArtifactSignedAccessResponse, PylonTrainingContributionVerdict,
+        PylonTrainingRefusalCode,
     };
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, Receipt, ReceiptHints, TraceContext,
@@ -17019,11 +17373,11 @@ mod tests {
         StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
         StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
-        SyncTokenResponse, TrainingAssignmentState, TrainingVisualizationResponse,
-        TrainingWindowContributionInput, TrainingWindowCoordinatorResponse,
-        TransitionTrainingWindowRequest, TreasuryConfig, build_api_router_with_state,
-        build_app_state, build_router, build_router_with_state, now_unix_ms, random_token,
-        run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
+        SyncTokenResponse, TrainingArtifactSignedUrlConfig, TrainingAssignmentState,
+        TrainingVisualizationResponse, TrainingWindowContributionInput,
+        TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
+        build_api_router_with_state, build_app_state, build_router, build_router_with_state,
+        now_unix_ms, random_token, run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
         training_kernel_mutation_context,
     };
 
@@ -17058,6 +17412,7 @@ mod tests {
             starter_demand_start_confirm_seconds: 5,
             starter_demand_heartbeat_timeout_seconds: 5,
             provider_presence_stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+            training_artifact_signed_url: None,
             treasury: TreasuryConfig {
                 enabled: false,
                 payout_sats_per_window: 0,
@@ -17084,6 +17439,30 @@ mod tests {
                 registration_challenge_ttl_seconds: 300,
             },
         })
+    }
+
+    fn test_training_artifact_signed_url_config()
+    -> Result<(TrainingArtifactSignedUrlConfig, tempfile::TempDir)> {
+        let dir = tempdir()?;
+        let credentials_path = dir.path().join("gcs-signer.json");
+        fs::write(
+            &credentials_path,
+            serde_json::json!({
+                "client_email": "nexus-training-signer@test.openagents.invalid",
+                "private_key": TEST_GCS_SERVICE_ACCOUNT_PRIVATE_KEY,
+            })
+            .to_string(),
+        )?;
+        Ok((
+            TrainingArtifactSignedUrlConfig {
+                bucket_uri: "gs://launch-training-bucket".to_string(),
+                endpoint: "https://storage.googleapis.com".to_string(),
+                credentials_path,
+                default_ttl_seconds: 900,
+                max_ttl_seconds: 3_600,
+            },
+            dir,
+        ))
     }
 
     fn test_config_with_leases(
@@ -31638,6 +32017,77 @@ mod tests {
         );
         assert!(policy.accepted_artifacts_immutable);
         assert!(policy.resumable_upload_required);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_compute_training_artifact_signed_access_route_issues_google_v4_urls()
+    -> Result<()> {
+        let (training_artifact_signed_url, _dir) = test_training_artifact_signed_url_config()?;
+        let mut config = test_config()?;
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        let state = build_app_state(config);
+        let app = build_router_with_state(state);
+        let session = create_session_token(&app).await?;
+        let artifact_id = "oa.train_artifact.v1~kind~local_update~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123";
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/kernel/compute/training/artifacts/{artifact_id}/signed-access"
+                    ))
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "mode": "write",
+                            "ttl_seconds": 7200,
+                            "digest": "sha256:adapter-delta",
+                            "size_bytes": 4096,
+                        })
+                        .to_string(),
+                    ))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let signed_access: PylonTrainingArtifactSignedAccessResponse =
+            response_json(response).await?;
+        assert_eq!(signed_access.artifact_id, artifact_id);
+        assert_eq!(signed_access.ttl_seconds, 3_600);
+        assert_eq!(
+            signed_access.expected_digest.as_deref(),
+            Some("sha256:adapter-delta")
+        );
+        assert_eq!(signed_access.expected_size_bytes, Some(4_096));
+        assert_eq!(
+            signed_access.upload_completion_state,
+            Some(
+                openagents_kernel_core::pylon_training::PylonTrainingArtifactStorageState::UploadCompleteUnverified
+            )
+        );
+        assert_eq!(
+            signed_access.verification_success_state,
+            Some(
+                openagents_kernel_core::pylon_training::PylonTrainingArtifactStorageState::DigestVerified
+            )
+        );
+        assert_eq!(
+            signed_access.verification_failure_state,
+            Some(
+                openagents_kernel_core::pylon_training::PylonTrainingArtifactStorageState::GarbageCollectable
+            )
+        );
+        assert!(signed_access.signed_url.starts_with(
+            "https://storage.googleapis.com/launch-training-bucket/networks/trainnet.alpha/runs/run.alpha/windows/window.000123/contributions/assign.node01.window000123/adapter_delta_bundle.json?"
+        ));
+        assert!(
+            signed_access
+                .signed_url
+                .contains("X-Goog-Algorithm=GOOG4-RSA-SHA256")
+        );
+        assert!(signed_access.signed_url.contains("X-Goog-Signature="));
         Ok(())
     }
 

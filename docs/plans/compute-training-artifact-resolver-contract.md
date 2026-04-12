@@ -29,6 +29,8 @@ issuance. Those land in the next issues:
 
 The matching launch-grade GCS policy now lives in
 [`compute-training-gcs-layout-contract.md`](./compute-training-gcs-layout-contract.md).
+The matching signed-access contract now lives in
+[`compute-training-signed-artifact-access-contract.md`](./compute-training-signed-artifact-access-contract.md).
 
 ## Canonical Types
 

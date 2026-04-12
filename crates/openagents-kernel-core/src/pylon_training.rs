@@ -10,6 +10,8 @@ use crate::{compute::ComputeAdapterDatasetSlice, ids::sha256_prefixed_bytes};
 pub const PYLON_TRAINING_RUN_MANIFEST_V1: &str = "openagents.pylon_training_run_manifest.v1";
 pub const PYLON_TRAINING_ARTIFACT_RESOLVER_SCHEMA_V1: &str =
     "openagents.pylon_training_artifact_resolver.v1";
+pub const PYLON_TRAINING_ARTIFACT_SIGNED_ACCESS_SCHEMA_V1: &str =
+    "openagents.pylon_training_artifact_signed_access.v1";
 pub const PYLON_TRAINING_GCS_LAYOUT_SCHEMA_V1: &str = "openagents.pylon_training_gcs_layout.v1";
 pub const PYLON_TRAINING_ARTIFACT_ID_PREFIX_V1: &str = "oa.train_artifact.v1";
 pub const PYLON_TRAINING_ARTIFACT_DIGEST_ALGORITHM: &str = "sha256";
@@ -486,6 +488,60 @@ pub struct PylonTrainingArtifactResolverResponse {
     pub relative_object_path: String,
     pub locator_kind: u32,
     pub scope: PylonTrainingArtifactScope,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactSignedAccessMode {
+    Read,
+    Write,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingArtifactSignedAccessMethod {
+    Get,
+    Put,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingArtifactSignedAccessRequest {
+    pub mode: PylonTrainingArtifactSignedAccessMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingArtifactSignedAccessResponse {
+    pub schema_version: String,
+    pub artifact_id: String,
+    pub artifact_kind: PylonTrainingArtifactKind,
+    pub artifact_class: PylonTrainingArtifactClass,
+    pub canonical_store: PylonTrainingArtifactCanonicalStore,
+    pub mode: PylonTrainingArtifactSignedAccessMode,
+    pub method: PylonTrainingArtifactSignedAccessMethod,
+    pub signed_url: String,
+    pub digest_algorithm: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_size_bytes: Option<u64>,
+    pub issued_at_unix: u64,
+    pub expires_at_unix: u64,
+    pub ttl_seconds: u64,
+    pub relative_object_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upload_completion_state: Option<PylonTrainingArtifactStorageState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification_success_state: Option<PylonTrainingArtifactStorageState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification_failure_state: Option<PylonTrainingArtifactStorageState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification_failure_reason: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1293,6 +1349,103 @@ impl PylonTrainingArtifactResolverResponse {
     }
 }
 
+impl PylonTrainingArtifactSignedAccessMode {
+    pub const fn method(self) -> PylonTrainingArtifactSignedAccessMethod {
+        match self {
+            Self::Read => PylonTrainingArtifactSignedAccessMethod::Get,
+            Self::Write => PylonTrainingArtifactSignedAccessMethod::Put,
+        }
+    }
+}
+
+impl PylonTrainingArtifactSignedAccessRequest {
+    pub fn validate(&self) -> ContractResult<()> {
+        if let Some(ttl_seconds) = self.ttl_seconds {
+            if ttl_seconds == 0 {
+                return Err("pylon_training_artifact_signed_access_ttl_invalid".to_string());
+            }
+        }
+        if let Some(digest) = self.digest.as_deref() {
+            require_prefixed_sha256(digest, "artifact_signed_access_digest")?;
+        }
+        if matches!(self.size_bytes, Some(0)) {
+            return Err("pylon_training_artifact_signed_access_size_bytes_invalid".to_string());
+        }
+        if self.mode == PylonTrainingArtifactSignedAccessMode::Write && self.digest.is_none() {
+            return Err("pylon_training_artifact_signed_access_digest_missing".to_string());
+        }
+        Ok(())
+    }
+
+    pub fn effective_ttl_seconds(
+        &self,
+        default_ttl_seconds: u64,
+        max_ttl_seconds: u64,
+    ) -> ContractResult<u64> {
+        if default_ttl_seconds == 0 || max_ttl_seconds == 0 || default_ttl_seconds > max_ttl_seconds
+        {
+            return Err("pylon_training_artifact_signed_access_ttl_policy_invalid".to_string());
+        }
+        self.validate()?;
+        Ok(self
+            .ttl_seconds
+            .unwrap_or(default_ttl_seconds)
+            .min(max_ttl_seconds))
+    }
+}
+
+impl PylonTrainingArtifactSignedAccessResponse {
+    pub fn new(
+        resolver: &PylonTrainingArtifactResolverResponse,
+        request: &PylonTrainingArtifactSignedAccessRequest,
+        signed_url: String,
+        issued_at_unix: u64,
+        ttl_seconds: u64,
+    ) -> ContractResult<Self> {
+        request.validate()?;
+        require_non_empty(signed_url.as_str(), "signed_url")?;
+        if issued_at_unix == 0 || ttl_seconds == 0 {
+            return Err("pylon_training_artifact_signed_access_time_invalid".to_string());
+        }
+        let expires_at_unix = issued_at_unix.saturating_add(ttl_seconds);
+        let (
+            upload_completion_state,
+            verification_success_state,
+            verification_failure_state,
+            verification_failure_reason,
+        ) = match request.mode {
+            PylonTrainingArtifactSignedAccessMode::Read => (None, None, None, None),
+            PylonTrainingArtifactSignedAccessMode::Write => (
+                Some(PylonTrainingArtifactStorageState::UploadCompleteUnverified),
+                Some(PylonTrainingArtifactStorageState::DigestVerified),
+                Some(PylonTrainingArtifactStorageState::GarbageCollectable),
+                Some("upload_digest_verification_failed".to_string()),
+            ),
+        };
+        Ok(Self {
+            schema_version: PYLON_TRAINING_ARTIFACT_SIGNED_ACCESS_SCHEMA_V1.to_string(),
+            artifact_id: resolver.artifact_id.clone(),
+            artifact_kind: resolver.artifact_kind,
+            artifact_class: resolver.artifact_class,
+            canonical_store: resolver.canonical_store,
+            mode: request.mode,
+            method: request.mode.method(),
+            signed_url,
+            digest_algorithm: resolver.digest_algorithm.clone(),
+            expected_digest: request.digest.clone().or_else(|| resolver.digest.clone()),
+            expected_size_bytes: request.size_bytes.or(resolver.size_bytes),
+            issued_at_unix,
+            expires_at_unix,
+            ttl_seconds,
+            relative_object_path: resolver.relative_object_path.clone(),
+            upload_completion_state,
+            verification_success_state,
+            verification_failure_state,
+            verification_failure_reason,
+        })
+    }
+}
+
 pub fn pylon_training_artifact_id(
     kind: PylonTrainingArtifactKind,
     scope: &PylonTrainingArtifactScope,
@@ -1545,6 +1698,21 @@ pub fn pylon_training_resolve_artifact_for_uri(
     let (kind, scope) =
         pylon_training_artifact_scope_from_relative_path(layout, relative_path.as_path())?;
     PylonTrainingArtifactResolverResponse::new(kind, scope)
+}
+
+pub fn pylon_training_artifact_object_uri(
+    bucket_uri: &str,
+    resolver: &PylonTrainingArtifactResolverResponse,
+) -> ContractResult<String> {
+    parse_gcs_bucket_name(bucket_uri)?;
+    resolver.scope.validate_for_kind(resolver.artifact_kind)?;
+    Ok(format!(
+        "{}/networks/{}/runs/{}/{}",
+        bucket_uri.trim_end_matches('/'),
+        resolver.scope.network_id,
+        resolver.scope.run_id,
+        resolver.relative_object_path
+    ))
 }
 
 impl PylonTrainingArtifacts {
@@ -2969,6 +3137,89 @@ mod tests {
                 .validate()
                 .expect_err("path traversal must fail"),
             "pylon_training_window_id_invalid"
+        );
+    }
+
+    #[test]
+    fn signed_access_request_and_response_follow_launch_contract() {
+        let resolver = pylon_training_resolve_artifact_id(
+            "oa.train_artifact.v1~kind~local_update~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123",
+        )
+        .expect("resolver");
+        let request = PylonTrainingArtifactSignedAccessRequest {
+            mode: PylonTrainingArtifactSignedAccessMode::Write,
+            ttl_seconds: Some(9_999),
+            digest: Some("sha256:adapter-delta".to_string()),
+            size_bytes: Some(4_096),
+        };
+        assert_eq!(
+            request
+                .effective_ttl_seconds(900, 3_600)
+                .expect("effective ttl"),
+            3_600
+        );
+        let response = PylonTrainingArtifactSignedAccessResponse::new(
+            &resolver,
+            &request,
+            "https://storage.googleapis.com/bucket/object?sig=test".to_string(),
+            1_234_567_890,
+            3_600,
+        )
+        .expect("signed access response");
+        assert_eq!(
+            response.schema_version,
+            PYLON_TRAINING_ARTIFACT_SIGNED_ACCESS_SCHEMA_V1
+        );
+        assert_eq!(response.mode, PylonTrainingArtifactSignedAccessMode::Write);
+        assert_eq!(
+            response.method,
+            PylonTrainingArtifactSignedAccessMethod::Put
+        );
+        assert_eq!(
+            response.upload_completion_state,
+            Some(PylonTrainingArtifactStorageState::UploadCompleteUnverified)
+        );
+        assert_eq!(
+            response.verification_success_state,
+            Some(PylonTrainingArtifactStorageState::DigestVerified)
+        );
+        assert_eq!(
+            response.verification_failure_state,
+            Some(PylonTrainingArtifactStorageState::GarbageCollectable)
+        );
+        assert_eq!(
+            response.verification_failure_reason.as_deref(),
+            Some("upload_digest_verification_failed")
+        );
+        assert_eq!(
+            response.expected_digest.as_deref(),
+            Some("sha256:adapter-delta")
+        );
+        assert_eq!(response.expected_size_bytes, Some(4_096));
+        assert_eq!(response.issued_at_unix, 1_234_567_890);
+        assert_eq!(response.expires_at_unix, 1_234_571_490);
+    }
+
+    #[test]
+    fn signed_access_requires_write_digest_and_builds_object_uri() {
+        let resolver = pylon_training_resolve_artifact_id(
+            "oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.alpha~run~run.alpha~optimizer_step~42",
+        )
+        .expect("resolver");
+        assert_eq!(
+            PylonTrainingArtifactSignedAccessRequest {
+                mode: PylonTrainingArtifactSignedAccessMode::Write,
+                ttl_seconds: Some(300),
+                digest: None,
+                size_bytes: None,
+            }
+            .validate()
+            .expect_err("missing digest must fail"),
+            "pylon_training_artifact_signed_access_digest_missing"
+        );
+        assert_eq!(
+            pylon_training_artifact_object_uri("gs://bucket", &resolver).expect("object uri"),
+            "gs://bucket/networks/trainnet.alpha/runs/run.alpha/checkpoints/step-42/checkpoint_manifest.json"
         );
     }
 

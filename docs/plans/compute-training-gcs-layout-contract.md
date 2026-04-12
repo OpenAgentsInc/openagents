@@ -24,8 +24,8 @@ This issue does four things:
 - freezes the immutability and overwrite policy
 - freezes the launch signed-URL and sharding posture
 
-This issue does not yet mint or serve signed URLs. That lands in
-`openagents#4299`.
+The matching signed-access contract now lives in
+[`compute-training-signed-artifact-access-contract.md`](./compute-training-signed-artifact-access-contract.md).
 
 ## Canonical Bucket Contract
 
