@@ -203,8 +203,15 @@ When `pylon serve` is online, the retained training state now also drives an
 automatic `Nexus` intake pass: `Pylon` admits the node, claims one compatible
 lease, acknowledges the assignment, and persists the leased window state into
 `training/state/runtime-state.json` without requiring an operator-crafted
-command. The next roadmap items still need to translate that accepted lease
-into the exact `psionic-train` manifest and automatic launch path.
+command. `Pylon` now also materializes the accepted lease into the exact
+`psionic.train.invocation_manifest.v1` family that `psionic-train` already
+validates and acknowledges Nexus with that retained machine-manifest path. The
+runtime projection freezes the admitted lane, role, operation, work class,
+coordination envelope, and current Psionic release/build/environment identity
+derived from the sibling checkout, including dirty-tree override posture when
+the local Psionic checkout is not clean. The next roadmap items still need to
+fetch assignment artifacts automatically and launch the retained manifest
+without operator intervention.
 
 `Pylon` now also has the first training-coordination HTTP client in
 `apps/pylon/src/lib.rs`. It wraps the existing kernel training-policy and
