@@ -70,6 +70,8 @@ const TREASURY_PAYOUT_LIMIT: usize = 262_144;
 const TREASURY_RECEIVE_LIMIT: usize = 16_384;
 const TREASURY_POLICY_CHANGE_LIMIT: usize = 64;
 const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
+const TREASURY_STATUS_PAYOUT_TARGET_ROW_LIMIT: usize = 64;
+const TREASURY_STATUS_PAYOUT_LEDGER_ROW_LIMIT: usize = 64;
 const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
 const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
@@ -614,6 +616,83 @@ pub struct TreasuryStatusResponse {
     pub fail_reason_metrics_24h: Vec<TreasuryReasonMetric>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
+    #[serde(default)]
+    pub training_payout_ledger_summary: TreasuryTrainingPayoutLedgerSummary,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payout_target_identities: Vec<TreasuryPayoutTargetIdentityStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_training_payouts: Vec<TreasuryTrainingPayoutLedgerEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TreasuryPayoutTargetIdentityStatus {
+    pub nostr_pubkey_hex: String,
+    pub source_session_id: String,
+    pub spark_address: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bitcoin_address: Option<String>,
+    pub registered_at_unix_ms: u64,
+    pub last_verified_at_unix_ms: u64,
+    pub payout_record_count: u64,
+    pub confirmed_payout_count: u64,
+    pub confirmed_payout_sats: u64,
+    pub confirmed_accepted_work_payout_sats: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_payout_at_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryTrainingPayoutLedgerEntry {
+    pub payout_key: String,
+    pub nostr_pubkey_hex: String,
+    pub payout_target: String,
+    pub amount_sats: u64,
+    pub status: String,
+    pub reconciliation_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payment_id: Option<String>,
+    pub window_started_at_unix_ms: u64,
+    pub window_ends_at_unix_ms: u64,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+    pub sellable_at_window_open: bool,
+    #[serde(default)]
+    pub classification: TreasuryPayoutClassification,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryTrainingPayoutLedgerSummary {
+    pub reconciliation_status: String,
+    pub payout_record_count: u64,
+    pub pending_payout_count: u64,
+    pub confirmed_payout_count: u64,
+    pub failed_payout_count: u64,
+    pub skipped_payout_count: u64,
+    pub attention_payout_count: u64,
+    pub missing_payout_target_count: u64,
+    pub accepted_work_pending_payout_count: u64,
+    pub accepted_work_confirmed_payout_count: u64,
+    pub accepted_work_attention_payout_count: u64,
+}
+
+impl Default for TreasuryTrainingPayoutLedgerSummary {
+    fn default() -> Self {
+        Self {
+            reconciliation_status: "clean".to_string(),
+            payout_record_count: 0,
+            pending_payout_count: 0,
+            confirmed_payout_count: 0,
+            failed_payout_count: 0,
+            skipped_payout_count: 0,
+            attention_payout_count: 0,
+            missing_payout_target_count: 0,
+            accepted_work_pending_payout_count: 0,
+            accepted_work_confirmed_payout_count: 0,
+            accepted_work_attention_payout_count: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -2029,6 +2108,163 @@ impl TreasuryState {
         }
     }
 
+    fn payout_target_identity_rows(&self) -> Vec<TreasuryPayoutTargetIdentityStatus> {
+        let mut rows = self
+            .payout_targets_by_identity
+            .values()
+            .map(|target| {
+                let mut row = TreasuryPayoutTargetIdentityStatus {
+                    nostr_pubkey_hex: target.nostr_pubkey_hex.clone(),
+                    source_session_id: target.source_session_id.clone(),
+                    spark_address: target.spark_address.clone(),
+                    bitcoin_address: target.bitcoin_address.clone(),
+                    registered_at_unix_ms: target.registered_at_unix_ms,
+                    last_verified_at_unix_ms: target.last_verified_at_unix_ms,
+                    payout_record_count: 0,
+                    confirmed_payout_count: 0,
+                    confirmed_payout_sats: 0,
+                    confirmed_accepted_work_payout_sats: 0,
+                    last_payout_at_unix_ms: None,
+                };
+
+                for record in self.payout_records_by_key.values().filter(|record| {
+                    record.nostr_pubkey_hex == target.nostr_pubkey_hex
+                }) {
+                    row.payout_record_count = row.payout_record_count.saturating_add(1);
+                    row.last_payout_at_unix_ms = Some(
+                        row.last_payout_at_unix_ms
+                            .map(|current| current.max(record.updated_at_unix_ms))
+                            .unwrap_or(record.updated_at_unix_ms),
+                    );
+
+                    if record.status == "confirmed" {
+                        row.confirmed_payout_count = row.confirmed_payout_count.saturating_add(1);
+                        row.confirmed_payout_sats = row
+                            .confirmed_payout_sats
+                            .saturating_add(record.amount_sats);
+                        if record.classification.accepted_work() {
+                            row.confirmed_accepted_work_payout_sats = row
+                                .confirmed_accepted_work_payout_sats
+                                .saturating_add(record.amount_sats);
+                        }
+                    }
+                }
+
+                row
+            })
+            .collect::<Vec<_>>();
+
+        rows.sort_by(|left, right| {
+            right
+                .last_verified_at_unix_ms
+                .cmp(&left.last_verified_at_unix_ms)
+                .then_with(|| right.registered_at_unix_ms.cmp(&left.registered_at_unix_ms))
+                .then_with(|| left.nostr_pubkey_hex.cmp(&right.nostr_pubkey_hex))
+        });
+        rows.truncate(TREASURY_STATUS_PAYOUT_TARGET_ROW_LIMIT);
+        rows
+    }
+
+    fn training_payout_ledger_summary(&self) -> TreasuryTrainingPayoutLedgerSummary {
+        let mut summary = TreasuryTrainingPayoutLedgerSummary::default();
+
+        for record in self.payout_records_by_key.values() {
+            summary.payout_record_count = summary.payout_record_count.saturating_add(1);
+
+            match record.status.as_str() {
+                "confirmed" => {
+                    summary.confirmed_payout_count =
+                        summary.confirmed_payout_count.saturating_add(1);
+                    if record.classification.accepted_work() {
+                        summary.accepted_work_confirmed_payout_count = summary
+                            .accepted_work_confirmed_payout_count
+                            .saturating_add(1);
+                    }
+                }
+                "queued" | "dispatching" | "dispatched" => {
+                    summary.pending_payout_count =
+                        summary.pending_payout_count.saturating_add(1);
+                    if record.classification.accepted_work() {
+                        summary.accepted_work_pending_payout_count = summary
+                            .accepted_work_pending_payout_count
+                            .saturating_add(1);
+                    }
+                }
+                "failed" => {
+                    summary.failed_payout_count = summary.failed_payout_count.saturating_add(1);
+                    summary.attention_payout_count =
+                        summary.attention_payout_count.saturating_add(1);
+                    if record.classification.accepted_work() {
+                        summary.accepted_work_attention_payout_count = summary
+                            .accepted_work_attention_payout_count
+                            .saturating_add(1);
+                    }
+                }
+                "skipped" => {
+                    summary.skipped_payout_count =
+                        summary.skipped_payout_count.saturating_add(1);
+                    if record.reason.as_deref() == Some("missing_payout_target") {
+                        summary.missing_payout_target_count = summary
+                            .missing_payout_target_count
+                            .saturating_add(1);
+                    }
+                    if record.classification.accepted_work() {
+                        summary.accepted_work_attention_payout_count = summary
+                            .accepted_work_attention_payout_count
+                            .saturating_add(1);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        summary.reconciliation_status =
+            if summary.accepted_work_attention_payout_count > 0
+                || summary.missing_payout_target_count > 0
+            {
+                "attention_required".to_string()
+            } else if summary.accepted_work_pending_payout_count > 0 {
+                "pending".to_string()
+            } else {
+                "clean".to_string()
+            };
+
+        summary
+    }
+
+    fn recent_training_payouts(&self) -> Vec<TreasuryTrainingPayoutLedgerEntry> {
+        let mut rows = self
+            .payout_records_by_key
+            .values()
+            .map(|record| TreasuryTrainingPayoutLedgerEntry {
+                payout_key: record.payout_key.clone(),
+                nostr_pubkey_hex: record.nostr_pubkey_hex.clone(),
+                payout_target: record.payout_target.clone(),
+                amount_sats: record.amount_sats,
+                status: record.status.clone(),
+                reconciliation_status: treasury_payout_reconciliation_status(record).to_string(),
+                reason: record.reason.clone(),
+                payment_id: record.payment_id.clone(),
+                window_started_at_unix_ms: record.window_started_at_unix_ms,
+                window_ends_at_unix_ms: record.window_ends_at_unix_ms,
+                created_at_unix_ms: record.created_at_unix_ms,
+                updated_at_unix_ms: record.updated_at_unix_ms,
+                sellable_at_window_open: record.sellable_at_window_open,
+                classification: record.classification.clone(),
+            })
+            .collect::<Vec<_>>();
+
+        rows.sort_by(|left, right| {
+            right
+                .updated_at_unix_ms
+                .cmp(&left.updated_at_unix_ms)
+                .then_with(|| right.created_at_unix_ms.cmp(&left.created_at_unix_ms))
+                .then_with(|| left.payout_key.cmp(&right.payout_key))
+        });
+        rows.truncate(TREASURY_STATUS_PAYOUT_LEDGER_ROW_LIMIT);
+        rows
+    }
+
     pub fn status_response(
         &self,
         config: &TreasuryConfig,
@@ -2036,6 +2272,9 @@ impl TreasuryState {
     ) -> TreasuryStatusResponse {
         let stats = self.public_stats(config, now_unix_ms);
         let policy = self.active_policy(config);
+        let training_payout_ledger_summary = self.training_payout_ledger_summary();
+        let payout_target_identities = self.payout_target_identity_rows();
+        let recent_training_payouts = self.recent_training_payouts();
         TreasuryStatusResponse {
             authority: "openagents-hosted-nexus".to_string(),
             treasury_enabled: stats.treasury_enabled,
@@ -2113,6 +2352,9 @@ impl TreasuryState {
             skip_reason_metrics_24h: stats.skip_reason_metrics_24h,
             fail_reason_metrics_24h: stats.fail_reason_metrics_24h,
             active_continuity_alerts: stats.active_continuity_alerts,
+            training_payout_ledger_summary,
+            payout_target_identities,
+            recent_training_payouts,
         }
     }
 
@@ -3976,6 +4218,23 @@ fn parse_json_only(args: &[String], start_index: usize, label: &str) -> Result<b
     Ok(json)
 }
 
+fn treasury_payout_reconciliation_status(record: &TreasuryPayoutRecord) -> &'static str {
+    match record.status.as_str() {
+        "confirmed" => "settled",
+        "queued" => "pending_dispatch",
+        "dispatching" | "dispatched" => "pending_confirmation",
+        "failed" => "attention_required",
+        "skipped" => {
+            if record.reason.as_deref() == Some("missing_payout_target") {
+                "missing_payout_target"
+            } else {
+                "skipped"
+            }
+        }
+        _ => "unknown",
+    }
+}
+
 fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String {
     let mut lines = vec![
         format!("treasury_enabled: {}", response.treasury_enabled),
@@ -4032,6 +4291,42 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         format!(
             "registered_payout_identities: {}",
             response.registered_payout_identities
+        ),
+        format!(
+            "training_payout_reconciliation_status: {}",
+            response.training_payout_ledger_summary.reconciliation_status
+        ),
+        format!(
+            "training_payout_record_count: {}",
+            response.training_payout_ledger_summary.payout_record_count
+        ),
+        format!(
+            "training_pending_payout_count: {}",
+            response.training_payout_ledger_summary.pending_payout_count
+        ),
+        format!(
+            "training_attention_payout_count: {}",
+            response.training_payout_ledger_summary.attention_payout_count
+        ),
+        format!(
+            "accepted_work_pending_payout_count: {}",
+            response
+                .training_payout_ledger_summary
+                .accepted_work_pending_payout_count
+        ),
+        format!(
+            "accepted_work_attention_payout_count: {}",
+            response
+                .training_payout_ledger_summary
+                .accepted_work_attention_payout_count
+        ),
+        format!(
+            "payout_target_identity_rows: {}",
+            response.payout_target_identities.len()
+        ),
+        format!(
+            "recent_training_payout_rows: {}",
+            response.recent_training_payouts.len()
         ),
     ];
     if let Some(status) = response.wallet_runtime_status.as_deref() {
@@ -5559,6 +5854,36 @@ mod tests {
         assert_eq!(stats.placeholder_payout_sats_paid_total, 0);
         assert_eq!(stats.beta_bonus_payout_sats_paid_total, 0);
         assert_eq!(stats.payouts_dispatched_24h, 1);
+        let status = state.status_response(&config, now_unix_ms.saturating_add(2));
+        assert_eq!(
+            status.training_payout_ledger_summary.reconciliation_status,
+            "pending"
+        );
+        assert_eq!(
+            status
+                .training_payout_ledger_summary
+                .accepted_work_pending_payout_count,
+            1
+        );
+        assert_eq!(status.payout_target_identities.len(), 1);
+        assert_eq!(
+            status.payout_target_identities[0].nostr_pubkey_hex,
+            "pubkey-replay"
+        );
+        assert_eq!(status.payout_target_identities[0].payout_record_count, 1);
+        assert_eq!(status.payout_target_identities[0].confirmed_payout_count, 0);
+        assert_eq!(status.recent_training_payouts.len(), 1);
+        assert_eq!(
+            status.recent_training_payouts[0].reconciliation_status,
+            "pending_confirmation"
+        );
+        assert_eq!(
+            status.recent_training_payouts[0]
+                .classification
+                .training_run_id
+                .as_deref(),
+            Some("run.weak.validation")
+        );
         assert_eq!(
             dispatch_receipts[0]
                 .context
