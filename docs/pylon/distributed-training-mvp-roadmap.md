@@ -506,6 +506,7 @@ The later launch-hardening GCS contract that freezes bucket-root validation,
 immutability, GC windows, sharding, and signed-URL posture now lives in:
 
 - `docs/plans/compute-training-gcs-layout-contract.md`
+- `docs/plans/compute-training-signed-artifact-access-contract.md`
 
 ### 0.5 Validator Policy V1
 
