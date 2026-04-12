@@ -25,6 +25,65 @@ HTTP:
 current treasury Spark receive address, Bitcoin receive address, and an optional
 Bolt11 invoice when an amount is requested.
 
+## Public Payout Accounting
+
+The hosted treasury now exposes payout classes through the same `/api/stats`
+and `/v1/treasury/status` path that already powers public payout state.
+
+Canonical totals:
+
+- `nexus_payout_sats_paid_total`
+- `nexus_payout_sats_paid_24h`
+
+Split totals:
+
+- `nexus_accepted_work_payout_sats_paid_total`
+- `nexus_accepted_work_payout_sats_paid_24h`
+- `nexus_placeholder_payout_sats_paid_total`
+- `nexus_placeholder_payout_sats_paid_24h`
+- `nexus_beta_bonus_payout_sats_paid_total`
+- `nexus_beta_bonus_payout_sats_paid_24h`
+- `nexus_weak_device_accepted_work_payout_sats_paid_total`
+- `nexus_weak_device_accepted_work_payout_sats_paid_24h`
+- `nexus_strong_lane_accepted_work_payout_sats_paid_total`
+- `nexus_strong_lane_accepted_work_payout_sats_paid_24h`
+
+Interpretation rules:
+
+- `nexus_payout_sats_paid_total` remains the umbrella hosted-treasury total.
+- `nexus_accepted_work_*` is the accepted-work slice inside that umbrella.
+- `nexus_placeholder_*` is the legacy liveness / placeholder slice.
+- `nexus_beta_bonus_*` is the bonus / operator-adjusted slice.
+- `nexus_weak_device_accepted_work_*` and
+  `nexus_strong_lane_accepted_work_*` subdivide accepted-work payouts by lane.
+
+Training closeouts do not use a second payout system. Accepted training work is
+queued into the existing hosted Nexus treasury loop with receipt metadata that
+classifies:
+
+- payout class
+- payout basis
+- work class
+- progress class
+- accepted outcome id
+- training run id
+- window id
+- contribution id
+- assignment id
+- share basis and weight metadata
+- weak-device versus strong-lane bearing
+
+For the current launch-hardening slice, accepted-work closeouts still settle off
+the shared `payout_sats_per_window` treasury setting. That means the split
+counters are real and public now, but they are still fed by the same wallet,
+dispatch loop, and budget policy that drive the generic hosted treasury totals.
+
+Weak-device accepted-work payouts are allowed to dispatch without requiring the
+node to still be online at payout time, as long as the closeout was accepted
+and the node has a registered payout target. That preserves payout continuity
+for validation-replay style work classes that may close after the worker has
+gone idle.
+
 ## Supported Breez Floor
 
 The repo-owned Spark integration is now pinned to `breez/spark-sdk 0.12.2`.
