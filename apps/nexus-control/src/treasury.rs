@@ -3477,11 +3477,17 @@ pub async fn dispatch_live_payouts(
     // Force the live wallet through one full sync in this process before we
     // attempt a payout batch. Cached account-info balance can be non-zero while
     // the in-memory Spark leaf set is still cold after startup or recovery.
-    match tokio::time::timeout(Duration::from_millis(send_timeout_ms), wallet.get_balance()).await
+    match tokio::time::timeout(
+        Duration::from_millis(send_timeout_ms),
+        wallet.network_status(),
+    )
+    .await
     {
-        Ok(Ok(_)) => {}
-        Ok(Err(error)) => {
-            let reason = format!("failed to sync treasury wallet before dispatch: {error}");
+        Ok(status) if status.status == NetworkStatus::Connected => {}
+        Ok(status) => {
+            let reason = status.detail.unwrap_or_else(|| {
+                "treasury wallet sync completed without reaching a connected state".to_string()
+            });
             return TreasuryDispatchBatchResult {
                 outcomes: plans
                     .iter()
