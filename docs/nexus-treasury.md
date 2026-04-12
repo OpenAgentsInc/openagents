@@ -394,6 +394,9 @@ Operator-safe loop health now projects through `GET /v1/treasury/status`:
 - `active_continuity_alerts`
 - `payout_loop_health`
 - `degraded_reason`
+- `training_payout_ledger_summary`
+- `payout_target_identities`
+- `recent_training_payouts`
 
 Operator-safe policy audit now also projects through `GET /v1/treasury/status`:
 
@@ -419,6 +422,22 @@ Reason metrics:
   reasons such as `daily_budget_cap_reached` and `missing_payout_target`
 - `fail_reason_metrics_24h` is the 24-hour grouped breakdown of failed payout
   reasons such as wallet dispatch failures or dispatch timeouts
+
+Canonical training payout ledger:
+
+- payout destination enrollment and rotation continue to use the same
+  node-identity-backed `treasury.payout_target.registered` flow; there is no
+  separate training-only payout identity system
+- `training_payout_ledger_summary` gives operators the current reconciliation
+  state for the payout ledger, including pending, attention-required, and
+  accepted-work-specific counts
+- `payout_target_identities` projects the currently registered payout targets
+  keyed by node public key together with confirmed payout totals for that
+  identity
+- `recent_training_payouts` projects the recent canonical payout ledger rows,
+  including payout class, weak-device and progress-bearing flags, accepted
+  outcome references, payout target, wallet payment id, and reconciliation
+  status
 
 Deployment gating:
 

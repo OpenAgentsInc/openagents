@@ -22801,6 +22801,7 @@ mod tests {
         let _: ProviderPayoutTargetRegistrationResponse = response_json(register_response).await?;
 
         let stats_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -22811,6 +22812,31 @@ mod tests {
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(stats.nexus_registered_payout_identities, 1);
         assert_eq!(stats.receipt_count, 1);
+
+        let treasury_status_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/status")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(treasury_status_response.status(), StatusCode::OK);
+        let treasury_status: TreasuryStatusResponse =
+            response_json(treasury_status_response).await?;
+        assert_eq!(treasury_status.payout_target_identities.len(), 1);
+        assert_eq!(
+            treasury_status.payout_target_identities[0].nostr_pubkey_hex,
+            nostr_pubkey_hex
+        );
+        assert_eq!(
+            treasury_status.payout_target_identities[0].spark_address,
+            "spark:alice"
+        );
+        assert_eq!(
+            treasury_status.training_payout_ledger_summary.reconciliation_status,
+            "clean"
+        );
         Ok(())
     }
 
