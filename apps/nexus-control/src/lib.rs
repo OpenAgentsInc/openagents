@@ -114,7 +114,9 @@ use tokio_stream::wrappers::BroadcastStream;
 
 use crate::economy::{
     AuthorityReceiptContext, PublicRecentPylon, PublicRecentPylonDiagnostic, PublicRuntimeSnapshot,
-    PublicStatsSnapshot, ReceiptLedger,
+    PublicStatsSnapshot, PublicTrainingQueuePressure, PublicTrainingRunState,
+    PublicTrainingStatsSnapshot, PublicTrainingWindowState, PublicTrainingWorkClassState,
+    ReceiptLedger,
 };
 use crate::kernel::{
     AdmittedTrainingNodeView, ComputeAcceptedOutcomePublicationSource,
@@ -133,8 +135,8 @@ use crate::treasury::{
     OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
     ProviderPayoutTargetChallengeResponse, ProviderPayoutTargetRegistrationRequest,
     ProviderPayoutTargetRegistrationResponse, TreasuryConfig, TreasuryDispatchBatchResult,
-    TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryPayoutPreparation,
-    TreasuryPayoutClass, TreasuryPayoutClassification, TreasuryQueuedPayoutRequest,
+    TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryPayoutClass,
+    TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryQueuedPayoutRequest,
     TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse, create_live_funding_target,
     dispatch_live_payouts, load_live_wallet_snapshot_with_plan,
 };
@@ -4650,9 +4652,8 @@ fn training_closeout_participant_amounts(
             if index + 1 == participants.len() {
                 total_amount_sats.saturating_sub(allocated)
             } else {
-                let amount =
-                    ((u128::from(total_amount_sats) * u128::from(participant.share_bps)) / 10_000)
-                        as u64;
+                let amount = ((u128::from(total_amount_sats) * u128::from(participant.share_bps))
+                    / 10_000) as u64;
                 allocated = allocated.saturating_add(amount);
                 amount
             }
@@ -4719,7 +4720,9 @@ fn training_window_closeout_treasury_payout_requests(
             }
             let weak_device_bearing = contributions_by_id
                 .get(participant.contribution_id.as_str())
-                .is_some_and(|contribution| training_contribution_weak_device_bearing(contribution));
+                .is_some_and(|contribution| {
+                    training_contribution_weak_device_bearing(contribution)
+                });
             Some(TreasuryQueuedPayoutRequest {
                 payout_key: training_closeout_payout_key(
                     outcome_id.as_str(),
@@ -15509,6 +15512,8 @@ fn runtime_snapshot(
     config: &ServiceConfig,
     store: &ControlStore,
     treasury_runtime: &crate::treasury::TreasuryPublicStats,
+    training_summary: &TrainingOperatorSummaryResponse,
+    training_public_state: PublicTrainingStatsSnapshot,
     now_unix_ms: u64,
 ) -> PublicRuntimeSnapshot {
     let provider_presence_metrics = store
@@ -15529,7 +15534,7 @@ fn runtime_snapshot(
                 | StarterOfferStatus::Expired => (waiting_ack, running),
             },
         );
-    let training_metrics = training_operator_metrics(store, now_unix_ms);
+    let training_metrics = training_operator_metrics_from_summary(training_summary);
     let compute_metrics = store.kernel.compute_market_metrics(now_unix_ms as i64);
     let liquidity_metrics = store.kernel.liquidity_market_metrics(now_unix_ms as i64);
     let risk_metrics = store.kernel.risk_market_metrics(now_unix_ms as i64);
@@ -15571,8 +15576,7 @@ fn runtime_snapshot(
             .accepted_work_payout_sats_paid_24h,
         nexus_placeholder_payout_sats_paid_total: treasury_runtime
             .placeholder_payout_sats_paid_total,
-        nexus_placeholder_payout_sats_paid_24h: treasury_runtime
-            .placeholder_payout_sats_paid_24h,
+        nexus_placeholder_payout_sats_paid_24h: treasury_runtime.placeholder_payout_sats_paid_24h,
         nexus_beta_bonus_payout_sats_paid_total: treasury_runtime.beta_bonus_payout_sats_paid_total,
         nexus_beta_bonus_payout_sats_paid_24h: treasury_runtime.beta_bonus_payout_sats_paid_24h,
         nexus_weak_device_accepted_work_payout_sats_paid_total: treasury_runtime
@@ -15612,6 +15616,7 @@ fn runtime_snapshot(
         training_checkpoint_max_age_ms: training_metrics.checkpoint_max_age_ms,
         training_artifact_failures_open: training_metrics.artifact_failures_open,
         training_payout_eligible_closeouts: training_metrics.payout_eligible_closeouts,
+        training_public_state,
         compute_products_active: compute_metrics.compute_products_active,
         compute_capacity_lots_open: compute_metrics.compute_capacity_lots_open,
         compute_capacity_lots_delivering: compute_metrics.compute_capacity_lots_delivering,
@@ -15699,8 +15704,18 @@ fn build_public_stats_snapshot(
     now_unix_ms: u64,
 ) -> PublicStatsSnapshot {
     let treasury_runtime = store.treasury.public_stats(&config.treasury, now_unix_ms);
+    let training_summary = training_operator_summary_snapshot(store, now_unix_ms);
+    let training_public_state =
+        training_public_stats_snapshot(store, now_unix_ms, &training_summary);
     store.economy.snapshot(
-        &runtime_snapshot(config, store, &treasury_runtime, now_unix_ms),
+        &runtime_snapshot(
+            config,
+            store,
+            &treasury_runtime,
+            &training_summary,
+            training_public_state,
+            now_unix_ms,
+        ),
         now_unix_ms,
     )
 }
@@ -15967,8 +15982,7 @@ fn training_operator_summary_snapshot(
                         .map(|metadata| (*window, metadata))
                 })
                 .collect::<Vec<_>>();
-            let weak_device_bearing_run =
-                training_work_class_weak_device_bearing(run.work_class);
+            let weak_device_bearing_run = training_work_class_weak_device_bearing(run.work_class);
             let mut run_assigned_contributor_ids = HashSet::<String>::new();
             for assignment in scheduler_state
                 .into_iter()
@@ -16458,18 +16472,15 @@ fn training_operator_summary_snapshot(
     }
 }
 
-fn training_operator_metrics(store: &ControlStore, now_unix_ms: u64) -> TrainingOperatorMetrics {
-    let summary = training_operator_summary_snapshot(store, now_unix_ms);
+fn training_operator_metrics_from_summary(
+    summary: &TrainingOperatorSummaryResponse,
+) -> TrainingOperatorMetrics {
     TrainingOperatorMetrics {
         admitted_nodes: summary.participation.admitted_nodes,
         assigned_contributors: summary.participation.assigned_contributors,
-        weak_device_assigned_contributors: summary
-            .participation
-            .weak_device_assigned_contributors,
+        weak_device_assigned_contributors: summary.participation.weak_device_assigned_contributors,
         accepted_contributors: summary.progress.accepted_contributors,
-        weak_device_accepted_contributors: summary
-            .progress
-            .weak_device_accepted_contributors,
+        weak_device_accepted_contributors: summary.progress.weak_device_accepted_contributors,
         model_progress_contributors: summary.progress.model_progress_contributors,
         admitted_nodes_online: summary.participation.online_nodes,
         active_runs: summary.participation.active_runs,
@@ -16486,6 +16497,291 @@ fn training_operator_metrics(store: &ControlStore, now_unix_ms: u64) -> Training
             .nodes_contributing_to_accepted_progress,
         windows_advanced_checkpoint_lineage: summary.progress.windows_advanced_checkpoint_lineage,
         runs_with_accepted_progress: summary.progress.runs_with_accepted_progress,
+    }
+}
+
+fn training_run_state_preferred_as_default(run_status: &str) -> bool {
+    matches!(
+        run_status,
+        "queued" | "preparing" | "running" | "finalizing"
+    )
+}
+
+fn training_run_state_counts_as_active(
+    run_status: &str,
+    active_window_count: u64,
+    pending_validation_window_count: u64,
+) -> bool {
+    training_run_state_preferred_as_default(run_status)
+        || active_window_count > 0
+        || pending_validation_window_count > 0
+}
+
+fn training_default_run<'a>(
+    runs: &'a [TrainingOperatorRunSummary],
+) -> Option<&'a TrainingOperatorRunSummary> {
+    runs.iter()
+        .find(|run| training_run_state_preferred_as_default(run.run_status.as_str()))
+        .or_else(|| runs.first())
+}
+
+fn training_queue_pressure_state(summary: &TrainingOperatorSummaryResponse) -> &'static str {
+    if summary.validator_challenges_queued > 0 || summary.pending_validation_windows > 0 {
+        "pending_validation"
+    } else if summary.validator_challenges_open > 0 {
+        "validating"
+    } else if summary.active_windows > 0 {
+        "executing"
+    } else if summary.active_runs > 0 {
+        "standing_by"
+    } else {
+        "none"
+    }
+}
+
+fn training_public_stats_snapshot(
+    store: &ControlStore,
+    now_unix_ms: u64,
+    summary: &TrainingOperatorSummaryResponse,
+) -> PublicTrainingStatsSnapshot {
+    const PUBLIC_TRAINING_RUN_LIMIT: usize = 8;
+    const PUBLIC_TRAINING_WINDOW_LIMIT: usize = 12;
+
+    let visualization =
+        training_visualization_snapshot_with_summary(store, now_unix_ms, summary.clone());
+    let default_run = training_default_run(summary.runs.as_slice());
+    let active_run = summary.runs.iter().find(|run| {
+        training_run_state_counts_as_active(
+            run.run_status.as_str(),
+            run.active_window_count,
+            run.pending_validation_window_count,
+        )
+    });
+    let default_run_id = default_run.map(|run| run.training_run_id.clone());
+    let default_network_id = default_run.map(|run| run.network_id.clone());
+    let active_run_id = active_run
+        .map(|run| run.training_run_id.clone())
+        .or_else(|| default_run_id.clone());
+    let active_window_id = active_run
+        .and_then(|run| match run.current_window_id.trim() {
+            "" | "unknown" => None,
+            value => Some(value.to_string()),
+        })
+        .or_else(|| default_run.and_then(|run| run.latest_window_id.clone()));
+    let summary_runs_by_id = summary
+        .runs
+        .iter()
+        .map(|run| (run.training_run_id.as_str(), run))
+        .collect::<HashMap<_, _>>();
+    let default_visualized_run = default_run.and_then(|run| {
+        visualization
+            .runs
+            .iter()
+            .find(|candidate| candidate.training_run_id == run.training_run_id)
+    });
+
+    let mut active_run_counts = BTreeMap::<String, u64>::new();
+    for run in &summary.runs {
+        if training_run_state_counts_as_active(
+            run.run_status.as_str(),
+            run.active_window_count,
+            run.pending_validation_window_count,
+        ) {
+            *active_run_counts
+                .entry(run.settlement.work_class.clone())
+                .or_default() += 1;
+        }
+    }
+    let work_classes = summary
+        .settlement
+        .work_classes
+        .iter()
+        .map(|work_class| PublicTrainingWorkClassState {
+            work_class: work_class.work_class.clone(),
+            progress_class: work_class.progress_class.clone(),
+            run_count: work_class.run_count,
+            active_run_count: active_run_counts
+                .get(work_class.work_class.as_str())
+                .copied()
+                .unwrap_or(0),
+            accepted_closeouts: work_class.accepted_closeouts,
+            payout_eligible_closeouts: work_class.payout_eligible_closeouts,
+            weak_device_bearing_closeouts: work_class.weak_device_bearing_closeouts,
+            progress_bearing_closeouts: work_class.progress_bearing_closeouts,
+            participation_only_closeouts: work_class.participation_only_closeouts,
+        })
+        .collect::<Vec<_>>();
+
+    let mut runs = visualization
+        .runs
+        .iter()
+        .filter(|run| {
+            training_run_state_counts_as_active(
+                run.run_status.as_str(),
+                run.active_window_count,
+                run.pending_validation_window_count,
+            ) || default_run_id.as_deref() == Some(run.training_run_id.as_str())
+        })
+        .map(|run| {
+            let summary_run = summary_runs_by_id
+                .get(run.training_run_id.as_str())
+                .copied();
+            PublicTrainingRunState {
+                training_run_id: run.training_run_id.clone(),
+                network_id: run.network_id.clone(),
+                run_status: run.run_status.clone(),
+                scheduler_window_state: run.scheduler_window_state.clone(),
+                current_window_id: run.current_window_id.clone(),
+                work_class: run.work_class.clone(),
+                progress_class: run.progress_class.clone(),
+                replica_type: run.replica_type.clone(),
+                assigned_contributors: run.assigned_contributors,
+                weak_device_assigned_contributors: run.weak_device_assigned_contributors,
+                accepted_contributors: run.accepted_contributors,
+                weak_device_accepted_contributors: run.weak_device_accepted_contributors,
+                model_progress_contributors: run.model_progress_contributors,
+                active_window_count: run.active_window_count,
+                pending_validation_window_count: run.pending_validation_window_count,
+                validator_challenges_open: summary_run
+                    .map_or(0, |summary_run| summary_run.open_validator_challenges),
+                validator_challenges_queued: summary_run
+                    .map_or(0, |summary_run| summary_run.queued_validator_challenges),
+                latest_checkpoint_ref: run.latest_checkpoint_ref.clone(),
+                latest_checkpoint_age_ms: run.latest_checkpoint_age_ms,
+                latest_window_id: summary_run
+                    .and_then(|summary_run| summary_run.latest_window_id.clone()),
+                latest_window_status: run.latest_window_status.clone(),
+                latest_closeout_status: run.latest_closeout_status.clone(),
+                latest_aggregate_ref: run.latest_aggregate_ref.clone(),
+                latest_promoted_checkpoint_ref: run.latest_promoted_checkpoint_ref.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+    runs.sort_by(|lhs, rhs| {
+        let lhs_default = default_run_id.as_deref() == Some(lhs.training_run_id.as_str());
+        let rhs_default = default_run_id.as_deref() == Some(rhs.training_run_id.as_str());
+        let lhs_active = training_run_state_counts_as_active(
+            lhs.run_status.as_str(),
+            lhs.active_window_count,
+            lhs.pending_validation_window_count,
+        );
+        let rhs_active = training_run_state_counts_as_active(
+            rhs.run_status.as_str(),
+            rhs.active_window_count,
+            rhs.pending_validation_window_count,
+        );
+        rhs_default
+            .cmp(&lhs_default)
+            .then_with(|| rhs_active.cmp(&lhs_active))
+            .then_with(|| lhs.training_run_id.cmp(&rhs.training_run_id))
+    });
+    runs.truncate(PUBLIC_TRAINING_RUN_LIMIT);
+    let selected_run_ids = runs
+        .iter()
+        .map(|run| run.training_run_id.clone())
+        .collect::<HashSet<_>>();
+
+    let default_window_ids = [
+        active_window_id.as_deref(),
+        default_run.and_then(|run| run.latest_window_id.as_deref()),
+    ]
+    .into_iter()
+    .flatten()
+    .map(str::to_string)
+    .collect::<HashSet<_>>();
+    let mut windows = visualization
+        .windows
+        .iter()
+        .filter(|window| {
+            selected_run_ids.contains(window.training_run_id.as_str())
+                && (window.status != "reconciled"
+                    || default_window_ids.contains(window.window_id.as_str())
+                    || window.closeout_status.is_some())
+        })
+        .map(|window| PublicTrainingWindowState {
+            window_id: window.window_id.clone(),
+            training_run_id: window.training_run_id.clone(),
+            network_id: window.network_id.clone(),
+            status: window.status.clone(),
+            stage_id: window.stage_id.clone(),
+            work_class: window.work_class.clone(),
+            progress_class: window.progress_class.clone(),
+            replica_type: window.replica_type.clone(),
+            round_index: window.round_index,
+            base_checkpoint_ref: window.base_checkpoint_ref.clone(),
+            planned_local_step_count: window.planned_local_step_count,
+            aggregation_rule: window.aggregation_rule.clone(),
+            aggregation_weight_basis: window.aggregation_weight_basis.clone(),
+            total_contributions: window.total_contributions,
+            admitted_contributions: window.admitted_contributions,
+            accepted_contributions: window.accepted_contributions,
+            replay_required_contributions: window.replay_required_contributions,
+            validator_challenges_open: window.validator_challenges_open,
+            validator_challenges_queued: window.validator_challenges_queued,
+            aggregated_delta_digest: window.aggregated_delta_digest.clone(),
+            accepted_aggregate_id: window.accepted_aggregate_id.clone(),
+            output_checkpoint_ref: window.output_checkpoint_ref.clone(),
+            promoted_checkpoint_ref: window.promoted_checkpoint_ref.clone(),
+            accepted_outcome_id: window.accepted_outcome_id.clone(),
+            closeout_status: window.closeout_status.clone(),
+            payout_eligible: window.payout_eligible,
+            weak_device_bearing: window.weak_device_bearing,
+            lineage_advanced: window.lineage_advanced,
+            planned_at_ms: window.planned_at_ms,
+            activated_at_ms: window.activated_at_ms,
+            sealed_at_ms: window.sealed_at_ms,
+            reconciled_at_ms: window.reconciled_at_ms,
+        })
+        .collect::<Vec<_>>();
+    windows.sort_by(|lhs, rhs| {
+        let lhs_sort_key = lhs
+            .reconciled_at_ms
+            .or(lhs.sealed_at_ms)
+            .or(lhs.activated_at_ms)
+            .unwrap_or(lhs.planned_at_ms);
+        let rhs_sort_key = rhs
+            .reconciled_at_ms
+            .or(rhs.sealed_at_ms)
+            .or(rhs.activated_at_ms)
+            .unwrap_or(rhs.planned_at_ms);
+        rhs_sort_key
+            .cmp(&lhs_sort_key)
+            .then_with(|| lhs.training_run_id.cmp(&rhs.training_run_id))
+            .then_with(|| lhs.window_id.cmp(&rhs.window_id))
+    });
+    windows.truncate(PUBLIC_TRAINING_WINDOW_LIMIT);
+
+    PublicTrainingStatsSnapshot {
+        generated_at_unix_ms: now_unix_ms,
+        default_run_id,
+        default_network_id,
+        active_run_id,
+        active_window_id,
+        default_work_class: default_run.map(|run| run.settlement.work_class.clone()),
+        default_progress_class: default_run.map(|run| run.settlement.progress_class.clone()),
+        default_replica_type: default_run.map(|run| run.settlement.replica_type.clone()),
+        latest_checkpoint_ref: default_visualized_run
+            .and_then(|run| run.latest_checkpoint_ref.clone()),
+        latest_checkpoint_age_ms: default_visualized_run
+            .and_then(|run| run.latest_checkpoint_age_ms),
+        latest_aggregate_ref: default_visualized_run
+            .and_then(|run| run.latest_aggregate_ref.clone()),
+        latest_promoted_checkpoint_ref: default_visualized_run
+            .and_then(|run| run.latest_promoted_checkpoint_ref.clone()),
+        latest_window_status: default_visualized_run
+            .and_then(|run| run.latest_window_status.clone()),
+        latest_closeout_status: default_visualized_run
+            .and_then(|run| run.latest_closeout_status.clone()),
+        queue_pressure: PublicTrainingQueuePressure {
+            state: training_queue_pressure_state(summary).to_string(),
+            active_windows: summary.active_windows,
+            pending_validation_windows: summary.pending_validation_windows,
+            validator_challenges_open: summary.validator_challenges_open,
+            validator_challenges_queued: summary.validator_challenges_queued,
+        },
+        work_classes,
+        runs,
+        windows,
     }
 }
 
@@ -17446,16 +17742,7 @@ fn build_homepage_snapshot(
         now_unix_ms as i64,
     );
 
-    let default_run = training_summary
-        .runs
-        .iter()
-        .find(|run| {
-            matches!(
-                run.run_status.as_str(),
-                "queued" | "preparing" | "running" | "finalizing"
-            )
-        })
-        .or_else(|| training_summary.runs.first());
+    let default_run = training_default_run(training_summary.runs.as_slice());
     let default_run_id = default_run.map(|run| run.training_run_id.clone());
     let default_network_id = default_run.map(|run| run.network_id.clone()).or_else(|| {
         training_nodes
@@ -17926,9 +18213,9 @@ mod tests {
         ProviderPayoutTargetChallengeRequest, ProviderPayoutTargetChallengeResponse,
         ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
         RegisteredPayoutTarget, TreasuryFundingMaterial, TreasuryFundingTargetRequest,
-        TreasuryFundingTargetResponse, TreasuryState, TreasuryStatusResponse,
-        TreasuryPayoutClass, TreasuryWalletSnapshot, set_test_wallet_funding_hook,
-        set_test_wallet_send_hook, set_test_wallet_snapshot_hook, treasury_test_hook_lock,
+        TreasuryFundingTargetResponse, TreasuryPayoutClass, TreasuryState, TreasuryStatusResponse,
+        TreasuryWalletSnapshot, set_test_wallet_funding_hook, set_test_wallet_send_hook,
+        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
     };
 
     use super::{
@@ -29380,17 +29667,113 @@ mod tests {
         assert_eq!(initial_stats.training_artifact_failures_open, 0);
         assert_eq!(initial_stats.training_payout_eligible_closeouts, 0);
         assert!(initial_stats.training_checkpoint_max_age_ms.is_some());
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .default_run_id
+                .as_deref(),
+            Some(training_run_id)
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .default_network_id
+                .as_deref(),
+            Some("trainnet.alpha")
+        );
+        assert_eq!(
+            initial_stats.training_public_state.active_run_id.as_deref(),
+            Some(training_run_id)
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .active_window_id
+                .as_deref(),
+            Some("window.0001")
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .default_work_class
+                .as_deref(),
+            Some("adapter_training")
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .default_progress_class
+                .as_deref(),
+            Some("model_update")
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .default_replica_type
+                .as_deref(),
+            Some("single_node")
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .latest_checkpoint_ref
+                .as_deref(),
+            Some("checkpoint://decoder/base")
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .latest_window_status
+                .as_deref(),
+            Some("sealed")
+        );
+        assert_eq!(
+            initial_stats
+                .training_public_state
+                .queue_pressure
+                .state
+                .as_str(),
+            "pending_validation"
+        );
+        assert_eq!(initial_stats.training_public_state.work_classes.len(), 1);
+        assert_eq!(initial_stats.training_public_state.runs.len(), 1);
+        assert_eq!(initial_stats.training_public_state.windows.len(), 1);
+        assert_eq!(
+            initial_stats.training_public_state.runs[0].validator_challenges_open,
+            2
+        );
+        assert_eq!(
+            initial_stats.training_public_state.runs[0].validator_challenges_queued,
+            2
+        );
+        assert_eq!(
+            initial_stats.training_public_state.windows[0].window_id,
+            "window.0001"
+        );
+        assert_eq!(
+            initial_stats.training_public_state.windows[0].status,
+            "sealed"
+        );
+        assert_eq!(
+            initial_stats.training_public_state.windows[0].base_checkpoint_ref,
+            "checkpoint://decoder/base"
+        );
 
         let initial_summary = fetch_training_summary(&app).await?;
         assert_eq!(initial_summary.participation.admitted_nodes, 2);
         assert_eq!(initial_summary.participation.assigned_contributors, 1);
         assert_eq!(
-            initial_summary.participation.weak_device_assigned_contributors,
+            initial_summary
+                .participation
+                .weak_device_assigned_contributors,
             1
         );
         assert_eq!(initial_summary.participation.online_nodes, 2);
         assert_eq!(initial_summary.progress.accepted_contributors, 0);
-        assert_eq!(initial_summary.progress.weak_device_accepted_contributors, 0);
+        assert_eq!(
+            initial_summary.progress.weak_device_accepted_contributors,
+            0
+        );
         assert_eq!(initial_summary.progress.model_progress_contributors, 0);
         assert_eq!(initial_summary.progress.accepted_closeouts, 0);
         assert_eq!(
@@ -29425,7 +29808,10 @@ mod tests {
         assert_eq!(run_summary.current_window_id, "window.0001");
         assert_eq!(run_summary.participation.admitted_nodes, 2);
         assert_eq!(run_summary.participation.assigned_contributors, 1);
-        assert_eq!(run_summary.participation.weak_device_assigned_contributors, 1);
+        assert_eq!(
+            run_summary.participation.weak_device_assigned_contributors,
+            1
+        );
         assert_eq!(run_summary.participation.online_nodes, 2);
         assert_eq!(run_summary.progress.accepted_contributors, 0);
         assert_eq!(run_summary.progress.weak_device_accepted_contributors, 0);
@@ -29656,12 +30042,70 @@ mod tests {
         assert_eq!(final_stats.training_artifact_failures_open, 0);
         assert_eq!(final_stats.training_payout_eligible_closeouts, 1);
         assert!(final_stats.training_checkpoint_max_age_ms.is_some());
+        assert_eq!(
+            final_stats.training_public_state.default_run_id.as_deref(),
+            Some(training_run_id)
+        );
+        assert_eq!(
+            final_stats
+                .training_public_state
+                .active_window_id
+                .as_deref(),
+            Some("window.0002")
+        );
+        assert_eq!(
+            final_stats
+                .training_public_state
+                .latest_aggregate_ref
+                .as_deref(),
+            Some("sha256:aggregate-window-summary-alpha")
+        );
+        assert_eq!(
+            final_stats
+                .training_public_state
+                .latest_window_status
+                .as_deref(),
+            Some("reconciled")
+        );
+        assert_eq!(
+            final_stats
+                .training_public_state
+                .latest_closeout_status
+                .as_deref(),
+            Some("rewarded")
+        );
+        assert_eq!(
+            final_stats
+                .training_public_state
+                .queue_pressure
+                .state
+                .as_str(),
+            "standing_by"
+        );
+        assert_eq!(final_stats.training_public_state.work_classes.len(), 1);
+        assert_eq!(final_stats.training_public_state.runs.len(), 1);
+        assert_eq!(final_stats.training_public_state.windows.len(), 1);
+        assert_eq!(
+            final_stats.training_public_state.runs[0]
+                .latest_aggregate_ref
+                .as_deref(),
+            Some("sha256:aggregate-window-summary-alpha")
+        );
+        assert_eq!(
+            final_stats.training_public_state.windows[0]
+                .closeout_status
+                .as_deref(),
+            Some("rewarded")
+        );
+        assert!(final_stats.training_public_state.windows[0].payout_eligible);
 
         let final_summary = fetch_training_summary(&app).await?;
         assert_eq!(final_summary.participation.admitted_nodes, 2);
         assert_eq!(final_summary.participation.assigned_contributors, 1);
         assert_eq!(
-            final_summary.participation.weak_device_assigned_contributors,
+            final_summary
+                .participation
+                .weak_device_assigned_contributors,
             1
         );
         assert_eq!(final_summary.participation.online_nodes, 2);
@@ -29698,7 +30142,10 @@ mod tests {
         assert_eq!(run_summary.current_window_id, "window.0002");
         assert_eq!(run_summary.participation.admitted_nodes, 2);
         assert_eq!(run_summary.participation.assigned_contributors, 1);
-        assert_eq!(run_summary.participation.weak_device_assigned_contributors, 1);
+        assert_eq!(
+            run_summary.participation.weak_device_assigned_contributors,
+            1
+        );
         assert_eq!(run_summary.participation.online_nodes, 2);
         assert_eq!(run_summary.progress.accepted_contributors, 1);
         assert_eq!(run_summary.progress.weak_device_accepted_contributors, 1);
@@ -30303,7 +30750,10 @@ mod tests {
             .find(|run| run.training_run_id == "run.summary.progress")
             .expect("progress run summary");
         assert_eq!(progress_run.participation.assigned_contributors, 1);
-        assert_eq!(progress_run.participation.weak_device_assigned_contributors, 0);
+        assert_eq!(
+            progress_run.participation.weak_device_assigned_contributors,
+            0
+        );
         assert_eq!(progress_run.progress.accepted_contributors, 1);
         assert_eq!(progress_run.progress.weak_device_accepted_contributors, 0);
         assert_eq!(progress_run.progress.model_progress_contributors, 1);
@@ -30314,7 +30764,12 @@ mod tests {
             .find(|run| run.training_run_id == "run.summary.validation")
             .expect("validation run summary");
         assert_eq!(validation_run.participation.assigned_contributors, 1);
-        assert_eq!(validation_run.participation.weak_device_assigned_contributors, 1);
+        assert_eq!(
+            validation_run
+                .participation
+                .weak_device_assigned_contributors,
+            1
+        );
         assert_eq!(validation_run.progress.accepted_contributors, 1);
         assert_eq!(validation_run.progress.weak_device_accepted_contributors, 1);
         assert_eq!(validation_run.progress.model_progress_contributors, 0);
@@ -30336,7 +30791,9 @@ mod tests {
         assert_eq!(visualization.participation.active_runs, 2);
         assert_eq!(visualization.participation.assigned_contributors, 2);
         assert_eq!(
-            visualization.participation.weak_device_assigned_contributors,
+            visualization
+                .participation
+                .weak_device_assigned_contributors,
             1
         );
         assert_eq!(visualization.progress.accepted_contributors, 2);
@@ -30879,8 +31336,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn validation_replay_closeout_queues_and_dispatches_weak_device_payout() -> Result<()>
-    {
+    async fn validation_replay_closeout_queues_and_dispatches_weak_device_payout() -> Result<()> {
         let mut config = test_config()?;
         config.treasury.enabled = true;
         config.treasury.payout_sats_per_window = 120;
@@ -31194,7 +31650,10 @@ mod tests {
                 .expect("queued accepted-work payout");
             assert_eq!(payout.status, "queued");
             assert_eq!(payout.amount_sats, 120);
-            assert_eq!(payout.classification.payout_class, TreasuryPayoutClass::AcceptedWork);
+            assert_eq!(
+                payout.classification.payout_class,
+                TreasuryPayoutClass::AcceptedWork
+            );
             assert_eq!(
                 payout.classification.work_class.as_deref(),
                 Some("validation_replay")
@@ -31228,8 +31687,9 @@ mod tests {
                 })
                 .expect("dispatched accepted-work payout");
             assert_eq!(payout.status, "dispatched");
-            let treasury_stats =
-                store.treasury.public_stats(&state.config.treasury, now_unix_ms());
+            let treasury_stats = store
+                .treasury
+                .public_stats(&state.config.treasury, now_unix_ms());
             assert_eq!(treasury_stats.payout_sats_paid_total, 120);
             assert_eq!(treasury_stats.accepted_work_payout_sats_paid_total, 120);
             assert_eq!(
@@ -31251,7 +31711,10 @@ mod tests {
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(stats.nexus_payout_sats_paid_total, 120);
         assert_eq!(stats.nexus_accepted_work_payout_sats_paid_total, 120);
-        assert_eq!(stats.nexus_weak_device_accepted_work_payout_sats_paid_total, 120);
+        assert_eq!(
+            stats.nexus_weak_device_accepted_work_payout_sats_paid_total,
+            120
+        );
         assert_eq!(stats.nexus_placeholder_payout_sats_paid_total, 0);
         assert_eq!(stats.nexus_beta_bonus_payout_sats_paid_total, 0);
 
@@ -31406,12 +31869,14 @@ mod tests {
                                 .to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_300,
                             window_id: window_id.to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input_for_lease(
-                                "contrib.window.strong.full_island",
-                                &lease,
-                                "sha256:validator-pending-strong-full-island",
-                                None,
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.strong.full_island",
+                                    &lease,
+                                    "sha256:validator-pending-strong-full-island",
+                                    None,
+                                ),
+                            ],
                         },
                     )?))?,
             )
@@ -31539,12 +32004,14 @@ mod tests {
                                 .to_string(),
                             recorded_at_ms: created_at_ms as i64 + 1_400,
                             window_id: window_id.to_string(),
-                            contribution_outcomes: vec![training_window_contribution_input_for_lease(
-                                "contrib.window.strong.full_island",
-                                &lease,
-                                "sha256:validator-final-strong-full-island",
-                                Some(ComputeAdapterContributionDisposition::Accepted),
-                            )],
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.strong.full_island",
+                                    &lease,
+                                    "sha256:validator-final-strong-full-island",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
                             held_out_average_score_bps: Some(9_500),
                             benchmark_pass_rate_bps: Some(9_700),
                             runtime_smoke_passed: Some(true),
@@ -31574,7 +32041,10 @@ mod tests {
                 .expect("queued strong-lane accepted-work payout");
             assert_eq!(payout.status, "queued");
             assert_eq!(payout.amount_sats, 240);
-            assert_eq!(payout.classification.payout_class, TreasuryPayoutClass::AcceptedWork);
+            assert_eq!(
+                payout.classification.payout_class,
+                TreasuryPayoutClass::AcceptedWork
+            );
             assert_eq!(
                 payout.classification.work_class.as_deref(),
                 Some("full_island_local_update_training")
@@ -31583,7 +32053,10 @@ mod tests {
                 payout.classification.payout_basis.as_deref(),
                 Some("aggregation_weight")
             );
-            assert_eq!(payout.classification.weight_basis.as_deref(), Some("tokens"));
+            assert_eq!(
+                payout.classification.weight_basis.as_deref(),
+                Some("tokens")
+            );
             assert_eq!(payout.classification.weight_value, Some(131_072));
             assert!(!payout.classification.weak_device_bearing);
             assert!(payout.classification.progress_bearing);
@@ -31610,8 +32083,9 @@ mod tests {
                 })
                 .expect("dispatched strong-lane accepted-work payout");
             assert_eq!(payout.status, "dispatched");
-            let treasury_stats =
-                store.treasury.public_stats(&state.config.treasury, now_unix_ms());
+            let treasury_stats = store
+                .treasury
+                .public_stats(&state.config.treasury, now_unix_ms());
             assert_eq!(treasury_stats.payout_sats_paid_total, 240);
             assert_eq!(treasury_stats.accepted_work_payout_sats_paid_total, 240);
             assert_eq!(
@@ -31637,8 +32111,14 @@ mod tests {
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(stats.nexus_payout_sats_paid_total, 240);
         assert_eq!(stats.nexus_accepted_work_payout_sats_paid_total, 240);
-        assert_eq!(stats.nexus_strong_lane_accepted_work_payout_sats_paid_total, 240);
-        assert_eq!(stats.nexus_weak_device_accepted_work_payout_sats_paid_total, 0);
+        assert_eq!(
+            stats.nexus_strong_lane_accepted_work_payout_sats_paid_total,
+            240
+        );
+        assert_eq!(
+            stats.nexus_weak_device_accepted_work_payout_sats_paid_total,
+            0
+        );
         assert_eq!(stats.nexus_placeholder_payout_sats_paid_total, 0);
         assert_eq!(stats.nexus_beta_bonus_payout_sats_paid_total, 0);
 
@@ -31699,6 +32179,22 @@ mod tests {
         assert_eq!(homepage.stats.pylons_online_now, 1);
         assert_eq!(homepage.stats.sellable_pylons_online_now, 1);
         assert_eq!(homepage.stats.recent_pylons.len(), 1);
+        assert_eq!(
+            homepage
+                .stats
+                .training_public_state
+                .default_run_id
+                .as_deref(),
+            Some(training_run_id)
+        );
+        assert_eq!(
+            homepage
+                .stats
+                .training_public_state
+                .default_network_id
+                .as_deref(),
+            Some("trainnet.alpha")
+        );
         assert_eq!(homepage.training_summary.participation.active_runs, 1);
         assert_eq!(
             homepage

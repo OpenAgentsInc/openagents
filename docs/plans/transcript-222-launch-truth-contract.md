@@ -465,11 +465,30 @@ These fields are the current source of truth for participant-count claims. They
 must be used instead of inferring contribution from `pylonsOnlineNow`,
 `pylonsSeen24h`, `sellablePylonsOnlineNow`, or generic payout totals.
 
-The public stats contract still must grow these fields before stronger
-Transcript 222 run/window claims are allowed:
+The public stats contract now also exposes run/window lineage fields on the
+canonical `/api/stats` path under `training_public_state`:
 
-- active run id or run family
-- active window id or window family
+- `training_public_state.default_run_id`
+- `training_public_state.default_network_id`
+- `training_public_state.active_run_id`
+- `training_public_state.active_window_id`
+- `training_public_state.default_work_class`
+- `training_public_state.work_classes[*].work_class`
+- `training_public_state.runs[*].training_run_id`
+- `training_public_state.runs[*].current_window_id`
+- `training_public_state.runs[*].latest_checkpoint_ref`
+- `training_public_state.runs[*].latest_aggregate_ref`
+- `training_public_state.runs[*].latest_promoted_checkpoint_ref`
+- `training_public_state.windows[*].window_id`
+- `training_public_state.windows[*].status`
+- `training_public_state.windows[*].base_checkpoint_ref`
+- `training_public_state.windows[*].accepted_aggregate_id`
+- `training_public_state.windows[*].output_checkpoint_ref`
+- `training_public_state.windows[*].promoted_checkpoint_ref`
+
+These fields are the source of truth for Transcript 222 run/window/work-class
+and lineage claims. Website and product surfaces should project from this
+single payload instead of rebuilding public run state from separate endpoints.
 
 The payout split fields above are now present and should be used instead of
 overloading `nexusPayoutSatsPaidTotal`.
