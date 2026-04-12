@@ -139,7 +139,7 @@ use crate::treasury::{
     TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPublicStats,
     TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse,
     TreasuryTrainingPayoutLedgerSummary, create_live_funding_target, dispatch_live_payouts,
-    load_live_wallet_snapshot_with_plan,
+    load_live_wallet_refresh_result_with_plan,
 };
 
 pub use crate::treasury::{
@@ -16121,16 +16121,21 @@ async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool
             return;
         }
     };
-    match load_live_wallet_snapshot_with_plan(
+    match load_live_wallet_refresh_result_with_plan(
         &state.config.treasury,
         create_if_missing,
-        refresh_plan,
+        refresh_plan.clone(),
     )
     .await
     {
-        Ok(snapshot) => {
+        Ok(refresh_result) => {
             if let Ok(mut store) = state.store.write() {
-                let mut receipt_events = store.treasury.apply_wallet_snapshot(&snapshot, now);
+                let mut receipt_events = store
+                    .treasury
+                    .apply_wallet_snapshot(&refresh_result.snapshot, now);
+                store
+                    .treasury
+                    .note_wallet_refresh_progress(&refresh_plan, &refresh_result.progress);
                 receipt_events.extend(
                     store
                         .treasury
