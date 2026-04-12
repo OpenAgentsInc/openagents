@@ -1,7 +1,7 @@
 # Distributed Training Launch Status
 
 Status: current launch comparison  
-Scope date: 2026-04-11
+Scope date: 2026-04-12
 
 This document compares the admitted-node distributed-training MVP defined in
 `docs/pylon/distributed-training-mvp-roadmap.md` and
@@ -22,6 +22,31 @@ The important distinction is simple:
   public story we are telling users next week
 
 Those are related, but they are not identical.
+
+## 2026-04-12 Retained Rehearsal Update
+
+The current hard blockers for Transcript 222 launch-hardening now have passing
+retained gates in-tree:
+
+- `scripts/release/check-pylon-transcript-222-canary.sh`
+- `scripts/release/check-pylon-transcript-222-crowd-threshold.sh`
+
+The retained evidence bundle for the first passing crowd-threshold run is:
+
+- `docs/reports/pylon/2026-04-12-transcript-222-rehearsal-gates.md`
+
+That matters because the current code now proves two things separately and
+without hidden truth paths:
+
+- the small-cohort canary can traverse existing `Psionic`, `Pylon`, `Nexus`,
+  treasury, and homepage/public-stats surfaces together
+- the widened threshold rehearsal preserves the real launch-truth distinction
+  between progress-only counters and settlement counters even after the
+  participant count moves past the >70 threshold
+
+What remains after this update is not the original hard-blocker set. The
+remaining work is launch discipline, rollout control, public explanation, and a
+later separately documented live-node demo run.
 
 ## Short Version
 

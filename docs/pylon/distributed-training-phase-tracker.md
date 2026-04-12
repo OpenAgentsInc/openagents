@@ -41,7 +41,7 @@ Read this file narrowly:
 
 ## Current Status
 
-Status snapshot as of `2026-04-11`:
+Status snapshot as of `2026-04-12`:
 
 | Phase | Status | Open blockers | Gate |
 | --- | --- | --- | --- |
@@ -52,7 +52,7 @@ Status snapshot as of `2026-04-11`:
 | Phase 4 TRN Publication And Reputation | complete | none | satisfied |
 | Phase 5 Dress Rehearsal And Launch | complete | none | satisfied |
 | Phase 6 Apple Silicon And Metal Support | complete | none | satisfied |
-| Launch Hardening Against Transcript 222 | in progress | automatic assignment packaging, relocatable artifact handoff, and public-state clarity | not yet satisfied |
+| Launch Hardening Against Transcript 222 | in progress | launch-status documentation, claims sheet, public FAQ, and post-launch audit surfaces | hard blockers satisfied |
 
 The original phase set is complete. The remaining row above is not a rewrite of
 the roadmap. It is the operational comparison between the closed MVP and the
