@@ -243,6 +243,14 @@ impl SparkWallet {
         }
     }
 
+    pub async fn sync(&self) -> Result<(), SparkError> {
+        self.sdk
+            .sync_wallet_runtime_state()
+            .await
+            .map(|_| ())
+            .map_err(|error| SparkError::Wallet(error.to_string()))
+    }
+
     pub async fn get_balance(&self) -> Result<Balance, SparkError> {
         self.get_balance_with_sync(true).await
     }
