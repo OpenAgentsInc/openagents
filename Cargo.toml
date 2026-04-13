@@ -240,3 +240,8 @@ opt-level = 3
 debug = "limited"
 lto = "thin"
 codegen-units = 1
+
+[profile.fast-release]
+inherits = "release"
+lto = false
+codegen-units = 16

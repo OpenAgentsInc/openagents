@@ -1,0 +1,612 @@
+{
+  "generated_at": "2026-04-13T07:15:53Z",
+  "vm": "nexus-hotfix-lane-1",
+  "instance_status": "RUNNING",
+  "service_status": "active",
+  "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:nexus-hotfix-lane-20260413-061723",
+  "health": {
+    "ok": true,
+    "service": "nexus-relay",
+    "relay_backend": "durable-upstream",
+    "upstream_ws_url": "ws://127.0.0.1:42111/",
+    "authority_mode": "in-process",
+    "managed_groups_mode": "deferred",
+    "data_directory": "/var/lib/nexus-relay"
+  },
+  "stats": {
+    "service": "nexus-control",
+    "authority": "openagents-hosted-nexus",
+    "hosted_nexus_relay_url": "wss://nexus-hotfix-lane.internal/",
+    "as_of_unix_ms": 1776064531865,
+    "window_started_at_unix_ms": 1775978131865,
+    "receipt_count": 0,
+    "receipt_persistence_enabled": true,
+    "pylons_online_now": 0,
+    "pylons_seen_24h": 0,
+    "pylon_sessions_online_now": 0,
+    "sellable_pylons_online_now": 0,
+    "pylon_presence_stale_after_ms": 120000,
+    "sessions_active": 0,
+    "sessions_issued_24h": 0,
+    "sync_tokens_active": 0,
+    "sync_tokens_issued_24h": 0,
+    "starter_demand_budget_cap_sats": 5000,
+    "starter_demand_budget_allocated_sats": 0,
+    "starter_offers_waiting_ack": 0,
+    "starter_offers_running": 0,
+    "starter_offers_dispatched_24h": 0,
+    "starter_offers_started_24h": 0,
+    "starter_offer_heartbeats_24h": 0,
+    "starter_offers_completed_24h": 0,
+    "starter_offers_released_24h": 0,
+    "starter_offers_expired_24h": 0,
+    "starter_demand_ineligible_polls_24h": 0,
+    "starter_offer_start_rate_24h": 0.0,
+    "starter_offer_completion_rate_24h": 0.0,
+    "starter_offer_loss_rate_24h": 0.0,
+    "starter_demand_paid_sats_24h": 0,
+    "starter_demand_released_sats_24h": 0,
+    "nexus_wallet_storage_runtime_mode": "original",
+    "nexus_wallet_balance_sats": 0,
+    "nexus_treasury_snapshot_generated_at_unix_ms": 1776064531583,
+    "nexus_treasury_snapshot_age_ms": 282,
+    "nexus_payout_loop_health": "disabled",
+    "nexus_treasury_enabled": false,
+    "nexus_treasury_payout_sats_per_window": 0,
+    "nexus_treasury_payout_interval_seconds": 3600,
+    "nexus_treasury_require_sellable": true,
+    "nexus_treasury_daily_budget_cap_sats": 21000,
+    "nexus_registered_payout_identities": 0,
+    "nexus_payout_sats_paid_total": 0,
+    "nexus_payout_sats_paid_24h": 0,
+    "nexus_accepted_work_payout_sats_paid_total": 0,
+    "nexus_accepted_work_payout_sats_paid_24h": 0,
+    "nexus_placeholder_payout_sats_paid_total": 0,
+    "nexus_placeholder_payout_sats_paid_24h": 0,
+    "nexus_beta_bonus_payout_sats_paid_total": 0,
+    "nexus_beta_bonus_payout_sats_paid_24h": 0,
+    "nexus_weak_device_accepted_work_payout_sats_paid_total": 0,
+    "nexus_weak_device_accepted_work_payout_sats_paid_24h": 0,
+    "nexus_strong_lane_accepted_work_payout_sats_paid_total": 0,
+    "nexus_strong_lane_accepted_work_payout_sats_paid_24h": 0,
+    "nexus_payouts_dispatched_24h": 0,
+    "nexus_payouts_confirmed_24h": 0,
+    "nexus_payouts_failed_24h": 0,
+    "nexus_payouts_skipped_24h": 0,
+    "training_nodes_admitted": 0,
+    "training_admitted_contributors": 0,
+    "training_assigned_contributors": 0,
+    "training_accepted_contributors": 0,
+    "training_model_progress_contributors": 0,
+    "training_weak_device_assigned_contributors": 0,
+    "training_weak_device_accepted_contributors": 0,
+    "training_nodes_online": 0,
+    "training_admitted_nodes_online": 0,
+    "training_runs_active": 0,
+    "training_windows_active": 0,
+    "training_windows_pending_validation": 0,
+    "training_validator_challenges_open": 0,
+    "training_validator_challenges_queued": 0,
+    "training_nodes_contributing_to_accepted_progress": 0,
+    "training_runs_with_accepted_progress": 0,
+    "training_windows_advanced_checkpoint_lineage": 0,
+    "training_accepted_closeouts": 0,
+    "training_artifact_failures_open": 0,
+    "training_payout_eligible_closeouts": 0,
+    "training_public_state": {
+      "generated_at_unix_ms": 1776064531865,
+      "queue_pressure": {
+        "state": "none",
+        "active_windows": 0,
+        "pending_validation_windows": 0,
+        "validator_challenges_open": 0,
+        "validator_challenges_queued": 0
+      },
+      "launch_health": {
+        "generated_at_unix_ms": 1776064531865,
+        "overall_status": "good",
+        "public_snapshot_source": "live",
+        "public_stats_age_ms": 0,
+        "public_state_drift_from_kernel_ms": 0,
+        "active_runs": 0,
+        "run_backlog_slots": 0,
+        "pending_validation_windows": 0,
+        "validator_challenges_open": 0,
+        "validator_challenges_queued": 0,
+        "accepted_work_pending_payout_count": 0,
+        "accepted_work_attention_payout_count": 0,
+        "payouts_failed_24h": 0,
+        "payouts_skipped_24h": 0,
+        "resolver_lookup_sample_count": 0,
+        "signed_access_sample_count": 0,
+        "active_alert_count": 0,
+        "critical_alert_count": 0
+      }
+    },
+    "compute_products_active": 0,
+    "compute_capacity_lots_open": 0,
+    "compute_capacity_lots_delivering": 0,
+    "compute_instruments_active": 0,
+    "compute_inventory_quantity_open": 0,
+    "compute_inventory_quantity_reserved": 0,
+    "compute_inventory_quantity_delivering": 0,
+    "compute_delivery_proofs_24h": 0,
+    "compute_delivery_quantity_24h": 0,
+    "compute_delivery_rejections_24h": 0,
+    "compute_delivery_variances_24h": 0,
+    "compute_validator_challenges_open": 0,
+    "compute_validator_challenges_queued": 0,
+    "compute_validator_challenges_verified_24h": 0,
+    "compute_validator_challenges_rejected_24h": 0,
+    "compute_validator_challenges_timed_out_24h": 0,
+    "compute_delivery_accept_rate_24h": 0.0,
+    "compute_fill_ratio_24h": 0.0,
+    "compute_priced_instruments_24h": 0,
+    "compute_indices_published_24h": 0,
+    "compute_index_corrections_24h": 0,
+    "compute_index_thin_windows_24h": 0,
+    "compute_index_settlement_eligible_24h": 0,
+    "compute_index_quality_score_24h": 0.0,
+    "compute_active_provider_count": 0,
+    "compute_provider_concentration_hhi": 0.0,
+    "compute_forward_physical_instruments_active": 0,
+    "compute_forward_physical_open_quantity": 0,
+    "compute_forward_physical_defaults_24h": 0,
+    "compute_future_cash_instruments_active": 0,
+    "compute_future_cash_open_interest": 0,
+    "compute_future_cash_cash_settlements_24h": 0,
+    "compute_future_cash_cash_flow_24h": 0,
+    "compute_future_cash_defaults_24h": 0,
+    "compute_future_cash_collateral_shortfall_24h": 0,
+    "compute_structured_instruments_active": 0,
+    "compute_structured_instruments_closed_24h": 0,
+    "compute_max_buyer_concentration_share": 0.0,
+    "compute_paper_to_physical_ratio": 0.0,
+    "compute_deliverable_coverage_ratio": 0.0,
+    "compute_breakers_tripped": 2,
+    "compute_breakers_guarded": 0,
+    "compute_breaker_states": [
+      {
+        "breaker_id": "future_cash.paper_to_physical",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 2.0,
+        "observed_value": 0.0,
+        "action": "halt new future cash issuance when paper exposure outruns deliverable depth"
+      },
+      {
+        "breaker_id": "future_cash.deliverable_coverage",
+        "state": "tripped",
+        "reason": "observed value 0.0000 fell below threshold 0.5000",
+        "threshold": 0.5,
+        "observed_value": 0.0,
+        "action": "narrow or halt future cash issuance until physical coverage recovers"
+      },
+      {
+        "breaker_id": "future_cash.index_quality",
+        "state": "tripped",
+        "reason": "observed value 0.0000 fell below threshold 0.5000",
+        "threshold": 0.5,
+        "observed_value": 0.0,
+        "action": "disable settlement-sensitive issuance until governed indices improve"
+      },
+      {
+        "breaker_id": "future_cash.buyer_concentration",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.8,
+        "observed_value": 0.0,
+        "action": "cap marginal hedge issuance to concentrated buyers"
+      },
+      {
+        "breaker_id": "provider_concentration",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.6,
+        "observed_value": 0.0,
+        "action": "review provider concentration before widening launch products"
+      },
+      {
+        "breaker_id": "delivery_rejection_rate",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.25,
+        "observed_value": 0.0,
+        "action": "pause advanced compute issuance while delivery integrity degrades"
+      }
+    ],
+    "compute_rollout_gates": [
+      {
+        "gate_id": "forward_physical",
+        "enabled": true,
+        "stage": "phase_5",
+        "description": "Forward physical capacity sales"
+      },
+      {
+        "gate_id": "future_cash",
+        "enabled": true,
+        "stage": "phase_7",
+        "description": "Cash-settled hedge issuance and settlement"
+      },
+      {
+        "gate_id": "structured_products",
+        "enabled": true,
+        "stage": "phase_8",
+        "description": "Reservation rights, swaps, and strips"
+      },
+      {
+        "gate_id": "reconciliation_diagnostics",
+        "enabled": true,
+        "stage": "migration",
+        "description": "Legacy, transitional, and canonical truth diagnostics"
+      }
+    ],
+    "compute_truth_labels": [
+      {
+        "truth_label": "legacy",
+        "count_24h": 0
+      },
+      {
+        "truth_label": "transitional",
+        "count_24h": 0
+      },
+      {
+        "truth_label": "canonical",
+        "count_24h": 0
+      }
+    ],
+    "compute_reconciliation_gap_24h": 0,
+    "compute_policy_bundle_id": "policy.compute.market.default",
+    "compute_policy_version": "1",
+    "liquidity_quotes_active": 0,
+    "liquidity_route_plans_active": 0,
+    "liquidity_envelopes_open": 0,
+    "liquidity_settlements_24h": 0,
+    "liquidity_reserve_partitions_active": 0,
+    "liquidity_value_moved_24h": 0,
+    "risk_coverage_offers_open": 0,
+    "risk_coverage_bindings_active": 0,
+    "risk_prediction_positions_open": 0,
+    "risk_claims_open": 0,
+    "risk_signals_active": 0,
+    "risk_implied_fail_probability_bps": 0,
+    "risk_calibration_score": 0.0,
+    "risk_coverage_concentration_hhi": 0.0,
+    "recent_receipts": []
+  },
+  "training_rollout": {
+    "revision": 0,
+    "updated_at_unix_ms": 0,
+    "pause_new_leases": false,
+    "default_channel": "broad",
+    "gates": [],
+    "cohorts": [],
+    "blocked_release_ids": [],
+    "blocked_build_digests": [],
+    "abuse_controls": {
+      "enabled": false,
+      "max_active_leases_per_settlement_destination": 0,
+      "max_recent_expired_leases_per_node": 0,
+      "max_recent_non_useful_contributions_per_node": 0,
+      "payout_hold_after_non_useful_contributions": 0,
+      "lookback_window_ms": 86400000
+    },
+    "abuse_summary": {
+      "enabled": false,
+      "lookback_window_ms": 86400000,
+      "settlement_destinations_with_multiple_nodes": 0,
+      "nodes_over_active_lease_limit": 0,
+      "nodes_over_recent_expired_lease_limit": 0,
+      "nodes_over_recent_non_useful_limit": 0,
+      "payout_hold_nodes": 0
+    },
+    "channels": [
+      {
+        "channel": "canary",
+        "nodes_total": 0,
+        "nodes_online": 0,
+        "nodes_eligible": 0
+      },
+      {
+        "channel": "beta",
+        "nodes_total": 0,
+        "nodes_online": 0,
+        "nodes_eligible": 0
+      },
+      {
+        "channel": "broad",
+        "nodes_total": 0,
+        "nodes_online": 0,
+        "nodes_eligible": 0
+      }
+    ]
+  },
+  "treasury": null,
+  "endpoint_latency_ms": {
+    "healthz": 3,
+    "stats": 4,
+    "training_rollout": 3,
+    "treasury_status": 0
+  },
+  "tail_latency_ms": {
+    "sample_count": 40,
+    "healthz": {
+      "min": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 3,
+      "max": 3
+    },
+    "stats": {
+      "min": 0,
+      "p50": 0,
+      "p95": 1,
+      "p99": 3,
+      "max": 3
+    },
+    "provider_presence_heartbeat": {
+      "min": 0,
+      "p50": 0,
+      "p95": 1,
+      "p99": 3,
+      "max": 3
+    }
+  },
+  "tail_latency_samples_ms": {
+    "healthz": [
+      3,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "stats": [
+      3,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1
+    ],
+    "provider_presence_heartbeat": [
+      3,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "treasury_policy_env": null,
+  "treasury_policy_status": null,
+  "treasury_recent_payout_activity": null,
+  "treasury_freshness": null,
+  "treasury_active_alerts": [],
+  "data_mount": "/dev/sdb on /var/lib/nexus-relay type ext4 (rw,relatime)",
+  "gates": [
+    {
+      "gate_id": "instance_running",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "instance_status": "RUNNING"
+      }
+    },
+    {
+      "gate_id": "service_active",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "service_status": "active"
+      }
+    },
+    {
+      "gate_id": "health_endpoint",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "latency_ms": 3,
+        "max_latency_ms": 1000,
+        "body": {
+          "ok": true,
+          "service": "nexus-relay",
+          "relay_backend": "durable-upstream",
+          "upstream_ws_url": "ws://127.0.0.1:42111/",
+          "authority_mode": "in-process",
+          "managed_groups_mode": "deferred",
+          "data_directory": "/var/lib/nexus-relay"
+        }
+      }
+    },
+    {
+      "gate_id": "stats_endpoint",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "latency_ms": 4,
+        "max_latency_ms": 1000
+      }
+    },
+    {
+      "gate_id": "training_rollout_endpoint",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "latency_ms": 3,
+        "max_latency_ms": 1000,
+        "revision": 0,
+        "pause_new_leases": false,
+        "gate_count": 0,
+        "cohort_count": 0,
+        "blocked_release_ids": [],
+        "blocked_build_digests": []
+      }
+    },
+    {
+      "gate_id": "health_endpoint_tail_latency",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "sample_count": 40,
+        "latency_ms": {
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 3,
+          "max": 3
+        },
+        "max_p95_latency_ms": 1000,
+        "max_p99_latency_ms": 2000
+      }
+    },
+    {
+      "gate_id": "stats_endpoint_tail_latency",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "sample_count": 40,
+        "latency_ms": {
+          "min": 0,
+          "p50": 0,
+          "p95": 1,
+          "p99": 3,
+          "max": 3
+        },
+        "max_p95_latency_ms": 1000,
+        "max_p99_latency_ms": 2000
+      }
+    },
+    {
+      "gate_id": "provider_presence_heartbeat_tail_latency",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "sample_count": 40,
+        "latency_ms": {
+          "min": 0,
+          "p50": 0,
+          "p95": 1,
+          "p99": 3,
+          "max": 3
+        },
+        "max_p95_latency_ms": 1000,
+        "max_p99_latency_ms": 2000
+      }
+    },
+    {
+      "gate_id": "treasury_status",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "skipped": true
+      }
+    }
+  ],
+  "gate_summary": {
+    "failed_gate_ids": [],
+    "passed": true
+  }
+}

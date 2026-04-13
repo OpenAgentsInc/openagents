@@ -264,7 +264,7 @@ perform_post_restart_smoke_check() {
   die "Post-deploy smoke failed for ${deployed_image} and no rollback image was available"
 }
 
-DEPLOY_IMAGE="${DEPLOY_IMAGE:-${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${NEXUS_ARTIFACT_REPO}/${NEXUS_IMAGE_NAME}:latest}"
+DEPLOY_IMAGE="${DEPLOY_IMAGE:-${NEXUS_IMAGE}}"
 UPSTREAM_CONFIG_SOURCE="${ROOT_DIR}/apps/nexus-relay/deploy/upstream-config.toml"
 
 if ! instance_exists "$NEXUS_VM"; then
