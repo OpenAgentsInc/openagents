@@ -13,8 +13,8 @@ use bip39::{Language, Mnemonic};
 use futures::stream::{self, StreamExt};
 use openagents_provider_substrate::verify_provider_payout_target_registration_signature;
 use openagents_spark::{
-    DepositClaimFeePolicy, Network as SparkNetwork, NetworkStatus, PaymentSummary, SparkSigner,
-    SparkWallet, WalletConfig,
+    DepositClaimFeePolicy, Network as SparkNetwork, PaymentSummary, SparkSigner, SparkWallet,
+    WalletConfig,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -3482,50 +3482,6 @@ pub async fn dispatch_live_payouts(
     };
 
     let send_timeout_ms = config.dispatch_result_timeout_ms(config.payout_interval_ms());
-    // Force the live wallet through one full sync in this process before we
-    // attempt a payout batch. Cached account-info balance can be non-zero while
-    // the in-memory Spark leaf set is still cold after startup or recovery.
-    match tokio::time::timeout(
-        Duration::from_millis(send_timeout_ms),
-        wallet.network_status(),
-    )
-    .await
-    {
-        Ok(status) if status.status == NetworkStatus::Connected => {}
-        Ok(status) => {
-            let reason = status.detail.unwrap_or_else(|| {
-                "treasury wallet sync completed without reaching a connected state".to_string()
-            });
-            return TreasuryDispatchBatchResult {
-                outcomes: plans
-                    .iter()
-                    .map(|plan| TreasuryDispatchOutcome::Failed {
-                        payout_key: plan.payout_key.clone(),
-                        reason: reason.clone(),
-                    })
-                    .collect(),
-                wallet_snapshot: None,
-                wallet_error: Some(reason),
-            };
-        }
-        Err(_) => {
-            let reason = format!(
-                "timed out syncing treasury wallet before dispatch after {} ms",
-                send_timeout_ms
-            );
-            return TreasuryDispatchBatchResult {
-                outcomes: plans
-                    .iter()
-                    .map(|plan| TreasuryDispatchOutcome::Failed {
-                        payout_key: plan.payout_key.clone(),
-                        reason: reason.clone(),
-                    })
-                    .collect(),
-                wallet_snapshot: None,
-                wallet_error: Some(reason),
-            };
-        }
-    }
 
     // Keep the wallet-operation lock held for a bounded window even when the
     // upstream Spark send path stalls or many Pylons become due together.
@@ -4041,24 +3997,14 @@ async fn inspect_treasury_wallet_storage(
             return inspection;
         }
     };
-    let network = match parse_wallet_network(config.wallet_network.as_str()) {
-        Ok(network) => network,
+    let wallet_config = match treasury_wallet_config(config, storage_dir.to_path_buf()) {
+        Ok(wallet_config) => wallet_config,
         Err(error) => {
             inspection.error = Some(error.to_string());
             return inspection;
         }
     };
-    let wallet = match SparkWallet::new(
-        signer,
-        WalletConfig {
-            network,
-            api_key: resolve_wallet_api_key(config.wallet_api_key_env.as_deref()),
-            storage_dir: storage_dir.to_path_buf(),
-            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
-        },
-    )
-    .await
-    {
+    let wallet = match SparkWallet::new(signer, wallet_config).await {
         Ok(wallet) => wallet,
         Err(error) => {
             inspection.error = Some(format!(
@@ -4068,11 +4014,11 @@ async fn inspect_treasury_wallet_storage(
         }
     };
 
-    let network_status = wallet.network_status().await;
-    inspection.runtime_status = Some(wallet_network_status_label(&network_status).to_string());
-    inspection.runtime_detail = network_status.detail;
+    inspection.runtime_status = Some("cached".to_string());
+    inspection.runtime_detail =
+        Some("treasury wallet inspection skipped live sync to preserve local state".to_string());
 
-    match wallet.get_balance().await {
+    match wallet.get_balance_cached().await {
         Ok(balance) => inspection.balance_sats = Some(balance.total_sats()),
         Err(error) => {
             inspection.error = Some(format!("failed to fetch treasury Spark balance: {error}"));
@@ -5144,15 +5090,20 @@ async fn open_wallet_uncached(
         .map_err(|error| anyhow!("failed to derive treasury Spark signer: {error}"))?;
     SparkWallet::new(
         signer,
-        WalletConfig {
-            network: parse_wallet_network(config.wallet_network.as_str())?,
-            api_key: resolve_wallet_api_key(config.wallet_api_key_env.as_deref()),
-            storage_dir: config.wallet_storage_dir.clone(),
-            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
-        },
+        treasury_wallet_config(config, config.wallet_storage_dir.clone())?,
     )
     .await
     .context("failed to initialize treasury Spark wallet")
+}
+
+fn treasury_wallet_config(config: &TreasuryConfig, storage_dir: PathBuf) -> Result<WalletConfig> {
+    Ok(WalletConfig {
+        network: parse_wallet_network(config.wallet_network.as_str())?,
+        api_key: resolve_wallet_api_key(config.wallet_api_key_env.as_deref()),
+        storage_dir,
+        deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
+        background_processing: false,
+    })
 }
 
 fn wallet_refresh_payment_page_budget(tracked_payment_count: usize) -> usize {
@@ -5288,13 +5239,6 @@ async fn wallet_snapshot_from_wallet_with_plan(
     wallet_snapshot_from_wallet_with_plan_result(wallet, plan)
         .await
         .map(|result| result.snapshot)
-}
-
-fn wallet_network_status_label(status: &openagents_spark::NetworkStatusReport) -> &'static str {
-    match status.status {
-        NetworkStatus::Connected => "connected",
-        NetworkStatus::Disconnected => "disconnected",
-    }
 }
 
 fn ensure_wallet_mnemonic(path: &Path, create_if_missing: bool) -> Result<String> {
@@ -5578,6 +5522,15 @@ mod tests {
                 .expect("clock")
                 .as_nanos()
         ))
+    }
+
+    #[test]
+    fn treasury_wallet_config_disables_background_processing() {
+        let config = test_treasury_config();
+        let wallet_config =
+            super::treasury_wallet_config(&config, config.wallet_storage_dir.clone())
+                .expect("wallet config");
+        assert!(!wallet_config.background_processing);
     }
 
     #[test]

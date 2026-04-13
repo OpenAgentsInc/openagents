@@ -119,6 +119,7 @@ async fn run(cli: Cli) -> Result<()> {
             api_key: cli.api_key.clone(),
             storage_dir: cli.storage_dir.clone(),
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
+            background_processing: true,
         },
     )
     .await
