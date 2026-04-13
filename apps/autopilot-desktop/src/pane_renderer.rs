@@ -18,8 +18,8 @@ use crate::app_state::{
     NetworkRequestsState, Nip90SentPaymentsPaneState, NostrIdentityPaneState, NostrSecretState,
     PaneKind, PaneLoadState, PanePaintTimingSample, PanePresentation, PayInvoicePaneInputs,
     PresentationPaneState, PresentationRuntimeState, ProjectOpsPaneState, ProviderBlocker,
-    ProviderControlHudRuntimeState, ProviderControlPaneState, ProviderRuntimeState,
-    ProviderStatusPaneState, ReciprocalLoopState, RelayConnectionsPaneInputs,
+    ProviderControlHudRuntimeState, ProviderControlPaneState, ProviderDesiredMode,
+    ProviderRuntimeState, ProviderStatusPaneState, ReciprocalLoopState, RelayConnectionsPaneInputs,
     RelayConnectionsState, RivePreviewPaneState, RivePreviewRuntimeState, SettingsPaneInputs,
     SettingsState, SidebarState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
     SparkPaneInputs, SparkReplayPaneState, SparkWalletPaneState, StarterJobStatus,
@@ -2196,6 +2196,7 @@ fn paint_go_online_pane(
         local_inference_runtime,
         provider_blockers,
         spark_wallet,
+        earnings_scoreboard,
     );
     let alert_visible = mission_control.should_show_alert(alert_message.signature.as_str());
     let alert_dismiss_bounds = mission_control_alert_dismiss_button_bounds(content_bounds);
@@ -2290,7 +2291,7 @@ fn paint_go_online_pane(
     paint_mission_control_section_panel(
         layout.earnings_panel,
         "WALLET & EARNINGS",
-        mission_control_green_color(),
+        mission_control_earnings_panel_accent(earnings_scoreboard.load_state),
         false,
         paint,
     );
@@ -2327,11 +2328,11 @@ fn paint_go_online_pane(
         crate::app_state::ProviderMode::Offline | crate::app_state::ProviderMode::Degraded
     );
     let go_online_enabled = !wants_online
-        || mission_control_local_runtime_is_ready(
+        || (mission_control_local_runtime_is_ready(
             desktop_shell_mode,
             provider_runtime,
             local_inference_runtime,
-        );
+        ) && provider_blockers.is_empty());
     let toggle_label = if wants_online {
         "GO ONLINE"
     } else {
@@ -2601,7 +2602,10 @@ fn paint_go_online_pane(
         earnings_y,
         "Today",
         &today_display,
-        mission_control_green_color(),
+        mission_control_earnings_amount_color(
+            earnings_scoreboard.load_state,
+            mission_control_green_color(),
+        ),
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         true,
@@ -2612,7 +2616,10 @@ fn paint_go_online_pane(
         earnings_y,
         "This Month",
         &month_display,
-        mission_control_text_color(),
+        mission_control_earnings_amount_color(
+            earnings_scoreboard.load_state,
+            mission_control_text_color(),
+        ),
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         true,
@@ -2623,7 +2630,10 @@ fn paint_go_online_pane(
         earnings_y,
         "All Time",
         &lifetime_display,
-        mission_control_cyan_color(),
+        mission_control_earnings_amount_color(
+            earnings_scoreboard.load_state,
+            mission_control_cyan_color(),
+        ),
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         true,
@@ -3238,6 +3248,7 @@ fn paint_go_online_docked_pane(
         local_inference_runtime,
         provider_blockers,
         spark_wallet,
+        earnings_scoreboard,
     );
     let alert_visible = mission_control.should_show_alert(alert_message.signature.as_str());
     let alert_dismiss_bounds =
@@ -3295,11 +3306,11 @@ fn paint_go_online_docked_pane(
         crate::app_state::ProviderMode::Offline | crate::app_state::ProviderMode::Degraded
     );
     let go_online_enabled = !wants_online
-        || mission_control_local_runtime_is_ready(
+        || (mission_control_local_runtime_is_ready(
             desktop_shell_mode,
             provider_runtime,
             local_inference_runtime,
-        );
+        ) && provider_blockers.is_empty());
     let toggle_label = if wants_online {
         "GO ONLINE"
     } else {
@@ -3401,7 +3412,7 @@ fn paint_go_online_docked_pane(
     paint_mission_control_section_panel(
         layout.earnings_panel,
         "WALLET & EARNINGS",
-        mission_control_green_color(),
+        mission_control_earnings_panel_accent(earnings_scoreboard.load_state),
         false,
         paint,
     );
@@ -3656,7 +3667,10 @@ fn paint_go_online_docked_pane(
         earnings_y,
         "Today",
         &today_display,
-        mission_control_green_color(),
+        mission_control_earnings_amount_color(
+            earnings_scoreboard.load_state,
+            mission_control_green_color(),
+        ),
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         true,
@@ -3667,7 +3681,10 @@ fn paint_go_online_docked_pane(
         earnings_y,
         "This Month",
         &month_display,
-        mission_control_text_color(),
+        mission_control_earnings_amount_color(
+            earnings_scoreboard.load_state,
+            mission_control_text_color(),
+        ),
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         true,
@@ -3678,7 +3695,10 @@ fn paint_go_online_docked_pane(
         earnings_y,
         "All Time",
         &lifetime_display,
-        mission_control_cyan_color(),
+        mission_control_earnings_amount_color(
+            earnings_scoreboard.load_state,
+            mission_control_cyan_color(),
+        ),
         MISSION_CONTROL_PANEL_FONT_SIZE,
         layout.earnings_panel.size.width - 24.0,
         true,
@@ -4524,6 +4544,7 @@ pub(crate) fn mission_control_current_alert_signature(
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
     provider_blockers: &[ProviderBlocker],
     spark_wallet: &SparkPaneState,
+    earnings_scoreboard: &EarningsScoreboardState,
 ) -> String {
     mission_control_alert_message(
         mission_control,
@@ -4532,6 +4553,7 @@ pub(crate) fn mission_control_current_alert_signature(
         local_inference_runtime,
         provider_blockers,
         spark_wallet,
+        earnings_scoreboard,
     )
     .signature
 }
@@ -4543,6 +4565,7 @@ fn mission_control_alert_message(
     local_inference_runtime: &LocalInferenceExecutionSnapshot,
     provider_blockers: &[ProviderBlocker],
     spark_wallet: &SparkPaneState,
+    earnings_scoreboard: &EarningsScoreboardState,
 ) -> MissionControlAlertDescriptor {
     if let Some(error) = mission_control.last_error.as_deref().map(str::trim)
         && !error.is_empty()
@@ -4561,6 +4584,15 @@ fn mission_control_alert_message(
             mission_control_blocker_detail(blocker, spark_wallet, provider_runtime)
                 .to_ascii_uppercase()
         );
+        return MissionControlAlertDescriptor {
+            signature: text.clone(),
+            text,
+            accent: mission_control_orange_color(),
+        };
+    }
+
+    if let Some(summary) = mission_control_earnings_alert_summary(earnings_scoreboard) {
+        let text = format!("EARNINGS // {summary}");
         return MissionControlAlertDescriptor {
             signature: text.clone(),
             text,
@@ -5008,6 +5040,68 @@ fn mission_control_mode_color(mode: crate::app_state::ProviderMode) -> Hsla {
         crate::app_state::ProviderMode::Online => mission_control_green_color(),
         crate::app_state::ProviderMode::Degraded => mission_control_red_color(),
     }
+}
+
+/// Mission Control "WALLET & EARNINGS" section panel accent color, derived from
+/// the earnings scoreboard load state. PR #4266 plumbed the new
+/// `pylon.provider-admin` `load_state` into `EarningsScoreboardState` but the
+/// section panel header was left hardcoded to green; this helper completes the
+/// surfacing so the panel accent reflects whether Pylon authority is healthy.
+fn mission_control_earnings_panel_accent(load_state: PaneLoadState) -> Hsla {
+    match load_state {
+        PaneLoadState::Ready => mission_control_green_color(),
+        PaneLoadState::Loading => mission_control_cyan_color(),
+        PaneLoadState::Error => mission_control_amber_color(),
+    }
+}
+
+/// Mission Control "Today / This Month / All Time" amount-line color, derived
+/// from the earnings scoreboard load state. Returns the caller's preferred
+/// `default_color` when the scoreboard is Ready or Loading; replaces it with
+/// the amber degraded-state accent when in Error so the row visibly stands out
+/// from a healthy "no earnings yet" zero. The amount string itself is left to
+/// `earnings_scoreboard_amount_display`, whose Loading-vs-Ready/Error contract
+/// is preserved by PR #4266 and its existing test.
+fn mission_control_earnings_amount_color(
+    load_state: PaneLoadState,
+    default_color: Hsla,
+) -> Hsla {
+    if load_state == PaneLoadState::Error {
+        mission_control_amber_color()
+    } else {
+        default_color
+    }
+}
+
+/// Short alert-band summary for the earnings scoreboard. Returns one of two
+/// distinct messages so the alert band can communicate which Pylon failure
+/// mode the operator is in:
+///
+/// 1. **Authority unreachable** (`load_state == Error`) — the Pylon
+///    provider-admin store is missing or load failed. The summary is derived
+///    from `source_tag` rather than the long `last_error` text so the alert
+///    band can fit it.
+/// 2. **Provider configured offline** (`load_state == Ready` but
+///    `pylon_desired_mode != Some(Online)`) — Pylon is reachable and the
+///    snapshot loaded cleanly, but the operator has not flipped pylon online
+///    via the `pylon` TUI or `pylon provider run`. Pylon's NIP-90 runtime
+///    drops every incoming job request with `provider_not_online` in this
+///    state, so going online from autopilot earns nothing.
+///
+/// Returns `None` in all other cases (the alert band uses other priorities).
+fn mission_control_earnings_alert_summary(state: &EarningsScoreboardState) -> Option<String> {
+    if state.load_state == PaneLoadState::Error {
+        if state.source_tag.starts_with("pylon.provider-admin") {
+            return Some("PYLON SERVICE UNAVAILABLE".to_string());
+        }
+        return Some("EARNINGS SERVICE UNAVAILABLE".to_string());
+    }
+    if state.load_state == PaneLoadState::Ready
+        && state.pylon_desired_mode != Some(ProviderDesiredMode::Online)
+    {
+        return Some("PYLON SERVICE IN OFFLINE MODE".to_string());
+    }
+    None
 }
 
 fn mission_control_buy_mode_result_label(
@@ -11108,6 +11202,19 @@ pub(crate) fn mission_control_blocker_detail(
             .filter(|entry| !entry.is_empty())
             .map(ToString::to_string)
             .unwrap_or_else(|| blocker.detail().to_string()),
+        // The two Pylon blockers use short alert-band labels here so the
+        // PREFLIGHT line in `mission_control_alert_message` does not truncate
+        // the substrate's longer diagnostic strings (which remain available
+        // via `blocker.detail()` for `autopilotctl --json` and CLI surfaces).
+        // Mirrors how `GptOssUnavailable` and friends already swap in short
+        // forms above for the same display reason. The user-facing wording
+        // says "Pylon service" rather than the internal #4266 term
+        // "Pylon authority", because operators reading the alert band do not
+        // share the maintainers' substrate vocabulary -- the ProviderBlocker
+        // variant and JSON code keep the original "authority" wording for
+        // CLI/JSON surfaces and substrate consumers.
+        ProviderBlocker::PylonAuthorityUnavailable => "Pylon service unavailable".to_string(),
+        ProviderBlocker::PylonProviderOffline => "Pylon service in offline mode".to_string(),
         _ => blocker.detail().to_string(),
     }
 }

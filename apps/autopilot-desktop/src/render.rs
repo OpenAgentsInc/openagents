@@ -1473,6 +1473,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
     }
 
     let provider_blockers = state.provider_blockers();
+    let sidebar_go_online_enabled = state.mission_control_go_online_enabled();
     let provider_inventory = crate::provider_inventory::inventory_status_for_state(state);
     let training_status = crate::desktop_control::current_training_status(state);
     let remote_training_status = crate::desktop_control::current_remote_training_status(state);
@@ -1537,16 +1538,21 @@ pub fn render_frame(state: &mut RenderState) -> Result<crate::app_state::FrameRe
 
             let go_online_bounds = Bounds::new(left, 72.0, (panel_width - 24.0).max(120.0), 34.0);
             let is_online = state.provider_runtime.mode != ProviderMode::Offline;
+            let go_online_enabled = sidebar_go_online_enabled;
             let action_label = if is_online { "GO OFFLINE" } else { "GO ONLINE" };
             paint.scene.draw_quad(
                 Quad::new(go_online_bounds)
-                    .with_background(if is_online {
+                    .with_background(if !go_online_enabled {
+                        theme::bg::APP.with_alpha(0.40)
+                    } else if is_online {
                         theme::status::ERROR.with_alpha(0.25)
                     } else {
                         theme::status::SUCCESS.with_alpha(0.28)
                     })
                     .with_border(
-                        if is_online {
+                        if !go_online_enabled {
+                            theme::border::DEFAULT.with_alpha(0.50)
+                        } else if is_online {
                             theme::status::ERROR.with_alpha(0.75)
                         } else {
                             theme::status::SUCCESS.with_alpha(0.75)

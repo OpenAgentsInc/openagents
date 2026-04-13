@@ -25042,8 +25042,8 @@ fn labor_tool_evidence_ref(
 }
 
 pub use crate::state::provider_runtime::{
-    EarnFailureClass, ProviderBlocker, ProviderInventoryProductToggleTarget, ProviderMode,
-    ProviderRuntimeState,
+    EarnFailureClass, ProviderBlocker, ProviderDesiredMode, ProviderInventoryProductToggleTarget,
+    ProviderMode, ProviderRuntimeState,
 };
 #[allow(unused_imports)]
 pub use crate::state::{
@@ -27196,6 +27196,31 @@ fn load_earn_job_lifecycle_projection_rows(
     Ok(normalize_earn_job_lifecycle_projection_rows(document.rows))
 }
 
+/// Maximum acceptable age of the persisted Pylon provider-admin snapshot
+/// (`ProviderPersistedSnapshot.captured_at_ms`) before
+/// `EarningsScoreboardState::refresh_from_pylon_status` treats it as a dead
+/// authority and falls into `mark_pylon_authority_unavailable`.
+///
+/// Pylon's serve loop has a nominal `sleep_duration` of 2 seconds in the
+/// main `tokio::select!` (`apps/pylon/src/lib.rs:10359`), but its actual
+/// cadence between snapshot writes is much longer when pylon is in
+/// `desired_mode = online`: each iteration also runs the Nexus presence
+/// heartbeat, the provider auto-run pass, the live announcement sync, and
+/// (periodically) the payout-target sync. Live measurement on a healthy
+/// pylon online against `wss://nexus.openagents.com` showed snapshot deltas
+/// up to **14 seconds** between writes, with bursty gaps of 4-14s being
+/// normal under load. A 15-second threshold (~1x the observed max) was
+/// found to false-positive in the wild; bumping to 60 seconds gives ~4x
+/// margin over the observed max, which absorbs jitter from slow Nexus
+/// roundtrips and bursty heartbeat scheduling without losing the ability
+/// to detect a genuinely dead `pylon serve` within a minute.
+///
+/// Without this gate, a stale provider-admin SQLite from a previous pylon
+/// session lets autopilot trust `desired_mode = online` indefinitely, even
+/// after `pylon serve` has been killed -- which would let the operator
+/// click GO ONLINE while no live job pipeline exists.
+pub const PYLON_SNAPSHOT_STALENESS_THRESHOLD_MS: i64 = 60_000;
+
 pub struct EarningsScoreboardState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -27213,6 +27238,14 @@ pub struct EarningsScoreboardState {
     pub avg_wallet_confirmation_latency_seconds: Option<u64>,
     pub stale_after: Duration,
     pub last_refreshed_at: Option<Instant>,
+    /// Pylon's persisted `desired_mode` from the most recent successful
+    /// `refresh_from_pylon_status` call. `None` until the first refresh has
+    /// run successfully (or after `mark_pylon_authority_unavailable` clears
+    /// it). Drives the `ProviderBlocker::PylonProviderOffline` gate so that
+    /// autopilot will not let the operator click GO ONLINE while the Pylon
+    /// provider lane is configured to drop incoming NIP-90 requests with
+    /// `provider_not_online`.
+    pub pylon_desired_mode: Option<ProviderDesiredMode>,
     scroll_offset_px: f32,
     tracked_online_since: Option<Instant>,
     first_completed_since_online: Option<Instant>,
@@ -27237,6 +27270,7 @@ impl Default for EarningsScoreboardState {
             avg_wallet_confirmation_latency_seconds: None,
             stale_after: Duration::from_secs(12),
             last_refreshed_at: None,
+            pylon_desired_mode: None,
             scroll_offset_px: 0.0,
             tracked_online_since: None,
             first_completed_since_online: None,
@@ -27372,6 +27406,14 @@ impl EarningsScoreboardState {
         self.tracked_online_since = None;
         self.first_completed_since_online = None;
         self.first_job_latency_seconds = None;
+        // Pylon's `desired_mode` lives at the top of `ProviderStatusResponse`,
+        // separate from the persisted snapshot. Capture it on every successful
+        // status load so the `PylonProviderOffline` gate in `provider_blockers()`
+        // can see whether the operator has flipped pylon online via the TUI or
+        // `pylon provider run`. The field is cleared back to `None` by
+        // `mark_pylon_authority_unavailable` so a stale "online" reading from a
+        // previous refresh cannot mask a now-unreachable Pylon authority.
+        self.pylon_desired_mode = Some(status.desired_mode);
 
         let Some(snapshot) = status.snapshot.as_ref() else {
             self.mark_pylon_authority_unavailable(
@@ -27381,6 +27423,36 @@ impl EarningsScoreboardState {
             );
             return;
         };
+        // Pylon's serve loop persists a fresh snapshot every ~2 seconds with
+        // `captured_at_ms = now_epoch_ms()`. When `pylon serve` dies, the
+        // SQLite row stays put and `captured_at_ms` stops advancing -- so a
+        // file-based reader like autopilot otherwise has no way to tell that
+        // pylon is gone. Treat any snapshot older than
+        // `PYLON_SNAPSHOT_STALENESS_THRESHOLD_MS` as a dead authority and
+        // fall into `mark_pylon_authority_unavailable` so the existing
+        // `PylonAuthorityUnavailable` blocker fires (no new variant needed:
+        // semantically a stale snapshot is the same failure as a missing
+        // store -- "we cannot trust live truth from pylon"). This catches
+        // the third Pylon liveness failure mode that the previous two
+        // commits' gates do not see: pylon serve dead, SQLite still on disk
+        // with `desired_mode = online` from a previous session.
+        let now_epoch_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0i64, |duration| {
+                i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
+            });
+        let staleness_ms = now_epoch_ms.saturating_sub(snapshot.captured_at_ms);
+        if staleness_ms > PYLON_SNAPSHOT_STALENESS_THRESHOLD_MS {
+            self.mark_pylon_authority_unavailable(
+                now,
+                source_tag,
+                format!(
+                    "Pylon provider admin snapshot is stale ({}s old); pylon serve may not be running.",
+                    staleness_ms / 1000,
+                ),
+            );
+            return;
+        }
         let Some(earnings) = snapshot.earnings.as_ref() else {
             self.mark_pylon_authority_unavailable(
                 now,
@@ -27448,6 +27520,7 @@ impl EarningsScoreboardState {
         self.completion_ratio_bps = None;
         self.payout_success_ratio_bps = None;
         self.avg_wallet_confirmation_latency_seconds = None;
+        self.pylon_desired_mode = None;
         self.tracked_online_since = None;
         self.first_completed_since_online = None;
     }
@@ -28254,7 +28327,7 @@ impl RenderState {
         !matches!(
             self.provider_runtime.mode,
             ProviderMode::Offline | ProviderMode::Degraded
-        ) || self.mission_control_local_runtime_ready()
+        ) || (self.mission_control_local_runtime_ready() && self.provider_blockers().is_empty())
     }
 
     pub fn configured_provider_relay_urls(&self) -> Vec<String> {
@@ -28319,6 +28392,38 @@ impl RenderState {
         }
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
+        }
+        // Pylon is the authority for live provider earnings (PR #4266: "Source
+        // Autopilot earnings from Pylon authority"). The Pylon provider-admin
+        // store is the canonical sink for both sell-compute earnings and
+        // data-market earnings, so an unavailable Pylon authority blocks
+        // go-online in *every* provider mode -- not just sell-compute. This
+        // check sits above the data_seller / data_buyer / supports_sell_compute
+        // early returns so that a stale Data Seller draft from prior testing
+        // cannot accidentally short-circuit the Pylon gate on a sell-compute
+        // bring-up. The conservative `!= Ready` shape avoids a transient
+        // startup window where load_state is still `Loading` (its default)
+        // before the first earnings refresh tick has fired, during which an
+        // `== Error` check would let the user click Go Online before the gate
+        // kicks in. Mirrors how `GptOssModelUnavailable` is cleared only on an
+        // explicit `is_ready()`, not on the absence of an error.
+        if self.earnings_scoreboard.load_state != PaneLoadState::Ready {
+            blockers.push(ProviderBlocker::PylonAuthorityUnavailable);
+        } else if self.earnings_scoreboard.pylon_desired_mode != Some(ProviderDesiredMode::Online) {
+            // Even when the Pylon authority is reachable and reporting a clean
+            // snapshot, pylon's NIP-90 runtime drops every incoming job request
+            // with `provider_not_online` whenever its persisted `desired_mode`
+            // is not `Online` (see `apps/pylon/src/nip90_runtime.rs`). Going
+            // online from autopilot in that state produces a contradictory
+            // surface where Mission Control reads "ready to earn" but the
+            // actual job pipeline silently rejects every request. The
+            // operator must flip Pylon online via the `pylon` TUI or
+            // `pylon provider run` before autopilot's go-online is meaningful.
+            // Only fires when the scoreboard is `Ready`, so the
+            // `PylonAuthorityUnavailable` blocker above takes precedence for
+            // the missing-store case (avoids stacking two pylon blockers for
+            // the same root cause).
+            blockers.push(ProviderBlocker::PylonProviderOffline);
         }
         if self.data_seller.derived_nip90_profile().is_some()
             || self.data_buyer.requires_nip90_response_tracking()

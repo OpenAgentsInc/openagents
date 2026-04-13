@@ -83,6 +83,8 @@ pub enum ProviderBlocker {
     GptOssModelUnavailable,
     AppleFoundationModelsUnavailable,
     AppleFoundationModelsModelUnavailable,
+    PylonAuthorityUnavailable,
+    PylonProviderOffline,
 }
 
 impl ProviderBlocker {
@@ -96,6 +98,8 @@ impl ProviderBlocker {
             Self::GptOssModelUnavailable => "LOCAL_GEMMA_MODEL_UNAVAILABLE",
             Self::AppleFoundationModelsUnavailable => "APPLE_FM_UNAVAILABLE",
             Self::AppleFoundationModelsModelUnavailable => "APPLE_FM_MODEL_UNAVAILABLE",
+            Self::PylonAuthorityUnavailable => "PYLON_AUTHORITY_UNAVAILABLE",
+            Self::PylonProviderOffline => "PYLON_PROVIDER_OFFLINE",
         }
     }
 
@@ -112,6 +116,12 @@ impl ProviderBlocker {
             }
             Self::AppleFoundationModelsModelUnavailable => {
                 "Apple Foundation Models is not ready to serve inference"
+            }
+            Self::PylonAuthorityUnavailable => {
+                "Pylon provider authority is unavailable; live earnings cannot be tracked"
+            }
+            Self::PylonProviderOffline => {
+                "Pylon provider is reachable but desired_mode is offline; incoming jobs will be dropped"
             }
         }
     }
