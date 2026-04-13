@@ -935,6 +935,7 @@ impl SparkPaneState {
             api_key: Some(configured_api_key(&self.env_overrides)),
             storage_dir,
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
+            background_processing: true,
         };
         let wallet = run_with_timeout(
             runtime,

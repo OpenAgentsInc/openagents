@@ -11,3 +11,8 @@ PROTOC = { value = "scripts/dev/protocw", relative = true }
 # Keep native builds aligned with the app's deployment target on macOS so
 # C/C++ object files do not advertise a newer SDK floor than the final link.
 MACOSX_DEPLOYMENT_TARGET = "11.0"
+
+[net]
+# Git CLI fetches are more reliable than libgit2 for the repo's pinned/forked
+# Git dependencies during local and production builds.
+git-fetch-with-cli = true
