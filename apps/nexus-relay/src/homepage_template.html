@@ -1159,6 +1159,45 @@
         return Array.isArray(publicWindows) ? publicWindows : [];
       }
 
+      function nonEmptyString(value) {
+        if (value === null || value === undefined) {
+          return null;
+        }
+        const text = String(value).trim();
+        return text.length > 0 ? text : null;
+      }
+
+      function runPrimaryLabel(run) {
+        return [
+          run?.display_name,
+          run?.public_display_name,
+          run?.run_label,
+          run?.training_run_id,
+        ].map(nonEmptyString).find(Boolean) || "unknown run";
+      }
+
+      function runSecondaryId(run, head = 18, tail = 10) {
+        const rawRunId = nonEmptyString(run?.training_run_id);
+        if (!rawRunId || runPrimaryLabel(run) === rawRunId) {
+          return null;
+        }
+        return compactId(rawRunId, head, tail);
+      }
+
+      function findActiveRunById(snapshot, trainingRunId) {
+        const rawRunId = nonEmptyString(trainingRunId);
+        if (!rawRunId) {
+          return null;
+        }
+        return activeTrainingRuns(snapshot)
+          .find((run) => nonEmptyString(run?.training_run_id) === rawRunId) || null;
+      }
+
+      function runLabelForId(snapshot, trainingRunId) {
+        const run = findActiveRunById(snapshot, trainingRunId);
+        return run ? runPrimaryLabel(run) : (nonEmptyString(trainingRunId) || "no run");
+      }
+
       function workClassStates(snapshot) {
         const publicWorkClasses = trainingPublicState(snapshot).work_classes;
         return Array.isArray(publicWorkClasses) ? publicWorkClasses : [];
@@ -1423,6 +1462,7 @@
         const summary = snapshot?.training_summary ?? {};
         const publicState = trainingPublicState(snapshot);
         const queuePressure = publicState.queue_pressure ?? {};
+        const defaultRun = pickDefaultRun(snapshot);
         const walletStatus = String(stats.nexus_wallet_runtime_status ?? "unknown");
         const payoutLoop = String(stats.nexus_payout_loop_health ?? "unknown");
         const degradedReason = degradedMessage || stats.nexus_treasury_degraded_reason || null;
@@ -1452,8 +1492,8 @@
           <div class="status-pill">
             <span class="status-pill__dot"></span>
             <div class="status-pill__body">
-              <strong>Default run ${escapeHtml(publicState.default_run_id ?? snapshot?.default_run_id ?? "none")}</strong>
-              <span class="status-pill__meta">Active window ${escapeHtml(publicState.active_window_id ?? "none")} // ${escapeHtml(publicState.latest_window_status ?? "window status unknown")}</span>
+              <strong>Default run ${escapeHtml(defaultRun ? runPrimaryLabel(defaultRun) : (publicState.default_run_id ?? snapshot?.default_run_id ?? "none"))}</strong>
+              <span class="status-pill__meta">${escapeHtml(defaultRun && runSecondaryId(defaultRun, 14, 10) ? `${runSecondaryId(defaultRun, 14, 10)} // ` : "")}Active window ${escapeHtml(publicState.active_window_id ?? defaultRun?.current_window_id ?? "none")} // ${escapeHtml(publicState.latest_window_status ?? defaultRun?.latest_window_status ?? "window status unknown")}</span>
             </div>
           </div>
           <div class="status-pill">
@@ -1539,11 +1579,14 @@
           return;
         }
 
+        const runLabel = runPrimaryLabel(run);
+        const runIdMeta = runSecondaryId(run, 14, 10);
+
         runHeroHost.innerHTML = `
           <section class="run-hero__summary">
             <p class="micro-label">Default Run</p>
-            <span class="run-hero__value">${escapeHtml(compactId(run.training_run_id, 14, 10))}</span>
-            <p class="run-hero__detail">${escapeHtml(run.network_id || publicState.default_network_id || "network unknown")} // window ${escapeHtml(run.current_window_id || run.latest_window_id || publicState.active_window_id || "none")} // checkpoint ${escapeHtml(run.latest_checkpoint_ref ? compactId(run.latest_checkpoint_ref, 14, 8) : compactId(publicState.latest_checkpoint_ref, 14, 8))}</p>
+            <span class="run-hero__value">${escapeHtml(runLabel)}</span>
+            <p class="run-hero__detail">${escapeHtml(runIdMeta ? `${runIdMeta} // ` : "")}${escapeHtml(run.network_id || publicState.default_network_id || "network unknown")} // window ${escapeHtml(run.current_window_id || run.latest_window_id || publicState.active_window_id || "none")} // checkpoint ${escapeHtml(run.latest_checkpoint_ref ? compactId(run.latest_checkpoint_ref, 14, 8) : compactId(publicState.latest_checkpoint_ref, 14, 8))}</p>
           </section>
           <div class="stage-strip">${runStageSegments(run)}</div>
           <div class="pill-row">
@@ -1580,9 +1623,12 @@
           const detail = pylon.ready_model || (products.length > 0 ? products.join(" // ") : "public presence only");
           const cells = meterCells(pylon.eligible_product_count, Math.max(numeric(pylon.eligible_product_count, 0), 6), pylon.eligible_product_count > 0 ? "good" : "warn");
           const roleClaims = Array.isArray(trainingNode?.role_claims) ? trainingNode.role_claims : [];
+          const matchedRun = trainingNode ? findActiveRunById(snapshot, trainingNode.last_training_run_id) : null;
+          const trainingRunLabel = runLabelForId(snapshot, trainingNode?.last_training_run_id);
+          const trainingRunIdMeta = matchedRun ? runSecondaryId(matchedRun, 14, 10) : null;
           const roleChips = roleClaims.slice(0, 3).map((role) => chip(role, "accent")).join("");
           const trainingState = trainingNode
-            ? `${trainingNode.last_training_run_id || "no run"} // ${trainingNode.last_window_id || "no window"} // ${trainingNode.last_process_state || "state unknown"}`
+            ? `${trainingRunLabel} // ${trainingNode.last_window_id || "no window"} // ${trainingNode.last_process_state || "state unknown"}`
             : "No admitted training record matched this public presence sample.";
           return `
             <article class="lane-row">
@@ -1605,6 +1651,7 @@
               <p class="lane-row__detail">${escapeHtml(detail)}</p>
               <div class="lane-row__chips">
                 ${roleChips}
+                ${trainingRunIdMeta ? chip(trainingRunIdMeta, "violet") : ""}
                 ${trainingNode?.build_digest ? chip(compactId(trainingNode.build_digest, 12, 8), "violet") : ""}
               </div>
               <p class="lane-row__detail">${escapeHtml(trainingState)}</p>
@@ -1737,8 +1784,8 @@
           <article class="run-row">
             <div class="run-row__head">
               <div>
-                <h3 class="run-row__title">${escapeHtml(compactId(run.training_run_id, 18, 10))}</h3>
-                <p class="lane-row__meta">${escapeHtml(run.network_id || "network unknown")} // window ${escapeHtml(run.current_window_id || run.latest_window_id || "none")} // checkpoint age ${escapeHtml(formatMsAge(run.latest_checkpoint_age_ms))}</p>
+                <h3 class="run-row__title">${escapeHtml(runPrimaryLabel(run))}</h3>
+                <p class="lane-row__meta">${escapeHtml(runSecondaryId(run, 18, 10) ? `${runSecondaryId(run, 18, 10)} // ` : "")}${escapeHtml(run.network_id || "network unknown")} // window ${escapeHtml(run.current_window_id || run.latest_window_id || "none")} // checkpoint age ${escapeHtml(formatMsAge(run.latest_checkpoint_age_ms))}</p>
               </div>
               <div class="run-row__chips">
                 ${chip(run.run_status || "unknown", toneForRuntime(run.run_status))}
