@@ -119,6 +119,9 @@ If the resolved release does not ship a prebuilt archive for the local
 platform, the launcher now falls back to the exact tagged source checkout,
 prompts before installing Rust if `cargo` and `rustc` are missing, and builds
 `pylon` plus `pylon-tui` locally before continuing into the same smoke path.
+For older release tags that still referenced a sibling `spark-sdk` checkout,
+that fallback now hydrates the missing sibling repo automatically before
+running `cargo build`.
 The launcher only caches those standalone binaries under
 `~/.openagents/pylon/bootstrap/versions/`. It does not copy or symlink them
 into a shared global bin directory, so a global npm or bun install keeps the
