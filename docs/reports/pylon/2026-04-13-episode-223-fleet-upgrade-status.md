@@ -13,6 +13,29 @@ It is intentionally blunt:
 - the reachable fleet still does **not** honestly satisfy the "ready to take
   the `CS336 A1 Demo` run" bar
 
+## Update After `#4345`
+
+The specific cross-repo contract mismatch that originally blocked the bounded
+`CS336 A1 Demo` lane is now fixed on `main`.
+
+Current truth after `openagents#4345`:
+
+- `nexus-control` resolves the packaged A1 demo environment through the
+  canonical `psionic-train` lane contract instead of treating it like a CUDA
+  lane by heuristic
+- the same environment now maps to backend family `cpu` on the public/scheduler
+  side
+- `pylon` now advertises that environment as the CPU reference demo lane on
+  compatible runtime-surface hosts instead of limiting it to admitted `H100`
+  trainers
+
+That closes the "same environment means CPU in Psionic but CUDA in Nexus/Pylon"
+bug.
+
+The remaining Episode 223 blocker from this audit is not the lane contract
+anymore. It is the packaged runtime-detection / live-fleet proof path tracked
+in `openagents#4346`, `openagents#4338`, and `openagents#4343`.
+
 ## What Was Confirmed
 
 ### 1. The release exists

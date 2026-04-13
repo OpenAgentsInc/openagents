@@ -103,6 +103,10 @@ use openagents_provider_substrate::{
 };
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
+use psionic_train::{
+    PSION_ACTUAL_PRETRAINING_LANE_ID, PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
+    PSION_CS336_A1_DEMO_LANE_ID, PsionicTrainLaneContract,
+};
 use reqwest::Url;
 use ring::rand::SystemRandom;
 use ring::signature::{self, RsaKeyPair};
@@ -3977,13 +3981,24 @@ fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<
     if normalized.is_empty() {
         return None;
     }
+    if let Some(backend_family) =
+        training_psionic_backend_family_for_environment_ref(normalized.as_str())
+    {
+        return Some(backend_family);
+    }
     if normalized == PYLON_TRAINING_CUDA_ENVIRONMENT_REF
-        || normalized == PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF
         || normalized.contains(".cuda.")
         || normalized.starts_with("env.cuda.")
         || normalized.ends_with(".cuda.train")
     {
         return Some("cuda");
+    }
+    if normalized.contains(".cpu.")
+        || normalized.contains(".host_cpu.")
+        || normalized.starts_with("env.cpu.")
+        || normalized.ends_with(".cpu.train")
+    {
+        return Some("cpu");
     }
     if normalized.contains(".mlx.") || normalized.starts_with("env.mlx.") {
         return Some("mlx");
@@ -3999,6 +4014,25 @@ fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<
         return Some("metal");
     }
     None
+}
+
+fn training_psionic_backend_family_for_environment_ref(
+    environment_ref: &str,
+) -> Option<&'static str> {
+    let lane_id = match environment_ref {
+        PYLON_TRAINING_CUDA_ENVIRONMENT_REF => PSION_ACTUAL_PRETRAINING_LANE_ID,
+        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF => PSION_CS336_A1_DEMO_LANE_ID,
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF => PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
+        _ => return None,
+    };
+    let contract = PsionicTrainLaneContract::for_lane(lane_id).ok()?;
+    match contract.backend_family.as_str() {
+        "cpu" => Some("cpu"),
+        "cuda" => Some("cuda"),
+        "metal" => Some("metal"),
+        "mlx" => Some("mlx"),
+        _ => None,
+    }
 }
 
 fn training_validator_node_matches_window(
@@ -20411,12 +20445,32 @@ mod tests {
             .find_map(|value| super::training_backend_family_for_environment_ref(value))
             .map(|value| vec![value.to_string()])
             .unwrap_or_default();
+        if request
+            .capability_tier
+            .backend_families
+            .iter()
+            .any(|value| value == "cpu")
+            && request.capability_tier.tier.ordinal()
+                < ProviderTrainingCapabilityTier::Tier2Trainer.ordinal()
+        {
+            request.capability_tier.tier = ProviderTrainingCapabilityTier::Tier2Trainer;
+        }
         request.capability_envelope_v2 = training_capability_envelope_v2(
             &request.capability_tier,
             request.contributor_availability.contributor_supported,
             !request.contributor_availability.environment_refs.is_empty(),
         );
         request
+    }
+
+    #[test]
+    fn training_backend_family_maps_cs336_a1_demo_environment_to_cpu() {
+        assert_eq!(
+            super::training_backend_family_for_environment_ref(
+                PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
+            ),
+            Some("cpu")
+        );
     }
 
     fn training_capability_envelope_v2(
@@ -20461,7 +20515,15 @@ mod tests {
                 minimum_tier: ProviderTrainingCapabilityTier::Tier2Trainer,
                 replica_types: vec![ComputeTrainingReplicaType::SingleNode],
                 required_backend_families: capability_tier.backend_families.clone(),
-                minimum_memory_gb: capability_tier.memory_floor_gb.or(Some(32)),
+                minimum_memory_gb: if capability_tier
+                    .backend_families
+                    .iter()
+                    .any(|value| value == "cpu")
+                {
+                    capability_tier.memory_floor_gb
+                } else {
+                    capability_tier.memory_floor_gb.or(Some(32))
+                },
                 required_throughput_band: ProviderTrainingThroughputBand::Unknown,
                 required_replay_capability: ProviderTrainingReplayCapability::None,
                 benchmark_lane_required: false,
@@ -28513,7 +28575,7 @@ mod tests {
                 "sha256:build-cs336-a1-demo",
                 vec![network_id],
                 Vec::new(),
-                Some(80),
+                Some(16),
                 vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
             );
             node.requested_at_ms = created_at_ms as i64 + 700;

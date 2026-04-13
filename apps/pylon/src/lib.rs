@@ -86,9 +86,9 @@ use psionic_train::{
     PSION_CS336_A1_DEMO_LANE_ID, PSIONIC_TRAIN_ACTUAL_PRETRAINING_ENVIRONMENT_REF,
     PSIONIC_TRAIN_INVOCATION_MANIFEST_SCHEMA_VERSION, PSIONIC_TRAIN_RUNTIME_SURFACE_ID,
     PsionicTrainAdmissionIdentity, PsionicTrainArtifactBinding, PsionicTrainArtifactRef,
-    PsionicTrainCoordinationContext, PsionicTrainInvocationManifest, PsionicTrainOperation,
-    PsionicTrainRole, PsionicTrainWorkClass, admitted_environment_ref_for_lane,
-    admitted_release_id_for_lane, runtime_build_digest,
+    PsionicTrainCoordinationContext, PsionicTrainInvocationManifest, PsionicTrainLaneContract,
+    PsionicTrainMinimumMachineClass, PsionicTrainOperation, PsionicTrainRole, PsionicTrainWorkClass,
+    admitted_environment_ref_for_lane, admitted_release_id_for_lane, runtime_build_digest,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -16817,12 +16817,18 @@ fn derive_adapter_training_contributor_availability(
     let has_cuda_backend = host_has_cuda_training_backend(host);
     let has_apple_backend =
         runtime_surface.supports_apple_windowed_training && host_has_apple_training_backend(host);
-    let has_cs336_a1_demo_backend =
-        runtime_surface.supports_cs336_a1_demo && admitted_cuda_training_gpu(host).is_some();
-    let available_memory_gb =
-        host_max_cuda_training_memory_gb(host).or_else(|| host_apple_training_memory_gb(host));
+    let has_cs336_a1_demo_backend = runtime_surface.supports_cs336_a1_demo
+        && host_matches_training_lane_machine_class(host, PSION_CS336_A1_DEMO_LANE_ID);
+    let available_memory_gb = host_max_cuda_training_memory_gb(host)
+        .or_else(|| host_apple_training_memory_gb(host))
+        .or_else(|| {
+            has_cs336_a1_demo_backend
+                .then(|| host_system_training_memory_gb(host))
+                .flatten()
+        });
     let contributor_supported = (admitted_cuda_training_gpu(host).is_some()
-        || admitted_apple_training_host(host, runtime_surface))
+        || admitted_apple_training_host(host, runtime_surface)
+        || has_cs336_a1_demo_backend)
         && coordinator_match_supported
         && authority_receipt_supported;
     let mut environment_refs = Vec::new();
@@ -16847,7 +16853,7 @@ fn derive_adapter_training_contributor_availability(
         contributor_supported,
         coordinator_match_supported,
         authority_receipt_supported,
-        execution_backends: (has_cuda_backend || has_apple_backend)
+        execution_backends: (has_cuda_backend || has_apple_backend || has_cs336_a1_demo_backend)
             .then_some(ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend)
             .into_iter()
             .collect(),
@@ -16873,6 +16879,21 @@ fn training_capability_backend_families(host: &ProviderHostTelemetrySnapshot) ->
     }
     if host_has_apple_training_backend(host) {
         families.insert("metal".to_string());
+    }
+    families.into_iter().collect()
+}
+
+fn training_capability_backend_families_for_contributor(
+    host: &ProviderHostTelemetrySnapshot,
+    availability: &ProviderAdapterTrainingContributorAvailability,
+) -> Vec<String> {
+    let mut families = training_capability_backend_families(host)
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    for environment_ref in &availability.environment_refs {
+        if let Some(backend_family) = training_backend_family_for_environment_ref(environment_ref) {
+            families.insert(backend_family.to_string());
+        }
     }
     families.into_iter().collect()
 }
@@ -17016,19 +17037,24 @@ fn derive_training_capability_tier_profile(
     host: &ProviderHostTelemetrySnapshot,
     availability: &ProviderAdapterTrainingContributorAvailability,
 ) -> ProviderTrainingCapabilityTierProfile {
-    let backend_families = training_capability_backend_families(host);
+    let backend_families = training_capability_backend_families_for_contributor(host, availability);
     let accelerator_inventory = training_capability_accelerator_inventory(host);
     let available_memory_gb = training_capability_available_memory_gb(host, availability);
     let throughput_band = training_capability_throughput_band(host, availability);
     let lease_reliability = training_capability_lease_reliability(state, host);
     let replay_capability = training_capability_replay_capability(config, availability);
     let artifact_upload_latency_class = training_capability_artifact_upload_latency_class(state);
+    let worker_role_enabled = config
+        .training
+        .role_claims
+        .contains(&PylonTrainingRoleClaim::Worker);
     let satisfies_memory_floor = match (available_memory_gb, availability.minimum_memory_gb) {
         (_, None) => true,
         (Some(available), Some(minimum)) => available >= minimum,
         (None, Some(_)) => false,
     };
-    let trainer_ready = availability.contributor_supported && satisfies_memory_floor;
+    let trainer_ready =
+        worker_role_enabled && availability.contributor_supported && satisfies_memory_floor;
     let authority_capable = config
         .training
         .role_claims
@@ -17379,6 +17405,53 @@ fn provider_gpu_memory_gb(gpu: &ProviderHostGpuTelemetry) -> Option<u32> {
 fn bytes_to_gib_ceil(value: u64) -> u32 {
     let gib = value.saturating_add(BYTES_PER_GIB - 1) / BYTES_PER_GIB;
     u32::try_from(gib).unwrap_or(u32::MAX)
+}
+
+fn host_system_training_memory_gb(host: &ProviderHostTelemetrySnapshot) -> Option<u32> {
+    host.memory
+        .as_ref()
+        .map(|memory| memory.total_bytes.max(memory.available_bytes))
+        .filter(|bytes| *bytes > 0)
+        .map(bytes_to_gib_ceil)
+}
+
+fn host_matches_training_lane_machine_class(
+    host: &ProviderHostTelemetrySnapshot,
+    lane_id: &str,
+) -> bool {
+    let Ok(contract) = PsionicTrainLaneContract::for_lane(lane_id) else {
+        return false;
+    };
+    match contract.minimum_machine_class {
+        PsionicTrainMinimumMachineClass::ReferenceHostCpuOperator => {
+            host_system_training_memory_gb(host).is_some()
+                && !host_has_cuda_training_backend(host)
+                && !host_has_apple_training_backend(host)
+        }
+        PsionicTrainMinimumMachineClass::AppleSiliconOperator => {
+            host_has_apple_training_backend(host)
+        }
+        PsionicTrainMinimumMachineClass::StrongCudaTrainer => host_has_cuda_training_backend(host),
+    }
+}
+
+fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<&'static str> {
+    let lane_id = match environment_ref.trim() {
+        PYLON_TRAINING_ENVIRONMENT_REF | PSIONIC_TRAIN_ACTUAL_PRETRAINING_ENVIRONMENT_REF => {
+            PSION_ACTUAL_PRETRAINING_LANE_ID
+        }
+        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF => PSION_CS336_A1_DEMO_LANE_ID,
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF => PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
+        _ => return None,
+    };
+    let contract = PsionicTrainLaneContract::for_lane(lane_id).ok()?;
+    match contract.backend_family.as_str() {
+        "cpu" => Some("cpu"),
+        "cuda" => Some("cuda"),
+        "metal" => Some("metal"),
+        "mlx" => Some("mlx"),
+        _ => None,
+    }
 }
 
 async fn detect_local_gemma(
@@ -18008,6 +18081,11 @@ mod tests {
                 })
                 .into_iter()
                 .collect(),
+            memory: Some(ProviderHostMemoryTelemetry {
+                used_bytes: 0,
+                available_bytes: 32 * super::BYTES_PER_GIB,
+                total_bytes: 32 * super::BYTES_PER_GIB,
+            }),
             network_interfaces: with_network
                 .then_some(ProviderHostNetworkInterfaceTelemetry {
                     name: "eth0".to_string(),
@@ -18614,12 +18692,32 @@ mod tests {
             "admitted H100 hosts should report sellable training contribution support only when runtime, network, and local checkpoint posture are all present",
         )?;
         ensure(
+            availability.environment_refs == vec![PYLON_TRAINING_ENVIRONMENT_REF.to_string()],
+            "admitted H100 hosts should advertise only the canonical CUDA environment until the bounded demo has its own explicit CUDA lane",
+        )
+    }
+
+    #[test]
+    fn adapter_training_detection_marks_cpu_reference_hosts_ready_for_cs336_a1_demo()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let host = training_host_snapshot(None, None, Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+
+        ensure(
+            availability.contributor_supported
+                && availability.coordinator_match_supported
+                && availability.authority_receipt_supported
+                && availability.execution_backends
+                    == vec![ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend],
+            "reference CPU hosts with the packaged demo lane should still surface one real worker-ready execution backend when runtime and control-plane posture match",
+        )?;
+        ensure(
             availability.environment_refs
-                == vec![
-                    PYLON_TRAINING_ENVIRONMENT_REF.to_string(),
-                    PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
-                ],
-            "admitted H100 hosts should advertise the packaged CS336 A1 demo environment beside the main CUDA lane",
+                == vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()]
+                && availability.minimum_memory_gb.is_none(),
+            "reference CPU hosts should advertise only the packaged CS336 A1 demo environment and should not inherit the H100/Apple memory floors",
         )
     }
 
@@ -18695,7 +18793,32 @@ mod tests {
                 && profile.throughput_band == ProviderTrainingThroughputBand::Island
                 && profile.replay_capability == ProviderTrainingReplayCapability::ShortWindow
                 && profile.lease_reliability == ProviderTrainingLeaseReliabilityClass::Steady,
-            "strong admitted CUDA workers should project an island-capable tier profile",
+            "strong admitted CUDA workers should project only the canonical CUDA training contract until an explicit CUDA variant of the bounded demo exists",
+        )
+    }
+
+    #[test]
+    fn training_capability_tier_marks_cpu_reference_worker_as_tier2_trainer()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut config = default_config(temp_dir.path());
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Worker];
+        let host = training_host_snapshot(None, None, Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+        let profile = derive_training_capability_tier_profile(
+            &config,
+            &PylonTrainingRuntimeState::default(),
+            &host,
+            &availability,
+        );
+
+        ensure(
+            profile.tier == ProviderTrainingCapabilityTier::Tier2Trainer
+                && profile.backend_families == vec!["cpu".to_string()]
+                && profile.replay_capability == ProviderTrainingReplayCapability::ShortWindow,
+            "worker-role reference CPU hosts should project a trainer-tier CPU contract for the bounded A1 demo lane",
         )
     }
 
@@ -18720,8 +18843,8 @@ mod tests {
         ensure(
             profile.tier == ProviderTrainingCapabilityTier::Tier1Validation
                 && profile.replay_capability == ProviderTrainingReplayCapability::FullWindow
-                && profile.throughput_band == ProviderTrainingThroughputBand::Unknown,
-            "validator-only nodes without a training-capable accelerator should still publish a validation tier",
+                && profile.throughput_band == ProviderTrainingThroughputBand::Medium,
+            "validator-only CPU reference nodes should still publish a validation tier while surfacing the bounded demo lane's honest CPU throughput band",
         )
     }
 
