@@ -37,6 +37,8 @@ pub const PYLON_TRAINING_MVP_SETTLEMENT_TRIGGER: &str = "accepted_sealed_window"
 pub const PYLON_TRAINING_CUDA_ENVIRONMENT_REF: &str = "env.openagents.cuda.train";
 pub const PYLON_TRAINING_APPLE_ENVIRONMENT_REF: &str =
     "psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1";
+pub const PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF: &str =
+    "psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1";
 
 pub const PYLON_TRAINING_HEARTBEAT_INTERVAL_MS: u64 = 15_000;
 pub const PYLON_TRAINING_HEARTBEAT_EXPIRY_MS: u64 = 60_000;
