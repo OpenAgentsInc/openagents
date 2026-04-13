@@ -35,6 +35,7 @@ pub struct WalletConfig {
     pub api_key: Option<String>,
     pub storage_dir: PathBuf,
     pub deposit_claim_fee_policy: DepositClaimFeePolicy,
+    pub background_processing: bool,
 }
 
 impl Default for WalletConfig {
@@ -49,6 +50,7 @@ impl Default for WalletConfig {
             api_key: None,
             storage_dir,
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
+            background_processing: true,
         }
     }
 }
@@ -206,7 +208,8 @@ impl SparkWallet {
             .to_sdk_max_fee(config.network);
 
         let builder = SdkBuilder::new(sdk_config, seed)
-            .with_default_storage(config.storage_dir.to_string_lossy().to_string());
+            .with_default_storage(config.storage_dir.to_string_lossy().to_string())
+            .with_background_processing(config.background_processing);
         let sdk = builder
             .build()
             .await
@@ -693,6 +696,11 @@ mod tests {
                 .label(Network::Mainnet),
             "recommended:+1sat/vb"
         );
+    }
+
+    #[test]
+    fn wallet_config_defaults_to_background_processing_enabled() {
+        assert!(WalletConfig::default().background_processing);
     }
 
     #[test]
