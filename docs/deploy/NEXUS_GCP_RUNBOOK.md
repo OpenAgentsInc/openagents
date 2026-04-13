@@ -53,6 +53,37 @@ All scripts are in `scripts/deploy/nexus/`.
 scripts/deploy/nexus/01-build-and-push-image.sh
 ```
 
+The Nexus image build is now an explicit hotfix lane:
+
+- it stages a Nexus-only source context instead of submitting the whole repo
+- it fills non-Nexus workspace members in that staged context with lightweight
+  placeholders so Cargo can still resolve the workspace without the full repo
+- the Docker build now uses BuildKit registry cache, cache mounts, and
+  optional GCS-backed `sccache`
+- the default build profile is now `fast-release`
+
+`sccache` remains optional. The default hotfix lane leaves it off until the
+Cloud Build path is proven stable with it enabled:
+
+```bash
+NEXUS_BUILD_SCCACHE_ENABLED=true scripts/deploy/nexus/01-build-and-push-image.sh
+```
+
+Use the normal production-optimized profile explicitly when you want it:
+
+```bash
+NEXUS_BUILD_PROFILE=release scripts/deploy/nexus/01-build-and-push-image.sh
+```
+
+For isolated validation lanes, publish a unique image tag without moving
+`latest`:
+
+```bash
+NEXUS_IMAGE_TAG=nexus-hotfix-lane-$(date -u +%Y%m%d-%H%M%S) \
+NEXUS_BUILD_UPDATE_LATEST_TAG=false \
+scripts/deploy/nexus/01-build-and-push-image.sh
+```
+
 2. Provision the baseline VM, service account, persistent disk, and IAP SSH access.
 
 ```bash
@@ -63,6 +94,12 @@ scripts/deploy/nexus/02-provision-baseline.sh
 
 ```bash
 scripts/deploy/nexus/03-configure-and-start.sh
+```
+
+If the change is config-only and you want to keep the current image:
+
+```bash
+scripts/deploy/nexus/03-refresh-config-and-restart.sh
 ```
 
 `03-configure-and-start.sh` now also installs the treasury continuity watchdog
@@ -164,6 +201,9 @@ Treasury deployment note:
 - `scripts/deploy/nexus/03-configure-and-start.sh` preserves the live
   `NEXUS_CONTROL_TREASURY_*` values from `/etc/nexus-relay/nexus-relay.env`
   unless you explicitly export replacements before redeploying
+- `scripts/deploy/nexus/03-refresh-config-and-restart.sh` is the supported
+  config-only path when the image is unchanged and you only want to rewrite the
+  VM env/config files before restarting the service
 - set payout policy via env before running `03-configure-and-start.sh`, for example:
   also set the runtime wallet refresh and send-concurrency envs explicitly in
   production so payout cadence does not degrade as the eligible target count

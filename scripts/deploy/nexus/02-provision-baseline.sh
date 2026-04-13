@@ -70,16 +70,16 @@ if [[ -z "$ATTACHED_DISK_SOURCE" ]]; then
     --device-name "$NEXUS_DATA_DISK_DEVICE_NAME" >/dev/null
 fi
 
-if firewall_rule_exists "oa-allow-nexus-iap-ssh"; then
-  log "Updating firewall rule: oa-allow-nexus-iap-ssh"
-  gcloud compute firewall-rules update "oa-allow-nexus-iap-ssh" \
+if firewall_rule_exists "$NEXUS_IAP_SSH_FIREWALL_RULE"; then
+  log "Updating firewall rule: ${NEXUS_IAP_SSH_FIREWALL_RULE}"
+  gcloud compute firewall-rules update "$NEXUS_IAP_SSH_FIREWALL_RULE" \
     --project "$GCP_PROJECT" \
     --allow tcp:22 \
     --target-tags "$NEXUS_TAG" \
     --source-ranges "35.235.240.0/20" >/dev/null
 else
-  log "Creating firewall rule: oa-allow-nexus-iap-ssh"
-  gcloud compute firewall-rules create "oa-allow-nexus-iap-ssh" \
+  log "Creating firewall rule: ${NEXUS_IAP_SSH_FIREWALL_RULE}"
+  gcloud compute firewall-rules create "$NEXUS_IAP_SSH_FIREWALL_RULE" \
     --project "$GCP_PROJECT" \
     --network "$OA_VPC" \
     --allow tcp:22 \
