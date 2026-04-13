@@ -84,6 +84,7 @@ const TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE: usize = 100;
 const TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES: usize = 8;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_EARLY_SLACK_MS: u64 = 5 * 60_000;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_WINDOW_MS: u64 = 30 * 60_000;
+const TREASURY_DISPATCH_CONFIRMATION_TIMEOUT_MS: u64 = 30 * 60_000;
 const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
     &["public_snapshot"],
     &["public_snapshot", "active_continuity_alerts"],
@@ -3156,20 +3157,43 @@ impl TreasuryState {
     ) -> Vec<TreasuryReceiptEvent> {
         let timeout_ms =
             config.dispatch_result_timeout_ms(self.active_policy(config).payout_interval_ms());
+        let confirmation_timeout_ms =
+            TREASURY_DISPATCH_CONFIRMATION_TIMEOUT_MS.max(timeout_ms);
         let mut receipt_events = Vec::new();
         for record in self.payout_records_by_key.values_mut() {
-            if record.status != "dispatching" || record.payment_id.is_some() {
-                continue;
-            }
-            if now_unix_ms <= record.updated_at_unix_ms.saturating_add(timeout_ms) {
-                continue;
-            }
-            record.status = "failed".to_string();
-            record.reason = Some("dispatch_outcome_timeout".to_string());
-            record.updated_at_unix_ms = now_unix_ms;
-            if !record.fail_receipt_recorded {
-                record.fail_receipt_recorded = true;
-                receipt_events.push(failed_payout_receipt(record));
+            match record.status.as_str() {
+                "dispatching" if record.payment_id.is_none() => {
+                    if now_unix_ms <= record.updated_at_unix_ms.saturating_add(timeout_ms) {
+                        continue;
+                    }
+                    record.status = "failed".to_string();
+                    record.reason = Some("dispatch_outcome_timeout".to_string());
+                    record.updated_at_unix_ms = now_unix_ms;
+                    if !record.fail_receipt_recorded {
+                        record.fail_receipt_recorded = true;
+                        receipt_events.push(failed_payout_receipt(record));
+                    }
+                }
+                "dispatched" if record.payment_id.is_some() && !record.counted_in_paid_total => {
+                    if now_unix_ms
+                        <= record
+                            .updated_at_unix_ms
+                            .saturating_add(confirmation_timeout_ms)
+                    {
+                        continue;
+                    }
+                    // Stop forcing very old dispatched records back through every wallet-history
+                    // refresh. If the payment later appears, exact payment_id matching still
+                    // recovers it to confirmed.
+                    record.status = "failed".to_string();
+                    record.reason = Some("dispatch_confirmation_timeout".to_string());
+                    record.updated_at_unix_ms = now_unix_ms;
+                    if !record.fail_receipt_recorded {
+                        record.fail_receipt_recorded = true;
+                        receipt_events.push(failed_payout_receipt(record));
+                    }
+                }
+                _ => continue,
             }
         }
         receipt_events
@@ -6172,6 +6196,127 @@ mod tests {
         assert!(record.payment_id.is_none());
         assert_eq!(state.payout_sats_paid_total, 0);
         assert!(receipts.is_empty());
+    }
+
+    #[test]
+    fn stale_dispatched_payment_ids_age_out_of_wallet_refresh_tracking() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 1_776_028_000_000u64;
+        let stale_updated_at_unix_ms =
+            now_unix_ms.saturating_sub(super::TREASURY_DISPATCH_CONFIRMATION_TIMEOUT_MS + 1);
+        let payout_key = "window-a:pubkey-a".to_string();
+        state.payout_records_by_key.insert(
+            payout_key.clone(),
+            TreasuryPayoutRecord {
+                payout_key: payout_key.clone(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 50,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("payment-send-stale-001".to_string()),
+                window_started_at_unix_ms: stale_updated_at_unix_ms.saturating_sub(60_000),
+                window_ends_at_unix_ms: stale_updated_at_unix_ms,
+                created_at_unix_ms: stale_updated_at_unix_ms.saturating_sub(60_000),
+                updated_at_unix_ms: stale_updated_at_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        let receipts = state.expire_stale_dispatches(&config, now_unix_ms);
+        let record = state
+            .payout_records_by_key
+            .get(&payout_key)
+            .expect("stale dispatched payout");
+        assert_eq!(record.status, "failed");
+        assert_eq!(
+            record.reason.as_deref(),
+            Some("dispatch_confirmation_timeout")
+        );
+        assert_eq!(
+            record.payment_id.as_deref(),
+            Some("payment-send-stale-001")
+        );
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].receipt_type, "treasury.payout.failed");
+        assert_eq!(state.wallet_refresh_plan().tracked_payment_count(), 0);
+    }
+
+    #[test]
+    fn wallet_snapshot_recovers_failed_send_with_known_payment_id() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 1_776_028_000_000u64;
+        let created_at_unix_ms = now_unix_ms.saturating_sub(180_000);
+        let payout_key = "window-a:pubkey-a".to_string();
+        state.payout_records_by_key.insert(
+            payout_key.clone(),
+            TreasuryPayoutRecord {
+                payout_key: payout_key.clone(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 50,
+                status: "failed".to_string(),
+                reason: Some("dispatch_confirmation_timeout".to_string()),
+                payment_id: Some("payment-send-known-001".to_string()),
+                window_started_at_unix_ms: created_at_unix_ms,
+                window_ends_at_unix_ms: created_at_unix_ms.saturating_add(60_000),
+                created_at_unix_ms,
+                updated_at_unix_ms: created_at_unix_ms.saturating_add(60_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        let payment_timestamp = created_at_unix_ms.saturating_add(120_000).saturating_div(1_000);
+        let receipts = state.apply_wallet_snapshot(
+            &TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                balance_sats: 830,
+                payments: vec![PaymentSummary {
+                    id: "payment-send-known-001".to_string(),
+                    direction: "send".to_string(),
+                    status: "completed".to_string(),
+                    amount_sats: 50,
+                    fees_sats: 0,
+                    timestamp: payment_timestamp,
+                    method: "spark".to_string(),
+                    description: None,
+                    invoice: None,
+                    destination_pubkey: None,
+                    payment_hash: None,
+                    htlc_status: None,
+                    htlc_expiry_epoch_seconds: None,
+                    status_detail: None,
+                }],
+            },
+            now_unix_ms,
+        );
+
+        let record = state
+            .payout_records_by_key
+            .get(&payout_key)
+            .expect("recovered payout record");
+        assert_eq!(record.status, "confirmed");
+        assert!(record.counted_in_paid_total);
+        assert_eq!(state.payout_sats_paid_total, 50);
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].receipt_type, "treasury.payout.confirmed");
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(stats.payouts_confirmed_24h, 1);
     }
 
     #[test]
