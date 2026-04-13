@@ -16363,15 +16363,6 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
     ) {
         return;
     }
-    if matches!(refresh_state, TreasuryWalletRefreshState::Due)
-        && state
-            .store
-            .read()
-            .map(|store| !store.treasury.due_wallet_refresh_requires_reconciliation())
-            .unwrap_or(false)
-    {
-        return;
-    }
     if !try_begin_treasury_wallet_refresh_cycle() {
         return;
     }
@@ -24698,6 +24689,44 @@ mod tests {
         assert_eq!(refreshed_stats.nexus_wallet_balance_sats, 710);
         assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
         assert_eq!(refreshed_stats.nexus_treasury_degraded_reason, None);
+
+        set_test_wallet_snapshot_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_due_refresh_runs_without_pending_reconciliation() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.wallet_status_refresh_seconds = 1;
+        let state = build_app_state(config);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let hook_calls = Arc::new(AtomicUsize::new(0));
+        let hook_calls_clone = hook_calls.clone();
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(move || {
+            let call_index = hook_calls_clone.fetch_add(1, Ordering::SeqCst);
+            Ok(TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                balance_sats: if call_index == 0 { 500 } else { 710 },
+                payments: Vec::new(),
+            })
+        })));
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+
+        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+
+        let store = state.store.read().expect("store read after due refresh");
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(store.treasury.wallet_balance_sats, 710);
+        assert_eq!(store.treasury.wallet_runtime_status.as_deref(), Some("connected"));
 
         set_test_wallet_snapshot_hook(None);
         Ok(())
