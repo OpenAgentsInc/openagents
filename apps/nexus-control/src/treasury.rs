@@ -1524,6 +1524,14 @@ impl TreasuryState {
         })
     }
 
+    pub fn due_wallet_refresh_requires_reconciliation(&self) -> bool {
+        self.payout_records_by_key.values().any(|record| {
+            record.status == "dispatched"
+                && !record.counted_in_paid_total
+                && record.payment_id.is_some()
+        })
+    }
+
     fn payout_loop_health(&self, config: &TreasuryConfig) -> String {
         if !self.treasury_enabled(config) {
             return "disabled".to_string();
