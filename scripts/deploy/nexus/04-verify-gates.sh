@@ -211,6 +211,8 @@ payload = {
     "payout_interval_seconds": parse_u64("NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS"),
     "require_sellable": parse_bool("NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE"),
     "daily_budget_cap_sats": parse_u64("NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS"),
+    "placeholder_payout_mode": values.get("NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE") or None,
+    "dedupe_placeholder_hosts": parse_bool("NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS"),
     "min_new_accrual_pylon_version": values.get("NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION") or None,
     "min_new_accrual_started_at_unix_ms": parse_u64("NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS"),
 }
@@ -352,6 +354,8 @@ jq -n \
       payout_interval_seconds: $treasury_result.body.payout_interval_seconds,
       require_sellable: $treasury_result.body.require_sellable,
       daily_budget_cap_sats: $treasury_result.body.daily_budget_cap_sats,
+      placeholder_payout_mode: $treasury_result.body.placeholder_payout_mode,
+      dedupe_placeholder_hosts: $treasury_result.body.dedupe_placeholder_hosts,
       min_new_accrual_pylon_version: $treasury_result.body.min_new_accrual_pylon_version,
       min_new_accrual_started_at_unix_ms: $treasury_result.body.min_new_accrual_started_at_unix_ms,
       policy_checksum: $treasury_result.body.policy_checksum,
@@ -365,6 +369,8 @@ jq -n \
       if $treasury_result.body.payout_interval_seconds != $treasury_env.payout_interval_seconds then "payout_interval_seconds" else empty end,
       if $treasury_result.body.require_sellable != $treasury_env.require_sellable then "require_sellable" else empty end,
       if $treasury_result.body.daily_budget_cap_sats != $treasury_env.daily_budget_cap_sats then "daily_budget_cap_sats" else empty end,
+      if ($treasury_result.body.placeholder_payout_mode // null) != ($treasury_env.placeholder_payout_mode // null) then "placeholder_payout_mode" else empty end,
+      if ($treasury_result.body.dedupe_placeholder_hosts // null) != ($treasury_env.dedupe_placeholder_hosts // null) then "dedupe_placeholder_hosts" else empty end,
       if ($treasury_result.body.min_new_accrual_pylon_version // null) != ($treasury_env.min_new_accrual_pylon_version // null) then "min_new_accrual_pylon_version" else empty end,
       if ($treasury_result.body.min_new_accrual_started_at_unix_ms // null) != ($treasury_env.min_new_accrual_started_at_unix_ms // null) then "min_new_accrual_started_at_unix_ms" else empty end
     ] end;
@@ -380,8 +386,11 @@ jq -n \
       payouts_confirmed_24h: $treasury_result.body.payouts_confirmed_24h,
       payouts_failed_24h: $treasury_result.body.payouts_failed_24h,
       payouts_skipped_24h: $treasury_result.body.payouts_skipped_24h,
+      placeholder_payout_mode: $treasury_result.body.placeholder_payout_mode,
       eligible_online_payout_targets: $treasury_result.body.eligible_online_payout_targets,
       sellable_pylons_online_now: $treasury_result.body.sellable_pylons_online_now,
+      inference_ready_online_payout_targets: $treasury_result.body.inference_ready_online_payout_targets,
+      duplicate_host_placeholder_blocked_online_targets: $treasury_result.body.duplicate_host_placeholder_blocked_online_targets,
       min_new_accrual_version_gate_active: $treasury_result.body.min_new_accrual_version_gate_active,
       min_new_accrual_version_blocked_online_targets: $treasury_result.body.min_new_accrual_version_blocked_online_targets,
       min_new_accrual_unknown_version_online_targets: $treasury_result.body.min_new_accrual_unknown_version_online_targets,

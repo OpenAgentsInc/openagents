@@ -6537,6 +6537,64 @@ const STARTER_DEMAND_TEMPLATES: [StarterDemandTemplate; 4] = [
     },
 ];
 
+fn provider_presence_record_is_inference_ready(record: &ProviderPresenceRecord) -> bool {
+    let ready_model = record.ready_model.as_deref().or(record
+        .hosting_telemetry
+        .availability
+        .local_gemma
+        .ready_model
+        .as_deref());
+    if ready_model.is_none() {
+        return false;
+    }
+    if record.hosting_telemetry.availability.local_gemma.ready {
+        return true;
+    }
+    record.hosting_telemetry.inventory_rows.iter().any(|row| {
+        row.backend_ready
+            && row.eligible
+            && row.available_quantity > 0
+            && row.delivery_state.eq_ignore_ascii_case("open")
+    })
+}
+
+fn provider_presence_host_fingerprint(record: &ProviderPresenceRecord) -> Option<String> {
+    let host = record.hosting_telemetry.host.as_ref()?;
+    let memory_total_bytes = host
+        .memory
+        .as_ref()
+        .map(|memory| memory.total_bytes)
+        .unwrap_or(0);
+    let gpu_summary = host
+        .gpus
+        .iter()
+        .map(|gpu| {
+            format!(
+                "{}:{}",
+                gpu.model,
+                gpu.memory_total_label.as_deref().unwrap_or("")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("|");
+    let payload = format!(
+        "{}|{}|{}|{}|{}|{}",
+        host.host_name.as_deref().unwrap_or(""),
+        host.cpu_brand.as_deref().unwrap_or(""),
+        host.cpu_arch.as_deref().unwrap_or(""),
+        host.logical_cpu_count,
+        memory_total_bytes,
+        gpu_summary
+    );
+    if payload
+        .chars()
+        .all(|ch| ch == '|' || ch == '0' || ch.is_ascii_whitespace())
+    {
+        return None;
+    }
+    Some(sha256_prefixed_bytes(payload.as_bytes()))
+}
+
 impl ProviderPresenceState {
     fn record_heartbeat(
         &mut self,
@@ -6627,33 +6685,53 @@ impl ProviderPresenceState {
 
     fn online_identities(&self, now_unix_ms: u64, stale_after_ms: u64) -> Vec<OnlinePylonIdentity> {
         let stale_cutoff = now_unix_ms.saturating_sub(stale_after_ms);
-        let mut identities = BTreeMap::<String, (bool, Option<String>, u64)>::new();
+        let mut identities =
+            BTreeMap::<String, (bool, Option<String>, bool, Option<String>, u64)>::new();
         for record in self.rows_by_key.values() {
             if !(record.online && record.last_seen_at_unix_ms >= stale_cutoff) {
                 continue;
             }
+            let inference_ready = provider_presence_record_is_inference_ready(record);
+            let host_fingerprint = provider_presence_host_fingerprint(record);
             identities
                 .entry(record.nostr_pubkey_hex.clone())
-                .and_modify(|(sellable, client_version, last_seen_at_unix_ms)| {
-                    *sellable |= record.eligible_product_count > 0;
-                    if record.last_seen_at_unix_ms >= *last_seen_at_unix_ms {
-                        *client_version = record.client_version.clone();
-                        *last_seen_at_unix_ms = record.last_seen_at_unix_ms;
-                    }
-                })
+                .and_modify(
+                    |(
+                        sellable,
+                        client_version,
+                        aggregated_inference_ready,
+                        aggregated_host_fingerprint,
+                        last_seen_at_unix_ms,
+                    )| {
+                        *sellable |= record.eligible_product_count > 0;
+                        *aggregated_inference_ready |= inference_ready;
+                        if record.last_seen_at_unix_ms >= *last_seen_at_unix_ms {
+                            *client_version = record.client_version.clone();
+                            *aggregated_host_fingerprint = host_fingerprint.clone();
+                            *last_seen_at_unix_ms = record.last_seen_at_unix_ms;
+                        }
+                    },
+                )
                 .or_insert((
                     record.eligible_product_count > 0,
                     record.client_version.clone(),
+                    inference_ready,
+                    host_fingerprint,
                     record.last_seen_at_unix_ms,
                 ));
         }
         identities
             .into_iter()
             .map(
-                |(nostr_pubkey_hex, (sellable, client_version, _))| OnlinePylonIdentity {
+                |(
+                    nostr_pubkey_hex,
+                    (sellable, client_version, inference_ready, host_fingerprint, _),
+                )| OnlinePylonIdentity {
                     nostr_pubkey_hex,
                     sellable,
                     client_version,
+                    inference_ready,
+                    host_fingerprint,
                 },
             )
             .collect()
@@ -19576,9 +19654,9 @@ mod tests {
         ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
         RegisteredPayoutTarget, TreasuryFundingMaterial, TreasuryFundingTargetRequest,
         TreasuryFundingTargetResponse, TreasuryPayoutClass, TreasuryPayoutClassification,
-        TreasuryPayoutRecord, TreasuryState, TreasuryStatusResponse, TreasuryWalletSnapshot,
-        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        treasury_test_hook_lock,
+        TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryState, TreasuryStatusResponse,
+        TreasuryWalletSnapshot, set_test_wallet_funding_hook, set_test_wallet_send_hook,
+        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
     };
 
     use super::{
@@ -19641,6 +19719,8 @@ mod tests {
                 payout_interval_seconds: 60,
                 require_sellable: false,
                 daily_budget_cap_sats: 1_000,
+                placeholder_payout_mode: TreasuryPlaceholderPayoutMode::InferenceReady,
+                dedupe_placeholder_hosts: true,
                 min_new_accrual_pylon_version: None,
                 min_new_accrual_started_at_unix_ms: None,
                 reconciliation_horizon_seconds: 300,
@@ -24009,6 +24089,45 @@ mod tests {
         assert_eq!(pruned.pylons_seen_24h, 0);
         assert!(pruned.recent_pylons.is_empty());
         assert!(pruned.recent_pylon_diagnostics.is_empty());
+    }
+
+    #[test]
+    fn provider_presence_online_identities_carry_readiness_and_host_fingerprint() {
+        let mut presence = ProviderPresenceState::default();
+        presence.record_heartbeat(
+            provider_presence_request("aabbccdd00112233", "session-a-1", "alpha", 1, "online"),
+            100_000,
+        );
+
+        let mut not_ready =
+            provider_presence_request("bbccddee11223344", "session-b-1", "beta", 0, "online");
+        not_ready.ready_model = None;
+        not_ready.hosting_telemetry.availability.local_gemma.ready = false;
+        not_ready
+            .hosting_telemetry
+            .availability
+            .local_gemma
+            .ready_model = None;
+        not_ready.hosting_telemetry.inventory_rows.clear();
+        presence.record_heartbeat(not_ready, 100_100);
+
+        let identities =
+            presence.online_identities(100_100, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
+        assert_eq!(identities.len(), 2);
+
+        let ready_identity = identities
+            .iter()
+            .find(|identity| identity.nostr_pubkey_hex == "aabbccdd00112233")
+            .expect("ready identity");
+        assert!(ready_identity.inference_ready);
+        assert!(ready_identity.host_fingerprint.is_some());
+
+        let not_ready_identity = identities
+            .iter()
+            .find(|identity| identity.nostr_pubkey_hex == "bbccddee11223344")
+            .expect("presence-only identity");
+        assert!(!not_ready_identity.inference_ready);
+        assert!(not_ready_identity.host_fingerprint.is_some());
     }
 
     #[test]
