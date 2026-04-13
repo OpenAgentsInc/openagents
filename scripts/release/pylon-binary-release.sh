@@ -16,12 +16,14 @@ Usage:
 
 Description:
   Build standalone Pylon binaries for the current host, package them into a
-  GitHub-release-friendly tarball, and optionally publish a prerelease or
-  release to GitHub.
+  GitHub-release-friendly tarball, and optionally publish it to GitHub. When
+  the target release already exists, --publish appends or replaces this host's
+  assets on the existing tag instead of failing.
 
 Flags:
   --version <version>  Release version label without the leading product name.
-  --publish            Create a GitHub release and upload the packaged assets.
+  --publish            Create or update the GitHub release with the packaged
+                       assets for the current host platform.
   -h, --help           Show this help message.
 EOF
 }
@@ -38,6 +40,23 @@ die() {
 require_command() {
   local cmd="$1"
   command -v "$cmd" >/dev/null 2>&1 || die "Missing required command: $cmd"
+}
+
+sha256_file() {
+  local path="$1"
+  local output="$2"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$(dirname "$path")" && sha256sum "$(basename "$path")" >"$output")
+    return
+  fi
+
+  if command -v shasum >/dev/null 2>&1; then
+    (cd "$(dirname "$path")" && shasum -a 256 "$(basename "$path")" >"$output")
+    return
+  fi
+
+  die "Missing required command: sha256sum or shasum"
 }
 
 normalize_version() {
@@ -65,6 +84,11 @@ host_arch() {
 
 ensure_clean_git() {
   [[ -z "$(git status --porcelain)" ]] || die "Git worktree must be clean before cutting a release"
+}
+
+release_exists() {
+  local tag="$1"
+  gh release view "$tag" --repo "$REPO_SLUG" >/dev/null 2>&1
 }
 
 build_binaries() {
@@ -178,8 +202,6 @@ done
 require_command cargo
 require_command git
 require_command tar
-require_command shasum
-
 cd "$REPO_ROOT"
 ensure_clean_git
 
@@ -208,33 +230,41 @@ write_readme "${STAGE_DIR}/README.txt" "$ARCHIVE_DIR"
 
 rm -f "$ARCHIVE_PATH" "$SHA_PATH"
 tar -C "$STAGE_ROOT" -czf "$ARCHIVE_PATH" "$ARCHIVE_DIR"
-(cd "$OUTPUT_DIR" && shasum -a 256 "$(basename "$ARCHIVE_PATH")" >"$(basename "$SHA_PATH")")
+sha256_file "$ARCHIVE_PATH" "$SHA_PATH"
 
 log "Wrote archive: $ARCHIVE_PATH"
 log "Wrote checksum: $SHA_PATH"
 
 if [[ "$PUBLISH" == true ]]; then
-  gh release view "$TAG" --repo "$REPO_SLUG" >/dev/null 2>&1 && die "Release already exists: $TAG"
-
   NOTES_FILE=$(mktemp)
   trap 'rm -f "$NOTES_FILE"' EXIT
   write_release_notes "$NOTES_FILE" "$(basename "$ARCHIVE_PATH")" "$(basename "$SHA_PATH")"
 
-  RELEASE_FLAGS=()
-  if [[ "$VERSION" == *-* ]]; then
-    RELEASE_FLAGS+=(--prerelease)
-  fi
+  if release_exists "$TAG"; then
+    log "Uploading assets to existing GitHub release $TAG"
+    gh release upload \
+      "$TAG" \
+      "$ARCHIVE_PATH" \
+      "$SHA_PATH" \
+      --repo "$REPO_SLUG" \
+      --clobber
+  else
+    RELEASE_FLAGS=()
+    if [[ "$VERSION" == *-* ]]; then
+      RELEASE_FLAGS+=(--prerelease)
+    fi
 
-  log "Publishing GitHub release $TAG"
-  gh release create \
-    "$TAG" \
-    "$ARCHIVE_PATH" \
-    "$SHA_PATH" \
-    --repo "$REPO_SLUG" \
-    --target "$(git rev-parse HEAD)" \
-    --title "Pylon v${VERSION}" \
-    --notes-file "$NOTES_FILE" \
-    "${RELEASE_FLAGS[@]}"
+    log "Publishing GitHub release $TAG"
+    gh release create \
+      "$TAG" \
+      "$ARCHIVE_PATH" \
+      "$SHA_PATH" \
+      --repo "$REPO_SLUG" \
+      --target "$(git rev-parse HEAD)" \
+      --title "Pylon v${VERSION}" \
+      --notes-file "$NOTES_FILE" \
+      "${RELEASE_FLAGS[@]}"
+  fi
 
   log "Published release: $TAG"
 fi
