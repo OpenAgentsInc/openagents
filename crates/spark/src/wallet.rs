@@ -11,6 +11,8 @@ use breez_sdk_spark::{
 
 use crate::{SparkError, SparkSigner};
 
+const MANUAL_SYNC_INTERVAL_SECS: u32 = 24 * 60 * 60;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Network {
     Mainnet,
@@ -197,15 +199,7 @@ impl SparkWallet {
             },
         };
 
-        let mut sdk_config = default_config(config.network.to_sdk_network()?);
-        if let Some(api_key) = &config.api_key {
-            sdk_config.api_key = Some(api_key.clone());
-        } else {
-            sdk_config.real_time_sync_server_url = None;
-        }
-        sdk_config.max_deposit_claim_fee = config
-            .deposit_claim_fee_policy
-            .to_sdk_max_fee(config.network);
+        let sdk_config = sdk_config_for_wallet(&config)?;
 
         let builder = SdkBuilder::new(sdk_config, seed)
             .with_default_storage(config.storage_dir.to_string_lossy().to_string())
@@ -494,6 +488,29 @@ impl SparkWallet {
     }
 }
 
+fn sdk_config_for_wallet(config: &WalletConfig) -> Result<breez_sdk_spark::Config, SparkError> {
+    let mut sdk_config = default_config(config.network.to_sdk_network()?);
+    if let Some(api_key) = &config.api_key {
+        sdk_config.api_key = Some(api_key.clone());
+    } else {
+        sdk_config.real_time_sync_server_url = None;
+    }
+    sdk_config.max_deposit_claim_fee = config
+        .deposit_claim_fee_policy
+        .to_sdk_max_fee(config.network);
+
+    // Treasury and other manual-operation wallets should not keep Breez's
+    // real-time, LNURL, or minute-by-minute sync helpers alive between explicit
+    // operations.
+    if !config.background_processing {
+        sdk_config.real_time_sync_server_url = None;
+        sdk_config.lnurl_domain = None;
+        sdk_config.sync_interval_secs = MANUAL_SYNC_INTERVAL_SECS;
+    }
+
+    Ok(sdk_config)
+}
+
 fn payment_direction_label(payment_type: PaymentType) -> &'static str {
     match payment_type {
         PaymentType::Send => "send",
@@ -647,8 +664,9 @@ fn payment_status_detail(status: PaymentStatus, htlc_status: Option<&str>) -> Op
 #[cfg(test)]
 mod tests {
     use super::{
-        Balance, DepositClaimFeePolicy, Network, PaymentSummary, PaymentType, SdkNetwork,
-        UnclaimedDeposit, WalletConfig, payment_direction_label, payment_summary_from_sdk_payment,
+        Balance, DepositClaimFeePolicy, MANUAL_SYNC_INTERVAL_SECS, Network, PaymentSummary,
+        PaymentType, SdkNetwork, UnclaimedDeposit, WalletConfig, payment_direction_label,
+        payment_summary_from_sdk_payment, sdk_config_for_wallet,
         unclaimed_deposit_from_sdk_deposit,
     };
     use crate::SparkError;
@@ -709,6 +727,33 @@ mod tests {
     #[test]
     fn wallet_config_defaults_to_background_processing_enabled() {
         assert!(WalletConfig::default().background_processing);
+    }
+
+    #[test]
+    fn manual_wallet_config_disables_realtime_and_lnurl_sync() {
+        let sdk_config = sdk_config_for_wallet(&WalletConfig {
+            api_key: Some("test-api-key".to_string()),
+            background_processing: false,
+            ..WalletConfig::default()
+        })
+        .expect("manual wallet sdk config");
+
+        assert!(sdk_config.real_time_sync_server_url.is_none());
+        assert!(sdk_config.lnurl_domain.is_none());
+        assert_eq!(sdk_config.sync_interval_secs, MANUAL_SYNC_INTERVAL_SECS);
+    }
+
+    #[test]
+    fn background_wallet_config_keeps_realtime_sync_defaults() {
+        let sdk_config = sdk_config_for_wallet(&WalletConfig {
+            api_key: Some("test-api-key".to_string()),
+            background_processing: true,
+            ..WalletConfig::default()
+        })
+        .expect("background wallet sdk config");
+
+        assert!(sdk_config.real_time_sync_server_url.is_some());
+        assert!(sdk_config.lnurl_domain.is_some());
     }
 
     #[test]
