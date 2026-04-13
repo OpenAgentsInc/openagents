@@ -60,6 +60,11 @@ OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic \
 scripts/release/check-pylon-distributed-training-apple-matrix.sh
 ```
 
+This release-gate script still uses the sibling-or-explicit-repo rule. It does
+not reuse the broader packaged-runtime auto-discovery path from
+`pylon training status` and `pylon doctor`. For nonstandard layouts, export
+`OPENAGENTS_PSIONIC_REPO` explicitly.
+
 Like the Phase 5 MVP gate, this is intentionally test-first. The goal is not to
 pretend the repo already has one external Apple multi-machine soak harness that
 proves more than the code can really prove. The goal is to run the exact retained

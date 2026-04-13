@@ -57,6 +57,11 @@ OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic \
 scripts/release/check-pylon-distributed-training-mvp.sh
 ```
 
+This release-gate script still uses the sibling-or-explicit-repo rule. It does
+not reuse the broader packaged-runtime auto-discovery path from
+`pylon training status` and `pylon doctor`. For nonstandard layouts, export
+`OPENAGENTS_PSIONIC_REPO` explicitly.
+
 The gate is intentionally test-first. It uses focused exact rehearsals that
 already exercise the admitted runtime, checkpoint, validator, scheduler,
 publication, and restart seams. That is a better MVP release block than
