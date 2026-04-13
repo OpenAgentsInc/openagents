@@ -5104,6 +5104,7 @@ async fn open_wallet(config: &TreasuryConfig, create_if_missing: bool) -> Result
         return Ok(entry.wallet.clone());
     }
     let wallet = Arc::new(open_wallet_uncached(config, create_if_missing).await?);
+    prime_manual_live_wallet(config, wallet.as_ref()).await?;
     *cache_guard = Some(LiveWalletCacheEntry {
         key: cache_key,
         wallet: wallet.clone(),
@@ -5142,6 +5143,30 @@ fn treasury_wallet_config(config: &TreasuryConfig, storage_dir: PathBuf) -> Resu
         deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
         background_processing: false,
     })
+}
+
+async fn prime_manual_live_wallet(config: &TreasuryConfig, wallet: &SparkWallet) -> Result<()> {
+    if wallet.config().background_processing {
+        return Ok(());
+    }
+
+    tracing::info!(
+        storage_dir = %config.wallet_storage_dir.display(),
+        "priming manual treasury Spark wallet with initial sync"
+    );
+    wallet
+        .sync()
+        .await
+        .context("failed to perform initial manual treasury Spark sync")?;
+    let balance = wallet
+        .get_balance_cached()
+        .await
+        .context("failed to read manual treasury Spark balance after initial sync")?;
+    tracing::info!(
+        balance_sats = balance.total_sats(),
+        "manual treasury Spark wallet initial sync completed"
+    );
+    Ok(())
 }
 
 fn wallet_refresh_payment_page_budget(tracked_payment_count: usize) -> usize {
@@ -5258,9 +5283,10 @@ async fn wallet_snapshot_from_wallet_with_plan_result(
     // processing disabled. Full Spark sync currently exercises deposit-claim
     // and other network-heavy paths that can wedge or zero a recovered
     // treasury wallet even when the local cached state is valid enough to
-    // continue dispatching. In that manual mode, prefer the cached wallet
-    // snapshot and bounded payment scan instead of forcing a full network sync
-    // on every treasury refresh.
+    // continue dispatching. The live runtime now primes that manual wallet with
+    // one explicit sync when the cached process-local wallet is created. After
+    // that initial sync, prefer the cached wallet snapshot and bounded payment
+    // scan instead of forcing a full network sync on every treasury refresh.
     if wallet.config().background_processing {
         wallet
             .sync()
