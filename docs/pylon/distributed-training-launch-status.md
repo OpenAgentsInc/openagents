@@ -48,6 +48,37 @@ What remains after this update is not the original hard-blocker set. The
 remaining work is launch discipline, rollout control, public explanation, and a
 later separately documented live-node demo run.
 
+## 2026-04-13 CS336 A1 Demo Lane Update
+
+The retained training stack now also has one explicit named CS336 assignment
+demo lane that stays inside the existing `Nexus` and `Pylon` control path.
+
+What changed:
+
+- `Nexus` can now create and lease a `small_model_local_training` run bound to
+  the packaged CS336 A1 demo environment instead of relying on a local-only
+  `Psionic` launch.
+- the scheduler now treats that CS336 A1 environment as a CUDA-backed strong
+  trainer lane, so the same admitted-node gating applies when a worker claims
+  it
+- the public training stats and visualization payloads now preserve a run
+  `display_name`, which makes a named demo run legible on camera without extra
+  narration
+
+What this closes:
+
+- one named A1 demo run can be admitted, leased, and surfaced through the
+  existing authority and public-truth path
+- assigned contributor count remains distinct from accepted and
+  model-progress-bearing contributor counts for that named run
+
+What still remains after this issue:
+
+- projecting that named run onto the separate website/public stats presentation
+  repo
+- running and settling the real public demo on live Pylons rather than only
+  proving the lane contract in repo tests
+
 ## Short Version
 
 The original admitted-node distributed-training MVP is materially complete in

@@ -41,6 +41,7 @@ use openagents_kernel_core::{
     ids::sha256_prefixed_text,
     pylon_training::{
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF as SHARED_PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF as SHARED_PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
         PYLON_TRAINING_CUDA_ENVIRONMENT_REF as SHARED_PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
         PYLON_TRAINING_RETRY_CAP_MS, PYLON_TRAINING_RETRY_SCHEDULE_MS,
         PYLON_TRAINING_UPLOAD_TIMEOUT_MS, PylonTrainingArtifactBundleKind,
@@ -82,11 +83,12 @@ use openagents_provider_substrate::{
 };
 use psionic_train::{
     PSION_ACTUAL_PRETRAINING_LANE_ID, PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
-    PSIONIC_TRAIN_ACTUAL_PRETRAINING_ENVIRONMENT_REF,
+    PSION_CS336_A1_DEMO_LANE_ID, PSIONIC_TRAIN_ACTUAL_PRETRAINING_ENVIRONMENT_REF,
     PSIONIC_TRAIN_INVOCATION_MANIFEST_SCHEMA_VERSION, PSIONIC_TRAIN_RUNTIME_SURFACE_ID,
-    PsionicTrainAdmissionIdentity, PsionicTrainCoordinationContext, PsionicTrainInvocationManifest,
-    PsionicTrainOperation, PsionicTrainRole, PsionicTrainWorkClass,
-    admitted_environment_ref_for_lane, admitted_release_id_for_lane, runtime_build_digest,
+    PsionicTrainAdmissionIdentity, PsionicTrainArtifactBinding, PsionicTrainArtifactRef,
+    PsionicTrainCoordinationContext, PsionicTrainInvocationManifest, PsionicTrainOperation,
+    PsionicTrainRole, PsionicTrainWorkClass, admitted_environment_ref_for_lane,
+    admitted_release_id_for_lane, runtime_build_digest,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -158,6 +160,8 @@ const PYLON_TRAINING_VALIDATOR_POLICY_REF: &str = "policy://validator/mvp/v1";
 const PYLON_TRAINING_CHECKPOINT_FAMILY: &str = "decoder";
 const PYLON_TRAINING_ENVIRONMENT_REF: &str = SHARED_PYLON_TRAINING_CUDA_ENVIRONMENT_REF;
 const PYLON_TRAINING_APPLE_ENVIRONMENT_REF: &str = SHARED_PYLON_TRAINING_APPLE_ENVIRONMENT_REF;
+const PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF: &str =
+    SHARED_PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF;
 const PYLON_TRAINING_ADMITTED_CUDA_GPU_MODEL_FAMILY: &str = "h100";
 const PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB: u32 = 80;
 const PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB: u32 = 32;
@@ -179,6 +183,7 @@ static PROVIDER_HOST_TELEMETRY_CACHE: OnceLock<Mutex<Option<ProviderHostTelemetr
 struct PsionicTrainRuntimeSurface {
     repo_root: PathBuf,
     supports_apple_windowed_training: bool,
+    supports_cs336_a1_demo: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3674,6 +3679,8 @@ fn inspect_psionic_train_runtime_surface_at(
             .contains("PSION_APPLE_WINDOWED_TRAINING_LANE_ID")
             && train_runtime_source
                 .contains("PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF"),
+        supports_cs336_a1_demo: train_runtime_source.contains("PSION_CS336_A1_DEMO_LANE_ID")
+            && train_runtime_source.contains("PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF"),
     })
 }
 
@@ -4177,6 +4184,15 @@ fn training_psionic_lane_id_for_environment_ref(
         PYLON_TRAINING_ENVIRONMENT_REF | PSIONIC_TRAIN_ACTUAL_PRETRAINING_ENVIRONMENT_REF => {
             Ok(PSION_ACTUAL_PRETRAINING_LANE_ID)
         }
+        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF => {
+            if !runtime_surface.supports_cs336_a1_demo {
+                bail!(
+                    "Psionic checkout at {} does not advertise the CS336 A1 demo lane",
+                    runtime_surface.repo_root.display()
+                );
+            }
+            Ok(PSION_CS336_A1_DEMO_LANE_ID)
+        }
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF => {
             if !runtime_surface.supports_apple_windowed_training {
                 bail!(
@@ -4225,6 +4241,17 @@ fn resolve_psionic_train_admission_identity(
         allow_dirty_tree,
         selected_git_ref,
     ))
+}
+
+fn psionic_train_materialized_artifact_binding(path: &str) -> PsionicTrainArtifactBinding {
+    PsionicTrainArtifactBinding {
+        artifact_ref: PsionicTrainArtifactRef {
+            artifact_id: format!("artifact://{}", path.replace('/', "_")),
+            artifact_digest: Some(sha256_prefixed_text(path)),
+            artifact_bytes: Some(path.len() as u64),
+        },
+        materialized_path: Some(path.to_string()),
+    }
 }
 
 fn build_psionic_train_invocation_manifest(
@@ -4303,13 +4330,18 @@ fn build_psionic_train_invocation_manifest(
         )
         .then(|| run_root.display().to_string()),
         peer_node_pubkey: lease.peer_node_pubkey.clone(),
-        peer_checkpoint_handoff_receipt_path: lease.peer_checkpoint_handoff_receipt_path.clone(),
-        validator_target_contribution_receipt_path: lease
+        peer_checkpoint_handoff_receipt: lease
+            .peer_checkpoint_handoff_receipt_path
+            .as_deref()
+            .map(psionic_train_materialized_artifact_binding),
+        validator_target_contribution_receipt: lease
             .validator_target_contribution_receipt_path
-            .clone(),
-        validator_target_contribution_artifact_manifest_path: lease
+            .as_deref()
+            .map(psionic_train_materialized_artifact_binding),
+        validator_target_contribution_artifact_manifest: lease
             .validator_target_contribution_artifact_manifest_path
-            .clone(),
+            .as_deref()
+            .map(psionic_train_materialized_artifact_binding),
         validator_target_work_class: (role == PsionicTrainRole::Validator).then(|| {
             training_psionic_work_class_for_compute(
                 lease
@@ -4317,7 +4349,10 @@ fn build_psionic_train_invocation_manifest(
                     .unwrap_or(training_run.work_class),
             )
         }),
-        grouped_stage_input_transport_path: lease.grouped_stage_input_transport_path.clone(),
+        grouped_stage_input_transport: lease
+            .grouped_stage_input_transport_path
+            .as_deref()
+            .map(psionic_train_materialized_artifact_binding),
         selected_git_ref: Some(selected_git_ref),
         hardware_observation_path: None,
         run_shape_observation_path: None,
@@ -16782,6 +16817,8 @@ fn derive_adapter_training_contributor_availability(
     let has_cuda_backend = host_has_cuda_training_backend(host);
     let has_apple_backend =
         runtime_surface.supports_apple_windowed_training && host_has_apple_training_backend(host);
+    let has_cs336_a1_demo_backend =
+        runtime_surface.supports_cs336_a1_demo && admitted_cuda_training_gpu(host).is_some();
     let available_memory_gb =
         host_max_cuda_training_memory_gb(host).or_else(|| host_apple_training_memory_gb(host));
     let contributor_supported = (admitted_cuda_training_gpu(host).is_some()
@@ -16791,6 +16828,9 @@ fn derive_adapter_training_contributor_availability(
     let mut environment_refs = Vec::new();
     if has_cuda_backend {
         environment_refs.push(PYLON_TRAINING_ENVIRONMENT_REF.to_string());
+    }
+    if has_cs336_a1_demo_backend {
+        environment_refs.push(PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string());
     }
     if has_apple_backend {
         environment_refs.push(PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string());
@@ -17638,17 +17678,17 @@ mod tests {
         GemmaDiagnosticReport, GemmaDiagnosticRequest, GemmaDiagnosticResult,
         GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaDownloadTransport, GemmaSelector,
         JobsReport, LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage,
-        PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
+        PSION_CS336_A1_DEMO_LANE_ID, PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CHECKPOINT_FAMILY,
-        PYLON_TRAINING_ENVIRONMENT_REF, PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB,
-        PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB, PYLON_TRAINING_VALIDATOR_POLICY_REF,
-        PsionicTrainRuntimeSurface, PylonConfig, PylonLedger, PylonLedgerJob,
-        PylonSettlementRecord, PylonTrainingActiveRuntimeState, PylonTrainingArtifactStoreClient,
-        PylonTrainingAssignmentAckRequest, PylonTrainingCheckpointPublicationRequest,
-        PylonTrainingCloseoutCacheEntry, PylonTrainingContributionOutcomeCacheEntry,
-        PylonTrainingCoordinatorClient, PylonTrainingDrainNoticeRequest,
-        PylonTrainingFailureNoticeRequest, PylonTrainingFailureReceipt,
-        PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
+        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF, PYLON_TRAINING_ENVIRONMENT_REF,
+        PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB, PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB,
+        PYLON_TRAINING_VALIDATOR_POLICY_REF, PsionicTrainRuntimeSurface, PylonConfig, PylonLedger,
+        PylonLedgerJob, PylonSettlementRecord, PylonTrainingActiveRuntimeState,
+        PylonTrainingArtifactStoreClient, PylonTrainingAssignmentAckRequest,
+        PylonTrainingCheckpointPublicationRequest, PylonTrainingCloseoutCacheEntry,
+        PylonTrainingContributionOutcomeCacheEntry, PylonTrainingCoordinatorClient,
+        PylonTrainingDrainNoticeRequest, PylonTrainingFailureNoticeRequest,
+        PylonTrainingFailureReceipt, PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
         PylonTrainingManifestCacheEntry, PylonTrainingNodeAdmissionRequest,
         PylonTrainingPublicationPointer, PylonTrainingPublicationRecord,
         PylonTrainingPublicationTemplate, PylonTrainingReputationLabelCacheEntry,
@@ -18057,6 +18097,7 @@ mod tests {
         PsionicTrainRuntimeSurface {
             repo_root,
             supports_apple_windowed_training: true,
+            supports_cs336_a1_demo: true,
         }
     }
 
@@ -18571,6 +18612,14 @@ mod tests {
                 && availability.coordinator_match_supported
                 && availability.authority_receipt_supported,
             "admitted H100 hosts should report sellable training contribution support only when runtime, network, and local checkpoint posture are all present",
+        )?;
+        ensure(
+            availability.environment_refs
+                == vec![
+                    PYLON_TRAINING_ENVIRONMENT_REF.to_string(),
+                    PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
+                ],
+            "admitted H100 hosts should advertise the packaged CS336 A1 demo environment beside the main CUDA lane",
         )
     }
 
@@ -18707,13 +18756,17 @@ mod tests {
                 .join("crates/psionic-train/src/train_runtime.rs"),
             "pub const SURFACE: &str = \"psionic-train.runtime.v1\";\n\
 pub const PSION_APPLE_WINDOWED_TRAINING_LANE_ID: &str = \"psion_apple_windowed_training_v1\";\n\
-pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1\";\n",
+pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1\";\n\
+pub const PSION_CS336_A1_DEMO_LANE_ID: &str = \"psion_cs336_a1_demo_v1\";\n\
+pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1\";\n",
         )?;
 
         let surface = inspect_psionic_train_runtime_surface_at(temp_dir.path())?;
         ensure(
-            surface.repo_root == temp_dir.path() && surface.supports_apple_windowed_training,
-            "training surface probe should accept the minimal machine runtime layout and detect Apple lane support when present",
+            surface.repo_root == temp_dir.path()
+                && surface.supports_apple_windowed_training
+                && surface.supports_cs336_a1_demo,
+            "training surface probe should accept the minimal machine runtime layout and detect the packaged Apple and CS336 A1 lanes when present",
         )
     }
 
@@ -20536,8 +20589,9 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                     .is_some_and(|path: &str| path.ends_with("runs/run.alpha"))
                 && resume_manifest.output_root.is_none()
                 && resume_manifest
-                    .peer_checkpoint_handoff_receipt_path
-                    .as_deref()
+                    .peer_checkpoint_handoff_receipt
+                    .as_ref()
+                    .and_then(|binding| binding.materialized_path.as_deref())
                     == Some("/tmp/run.alpha/status/peer_checkpoint_handoff_receipt.json"),
             "recovery-source leases with peer handoff input should map to psionic-train resume manifests",
         )?;
@@ -20568,14 +20622,80 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 && validator_manifest.coordination.challenge_id.as_deref()
                     == Some("challenge.alpha")
                 && validator_manifest
-                    .validator_target_contribution_receipt_path
-                    .as_deref()
+                    .validator_target_contribution_receipt
+                    .as_ref()
+                    .and_then(|binding| binding.materialized_path.as_deref())
                     == Some(
                         "/tmp/run.alpha/windows/window.0001/contributions/source/contribution_receipt.json",
                     )
                 && validator_manifest.validator_target_work_class
                     == Some(PsionicTrainWorkClass::AdapterTraining),
             "validator leases should map replay target inputs into the psionic-train machine manifest",
+        )
+    }
+
+    #[test]
+    fn build_psionic_train_invocation_manifest_maps_cs336_a1_demo_environment_to_packaged_lane()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+
+        let mut training_run = training_run_fixture();
+        training_run.training_run_id = "run.cs336.a1.demo".to_string();
+        training_run.environment_binding.environment_ref =
+            PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string();
+        training_run.work_class = ComputeTrainingWorkClass::SmallModelLocalTraining;
+        training_run.replica_type = ComputeTrainingReplicaType::SingleNode;
+        training_run.metadata = json!({
+            "network_id": "trainnet.cs336.a1.demo",
+            "display_name": "CS336 A1 Demo"
+        });
+
+        let lease = PylonTrainingLeaseCacheEntry {
+            lease_id: "lease.node01.cs336.a1.demo".to_string(),
+            assignment_id: "assign.node01.cs336.a1.demo".to_string(),
+            training_run_id: training_run.training_run_id.clone(),
+            window_id: "window.cs336.a1.demo.0001".to_string(),
+            membership_revision: "members.rev1".to_string(),
+            role: PylonTrainingRoleClaim::Worker,
+            state: "acked".to_string(),
+            manifest_digest: Some("sha256:manifest-cs336-a1-demo".to_string()),
+            checkpoint_ref: Some("checkpoint://run.cs336.a1.demo/0000".to_string()),
+            expires_at_ms: Some(1_762_491_260_600),
+            network_id: Some("trainnet.cs336.a1.demo".to_string()),
+            challenge_id: None,
+            peer_node_pubkey: None,
+            peer_checkpoint_handoff_receipt_path: None,
+            validator_target_contribution_receipt_path: None,
+            validator_target_contribution_artifact_manifest_path: None,
+            validator_target_work_class: None,
+            grouped_stage_input_transport_path: None,
+            runtime_manifest_path: None,
+            runtime_manifest_digest: None,
+            runtime_lane_id: None,
+            runtime_operation: None,
+            runtime_work_class: None,
+            updated_at_ms: 1_762_491_210_600,
+        };
+        let (manifest, run_root) = build_psionic_train_invocation_manifest(
+            &config,
+            &runtime_surface,
+            &training_run,
+            &lease,
+            &"11".repeat(32),
+        )?;
+
+        ensure(
+            manifest.lane_id == PSION_CS336_A1_DEMO_LANE_ID
+                && manifest.role == PsionicTrainRole::Worker
+                && manifest.operation == PsionicTrainOperation::Start
+                && manifest.work_class == PsionicTrainWorkClass::SmallModelLocalTraining
+                && manifest.run_id.as_deref() == Some("run.cs336.a1.demo")
+                && manifest.coordination.network_id.as_deref() == Some("trainnet.cs336.a1.demo")
+                && run_root.ends_with("runs/run.cs336.a1.demo"),
+            "CS336 A1 demo assignments should map to the packaged psionic-train demo lane and small-model work class",
         )
     }
 
@@ -22880,12 +23000,10 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
                 && heartbeat_request.1["training_capability_envelope_v2"]["tier_profile"]["tier"]
                     .as_str()
                     .is_some_and(|tier| !tier.trim().is_empty())
-                && heartbeat_request.1["training_capability_envelope_v2"]
-                    ["eligible_work_classes"]
+                && heartbeat_request.1["training_capability_envelope_v2"]["eligible_work_classes"]
                     .as_array()
                     .is_none_or(|rows| !rows.is_empty())
-                && heartbeat_request.1["training_capability_envelope_v2"]
-                    ["eligible_replica_types"]
+                && heartbeat_request.1["training_capability_envelope_v2"]["eligible_replica_types"]
                     .as_array()
                     .is_none_or(|rows| !rows.is_empty()),
             "heartbeat should include the training capability envelope with work-class and replica-type eligibility",

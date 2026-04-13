@@ -77,14 +77,15 @@ use openagents_kernel_core::data::{
 use openagents_kernel_core::data_contracts;
 use openagents_kernel_core::ids::sha256_prefixed_bytes;
 use openagents_kernel_core::pylon_training::{
-    PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
-    PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
-    PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
-    PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactResolverResponse,
-    PylonTrainingArtifactSignedAccessRequest, PylonTrainingArtifactSignedAccessResponse,
-    PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
-    PylonTrainingRefusalCode, PylonTrainingReputationLabel, PylonTrainingReputationNamespace,
-    PylonTrainingSchedulerEffect, pylon_training_artifact_object_uri, pylon_training_assignment_id,
+    PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
+    PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PYLON_TRAINING_LEASE_DURATION_MS,
+    PYLON_TRAINING_SEAL_GRACE_PERIOD_MS, PYLON_TRAINING_WINDOW_MAX_DURATION_MS,
+    PylonTrainingAggregateResolution, PylonTrainingArtifactGcsLayoutPolicy,
+    PylonTrainingArtifactResolverResponse, PylonTrainingArtifactSignedAccessRequest,
+    PylonTrainingArtifactSignedAccessResponse, PylonTrainingContributionSampleCandidate,
+    PylonTrainingContributionVerdict, PylonTrainingRefusalCode, PylonTrainingReputationLabel,
+    PylonTrainingReputationNamespace, PylonTrainingSchedulerEffect,
+    pylon_training_artifact_object_uri, pylon_training_assignment_id,
     pylon_training_assignment_seed, pylon_training_hard_gate_reason, pylon_training_lease_id,
     pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
     reputation_projection_for_label, resolve_aggregate_verdicts,
@@ -2325,6 +2326,8 @@ struct TrainingVisualizationTierSummary {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingVisualizationRun {
     training_run_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    display_name: Option<String>,
     network_id: String,
     run_status: String,
     scheduler_window_state: String,
@@ -3975,6 +3978,7 @@ fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<
         return None;
     }
     if normalized == PYLON_TRAINING_CUDA_ENVIRONMENT_REF
+        || normalized == PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF
         || normalized.contains(".cuda.")
         || normalized.starts_with("env.cuda.")
         || normalized.ends_with(".cuda.train")
@@ -17679,6 +17683,7 @@ fn training_public_stats_snapshot(
                 .copied();
             PublicTrainingRunState {
                 training_run_id: run.training_run_id.clone(),
+                display_name: run.display_name.clone(),
                 network_id: run.network_id.clone(),
                 run_status: run.run_status.clone(),
                 scheduler_window_state: run.scheduler_window_state.clone(),
@@ -18565,6 +18570,7 @@ fn training_visualization_snapshot_with_summary(
                 .to_string();
             TrainingVisualizationRun {
                 training_run_id: run.training_run_id.clone(),
+                display_name: training_run_display_name(run),
                 network_id: run_summary
                     .map(|summary| summary.network_id.clone())
                     .or_else(|| {
@@ -19370,6 +19376,19 @@ fn truncate_nostr_pubkey(nostr_pubkey_hex: &str) -> String {
     }
 }
 
+fn training_run_display_name(run: &ComputeTrainingRun) -> Option<String> {
+    ["display_name", "public_display_name", "run_label", "title"]
+        .into_iter()
+        .find_map(|key| {
+            run.metadata
+                .get(key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        })
+}
+
 fn random_token() -> String {
     hex::encode(rand::random::<[u8; 24]>())
 }
@@ -19400,10 +19419,9 @@ mod tests {
         TrainingWindowDefensibilityPromotionAudit, TrainingWindowDefensibilityValidatorAudit,
         TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
         training_contributor_tier_projection, training_fleet_abuse_snapshot,
-        training_scheduler_metadata_from_run,
-        training_window_closeout_outcome, training_window_closeout_status,
-        training_window_closeout_treasury_payout_requests, training_window_metadata_value,
-        validator_service,
+        training_scheduler_metadata_from_run, training_window_closeout_outcome,
+        training_window_closeout_status, training_window_closeout_treasury_payout_requests,
+        training_window_metadata_value, validator_service,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -19486,11 +19504,11 @@ mod tests {
         RoutePlan, RoutePlanStatus, SettlementIntent, SettlementIntentStatus,
     };
     use openagents_kernel_core::pylon_training::{
-        PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
-        PylonTrainingAggregateResolution, PylonTrainingArtifactClass,
-        PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactResolverResponse,
-        PylonTrainingArtifactSignedAccessResponse, PylonTrainingContributionVerdict,
-        PylonTrainingRefusalCode,
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
+        PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PylonTrainingAggregateResolution,
+        PylonTrainingArtifactClass, PylonTrainingArtifactGcsLayoutPolicy,
+        PylonTrainingArtifactResolverResponse, PylonTrainingArtifactSignedAccessResponse,
+        PylonTrainingContributionVerdict, PylonTrainingRefusalCode,
     };
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, Receipt, ReceiptHints, TraceContext,
@@ -20204,14 +20222,14 @@ mod tests {
             .contributor_availability
             .environment_refs
             .iter()
-            .any(|value| value == PYLON_TRAINING_CUDA_ENVIRONMENT_REF)
+            .any(|value| super::training_backend_family_for_environment_ref(value) == Some("cuda"))
         {
             Some(80)
         } else if request
             .contributor_availability
             .environment_refs
             .iter()
-            .any(|value| value == PYLON_TRAINING_APPLE_ENVIRONMENT_REF)
+            .any(|value| super::training_backend_family_for_environment_ref(value) == Some("metal"))
         {
             Some(32)
         } else {
@@ -20270,6 +20288,16 @@ mod tests {
                 required_throughput_band: ProviderTrainingThroughputBand::Medium,
                 required_replay_capability: ProviderTrainingReplayCapability::ShortWindow,
                 benchmark_lane_required: true,
+            });
+            eligible_work_classes.push(ProviderTrainingWorkClassEligibility {
+                work_class: ComputeTrainingWorkClass::SmallModelLocalTraining,
+                minimum_tier: ProviderTrainingCapabilityTier::Tier2Trainer,
+                replica_types: vec![ComputeTrainingReplicaType::SingleNode],
+                required_backend_families: capability_tier.backend_families.clone(),
+                minimum_memory_gb: capability_tier.memory_floor_gb.or(Some(32)),
+                required_throughput_band: ProviderTrainingThroughputBand::Unknown,
+                required_replay_capability: ProviderTrainingReplayCapability::None,
+                benchmark_lane_required: false,
             });
             eligible_work_classes.push(ProviderTrainingWorkClassEligibility {
                 work_class: ComputeTrainingWorkClass::GroupedReplicaStageExecution,
@@ -28079,6 +28107,241 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn training_scheduler_claims_named_cs336_a1_demo_run_and_surfaces_display_name()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_477_000u64;
+        let network_id = "trainnet.cs336.a1.demo";
+        let training_run_id = "run.cs336.a1.demo";
+        let window_id = "window.cs336.a1.demo.0001";
+        let training_policy_ref = "policy://training/cs336/a1-demo/v1";
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut environment_request = compute_environment_package_request(
+                PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
+                "2026.04.13",
+                "idemp.scheduler.environment.cs336-a1-demo",
+                created_at_ms as i64 + 100,
+            );
+            environment_request.package.family = "training".to_string();
+            environment_request.package.display_name = "Psion CS336 A1 Demo".to_string();
+            environment_request.package.description =
+                Some("Bounded CS336 assignment 1 demo environment".to_string());
+            environment_request.package.metadata = json!({"lane": "cs336_a1_demo"});
+            store
+                .kernel
+                .register_compute_environment_package(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 100),
+                    environment_request,
+                )
+                .expect("register cs336 a1 demo environment");
+
+            let mut checkpoint_policy_request = compute_checkpoint_family_policy_request(
+                "idemp.scheduler.checkpoint.cs336-a1-demo",
+                created_at_ms as i64 + 200,
+            );
+            checkpoint_policy_request
+                .policy_record
+                .allowed_environment_refs =
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()];
+            checkpoint_policy_request.policy_record.validator_policy_ref =
+                Some("policy://validator/mvp/v1".to_string());
+            store
+                .kernel
+                .register_compute_checkpoint_family_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 200),
+                    checkpoint_policy_request,
+                )
+                .expect("register checkpoint policy");
+
+            let mut validator_policy_request = compute_validator_policy_request(
+                "idemp.scheduler.validator.cs336-a1-demo",
+                created_at_ms as i64 + 300,
+            );
+            validator_policy_request.policy_record.policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            validator_policy_request
+                .policy_record
+                .benchmark_package_refs = Vec::new();
+            store
+                .kernel
+                .register_compute_validator_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 300),
+                    validator_policy_request,
+                )
+                .expect("register validator policy");
+
+            let mut training_policy_request = compute_training_policy_request(
+                "idemp.scheduler.training_policy.cs336-a1-demo",
+                created_at_ms as i64 + 500,
+            );
+            training_policy_request.training_policy.training_policy_ref =
+                training_policy_ref.to_string();
+            training_policy_request.training_policy.environment_refs =
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()];
+            training_policy_request.training_policy.validator_policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            training_policy_request
+                .training_policy
+                .benchmark_package_refs = Vec::new();
+            training_policy_request.training_policy.metadata =
+                training_run_definition_metadata_value(
+                    "rundef.cs336.assignment1.demo.v1",
+                    "psion_reference_demo",
+                    "stanford_cs336_assignment1_demo",
+                    "single_host_reference",
+                    "dataset://cs336/assignment1/tinystories-demo",
+                    "dataset_slice_family.cs336_assignment1_demo",
+                    "cs336.assignment1.demo_page_proof_family",
+                    None,
+                    "training_policy_version",
+                );
+            store
+                .kernel
+                .register_compute_training_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 500),
+                    training_policy_request,
+                )
+                .expect("register training policy");
+
+            let mut training_run_request = compute_training_run_request(
+                "idemp.scheduler.run.cs336-a1-demo",
+                created_at_ms as i64 + 600,
+            );
+            training_run_request.training_run.training_run_id = training_run_id.to_string();
+            training_run_request.training_run.training_policy_ref = training_policy_ref.to_string();
+            training_run_request.training_run.benchmark_package_refs = Vec::new();
+            training_run_request
+                .training_run
+                .environment_binding
+                .environment_ref = PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string();
+            training_run_request.training_run.validator_policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            training_run_request.training_run.status = ComputeTrainingRunStatus::Running;
+            training_run_request.training_run.started_at_ms = Some(created_at_ms as i64 + 600);
+            training_run_request.training_run.work_class =
+                ComputeTrainingWorkClass::SmallModelLocalTraining;
+            training_run_request.training_run.replica_type = ComputeTrainingReplicaType::SingleNode;
+            training_run_request.training_run.metadata = json!({
+                "display_name": "CS336 A1 Demo",
+                "pylon_training_scheduler": training_scheduler_metadata_with_contract(
+                    network_id,
+                    1,
+                    0,
+                    0,
+                    window_id,
+                    "checkpoint://decoder/base"
+                )["pylon_training_scheduler"].clone(),
+            });
+            store
+                .kernel
+                .create_compute_training_run(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 600),
+                    training_run_request,
+                )
+                .expect("create training run");
+
+            let mut node = training_node_admission_request_with_environment_refs(
+                "node-cs336-a1-demo",
+                "sha256:build-cs336-a1-demo",
+                vec![network_id],
+                Vec::new(),
+                Some(80),
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
+            );
+            node.requested_at_ms = created_at_ms as i64 + 700;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-cs336-a1-demo", created_at_ms + 700),
+                    node,
+                )
+                .expect("admit node");
+            let mut heartbeat = training_node_heartbeat_request_for_scope(
+                "node-cs336-a1-demo",
+                "sha256:build-cs336-a1-demo",
+                training_run_id,
+                window_id,
+            );
+            heartbeat.recorded_at_ms = created_at_ms as i64 + 750;
+            heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 750);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-cs336-a1-demo", created_at_ms + 750),
+                    heartbeat,
+                )
+                .expect("heartbeat node");
+        }
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.cs336-a1-demo.auto",
+                            created_at_ms as i64 + 20_000,
+                            "node-cs336-a1-demo",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+        assert_eq!(lease.training_run_id, training_run_id);
+        assert_eq!(lease.window_id, window_id);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        let public_run = stats
+            .training_public_state
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == training_run_id)
+            .expect("public run");
+        assert_eq!(public_run.display_name.as_deref(), Some("CS336 A1 Demo"));
+        assert_eq!(public_run.work_class, "small_model_local_training");
+        assert_eq!(public_run.assigned_contributors, 1);
+        assert_eq!(public_run.accepted_contributors, 0);
+        assert_eq!(public_run.model_progress_contributors, 0);
+
+        let visualization = fetch_training_visualization(&app).await?;
+        let visualized_run = visualization
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == training_run_id)
+            .expect("visualized run");
+        assert_eq!(
+            visualized_run.display_name.as_deref(),
+            Some("CS336 A1 Demo")
+        );
+        assert_eq!(visualized_run.work_class, "small_model_local_training");
+        assert_eq!(visualized_run.assigned_contributors, 1);
+        assert_eq!(visualized_run.accepted_contributors, 0);
+        assert_eq!(visualized_run.model_progress_contributors, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn training_scheduler_auto_selects_runs_by_capability_tier_and_replica_type() -> Result<()>
     {
         let state = build_app_state(test_config()?);
@@ -34698,10 +34961,14 @@ mod tests {
             } else {
                 "stage.threshold.weak"
             };
-            let source_policy_revision =
-                compute_adapter_policy_revision(format!("policy-rev-{slug}").as_str(), accepted_at_ms as i64 - 50);
-            let source_checkpoint_pointer =
-                compute_adapter_checkpoint_pointer(format!("sha256:pointer-{slug}").as_str(), accepted_at_ms as i64 - 25);
+            let source_policy_revision = compute_adapter_policy_revision(
+                format!("policy-rev-{slug}").as_str(),
+                accepted_at_ms as i64 - 50,
+            );
+            let source_checkpoint_pointer = compute_adapter_checkpoint_pointer(
+                format!("sha256:pointer-{slug}").as_str(),
+                accepted_at_ms as i64 - 25,
+            );
             let base_checkpoint_ref = source_checkpoint_pointer.checkpoint_ref.clone();
             let window = ComputeAdapterTrainingWindow {
                 window_id: window_id.clone(),
@@ -34823,11 +35090,14 @@ mod tests {
                 }),
             };
             let contribution_outcomes = vec![contribution.clone()];
-            let contributor_tiers = training_contributor_tier_projection(
-                contribution_outcomes.as_slice(),
-            );
+            let contributor_tiers =
+                training_contributor_tier_projection(contribution_outcomes.as_slice());
             let closeout_status = TrainingWindowCloseoutStatus::Rewarded;
-            let abuse_controls = store.training_scheduler.rollout_policy().abuse_controls.clone();
+            let abuse_controls = store
+                .training_scheduler
+                .rollout_policy()
+                .abuse_controls
+                .clone();
             let abuse_snapshot = training_fleet_abuse_snapshot(
                 &store.kernel,
                 &store.training_scheduler,
@@ -34996,14 +35266,18 @@ mod tests {
                         .method("POST")
                         .uri("/api/training/leases/claim")
                         .header("content-type", "application/json")
-                        .body(Body::from(serde_json::to_vec(&training_run_lease_request(
-                            format!("idemp.training.lease.transcript222.threshold.{ordinal:03}")
+                        .body(Body::from(serde_json::to_vec(
+                            &training_run_lease_request(
+                                format!(
+                                    "idemp.training.lease.transcript222.threshold.{ordinal:03}"
+                                )
                                 .as_str(),
-                            created_at_ms as i64 + 1_000 + ordinal as i64,
-                            node_pubkey_hex.as_str(),
-                            training_run_id.as_str(),
-                            network_id,
-                        ))?))?,
+                                created_at_ms as i64 + 1_000 + ordinal as i64,
+                                node_pubkey_hex.as_str(),
+                                training_run_id.as_str(),
+                                network_id,
+                            ),
+                        )?))?,
                 )
                 .await?;
             assert_eq!(lease_response.status(), StatusCode::OK);
@@ -35103,10 +35377,22 @@ mod tests {
             stats.training_accepted_contributors,
             TARGET_PARTICIPANT_THRESHOLD as u64
         );
-        assert_eq!(stats.training_model_progress_contributors, STRONG_COUNT as u64);
-        assert_eq!(stats.training_weak_device_assigned_contributors, WEAK_COUNT as u64);
-        assert_eq!(stats.training_weak_device_accepted_contributors, WEAK_COUNT as u64);
-        assert_eq!(stats.training_payout_eligible_closeouts, STRONG_COUNT as u64);
+        assert_eq!(
+            stats.training_model_progress_contributors,
+            STRONG_COUNT as u64
+        );
+        assert_eq!(
+            stats.training_weak_device_assigned_contributors,
+            WEAK_COUNT as u64
+        );
+        assert_eq!(
+            stats.training_weak_device_accepted_contributors,
+            WEAK_COUNT as u64
+        );
+        assert_eq!(
+            stats.training_payout_eligible_closeouts,
+            STRONG_COUNT as u64
+        );
         assert_eq!(
             stats.nexus_payout_sats_paid_total,
             TARGET_PARTICIPANT_THRESHOLD as u64 * PAYOUT_SATS_PER_WINDOW
@@ -35152,7 +35438,10 @@ mod tests {
             STRONG_COUNT as u64
         );
         assert_eq!(summary.progress.accepted_closeouts, STRONG_COUNT as u64);
-        assert_eq!(summary.progress.payout_eligible_closeouts, STRONG_COUNT as u64);
+        assert_eq!(
+            summary.progress.payout_eligible_closeouts,
+            STRONG_COUNT as u64
+        );
         assert_eq!(
             summary.settlement.accepted_closeouts,
             TARGET_PARTICIPANT_THRESHOLD as u64
@@ -35180,10 +35469,12 @@ mod tests {
                 .settlement
                 .work_classes
                 .iter()
-                .any(|entry| entry.work_class == "full_island_local_update_training"
-                    && entry.accepted_closeouts == STRONG_COUNT as u64
-                    && entry.payout_eligible_closeouts == STRONG_COUNT as u64
-                    && entry.progress_bearing_closeouts == STRONG_COUNT as u64)
+                .any(
+                    |entry| entry.work_class == "full_island_local_update_training"
+                        && entry.accepted_closeouts == STRONG_COUNT as u64
+                        && entry.payout_eligible_closeouts == STRONG_COUNT as u64
+                        && entry.progress_bearing_closeouts == STRONG_COUNT as u64
+                )
         );
 
         let homepage = fetch_homepage(&app).await?;
@@ -35213,7 +35504,10 @@ mod tests {
             TARGET_PARTICIPANT_THRESHOLD as u64
         );
         assert_eq!(
-            homepage.training_summary.progress.model_progress_contributors,
+            homepage
+                .training_summary
+                .progress
+                .model_progress_contributors,
             STRONG_COUNT as u64
         );
 

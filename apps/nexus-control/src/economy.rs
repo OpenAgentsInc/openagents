@@ -209,6 +209,8 @@ pub struct PublicTrainingWorkClassState {
 pub struct PublicTrainingRunState {
     #[serde(default)]
     pub training_run_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     #[serde(default)]
     pub network_id: String,
     #[serde(default)]
