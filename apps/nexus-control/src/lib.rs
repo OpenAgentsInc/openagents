@@ -6428,6 +6428,12 @@ struct ProviderPresenceMetrics {
     pylons_seen_24h: u64,
     pylon_sessions_online_now: u64,
     sellable_pylons_online_now: u64,
+    inference_ready_pylons_online_now: u64,
+    inference_ready_pylon_sessions_online_now: u64,
+    pylon_reported_hosts_online_now: u64,
+    pylon_sessions_missing_host_fingerprint_online_now: u64,
+    likely_same_host_pylon_sessions_online_now: u64,
+    likely_same_host_pylons_online_now: u64,
     recent_pylons: Vec<PublicRecentPylon>,
     recent_pylon_diagnostics: Vec<PublicRecentPylonDiagnostic>,
 }
@@ -6743,20 +6749,52 @@ impl ProviderPresenceState {
         let mut online_identities = HashSet::new();
         let mut seen_identities = HashSet::new();
         let mut sellable_identities = HashSet::new();
+        let mut inference_ready_identities = HashSet::new();
         let mut pylon_sessions_online_now = 0u64;
+        let mut inference_ready_pylon_sessions_online_now = 0u64;
+        let mut pylon_sessions_missing_host_fingerprint_online_now = 0u64;
+        let mut host_session_counts = BTreeMap::<String, u64>::new();
+        let mut host_identity_sets = BTreeMap::<String, BTreeSet<String>>::new();
 
         for record in self.rows_by_key.values() {
             if record.last_seen_at_unix_ms >= seen_cutoff {
                 seen_identities.insert(record.nostr_pubkey_hex.clone());
             }
             if record.online && record.last_seen_at_unix_ms >= stale_cutoff {
+                let inference_ready = provider_presence_record_is_inference_ready(record);
+                let host_fingerprint = provider_presence_host_fingerprint(record);
                 online_identities.insert(record.nostr_pubkey_hex.clone());
                 pylon_sessions_online_now = pylon_sessions_online_now.saturating_add(1);
                 if record.eligible_product_count > 0 {
                     sellable_identities.insert(record.nostr_pubkey_hex.clone());
                 }
+                if inference_ready {
+                    inference_ready_identities.insert(record.nostr_pubkey_hex.clone());
+                    inference_ready_pylon_sessions_online_now =
+                        inference_ready_pylon_sessions_online_now.saturating_add(1);
+                }
+                if let Some(host_fingerprint) = host_fingerprint {
+                    *host_session_counts
+                        .entry(host_fingerprint.clone())
+                        .or_default() += 1;
+                    host_identity_sets
+                        .entry(host_fingerprint)
+                        .or_default()
+                        .insert(record.nostr_pubkey_hex.clone());
+                } else {
+                    pylon_sessions_missing_host_fingerprint_online_now =
+                        pylon_sessions_missing_host_fingerprint_online_now.saturating_add(1);
+                }
             }
         }
+        let likely_same_host_pylon_sessions_online_now = host_session_counts
+            .values()
+            .map(|count| count.saturating_sub(1))
+            .sum::<u64>();
+        let likely_same_host_pylons_online_now = host_identity_sets
+            .values()
+            .map(|identities| identities.len().saturating_sub(1) as u64)
+            .sum::<u64>();
 
         let mut recent_pylons = self.rows_by_key.values().cloned().collect::<Vec<_>>();
         recent_pylons.sort_by(|left, right| {
@@ -6802,19 +6840,35 @@ impl ProviderPresenceState {
             sellable_pylons_online_now: sellable_identities.len() as u64,
             recent_pylons: recent_pylons
                 .into_iter()
-                .map(|record| PublicRecentPylon {
-                    node_label: record.node_label,
-                    nostr_pubkey_short: truncate_nostr_pubkey(record.nostr_pubkey_hex.as_str()),
-                    last_seen_at_unix_ms: record.last_seen_at_unix_ms,
-                    client_version: record.client_version,
-                    relay_urls: record.relay_urls,
-                    eligible_product_count: record.eligible_product_count,
-                    products: record.products,
-                    ready_model: record.ready_model,
-                    runtime_state: record.runtime_state,
-                    training_capability_envelope_v2: record.training_capability_envelope_v2,
+                .map(|record| {
+                    let inference_ready = provider_presence_record_is_inference_ready(&record);
+                    let ready_model = record.ready_model.clone().or(record
+                        .hosting_telemetry
+                        .availability
+                        .local_gemma
+                        .ready_model
+                        .clone());
+                    PublicRecentPylon {
+                        node_label: record.node_label,
+                        nostr_pubkey_short: truncate_nostr_pubkey(record.nostr_pubkey_hex.as_str()),
+                        last_seen_at_unix_ms: record.last_seen_at_unix_ms,
+                        client_version: record.client_version,
+                        relay_urls: record.relay_urls,
+                        eligible_product_count: record.eligible_product_count,
+                        products: record.products,
+                        ready_model,
+                        runtime_state: record.runtime_state,
+                        inference_ready,
+                        training_capability_envelope_v2: record.training_capability_envelope_v2,
+                    }
                 })
                 .collect(),
+            inference_ready_pylons_online_now: inference_ready_identities.len() as u64,
+            inference_ready_pylon_sessions_online_now,
+            pylon_reported_hosts_online_now: host_session_counts.len() as u64,
+            pylon_sessions_missing_host_fingerprint_online_now,
+            likely_same_host_pylon_sessions_online_now,
+            likely_same_host_pylons_online_now,
             recent_pylon_diagnostics,
         }
     }
@@ -16561,6 +16615,17 @@ fn runtime_snapshot(
         pylons_seen_24h: provider_presence_metrics.pylons_seen_24h,
         pylon_sessions_online_now: provider_presence_metrics.pylon_sessions_online_now,
         sellable_pylons_online_now: provider_presence_metrics.sellable_pylons_online_now,
+        inference_ready_pylons_online_now: provider_presence_metrics
+            .inference_ready_pylons_online_now,
+        inference_ready_pylon_sessions_online_now: provider_presence_metrics
+            .inference_ready_pylon_sessions_online_now,
+        pylon_reported_hosts_online_now: provider_presence_metrics.pylon_reported_hosts_online_now,
+        pylon_sessions_missing_host_fingerprint_online_now: provider_presence_metrics
+            .pylon_sessions_missing_host_fingerprint_online_now,
+        likely_same_host_pylon_sessions_online_now: provider_presence_metrics
+            .likely_same_host_pylon_sessions_online_now,
+        likely_same_host_pylons_online_now: provider_presence_metrics
+            .likely_same_host_pylons_online_now,
         pylon_presence_stale_after_ms: config.provider_presence_stale_after_ms,
         sessions_active: store.sessions_by_access_token.len(),
         sync_tokens_active: store.sync_tokens.len(),
@@ -16584,6 +16649,7 @@ fn runtime_snapshot(
         nexus_treasury_payout_interval_seconds: treasury_runtime.payout_interval_seconds,
         nexus_treasury_require_sellable: treasury_runtime.require_sellable,
         nexus_treasury_daily_budget_cap_sats: treasury_runtime.daily_budget_cap_sats,
+        nexus_placeholder_payout_mode: treasury_runtime.placeholder_payout_mode,
         nexus_registered_payout_identities: treasury_runtime.registered_payout_identities,
         nexus_payout_sats_paid_total: treasury_runtime.payout_sats_paid_total,
         nexus_payout_sats_paid_24h: treasury_runtime.payout_sats_paid_24h,
@@ -16608,6 +16674,12 @@ fn runtime_snapshot(
         nexus_payouts_confirmed_24h: treasury_runtime.payouts_confirmed_24h,
         nexus_payouts_failed_24h: treasury_runtime.payouts_failed_24h,
         nexus_payouts_skipped_24h: treasury_runtime.payouts_skipped_24h,
+        nexus_placeholder_payout_eligible_online_targets: treasury_runtime
+            .eligible_online_payout_targets,
+        nexus_inference_ready_online_payout_targets: treasury_runtime
+            .inference_ready_online_payout_targets,
+        nexus_duplicate_host_placeholder_blocked_online_targets: treasury_runtime
+            .duplicate_host_placeholder_blocked_online_targets,
         training_nodes_admitted: training_metrics.admitted_nodes,
         training_admitted_contributors: training_metrics.admitted_nodes,
         training_assigned_contributors: training_metrics.assigned_contributors,
@@ -23684,6 +23756,11 @@ mod tests {
         assert_eq!(empty.pylons_seen_24h, 0);
         assert_eq!(empty.pylon_sessions_online_now, 0);
         assert_eq!(empty.sellable_pylons_online_now, 0);
+        assert_eq!(empty.inference_ready_pylons_online_now, 0);
+        assert_eq!(empty.inference_ready_pylon_sessions_online_now, 0);
+        assert_eq!(empty.pylon_reported_hosts_online_now, 0);
+        assert_eq!(empty.likely_same_host_pylon_sessions_online_now, 0);
+        assert_eq!(empty.likely_same_host_pylons_online_now, 0);
         assert_eq!(empty.sessions_active, 0);
         assert_eq!(empty.sync_tokens_active, 0);
         assert!(empty.recent_pylons.is_empty());
@@ -23770,11 +23847,17 @@ mod tests {
             "gemma-4-e4b",
             "completed",
         )];
+        let mut beta =
+            provider_presence_request("bbccddee11223344", "session-b-1", "beta", 2, "online");
+        beta.ready_model = None;
+        beta.hosting_telemetry.availability.local_gemma.ready = false;
+        beta.hosting_telemetry.availability.local_gemma.ready_model = None;
+        beta.hosting_telemetry.inventory_rows.clear();
 
         for request in [
             alpha,
             provider_presence_request("aabbccdd00112233", "session-a-2", "alpha-2", 0, "degraded"),
-            provider_presence_request("bbccddee11223344", "session-b-1", "beta", 2, "online"),
+            beta,
         ] {
             let response = app
                 .clone()
@@ -23804,6 +23887,12 @@ mod tests {
         assert_eq!(stats.pylons_seen_24h, 2);
         assert_eq!(stats.pylon_sessions_online_now, 3);
         assert_eq!(stats.sellable_pylons_online_now, 2);
+        assert_eq!(stats.inference_ready_pylons_online_now, 1);
+        assert_eq!(stats.inference_ready_pylon_sessions_online_now, 2);
+        assert_eq!(stats.pylon_reported_hosts_online_now, 1);
+        assert_eq!(stats.pylon_sessions_missing_host_fingerprint_online_now, 0);
+        assert_eq!(stats.likely_same_host_pylon_sessions_online_now, 2);
+        assert_eq!(stats.likely_same_host_pylons_online_now, 1);
         assert_eq!(
             stats.pylon_presence_stale_after_ms,
             DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS
@@ -23814,6 +23903,18 @@ mod tests {
                 .recent_pylons
                 .iter()
                 .any(|row| row.nostr_pubkey_short == "bbccddee11223344")
+        );
+        assert!(
+            stats
+                .recent_pylons
+                .iter()
+                .any(|row| row.nostr_pubkey_short == "aabbccdd00112233" && row.inference_ready)
+        );
+        assert!(
+            stats
+                .recent_pylons
+                .iter()
+                .any(|row| row.nostr_pubkey_short == "bbccddee11223344" && !row.inference_ready)
         );
         assert_eq!(stats.recent_pylon_diagnostics.len(), 1);
         assert_eq!(
@@ -23856,6 +23957,11 @@ mod tests {
         assert_eq!(stats.pylons_seen_24h, 2);
         assert_eq!(stats.pylon_sessions_online_now, 2);
         assert_eq!(stats.sellable_pylons_online_now, 1);
+        assert_eq!(stats.inference_ready_pylons_online_now, 1);
+        assert_eq!(stats.inference_ready_pylon_sessions_online_now, 1);
+        assert_eq!(stats.pylon_reported_hosts_online_now, 1);
+        assert_eq!(stats.likely_same_host_pylon_sessions_online_now, 1);
+        assert_eq!(stats.likely_same_host_pylons_online_now, 1);
         Ok(())
     }
 
@@ -23899,6 +24005,9 @@ mod tests {
         assert_eq!(stats.pylons_seen_24h, 0);
         assert_eq!(stats.pylon_sessions_online_now, 0);
         assert_eq!(stats.sellable_pylons_online_now, 0);
+        assert_eq!(stats.inference_ready_pylons_online_now, 0);
+        assert_eq!(stats.pylon_reported_hosts_online_now, 0);
+        assert_eq!(stats.likely_same_host_pylon_sessions_online_now, 0);
         assert!(stats.recent_pylons.is_empty());
         assert!(stats.recent_pylon_diagnostics.is_empty());
         Ok(())
@@ -24048,6 +24157,12 @@ mod tests {
         assert_eq!(fresh.pylons_seen_24h, 2);
         assert_eq!(fresh.pylon_sessions_online_now, 3);
         assert_eq!(fresh.sellable_pylons_online_now, 2);
+        assert_eq!(fresh.inference_ready_pylons_online_now, 2);
+        assert_eq!(fresh.inference_ready_pylon_sessions_online_now, 3);
+        assert_eq!(fresh.pylon_reported_hosts_online_now, 1);
+        assert_eq!(fresh.pylon_sessions_missing_host_fingerprint_online_now, 0);
+        assert_eq!(fresh.likely_same_host_pylon_sessions_online_now, 2);
+        assert_eq!(fresh.likely_same_host_pylons_online_now, 1);
         assert_eq!(
             fresh.recent_pylons[0]
                 .training_capability_envelope_v2
@@ -24073,6 +24188,11 @@ mod tests {
         assert_eq!(after_offline.pylons_seen_24h, 2);
         assert_eq!(after_offline.pylon_sessions_online_now, 2);
         assert_eq!(after_offline.sellable_pylons_online_now, 1);
+        assert_eq!(after_offline.inference_ready_pylons_online_now, 2);
+        assert_eq!(after_offline.inference_ready_pylon_sessions_online_now, 2);
+        assert_eq!(after_offline.pylon_reported_hosts_online_now, 1);
+        assert_eq!(after_offline.likely_same_host_pylon_sessions_online_now, 1);
+        assert_eq!(after_offline.likely_same_host_pylons_online_now, 1);
 
         let stale = presence.metrics(
             100_000 + DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS + 1,
@@ -24080,6 +24200,9 @@ mod tests {
         );
         assert_eq!(stale.pylons_online_now, 0);
         assert_eq!(stale.pylon_sessions_online_now, 0);
+        assert_eq!(stale.inference_ready_pylons_online_now, 0);
+        assert_eq!(stale.pylon_reported_hosts_online_now, 0);
+        assert_eq!(stale.likely_same_host_pylon_sessions_online_now, 0);
         assert_eq!(stale.pylons_seen_24h, 2);
 
         let pruned_at = 110_000 + PROVIDER_PRESENCE_RETENTION_WINDOW_MS + 1;
@@ -24087,6 +24210,8 @@ mod tests {
         let pruned = presence.metrics(pruned_at, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
         assert_eq!(pruned.pylons_online_now, 0);
         assert_eq!(pruned.pylons_seen_24h, 0);
+        assert_eq!(pruned.inference_ready_pylons_online_now, 0);
+        assert_eq!(pruned.pylon_reported_hosts_online_now, 0);
         assert!(pruned.recent_pylons.is_empty());
         assert!(pruned.recent_pylon_diagnostics.is_empty());
     }
@@ -24233,6 +24358,12 @@ mod tests {
 
         let metrics = presence.metrics(100_000, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
         let public_row = serde_json::to_value(&metrics.recent_pylons[0]).expect("public row");
+        assert_eq!(
+            public_row
+                .get("inference_ready")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
         assert!(public_row.get("hosting_telemetry").is_none());
         assert!(public_row.get("host_name").is_none());
     }
@@ -34960,6 +35091,8 @@ mod tests {
         let homepage = fetch_homepage(&app).await?;
         assert_eq!(homepage.stats.pylons_online_now, 1);
         assert_eq!(homepage.stats.sellable_pylons_online_now, 1);
+        assert_eq!(homepage.stats.inference_ready_pylons_online_now, 1);
+        assert_eq!(homepage.stats.pylon_reported_hosts_online_now, 1);
         assert_eq!(homepage.stats.recent_pylons.len(), 1);
         assert_eq!(
             homepage

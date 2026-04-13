@@ -3,6 +3,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::treasury::TreasuryPlaceholderPayoutMode;
 use openagents_kernel_core::snapshots::{
     ComputeBreakerStatusRow, ComputeRolloutGateRow, ComputeTruthLabelRow,
 };
@@ -83,6 +84,8 @@ pub struct PublicRecentPylon {
     pub ready_model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_state: Option<String>,
+    #[serde(default)]
+    pub inference_ready: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub training_capability_envelope_v2: Option<ProviderTrainingCapabilityEnvelopeV2>,
 }
@@ -389,6 +392,18 @@ pub struct PublicStatsSnapshot {
     #[serde(default)]
     pub sellable_pylons_online_now: u64,
     #[serde(default)]
+    pub inference_ready_pylons_online_now: u64,
+    #[serde(default)]
+    pub inference_ready_pylon_sessions_online_now: u64,
+    #[serde(default)]
+    pub pylon_reported_hosts_online_now: u64,
+    #[serde(default)]
+    pub pylon_sessions_missing_host_fingerprint_online_now: u64,
+    #[serde(default)]
+    pub likely_same_host_pylon_sessions_online_now: u64,
+    #[serde(default)]
+    pub likely_same_host_pylons_online_now: u64,
+    #[serde(default)]
     pub pylon_presence_stale_after_ms: u64,
     pub sessions_active: usize,
     pub sessions_issued_24h: u64,
@@ -441,6 +456,8 @@ pub struct PublicStatsSnapshot {
     #[serde(default)]
     pub nexus_treasury_daily_budget_cap_sats: u64,
     #[serde(default)]
+    pub nexus_placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    #[serde(default)]
     pub nexus_registered_payout_identities: u64,
     pub nexus_payout_sats_paid_total: u64,
     pub nexus_payout_sats_paid_24h: u64,
@@ -472,6 +489,12 @@ pub struct PublicStatsSnapshot {
     pub nexus_payouts_failed_24h: u64,
     #[serde(default)]
     pub nexus_payouts_skipped_24h: u64,
+    #[serde(default)]
+    pub nexus_placeholder_payout_eligible_online_targets: u64,
+    #[serde(default)]
+    pub nexus_inference_ready_online_payout_targets: u64,
+    #[serde(default)]
+    pub nexus_duplicate_host_placeholder_blocked_online_targets: u64,
     #[serde(default)]
     pub training_nodes_admitted: u64,
     #[serde(default)]
@@ -592,6 +615,12 @@ pub struct PublicRuntimeSnapshot {
     pub pylons_seen_24h: u64,
     pub pylon_sessions_online_now: u64,
     pub sellable_pylons_online_now: u64,
+    pub inference_ready_pylons_online_now: u64,
+    pub inference_ready_pylon_sessions_online_now: u64,
+    pub pylon_reported_hosts_online_now: u64,
+    pub pylon_sessions_missing_host_fingerprint_online_now: u64,
+    pub likely_same_host_pylon_sessions_online_now: u64,
+    pub likely_same_host_pylons_online_now: u64,
     pub pylon_presence_stale_after_ms: u64,
     pub sessions_active: usize,
     pub sync_tokens_active: usize,
@@ -614,6 +643,7 @@ pub struct PublicRuntimeSnapshot {
     pub nexus_treasury_payout_interval_seconds: u64,
     pub nexus_treasury_require_sellable: bool,
     pub nexus_treasury_daily_budget_cap_sats: u64,
+    pub nexus_placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
     pub nexus_registered_payout_identities: u64,
     pub nexus_payout_sats_paid_total: u64,
     pub nexus_payout_sats_paid_24h: u64,
@@ -631,6 +661,9 @@ pub struct PublicRuntimeSnapshot {
     pub nexus_payouts_confirmed_24h: u64,
     pub nexus_payouts_failed_24h: u64,
     pub nexus_payouts_skipped_24h: u64,
+    pub nexus_placeholder_payout_eligible_online_targets: u64,
+    pub nexus_inference_ready_online_payout_targets: u64,
+    pub nexus_duplicate_host_placeholder_blocked_online_targets: u64,
     pub training_nodes_admitted: u64,
     pub training_admitted_contributors: u64,
     pub training_assigned_contributors: u64,
@@ -853,6 +886,15 @@ impl ReceiptLedger {
             pylons_seen_24h: runtime.pylons_seen_24h,
             pylon_sessions_online_now: runtime.pylon_sessions_online_now,
             sellable_pylons_online_now: runtime.sellable_pylons_online_now,
+            inference_ready_pylons_online_now: runtime.inference_ready_pylons_online_now,
+            inference_ready_pylon_sessions_online_now: runtime
+                .inference_ready_pylon_sessions_online_now,
+            pylon_reported_hosts_online_now: runtime.pylon_reported_hosts_online_now,
+            pylon_sessions_missing_host_fingerprint_online_now: runtime
+                .pylon_sessions_missing_host_fingerprint_online_now,
+            likely_same_host_pylon_sessions_online_now: runtime
+                .likely_same_host_pylon_sessions_online_now,
+            likely_same_host_pylons_online_now: runtime.likely_same_host_pylons_online_now,
             pylon_presence_stale_after_ms: runtime.pylon_presence_stale_after_ms,
             sessions_active: runtime.sessions_active,
             sessions_issued_24h,
@@ -891,6 +933,7 @@ impl ReceiptLedger {
             nexus_treasury_payout_interval_seconds: runtime.nexus_treasury_payout_interval_seconds,
             nexus_treasury_require_sellable: runtime.nexus_treasury_require_sellable,
             nexus_treasury_daily_budget_cap_sats: runtime.nexus_treasury_daily_budget_cap_sats,
+            nexus_placeholder_payout_mode: runtime.nexus_placeholder_payout_mode,
             nexus_registered_payout_identities: runtime.nexus_registered_payout_identities,
             nexus_payout_sats_paid_total: runtime.nexus_payout_sats_paid_total,
             nexus_payout_sats_paid_24h: runtime.nexus_payout_sats_paid_24h,
@@ -916,6 +959,12 @@ impl ReceiptLedger {
             nexus_payouts_confirmed_24h: runtime.nexus_payouts_confirmed_24h,
             nexus_payouts_failed_24h: runtime.nexus_payouts_failed_24h,
             nexus_payouts_skipped_24h: runtime.nexus_payouts_skipped_24h,
+            nexus_placeholder_payout_eligible_online_targets: runtime
+                .nexus_placeholder_payout_eligible_online_targets,
+            nexus_inference_ready_online_payout_targets: runtime
+                .nexus_inference_ready_online_payout_targets,
+            nexus_duplicate_host_placeholder_blocked_online_targets: runtime
+                .nexus_duplicate_host_placeholder_blocked_online_targets,
             training_nodes_admitted: runtime.training_nodes_admitted,
             training_admitted_contributors: runtime.training_admitted_contributors,
             training_assigned_contributors: runtime.training_assigned_contributors,
@@ -1171,6 +1220,7 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
 mod tests {
     use super::{
         AuthorityReceiptContext, PublicRuntimeSnapshot, PublicTrainingStatsSnapshot, ReceiptLedger,
+        TreasuryPlaceholderPayoutMode,
     };
 
     #[test]
@@ -1214,6 +1264,12 @@ mod tests {
                 pylons_seen_24h: 0,
                 pylon_sessions_online_now: 0,
                 sellable_pylons_online_now: 0,
+                inference_ready_pylons_online_now: 0,
+                inference_ready_pylon_sessions_online_now: 0,
+                pylon_reported_hosts_online_now: 0,
+                pylon_sessions_missing_host_fingerprint_online_now: 0,
+                likely_same_host_pylon_sessions_online_now: 0,
+                likely_same_host_pylons_online_now: 0,
                 pylon_presence_stale_after_ms: 0,
                 sessions_active: 1,
                 sync_tokens_active: 1,
@@ -1236,6 +1292,7 @@ mod tests {
                 nexus_treasury_payout_interval_seconds: 0,
                 nexus_treasury_require_sellable: false,
                 nexus_treasury_daily_budget_cap_sats: 0,
+                nexus_placeholder_payout_mode: TreasuryPlaceholderPayoutMode::default(),
                 nexus_registered_payout_identities: 0,
                 nexus_payout_sats_paid_total: 0,
                 nexus_payout_sats_paid_24h: 0,
@@ -1253,6 +1310,9 @@ mod tests {
                 nexus_payouts_confirmed_24h: 0,
                 nexus_payouts_failed_24h: 0,
                 nexus_payouts_skipped_24h: 0,
+                nexus_placeholder_payout_eligible_online_targets: 0,
+                nexus_inference_ready_online_payout_targets: 0,
+                nexus_duplicate_host_placeholder_blocked_online_targets: 0,
                 training_nodes_admitted: 0,
                 training_admitted_contributors: 0,
                 training_assigned_contributors: 0,
