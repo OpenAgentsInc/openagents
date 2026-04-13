@@ -351,6 +351,7 @@ pub struct TreasuryWalletRecoveryComparison {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rebuilt_minus_current_balance_sats: Option<i64>,
     pub current_zero_with_receive_history: bool,
+    pub rebuilt_storage_looks_uninitialized: bool,
     pub major_divergence_detected: bool,
     pub validation_passed: bool,
     pub recommended_action: String,
@@ -3947,20 +3948,27 @@ fn build_treasury_wallet_recovery_comparison(
                 .payment_totals
                 .completed_send_total_sats
                 .saturating_add(TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS);
+    let rebuilt_storage_looks_uninitialized = rebuilt_storage.payment_totals.total_payments == 0
+        && rebuilt_storage.balance_sats.unwrap_or(0) == 0
+        && (current_storage.payment_totals.total_payments > 0
+            || current_storage.payment_totals.completed_receive_total_sats > 0
+            || current_storage.payment_totals.completed_send_total_sats > 0);
     let major_divergence_detected =
         match (current_storage.balance_sats, rebuilt_storage.balance_sats) {
             (Some(current), Some(rebuilt)) => {
                 let delta = current.abs_diff(rebuilt);
                 let larger_balance = current.max(rebuilt);
                 current_zero_with_receive_history
+                    || rebuilt_storage_looks_uninitialized
                     || delta >= TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS
                     || (larger_balance > 0 && delta.saturating_mul(100) >= larger_balance * 10)
             }
-            _ => current_zero_with_receive_history,
+            _ => current_zero_with_receive_history || rebuilt_storage_looks_uninitialized,
         };
     let validation_passed = current_storage.error.is_none()
         && rebuilt_storage.error.is_none()
-        && wallet_identity_pubkey_match;
+        && wallet_identity_pubkey_match
+        && !rebuilt_storage_looks_uninitialized;
     let recommended_action = if !validation_passed {
         "inspect_errors".to_string()
     } else if major_divergence_detected {
@@ -3972,6 +3980,7 @@ fn build_treasury_wallet_recovery_comparison(
         wallet_identity_pubkey_match,
         rebuilt_minus_current_balance_sats,
         current_zero_with_receive_history,
+        rebuilt_storage_looks_uninitialized,
         major_divergence_detected,
         validation_passed,
         recommended_action,
@@ -4014,9 +4023,14 @@ async fn inspect_treasury_wallet_storage(
         }
     };
 
-    inspection.runtime_status = Some("cached".to_string());
+    if let Err(error) = wallet.sync().await {
+        inspection.error = Some(format!("failed to sync treasury Spark wallet: {error}"));
+        let _ = wallet.disconnect().await;
+        return inspection;
+    }
+    inspection.runtime_status = Some("connected".to_string());
     inspection.runtime_detail =
-        Some("treasury wallet inspection skipped live sync to preserve local state".to_string());
+        Some("treasury wallet inspection synced copied wallet state".to_string());
 
     match wallet.get_balance_cached().await {
         Ok(balance) => inspection.balance_sats = Some(balance.total_sats()),
@@ -4668,6 +4682,10 @@ fn render_treasury_wallet_recovery_report(report: &TreasuryWalletRecoveryReport)
             report.comparison.major_divergence_detected
         ),
         format!(
+            "rebuilt_storage_looks_uninitialized: {}",
+            report.comparison.rebuilt_storage_looks_uninitialized
+        ),
+        format!(
             "recommended_action: {}",
             report.comparison.recommended_action
         ),
@@ -5216,6 +5234,10 @@ async fn wallet_snapshot_from_wallet_with_plan_result(
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
+    wallet
+        .sync()
+        .await
+        .context("failed to sync treasury Spark wallet")?;
     let balance = wallet
         .get_balance_cached()
         .await
@@ -5706,11 +5728,44 @@ mod tests {
         assert!(comparison.wallet_identity_pubkey_match);
         assert!(comparison.current_zero_with_receive_history);
         assert!(comparison.major_divergence_detected);
+        assert!(!comparison.rebuilt_storage_looks_uninitialized);
         assert!(comparison.validation_passed);
         assert_eq!(
             comparison.recommended_action,
             "cutover_rebuilt_storage_after_service_stop"
         );
+    }
+
+    #[test]
+    fn recovery_comparison_rejects_empty_rebuilt_storage_when_current_has_history() {
+        let comparison = build_treasury_wallet_recovery_comparison(
+            &TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/current".to_string(),
+                balance_sats: Some(0),
+                payment_totals: TreasuryWalletPaymentAggregate {
+                    total_payments: 42,
+                    completed_receive_total_sats: 100_000,
+                    completed_send_total_sats: 20_000,
+                    ..TreasuryWalletPaymentAggregate::default()
+                },
+                ..TreasuryWalletInspection::default()
+            },
+            &TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/rebuilt".to_string(),
+                balance_sats: Some(0),
+                payment_totals: TreasuryWalletPaymentAggregate::default(),
+                ..TreasuryWalletInspection::default()
+            },
+        );
+
+        assert!(comparison.wallet_identity_pubkey_match);
+        assert!(comparison.current_zero_with_receive_history);
+        assert!(comparison.rebuilt_storage_looks_uninitialized);
+        assert!(comparison.major_divergence_detected);
+        assert!(!comparison.validation_passed);
+        assert_eq!(comparison.recommended_action, "inspect_errors");
     }
 
     #[test]
@@ -6898,6 +6953,7 @@ mod tests {
                 wallet_identity_pubkey_match: true,
                 rebuilt_minus_current_balance_sats: Some(80_000),
                 current_zero_with_receive_history: true,
+                rebuilt_storage_looks_uninitialized: false,
                 major_divergence_detected: true,
                 validation_passed: true,
                 recommended_action: "cutover_rebuilt_storage_after_service_stop".to_string(),

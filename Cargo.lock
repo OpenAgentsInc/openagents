@@ -222,7 +222,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -233,7 +233,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1194,7 +1194,7 @@ dependencies = [
 [[package]]
 name = "breez-sdk-common"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=3142cf25525155301e571ad82b78867e02d1b566#3142cf25525155301e571ad82b78867e02d1b566"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
 dependencies = [
  "aes",
  "anyhow",
@@ -1231,7 +1231,7 @@ dependencies = [
 [[package]]
 name = "breez-sdk-spark"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=3142cf25525155301e571ad82b78867e02d1b566#3142cf25525155301e571ad82b78867e02d1b566"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2445,7 +2445,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2714,7 +2714,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2868,7 +2868,7 @@ checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 [[package]]
 name = "flashnet"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=3142cf25525155301e571ad82b78867e02d1b566#3142cf25525155301e571ad82b78867e02d1b566"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
 dependencies = [
  "bitcoin 0.32.8",
  "getrandom 0.2.17",
@@ -3988,7 +3988,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.58.0",
+ "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -4307,7 +4307,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4750,7 +4750,7 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 [[package]]
 name = "lnurl-models"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=3142cf25525155301e571ad82b78867e02d1b566#3142cf25525155301e571ad82b78867e02d1b566"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
 dependencies = [
  "serde",
 ]
@@ -4825,7 +4825,7 @@ dependencies = [
 [[package]]
 name = "macros"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=3142cf25525155301e571ad82b78867e02d1b566#3142cf25525155301e571ad82b78867e02d1b566"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5340,7 +5340,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6261,7 +6261,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 [[package]]
 name = "platform-utils"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=3142cf25525155301e571ad82b78867e02d1b566#3142cf25525155301e571ad82b78867e02d1b566"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -6655,7 +6655,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
  "heck 0.5.0",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -6688,7 +6688,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -7957,7 +7957,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.3",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8723,7 +8723,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -9569,13 +9569,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
 name = "spark"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=3142cf25525155301e571ad82b78867e02d1b566#3142cf25525155301e571ad82b78867e02d1b566"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -9620,7 +9620,7 @@ dependencies = [
 [[package]]
 name = "spark-wallet"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=3142cf25525155301e571ad82b78867e02d1b566#3142cf25525155301e571ad82b78867e02d1b566"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
 dependencies = [
  "bitcoin 0.32.8",
  "frost-secp256k1-tr-unofficial",
@@ -10102,7 +10102,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
