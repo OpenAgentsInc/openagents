@@ -180,6 +180,52 @@ snapshots should expose both categories without collapsing them into one
 checkpoint lineage, and a busy validator queue can exist without any accepted
 progress.
 
+## Continuous Run Continuity
+
+Longer-running actual-lane execution needs one more distinction than the older
+single-window smoke tests needed:
+
+- the latest accepted window
+- the current in-flight window
+- the current canonical checkpoint
+
+These are related, but they are not the same object.
+
+For a live run:
+
+- the latest accepted window is the last reconciled window that closed with
+  accepted progress
+- the current in-flight window is the window still executing or still waiting
+  to reconcile
+- the current canonical checkpoint is the checkpoint that the in-flight window
+  is building on top of
+
+The authority projection now carries all three explicitly on both the summary
+and public snapshot paths:
+
+- run-level fields
+  - `accepted_window_count`
+  - `latest_accepted_window_id`
+  - `latest_accepted_window_status`
+  - `current_canonical_checkpoint_ref`
+  - `current_canonical_checkpoint_window_id`
+- window-level fields
+  - `in_flight`
+  - `accepted_window`
+  - `canonical_checkpoint_window`
+
+The important rule is:
+
+- `latest_promoted_checkpoint_ref` only names a checkpoint that was actually
+  promoted or materialized by the accepted window
+- `current_canonical_checkpoint_ref` is allowed to point at the base checkpoint
+  for the current in-flight window even when no new promoted checkpoint exists
+
+That keeps the public truth honest for continuous training. Operators can see
+that a run is actively moving through windows while the UI can still answer
+which checkpoint is canonical right now without falsely implying that every
+accepted closeout created a new promoted checkpoint.
+
 ## Visualization Snapshot
 
 Nexus now also exposes one visualization-oriented training read model at:

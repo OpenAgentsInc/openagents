@@ -2352,6 +2352,7 @@ struct TrainingVisualizationRun {
     recovery_source_nodes_online: u64,
     active_window_count: u64,
     pending_validation_window_count: u64,
+    accepted_window_count: u64,
     accepted_closeouts: u64,
     payout_eligible_closeouts: u64,
     weak_device_bearing_closeouts: u64,
@@ -2364,11 +2365,19 @@ struct TrainingVisualizationRun {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     latest_window_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_accepted_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_accepted_window_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     latest_closeout_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     latest_aggregate_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     latest_promoted_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_canonical_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_canonical_checkpoint_window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -2435,6 +2444,9 @@ struct TrainingVisualizationWindow {
     accepted_outcome_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     closeout_status: Option<String>,
+    in_flight: bool,
+    accepted_window: bool,
+    canonical_checkpoint_window: bool,
     payout_eligible: bool,
     weak_device_bearing: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2606,6 +2618,7 @@ struct TrainingOperatorRunProgressSummary {
     model_progress_contributors: u64,
     nodes_contributing_to_accepted_progress: u64,
     windows_advanced_checkpoint_lineage: u64,
+    accepted_window_count: u64,
     accepted_closeouts: u64,
     payout_eligible_closeouts: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2618,7 +2631,19 @@ struct TrainingOperatorRunProgressSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     latest_window_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_accepted_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_accepted_window_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     latest_closeout_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_aggregate_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_promoted_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_canonical_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_canonical_checkpoint_window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -2658,6 +2683,7 @@ struct TrainingOperatorRunSummary {
     recovery_source_target_count: u32,
     active_window_count: u64,
     pending_validation_window_count: u64,
+    accepted_window_count: u64,
     open_validator_challenges: u64,
     queued_validator_challenges: u64,
     accepted_closeouts: u64,
@@ -2674,7 +2700,19 @@ struct TrainingOperatorRunSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     latest_window_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_accepted_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_accepted_window_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     latest_closeout_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_aggregate_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_promoted_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_canonical_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_canonical_checkpoint_window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
@@ -16792,6 +16830,62 @@ fn training_window_advances_checkpoint_lineage<'a>(
         .is_some_and(training_outcome_advances_checkpoint_lineage)
 }
 
+fn training_outcome_checkpoint_ref(outcome: &ComputeAcceptedOutcome) -> Option<String> {
+    outcome
+        .training_summary
+        .as_ref()
+        .and_then(|summary| summary.accepted_checkpoint_ref.clone())
+        .or_else(|| {
+            outcome
+                .metadata
+                .get("promoted_checkpoint_ref")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            outcome
+                .checkpoint_binding
+                .as_ref()
+                .and_then(|binding| binding.latest_checkpoint_ref.clone())
+        })
+}
+
+fn training_outcome_promoted_checkpoint_ref(outcome: &ComputeAcceptedOutcome) -> Option<String> {
+    outcome
+        .training_summary
+        .as_ref()
+        .and_then(|summary| summary.accepted_checkpoint_ref.clone())
+        .or_else(|| {
+            outcome
+                .metadata
+                .get("promoted_checkpoint_ref")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+}
+
+fn training_window_promoted_checkpoint_ref<'a>(
+    window: &ComputeAdapterTrainingWindow,
+    accepted_outcomes_by_id: &HashMap<&'a str, &'a ComputeAcceptedOutcome>,
+) -> Option<String> {
+    window
+        .promoted_checkpoint_ref
+        .clone()
+        .or_else(|| {
+            window
+                .output_checkpoint_pointer
+                .as_ref()
+                .map(|pointer| pointer.checkpoint_ref.clone())
+        })
+        .or_else(|| {
+            window
+                .accepted_outcome_id
+                .as_deref()
+                .and_then(|outcome_id| accepted_outcomes_by_id.get(outcome_id).copied())
+                .and_then(training_outcome_promoted_checkpoint_ref)
+        })
+}
+
 fn training_rollout_policy_snapshot(
     store: &ControlStore,
     now_unix_ms: u64,
@@ -17102,6 +17196,38 @@ fn training_operator_summary_snapshot(
                         .then_with(|| lhs.window_id.cmp(&rhs.window_id))
                 })
                 .copied();
+            let latest_window_with_aggregate = run_windows
+                .iter()
+                .filter(|window| {
+                    window.accepted_aggregate_id.is_some() || window.aggregated_delta_digest.is_some()
+                })
+                .max_by(|lhs, rhs| {
+                    lhs.recorded_at_ms
+                        .cmp(&rhs.recorded_at_ms)
+                        .then_with(|| lhs.window_id.cmp(&rhs.window_id))
+                })
+                .copied();
+            let current_in_flight_window = scheduler_state
+                .and_then(|value| {
+                    run_windows
+                        .iter()
+                        .find(|window| {
+                            window.window_id == value.current_window_id
+                                && window.status != ComputeAdapterWindowStatus::Reconciled
+                        })
+                        .copied()
+                })
+                .or_else(|| {
+                    run_windows
+                        .iter()
+                        .filter(|window| window.status != ComputeAdapterWindowStatus::Reconciled)
+                        .max_by(|lhs, rhs| {
+                            lhs.recorded_at_ms
+                                .cmp(&rhs.recorded_at_ms)
+                                .then_with(|| lhs.window_id.cmp(&rhs.window_id))
+                        })
+                        .copied()
+                });
 
             let run_challenges = validator_challenges
                 .iter()
@@ -17197,6 +17323,7 @@ fn training_operator_summary_snapshot(
             progress_contributor_ids
                 .extend(nodes_contributing_to_accepted_progress.iter().cloned());
             let accepted_closeouts = accepted_progress_outcomes.len() as u64;
+            let accepted_window_count = accepted_terminal_window_ids.len() as u64;
             let payout_eligible_closeouts = accepted_progress_outcomes
                 .iter()
                 .filter(|outcome| training_outcome_payout_eligible(outcome))
@@ -17264,18 +17391,26 @@ fn training_operator_summary_snapshot(
                         .then_with(|| lhs.outcome_id.cmp(&rhs.outcome_id))
                 })
                 .copied();
+            let latest_accepted_window_id = accepted_terminal_outcomes
+                .iter()
+                .max_by(|lhs, rhs| {
+                    lhs.accepted_at_ms
+                        .cmp(&rhs.accepted_at_ms)
+                        .then_with(|| lhs.outcome_id.cmp(&rhs.outcome_id))
+                })
+                .and_then(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
+                .map(str::to_string);
+            let latest_accepted_window = latest_accepted_window_id
+                .as_deref()
+                .and_then(|window_id| {
+                    run_windows
+                        .iter()
+                        .find(|window| window.window_id == window_id)
+                        .copied()
+                });
             let latest_checkpoint_ref = latest_closeout
                 .and_then(|outcome| {
-                    outcome
-                        .training_summary
-                        .as_ref()
-                        .and_then(|summary| summary.accepted_checkpoint_ref.clone())
-                        .or_else(|| {
-                            outcome
-                                .checkpoint_binding
-                                .as_ref()
-                                .and_then(|binding| binding.latest_checkpoint_ref.clone())
-                        })
+                    training_outcome_checkpoint_ref(outcome)
                 })
                 .or_else(|| run.final_checkpoint_ref.clone())
                 .or_else(|| run.promotion_checkpoint_ref.clone())
@@ -17304,6 +17439,25 @@ fn training_operator_summary_snapshot(
                 .or_else(|| Some(run.created_at_ms).and_then(|value| u64::try_from(value).ok()))
                 .filter(|_| latest_checkpoint_ref.is_some())
                 .map(|updated_at_ms| now_unix_ms.saturating_sub(updated_at_ms));
+            let latest_aggregate_ref = latest_window_with_aggregate.and_then(|window| {
+                window
+                    .accepted_aggregate_id
+                    .clone()
+                    .or_else(|| window.aggregated_delta_digest.clone())
+            });
+            let latest_promoted_checkpoint_ref = latest_accepted_window
+                .and_then(|window| {
+                    training_window_promoted_checkpoint_ref(window, &accepted_outcomes_by_id)
+                })
+                .or_else(|| run.promotion_checkpoint_ref.clone())
+                .or_else(|| run.final_checkpoint_ref.clone());
+            let current_canonical_checkpoint_ref = current_in_flight_window
+                .map(|window| window.base_checkpoint_ref.clone())
+                .or_else(|| latest_promoted_checkpoint_ref.clone())
+                .or_else(|| latest_checkpoint_ref.clone());
+            let current_canonical_checkpoint_window_id = current_in_flight_window
+                .map(|window| window.window_id.clone())
+                .or_else(|| latest_accepted_window_id.clone());
             let latest_closeout_status = latest_closeout.and_then(|outcome| {
                 outcome
                     .metadata
@@ -17347,6 +17501,7 @@ fn training_operator_summary_snapshot(
                 nodes_contributing_to_accepted_progress: nodes_contributing_to_accepted_progress
                     .len() as u64,
                 windows_advanced_checkpoint_lineage,
+                accepted_window_count,
                 accepted_closeouts,
                 payout_eligible_closeouts,
                 latest_checkpoint_ref: latest_checkpoint_ref.clone(),
@@ -17354,7 +17509,15 @@ fn training_operator_summary_snapshot(
                 artifact_failures_open: 0,
                 latest_window_id: latest_window.map(|value| value.window_id.clone()),
                 latest_window_status: latest_window.map(|value| value.status.label().to_string()),
+                latest_accepted_window_id: latest_accepted_window_id.clone(),
+                latest_accepted_window_status: latest_accepted_window
+                    .map(|window| window.status.label().to_string()),
                 latest_closeout_status,
+                latest_aggregate_ref: latest_aggregate_ref.clone(),
+                latest_promoted_checkpoint_ref: latest_promoted_checkpoint_ref.clone(),
+                current_canonical_checkpoint_ref: current_canonical_checkpoint_ref.clone(),
+                current_canonical_checkpoint_window_id: current_canonical_checkpoint_window_id
+                    .clone(),
             };
 
             TrainingOperatorRunSummary {
@@ -17391,6 +17554,7 @@ fn training_operator_summary_snapshot(
                 recovery_source_target_count: role_plan.recovery_source_count,
                 active_window_count,
                 pending_validation_window_count,
+                accepted_window_count,
                 open_validator_challenges,
                 queued_validator_challenges,
                 accepted_closeouts,
@@ -17403,7 +17567,17 @@ fn training_operator_summary_snapshot(
                 artifact_failures_open: 0,
                 latest_window_id: progress.latest_window_id.clone(),
                 latest_window_status: progress.latest_window_status.clone(),
+                latest_accepted_window_id: progress.latest_accepted_window_id.clone(),
+                latest_accepted_window_status: progress.latest_accepted_window_status.clone(),
                 latest_closeout_status: progress.latest_closeout_status.clone(),
+                latest_aggregate_ref: progress.latest_aggregate_ref.clone(),
+                latest_promoted_checkpoint_ref: progress.latest_promoted_checkpoint_ref.clone(),
+                current_canonical_checkpoint_ref: progress
+                    .current_canonical_checkpoint_ref
+                    .clone(),
+                current_canonical_checkpoint_window_id: progress
+                    .current_canonical_checkpoint_window_id
+                    .clone(),
             }
         })
         .collect::<Vec<_>>();
@@ -17698,6 +17872,7 @@ fn training_public_stats_snapshot(
                 model_progress_contributors: run.model_progress_contributors,
                 active_window_count: run.active_window_count,
                 pending_validation_window_count: run.pending_validation_window_count,
+                accepted_window_count: run.accepted_window_count,
                 validator_challenges_open: summary_run
                     .map_or(0, |summary_run| summary_run.open_validator_challenges),
                 validator_challenges_queued: summary_run
@@ -17707,9 +17882,15 @@ fn training_public_stats_snapshot(
                 latest_window_id: summary_run
                     .and_then(|summary_run| summary_run.latest_window_id.clone()),
                 latest_window_status: run.latest_window_status.clone(),
+                latest_accepted_window_id: run.latest_accepted_window_id.clone(),
+                latest_accepted_window_status: run.latest_accepted_window_status.clone(),
                 latest_closeout_status: run.latest_closeout_status.clone(),
                 latest_aggregate_ref: run.latest_aggregate_ref.clone(),
                 latest_promoted_checkpoint_ref: run.latest_promoted_checkpoint_ref.clone(),
+                current_canonical_checkpoint_ref: run.current_canonical_checkpoint_ref.clone(),
+                current_canonical_checkpoint_window_id: run
+                    .current_canonical_checkpoint_window_id
+                    .clone(),
             }
         })
         .collect::<Vec<_>>();
@@ -17780,6 +17961,9 @@ fn training_public_stats_snapshot(
             promoted_checkpoint_ref: window.promoted_checkpoint_ref.clone(),
             accepted_outcome_id: window.accepted_outcome_id.clone(),
             closeout_status: window.closeout_status.clone(),
+            in_flight: window.in_flight,
+            accepted_window: window.accepted_window,
+            canonical_checkpoint_window: window.canonical_checkpoint_window,
             payout_eligible: window.payout_eligible,
             weak_device_bearing: window.weak_device_bearing,
             lineage_advanced: window.lineage_advanced,
@@ -17826,8 +18010,16 @@ fn training_public_stats_snapshot(
             .and_then(|run| run.latest_promoted_checkpoint_ref.clone()),
         latest_window_status: default_visualized_run
             .and_then(|run| run.latest_window_status.clone()),
+        latest_accepted_window_id: default_visualized_run
+            .and_then(|run| run.latest_accepted_window_id.clone()),
+        latest_accepted_window_status: default_visualized_run
+            .and_then(|run| run.latest_accepted_window_status.clone()),
         latest_closeout_status: default_visualized_run
             .and_then(|run| run.latest_closeout_status.clone()),
+        current_canonical_checkpoint_ref: default_visualized_run
+            .and_then(|run| run.current_canonical_checkpoint_ref.clone()),
+        current_canonical_checkpoint_window_id: default_visualized_run
+            .and_then(|run| run.current_canonical_checkpoint_window_id.clone()),
         queue_pressure: PublicTrainingQueuePressure {
             state: training_queue_pressure_state(summary).to_string(),
             active_windows: summary.active_windows,
@@ -18508,6 +18700,20 @@ fn training_visualization_snapshot_with_summary(
                 .unwrap_or(i64::MAX),
             );
         }
+        if let Some(checkpoint_ref) = run_summary.current_canonical_checkpoint_ref.as_ref() {
+            push_checkpoint(
+                checkpoint_ref.clone(),
+                "run_canonical",
+                run_summary.training_run_id.as_str(),
+                run_summary.current_canonical_checkpoint_window_id.as_deref(),
+                None,
+                true,
+                i64::try_from(
+                    now_unix_ms.saturating_sub(run_summary.latest_checkpoint_age_ms.unwrap_or(0)),
+                )
+                .unwrap_or(i64::MAX),
+            );
+        }
     }
     checkpoints.sort_by(|lhs, rhs| {
         rhs.recorded_at_ms
@@ -18528,20 +18734,6 @@ fn training_visualization_snapshot_with_summary(
                 lhs.recorded_at_ms
                     .cmp(&rhs.recorded_at_ms)
                     .then_with(|| lhs.window_id.cmp(&rhs.window_id))
-            });
-            let latest_aggregate_ref = latest_window.and_then(|window| {
-                window
-                    .accepted_aggregate_id
-                    .clone()
-                    .or_else(|| window.aggregated_delta_digest.clone())
-            });
-            let latest_promoted_checkpoint_ref = latest_window.and_then(|window| {
-                window.promoted_checkpoint_ref.clone().or_else(|| {
-                    window
-                        .output_checkpoint_pointer
-                        .as_ref()
-                        .map(|pointer| pointer.checkpoint_ref.clone())
-                })
             });
             let window_ids = run_windows
                 .iter()
@@ -18618,6 +18810,8 @@ fn training_visualization_snapshot_with_summary(
                 active_window_count: run_summary.map_or(0, |summary| summary.active_window_count),
                 pending_validation_window_count: run_summary
                     .map_or(0, |summary| summary.pending_validation_window_count),
+                accepted_window_count: run_summary
+                    .map_or(0, |summary| summary.accepted_window_count),
                 accepted_closeouts: run_summary.map_or(0, |summary| summary.accepted_closeouts),
                 payout_eligible_closeouts: run_summary
                     .map_or(0, |summary| summary.payout_eligible_closeouts),
@@ -18634,10 +18828,20 @@ fn training_visualization_snapshot_with_summary(
                     .and_then(|summary| summary.latest_checkpoint_age_ms),
                 latest_window_status: run_summary
                     .and_then(|summary| summary.latest_window_status.clone()),
+                latest_accepted_window_id: run_summary
+                    .and_then(|summary| summary.latest_accepted_window_id.clone()),
+                latest_accepted_window_status: run_summary
+                    .and_then(|summary| summary.latest_accepted_window_status.clone()),
                 latest_closeout_status: run_summary
                     .and_then(|summary| summary.latest_closeout_status.clone()),
-                latest_aggregate_ref,
-                latest_promoted_checkpoint_ref,
+                latest_aggregate_ref: run_summary
+                    .and_then(|summary| summary.latest_aggregate_ref.clone()),
+                latest_promoted_checkpoint_ref: run_summary
+                    .and_then(|summary| summary.latest_promoted_checkpoint_ref.clone()),
+                current_canonical_checkpoint_ref: run_summary
+                    .and_then(|summary| summary.current_canonical_checkpoint_ref.clone()),
+                current_canonical_checkpoint_window_id: run_summary
+                    .and_then(|summary| summary.current_canonical_checkpoint_window_id.clone()),
             }
         })
         .collect::<Vec<_>>();
@@ -18682,6 +18886,12 @@ fn training_visualization_snapshot_with_summary(
                     .and_then(Value::as_str)
                     .map(str::to_string)
             });
+            let accepted_window =
+                latest_closeout.is_some_and(training_outcome_counts_as_accepted_closeout);
+            let canonical_checkpoint_window = run_summaries_by_id
+                .get(window.training_run_id.as_str())
+                .and_then(|summary| summary.current_canonical_checkpoint_window_id.as_deref())
+                == Some(window.window_id.as_str());
             TrainingVisualizationWindow {
                 window_id: window.window_id.clone(),
                 training_run_id: window.training_run_id.clone(),
@@ -18790,6 +19000,9 @@ fn training_visualization_snapshot_with_summary(
                 closeout_status: latest_closeout
                     .and_then(training_closeout_status_label)
                     .map(str::to_string),
+                in_flight: window.status != ComputeAdapterWindowStatus::Reconciled,
+                accepted_window,
+                canonical_checkpoint_window,
                 payout_eligible: latest_closeout.is_some_and(training_outcome_payout_eligible),
                 weak_device_bearing: contributor_tiers
                     .as_ref()
@@ -19420,7 +19633,9 @@ mod tests {
         TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
         training_contributor_tier_projection, training_fleet_abuse_snapshot,
         training_scheduler_metadata_from_run, training_window_closeout_outcome,
-        training_window_closeout_status, training_window_closeout_treasury_payout_requests,
+        training_window_closeout_outcome_id, training_window_closeout_status,
+        training_work_progress_class, TrainingWindowAssignmentPlan,
+        training_window_closeout_treasury_payout_requests,
         training_window_metadata_value, validator_service,
     };
     use std::collections::HashMap;
@@ -32897,6 +33112,543 @@ mod tests {
         assert_eq!(
             visualization.closeouts[0].payout_basis.as_deref(),
             Some("aggregation_weight")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_public_state_distinguishes_in_flight_and_accepted_windows_for_continuous_actual_lane(
+    ) -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = super::now_unix_ms().saturating_sub(120_000);
+        let training_run_id = "run.actual.continuous.alpha";
+        let network_id = "trainnet.actual";
+
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            network_id,
+            "node-actual-alpha",
+            "sha256:build-actual-alpha",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+            ComputeTrainingReplicaType::Island,
+            Some(512),
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let record_rewarded_window =
+                |store: &mut ControlStore,
+                 window_id: &str,
+                 base_checkpoint_ref: &str,
+                 checkpoint_ref: &str,
+                 accepted_at_ms: u64|
+                 -> Result<()> {
+                    let run = store
+                        .kernel
+                        .get_compute_training_run(training_run_id)
+                        .expect("training run")
+                        .clone();
+                    let round_index = window_id
+                        .rsplit('.')
+                        .next()
+                        .and_then(|value| value.parse::<u64>().ok())
+                        .unwrap_or(1);
+                    let source_policy_revision = compute_adapter_policy_revision(
+                        format!("policy-rev-{window_id}").as_str(),
+                        accepted_at_ms as i64 - 50,
+                    );
+                    let mut source_checkpoint_pointer = compute_adapter_checkpoint_pointer(
+                        format!("sha256:pointer-{window_id}").as_str(),
+                        accepted_at_ms as i64 - 25,
+                    );
+                    source_checkpoint_pointer.scope_id = training_run_id.to_string();
+                    source_checkpoint_pointer.checkpoint_ref = base_checkpoint_ref.to_string();
+                    source_checkpoint_pointer.manifest_digest =
+                        format!("sha256:checkpoint-manifest-{window_id}");
+                    let output_checkpoint_pointer = ComputeAdapterCheckpointPointer {
+                        scope_kind: "training_run".to_string(),
+                        scope_id: training_run_id.to_string(),
+                        checkpoint_family: "decoder".to_string(),
+                        checkpoint_ref: checkpoint_ref.to_string(),
+                        manifest_digest: format!("sha256:checkpoint-output-manifest-{window_id}"),
+                        updated_at_ms: accepted_at_ms as i64,
+                        pointer_digest: format!("sha256:checkpoint-output-pointer-{window_id}"),
+                    };
+                    let output_policy_revision = compute_adapter_policy_revision(
+                        format!("policy-rev-output-{window_id}").as_str(),
+                        accepted_at_ms as i64,
+                    );
+                    let assignment_id = format!("assign.actual.{window_id}");
+                    let dataset_slice = training_window_dataset_slice(
+                        format!("slice://actual/{window_id}").as_str(),
+                        format!("sha256:slice-actual-{window_id}").as_str(),
+                    );
+                    let outcome_id = training_window_closeout_outcome_id(window_id);
+                    let window = ComputeAdapterTrainingWindow {
+                        window_id: window_id.to_string(),
+                        training_run_id: training_run_id.to_string(),
+                        stage_id: "stage.actual".to_string(),
+                        contributor_set_revision_id: "contributors.rev.actual.1".to_string(),
+                        validator_policy_ref: run.validator_policy_ref.clone(),
+                        work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+                        replica_type: ComputeTrainingReplicaType::Island,
+                        round_index: Some(round_index),
+                        base_checkpoint_ref: base_checkpoint_ref.to_string(),
+                        planned_local_step_count: Some(64),
+                        aggregation_rule: Some("weighted_avg".to_string()),
+                        aggregation_weight_basis: Some("tokens".to_string()),
+                        adapter_target_id: String::new(),
+                        adapter_family: String::new(),
+                        base_model_ref: run
+                            .model_ref
+                            .clone()
+                            .unwrap_or_else(|| "model://psion/actual".to_string()),
+                        adapter_format: String::new(),
+                        source_policy_revision: source_policy_revision.clone(),
+                        source_checkpoint_pointer: source_checkpoint_pointer.clone(),
+                        status: ComputeAdapterWindowStatus::Reconciled,
+                        total_contributions: 1,
+                        admitted_contributions: 1,
+                        accepted_contributions: 1,
+                        quarantined_contributions: 0,
+                        rejected_contributions: 0,
+                        replay_required_contributions: 0,
+                        replay_checked_contributions: 1,
+                        held_out_average_score_bps: Some(9_550),
+                        benchmark_pass_rate_bps: Some(9_700),
+                        runtime_smoke_passed: Some(true),
+                        promotion_ready: true,
+                        gate_reason_codes: Vec::new(),
+                        window_summary_digest: format!("sha256:window-summary-{window_id}"),
+                        promotion_disposition: Some(
+                            ComputeAdapterPromotionDisposition::Promoted,
+                        ),
+                        hold_reason_codes: Vec::new(),
+                        aggregated_delta_digest: Some(format!("sha256:aggregate-{window_id}")),
+                        accepted_aggregate_id: Some(format!("aggregate.{window_id}")),
+                        output_policy_revision: Some(output_policy_revision),
+                        output_checkpoint_pointer: Some(output_checkpoint_pointer.clone()),
+                        promoted_checkpoint_ref: Some(checkpoint_ref.to_string()),
+                        accepted_outcome_id: None,
+                        recorded_at_ms: accepted_at_ms as i64,
+                        metadata: training_window_metadata_value(&TrainingWindowMetadata {
+                            network_id: network_id.to_string(),
+                            artifact_bucket_uri: "gs://bucket".to_string(),
+                            environment_ref: PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
+                            backend_family: "cuda".to_string(),
+                            membership_revision: "members.rev.actual.1".to_string(),
+                            assignment_plans: vec![TrainingWindowAssignmentPlan {
+                                assignment_id: assignment_id.clone(),
+                                node_pubkey_hex: "node-actual-alpha".to_string(),
+                                contributor_node_id: "node-actual-alpha".to_string(),
+                                worker_id: format!("worker.{window_id}"),
+                                dataset_slice: dataset_slice.clone(),
+                                assignment_seed: format!("seed.{window_id}"),
+                            }],
+                            validation: None,
+                            planned_at_ms: accepted_at_ms as i64 - 300,
+                            activated_at_ms: Some(accepted_at_ms as i64 - 200),
+                            sealed_at_ms: Some(accepted_at_ms as i64 - 100),
+                            reconciled_at_ms: Some(accepted_at_ms as i64),
+                            defensibility: None,
+                            seal_deadline_ms: accepted_at_ms as i64 + 300_000,
+                        }),
+                    };
+                    let contribution_outcomes = vec![ComputeAdapterContributionOutcome {
+                        contribution_id: format!("contrib.actual.{window_id}"),
+                        training_run_id: training_run_id.to_string(),
+                        stage_id: "stage.actual".to_string(),
+                        window_id: window_id.to_string(),
+                        contributor_set_revision_id: "contributors.rev.actual.1".to_string(),
+                        assignment_id: assignment_id.clone(),
+                        contributor_node_id: "node-actual-alpha".to_string(),
+                        worker_id: format!("worker.{window_id}"),
+                        validator_policy_ref: run.validator_policy_ref.clone(),
+                        work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+                        replica_type: ComputeTrainingReplicaType::Island,
+                        base_checkpoint_ref: base_checkpoint_ref.to_string(),
+                        adapter_target_id: String::new(),
+                        adapter_family: String::new(),
+                        base_model_ref: run
+                            .model_ref
+                            .clone()
+                            .unwrap_or_else(|| "model://psion/actual".to_string()),
+                        adapter_format: String::new(),
+                        dataset_slice,
+                        source_policy_revision,
+                        source_checkpoint_pointer,
+                        submission_receipt_digest: format!("sha256:submission-{window_id}"),
+                        artifact_id: format!("artifact.{window_id}"),
+                        manifest_digest: format!("sha256:manifest-{window_id}"),
+                        object_digest: format!("sha256:object-{window_id}"),
+                        artifact_receipt_digest: format!("sha256:artifact-receipt-{window_id}"),
+                        provenance_bundle_digest: format!("sha256:provenance-{window_id}"),
+                        security_receipt_digest: format!("sha256:security-{window_id}"),
+                        replay_receipt_digest: Some(format!("sha256:replay-{window_id}")),
+                        validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+                        validation_reason_codes: Vec::new(),
+                        validator_receipt_digest: format!("sha256:validator-{window_id}"),
+                        aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+                        accepted_for_aggregation: true,
+                        local_step_count: Some(64),
+                        consumed_token_count: Some(131_072),
+                        consumed_example_count: Some(256),
+                        aggregation_weight_basis: Some("tokens".to_string()),
+                        aggregation_weight_value: Some(131_072),
+                        aggregation_weight_bps: Some(10_000),
+                        promotion_receipt_digest: None,
+                        recorded_at_ms: accepted_at_ms as i64,
+                        metadata: json!({
+                            "contributor_capability_tier": "tier3_island",
+                            "contributor_weak_device_bearing": false,
+                        }),
+                    }];
+                    let contributor_tiers =
+                        training_contributor_tier_projection(contribution_outcomes.as_slice());
+                    store
+                        .kernel
+                        .record_compute_adapter_window(
+                            &training_kernel_mutation_context("scheduler", accepted_at_ms),
+                            RecordComputeAdapterWindowRequest {
+                                idempotency_key: format!("idemp.window.{window_id}"),
+                                trace: TraceContext::default(),
+                                policy: kernel_policy(),
+                                window,
+                                contribution_outcomes,
+                                evidence: Vec::new(),
+                                hints: ReceiptHints::default(),
+                            },
+                        )
+                        .map_err(anyhow::Error::msg)?;
+                    store
+                        .kernel
+                        .accept_compute_outcome(
+                            &training_kernel_mutation_context("scheduler", accepted_at_ms),
+                            AcceptComputeOutcomeRequest {
+                                idempotency_key: format!("idemp.accept.{window_id}"),
+                                trace: TraceContext::default(),
+                                policy: kernel_policy(),
+                                outcome: ComputeAcceptedOutcome {
+                                    outcome_id,
+                                    outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+                                    source_run_id: training_run_id.to_string(),
+                                    environment_binding: run.environment_binding.clone(),
+                                    checkpoint_binding: Some(ComputeCheckpointBinding {
+                                        checkpoint_family: "decoder".to_string(),
+                                        latest_checkpoint_ref: Some(checkpoint_ref.to_string()),
+                                        recovery_posture: Some(
+                                            "resume_from_last_stable_checkpoint".to_string(),
+                                        ),
+                                    }),
+                                    validator_policy_ref: Some(run.validator_policy_ref.clone()),
+                                    benchmark_package_refs: run.benchmark_package_refs.clone(),
+                                    accepted_at_ms: accepted_at_ms as i64,
+                                    evaluation_summary: None,
+                                    training_summary: Some(ComputeTrainingSummary {
+                                        completed_step_count: Some(round_index * 64),
+                                        processed_token_count: Some(round_index * 131_072),
+                                        average_loss: Some(0.19),
+                                        best_eval_score_bps: Some(9_550),
+                                        accepted_checkpoint_ref: Some(checkpoint_ref.to_string()),
+                                        aggregate_metrics: Vec::new(),
+                                        artifacts: Vec::new(),
+                                    }),
+                                    metadata: json!({
+                                        "network_id": network_id,
+                                        "window_id": window_id,
+                                        "closeout_status": "rewarded",
+                                        "payout_eligible": true,
+                                        "work_class": ComputeTrainingWorkClass::FullIslandLocalUpdateTraining.label(),
+                                        "replica_type": ComputeTrainingReplicaType::Island.label(),
+                                        "progress_class": training_work_progress_class(ComputeTrainingWorkClass::FullIslandLocalUpdateTraining).label(),
+                                        "weak_device_bearing": false,
+                                        "promoted_checkpoint_ref": checkpoint_ref,
+                                        "aggregated_delta_digest": format!("sha256:aggregate-{window_id}"),
+                                        "contributor_tiers": contributor_tiers,
+                                        "payout_projection": {
+                                            "basis": "aggregation_weight",
+                                            "weight_basis": "tokens",
+                                            "total_weight_value": 131_072u64,
+                                            "weighted": true,
+                                            "shared_result": false,
+                                            "progress_bearing": true,
+                                            "participant_count": 1,
+                                            "progress_participant_count": 1,
+                                            "participants": []
+                                        }
+                                    }),
+                                },
+                                evidence: Vec::new(),
+                                hints: ReceiptHints::default(),
+                            },
+                        )
+                        .map_err(anyhow::Error::msg)?;
+                    Ok(())
+                };
+
+            record_rewarded_window(
+                &mut store,
+                "window.0001",
+                "checkpoint://decoder/base",
+                "checkpoint://decoder/step-0001",
+                created_at_ms + 1_000,
+            )?;
+            record_rewarded_window(
+                &mut store,
+                "window.0002",
+                "checkpoint://decoder/step-0001",
+                "checkpoint://decoder/step-0002",
+                created_at_ms + 2_000,
+            )?;
+
+            let source_policy_revision =
+                compute_adapter_policy_revision("policy-rev-window.0003", created_at_ms as i64 + 2_900);
+            let mut source_checkpoint_pointer =
+                compute_adapter_checkpoint_pointer("sha256:pointer-window.0003", created_at_ms as i64 + 2_950);
+            source_checkpoint_pointer.scope_id = training_run_id.to_string();
+            source_checkpoint_pointer.checkpoint_ref = "checkpoint://decoder/step-0002".to_string();
+            source_checkpoint_pointer.manifest_digest =
+                "sha256:checkpoint-manifest-window.0003".to_string();
+            store
+                .kernel
+                .record_compute_adapter_window(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 3_000),
+                    RecordComputeAdapterWindowRequest {
+                        idempotency_key: "idemp.window.window.0003".to_string(),
+                        trace: TraceContext::default(),
+                        policy: kernel_policy(),
+                        window: ComputeAdapterTrainingWindow {
+                            window_id: "window.0003".to_string(),
+                            training_run_id: training_run_id.to_string(),
+                            stage_id: "stage.actual".to_string(),
+                            contributor_set_revision_id: "contributors.rev.actual.1".to_string(),
+                            validator_policy_ref: "policy://validator/mvp/v1".to_string(),
+                            work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+                            replica_type: ComputeTrainingReplicaType::Island,
+                            round_index: Some(3),
+                            base_checkpoint_ref: "checkpoint://decoder/step-0002".to_string(),
+                            planned_local_step_count: Some(64),
+                            aggregation_rule: Some("weighted_avg".to_string()),
+                            aggregation_weight_basis: Some("tokens".to_string()),
+                            adapter_target_id: String::new(),
+                            adapter_family: String::new(),
+                            base_model_ref: "model://psion/actual".to_string(),
+                            adapter_format: String::new(),
+                            source_policy_revision,
+                            source_checkpoint_pointer,
+                            status: ComputeAdapterWindowStatus::Active,
+                            total_contributions: 0,
+                            admitted_contributions: 0,
+                            accepted_contributions: 0,
+                            quarantined_contributions: 0,
+                            rejected_contributions: 0,
+                            replay_required_contributions: 0,
+                            replay_checked_contributions: 0,
+                            held_out_average_score_bps: None,
+                            benchmark_pass_rate_bps: None,
+                            runtime_smoke_passed: None,
+                            promotion_ready: false,
+                            gate_reason_codes: Vec::new(),
+                            window_summary_digest: "sha256:window-summary-window.0003".to_string(),
+                            promotion_disposition: None,
+                            hold_reason_codes: Vec::new(),
+                            aggregated_delta_digest: None,
+                            accepted_aggregate_id: None,
+                            output_policy_revision: None,
+                            output_checkpoint_pointer: None,
+                            promoted_checkpoint_ref: None,
+                            accepted_outcome_id: None,
+                            recorded_at_ms: created_at_ms as i64 + 3_000,
+                            metadata: training_window_metadata_value(&TrainingWindowMetadata {
+                                network_id: network_id.to_string(),
+                                artifact_bucket_uri: "gs://bucket".to_string(),
+                                environment_ref: PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
+                                backend_family: "cuda".to_string(),
+                                membership_revision: "members.rev.actual.1".to_string(),
+                                assignment_plans: Vec::new(),
+                                validation: None,
+                                planned_at_ms: created_at_ms as i64 + 2_900,
+                                activated_at_ms: Some(created_at_ms as i64 + 3_000),
+                                sealed_at_ms: None,
+                                reconciled_at_ms: None,
+                                defensibility: None,
+                                seal_deadline_ms: created_at_ms as i64 + 303_000,
+                            }),
+                        },
+                        contribution_outcomes: Vec::new(),
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .map_err(anyhow::Error::msg)?;
+
+            let scheduled_kernel_run = store
+                .kernel
+                .get_compute_training_run(training_run_id)
+                .expect("training run")
+                .clone();
+            let scheduled_metadata = training_scheduler_metadata_from_run(&scheduled_kernel_run)
+                .expect("scheduler metadata");
+            let scheduled_run = store.training_scheduler.ensure_run(
+                &scheduled_kernel_run,
+                &scheduled_metadata,
+                created_at_ms as i64 + 3_000,
+            );
+            scheduled_run.current_window_id = "window.0003".to_string();
+            scheduled_run.window_state = TrainingSchedulerWindowState::Active;
+            scheduled_run.checkpoint_ref = Some("checkpoint://decoder/step-0002".to_string());
+        }
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(
+            stats.training_public_state.current_canonical_checkpoint_ref.as_deref(),
+            Some("checkpoint://decoder/step-0002")
+        );
+        assert_eq!(
+            stats.training_public_state
+                .current_canonical_checkpoint_window_id
+                .as_deref(),
+            Some("window.0003")
+        );
+        assert_eq!(
+            stats.training_public_state.latest_accepted_window_id.as_deref(),
+            Some("window.0002")
+        );
+        assert_eq!(
+            stats.training_public_state
+                .latest_accepted_window_status
+                .as_deref(),
+            Some("reconciled")
+        );
+        assert_eq!(
+            stats.training_public_state
+                .latest_promoted_checkpoint_ref
+                .as_deref(),
+            Some("checkpoint://decoder/step-0002")
+        );
+        assert_eq!(
+            stats.training_public_state.latest_aggregate_ref.as_deref(),
+            Some("aggregate.window.0002")
+        );
+        assert_eq!(stats.training_public_state.runs.len(), 1);
+        let run_state = &stats.training_public_state.runs[0];
+        assert_eq!(run_state.current_window_id, "window.0003");
+        assert_eq!(run_state.active_window_count, 1);
+        assert_eq!(run_state.accepted_window_count, 2);
+        assert_eq!(
+            run_state.latest_accepted_window_id.as_deref(),
+            Some("window.0002")
+        );
+        assert_eq!(
+            run_state.latest_promoted_checkpoint_ref.as_deref(),
+            Some("checkpoint://decoder/step-0002")
+        );
+        assert_eq!(
+            run_state.current_canonical_checkpoint_ref.as_deref(),
+            Some("checkpoint://decoder/step-0002")
+        );
+        assert_eq!(
+            run_state.current_canonical_checkpoint_window_id.as_deref(),
+            Some("window.0003")
+        );
+
+        let accepted_window = stats
+            .training_public_state
+            .windows
+            .iter()
+            .find(|window| window.window_id == "window.0002")
+            .expect("accepted window");
+        assert!(!accepted_window.in_flight);
+        assert!(accepted_window.accepted_window);
+        assert!(!accepted_window.canonical_checkpoint_window);
+
+        let active_window = stats
+            .training_public_state
+            .windows
+            .iter()
+            .find(|window| window.window_id == "window.0003")
+            .expect("active window");
+        assert!(active_window.in_flight);
+        assert!(!active_window.accepted_window);
+        assert!(active_window.canonical_checkpoint_window);
+        assert_eq!(
+            active_window.base_checkpoint_ref,
+            "checkpoint://decoder/step-0002"
+        );
+
+        let summary = fetch_training_summary(&app).await?;
+        assert_eq!(summary.runs.len(), 1);
+        let run_summary = &summary.runs[0];
+        assert_eq!(run_summary.current_window_id, "window.0003");
+        assert_eq!(run_summary.active_window_count, 1);
+        assert_eq!(run_summary.accepted_window_count, 2);
+        assert_eq!(
+            run_summary.latest_accepted_window_id.as_deref(),
+            Some("window.0002")
+        );
+        assert_eq!(
+            run_summary.current_canonical_checkpoint_ref.as_deref(),
+            Some("checkpoint://decoder/step-0002")
+        );
+        assert_eq!(
+            run_summary.current_canonical_checkpoint_window_id.as_deref(),
+            Some("window.0003")
+        );
+
+        let visualization = fetch_training_visualization(&app).await?;
+        let visualized_run = visualization
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == training_run_id)
+            .expect("visualized run");
+        assert_eq!(visualized_run.current_window_id, "window.0003");
+        assert_eq!(visualized_run.active_window_count, 1);
+        assert_eq!(visualized_run.accepted_window_count, 2);
+        assert_eq!(
+            visualized_run.latest_accepted_window_id.as_deref(),
+            Some("window.0002")
+        );
+        assert_eq!(
+            visualized_run.current_canonical_checkpoint_ref.as_deref(),
+            Some("checkpoint://decoder/step-0002")
+        );
+        assert_eq!(
+            visualized_run
+                .current_canonical_checkpoint_window_id
+                .as_deref(),
+            Some("window.0003")
+        );
+        let visualized_window = visualization
+            .windows
+            .iter()
+            .find(|window| window.window_id == "window.0003")
+            .expect("visualized current window");
+        assert!(visualized_window.in_flight);
+        assert!(visualized_window.canonical_checkpoint_window);
+        assert!(!visualized_window.accepted_window);
+        assert!(
+            visualization.checkpoints.iter().any(|checkpoint| {
+                checkpoint.checkpoint_role == "run_canonical"
+                    && checkpoint.training_run_id == training_run_id
+                    && checkpoint.window_id.as_deref() == Some("window.0003")
+                    && checkpoint.checkpoint_ref == "checkpoint://decoder/step-0002"
+            })
         );
 
         Ok(())

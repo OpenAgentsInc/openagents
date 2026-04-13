@@ -240,6 +240,8 @@ pub struct PublicTrainingRunState {
     #[serde(default)]
     pub pending_validation_window_count: u64,
     #[serde(default)]
+    pub accepted_window_count: u64,
+    #[serde(default)]
     pub validator_challenges_open: u64,
     #[serde(default)]
     pub validator_challenges_queued: u64,
@@ -252,11 +254,19 @@ pub struct PublicTrainingRunState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_window_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_accepted_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_accepted_window_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_closeout_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_aggregate_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_promoted_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_canonical_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_canonical_checkpoint_window_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -312,6 +322,12 @@ pub struct PublicTrainingWindowState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closeout_status: Option<String>,
     #[serde(default)]
+    pub in_flight: bool,
+    #[serde(default)]
+    pub accepted_window: bool,
+    #[serde(default)]
+    pub canonical_checkpoint_window: bool,
+    #[serde(default)]
     pub payout_eligible: bool,
     #[serde(default)]
     pub weak_device_bearing: bool,
@@ -356,7 +372,15 @@ pub struct PublicTrainingStatsSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_window_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_accepted_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_accepted_window_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_closeout_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_canonical_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_canonical_checkpoint_window_id: Option<String>,
     #[serde(default)]
     pub queue_pressure: PublicTrainingQueuePressure,
     #[serde(default)]
