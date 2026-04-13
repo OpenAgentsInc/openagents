@@ -7,6 +7,7 @@ source "${SCRIPT_DIR}/common.sh"
 require_cmd gcloud
 require_cmd jq
 require_cmd base64
+require_cmd python3
 
 ensure_gcloud_context
 
@@ -27,6 +28,8 @@ VERIFY_PROVIDER_PRESENCE_LATENCY_P95_MAX_MS="${VERIFY_PROVIDER_PRESENCE_LATENCY_
 VERIFY_PROVIDER_PRESENCE_LATENCY_P99_MAX_MS="${VERIFY_PROVIDER_PRESENCE_LATENCY_P99_MAX_MS:-2000}"
 VERIFY_TREASURY_SNAPSHOT_MAX_AGE_MS="${VERIFY_TREASURY_SNAPSHOT_MAX_AGE_MS:-15000}"
 VERIFY_TREASURY_WALLET_SYNC_MAX_LAG_MS="${VERIFY_TREASURY_WALLET_SYNC_MAX_LAG_MS:-15000}"
+VERIFY_PUBLIC_STATS_LATENCY_MAX_MS="${VERIFY_PUBLIC_STATS_LATENCY_MAX_MS:-2000}"
+VERIFY_PUBLIC_PROVIDER_PRESENCE_LATENCY_MAX_MS="${VERIFY_PUBLIC_PROVIDER_PRESENCE_LATENCY_MAX_MS:-2000}"
 
 mkdir -p "$REPORT_DIR"
 
@@ -135,6 +138,47 @@ EOF
 )"
 }
 
+fetch_public_json_probe() {
+  local url="$1"
+  local method="${2:-GET}"
+  local request_body="${3:-}"
+  local url_b64 method_b64 body_b64
+  url_b64="$(printf '%s' "$url" | base64 | tr -d '\n')"
+  method_b64="$(printf '%s' "$method" | base64 | tr -d '\n')"
+  body_b64="$(printf '%s' "$request_body" | base64 | tr -d '\n')"
+  python3 - <<EOF
+import base64
+import json
+import time
+import urllib.request
+
+url = base64.b64decode("${url_b64}").decode()
+method = base64.b64decode("${method_b64}").decode().upper()
+body = base64.b64decode("${body_b64}").decode()
+
+headers = {}
+request_data = None
+if method == "POST":
+    headers["content-type"] = "application/json"
+    request_data = body.encode()
+
+request = urllib.request.Request(
+    url,
+    data=request_data,
+    headers=headers,
+    method=method,
+)
+started = time.time()
+with urllib.request.urlopen(request, timeout=20) as response:
+    body = response.read().decode()
+
+print(json.dumps({
+    "body": json.loads(body),
+    "latency_ms": int((time.time() - started) * 1000),
+}))
+EOF
+}
+
 fetch_treasury_env_json() {
   ssh_vm "$(cat <<'EOF'
 python3 - <<'PY'
@@ -241,6 +285,12 @@ PROVIDER_PRESENCE_SERIES_RESULT="$(fetch_json_probe_series \
   "POST" \
   "$PROVIDER_PRESENCE_DRY_RUN_REQUEST"
 )"
+PUBLIC_STATS_RESULT="$(fetch_public_json_probe "${NEXUS_PUBLIC_URL%/}/api/stats")"
+PUBLIC_PROVIDER_PRESENCE_RESULT="$(fetch_public_json_probe \
+  "${NEXUS_PUBLIC_URL%/}/api/provider-presence/heartbeat?dry_run=true" \
+  "POST" \
+  "$PROVIDER_PRESENCE_DRY_RUN_REQUEST"
+)"
 
 if [[ "${NEXUS_CONTROL_TREASURY_ENABLED}" == "true" ]]; then
   TREASURY_RESULT="$(fetch_json_probe "http://127.0.0.1:8080/v1/treasury/status")"
@@ -266,6 +316,8 @@ jq -n \
   --argjson health_series_result "$HEALTH_SERIES_RESULT" \
   --argjson stats_series_result "$STATS_SERIES_RESULT" \
   --argjson provider_presence_series_result "$PROVIDER_PRESENCE_SERIES_RESULT" \
+  --argjson public_stats_result "$PUBLIC_STATS_RESULT" \
+  --argjson public_provider_presence_result "$PUBLIC_PROVIDER_PRESENCE_RESULT" \
   --argjson treasury_result "$TREASURY_RESULT" \
   --argjson treasury_env "$TREASURY_ENV_JSON" \
   --argjson verify_health_latency_max_ms "$VERIFY_HEALTH_LATENCY_MAX_MS" \
@@ -281,6 +333,8 @@ jq -n \
   --argjson verify_provider_presence_latency_p99_max_ms "$VERIFY_PROVIDER_PRESENCE_LATENCY_P99_MAX_MS" \
   --argjson verify_treasury_snapshot_max_age_ms "$VERIFY_TREASURY_SNAPSHOT_MAX_AGE_MS" \
   --argjson verify_treasury_wallet_sync_max_lag_ms "$VERIFY_TREASURY_WALLET_SYNC_MAX_LAG_MS" \
+  --argjson verify_public_stats_latency_max_ms "$VERIFY_PUBLIC_STATS_LATENCY_MAX_MS" \
+  --argjson verify_public_provider_presence_latency_max_ms "$VERIFY_PUBLIC_PROVIDER_PRESENCE_LATENCY_MAX_MS" \
   '
   def gate($id; $passed; $reason; $observed):
     {
@@ -445,6 +499,36 @@ jq -n \
           max_p95_latency_ms: $verify_provider_presence_latency_p95_max_ms,
           max_p99_latency_ms: $verify_provider_presence_latency_p99_max_ms
         }
+      ),
+      gate(
+        "public_stats_endpoint";
+        ($public_stats_result.latency_ms <= $verify_public_stats_latency_max_ms);
+        (
+          if $public_stats_result.latency_ms > $verify_public_stats_latency_max_ms
+          then "public_stats_latency_exceeded"
+          else null
+          end
+        );
+        {
+          latency_ms: $public_stats_result.latency_ms,
+          max_latency_ms: $verify_public_stats_latency_max_ms
+        }
+      ),
+      gate(
+        "public_provider_presence_heartbeat";
+        (
+          (($public_provider_presence_result.body.status // "") == "online") and
+          ($public_provider_presence_result.latency_ms <= $verify_public_provider_presence_latency_max_ms)
+        );
+        (
+          if (($public_provider_presence_result.body.status // "") != "online") then "public_provider_presence_heartbeat_failed"
+          elif $public_provider_presence_result.latency_ms > $verify_public_provider_presence_latency_max_ms then "public_provider_presence_latency_exceeded"
+          else null end
+        );
+        {
+          latency_ms: $public_provider_presence_result.latency_ms,
+          max_latency_ms: $verify_public_provider_presence_latency_max_ms
+        }
       )
     ]
     +
@@ -510,11 +594,15 @@ jq -n \
     health: $health_result.body,
     stats: $stats_result.body,
     training_rollout: $training_rollout_result.body,
+    public_stats: $public_stats_result.body,
+    public_provider_presence: $public_provider_presence_result.body,
     treasury: $treasury_result.body,
     endpoint_latency_ms: {
       healthz: $health_result.latency_ms,
       stats: $stats_result.latency_ms,
       training_rollout: $training_rollout_result.latency_ms,
+      public_stats: $public_stats_result.latency_ms,
+      public_provider_presence: $public_provider_presence_result.latency_ms,
       treasury_status: $treasury_result.latency_ms
     },
     tail_latency_ms: {

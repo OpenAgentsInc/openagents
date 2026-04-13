@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
-require_cmd cloudflared
 require_cmd curl
 require_cmd gcloud
 require_cmd jq
@@ -18,22 +17,34 @@ fi
 TUNNEL_NAME="${NEXUS_CLOUDFLARE_TUNNEL_NAME}"
 TUNNEL_IMAGE="${NEXUS_CLOUDFLARE_TUNNEL_IMAGE}"
 ORIGIN_URL="${NEXUS_CLOUDFLARE_TUNNEL_ORIGIN_URL}"
+TUNNEL_TOKEN="${NEXUS_CLOUDFLARE_TUNNEL_TOKEN}"
+SKIP_DNS_SETUP="${NEXUS_CLOUDFLARE_SKIP_DNS_SETUP}"
 
-tunnel_json="$(cloudflared tunnel list --output json | jq -c --arg name "$TUNNEL_NAME" 'map(select(.name == $name)) | .[0]')"
-if [[ "$tunnel_json" == "null" || -z "$tunnel_json" ]]; then
-  log "Creating Cloudflare tunnel '${TUNNEL_NAME}'"
-  tunnel_json="$(cloudflared tunnel create --output json "$TUNNEL_NAME")"
-else
-  log "Reusing existing Cloudflare tunnel '${TUNNEL_NAME}'"
+if [[ -z "$TUNNEL_TOKEN" || "$SKIP_DNS_SETUP" != "true" ]]; then
+  require_cmd cloudflared
 fi
 
-TUNNEL_ID="$(jq -r '.id' <<<"$tunnel_json")"
-[[ -n "$TUNNEL_ID" && "$TUNNEL_ID" != "null" ]] || die "Failed to determine tunnel id for ${TUNNEL_NAME}"
+if [[ "$SKIP_DNS_SETUP" != "true" ]]; then
+  tunnel_json="$(cloudflared tunnel list --output json | jq -c --arg name "$TUNNEL_NAME" 'map(select(.name == $name)) | .[0]')"
+  if [[ "$tunnel_json" == "null" || -z "$tunnel_json" ]]; then
+    log "Creating Cloudflare tunnel '${TUNNEL_NAME}'"
+    tunnel_json="$(cloudflared tunnel create --output json "$TUNNEL_NAME")"
+  else
+    log "Reusing existing Cloudflare tunnel '${TUNNEL_NAME}'"
+  fi
 
-log "Routing ${NEXUS_PUBLIC_HOST} to tunnel ${TUNNEL_NAME} (${TUNNEL_ID})"
-cloudflared tunnel route dns --overwrite-dns "$TUNNEL_NAME" "$NEXUS_PUBLIC_HOST" >/dev/null
+  TUNNEL_ID="$(jq -r '.id' <<<"$tunnel_json")"
+  [[ -n "$TUNNEL_ID" && "$TUNNEL_ID" != "null" ]] || die "Failed to determine tunnel id for ${TUNNEL_NAME}"
 
-TUNNEL_TOKEN="$(cloudflared tunnel token "$TUNNEL_NAME" | tr -d '\r\n')"
+  log "Routing ${NEXUS_PUBLIC_HOST} to tunnel ${TUNNEL_NAME} (${TUNNEL_ID})"
+  cloudflared tunnel route dns --overwrite-dns "$TUNNEL_NAME" "$NEXUS_PUBLIC_HOST" >/dev/null
+else
+  log "Skipping DNS setup for existing Cloudflare tunnel '${TUNNEL_NAME}'"
+fi
+
+if [[ -z "$TUNNEL_TOKEN" ]]; then
+  TUNNEL_TOKEN="$(cloudflared tunnel token "$TUNNEL_NAME" | tr -d '\r\n')"
+fi
 [[ -n "$TUNNEL_TOKEN" ]] || die "Failed to fetch Cloudflare tunnel token for ${TUNNEL_NAME}"
 
 TMP_ENV="$(mktemp)"
@@ -62,8 +73,8 @@ sudo tee /etc/systemd/system/nexus-cloudflared.service >/dev/null <<'UNIT'
 [Unit]
 Description=Cloudflare tunnel for OpenAgents Nexus
 After=network-online.target docker.service nexus-relay.service
-Wants=network-online.target
-Requires=docker.service nexus-relay.service
+Wants=network-online.target nexus-relay.service
+Requires=docker.service
 
 [Service]
 Type=simple

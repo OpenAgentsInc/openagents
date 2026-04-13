@@ -129,6 +129,9 @@ the rollout if:
   the rollout-policy snapshot cannot be captured in the deploy receipt
 - repeated local-origin probes show bad tail latency on `/healthz`,
   `/api/stats`, or `/api/provider-presence/heartbeat?dry_run=true`
+- the public hostname fails `https://nexus.openagents.com/api/stats` or a
+  public dry-run provider heartbeat against
+  `https://nexus.openagents.com/api/provider-presence/heartbeat?dry_run=true`
 - treasury policy on the live status surface drifts from
   `/etc/nexus-relay/nexus-relay.env`
 - treasury snapshot freshness or wallet-sync freshness crosses the configured
@@ -241,9 +244,12 @@ Why the extra two envs matter:
   once.
 - `scripts/deploy/nexus/10-install-treasury-watchdog.sh` installs a systemd
   timer on the VM that runs every 5 minutes, checks the local treasury status
-  plus recent completed-send journal entries, and restarts `nexus-relay` only
-  when payouts have actually gone idle or the wallet/runtime has entered a hard
-  error state
+  plus recent completed-send journal entries, and by default restarts
+  `nexus-relay` only if the service itself is inactive
+- treasury runtime failures now stay in the treasury lane by default instead of
+  repeatedly bouncing the public relay shell; the legacy aggressive restart
+  path is still available through
+  `NEXUS_TREASURY_WATCHDOG_RESTART_MODE=aggressive`
 - the watchdog now has a startup grace window so it does not restart
   `nexus-relay` based on stale pre-restart dispatch timestamps before the first
   post-restart payout window can complete
@@ -260,6 +266,7 @@ export NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS=300
 export NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS=300
 export NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR=12
 export NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS=180
+export NEXUS_TREASURY_WATCHDOG_RESTART_MODE=service_inactive_only
 export NEXUS_DEPLOY_POST_RESTART_SMOKE_ENABLED=true
 export NEXUS_DEPLOY_POST_RESTART_SMOKE_TIMEOUT_SECONDS=360
 export NEXUS_DEPLOY_POST_RESTART_WARMUP_GRACE_SECONDS=180
@@ -351,12 +358,24 @@ What it does:
 - routes `nexus.openagents.com` to that tunnel
 - installs a `nexus-cloudflared.service` unit on the VM
 - forwards public HTTPS / websocket traffic to `http://127.0.0.1:8080`
+- keeps the tunnel ordered after `nexus-relay`, but no longer tears the tunnel
+  down automatically just because `nexus-relay` restarts
 
 Required local prerequisites:
 
 - `cloudflared` installed locally
 - local Cloudflare auth already present (`cloudflared login` completed previously)
 - access to the `openagents.com` zone in Cloudflare
+
+If you are reinstalling the VM-side tunnel unit from a machine that does not
+have Cloudflare login state, you can still use the repo-managed script by
+passing an already-issued tunnel token and skipping DNS setup:
+
+```bash
+export NEXUS_CLOUDFLARE_TUNNEL_TOKEN=...
+export NEXUS_CLOUDFLARE_SKIP_DNS_SETUP=true
+scripts/deploy/nexus/05-cutover-public-host.sh
+```
 
 The VM remains private-by-default. Public ingress is handled through the tunnel rather than by assigning a public VM IP.
 

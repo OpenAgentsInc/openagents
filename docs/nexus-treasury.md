@@ -229,8 +229,12 @@ That split matters operationally:
   judged against stale pre-restart dispatch and confirmation timestamps before
   the service has had time to finish wallet sync and reach the first payout
   window
-- wallet/runtime hard errors, unreachable local treasury status, or sustained
-  payout idleness with sellable Pylons online should trigger an automatic
+- the default restart mode is now `service_inactive_only`, which means a
+  treasury failure degrades the treasury lane without tearing down the public
+  Nexus ingress every five minutes
+- if you explicitly opt into `NEXUS_TREASURY_WATCHDOG_RESTART_MODE=aggressive`,
+  wallet/runtime hard errors, unreachable local treasury status, or sustained
+  payout idleness with sellable Pylons online will trigger an automatic
   `systemctl restart nexus-relay`
 - the default restart ceiling is `12/hour`, which matches the worst-case upper
   bound for a 5-minute timer and avoids suppressing legitimate recovery during
@@ -245,6 +249,7 @@ Watchdog knobs:
 - `NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS`
 - `NEXUS_TREASURY_WATCHDOG_LOCAL_STATUS_URL`
 - `NEXUS_TREASURY_WATCHDOG_SERVICE_NAME`
+- `NEXUS_TREASURY_WATCHDOG_RESTART_MODE`
 
 ## Deploy Smoke Rollback
 
