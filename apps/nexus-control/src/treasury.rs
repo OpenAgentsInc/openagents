@@ -3511,8 +3511,8 @@ pub async fn dispatch_live_payouts(
     let operation_lock = live_wallet_operation_lock();
     let _operation_guard = operation_lock.lock().await;
 
-    let wallet = match open_wallet(config, false).await {
-        Ok(wallet) => wallet,
+    let wallet = match open_wallet_uncached(config, false).await {
+        Ok(wallet) => Arc::new(wallet),
         Err(error) => {
             return TreasuryDispatchBatchResult {
                 outcomes: plans
@@ -5100,7 +5100,9 @@ where
 {
     let operation_lock = live_wallet_operation_lock();
     let _operation_guard = operation_lock.lock().await;
-    let wallet = open_wallet(config, create_if_missing).await?;
+    // Fresh wallet instances are slower, but they avoid poisoned long-lived
+    // Spark sessions that can hang refreshes and sends indefinitely.
+    let wallet = Arc::new(open_wallet_uncached(config, create_if_missing).await?);
     operation(wallet).await
 }
 
