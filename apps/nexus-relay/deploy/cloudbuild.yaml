@@ -1,18 +1,23 @@
 steps:
   - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
     env:
       - DOCKER_BUILDKIT=1
     args:
-      - buildx
-      - build
-      - --platform
-      - linux/amd64
-      - -f
-      - apps/nexus-relay/Dockerfile
-      - -t
-      - ${_IMAGE}
-      - --push
-      - .
-
-images:
-  - ${_IMAGE}
+      - -lc
+      - |
+        set -euo pipefail
+        docker buildx create --name nexus-cloudbuilder --driver docker-container --use
+        docker buildx inspect --bootstrap
+        docker buildx build \
+          --builder nexus-cloudbuilder \
+          --platform linux/amd64 \
+          --build-arg BUILD_PROFILE=${_BUILD_PROFILE} \
+          --build-arg SCCACHE_GCS_BUCKET=${_SCCACHE_BUCKET} \
+          --build-arg SCCACHE_GCS_KEY_PREFIX=${_SCCACHE_KEY_PREFIX} \
+          --cache-from type=registry,ref=${_CACHE_IMAGE} \
+          --cache-to type=registry,ref=${_CACHE_IMAGE},mode=max \
+          -f apps/nexus-relay/Dockerfile \
+          -t ${_IMAGE} \
+          --push \
+          .
