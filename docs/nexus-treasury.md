@@ -130,6 +130,8 @@ Bootstrap / explicit policy-apply envs:
 - `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS`
 - `NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE`
 - `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS`
+- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE`
+- `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS`
 - `NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV`
 - `NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE`
 - `NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON`
@@ -162,6 +164,8 @@ For the hosted production Nexus, the current safe reference treasury policy is:
 - `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600`
 - `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000`
 - `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4`
+- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=inference_ready`
+- `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true`
 
 That policy keeps the hosted treasury under `864000 sats/day` even if the
 eligible set reaches `240` providers and holds the steady-state Spark send rate
@@ -169,6 +173,26 @@ to `0.4` transfers/second instead of the unsustainable `5+` transfers/second
 range that a `2 sats / 20s` policy reaches once the provider set crosses `100`.
 The lower concurrent-send cap keeps a single wedged Spark batch from occupying
 all live payout slots at once.
+
+`NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE` controls what a placeholder
+window actually means:
+
+- `presence_only` pays any otherwise-eligible online client
+- `inference_ready` only pays clients that are actually advertising a ready
+  local Gemma lane or an open backend-ready inventory row
+- `disabled` stops placeholder accrual entirely while leaving accepted-work
+  payouts alone
+
+`NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true` adds a cheap same-machine
+guard for that placeholder lane. Nexus derives a best-effort host fingerprint
+from provider heartbeat telemetry and blocks extra placeholder payouts when
+multiple clients appear to be the same underlying machine. This dedupe does not
+change accepted-work payouts; it only stops presence/readiness inflation.
+
+Fresh config defaults now use `inference_ready` plus host dedupe. Old persisted
+policy blobs that predate these fields still deserialize as the legacy
+`presence_only` lane until an explicit policy apply changes them, so production
+can roll forward safely without silently tightening payout rules.
 
 When the fleet is ready to stop awarding fresh windows to the old
 `0.0.1-rc*` line, Nexus now supports a separate new-accrual version floor:
@@ -203,9 +227,11 @@ To intentionally change policy through deploy env:
 
 Destructive policy changes include disabling treasury, lowering payout amount,
 lowering the daily budget cap, widening the payout interval, turning on
-`require_sellable`, introducing a live new-accrual version floor, raising that
-floor, or moving its cutoff earlier. Without the explicit destructive override,
-the deploy script now fails closed.
+`require_sellable`, tightening placeholder payouts from `presence_only` to
+`inference_ready` or `disabled`, turning on placeholder host dedupe, introducing
+a live new-accrual version floor, raising that floor, or moving its cutoff
+earlier. Without the explicit destructive override, the deploy script now fails
+closed.
 
 If `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS` is unset,
 `nexus-control` refreshes wallet-backed treasury stats every 3 seconds by
@@ -425,8 +451,11 @@ Operator-safe loop health now projects through `GET /v1/treasury/status`:
 - `min_new_accrual_pylon_version`
 - `min_new_accrual_started_at_unix_ms`
 - `min_new_accrual_version_gate_active`
+- `placeholder_payout_mode`
 - `eligible_online_payout_targets`
 - `sellable_pylons_online_now`
+- `inference_ready_online_payout_targets`
+- `duplicate_host_placeholder_blocked_online_targets`
 - `min_new_accrual_version_blocked_online_targets`
 - `min_new_accrual_unknown_version_online_targets`
 - `latest_eligible_window_started_at_unix_ms`

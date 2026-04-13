@@ -9,6 +9,8 @@ TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS
   NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE
   NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS
+  NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE
+  NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS
   NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION
   NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS
   NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS
@@ -99,6 +101,8 @@ treasury_policy_change_requested() {
   [[ "$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS}" ]] && return 0
   [[ "$(jq -r '.require_sellable' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}" ]] && return 0
   [[ "$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS}" ]] && return 0
+  [[ "$(jq -r '.placeholder_payout_mode // "presence_only"' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE}" ]] && return 0
+  [[ "$(jq -r '.dedupe_placeholder_hosts // false' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS}" ]] && return 0
   [[ "$(jq -r '.min_new_accrual_pylon_version // \"\"' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}" ]] && return 0
   [[ "$(jq -r '.min_new_accrual_started_at_unix_ms // \"\"' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS}" ]] && return 0
   return 1
@@ -107,12 +111,16 @@ treasury_policy_change_requested() {
 treasury_policy_change_is_destructive() {
   local persisted_policy_json="$1"
   local persisted_enabled persisted_payout persisted_interval persisted_require_sellable persisted_budget
+  local persisted_placeholder_mode persisted_dedupe_placeholder_hosts
   local persisted_min_new_accrual_version persisted_min_new_accrual_started_at_unix_ms
+  local persisted_placeholder_rank requested_placeholder_rank
   persisted_enabled="$(jq -r '.treasury_enabled' <<<"$persisted_policy_json")"
   persisted_payout="$(jq -r '.payout_sats_per_window' <<<"$persisted_policy_json")"
   persisted_interval="$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")"
   persisted_require_sellable="$(jq -r '.require_sellable' <<<"$persisted_policy_json")"
   persisted_budget="$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")"
+  persisted_placeholder_mode="$(jq -r '.placeholder_payout_mode // "presence_only"' <<<"$persisted_policy_json")"
+  persisted_dedupe_placeholder_hosts="$(jq -r '.dedupe_placeholder_hosts // false' <<<"$persisted_policy_json")"
   persisted_min_new_accrual_version="$(jq -r '.min_new_accrual_pylon_version // \"\"' <<<"$persisted_policy_json")"
   persisted_min_new_accrual_started_at_unix_ms="$(jq -r '.min_new_accrual_started_at_unix_ms // \"\"' <<<"$persisted_policy_json")"
 
@@ -121,6 +129,20 @@ treasury_policy_change_is_destructive() {
   (( NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS > persisted_interval )) && return 0
   (( NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS < persisted_budget )) && return 0
   [[ "$persisted_require_sellable" != "true" && "${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}" == "true" ]] && return 0
+  case "$persisted_placeholder_mode" in
+    presence_only) persisted_placeholder_rank=0 ;;
+    inference_ready) persisted_placeholder_rank=1 ;;
+    disabled) persisted_placeholder_rank=2 ;;
+    *) persisted_placeholder_rank=0 ;;
+  esac
+  case "${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE}" in
+    presence_only) requested_placeholder_rank=0 ;;
+    inference_ready|readiness) requested_placeholder_rank=1 ;;
+    disabled) requested_placeholder_rank=2 ;;
+    *) requested_placeholder_rank=0 ;;
+  esac
+  (( requested_placeholder_rank > persisted_placeholder_rank )) && return 0
+  [[ "$persisted_dedupe_placeholder_hosts" != "true" && "${NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS}" == "true" ]] && return 0
   if [[ -n "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS}" ]] \
     && [[ -z "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}" ]]; then
     return 0
@@ -153,6 +175,8 @@ preserve_or_validate_persisted_treasury_policy() {
     export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS="$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE="$(jq -r '.require_sellable' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS="$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE="$(jq -r '.placeholder_payout_mode // "presence_only"' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS="$(jq -r '.dedupe_placeholder_hosts // false' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION="$(jq -r '.min_new_accrual_pylon_version // \"\"' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS="$(jq -r '.min_new_accrual_started_at_unix_ms // \"\"' <<<"$persisted_policy_json")"
     log "Preserving persisted treasury policy checksum=$(jq -r '.checksum' <<<"$persisted_policy_json")"
@@ -226,7 +250,7 @@ perform_post_restart_smoke_check() {
 
   while (( $(date +%s) < deadline_unix_s )); do
     local service_state service_start_unix_s recent_completed status_json
-    local sellable_targets wallet_runtime_status last_dispatch_at_unix_ms service_uptime_seconds
+    local inference_ready_targets wallet_runtime_status last_dispatch_at_unix_ms service_uptime_seconds
 
     service_state="$(
       gcloud compute ssh "$NEXUS_VM" \
@@ -258,27 +282,27 @@ perform_post_restart_smoke_check() {
     fi
 
     status_json="$(remote_treasury_status_json)"
-    sellable_targets="unknown"
+    inference_ready_targets="unknown"
     wallet_runtime_status="unknown"
     last_dispatch_at_unix_ms="0"
     if [[ -n "$status_json" ]]; then
-      sellable_targets="$(jq -r '.sellable_pylons_online_now // .eligible_online_payout_targets // 0' <<<"$status_json")"
+      inference_ready_targets="$(jq -r '.inference_ready_online_payout_targets // .eligible_online_payout_targets // 0' <<<"$status_json")"
       wallet_runtime_status="$(jq -r '.wallet_runtime_status // empty' <<<"$status_json")"
       last_dispatch_at_unix_ms="$(jq -r '.last_dispatch_at_unix_ms // 0' <<<"$status_json")"
-      if [[ "$sellable_targets" =~ ^[0-9]+$ ]] && (( sellable_targets == 0 )) \
+      if [[ "$inference_ready_targets" =~ ^[0-9]+$ ]] && (( inference_ready_targets == 0 )) \
         && [[ "$wallet_runtime_status" == "connected" ]]; then
-        log "Post-deploy smoke passed image=${deployed_image} with zero sellable payout targets"
+        log "Post-deploy smoke passed image=${deployed_image} with zero inference-ready payout targets"
         return 0
       fi
     fi
 
     if [[ "$service_uptime_seconds" =~ ^[0-9]+$ ]] && (( service_uptime_seconds < warmup_grace_seconds )); then
-      log "Warming up post-deploy smoke image=${deployed_image} service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed=${recent_completed} sellable=${sellable_targets} wallet_runtime_status=${wallet_runtime_status} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
+      log "Warming up post-deploy smoke image=${deployed_image} service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed=${recent_completed} inference_ready=${inference_ready_targets} wallet_runtime_status=${wallet_runtime_status} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
       sleep "$poll_seconds"
       continue
     fi
 
-    log "Waiting for post-deploy payout smoke image=${deployed_image} phase=stalled_candidate service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed=${recent_completed} sellable=${sellable_targets} wallet_runtime_status=${wallet_runtime_status} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
+    log "Waiting for post-deploy payout smoke image=${deployed_image} phase=stalled_candidate service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed=${recent_completed} inference_ready=${inference_ready_targets} wallet_runtime_status=${wallet_runtime_status} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
     sleep "$poll_seconds"
   done
 
@@ -310,6 +334,8 @@ preserve_remote_treasury_env
 : "${NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS:=3}"
 : "${NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS:=16}"
 : "${NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS:=300}"
+: "${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE:=inference_ready}"
+: "${NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS:=true}"
 : "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION:=}"
 : "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS:=}"
 : "${TOKIO_WORKER_THREADS:=16}"
@@ -346,6 +372,8 @@ NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=${NEXUS_CONTROL_TREASURY_PAYOUT_SA
 NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=${NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS}
 NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}
 NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=${NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS}
+NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE}
+NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=${NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS}
 NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION=${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}
 NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS=${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS}
 NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS=${NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS}

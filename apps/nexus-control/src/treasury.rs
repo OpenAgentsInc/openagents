@@ -31,6 +31,9 @@ const ENV_TREASURY_PAYOUT_SATS_PER_WINDOW: &str = "NEXUS_CONTROL_TREASURY_PAYOUT
 const ENV_TREASURY_PAYOUT_INTERVAL_SECONDS: &str = "NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS";
 const ENV_TREASURY_REQUIRE_SELLABLE: &str = "NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE";
 const ENV_TREASURY_DAILY_BUDGET_CAP_SATS: &str = "NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS";
+const ENV_TREASURY_PLACEHOLDER_PAYOUT_MODE: &str = "NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE";
+const ENV_TREASURY_DEDUPE_PLACEHOLDER_HOSTS: &str =
+    "NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS";
 const ENV_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION: &str =
     "NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION";
 const ENV_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS: &str =
@@ -57,6 +60,7 @@ const DEFAULT_TREASURY_PAYOUT_SATS_PER_WINDOW: u64 = 0;
 const DEFAULT_TREASURY_PAYOUT_INTERVAL_SECONDS: u64 = 3_600;
 const DEFAULT_TREASURY_REQUIRE_SELLABLE: bool = false;
 const DEFAULT_TREASURY_DAILY_BUDGET_CAP_SATS: u64 = 21_000;
+const DEFAULT_TREASURY_DEDUPE_PLACEHOLDER_HOSTS: bool = true;
 const DEFAULT_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS: Option<u64> = None;
 const DEFAULT_TREASURY_WALLET_MNEMONIC_PATH: &str = "var/nexus-control/treasury.mnemonic";
 const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wallet";
@@ -69,7 +73,7 @@ const DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: bool = false;
 const DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: u64 = 300;
 const TREASURY_PUBLIC_STATS_WINDOW_MS: u64 = 86_400_000;
 const TREASURY_PAYOUT_TARGET_DOMAIN: &str = "openagents:nexus-treasury-payout-target:v1";
-const TREASURY_POLICY_SCHEMA_VERSION: u32 = 2;
+const TREASURY_POLICY_SCHEMA_VERSION: u32 = 3;
 const TREASURY_STATE_RETENTION_WINDOW_MS: u64 = 30 * 86_400_000;
 const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 60_000;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
@@ -100,6 +104,29 @@ const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
     ],
 ];
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TreasuryPlaceholderPayoutMode {
+    #[default]
+    InferenceReady,
+    PresenceOnly,
+    Disabled,
+}
+
+impl TreasuryPlaceholderPayoutMode {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::InferenceReady => "inference_ready",
+            Self::PresenceOnly => "presence_only",
+            Self::Disabled => "disabled",
+        }
+    }
+}
+
+const fn legacy_treasury_placeholder_payout_mode() -> TreasuryPlaceholderPayoutMode {
+    TreasuryPlaceholderPayoutMode::PresenceOnly
+}
+
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
     pub enabled: bool,
@@ -107,6 +134,8 @@ pub struct TreasuryConfig {
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    pub dedupe_placeholder_hosts: bool,
     pub min_new_accrual_pylon_version: Option<String>,
     pub min_new_accrual_started_at_unix_ms: Option<u64>,
     pub reconciliation_horizon_seconds: u64,
@@ -146,6 +175,14 @@ impl TreasuryConfig {
         let daily_budget_cap_sats = parse_u64_env(
             ENV_TREASURY_DAILY_BUDGET_CAP_SATS,
             DEFAULT_TREASURY_DAILY_BUDGET_CAP_SATS,
+        )?;
+        let placeholder_payout_mode = parse_placeholder_payout_mode_env(
+            ENV_TREASURY_PLACEHOLDER_PAYOUT_MODE,
+            TreasuryPlaceholderPayoutMode::InferenceReady,
+        )?;
+        let dedupe_placeholder_hosts = parse_bool_env(
+            ENV_TREASURY_DEDUPE_PLACEHOLDER_HOSTS,
+            DEFAULT_TREASURY_DEDUPE_PLACEHOLDER_HOSTS,
         )?;
         let min_new_accrual_pylon_version =
             read_env_nonempty(ENV_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION);
@@ -200,6 +237,8 @@ impl TreasuryConfig {
             payout_interval_seconds,
             require_sellable,
             daily_budget_cap_sats,
+            placeholder_payout_mode,
+            dedupe_placeholder_hosts,
             min_new_accrual_pylon_version,
             min_new_accrual_started_at_unix_ms,
             reconciliation_horizon_seconds,
@@ -452,6 +491,8 @@ pub struct TreasuryContinuityAlert {
 struct TreasuryContinuitySignalSnapshot {
     eligible_online_payout_targets: u64,
     sellable_pylons_online_now: u64,
+    inference_ready_online_payout_targets: u64,
+    duplicate_host_placeholder_blocked_online_targets: u64,
     latest_eligible_window_started_at_unix_ms: Option<u64>,
     last_dispatch_at_unix_ms: Option<u64>,
     last_confirmed_at_unix_ms: Option<u64>,
@@ -468,6 +509,10 @@ pub struct TreasuryRuntimePolicy {
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    #[serde(default = "legacy_treasury_placeholder_payout_mode")]
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    #[serde(default)]
+    pub dedupe_placeholder_hosts: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_new_accrual_pylon_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -483,6 +528,8 @@ impl TreasuryRuntimePolicy {
             config.payout_interval_seconds,
             config.require_sellable,
             config.daily_budget_cap_sats,
+            config.placeholder_payout_mode,
+            config.dedupe_placeholder_hosts,
             config.min_new_accrual_pylon_version.clone(),
             config.min_new_accrual_started_at_unix_ms,
         )
@@ -494,6 +541,8 @@ impl TreasuryRuntimePolicy {
         payout_interval_seconds: u64,
         require_sellable: bool,
         daily_budget_cap_sats: u64,
+        placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+        dedupe_placeholder_hosts: bool,
         min_new_accrual_pylon_version: Option<String>,
         min_new_accrual_started_at_unix_ms: Option<u64>,
     ) -> Self {
@@ -504,6 +553,8 @@ impl TreasuryRuntimePolicy {
             payout_interval_seconds,
             require_sellable,
             daily_budget_cap_sats,
+            placeholder_payout_mode,
+            dedupe_placeholder_hosts,
             min_new_accrual_pylon_version: min_new_accrual_pylon_version.clone(),
             min_new_accrual_started_at_unix_ms,
         };
@@ -520,6 +571,8 @@ impl TreasuryRuntimePolicy {
             payout_interval_seconds,
             require_sellable,
             daily_budget_cap_sats,
+            placeholder_payout_mode,
+            dedupe_placeholder_hosts,
             min_new_accrual_pylon_version,
             min_new_accrual_started_at_unix_ms,
             checksum,
@@ -568,6 +621,40 @@ impl TreasuryRuntimePolicy {
             NewAccrualVersionGateVerdict::BelowFloor
         }
     }
+
+    fn placeholder_payout_verdict(
+        &self,
+        identity: &OnlinePylonIdentity,
+        seen_host_fingerprints: &mut BTreeSet<String>,
+    ) -> PlaceholderPayoutEligibilityVerdict {
+        match self.placeholder_payout_mode {
+            TreasuryPlaceholderPayoutMode::Disabled => {
+                return PlaceholderPayoutEligibilityVerdict::Disabled;
+            }
+            TreasuryPlaceholderPayoutMode::InferenceReady if !identity.inference_ready => {
+                return PlaceholderPayoutEligibilityVerdict::RequiresInferenceReady;
+            }
+            TreasuryPlaceholderPayoutMode::InferenceReady
+            | TreasuryPlaceholderPayoutMode::PresenceOnly => {}
+        }
+
+        if self.dedupe_placeholder_hosts
+            && let Some(host_fingerprint) = identity.host_fingerprint.clone()
+            && !seen_host_fingerprints.insert(host_fingerprint)
+        {
+            return PlaceholderPayoutEligibilityVerdict::DuplicateHost;
+        }
+
+        PlaceholderPayoutEligibilityVerdict::Allowed
+    }
+
+    fn placeholder_payout_classification(&self) -> TreasuryPayoutClassification {
+        TreasuryPayoutClassification {
+            payout_class: TreasuryPayoutClass::PlaceholderLiveness,
+            payout_basis: Some(self.placeholder_payout_mode.label().to_string()),
+            ..TreasuryPayoutClassification::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -578,6 +665,8 @@ struct TreasuryRuntimePolicyChecksumPayload {
     payout_interval_seconds: u64,
     require_sellable: bool,
     daily_budget_cap_sats: u64,
+    placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    dedupe_placeholder_hosts: bool,
     min_new_accrual_pylon_version: Option<String>,
     min_new_accrual_started_at_unix_ms: Option<u64>,
 }
@@ -604,6 +693,8 @@ pub struct TreasuryStatusResponse {
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    pub dedupe_placeholder_hosts: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_new_accrual_pylon_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -650,6 +741,10 @@ pub struct TreasuryStatusResponse {
     pub eligible_online_payout_targets: u64,
     #[serde(default)]
     pub sellable_pylons_online_now: u64,
+    #[serde(default)]
+    pub inference_ready_online_payout_targets: u64,
+    #[serde(default)]
+    pub duplicate_host_placeholder_blocked_online_targets: u64,
     #[serde(default)]
     pub min_new_accrual_version_blocked_online_targets: u64,
     #[serde(default)]
@@ -798,6 +893,10 @@ pub struct TreasuryPublicSnapshot {
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    #[serde(default = "legacy_treasury_placeholder_payout_mode")]
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    #[serde(default)]
+    pub dedupe_placeholder_hosts: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_new_accrual_pylon_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -856,6 +955,10 @@ pub struct TreasuryPublicSnapshot {
     pub eligible_online_payout_targets: u64,
     pub sellable_pylons_online_now: u64,
     #[serde(default)]
+    pub inference_ready_online_payout_targets: u64,
+    #[serde(default)]
+    pub duplicate_host_placeholder_blocked_online_targets: u64,
+    #[serde(default)]
     pub min_new_accrual_version_blocked_online_targets: u64,
     #[serde(default)]
     pub min_new_accrual_unknown_version_online_targets: u64,
@@ -904,6 +1007,8 @@ pub struct TreasuryPublicStats {
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    pub dedupe_placeholder_hosts: bool,
     pub min_new_accrual_pylon_version: Option<String>,
     pub min_new_accrual_started_at_unix_ms: Option<u64>,
     pub min_new_accrual_version_gate_active: bool,
@@ -923,6 +1028,8 @@ pub struct TreasuryPublicStats {
     pub wallet_sync_lag_ms: Option<u64>,
     pub eligible_online_payout_targets: u64,
     pub sellable_pylons_online_now: u64,
+    pub inference_ready_online_payout_targets: u64,
+    pub duplicate_host_placeholder_blocked_online_targets: u64,
     pub min_new_accrual_version_blocked_online_targets: u64,
     pub min_new_accrual_unknown_version_online_targets: u64,
     pub latest_eligible_window_started_at_unix_ms: Option<u64>,
@@ -959,6 +1066,8 @@ pub struct OnlinePylonIdentity {
     pub nostr_pubkey_hex: String,
     pub sellable: bool,
     pub client_version: Option<String>,
+    pub inference_ready: bool,
+    pub host_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -986,6 +1095,25 @@ impl NewAccrualVersionGateVerdict {
             self,
             Self::MissingClientVersion | Self::InvalidClientVersion
         )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlaceholderPayoutEligibilityVerdict {
+    Allowed,
+    Disabled,
+    RequiresInferenceReady,
+    DuplicateHost,
+}
+
+impl PlaceholderPayoutEligibilityVerdict {
+    const fn skip_reason(self) -> Option<&'static str> {
+        match self {
+            Self::Allowed => None,
+            Self::Disabled => Some("placeholder_payouts_disabled"),
+            Self::RequiresInferenceReady => Some("placeholder_requires_inference_ready"),
+            Self::DuplicateHost => Some("duplicate_host_placeholder_readiness"),
+        }
     }
 }
 
@@ -1184,6 +1312,10 @@ pub struct TreasuryState {
     pub eligible_online_payout_targets: u64,
     #[serde(default)]
     pub sellable_pylons_online_now: u64,
+    #[serde(default)]
+    pub inference_ready_online_payout_targets: u64,
+    #[serde(default)]
+    pub duplicate_host_placeholder_blocked_online_targets: u64,
     #[serde(default)]
     pub min_new_accrual_version_blocked_online_targets: u64,
     #[serde(default)]
@@ -1720,6 +1852,8 @@ impl TreasuryState {
             .filter(|identity| identity.sellable)
             .count() as u64;
         self.eligible_online_payout_targets = 0;
+        self.inference_ready_online_payout_targets = 0;
+        self.duplicate_host_placeholder_blocked_online_targets = 0;
         self.min_new_accrual_version_blocked_online_targets = 0;
         self.min_new_accrual_unknown_version_online_targets = 0;
         if !policy.treasury_enabled || policy.payout_interval_seconds == 0 {
@@ -1728,6 +1862,7 @@ impl TreasuryState {
 
         let payout_interval_ms = policy.payout_interval_ms();
         let mut latest_eligible_window_started_at_unix_ms: Option<u64> = None;
+        let mut seen_placeholder_host_fingerprints = BTreeSet::new();
         for identity in online_identities {
             if policy.require_sellable && !identity.sellable {
                 continue;
@@ -1736,6 +1871,20 @@ impl TreasuryState {
                 .payout_targets_by_identity
                 .contains_key(identity.nostr_pubkey_hex.as_str())
             {
+                continue;
+            }
+            if identity.inference_ready {
+                self.inference_ready_online_payout_targets =
+                    self.inference_ready_online_payout_targets.saturating_add(1);
+            }
+            let placeholder_verdict = policy
+                .placeholder_payout_verdict(identity, &mut seen_placeholder_host_fingerprints);
+            if placeholder_verdict == PlaceholderPayoutEligibilityVerdict::DuplicateHost {
+                self.duplicate_host_placeholder_blocked_online_targets = self
+                    .duplicate_host_placeholder_blocked_online_targets
+                    .saturating_add(1);
+            }
+            if placeholder_verdict != PlaceholderPayoutEligibilityVerdict::Allowed {
                 continue;
             }
             let window_started_at_unix_ms = payout_window_started_at_for_identity(
@@ -1942,6 +2091,9 @@ impl TreasuryState {
         TreasuryContinuitySignalSnapshot {
             eligible_online_payout_targets: self.eligible_online_payout_targets,
             sellable_pylons_online_now: self.sellable_pylons_online_now,
+            inference_ready_online_payout_targets: self.inference_ready_online_payout_targets,
+            duplicate_host_placeholder_blocked_online_targets: self
+                .duplicate_host_placeholder_blocked_online_targets,
             latest_eligible_window_started_at_unix_ms,
             last_dispatch_at_unix_ms: self.last_dispatch_at_unix_ms,
             last_confirmed_at_unix_ms: self.last_confirmed_payout_at_unix_ms,
@@ -2158,6 +2310,8 @@ impl TreasuryState {
             payout_interval_seconds: policy.payout_interval_seconds,
             require_sellable: policy.require_sellable,
             daily_budget_cap_sats: policy.daily_budget_cap_sats,
+            placeholder_payout_mode: policy.placeholder_payout_mode,
+            dedupe_placeholder_hosts: policy.dedupe_placeholder_hosts,
             min_new_accrual_pylon_version: policy.min_new_accrual_pylon_version.clone(),
             min_new_accrual_started_at_unix_ms: policy.min_new_accrual_started_at_unix_ms,
             min_new_accrual_version_gate_active: policy.new_accrual_version_gate_active(),
@@ -2226,6 +2380,9 @@ impl TreasuryState {
             payouts_skipped_24h,
             eligible_online_payout_targets: continuity.eligible_online_payout_targets,
             sellable_pylons_online_now: continuity.sellable_pylons_online_now,
+            inference_ready_online_payout_targets: continuity.inference_ready_online_payout_targets,
+            duplicate_host_placeholder_blocked_online_targets: continuity
+                .duplicate_host_placeholder_blocked_online_targets,
             min_new_accrual_version_blocked_online_targets: self
                 .min_new_accrual_version_blocked_online_targets,
             min_new_accrual_unknown_version_online_targets: self
@@ -2263,6 +2420,8 @@ impl TreasuryState {
             payout_interval_seconds: snapshot.payout_interval_seconds,
             require_sellable: snapshot.require_sellable,
             daily_budget_cap_sats: snapshot.daily_budget_cap_sats,
+            placeholder_payout_mode: snapshot.placeholder_payout_mode,
+            dedupe_placeholder_hosts: snapshot.dedupe_placeholder_hosts,
             min_new_accrual_pylon_version: snapshot.min_new_accrual_pylon_version,
             min_new_accrual_started_at_unix_ms: snapshot.min_new_accrual_started_at_unix_ms,
             min_new_accrual_version_gate_active: snapshot.min_new_accrual_version_gate_active,
@@ -2282,6 +2441,9 @@ impl TreasuryState {
             wallet_sync_lag_ms,
             eligible_online_payout_targets: snapshot.eligible_online_payout_targets,
             sellable_pylons_online_now: snapshot.sellable_pylons_online_now,
+            inference_ready_online_payout_targets: snapshot.inference_ready_online_payout_targets,
+            duplicate_host_placeholder_blocked_online_targets: snapshot
+                .duplicate_host_placeholder_blocked_online_targets,
             min_new_accrual_version_blocked_online_targets: snapshot
                 .min_new_accrual_version_blocked_online_targets,
             min_new_accrual_unknown_version_online_targets: snapshot
@@ -2494,6 +2656,8 @@ impl TreasuryState {
             payout_interval_seconds: stats.payout_interval_seconds,
             require_sellable: stats.require_sellable,
             daily_budget_cap_sats: stats.daily_budget_cap_sats,
+            placeholder_payout_mode: stats.placeholder_payout_mode,
+            dedupe_placeholder_hosts: stats.dedupe_placeholder_hosts,
             min_new_accrual_pylon_version: stats.min_new_accrual_pylon_version,
             min_new_accrual_started_at_unix_ms: stats.min_new_accrual_started_at_unix_ms,
             min_new_accrual_version_gate_active: stats.min_new_accrual_version_gate_active,
@@ -2524,6 +2688,9 @@ impl TreasuryState {
             wallet_sync_lag_ms: stats.wallet_sync_lag_ms,
             eligible_online_payout_targets: stats.eligible_online_payout_targets,
             sellable_pylons_online_now: stats.sellable_pylons_online_now,
+            inference_ready_online_payout_targets: stats.inference_ready_online_payout_targets,
+            duplicate_host_placeholder_blocked_online_targets: stats
+                .duplicate_host_placeholder_blocked_online_targets,
             min_new_accrual_version_blocked_online_targets: stats
                 .min_new_accrual_version_blocked_online_targets,
             min_new_accrual_unknown_version_online_targets: stats
@@ -2902,8 +3069,12 @@ impl TreasuryState {
         let payout_interval_ms = policy.payout_interval_ms();
         let (reconciliation_started_at_unix_ms, reconciliation_degraded_reason) =
             self.payout_reconciliation_started_at(config, now_unix_ms);
+        let placeholder_classification = policy.placeholder_payout_classification();
+        let mut seen_placeholder_host_fingerprints = BTreeSet::new();
 
         for identity in online_identities {
+            let placeholder_verdict = policy
+                .placeholder_payout_verdict(identity, &mut seen_placeholder_host_fingerprints);
             let current_window_started_at_unix_ms = payout_window_started_at_for_identity(
                 now_unix_ms,
                 payout_interval_ms,
@@ -2946,7 +3117,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: true,
                             counted_in_paid_total: false,
-                            classification: TreasuryPayoutClassification::default(),
+                            classification: placeholder_classification.clone(),
                         };
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
@@ -2978,7 +3149,39 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: true,
                             counted_in_paid_total: false,
-                            classification: TreasuryPayoutClassification::default(),
+                            classification: placeholder_classification.clone(),
+                        };
+                        self.payout_records_by_key
+                            .insert(payout_key, record.clone());
+                        receipt_events.push(skipped_payout_receipt(&record));
+                        if window_started_at_unix_ms >= current_window_started_at_unix_ms {
+                            break;
+                        }
+                        window_started_at_unix_ms =
+                            window_started_at_unix_ms.saturating_add(payout_interval_ms);
+                        continue;
+                    }
+
+                    if let Some(reason) = placeholder_verdict.skip_reason() {
+                        let record = TreasuryPayoutRecord {
+                            payout_key: payout_key.clone(),
+                            nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
+                            payout_target: target.spark_address.clone(),
+                            amount_sats: policy.payout_sats_per_window,
+                            status: "skipped".to_string(),
+                            reason: Some(reason.to_string()),
+                            payment_id: None,
+                            window_started_at_unix_ms,
+                            window_ends_at_unix_ms,
+                            created_at_unix_ms: now_unix_ms,
+                            updated_at_unix_ms: now_unix_ms,
+                            sellable_at_window_open: identity.sellable,
+                            dispatch_receipt_recorded: false,
+                            confirm_receipt_recorded: false,
+                            fail_receipt_recorded: false,
+                            skip_receipt_recorded: true,
+                            counted_in_paid_total: false,
+                            classification: placeholder_classification.clone(),
                         };
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
@@ -3014,7 +3217,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: true,
                             counted_in_paid_total: false,
-                            classification: TreasuryPayoutClassification::default(),
+                            classification: placeholder_classification.clone(),
                         };
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
@@ -3049,7 +3252,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: true,
                             counted_in_paid_total: false,
-                            classification: TreasuryPayoutClassification::default(),
+                            classification: placeholder_classification.clone(),
                         };
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
@@ -3084,7 +3287,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: false,
                             counted_in_paid_total: false,
-                            classification: TreasuryPayoutClassification::default(),
+                            classification: placeholder_classification.clone(),
                         },
                     );
                     dispatch_plans.push(TreasuryDispatchPlan {
@@ -4482,6 +4685,12 @@ fn treasury_policy_changed_fields(
     if before.daily_budget_cap_sats != after.daily_budget_cap_sats {
         changed_fields.push("daily_budget_cap_sats".to_string());
     }
+    if before.placeholder_payout_mode != after.placeholder_payout_mode {
+        changed_fields.push("placeholder_payout_mode".to_string());
+    }
+    if before.dedupe_placeholder_hosts != after.dedupe_placeholder_hosts {
+        changed_fields.push("dedupe_placeholder_hosts".to_string());
+    }
     if before.min_new_accrual_pylon_version != after.min_new_accrual_pylon_version {
         changed_fields.push("min_new_accrual_pylon_version".to_string());
     }
@@ -4500,6 +4709,7 @@ fn treasury_policy_change_is_destructive(
         || after.daily_budget_cap_sats < before.daily_budget_cap_sats
         || after.payout_interval_seconds > before.payout_interval_seconds
         || (!before.require_sellable && after.require_sellable)
+        || treasury_policy_placeholder_lane_is_more_restrictive(before, after)
         || treasury_policy_gate_is_more_restrictive(before, after)
 }
 
@@ -4519,6 +4729,8 @@ fn build_treasury_policy_change_record(
                 "payout_interval_seconds".to_string(),
                 "require_sellable".to_string(),
                 "daily_budget_cap_sats".to_string(),
+                "placeholder_payout_mode".to_string(),
+                "dedupe_placeholder_hosts".to_string(),
                 "min_new_accrual_pylon_version".to_string(),
                 "min_new_accrual_started_at_unix_ms".to_string(),
             ]
@@ -4646,6 +4858,14 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
             response.min_new_accrual_version_gate_active
         ),
         format!(
+            "placeholder_payout_mode: {}",
+            response.placeholder_payout_mode.label()
+        ),
+        format!(
+            "dedupe_placeholder_hosts: {}",
+            response.dedupe_placeholder_hosts
+        ),
+        format!(
             "payout_sats_paid_total: {}",
             response.payout_sats_paid_total
         ),
@@ -4701,6 +4921,14 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         format!(
             "min_new_accrual_unknown_version_online_targets: {}",
             response.min_new_accrual_unknown_version_online_targets
+        ),
+        format!(
+            "inference_ready_online_payout_targets: {}",
+            response.inference_ready_online_payout_targets
+        ),
+        format!(
+            "duplicate_host_placeholder_blocked_online_targets: {}",
+            response.duplicate_host_placeholder_blocked_online_targets
         ),
         format!(
             "training_payout_reconciliation_status: {}",
@@ -5604,6 +5832,24 @@ fn parse_optional_u64_env(name: &str, default: Option<u64>) -> Result<Option<u64
     }
 }
 
+fn parse_placeholder_payout_mode_env(
+    name: &str,
+    default: TreasuryPlaceholderPayoutMode,
+) -> Result<TreasuryPlaceholderPayoutMode, String> {
+    match std::env::var(name) {
+        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "" => Ok(default),
+            "presence_only" => Ok(TreasuryPlaceholderPayoutMode::PresenceOnly),
+            "inference_ready" | "readiness" => Ok(TreasuryPlaceholderPayoutMode::InferenceReady),
+            "disabled" => Ok(TreasuryPlaceholderPayoutMode::Disabled),
+            other => Err(format!(
+                "invalid {name}: expected presence_only, inference_ready, or disabled, got '{other}'"
+            )),
+        },
+        Err(_) => Ok(default),
+    }
+}
+
 fn read_path_env(name: &str, default: &str) -> PathBuf {
     std::env::var(name)
         .ok()
@@ -5667,6 +5913,21 @@ fn treasury_policy_gate_is_more_restrictive(
         (Some(Ok(before_version)), Some(Ok(after_version))) => after_version > before_version,
         _ => before.min_new_accrual_pylon_version != after.min_new_accrual_pylon_version,
     }
+}
+
+fn treasury_policy_placeholder_lane_is_more_restrictive(
+    before: &TreasuryRuntimePolicy,
+    after: &TreasuryRuntimePolicy,
+) -> bool {
+    let placeholder_rank = |mode: TreasuryPlaceholderPayoutMode| match mode {
+        TreasuryPlaceholderPayoutMode::PresenceOnly => 0u8,
+        TreasuryPlaceholderPayoutMode::InferenceReady => 1u8,
+        TreasuryPlaceholderPayoutMode::Disabled => 2u8,
+    };
+
+    placeholder_rank(after.placeholder_payout_mode)
+        > placeholder_rank(before.placeholder_payout_mode)
+        || (!before.dedupe_placeholder_hosts && after.dedupe_placeholder_hosts)
 }
 
 fn now_unix_ms() -> u64 {
@@ -5777,8 +6038,8 @@ mod tests {
         TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE,
         TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES, TreasuryConfig, TreasuryDispatchOutcome,
         TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryPayoutClass,
-        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPublicStats,
-        TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
+        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode,
+        TreasuryPublicStats, TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
         TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
         TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan, TreasuryWalletRefreshProgress,
         TreasuryWalletSnapshot, apply_treasury_wallet_recovery_cutover,
@@ -5802,6 +6063,8 @@ mod tests {
             payout_interval_seconds: 60,
             require_sellable: false,
             daily_budget_cap_sats: 1_000,
+            placeholder_payout_mode: TreasuryPlaceholderPayoutMode::InferenceReady,
+            dedupe_placeholder_hosts: true,
             min_new_accrual_pylon_version: None,
             min_new_accrual_started_at_unix_ms: None,
             reconciliation_horizon_seconds: 300,
@@ -6057,6 +6320,8 @@ mod tests {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
                 client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             }],
             now_unix_ms,
         );
@@ -6087,6 +6352,8 @@ mod tests {
             nostr_pubkey_hex: "pubkey-a".to_string(),
             sellable: true,
             client_version: None,
+            inference_ready: true,
+            host_fingerprint: None,
         }];
         let now_unix_ms = super::now_unix_ms();
         let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
@@ -6129,6 +6396,8 @@ mod tests {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
                 client_version: Some("0.0.1-rc12".to_string()),
+                inference_ready: true,
+                host_fingerprint: None,
             }],
             now_unix_ms,
         );
@@ -6182,6 +6451,8 @@ mod tests {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
                 client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             }],
             now_unix_ms,
         );
@@ -6195,6 +6466,125 @@ mod tests {
         assert_eq!(stats.eligible_online_payout_targets, 0);
         assert_eq!(stats.min_new_accrual_version_blocked_online_targets, 1);
         assert_eq!(stats.min_new_accrual_unknown_version_online_targets, 1);
+    }
+
+    #[test]
+    fn placeholder_payout_mode_inference_ready_skips_presence_only_nodes() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let now_unix_ms = 1_800_000;
+        let prepared = state.prepare_due_payouts(
+            &config,
+            &[OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+                client_version: Some("pylon-v0.1.1-rc1".to_string()),
+                inference_ready: false,
+                host_fingerprint: None,
+            }],
+            now_unix_ms,
+        );
+
+        assert!(prepared.dispatch_plans.is_empty());
+        let payout_key = payout_window_key(
+            payout_window_started_at_for_identity(
+                now_unix_ms,
+                config.payout_interval_ms(),
+                "pubkey-a",
+            ),
+            "pubkey-a",
+        );
+        let record = state
+            .payout_records_by_key
+            .get(payout_key.as_str())
+            .expect("placeholder skip");
+        assert_eq!(
+            record.reason.as_deref(),
+            Some("placeholder_requires_inference_ready")
+        );
+        assert_eq!(
+            record.classification.payout_basis.as_deref(),
+            Some("inference_ready")
+        );
+    }
+
+    #[test]
+    fn placeholder_payouts_dedupe_same_host_clients() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        for (nostr_pubkey_hex, spark_address) in
+            [("pubkey-a", "spark:alice"), ("pubkey-b", "spark:bob")]
+        {
+            state.payout_targets_by_identity.insert(
+                nostr_pubkey_hex.to_string(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                    source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    spark_address: spark_address.to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+        }
+
+        let now_unix_ms = 1_800_000;
+        let online = vec![
+            OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+                client_version: Some("pylon-v0.1.1-rc1".to_string()),
+                inference_ready: true,
+                host_fingerprint: Some("sha256:host-alpha".to_string()),
+            },
+            OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-b".to_string(),
+                sellable: true,
+                client_version: Some("pylon-v0.1.1-rc1".to_string()),
+                inference_ready: true,
+                host_fingerprint: Some("sha256:host-alpha".to_string()),
+            },
+        ];
+        state.observe_payout_eligibility(&config, &online, now_unix_ms);
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(stats.inference_ready_online_payout_targets, 2);
+        assert_eq!(stats.eligible_online_payout_targets, 1);
+        assert_eq!(stats.duplicate_host_placeholder_blocked_online_targets, 1);
+
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        let duplicate_key = payout_window_key(
+            payout_window_started_at_for_identity(
+                now_unix_ms,
+                config.payout_interval_ms(),
+                "pubkey-b",
+            ),
+            "pubkey-b",
+        );
+        let duplicate_record = state
+            .payout_records_by_key
+            .get(duplicate_key.as_str())
+            .expect("duplicate placeholder skip");
+        assert_eq!(
+            duplicate_record.reason.as_deref(),
+            Some("duplicate_host_placeholder_readiness")
+        );
+        assert_eq!(
+            duplicate_record.classification.payout_basis.as_deref(),
+            Some("inference_ready")
+        );
     }
 
     #[test]
@@ -6241,11 +6631,15 @@ mod tests {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
                 client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             },
             OnlinePylonIdentity {
                 nostr_pubkey_hex: "pubkey-b".to_string(),
                 sellable: true,
                 client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             },
         ];
         let now_unix_ms = 1_800_000;
@@ -6308,6 +6702,8 @@ mod tests {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
                 client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             }],
             now_unix_ms,
         );
@@ -6343,6 +6739,8 @@ mod tests {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
                 client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             }],
             now_unix_ms,
         );
@@ -7241,6 +7639,8 @@ mod tests {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
                 client_version: None,
+                inference_ready: false,
+                host_fingerprint: None,
             }],
             eligible_at_unix_ms,
         );
@@ -7470,6 +7870,8 @@ mod tests {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
                 client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             }],
             now_unix_ms,
         );
