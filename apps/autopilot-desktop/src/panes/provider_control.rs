@@ -63,11 +63,11 @@ pub fn paint_provider_control_pane(
         ProviderMode::Offline | ProviderMode::Degraded
     );
     let go_online_enabled = !wants_online
-        || mission_control_local_runtime_is_ready(
+        || (mission_control_local_runtime_is_ready(
             desktop_shell_mode,
             provider_runtime,
             local_inference_runtime,
-        );
+        ) && provider_blockers.is_empty());
     let toggle_label = if wants_online {
         "GO ONLINE"
     } else {
