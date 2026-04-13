@@ -2689,6 +2689,7 @@ impl AppShell {
         top_spans.extend(mission_control_signal_spans(
             operator_state.as_str(),
             animation_tick,
+            self.nexus_treasury_degraded(),
         ));
         let top_line = Line::from(top_spans);
 
@@ -2824,12 +2825,20 @@ impl AppShell {
         }
     }
 
+    fn nexus_treasury_degraded(&self) -> bool {
+        self.nexus_treasury_health
+            .as_ref()
+            .map(|h| h.payout_loop_health != "healthy")
+            .unwrap_or(false)
+    }
+
     fn hero_status_copy(&self) -> String {
         let (state_label, detail) = self.operator_state_label_and_detail();
         match state_label.as_str() {
             "Listening for work" => "Listening across relays for paid work".to_string(),
             "Earning now" => "Local Gemma is actively working a paid request".to_string(),
             "Waiting for payout" => "Work is done. Waiting for sats to settle".to_string(),
+            "Ready to earn" if self.nexus_treasury_degraded() => "Payouts paused — awaiting Nexus recovery.".to_string(),
             "Ready to earn" => "Standing by for the next paid match".to_string(),
             "Preparing to earn" => detail.unwrap_or_else(|| "Booting local earnings lane".to_string()),
             "Needs attention" => detail.unwrap_or_else(|| "A local runtime issue needs attention".to_string()),
@@ -3102,7 +3111,7 @@ impl AppShell {
         if let Some(health) = &self.nexus_treasury_health {
             if health.payout_loop_health != "healthy" {
                 lines.push(Line::from(Span::styled(
-                    " Nexus treasury degraded — payouts temporarily paused ",
+                    "Nexus treasury degraded — payouts temporarily paused",
                     warning_accent(),
                 )));
             }
@@ -3900,9 +3909,19 @@ fn animated_stack_gain_suffix(phase: usize, active: bool) -> &'static str {
     }
 }
 
-fn mission_control_signal_spans(state_label: &str, tick: usize) -> Vec<Span<'static>> {
+fn mission_control_signal_spans(
+    state_label: &str,
+    tick: usize,
+    treasury_degraded: bool,
+) -> Vec<Span<'static>> {
     let mut spans = vec![Span::raw("  ")];
     match state_label {
+        "Ready to earn" if treasury_degraded => {
+            return vec![
+                Span::raw(" "),
+                Span::styled(animated_boot_spinner(tick), muted_text()),
+            ];
+        }
         "Ready to earn" => {
             spans.push(Span::styled(animated_ready_heartbeat(tick), muted_text()));
         }
@@ -3948,7 +3967,6 @@ fn animated_payout_pulse(tick: usize) -> &'static str {
     }
 }
 
-#[allow(dead_code)]
 fn animated_boot_spinner(phase: usize) -> &'static str {
     match phase % 4 {
         0 => "◐",
@@ -5585,11 +5603,11 @@ mod tests {
 
     #[test]
     fn motion_helpers_match_shell_states() {
-        let ready = mission_control_signal_spans("Ready to earn", 0)
+        let ready = mission_control_signal_spans("Ready to earn", 0, false)
             .iter()
             .map(ToString::to_string)
             .collect::<String>();
-        let listening = mission_control_signal_spans("Listening for work", 1)
+        let listening = mission_control_signal_spans("Listening for work", 1, false)
             .iter()
             .map(ToString::to_string)
             .collect::<String>();
