@@ -1194,7 +1194,7 @@ dependencies = [
 [[package]]
 name = "breez-sdk-common"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#c0506407e149921bd2dbdea575fd5ce62a268a9c"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#ac98b99972486c7c16ef56f3933e3161c78c2263"
 dependencies = [
  "aes",
  "anyhow",
@@ -1231,7 +1231,7 @@ dependencies = [
 [[package]]
 name = "breez-sdk-spark"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#c0506407e149921bd2dbdea575fd5ce62a268a9c"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#ac98b99972486c7c16ef56f3933e3161c78c2263"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2868,7 +2868,7 @@ checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 [[package]]
 name = "flashnet"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#c0506407e149921bd2dbdea575fd5ce62a268a9c"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#ac98b99972486c7c16ef56f3933e3161c78c2263"
 dependencies = [
  "bitcoin 0.32.8",
  "getrandom 0.2.17",
@@ -4741,7 +4741,7 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 [[package]]
 name = "lnurl-models"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#c0506407e149921bd2dbdea575fd5ce62a268a9c"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#ac98b99972486c7c16ef56f3933e3161c78c2263"
 dependencies = [
  "serde",
 ]
@@ -4816,7 +4816,7 @@ dependencies = [
 [[package]]
 name = "macros"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#c0506407e149921bd2dbdea575fd5ce62a268a9c"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#ac98b99972486c7c16ef56f3933e3161c78c2263"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6252,7 +6252,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 [[package]]
 name = "platform-utils"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#c0506407e149921bd2dbdea575fd5ce62a268a9c"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#ac98b99972486c7c16ef56f3933e3161c78c2263"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -9566,7 +9566,7 @@ dependencies = [
 [[package]]
 name = "spark"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#c0506407e149921bd2dbdea575fd5ce62a268a9c"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#ac98b99972486c7c16ef56f3933e3161c78c2263"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -9611,7 +9611,7 @@ dependencies = [
 [[package]]
 name = "spark-wallet"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#c0506407e149921bd2dbdea575fd5ce62a268a9c"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync-c82#ac98b99972486c7c16ef56f3933e3161c78c2263"
 dependencies = [
  "bitcoin 0.32.8",
  "frost-secp256k1-tr-unofficial",
