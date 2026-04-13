@@ -5304,10 +5304,10 @@ async fn wallet_snapshot_from_wallet_with_plan_result(
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
-    wallet
-        .sync()
-        .await
-        .context("failed to sync treasury Spark wallet runtime state")?;
+    // Do not block payout dispatch on a full Spark runtime sync here.
+    // The treasury refresh loop is allowed to serve from cached wallet storage
+    // so the dispatch path can keep sending even when the upstream Spark sync
+    // lane is degraded or timing out.
     let balance = wallet
         .get_balance_cached()
         .await
