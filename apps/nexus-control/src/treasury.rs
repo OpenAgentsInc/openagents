@@ -5254,10 +5254,19 @@ async fn wallet_snapshot_from_wallet_with_plan_result(
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
-    wallet
-        .sync()
-        .await
-        .context("failed to sync treasury Spark wallet")?;
+    // The hosted treasury wallet now runs in manual mode with background
+    // processing disabled. Full Spark sync currently exercises deposit-claim
+    // and other network-heavy paths that can wedge or zero a recovered
+    // treasury wallet even when the local cached state is valid enough to
+    // continue dispatching. In that manual mode, prefer the cached wallet
+    // snapshot and bounded payment scan instead of forcing a full network sync
+    // on every treasury refresh.
+    if wallet.config().background_processing {
+        wallet
+            .sync()
+            .await
+            .context("failed to sync treasury Spark wallet")?;
+    }
     let balance = wallet
         .get_balance_cached()
         .await
