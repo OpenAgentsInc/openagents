@@ -31,6 +31,7 @@ NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR=${NEXUS_TREASURY_WATCHDOG_MAX_REST
 NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS=${NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS}
 NEXUS_TREASURY_WATCHDOG_LOCAL_STATUS_URL=${NEXUS_TREASURY_WATCHDOG_LOCAL_STATUS_URL}
 NEXUS_TREASURY_WATCHDOG_SERVICE_NAME=${NEXUS_TREASURY_WATCHDOG_SERVICE_NAME}
+NEXUS_TREASURY_WATCHDOG_RESTART_MODE=${NEXUS_TREASURY_WATCHDOG_RESTART_MODE}
 ENV
 
 cat >"$TMP_CHECK_SCRIPT" <<'CHECK'
@@ -43,6 +44,7 @@ MAX_IDLE_SECONDS="${NEXUS_TREASURY_WATCHDOG_MAX_IDLE_SECONDS:-300}"
 MAX_CONFIRM_LAG_SECONDS="${NEXUS_TREASURY_WATCHDOG_MAX_CONFIRM_LAG_SECONDS:-300}"
 MAX_RESTARTS_PER_HOUR="${NEXUS_TREASURY_WATCHDOG_MAX_RESTARTS_PER_HOUR:-12}"
 STARTUP_GRACE_SECONDS="${NEXUS_TREASURY_WATCHDOG_STARTUP_GRACE_SECONDS:-180}"
+RESTART_MODE="${NEXUS_TREASURY_WATCHDOG_RESTART_MODE:-service_inactive_only}"
 STATE_DIR="/var/lib/nexus-relay/watchdog"
 RESTART_LOG="${STATE_DIR}/restart-timestamps.log"
 MAX_CONFIRM_LAG_MS=$((MAX_CONFIRM_LAG_SECONDS * 1000))
@@ -86,6 +88,10 @@ service_active_enter_unix_s() {
   date -d "$active_enter_timestamp" +%s 2>/dev/null || echo 0
 }
 
+restart_allowed_for_treasury_faults() {
+  [[ "$RESTART_MODE" == "aggressive" ]]
+}
+
 restart_service() {
   local reason="$1"
   trim_restart_log "$((NOW_UNIX_S - 3600))"
@@ -98,6 +104,15 @@ restart_service() {
   echo "$NOW_UNIX_S" >>"$RESTART_LOG"
   log "restarting ${SERVICE_NAME} reason=${reason} recent_restarts=$((recent_restarts + 1))"
   systemctl restart "$SERVICE_NAME"
+}
+
+handle_treasury_fault() {
+  local reason="$1"
+  if restart_allowed_for_treasury_faults; then
+    restart_service "$reason"
+    return
+  fi
+  log "degraded ${SERVICE_NAME} reason=${reason} action=log_only restart_mode=${RESTART_MODE}"
 }
 
 if [[ "$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || true)" != "active" ]]; then
@@ -120,7 +135,7 @@ fi
 
 STATUS_JSON="$(curl -fsS --max-time 15 "$STATUS_URL" 2>/dev/null || true)"
 if [[ -z "$STATUS_JSON" ]]; then
-  restart_service "status_unreachable"
+  handle_treasury_fault "status_unreachable"
   exit 0
 fi
 
@@ -133,12 +148,12 @@ last_confirmed_payout_at_unix_ms="$(jq -r '.last_confirmed_payout_at_unix_ms // 
 last_dispatch_at_unix_ms="$(jq -r '.last_dispatch_at_unix_ms // 0' <<<"$STATUS_JSON")"
 
 if [[ "$wallet_runtime_status" == "error" ]]; then
-  restart_service "wallet_runtime_error"
+  handle_treasury_fault "wallet_runtime_error"
   exit 0
 fi
 
 if [[ "$payout_loop_runtime_status" == "error" || "$payout_loop_runtime_status" == "degraded" ]]; then
-  restart_service "payout_loop_runtime_${payout_loop_runtime_status}"
+  handle_treasury_fault "payout_loop_runtime_${payout_loop_runtime_status}"
   exit 0
 fi
 
@@ -151,7 +166,7 @@ confirm_lag_ms=$(( last_confirmed_payout_at_unix_ms > 0 ? NOW_UNIX_MS - last_con
 dispatch_lag_ms=$(( last_dispatch_at_unix_ms > 0 ? NOW_UNIX_MS - last_dispatch_at_unix_ms : MAX_CONFIRM_LAG_MS + 1 ))
 
 if (( dispatch_lag_ms > MAX_CONFIRM_LAG_MS && confirm_lag_ms > MAX_CONFIRM_LAG_MS )); then
-  restart_service "payouts_idle sellable=${sellable_pylons_online_now} confirm_lag_ms=${confirm_lag_ms} dispatch_lag_ms=${dispatch_lag_ms} degraded_reason=${degraded_reason:-none}"
+  handle_treasury_fault "payouts_idle sellable=${sellable_pylons_online_now} confirm_lag_ms=${confirm_lag_ms} dispatch_lag_ms=${dispatch_lag_ms} degraded_reason=${degraded_reason:-none}"
   exit 0
 fi
 
