@@ -36,6 +36,27 @@ The remaining Episode 223 blocker from this audit is not the lane contract
 anymore. It is the packaged runtime-detection / live-fleet proof path tracked
 in `openagents#4346`, `openagents#4338`, and `openagents#4343`.
 
+## Update After `#4346`
+
+The packaged runtime-detection blocker is now fixed on `main`.
+
+Current truth after `openagents#4346`:
+
+- packaged `pylon` training runtime detection no longer relies on one
+  compile-time-relative `../psionic` guess
+- the runtime probe now searches the common real layouts we actually use:
+  sibling checkouts, common home checkout roots, and `psionic*` worktrees
+- `pylon training status --json` and `pylon doctor` now surface either:
+  - the resolved Psionic repo root and source
+  - or the exact candidate failure reason when runtime detection still fails
+
+That closes the "packaged release only works if the operator manually exports
+OPENAGENTS_PSIONIC_REPO" blocker.
+
+The remaining Episode 223 blockers from this audit are now the live-fleet and
+live-Nexus proof steps tracked in `openagents#4338`, `openagents#4343`, and
+the workspace tracker.
+
 ## What Was Confirmed
 
 ### 1. The release exists

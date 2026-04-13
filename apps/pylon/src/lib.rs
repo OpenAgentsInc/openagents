@@ -87,8 +87,9 @@ use psionic_train::{
     PSIONIC_TRAIN_INVOCATION_MANIFEST_SCHEMA_VERSION, PSIONIC_TRAIN_RUNTIME_SURFACE_ID,
     PsionicTrainAdmissionIdentity, PsionicTrainArtifactBinding, PsionicTrainArtifactRef,
     PsionicTrainCoordinationContext, PsionicTrainInvocationManifest, PsionicTrainLaneContract,
-    PsionicTrainMinimumMachineClass, PsionicTrainOperation, PsionicTrainRole, PsionicTrainWorkClass,
-    admitted_environment_ref_for_lane, admitted_release_id_for_lane, runtime_build_digest,
+    PsionicTrainMinimumMachineClass, PsionicTrainOperation, PsionicTrainRole,
+    PsionicTrainWorkClass, admitted_environment_ref_for_lane, admitted_release_id_for_lane,
+    runtime_build_digest,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -184,6 +185,20 @@ struct PsionicTrainRuntimeSurface {
     repo_root: PathBuf,
     supports_apple_windowed_training: bool,
     supports_cs336_a1_demo: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PsionicRepoRootCandidate {
+    path: PathBuf,
+    source: &'static str,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct PsionicTrainRuntimeSurfaceInspection {
+    surface: Option<PsionicTrainRuntimeSurface>,
+    resolved_repo_root: Option<PathBuf>,
+    resolved_repo_source: Option<&'static str>,
+    error: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1012,6 +1027,12 @@ pub struct TrainingOperatorStatusReport {
     provider_pubkey: Option<String>,
     checkpoint_serve_url: String,
     runtime_surface_detected: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_repo_root: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_repo_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_surface_error: Option<String>,
     contributor_supported: bool,
     capability_tier: ProviderTrainingCapabilityTierProfile,
     #[serde(default)]
@@ -1634,6 +1655,12 @@ struct DoctorReport {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 struct TrainingDoctorStatus {
     runtime_surface_detected: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_repo_root: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_repo_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_surface_error: Option<String>,
     contributor_supported: bool,
     capability_tier: ProviderTrainingCapabilityTierProfile,
     #[serde(default)]
@@ -3626,13 +3653,233 @@ fn default_psionic_repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../psionic")
 }
 
-fn configured_psionic_repo_root() -> PathBuf {
+fn configured_psionic_repo_root_override() -> Option<PathBuf> {
     std::env::var(ENV_PSIONIC_REPO)
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(default_psionic_repo_root)
+}
+
+fn user_home_root() -> Option<PathBuf> {
+    std::env::var("HOME")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+fn push_psionic_repo_root_candidate(
+    candidates: &mut Vec<PsionicRepoRootCandidate>,
+    seen: &mut BTreeSet<PathBuf>,
+    path: PathBuf,
+    source: &'static str,
+) {
+    let normalized = std::fs::canonicalize(path.as_path()).unwrap_or_else(|_| path.clone());
+    if seen.insert(normalized) {
+        candidates.push(PsionicRepoRootCandidate { path, source });
+    }
+}
+
+fn append_ancestor_sibling_psionic_repo_candidates(
+    candidates: &mut Vec<PsionicRepoRootCandidate>,
+    seen: &mut BTreeSet<PathBuf>,
+    start: Option<&Path>,
+    source: &'static str,
+) {
+    let Some(start) = start else {
+        return;
+    };
+    for ancestor in start.ancestors() {
+        push_psionic_repo_root_candidate(candidates, seen, ancestor.join("psionic"), source);
+    }
+}
+
+fn append_home_psionic_repo_candidates(
+    candidates: &mut Vec<PsionicRepoRootCandidate>,
+    seen: &mut BTreeSet<PathBuf>,
+    user_home: &Path,
+) {
+    for relative in [
+        Path::new("psionic"),
+        Path::new("code/psionic"),
+        Path::new("work/psionic"),
+        Path::new("src/psionic"),
+    ] {
+        push_psionic_repo_root_candidate(
+            candidates,
+            seen,
+            user_home.join(relative),
+            "home_checkout",
+        );
+    }
+}
+
+fn append_home_psionic_worktree_candidates(
+    candidates: &mut Vec<PsionicRepoRootCandidate>,
+    seen: &mut BTreeSet<PathBuf>,
+    root: &Path,
+    source: &'static str,
+) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let mut worktrees = entries
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let file_type = entry.file_type().ok()?;
+            if !file_type.is_dir() {
+                return None;
+            }
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if !name.starts_with("psionic") {
+                return None;
+            }
+            let modified_at = entry
+                .metadata()
+                .ok()
+                .and_then(|metadata| metadata.modified().ok())
+                .unwrap_or(UNIX_EPOCH);
+            Some((modified_at, entry.path()))
+        })
+        .collect::<Vec<_>>();
+    worktrees.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+    for (_, path) in worktrees {
+        push_psionic_repo_root_candidate(candidates, seen, path, source);
+    }
+}
+
+fn psionic_repo_root_candidates_with_inputs(
+    repo_root_override: Option<&Path>,
+    current_dir: Option<&Path>,
+    current_exe_dir: Option<&Path>,
+    user_home: Option<&Path>,
+) -> Vec<PsionicRepoRootCandidate> {
+    if let Some(repo_root) = repo_root_override {
+        return vec![PsionicRepoRootCandidate {
+            path: repo_root.to_path_buf(),
+            source: "env_override",
+        }];
+    }
+
+    let mut candidates = Vec::new();
+    let mut seen = BTreeSet::new();
+    push_psionic_repo_root_candidate(
+        &mut candidates,
+        &mut seen,
+        default_psionic_repo_root(),
+        "source_tree_sibling",
+    );
+    append_ancestor_sibling_psionic_repo_candidates(
+        &mut candidates,
+        &mut seen,
+        current_dir,
+        "cwd_ancestor_sibling",
+    );
+    append_ancestor_sibling_psionic_repo_candidates(
+        &mut candidates,
+        &mut seen,
+        current_exe_dir,
+        "exe_ancestor_sibling",
+    );
+    if let Some(user_home) = user_home {
+        append_home_psionic_repo_candidates(&mut candidates, &mut seen, user_home);
+        append_home_psionic_worktree_candidates(
+            &mut candidates,
+            &mut seen,
+            &user_home.join(".worktrees"),
+            "home_worktree",
+        );
+        append_home_psionic_worktree_candidates(
+            &mut candidates,
+            &mut seen,
+            &user_home.join("code").join(".worktrees"),
+            "code_worktree",
+        );
+        append_home_psionic_worktree_candidates(
+            &mut candidates,
+            &mut seen,
+            &user_home.join("work").join(".worktrees"),
+            "work_worktree",
+        );
+    }
+    candidates
+}
+
+fn psionic_repo_root_candidates() -> Vec<PsionicRepoRootCandidate> {
+    let repo_root_override = configured_psionic_repo_root_override();
+    let current_dir = std::env::current_dir().ok();
+    let current_exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf));
+    let user_home = user_home_root();
+    psionic_repo_root_candidates_with_inputs(
+        repo_root_override.as_deref(),
+        current_dir.as_deref(),
+        current_exe_dir.as_deref(),
+        user_home.as_deref(),
+    )
+}
+
+fn summarize_psionic_repo_candidate_errors(errors: &[String], purpose: &str) -> String {
+    if errors.is_empty() {
+        return format!(
+            "no compatible Psionic checkout was found for {purpose}; set {} to an explicit path",
+            ENV_PSIONIC_REPO
+        );
+    }
+    let display_limit = 6usize;
+    let mut segments = errors
+        .iter()
+        .take(display_limit)
+        .cloned()
+        .collect::<Vec<_>>();
+    if errors.len() > display_limit {
+        segments.push(format!(
+            "... {} more candidate errors",
+            errors.len() - display_limit
+        ));
+    }
+    format!(
+        "no compatible Psionic checkout was found for {purpose}; {}",
+        segments.join(" | ")
+    )
+}
+
+fn inspect_psionic_train_runtime_surface_from_candidates(
+    candidates: Vec<PsionicRepoRootCandidate>,
+) -> PsionicTrainRuntimeSurfaceInspection {
+    let mut errors = Vec::new();
+    for candidate in candidates {
+        match inspect_psionic_train_runtime_surface_at(candidate.path.as_path()) {
+            Ok(surface) => {
+                return PsionicTrainRuntimeSurfaceInspection {
+                    surface: Some(surface),
+                    resolved_repo_root: Some(candidate.path),
+                    resolved_repo_source: Some(candidate.source),
+                    error: None,
+                };
+            }
+            Err(error) => errors.push(format!(
+                "{} {}: {}",
+                candidate.source,
+                candidate.path.display(),
+                error
+            )),
+        }
+    }
+    PsionicTrainRuntimeSurfaceInspection {
+        error: Some(summarize_psionic_repo_candidate_errors(
+            errors.as_slice(),
+            "training runtime detection",
+        )),
+        ..PsionicTrainRuntimeSurfaceInspection::default()
+    }
+}
+
+fn inspect_psionic_train_runtime_surface_detailed() -> PsionicTrainRuntimeSurfaceInspection {
+    inspect_psionic_train_runtime_surface_from_candidates(psionic_repo_root_candidates())
 }
 
 fn ensure_psionic_repo_root_exists(repo_root: &Path) -> Result<()> {
@@ -3648,8 +3895,15 @@ fn ensure_psionic_repo_root_exists(repo_root: &Path) -> Result<()> {
 }
 
 fn inspect_psionic_train_runtime_surface() -> Result<PsionicTrainRuntimeSurface> {
-    let repo_root = configured_psionic_repo_root();
-    inspect_psionic_train_runtime_surface_at(repo_root.as_path())
+    let inspection = inspect_psionic_train_runtime_surface_detailed();
+    inspection.surface.ok_or_else(|| {
+        anyhow!(
+            "{}",
+            inspection
+                .error
+                .unwrap_or_else(|| { "training runtime surface was not detected".to_string() })
+        )
+    })
 }
 
 fn inspect_psionic_train_runtime_surface_at(
@@ -4474,20 +4728,36 @@ async fn ensure_training_assignment_runtime_manifest(
 }
 
 fn resolve_psionic_repo_root() -> Result<PathBuf> {
-    let repo_root = configured_psionic_repo_root();
-    ensure_psionic_repo_root_exists(repo_root.as_path())?;
-    let example_path = repo_root
-        .join("crates")
-        .join("psionic-serve")
-        .join("examples")
-        .join("gemma4_bench.rs");
-    if !example_path.exists() {
-        bail!(
-            "Psionic checkout at {} does not contain crates/psionic-serve/examples/gemma4_bench.rs",
-            repo_root.display()
-        );
+    let mut errors = Vec::new();
+    for candidate in psionic_repo_root_candidates() {
+        if let Err(error) = ensure_psionic_repo_root_exists(candidate.path.as_path()) {
+            errors.push(format!(
+                "{} {}: {}",
+                candidate.source,
+                candidate.path.display(),
+                error
+            ));
+            continue;
+        }
+        let example_path = candidate
+            .path
+            .join("crates")
+            .join("psionic-serve")
+            .join("examples")
+            .join("gemma4_bench.rs");
+        if example_path.exists() {
+            return Ok(candidate.path);
+        }
+        errors.push(format!(
+            "{} {}: missing crates/psionic-serve/examples/gemma4_bench.rs",
+            candidate.source,
+            candidate.path.display()
+        ));
     }
-    Ok(repo_root)
+    bail!(
+        "{}",
+        summarize_psionic_repo_candidate_errors(errors.as_slice(), "Gemma benchmark")
+    )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -8295,7 +8565,8 @@ fn load_training_status_report_with_config(
 ) -> Result<TrainingOperatorStatusReport> {
     let state = load_or_create_training_runtime_state(config)?;
     let host = load_cached_provider_host_telemetry(config_path);
-    let runtime_surface = inspect_psionic_train_runtime_surface().ok();
+    let runtime_surface_inspection = inspect_psionic_train_runtime_surface_detailed();
+    let runtime_surface = runtime_surface_inspection.surface.clone();
     let contributor_availability =
         derive_adapter_training_contributor_availability(&host, runtime_surface.as_ref());
     let capability_tier =
@@ -8397,6 +8668,14 @@ fn load_training_status_report_with_config(
         provider_pubkey,
         checkpoint_serve_url: training_checkpoint_serve_url(config),
         runtime_surface_detected: runtime_surface.is_some(),
+        psionic_repo_root: runtime_surface_inspection
+            .resolved_repo_root
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        psionic_repo_source: runtime_surface_inspection
+            .resolved_repo_source
+            .map(str::to_string),
+        runtime_surface_error: runtime_surface_inspection.error.clone(),
         contributor_supported: contributor_availability.contributor_supported,
         capability_tier,
         capability_envelope_v2,
@@ -8840,6 +9119,9 @@ fn build_training_doctor_status(
     let report = load_training_status_report_local(config_path)?;
     Ok(TrainingDoctorStatus {
         runtime_surface_detected: report.runtime_surface_detected,
+        psionic_repo_root: report.psionic_repo_root.clone(),
+        psionic_repo_source: report.psionic_repo_source.clone(),
+        runtime_surface_error: report.runtime_surface_error.clone(),
         contributor_supported: report.contributor_supported,
         capability_tier: report.capability_tier.clone(),
         capability_envelope_v2: report.capability_envelope_v2.clone(),
@@ -11400,6 +11682,15 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
         format!("pending TRN retries: {}", report.pending_publication_count),
         format!("tracked closeouts: {}", report.closeout_count),
     ];
+    if let Some(psionic_repo_root) = report.psionic_repo_root.as_deref() {
+        lines.push(format!("psionic repo root: {psionic_repo_root}"));
+    }
+    if let Some(psionic_repo_source) = report.psionic_repo_source.as_deref() {
+        lines.push(format!("psionic repo source: {psionic_repo_source}"));
+    }
+    if let Some(runtime_surface_error) = report.runtime_surface_error.as_deref() {
+        lines.push(format!("runtime surface error: {runtime_surface_error}"));
+    }
     if let Some(provider_pubkey) = report.provider_pubkey.as_deref() {
         lines.push(format!("provider pubkey: {provider_pubkey}"));
     }
@@ -17755,13 +18046,14 @@ mod tests {
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CHECKPOINT_FAMILY,
         PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF, PYLON_TRAINING_ENVIRONMENT_REF,
         PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB, PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB,
-        PYLON_TRAINING_VALIDATOR_POLICY_REF, PsionicTrainRuntimeSurface, PylonConfig, PylonLedger,
-        PylonLedgerJob, PylonSettlementRecord, PylonTrainingActiveRuntimeState,
-        PylonTrainingArtifactStoreClient, PylonTrainingAssignmentAckRequest,
-        PylonTrainingCheckpointPublicationRequest, PylonTrainingCloseoutCacheEntry,
-        PylonTrainingContributionOutcomeCacheEntry, PylonTrainingCoordinatorClient,
-        PylonTrainingDrainNoticeRequest, PylonTrainingFailureNoticeRequest,
-        PylonTrainingFailureReceipt, PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
+        PYLON_TRAINING_VALIDATOR_POLICY_REF, PsionicRepoRootCandidate, PsionicTrainRuntimeSurface,
+        PylonConfig, PylonLedger, PylonLedgerJob, PylonSettlementRecord,
+        PylonTrainingActiveRuntimeState, PylonTrainingArtifactStoreClient,
+        PylonTrainingAssignmentAckRequest, PylonTrainingCheckpointPublicationRequest,
+        PylonTrainingCloseoutCacheEntry, PylonTrainingContributionOutcomeCacheEntry,
+        PylonTrainingCoordinatorClient, PylonTrainingDrainNoticeRequest,
+        PylonTrainingFailureNoticeRequest, PylonTrainingFailureReceipt,
+        PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
         PylonTrainingManifestCacheEntry, PylonTrainingNodeAdmissionRequest,
         PylonTrainingPublicationPointer, PylonTrainingPublicationRecord,
         PylonTrainingPublicationTemplate, PylonTrainingReputationLabelCacheEntry,
@@ -17783,8 +18075,9 @@ mod tests {
         ensure_identity, ensure_no_conflicting_training_assignment,
         garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
         gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
-        inventory_rows, load_backend_report, load_earnings_report, load_inventory_report,
-        load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
+        inspect_psionic_train_runtime_surface_from_candidates, inventory_rows, load_backend_report,
+        load_earnings_report, load_inventory_report, load_jobs_report,
+        load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
         load_relay_report, load_sandbox_report, load_status_or_detect,
         load_training_artifact_inspection_report, load_training_status_report_local,
@@ -17792,9 +18085,10 @@ mod tests {
         merge_ledger_earnings, merge_ledger_recent_jobs, mutate_ledger, now_epoch_ms, parse_args,
         planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
         provider_presence_client, psionic_gemma_benchmark_command_args,
-        publish_announcement_report, publish_training_trn_state, refresh_relay_report,
-        remove_configured_relay, render_earnings_report, render_human_status, render_jobs_report,
-        render_public_config_json, render_sandbox_report, render_training_status_report,
+        psionic_repo_root_candidates_with_inputs, publish_announcement_report,
+        publish_training_trn_state, refresh_relay_report, remove_configured_relay,
+        render_earnings_report, render_human_status, render_jobs_report, render_public_config_json,
+        render_sandbox_report, render_training_status_report,
         report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
@@ -18177,6 +18471,25 @@ mod tests {
             supports_apple_windowed_training: true,
             supports_cs336_a1_demo: true,
         }
+    }
+
+    fn write_minimal_psionic_train_runtime_layout(root: &Path) -> anyhow::Result<()> {
+        std::fs::create_dir_all(root.join("crates/psionic-train/src"))?;
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")?;
+        std::fs::write(root.join("TRAIN"), "#!/bin/sh\n")?;
+        std::fs::write(
+            root.join("crates/psionic-train/src/main.rs"),
+            "fn main() {}\n",
+        )?;
+        std::fs::write(
+            root.join("crates/psionic-train/src/train_runtime.rs"),
+            "pub const SURFACE: &str = \"psionic-train.runtime.v1\";\n\
+pub const PSION_APPLE_WINDOWED_TRAINING_LANE_ID: &str = \"psion_apple_windowed_training_v1\";\n\
+pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1\";\n\
+pub const PSION_CS336_A1_DEMO_LANE_ID: &str = \"psion_cs336_a1_demo_v1\";\n\
+pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1\";\n",
+        )?;
+        Ok(())
     }
 
     fn training_active_runtime_fixture() -> PylonTrainingActiveRuntimeState {
@@ -18866,23 +19179,7 @@ mod tests {
     fn inspect_psionic_train_runtime_surface_accepts_minimal_machine_runtime_layout()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
-        std::fs::create_dir_all(temp_dir.path().join("crates/psionic-train/src"))?;
-        std::fs::write(temp_dir.path().join("Cargo.toml"), "[workspace]\n")?;
-        std::fs::write(temp_dir.path().join("TRAIN"), "#!/bin/sh\n")?;
-        std::fs::write(
-            temp_dir.path().join("crates/psionic-train/src/main.rs"),
-            "fn main() {}\n",
-        )?;
-        std::fs::write(
-            temp_dir
-                .path()
-                .join("crates/psionic-train/src/train_runtime.rs"),
-            "pub const SURFACE: &str = \"psionic-train.runtime.v1\";\n\
-pub const PSION_APPLE_WINDOWED_TRAINING_LANE_ID: &str = \"psion_apple_windowed_training_v1\";\n\
-pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1\";\n\
-pub const PSION_CS336_A1_DEMO_LANE_ID: &str = \"psion_cs336_a1_demo_v1\";\n\
-pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1\";\n",
-        )?;
+        write_minimal_psionic_train_runtime_layout(temp_dir.path())?;
 
         let surface = inspect_psionic_train_runtime_surface_at(temp_dir.path())?;
         ensure(
@@ -18890,6 +19187,89 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && surface.supports_apple_windowed_training
                 && surface.supports_cs336_a1_demo,
             "training surface probe should accept the minimal machine runtime layout and detect the packaged Apple and CS336 A1 lanes when present",
+        )
+    }
+
+    #[test]
+    fn psionic_repo_root_candidates_cover_home_checkout_and_worktree_layouts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let home = tempfile::tempdir()?;
+        let home_checkout = home.path().join("work/psionic");
+        let home_worktree = home.path().join("code/.worktrees/psionic-223");
+        std::fs::create_dir_all(home_checkout.as_path())?;
+        std::fs::create_dir_all(home_worktree.as_path())?;
+
+        let candidates =
+            psionic_repo_root_candidates_with_inputs(None, None, None, Some(home.path()));
+
+        ensure(
+            candidates.iter().any(|candidate| {
+                candidate.source == "home_checkout" && candidate.path == home_checkout
+            }) && candidates.iter().any(|candidate| {
+                candidate.source == "code_worktree" && candidate.path == home_worktree
+            }),
+            "packaged runtime detection should search both common home checkout roots and psionic-prefixed worktree roots without requiring an ad hoc env override",
+        )
+    }
+
+    #[test]
+    fn inspect_psionic_train_runtime_surface_from_candidates_prefers_the_first_compatible_layout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let broken_root = temp_dir.path().join("broken-psionic");
+        let good_root = temp_dir.path().join("code/.worktrees/psionic-223");
+        std::fs::create_dir_all(broken_root.as_path())?;
+        std::fs::write(broken_root.join("Cargo.toml"), "[workspace]\n")?;
+        write_minimal_psionic_train_runtime_layout(good_root.as_path())?;
+
+        let inspection = inspect_psionic_train_runtime_surface_from_candidates(vec![
+            PsionicRepoRootCandidate {
+                path: broken_root.clone(),
+                source: "source_tree_sibling",
+            },
+            PsionicRepoRootCandidate {
+                path: good_root.clone(),
+                source: "code_worktree",
+            },
+        ]);
+
+        ensure(
+            inspection
+                .resolved_repo_root
+                .as_ref()
+                .is_some_and(|path| path == &good_root)
+                && inspection.resolved_repo_source == Some("code_worktree")
+                && inspection
+                    .surface
+                    .as_ref()
+                    .is_some_and(|surface| surface.supports_cs336_a1_demo),
+            "runtime detection should keep scanning past broken default candidates and settle on the first compatible checkout or worktree",
+        )
+    }
+
+    #[test]
+    fn inspect_psionic_train_runtime_surface_from_candidates_reports_exact_failure_reason()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let broken_root = temp_dir.path().join("missing-train");
+        std::fs::create_dir_all(broken_root.as_path())?;
+        std::fs::write(broken_root.join("Cargo.toml"), "[workspace]\n")?;
+        let broken_root_display = broken_root.display().to_string();
+
+        let inspection =
+            inspect_psionic_train_runtime_surface_from_candidates(vec![PsionicRepoRootCandidate {
+                path: broken_root.clone(),
+                source: "env_override",
+            }]);
+
+        ensure(
+            inspection.surface.is_none()
+                && inspection.error.as_deref().is_some_and(|error: &str| {
+                    error.contains("env_override")
+                        && error.contains(broken_root_display.as_str())
+                        && error.contains("does not contain TRAIN")
+                }),
+            "runtime detection failures should keep the exact candidate source, path, and missing-entrypoint reason visible to the operator",
         )
     }
 
@@ -22663,7 +23043,6 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             report.current_run_id.as_deref() == Some("run.alpha")
                 && report.active_window_id.as_deref() == Some("window.0001")
-                && report.capability_tier.tier == ProviderTrainingCapabilityTier::Tier0Presence
                 && report.last_checkpoint.as_ref().is_some_and(|checkpoint| {
                     checkpoint.checkpoint_ref == "checkpoint://run.alpha/0001"
                         && checkpoint.optimizer_step == Some(42)
@@ -22675,6 +23054,17 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     entry.subject_kind == "node_record" && entry.event_id == "event.node.alpha"
                 }),
             "training status should surface the current run, last checkpoint, validator queue, and recent TRN publications",
+        )?;
+        ensure(
+            (report.runtime_surface_detected
+                && report.psionic_repo_root.is_some()
+                && report.psionic_repo_source.is_some()
+                && report.runtime_surface_error.is_none())
+                || (!report.runtime_surface_detected
+                    && report.psionic_repo_root.is_none()
+                    && report.psionic_repo_source.is_none()
+                    && report.runtime_surface_error.is_some()),
+            "training status should expose either the resolved Psionic repo root and source or the exact runtime-surface detection failure",
         )?;
         ensure(
             report.recent_issues.iter().any(|issue| {
@@ -22694,10 +23084,12 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let human = render_training_status_report(&report);
         ensure(
             human.contains("training state: blocked")
-                && human.contains("capability tier: tier0_presence")
+                && human.contains("capability tier:")
                 && human.contains("last checkpoint: checkpoint://run.alpha/0001 step=42")
-                && human.contains("validator queue: 1"),
-            "the human training status renderer should summarize the blocked runtime, checkpoint, and validator queue",
+                && human.contains("validator queue: 1")
+                && (human.contains("psionic repo root:")
+                    || human.contains("runtime surface error:")),
+            "the human training status renderer should summarize the blocked runtime, checkpoint, validator queue, and the Psionic runtime-discovery detail",
         )
     }
 

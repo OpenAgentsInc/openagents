@@ -340,7 +340,8 @@ staying buried in `state/runtime-state.json` only:
     active window, current runtime state, any retained leased assignment that
     has been accepted but not launched yet, last checkpoint pointer, validator
     queue, retained capability tier, retained TRN publication pointers, recent
-    closeouts, and recent refusals or failures
+    closeouts, recent refusals or failures, and the resolved Psionic runtime
+    root or exact runtime-detection error
 - `pylon status`
   - now appends a concise training summary to the top-level provider status,
     including the training headline (`active`, `leased`, `blocked`, `ready`,
@@ -350,7 +351,8 @@ staying buried in `state/runtime-state.json` only:
 - `pylon doctor`
   - now includes a dedicated `training` block covering runtime-surface
     discovery, contributor readiness, retained capability tier and capability
-    envelope,
+    envelope, the resolved Psionic repo root and source when present, or the
+    exact runtime-surface failure when detection cannot succeed,
     checkpoint-serve URL, retained role claims, retention limits, blocked
     reputation labels, and recent retained issues
 
@@ -421,6 +423,22 @@ Runtime-specific requirements:
 - the curated Hugging Face GGUF cache under `~/.openagents/pylon/models/huggingface/` is optional and does not make the sellable lane eligible by itself
 - sibling `psionic` checkout only if the operator explicitly needs the retained benchmark and validation lane
 
+For packaged training-capable Pylons, runtime discovery now checks these paths
+in order before you need to set `OPENAGENTS_PSIONIC_REPO`:
+
+- the explicit `OPENAGENTS_PSIONIC_REPO` override when you set it
+- the source-tree sibling path used by local dev checkouts
+- a sibling `psionic` checkout found by walking up from the current working
+  directory or executable path
+- `~/psionic`, `~/code/psionic`, `~/work/psionic`, and `~/src/psionic`
+- `~/.worktrees/psionic*`, `~/code/.worktrees/psionic*`, and
+  `~/work/.worktrees/psionic*`
+
+If your Psionic checkout lives somewhere else, set
+`OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic`. `pylon training status`
+and `pylon doctor` now expose the resolved path and source, or the exact
+runtime-detection failure when none of those paths work.
+
 If local Gemma supply is not available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
 
 ## Quick Start
@@ -476,7 +494,7 @@ Important:
 - `Pylon` still requires a local runtime endpoint at `local_gemma_base_url` (default `http://127.0.0.1:11434`) that answers `/api/tags` and has a Gemma 4 model loaded
 - if `pylon online` reports `degraded` or `NO_ELIGIBLE_SUPPLY`, check that runtime first before falling back to a source build
 
-Treat the full `gemma benchmark` matrix as a retained validation lane, not as required bring-up. That command shells into a sibling Psionic checkout for the real runtime benchmark. By default that means a local `../psionic` clone. Override it with `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic` when needed. If an existing sibling checkout is stale or missing the retained Gemma benchmark entrypoints, refresh it or clone a clean compatible `psionic` checkout and point `OPENAGENTS_PSIONIC_REPO` there.
+Treat the full `gemma benchmark` matrix as a retained validation lane, not as required bring-up. That command shells into a compatible Psionic checkout for the real runtime benchmark. It now searches the same common checkout and worktree paths as training runtime detection before you need to set `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic`. If the discovered checkout is stale or missing the retained Gemma benchmark entrypoints, refresh it or point `OPENAGENTS_PSIONIC_REPO` at a clean compatible `psionic` root explicitly.
 
 Pylon now also keeps a focused local ledger at `~/.openagents/pylon/ledger.json`. That file is the retained standalone durability layer for relay state, NIP-90 jobs, invoices, payments, settlements, and local activity replay. It is intentionally narrower than the old archived Pylon database.
 
