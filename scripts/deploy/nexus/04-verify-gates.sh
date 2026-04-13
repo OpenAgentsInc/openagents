@@ -211,6 +211,8 @@ payload = {
     "payout_interval_seconds": parse_u64("NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS"),
     "require_sellable": parse_bool("NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE"),
     "daily_budget_cap_sats": parse_u64("NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS"),
+    "min_new_accrual_pylon_version": values.get("NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION") or None,
+    "min_new_accrual_started_at_unix_ms": parse_u64("NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS"),
 }
 print(json.dumps(payload))
 PY
@@ -350,6 +352,8 @@ jq -n \
       payout_interval_seconds: $treasury_result.body.payout_interval_seconds,
       require_sellable: $treasury_result.body.require_sellable,
       daily_budget_cap_sats: $treasury_result.body.daily_budget_cap_sats,
+      min_new_accrual_pylon_version: $treasury_result.body.min_new_accrual_pylon_version,
+      min_new_accrual_started_at_unix_ms: $treasury_result.body.min_new_accrual_started_at_unix_ms,
       policy_checksum: $treasury_result.body.policy_checksum,
       policy_runtime_status: $treasury_result.body.policy_runtime_status
     } end;
@@ -360,7 +364,9 @@ jq -n \
       if $treasury_result.body.payout_sats_per_window != $treasury_env.payout_sats_per_window then "payout_sats_per_window" else empty end,
       if $treasury_result.body.payout_interval_seconds != $treasury_env.payout_interval_seconds then "payout_interval_seconds" else empty end,
       if $treasury_result.body.require_sellable != $treasury_env.require_sellable then "require_sellable" else empty end,
-      if $treasury_result.body.daily_budget_cap_sats != $treasury_env.daily_budget_cap_sats then "daily_budget_cap_sats" else empty end
+      if $treasury_result.body.daily_budget_cap_sats != $treasury_env.daily_budget_cap_sats then "daily_budget_cap_sats" else empty end,
+      if ($treasury_result.body.min_new_accrual_pylon_version // null) != ($treasury_env.min_new_accrual_pylon_version // null) then "min_new_accrual_pylon_version" else empty end,
+      if ($treasury_result.body.min_new_accrual_started_at_unix_ms // null) != ($treasury_env.min_new_accrual_started_at_unix_ms // null) then "min_new_accrual_started_at_unix_ms" else empty end
     ] end;
   def active_alerts:
     ($treasury_result.body.active_continuity_alerts // []);
@@ -376,6 +382,9 @@ jq -n \
       payouts_skipped_24h: $treasury_result.body.payouts_skipped_24h,
       eligible_online_payout_targets: $treasury_result.body.eligible_online_payout_targets,
       sellable_pylons_online_now: $treasury_result.body.sellable_pylons_online_now,
+      min_new_accrual_version_gate_active: $treasury_result.body.min_new_accrual_version_gate_active,
+      min_new_accrual_version_blocked_online_targets: $treasury_result.body.min_new_accrual_version_blocked_online_targets,
+      min_new_accrual_unknown_version_online_targets: $treasury_result.body.min_new_accrual_unknown_version_online_targets,
       latest_eligible_window_started_at_unix_ms: $treasury_result.body.latest_eligible_window_started_at_unix_ms,
       last_dispatch_at_unix_ms: $treasury_result.body.last_dispatch_at_unix_ms,
       last_confirmed_payout_at_unix_ms: $treasury_result.body.last_confirmed_payout_at_unix_ms,

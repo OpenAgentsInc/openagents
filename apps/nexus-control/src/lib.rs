@@ -6627,22 +6627,35 @@ impl ProviderPresenceState {
 
     fn online_identities(&self, now_unix_ms: u64, stale_after_ms: u64) -> Vec<OnlinePylonIdentity> {
         let stale_cutoff = now_unix_ms.saturating_sub(stale_after_ms);
-        let mut identities = BTreeMap::<String, bool>::new();
+        let mut identities = BTreeMap::<String, (bool, Option<String>, u64)>::new();
         for record in self.rows_by_key.values() {
             if !(record.online && record.last_seen_at_unix_ms >= stale_cutoff) {
                 continue;
             }
             identities
                 .entry(record.nostr_pubkey_hex.clone())
-                .and_modify(|sellable| *sellable |= record.eligible_product_count > 0)
-                .or_insert(record.eligible_product_count > 0);
+                .and_modify(|(sellable, client_version, last_seen_at_unix_ms)| {
+                    *sellable |= record.eligible_product_count > 0;
+                    if record.last_seen_at_unix_ms >= *last_seen_at_unix_ms {
+                        *client_version = record.client_version.clone();
+                        *last_seen_at_unix_ms = record.last_seen_at_unix_ms;
+                    }
+                })
+                .or_insert((
+                    record.eligible_product_count > 0,
+                    record.client_version.clone(),
+                    record.last_seen_at_unix_ms,
+                ));
         }
         identities
             .into_iter()
-            .map(|(nostr_pubkey_hex, sellable)| OnlinePylonIdentity {
-                nostr_pubkey_hex,
-                sellable,
-            })
+            .map(
+                |(nostr_pubkey_hex, (sellable, client_version, _))| OnlinePylonIdentity {
+                    nostr_pubkey_hex,
+                    sellable,
+                    client_version,
+                },
+            )
             .collect()
     }
 
@@ -19628,6 +19641,8 @@ mod tests {
                 payout_interval_seconds: 60,
                 require_sellable: false,
                 daily_budget_cap_sats: 1_000,
+                min_new_accrual_pylon_version: None,
+                min_new_accrual_started_at_unix_ms: None,
                 reconciliation_horizon_seconds: 300,
                 apply_env_policy: false,
                 allow_destructive_env_policy_change: false,

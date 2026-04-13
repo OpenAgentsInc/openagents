@@ -170,6 +170,25 @@ range that a `2 sats / 20s` policy reaches once the provider set crosses `100`.
 The lower concurrent-send cap keeps a single wedged Spark batch from occupying
 all live payout slots at once.
 
+When the fleet is ready to stop awarding fresh windows to the old
+`0.0.1-rc*` line, Nexus now supports a separate new-accrual version floor:
+
+- `NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION=<tag>`
+- `NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS=<cutover_ms>`
+
+That split is intentional:
+
+- payout records for windows before the cutoff still reconcile and dispatch,
+  even for old RC clients
+- payout records for windows at or after the cutoff require the configured
+  minimum Pylon version
+- missing or invalid client-version claims are treated as blocked for new
+  accrual once the cutoff is active
+
+For Episode 223, the intended first floor is
+`NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION=pylon-v0.1.1-rc1`. Leave
+both envs unset until the mixed Mac/Linux upgrade path is actually live.
+
 For the production VM, `scripts/deploy/nexus/03-configure-and-start.sh` now
 loads the persisted policy from `${NEXUS_CONTROL_TREASURY_STATE_PATH}` by
 default and writes those values back into the container env file. That keeps
@@ -183,9 +202,10 @@ To intentionally change policy through deploy env:
 4. if the change is destructive, also set `NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE=true`
 
 Destructive policy changes include disabling treasury, lowering payout amount,
-lowering the daily budget cap, widening the payout interval, or turning on
-`require_sellable`. Without the explicit destructive override, the deploy
-script now fails closed.
+lowering the daily budget cap, widening the payout interval, turning on
+`require_sellable`, introducing a live new-accrual version floor, raising that
+floor, or moving its cutoff earlier. Without the explicit destructive override,
+the deploy script now fails closed.
 
 If `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS` is unset,
 `nexus-control` refreshes wallet-backed treasury stats every 3 seconds by
@@ -402,8 +422,13 @@ Operator-safe loop health now projects through `GET /v1/treasury/status`:
 - `public_snapshot_generated_at_unix_ms`
 - `snapshot_age_ms`
 - `wallet_sync_lag_ms`
+- `min_new_accrual_pylon_version`
+- `min_new_accrual_started_at_unix_ms`
+- `min_new_accrual_version_gate_active`
 - `eligible_online_payout_targets`
 - `sellable_pylons_online_now`
+- `min_new_accrual_version_blocked_online_targets`
+- `min_new_accrual_unknown_version_online_targets`
 - `latest_eligible_window_started_at_unix_ms`
 - `last_dispatch_at_unix_ms`
 - `last_confirmed_payout_at_unix_ms`
