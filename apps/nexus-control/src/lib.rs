@@ -23827,7 +23827,7 @@ mod tests {
             .expect("treasury hook guard");
         let send_calls = Arc::new(AtomicUsize::new(0));
         let send_calls_clone = send_calls.clone();
-        set_test_wallet_send_hook(Some(Arc::new(move |_target, _amount_sats| {
+        set_test_wallet_send_hook(Some(Arc::new(move |_target, _amount_sats, _idempotency_key| {
             send_calls_clone.fetch_add(1, Ordering::SeqCst);
             Ok("payment-send-inline".to_string())
         })));
@@ -23889,7 +23889,7 @@ mod tests {
             .expect("treasury hook guard");
         let send_calls = Arc::new(AtomicUsize::new(0));
         let send_calls_clone = send_calls.clone();
-        set_test_wallet_send_hook(Some(Arc::new(move |_target, _amount_sats| {
+        set_test_wallet_send_hook(Some(Arc::new(move |_target, _amount_sats, _idempotency_key| {
             let call_index = send_calls_clone.fetch_add(1, Ordering::SeqCst);
             Ok(format!("payment-send-{call_index}"))
         })));
@@ -34347,7 +34347,7 @@ mod tests {
         let _guard = treasury_test_hook_lock()
             .lock()
             .expect("treasury hook guard");
-        set_test_wallet_send_hook(Some(Arc::new(|target, amount_sats| {
+        set_test_wallet_send_hook(Some(Arc::new(|target, amount_sats, _idempotency_key| {
             assert_eq!(target, "spark:node-tier2-replay");
             assert_eq!(amount_sats, 120);
             Ok("payment-send-weak-validation-001".to_string())
@@ -34743,7 +34743,7 @@ mod tests {
         let _guard = treasury_test_hook_lock()
             .lock()
             .expect("treasury hook guard");
-        set_test_wallet_send_hook(Some(Arc::new(|target, amount_sats| {
+        set_test_wallet_send_hook(Some(Arc::new(|target, amount_sats, _idempotency_key| {
             assert_eq!(target, "spark:node-tier3-island");
             assert_eq!(amount_sats, 240);
             Ok("payment-send-strong-full-island-001".to_string())
@@ -35372,7 +35372,7 @@ mod tests {
             .expect("treasury hook guard");
         let payment_counter = Arc::new(Mutex::new(0u64));
         let payment_counter_for_hook = Arc::clone(&payment_counter);
-        set_test_wallet_send_hook(Some(Arc::new(move |_target, amount_sats| {
+        set_test_wallet_send_hook(Some(Arc::new(move |_target, amount_sats, _idempotency_key| {
             assert_eq!(amount_sats, PAYOUT_SATS_PER_WINDOW);
             let mut counter = payment_counter_for_hook.lock().expect("payment counter");
             *counter = counter.saturating_add(1);

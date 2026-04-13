@@ -3537,13 +3537,14 @@ pub async fn dispatch_live_payouts(
         .map(|(index, plan)| {
             let wallet = wallet.clone();
             async move {
+                let idempotency_key = wallet_send_idempotency_key(plan.payout_key.as_str());
                 let outcome =
                     dispatch_outcome_from_send_future(plan.clone(), send_timeout_ms, async move {
                         wallet
                             .send_payment_simple_with_idempotency_key(
                                 plan.payment_request.as_str(),
                                 Some(plan.amount_sats),
-                                Some(plan.payout_key.as_str()),
+                                Some(idempotency_key.as_str()),
                             )
                             .await
                     })
@@ -4960,6 +4961,22 @@ fn payout_window_key(window_started_at_unix_ms: u64, nostr_pubkey_hex: &str) -> 
     format!("{window_started_at_unix_ms}:{nostr_pubkey_hex}")
 }
 
+fn wallet_send_idempotency_key(payout_key: &str) -> String {
+    let digest = Sha256::digest(payout_key.as_bytes());
+    let mut uuid_bytes = [0u8; 16];
+    uuid_bytes.copy_from_slice(&digest[..16]);
+    uuid_bytes[6] = (uuid_bytes[6] & 0x0f) | 0x50;
+    uuid_bytes[8] = (uuid_bytes[8] & 0x3f) | 0x80;
+    format!(
+        "{}-{}-{}-{}-{}",
+        hex::encode(&uuid_bytes[0..4]),
+        hex::encode(&uuid_bytes[4..6]),
+        hex::encode(&uuid_bytes[6..8]),
+        hex::encode(&uuid_bytes[8..10]),
+        hex::encode(&uuid_bytes[10..16]),
+    )
+}
+
 fn payout_window_started_at(now_unix_ms: u64, interval_ms: u64) -> u64 {
     if interval_ms == 0 {
         return now_unix_ms;
@@ -5446,7 +5463,8 @@ type TestWalletFundingHook = std::sync::Arc<
     dyn Fn(TreasuryFundingTargetRequest) -> Result<TreasuryFundingMaterial> + Send + Sync,
 >;
 #[cfg(test)]
-type TestWalletSendHook = std::sync::Arc<dyn Fn(String, u64) -> Result<String> + Send + Sync>;
+type TestWalletSendHook =
+    std::sync::Arc<dyn Fn(String, u64, String) -> Result<String> + Send + Sync>;
 
 #[cfg(test)]
 fn test_wallet_snapshot_hook() -> &'static Mutex<Option<TestWalletSnapshotHook>> {
@@ -5484,10 +5502,11 @@ fn dispatch_with_test_hooks(plans: &[TreasuryDispatchPlan]) -> TreasuryDispatchB
         .clone();
     let mut outcomes = Vec::with_capacity(plans.len());
     for plan in plans {
+        let idempotency_key = wallet_send_idempotency_key(plan.payout_key.as_str());
         match send_hook
             .as_ref()
             .ok_or_else(|| anyhow!("missing treasury send hook"))
-            .and_then(|hook| hook(plan.payment_request.clone(), plan.amount_sats))
+            .and_then(|hook| hook(plan.payment_request.clone(), plan.amount_sats, idempotency_key))
         {
             Ok(payment_id) => outcomes.push(TreasuryDispatchOutcome::Dispatched {
                 payout_key: plan.payout_key.clone(),
@@ -5549,7 +5568,8 @@ mod tests {
         payout_window_started_at, payout_window_started_at_for_identity,
         set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
         treasury_test_hook_lock, verify_payout_target_registration_signature,
-        wallet_refresh_page_offsets, wallet_refresh_payment_page_budget, write_json_file,
+        wallet_refresh_page_offsets, wallet_refresh_payment_page_budget,
+        wallet_send_idempotency_key, write_json_file,
     };
     use openagents_provider_substrate::sign_provider_payout_target_registration;
     use openagents_spark::PaymentSummary;
@@ -7308,9 +7328,13 @@ mod tests {
         assert_eq!(funding.bolt11_invoice.as_deref(), Some("lnbc210fund"));
         set_test_wallet_funding_hook(None);
 
-        set_test_wallet_send_hook(Some(Arc::new(|target, amount_sats| {
+        set_test_wallet_send_hook(Some(Arc::new(|target, amount_sats, idempotency_key| {
             assert_eq!(target, "spark:alice");
             assert_eq!(amount_sats, 120);
+            assert_eq!(
+                idempotency_key,
+                wallet_send_idempotency_key("window-a:pubkey-a")
+            );
             Ok("payment-send-001".to_string())
         })));
         set_test_wallet_snapshot_hook(Some(Arc::new(|| {
@@ -7358,6 +7382,26 @@ mod tests {
 
         set_test_wallet_send_hook(None);
         set_test_wallet_snapshot_hook(None);
+    }
+
+    #[test]
+    fn payout_idempotency_key_is_stable_uuid() {
+        let first = wallet_send_idempotency_key("window-a:pubkey-a");
+        let second = wallet_send_idempotency_key("window-a:pubkey-a");
+        let different = wallet_send_idempotency_key("window-b:pubkey-a");
+
+        assert_eq!(first, second);
+        assert_ne!(first, different);
+        assert_eq!(first.len(), 36);
+        for (index, ch) in first.chars().enumerate() {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                assert_eq!(ch, '-');
+            } else {
+                assert!(ch.is_ascii_hexdigit());
+            }
+        }
+        assert_eq!(first.as_bytes()[14], b'5');
+        assert!(matches!(first.as_bytes()[19], b'8' | b'9' | b'a' | b'b'));
     }
 
     #[tokio::test]
