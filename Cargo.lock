@@ -966,7 +966,7 @@ dependencies = [
  "bitflags 2.11.0",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "regex",
@@ -1194,7 +1194,7 @@ dependencies = [
 [[package]]
 name = "breez-sdk-common"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync#c78d9050f754330c32e6753e26a57cf977466659"
 dependencies = [
  "aes",
  "anyhow",
@@ -1231,7 +1231,7 @@ dependencies = [
 [[package]]
 name = "breez-sdk-spark"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync#c78d9050f754330c32e6753e26a57cf977466659"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2868,7 +2868,7 @@ checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 [[package]]
 name = "flashnet"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync#c78d9050f754330c32e6753e26a57cf977466659"
 dependencies = [
  "bitcoin 0.32.8",
  "getrandom 0.2.17",
@@ -4327,15 +4327,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
@@ -4750,7 +4741,7 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 [[package]]
 name = "lnurl-models"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync#c78d9050f754330c32e6753e26a57cf977466659"
 dependencies = [
  "serde",
 ]
@@ -4825,7 +4816,7 @@ dependencies = [
 [[package]]
 name = "macros"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync#c78d9050f754330c32e6753e26a57cf977466659"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6261,7 +6252,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 [[package]]
 name = "platform-utils"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync#c78d9050f754330c32e6753e26a57cf977466659"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -6655,7 +6646,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
  "heck 0.5.0",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "log",
  "multimap",
  "once_cell",
@@ -6688,7 +6679,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -9575,7 +9566,7 @@ dependencies = [
 [[package]]
 name = "spark"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync#c78d9050f754330c32e6753e26a57cf977466659"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -9620,7 +9611,7 @@ dependencies = [
 [[package]]
 name = "spark-wallet"
 version = "0.1.0"
-source = "git+https://github.com/AtlantisPleb/spark-sdk?rev=258ac2f976088386711ef4aa055f15ce99a2028e#258ac2f976088386711ef4aa055f15ce99a2028e"
+source = "git+https://github.com/AtlantisPleb/spark-sdk?branch=cd%2Ftreasury-wallet-runtime-only-sync#c78d9050f754330c32e6753e26a57cf977466659"
 dependencies = [
  "bitcoin 0.32.8",
  "frost-secp256k1-tr-unofficial",

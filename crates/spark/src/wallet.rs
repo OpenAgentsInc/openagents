@@ -6,7 +6,7 @@ use breez_sdk_spark::{
     BreezSdk, ClaimDepositRequest, DepositClaimError, GetInfoRequest, ListPaymentsRequest,
     ListUnclaimedDepositsRequest, MaxFee, Network as SdkNetwork, Payment, PaymentDetails,
     PaymentStatus, PaymentType, PrepareSendPaymentRequest, ReceivePaymentMethod,
-    ReceivePaymentRequest, SdkBuilder, Seed, SendPaymentRequest, SyncWalletRequest, default_config,
+    ReceivePaymentRequest, SdkBuilder, Seed, SendPaymentRequest, default_config,
 };
 
 use crate::{SparkError, SparkSigner};
@@ -239,7 +239,7 @@ impl SparkWallet {
 
     pub async fn sync(&self) -> Result<(), SparkError> {
         self.sdk
-            .sync_wallet(SyncWalletRequest {})
+            .sync_wallet_runtime_state()
             .await
             .map(|_| ())
             .map_err(|error| SparkError::Wallet(error.to_string()))
