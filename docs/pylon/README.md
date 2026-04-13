@@ -140,6 +140,14 @@ operator exactly what is missing and how to finish the bring-up path.
 
 Prefer an official release asset when one exists for the user's platform. Those archives ship the standalone `pylon` and `pylon-tui` binaries directly, so the operator does not need a Rust toolchain just to bring a node online.
 
+For maintainers cutting a multi-platform Pylon release, use
+`scripts/release/pylon-binary-release.sh --version <version> --publish` once
+per platform from clean checkouts on the matching host machines. The helper now
+creates the GitHub release when the tag does not exist yet and uploads or
+replaces the current platform assets when the tag already exists, so
+`darwin-arm64` and `linux-x86_64` can land on the same `pylon-v...` tag
+without manual asset shuffling.
+
 Use a direct release asset install only when the operator explicitly does not want the npm bootstrap layer:
 
 ```bash
