@@ -16359,15 +16359,6 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
     ) {
         return;
     }
-    if matches!(refresh_state, TreasuryWalletRefreshState::Due)
-        && state
-            .store
-            .read()
-            .map(|store| !store.treasury.due_wallet_refresh_requires_reconciliation())
-            .unwrap_or(false)
-    {
-        return;
-    }
     if !try_begin_treasury_wallet_refresh_cycle() {
         return;
     }
@@ -24532,7 +24523,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn treasury_wallet_refresh_cycle_skips_idle_due_refreshes() -> Result<()> {
+    async fn treasury_wallet_refresh_cycle_refreshes_due_snapshots() -> Result<()> {
         let mut config = test_config()?;
         config.treasury.enabled = true;
         config.treasury.wallet_status_refresh_seconds = 1;
@@ -24559,13 +24550,10 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
 
         run_treasury_wallet_refresh_cycle(&state, true).await;
-        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
 
-        let store = state
-            .store
-            .read()
-            .expect("store read after idle refresh skip");
-        assert_eq!(store.treasury.wallet_balance_sats, 500);
+        let store = state.store.read().expect("store read after due refresh");
+        assert_eq!(store.treasury.wallet_balance_sats, 710);
 
         set_test_wallet_snapshot_hook(None);
         Ok(())

@@ -239,6 +239,10 @@ impl TreasuryConfig {
             .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
     }
 
+    pub fn dispatch_plan_limit(&self) -> usize {
+        self.max_concurrent_send_operations(usize::MAX)
+    }
+
     pub fn max_concurrent_send_operations(&self, plan_count: usize) -> usize {
         plan_count.min(self.max_concurrent_sends).max(1)
     }
@@ -1525,14 +1529,6 @@ impl TreasuryState {
         })
     }
 
-    pub fn due_wallet_refresh_requires_reconciliation(&self) -> bool {
-        self.payout_records_by_key.values().any(|record| {
-            record.status == "dispatched"
-                && !record.counted_in_paid_total
-                && record.payment_id.is_some()
-        })
-    }
-
     fn payout_loop_health(&self, config: &TreasuryConfig) -> String {
         if !self.treasury_enabled(config) {
             return "disabled".to_string();
@@ -2641,6 +2637,7 @@ impl TreasuryState {
         policy: &TreasuryRuntimePolicy,
         now_unix_ms: u64,
         reserved_budget_sats: &mut u64,
+        available_dispatch_slots: usize,
     ) -> Vec<TreasuryDispatchPlan> {
         let mut queued = self
             .payout_records_by_key
@@ -2658,6 +2655,9 @@ impl TreasuryState {
 
         let mut dispatch_plans = Vec::new();
         for (_, _, payout_key) in queued {
+            if dispatch_plans.len() >= available_dispatch_slots {
+                break;
+            }
             let Some(record) = self.payout_records_by_key.get_mut(payout_key.as_str()) else {
                 continue;
             };
@@ -2712,8 +2712,19 @@ impl TreasuryState {
         }
 
         let mut reserved_budget_sats = self.reserved_budget_last_24h(now_unix_ms);
-        let mut dispatch_plans =
-            self.claim_queued_payouts_for_dispatch(&policy, now_unix_ms, &mut reserved_budget_sats);
+        let dispatch_plan_limit = config.dispatch_plan_limit();
+        let inflight_dispatch_count = self
+            .payout_records_by_key
+            .values()
+            .filter(|record| record.status == "dispatching" && record.payment_id.is_none())
+            .count();
+        let available_dispatch_slots = dispatch_plan_limit.saturating_sub(inflight_dispatch_count);
+        let mut dispatch_plans = self.claim_queued_payouts_for_dispatch(
+            &policy,
+            now_unix_ms,
+            &mut reserved_budget_sats,
+            available_dispatch_slots,
+        );
         if online_identities.is_empty() {
             self.refresh_public_snapshot(config, now_unix_ms);
             return TreasuryPayoutPreparation {
@@ -2850,8 +2861,11 @@ impl TreasuryState {
                         continue;
                     }
 
-                    reserved_budget_sats =
-                        reserved_budget_sats.saturating_add(policy.payout_sats_per_window);
+                    let can_dispatch_now = dispatch_plans.len() < available_dispatch_slots;
+                    if can_dispatch_now {
+                        reserved_budget_sats =
+                            reserved_budget_sats.saturating_add(policy.payout_sats_per_window);
+                    }
                     self.payout_records_by_key.insert(
                         payout_key.clone(),
                         TreasuryPayoutRecord {
@@ -2859,7 +2873,11 @@ impl TreasuryState {
                             nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
                             payout_target: target.spark_address.clone(),
                             amount_sats: policy.payout_sats_per_window,
-                            status: "dispatching".to_string(),
+                            status: if can_dispatch_now {
+                                "dispatching".to_string()
+                            } else {
+                                "queued".to_string()
+                            },
                             reason: None,
                             payment_id: None,
                             window_started_at_unix_ms,
@@ -2875,11 +2893,13 @@ impl TreasuryState {
                             classification: TreasuryPayoutClassification::default(),
                         },
                     );
-                    dispatch_plans.push(TreasuryDispatchPlan {
-                        payout_key,
-                        payment_request: target.spark_address,
-                        amount_sats: policy.payout_sats_per_window,
-                    });
+                    if can_dispatch_now {
+                        dispatch_plans.push(TreasuryDispatchPlan {
+                            payout_key,
+                            payment_request: target.spark_address,
+                            amount_sats: policy.payout_sats_per_window,
+                        });
+                    }
                 }
 
                 if window_started_at_unix_ms >= current_window_started_at_unix_ms {
@@ -5834,6 +5854,65 @@ mod tests {
         let prepared_again = state.prepare_due_payouts(&config, &online, now_unix_ms);
         assert!(prepared_again.dispatch_plans.is_empty());
         assert!(prepared_again.receipt_events.is_empty());
+    }
+
+    #[test]
+    fn payout_preparation_caps_dispatches_and_queues_overflow() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.max_concurrent_sends = 1;
+        for (nostr_pubkey_hex, spark_address) in [
+            ("pubkey-a", "spark:alice"),
+            ("pubkey-b", "spark:bob"),
+            ("pubkey-c", "spark:carol"),
+        ] {
+            state.payout_targets_by_identity.insert(
+                nostr_pubkey_hex.to_string(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                    source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    spark_address: spark_address.to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+        }
+
+        let online = vec![
+            OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+            },
+            OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-b".to_string(),
+                sellable: true,
+            },
+            OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-c".to_string(),
+                sellable: true,
+            },
+        ];
+        let now_unix_ms = super::now_unix_ms();
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
+
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .values()
+                .filter(|record| record.status == "dispatching")
+                .count(),
+            1
+        );
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .values()
+                .filter(|record| record.status == "queued")
+                .count(),
+            2
+        );
     }
 
     #[test]
