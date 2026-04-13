@@ -3446,10 +3446,33 @@ pub async fn load_live_wallet_refresh_result_with_plan(
         });
     }
 
-    with_live_wallet(config, create_if_missing, move |wallet| async move {
-        wallet_snapshot_from_wallet_with_plan_result(wallet.as_ref(), &refresh_plan).await
-    })
-    .await
+    let first_result =
+        load_live_wallet_refresh_result_once(config, create_if_missing, refresh_plan.clone()).await;
+    match first_result {
+        Ok(result) if !wallet_snapshot_needs_fresh_retry(&result.snapshot) => Ok(result),
+        Ok(result) => {
+            tracing::warn!(
+                tracked_payment_count = refresh_plan.tracked_payment_count(),
+                history_scan_page_offset = refresh_plan.history_scan_page_offset,
+                balance_sats = result.snapshot.balance_sats,
+                "treasury live wallet refresh returned zero balance; clearing cached Spark wallet and retrying once",
+            );
+            clear_live_wallet_cache().await;
+            load_live_wallet_refresh_result_once(config, create_if_missing, refresh_plan).await
+        }
+        Err(error) => {
+            tracing::warn!(
+                tracked_payment_count = refresh_plan.tracked_payment_count(),
+                history_scan_page_offset = refresh_plan.history_scan_page_offset,
+                error = %error,
+                "treasury live wallet refresh failed; clearing cached Spark wallet and retrying once",
+            );
+            clear_live_wallet_cache().await;
+            load_live_wallet_refresh_result_once(config, create_if_missing, refresh_plan)
+                .await
+                .with_context(|| format!("live wallet refresh retry failed after: {error}"))
+        }
+    }
 }
 
 pub async fn load_live_wallet_snapshot_with_plan(
@@ -5081,6 +5104,12 @@ where
     operation(wallet).await
 }
 
+async fn clear_live_wallet_cache() {
+    let cache = live_wallet_cache();
+    let mut cache_guard = cache.lock().await;
+    *cache_guard = None;
+}
+
 async fn open_wallet(config: &TreasuryConfig, create_if_missing: bool) -> Result<Arc<SparkWallet>> {
     let cache_key = live_wallet_cache_key(config);
     let cache = live_wallet_cache();
@@ -5096,6 +5125,21 @@ async fn open_wallet(config: &TreasuryConfig, create_if_missing: bool) -> Result
         wallet: wallet.clone(),
     });
     Ok(wallet)
+}
+
+async fn load_live_wallet_refresh_result_once(
+    config: &TreasuryConfig,
+    create_if_missing: bool,
+    refresh_plan: TreasuryWalletRefreshPlan,
+) -> Result<TreasuryWalletRefreshResult> {
+    with_live_wallet(config, create_if_missing, move |wallet| async move {
+        wallet_snapshot_from_wallet_with_plan_result(wallet.as_ref(), &refresh_plan).await
+    })
+    .await
+}
+
+fn wallet_snapshot_needs_fresh_retry(snapshot: &TreasuryWalletSnapshot) -> bool {
+    snapshot.balance_sats == 0
 }
 
 async fn open_wallet_uncached(
