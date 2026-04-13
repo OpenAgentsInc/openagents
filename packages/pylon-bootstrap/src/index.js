@@ -24,6 +24,9 @@ const PYLON_RELEASE_TAG_PREFIX = "pylon-v";
 const RELEASE_ASSET_INSTALL_METHOD = "release_asset";
 const SOURCE_BUILD_INSTALL_METHOD = "source_build";
 const PREFERRED_RUNTIME_MODEL_NAME = "gemma4:e4b";
+const LEGACY_SOURCE_BUILD_SIBLING_REPOSITORIES = {
+  "spark-sdk": "https://github.com/AtlantisPleb/spark-sdk.git",
+};
 
 function emitStatus(onStatus, message, detail = null) {
   if (typeof onStatus === "function") {
@@ -126,6 +129,27 @@ async function pathExists(value) {
   } catch {
     return false;
   }
+}
+
+async function findFilesNamed(rootDir, targetName, results = []) {
+  const entries = await fs.readdir(rootDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === ".git" || entry.name === "node_modules" || entry.name === "target") {
+      continue;
+    }
+
+    const fullPath = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      await findFilesNamed(fullPath, targetName, results);
+      continue;
+    }
+
+    if (entry.isFile() && entry.name === targetName) {
+      results.push(fullPath);
+    }
+  }
+
+  return results;
 }
 
 function defaultInstallRoot() {
@@ -800,6 +824,105 @@ function manualSourceBuildCommands(tagName, cloneUrl) {
   ].join("\n");
 }
 
+function inferLegacySiblingRepositoryName(relativeDependencyPath) {
+  if (typeof relativeDependencyPath !== "string" || !relativeDependencyPath.startsWith("..")) {
+    return null;
+  }
+
+  const segments = relativeDependencyPath
+    .split(/[\\/]+/)
+    .filter(Boolean);
+  const firstRepoSegment = segments.find((segment) => segment !== "..");
+  if (!firstRepoSegment) {
+    return null;
+  }
+
+  return Object.hasOwn(LEGACY_SOURCE_BUILD_SIBLING_REPOSITORIES, firstRepoSegment)
+    ? firstRepoSegment
+    : null;
+}
+
+async function discoverLegacySiblingRepositories(repoDir) {
+  const cargoTomlFiles = await findFilesNamed(repoDir, "Cargo.toml");
+  const discovered = new Set();
+
+  for (const cargoTomlPath of cargoTomlFiles) {
+    const payload = await fs.readFile(cargoTomlPath, "utf8");
+    const matches = payload.matchAll(/path\s*=\s*"([^"]+)"/g);
+    for (const match of matches) {
+      const dependencyPath = match[1]?.trim();
+      const repoName = inferLegacySiblingRepositoryName(dependencyPath);
+      if (!repoName) {
+        continue;
+      }
+
+      const resolvedPath = path.resolve(path.dirname(cargoTomlPath), dependencyPath);
+      if (resolvedPath.startsWith(`${repoDir}${path.sep}`) || resolvedPath === repoDir) {
+        continue;
+      }
+
+      discovered.add(repoName);
+    }
+  }
+
+  return [...discovered];
+}
+
+async function hydrateLegacySiblingRepositories({
+  repoDir,
+  buildEnv,
+  runProcessImpl,
+  onStatus,
+  telemetryClient,
+  releaseTag,
+  target,
+}) {
+  const repoNames = await discoverLegacySiblingRepositories(repoDir);
+  const workspaceRoot = path.dirname(repoDir);
+
+  for (const repoName of repoNames) {
+    const cloneUrl = LEGACY_SOURCE_BUILD_SIBLING_REPOSITORIES[repoName];
+    const checkoutDir = path.join(workspaceRoot, repoName);
+    if (!cloneUrl || (await pathExists(checkoutDir))) {
+      continue;
+    }
+
+    emitStatus(onStatus, "Hydrating legacy sibling checkout", repoName);
+    emitTelemetry(telemetryClient, "installer_legacy_sibling_checkout_started", {
+      release_tag: releaseTag,
+      os: target.os,
+      arch: target.arch,
+      repository: repoName,
+    });
+
+    try {
+      await runProcessImpl(
+        "git",
+        ["clone", "--depth", "1", cloneUrl, checkoutDir],
+        {
+          cwd: workspaceRoot,
+          env: buildEnv,
+        },
+      );
+      emitTelemetry(telemetryClient, "installer_legacy_sibling_checkout_completed", {
+        release_tag: releaseTag,
+        os: target.os,
+        arch: target.arch,
+        repository: repoName,
+      });
+    } catch (error) {
+      emitTelemetry(telemetryClient, "installer_legacy_sibling_checkout_failed", {
+        release_tag: releaseTag,
+        os: target.os,
+        arch: target.arch,
+        repository: repoName,
+        ...telemetryFailureContext(error, "legacy_sibling_checkout"),
+      });
+      throw error;
+    }
+  }
+}
+
 function rustInstallCommand() {
   return "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y";
 }
@@ -1008,6 +1131,15 @@ async function installSourceBuild(
         env: buildEnv,
       },
     );
+    await hydrateLegacySiblingRepositories({
+      repoDir,
+      buildEnv,
+      runProcessImpl,
+      onStatus,
+      telemetryClient,
+      releaseTag: selected.tagName,
+      target,
+    });
 
     const { stdout: commitStdout } = await runProcessImpl(
       "git",

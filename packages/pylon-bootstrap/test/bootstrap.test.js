@@ -716,6 +716,28 @@ describe("@openagentsinc/pylon bootstrap", () => {
               command === "git" &&
               joined === "checkout --detach refs/tags/pylon-v1.2.3"
             ) {
+              const sparkCrateDir = path.join(options.cwd, "crates", "spark");
+              await fs.mkdir(sparkCrateDir, { recursive: true });
+              await fs.writeFile(
+                path.join(sparkCrateDir, "Cargo.toml"),
+                [
+                  "[package]",
+                  'name = "openagents-spark"',
+                  'version = "0.1.0"',
+                  "",
+                  "[dependencies]",
+                  'breez-sdk-spark = { path = "../../../spark-sdk/crates/breez-sdk/core" }',
+                  "",
+                ].join("\n"),
+              );
+              return { stdout: "", stderr: "" };
+            }
+            if (
+              command === "git" &&
+              args[0] === "clone" &&
+              args.includes("https://github.com/AtlantisPleb/spark-sdk.git") &&
+              args.at(-1)?.endsWith(`${path.sep}spark-sdk`)
+            ) {
               return { stdout: "", stderr: "" };
             }
             if (command === "git" && joined === "rev-parse HEAD") {
@@ -777,8 +799,22 @@ describe("@openagentsinc/pylon bootstrap", () => {
             entry.args.join(" ") === "build --release -p pylon -p pylon-tui",
         ),
       ).toBe(true);
+      expect(
+        commands.some(
+          (entry) =>
+            entry.command === "git" &&
+            entry.args[0] === "clone" &&
+            entry.args.includes("https://github.com/AtlantisPleb/spark-sdk.git"),
+        ),
+      ).toBe(true);
       expect(telemetryEvents.map((event) => event.eventName)).toContain(
         "installer_prebuilt_asset_missing",
+      );
+      expect(telemetryEvents.map((event) => event.eventName)).toContain(
+        "installer_legacy_sibling_checkout_started",
+      );
+      expect(telemetryEvents.map((event) => event.eventName)).toContain(
+        "installer_legacy_sibling_checkout_completed",
       );
       expect(telemetryEvents.map((event) => event.eventName)).toContain(
         "installer_source_build_started",
