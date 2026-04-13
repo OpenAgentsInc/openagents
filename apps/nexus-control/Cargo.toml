@@ -29,6 +29,7 @@ ring = "0.17"
 rustls = { version = "0.23", features = ["ring"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+semver = "1"
 sha2.workspace = true
 tokio.workspace = true
 tokio-stream = { version = "0.1", features = ["sync"] }

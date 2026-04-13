@@ -220,6 +220,9 @@ export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=true
 export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000
 export NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS=30
 export NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4
+# Leave these unset until the new multi-platform Pylon release is actually live.
+# export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION=pylon-v0.1.1-rc1
+# export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS=<cutover_ms>
 ```
 
 Why the extra two envs matter:
@@ -242,6 +245,14 @@ Why the extra two envs matter:
 - `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4` caps the per-cycle Spark
   fan-out so one stalled upstream batch cannot occupy all live payout slots at
   once.
+- `NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION` plus
+  `NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS` let Nexus stop
+  awarding fresh payout windows to old `0.0.1-rc*` clients without stranding
+  backlog they already earned before the cutoff.
+- do not turn on the new-accrual version floor until the release tag exists
+  with both `darwin-arm64` and `linux-x86_64` assets and the demo fleet has a
+  working upgrade path. Once active, missing or invalid client-version claims
+  are blocked for new accrual.
 - `scripts/deploy/nexus/10-install-treasury-watchdog.sh` installs a systemd
   timer on the VM that runs every 5 minutes, checks the local treasury status
   plus recent completed-send journal entries, and by default restarts
@@ -326,6 +337,8 @@ Deploy receipts now include:
 - treasury policy parsed from `/etc/nexus-relay/nexus-relay.env`
 - recent payout activity, reason breakdowns, snapshot freshness, and active
   treasury continuity alerts
+- new-accrual version-floor evidence, including the configured cutoff and the
+  current count of online targets blocked by that floor
 
 ## 6) Operational notes
 

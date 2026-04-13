@@ -9,6 +9,8 @@ TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS
   NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE
   NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS
+  NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION
+  NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS
   NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS
   NEXUS_CONTROL_TREASURY_STATE_PATH
   NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH
@@ -97,23 +99,46 @@ treasury_policy_change_requested() {
   [[ "$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS}" ]] && return 0
   [[ "$(jq -r '.require_sellable' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}" ]] && return 0
   [[ "$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS}" ]] && return 0
+  [[ "$(jq -r '.min_new_accrual_pylon_version // \"\"' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}" ]] && return 0
+  [[ "$(jq -r '.min_new_accrual_started_at_unix_ms // \"\"' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS}" ]] && return 0
   return 1
 }
 
 treasury_policy_change_is_destructive() {
   local persisted_policy_json="$1"
   local persisted_enabled persisted_payout persisted_interval persisted_require_sellable persisted_budget
+  local persisted_min_new_accrual_version persisted_min_new_accrual_started_at_unix_ms
   persisted_enabled="$(jq -r '.treasury_enabled' <<<"$persisted_policy_json")"
   persisted_payout="$(jq -r '.payout_sats_per_window' <<<"$persisted_policy_json")"
   persisted_interval="$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")"
   persisted_require_sellable="$(jq -r '.require_sellable' <<<"$persisted_policy_json")"
   persisted_budget="$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")"
+  persisted_min_new_accrual_version="$(jq -r '.min_new_accrual_pylon_version // \"\"' <<<"$persisted_policy_json")"
+  persisted_min_new_accrual_started_at_unix_ms="$(jq -r '.min_new_accrual_started_at_unix_ms // \"\"' <<<"$persisted_policy_json")"
 
   [[ "$persisted_enabled" == "true" && "${NEXUS_CONTROL_TREASURY_ENABLED}" != "true" ]] && return 0
   (( NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW < persisted_payout )) && return 0
   (( NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS > persisted_interval )) && return 0
   (( NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS < persisted_budget )) && return 0
   [[ "$persisted_require_sellable" != "true" && "${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}" == "true" ]] && return 0
+  if [[ -n "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS}" ]] \
+    && [[ -z "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}" ]]; then
+    return 0
+  fi
+  if [[ -z "$persisted_min_new_accrual_version" ]] \
+    && [[ -n "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}" ]] \
+    && [[ -n "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS}" ]]; then
+    return 0
+  fi
+  if [[ -n "$persisted_min_new_accrual_started_at_unix_ms" ]] \
+    && [[ -n "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS}" ]] \
+    && (( NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS < persisted_min_new_accrual_started_at_unix_ms )); then
+    return 0
+  fi
+  if [[ -n "$persisted_min_new_accrual_version" ]] \
+    && [[ "$persisted_min_new_accrual_version" != "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}" ]]; then
+    return 0
+  fi
   return 1
 }
 
@@ -128,6 +153,8 @@ preserve_or_validate_persisted_treasury_policy() {
     export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS="$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE="$(jq -r '.require_sellable' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS="$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION="$(jq -r '.min_new_accrual_pylon_version // \"\"' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS="$(jq -r '.min_new_accrual_started_at_unix_ms // \"\"' <<<"$persisted_policy_json")"
     log "Preserving persisted treasury policy checksum=$(jq -r '.checksum' <<<"$persisted_policy_json")"
     return 0
   fi
@@ -283,6 +310,8 @@ preserve_remote_treasury_env
 : "${NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS:=3}"
 : "${NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS:=16}"
 : "${NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS:=300}"
+: "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION:=}"
+: "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS:=}"
 : "${TOKIO_WORKER_THREADS:=16}"
 
 preserve_or_validate_persisted_treasury_policy
@@ -317,6 +346,8 @@ NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=${NEXUS_CONTROL_TREASURY_PAYOUT_SA
 NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=${NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS}
 NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}
 NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=${NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS}
+NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION=${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}
+NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS=${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS}
 NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS=${NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS}
 NEXUS_CONTROL_TREASURY_STATE_PATH=${NEXUS_CONTROL_TREASURY_STATE_PATH}
 NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH=${NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH}
