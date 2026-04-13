@@ -27859,9 +27859,21 @@ pub struct ProviderHeartbeatCadenceState {
 pub struct BackgroundCadenceState {
     pub last_fast_poll_at: Option<Instant>,
     pub last_coarse_poll_at: Option<Instant>,
+    /// Tracks the last time `pump_background_state` enqueued a periodic
+    /// `SparkWalletCommand::Refresh`. Until this was added, the wallet only
+    /// refreshed on startup convergence (which stops once the first balance
+    /// arrives) and on explicit user actions (refresh icon click, sidebar
+    /// open, payment finished). The breez SDK syncs balance internally on
+    /// its own cadence and emits `Synced` events, but autopilot does not
+    /// subscribe to those events, so the displayed balance went arbitrarily
+    /// stale between user clicks. This field gates a 30-second periodic
+    /// refresh that closes that gap without resorting to an SDK event
+    /// listener thread.
+    pub last_spark_wallet_refresh_at: Option<Instant>,
     pub every_loop_runs: u64,
     pub fast_poll_runs: u64,
     pub coarse_poll_runs: u64,
+    pub spark_wallet_periodic_refresh_runs: u64,
 }
 
 pub struct RenderState {
