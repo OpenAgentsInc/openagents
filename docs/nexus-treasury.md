@@ -431,6 +431,37 @@ Public-safe treasury counters now project through `nexus-control /api/stats`:
 - `nexus_payouts_confirmed_24h`
 - `nexus_payouts_failed_24h`
 - `nexus_payouts_skipped_24h`
+- `nexus_placeholder_payout_mode`
+- `nexus_placeholder_payout_eligible_online_targets`
+- `nexus_inference_ready_online_payout_targets`
+- `nexus_duplicate_host_placeholder_blocked_online_targets`
+- `inference_ready_pylons_online_now`
+- `inference_ready_pylon_sessions_online_now`
+- `pylon_reported_hosts_online_now`
+- `pylon_sessions_missing_host_fingerprint_online_now`
+- `likely_same_host_pylon_sessions_online_now`
+- `likely_same_host_pylons_online_now`
+
+Interpretation rules for the new `/api/stats` readiness counters:
+
+- `pylons_online_now` is the distinct-provider count, not raw session count.
+- `pylon_sessions_online_now` is the raw online session count.
+- `inference_ready_pylons_online_now` and
+  `inference_ready_pylon_sessions_online_now` separate ready providers from
+  ready sessions so the public surface does not imply more capacity than is
+  actually available.
+- `pylon_reported_hosts_online_now` is the number of online sessions that
+  published a host fingerprint Nexus can group.
+- `likely_same_host_pylon_sessions_online_now` and
+  `likely_same_host_pylons_online_now` are best-effort duplicate signals so the
+  homepage can show when several Pylons appear to come from the same machine.
+- `nexus_placeholder_payout_eligible_online_targets` is the count that still
+  qualifies for placeholder payout under the active policy.
+- `nexus_inference_ready_online_payout_targets` is the stricter inference-ready
+  subset the payout loop can use as placeholder policy tightens.
+- `nexus_duplicate_host_placeholder_blocked_online_targets` is the online count
+  currently blocked from placeholder payout because a same-host duplicate rule
+  applied.
 
 Operator-safe loop health now projects through `GET /v1/treasury/status`:
 

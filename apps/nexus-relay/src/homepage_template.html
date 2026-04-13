@@ -1338,39 +1338,52 @@
         const publicState = trainingPublicState(snapshot);
         const pylons = stats.recent_pylons ?? [];
         const sampleCount = pylons.length;
+        const onlineProviders = numeric(stats.pylons_online_now, 0);
+        const inferenceReadyProviders = numeric(stats.inference_ready_pylons_online_now, 0);
+        const payoutEligibleProviders = numeric(stats.nexus_placeholder_payout_eligible_online_targets, 0);
+        const sessionCount = numeric(stats.pylon_sessions_online_now, 0);
+        const duplicateSessions = numeric(stats.likely_same_host_pylon_sessions_online_now, 0);
+        const duplicateProviders = numeric(stats.likely_same_host_pylons_online_now, 0);
+        const reportedHosts = numeric(stats.pylon_reported_hosts_online_now, 0);
+        const sessionsMissingHostSignal = numeric(stats.pylon_sessions_missing_host_fingerprint_online_now, 0);
+        const assignedContributors = numeric(stats.training_assigned_contributors ?? summary.assigned_contributors, 0);
+        const acceptedContributors = numeric(stats.training_accepted_contributors ?? summary.accepted_contributors, 0);
+        const acceptedProgressContributors = numeric(stats.training_nodes_contributing_to_accepted_progress ?? summary.nodes_contributing_to_accepted_progress, 0);
+        const acceptedCloseouts = numeric(stats.training_accepted_closeouts ?? summary.accepted_closeouts, 0);
         networkScoreHost.innerHTML = `
           <section class="score-major">
-            <span class="score-major__label">Pylons Online</span>
-            <span class="score-major__value">${escapeHtml(number(stats.pylons_online_now))}</span>
-            <p class="score-major__detail">${escapeHtml(number(stats.sellable_pylons_online_now))} sellable now, ${escapeHtml(number(stats.pylons_seen_24h))} seen in 24h.</p>
+            <span class="score-major__label">Distinct Pylons</span>
+            <span class="score-major__value">${escapeHtml(number(onlineProviders))}</span>
+            <p class="score-major__detail">${escapeHtml(number(inferenceReadyProviders))} inference-ready, ${escapeHtml(number(payoutEligibleProviders))} placeholder-eligible, ${escapeHtml(number(stats.pylons_seen_24h))} seen in 24h.</p>
           </section>
           <div class="score-pair-grid">
             <section class="score-pair">
               <span class="score-pair__label">Sessions</span>
-              <span class="score-pair__value">${escapeHtml(number(stats.pylon_sessions_online_now))}</span>
-              <p class="score-pair__detail">${escapeHtml(number(sampleCount))} recent presence records in the public sample.</p>
+              <span class="score-pair__value">${escapeHtml(number(sessionCount))}</span>
+              <p class="score-pair__detail">${escapeHtml(number(reportedHosts))} reported hosts, ${escapeHtml(number(duplicateSessions))} likely same-host duplicates, ${escapeHtml(number(sessionsMissingHostSignal))} without host signal.</p>
             </section>
             <section class="score-pair">
-              <span class="score-pair__label">Admitted Nodes</span>
-              <span class="score-pair__value">${escapeHtml(number(stats.training_nodes_admitted ?? summary.admitted_nodes_online))}</span>
-              <p class="score-pair__detail">${escapeHtml(number(stats.training_admitted_contributors ?? snapshot.training_nodes?.length ?? 0))} admitted contributors and ${escapeHtml(number(stats.training_admitted_nodes_online ?? summary.admitted_nodes_online))} online now.</p>
+              <span class="score-pair__label">Ready Providers</span>
+              <span class="score-pair__value">${escapeHtml(number(inferenceReadyProviders))}</span>
+              <p class="score-pair__detail">${escapeHtml(number(stats.inference_ready_pylon_sessions_online_now))} ready sessions, ${escapeHtml(number(payoutEligibleProviders))} payout-eligible now, ${escapeHtml(number(duplicateProviders))} likely same-host provider duplicates.</p>
             </section>
             <section class="score-pair">
               <span class="score-pair__label">Assigned Contributors</span>
-              <span class="score-pair__value">${escapeHtml(number(stats.training_assigned_contributors ?? summary.assigned_contributors))}</span>
-              <p class="score-pair__detail">${escapeHtml(number(stats.training_accepted_contributors ?? summary.accepted_contributors))} accepted and ${escapeHtml(number(stats.training_model_progress_contributors ?? summary.model_progress_contributors))} model-progress contributors.</p>
+              <span class="score-pair__value">${escapeHtml(number(assignedContributors))}</span>
+              <p class="score-pair__detail">${escapeHtml(number(acceptedContributors))} accepted and ${escapeHtml(number(stats.training_model_progress_contributors ?? summary.model_progress_contributors))} model-progress contributors.</p>
             </section>
             <section class="score-pair">
-              <span class="score-pair__label">Default Lane</span>
-              <span class="score-pair__value">${escapeHtml(publicState.default_work_class || "standby")}</span>
-              <p class="score-pair__detail">${escapeHtml(publicState.default_progress_class || "progress unknown")} // ${escapeHtml(publicState.default_replica_type || "replica unknown")}</p>
+              <span class="score-pair__label">Accepted Contributors</span>
+              <span class="score-pair__value">${escapeHtml(number(acceptedContributors))}</span>
+              <p class="score-pair__detail">${escapeHtml(number(acceptedProgressContributors))} contributing accepted progress and ${escapeHtml(number(acceptedCloseouts))} accepted closeouts.</p>
             </section>
           </div>
           <div class="signal-strip">
             ${signalSegment("Presence Window", formatMsAge(stats.pylon_presence_stale_after_ms), "live")}
+            ${signalSegment("Same-host duplicates", number(duplicateSessions), duplicateSessions > 0 ? "warn" : "live")}
             ${signalSegment("Active runs", number(stats.training_runs_active ?? summary.active_runs), numeric(stats.training_runs_active ?? summary.active_runs, 0) > 0 ? "live" : "warn")}
-            ${signalSegment("Validator Queue", number(stats.training_validator_challenges_queued ?? summary.validator_challenges_queued), numeric(stats.training_validator_challenges_queued ?? summary.validator_challenges_queued, 0) > 0 ? "warn" : "live")}
-            ${signalSegment("TRN Publications", number(snapshot.recent_trn_publications?.length ?? 0), "live")}
+            ${signalSegment("Placeholder mode", String(stats.nexus_placeholder_payout_mode ?? "unknown"), String(stats.nexus_placeholder_payout_mode ?? "") === "presence_only" ? "warn" : "live")}
+            ${signalSegment("Accepted progress", number(acceptedProgressContributors), acceptedProgressContributors > 0 ? "live" : "warn")}
           </div>
         `;
       }
@@ -1386,7 +1399,9 @@
         const sessionCount = Math.min(Math.max(numeric(stats.pylon_sessions_online_now, 0), 8), 48);
         const activeRuns = Math.min(Math.max(numeric(summary.active_runs, 0), 1), 6);
         const onlineNow = numeric(stats.pylons_online_now, 0);
-        const sellableNow = numeric(stats.sellable_pylons_online_now, 0);
+        const inferenceReadyNow = numeric(stats.inference_ready_pylons_online_now, 0);
+        const payoutEligibleNow = numeric(stats.nexus_placeholder_payout_eligible_online_targets, 0);
+        const likelyDuplicateSessions = numeric(stats.likely_same_host_pylon_sessions_online_now, 0);
 
         const fragments = [];
         fragments.push(`<rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>`);
@@ -1412,9 +1427,9 @@
         fragments.push(`
           <circle cx="${centerX}" cy="${centerY}" r="44" fill="rgba(8,51,68,0.38)" stroke="rgba(34,211,238,0.85)" stroke-width="2.5"></circle>
           <circle cx="${centerX}" cy="${centerY}" r="18" fill="rgba(52,211,153,0.85)"></circle>
-          <text x="${centerX}" y="${centerY - 62}" text-anchor="middle" fill="#7b7c7f" font-size="11" font-family="JetBrains Mono, ui-monospace, monospace">ONLINE CAPACITY</text>
+          <text x="${centerX}" y="${centerY - 62}" text-anchor="middle" fill="#7b7c7f" font-size="11" font-family="JetBrains Mono, ui-monospace, monospace">DISTINCT PROVIDERS</text>
           <text x="${centerX}" y="${centerY + 7}" text-anchor="middle" fill="#ffffff" font-size="34" font-family="Inter, system-ui, sans-serif">${escapeHtml(number(onlineNow))}</text>
-          <text x="${centerX}" y="${centerY + 28}" text-anchor="middle" fill="#7b7c7f" font-size="12" font-family="JetBrains Mono, ui-monospace, monospace">${escapeHtml(number(sellableNow))} sellable</text>
+          <text x="${centerX}" y="${centerY + 28}" text-anchor="middle" fill="#7b7c7f" font-size="12" font-family="JetBrains Mono, ui-monospace, monospace">${escapeHtml(number(inferenceReadyNow))} ready // ${escapeHtml(number(payoutEligibleNow))} payout-eligible</text>
         `);
 
         if (pylons.length === 0) {
@@ -1432,16 +1447,23 @@
           const anchor = pylon.nostr_pubkey_short || pylon.node_label || String(index);
           const hash = hashString(anchor);
           const eligible = numeric(pylon.eligible_product_count, 0) > 0;
+          const inferenceReady = Boolean(pylon.inference_ready);
           const angle = (-Math.PI / 2) + ((Math.PI * 2 * index) / pylons.length) + (((hash % 17) - 8) * 0.012);
           const radius = eligible ? 154 + ((hash % 11) - 5) : 214 + ((hash % 17) - 8);
           const x = centerX + Math.cos(angle) * radius;
           const y = centerY + Math.sin(angle) * radius;
           const online = String(pylon.runtime_state ?? "").toLowerCase() === "online";
-          const tone = online ? (eligible ? "#34d399" : "#22d3ee") : "#fbbf24";
+          const tone = online ? (inferenceReady ? "#34d399" : (eligible ? "#22d3ee" : "#fbbf24")) : "#f97316";
           const halo = online ? "rgba(34,211,238,0.22)" : "rgba(251,191,36,0.2)";
           const dotRadius = eligible ? 8 : 6;
           const label = escapeHtml(pylon.node_label || pylon.nostr_pubkey_short || "pylon");
-          const detail = escapeHtml(pylon.ready_model || (Array.isArray(pylon.products) && pylon.products.length > 0 ? pylon.products[0] : "presence"));
+          const detail = escapeHtml(
+            inferenceReady
+              ? (pylon.ready_model || "ready")
+              : (eligible
+                ? "sellable, not ready"
+                : "presence only")
+          );
           const textAnchor = x >= centerX ? "start" : "end";
           const labelX = x >= centerX ? x + 12 : x - 12;
           fragments.push(`
@@ -1454,7 +1476,7 @@
         });
 
         constellationHost.innerHTML = fragments.join("");
-        networkFooterHost.textContent = `${number(pylons.length)} public sample nodes are rendered directly. ${number(Math.max(onlineNow - pylons.length, 0))} additional online pylons are counted in the aggregate but not individually labeled here.`;
+        networkFooterHost.textContent = `${number(pylons.length)} public sample sessions are rendered directly. ${number(onlineNow)} distinct providers, ${number(stats.pylon_sessions_online_now ?? 0)} sessions, ${number(likelyDuplicateSessions)} likely same-host duplicate sessions, and ${number(Math.max(onlineNow - pylons.length, 0))} additional providers are counted only in the aggregate.`;
       }
 
       function buildStatus(snapshot, degradedMessage = null) {
@@ -1517,6 +1539,12 @@
         const stats = snapshot.stats ?? {};
         const dayPaid = numeric(stats.nexus_payout_sats_paid_24h, 0);
         const totalPaid = numeric(stats.nexus_payout_sats_paid_total, 0);
+        const placeholderDayPaid = numeric(stats.nexus_placeholder_payout_sats_paid_24h, 0);
+        const acceptedDayPaid = numeric(stats.nexus_accepted_work_payout_sats_paid_24h, 0);
+        const payoutEligibleNow = numeric(stats.nexus_placeholder_payout_eligible_online_targets, 0);
+        const readinessCandidates = numeric(stats.nexus_inference_ready_online_payout_targets, 0);
+        const duplicateBlockedNow = numeric(stats.nexus_duplicate_host_placeholder_blocked_online_targets, 0);
+        const placeholderMode = String(stats.nexus_placeholder_payout_mode ?? "unknown");
         const walletStatus = String(stats.nexus_wallet_runtime_status ?? "unknown");
         const payoutLoop = String(stats.nexus_payout_loop_health ?? "unknown");
         const degradedReason = stats.nexus_treasury_degraded_reason;
@@ -1536,18 +1564,28 @@
               <span class="detail-stat__value">${escapeHtml(payoutLoop)}</span>
             </section>
             <section class="detail-stat">
-              <span class="micro-label">Presence sample</span>
-              <span class="detail-stat__value">${escapeHtml(number(stats.recent_pylons?.length ?? 0))}</span>
+              <span class="micro-label">Placeholder mode</span>
+              <span class="detail-stat__value">${escapeHtml(placeholderMode)}</span>
             </section>
             <section class="detail-stat">
-              <span class="micro-label">Diagnostics</span>
-              <span class="detail-stat__value">${escapeHtml(number(stats.recent_pylon_diagnostics?.length ?? 0))}</span>
+              <span class="micro-label">Ready now</span>
+              <span class="detail-stat__value">${escapeHtml(number(readinessCandidates))}</span>
+            </section>
+            <section class="detail-stat">
+              <span class="micro-label">Placeholder 24h</span>
+              <span class="detail-stat__value">${escapeHtml(number(placeholderDayPaid))} sats</span>
+            </section>
+            <section class="detail-stat">
+              <span class="micro-label">Accepted Work 24h</span>
+              <span class="detail-stat__value">${escapeHtml(number(acceptedDayPaid))} sats</span>
             </section>
           </div>
           <div class="signal-strip">
             ${signalSegment("24h payout", `${number(dayPaid)} sats`, dayPaid > 0 ? "live" : "warn")}
             ${signalSegment("Wallet", walletStatus, toneForRuntime(walletStatus))}
             ${signalSegment("Loop", payoutLoop, toneForRuntime(payoutLoop))}
+            ${signalSegment("Placeholder eligible", number(payoutEligibleNow), payoutEligibleNow > 0 ? "live" : "warn")}
+            ${signalSegment("Same-host blocks", number(duplicateBlockedNow), duplicateBlockedNow > 0 ? "warn" : "live")}
           </div>
           ${degradedReason ? `<div class="empty">${escapeHtml(degradedReason)}</div>` : ""}
         `;
