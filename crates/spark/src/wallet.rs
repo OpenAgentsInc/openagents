@@ -368,6 +368,16 @@ impl SparkWallet {
         payment_request: &str,
         amount_sats: Option<u64>,
     ) -> Result<String, SparkError> {
+        self.send_payment_simple_with_idempotency_key(payment_request, amount_sats, None)
+            .await
+    }
+
+    pub async fn send_payment_simple_with_idempotency_key(
+        &self,
+        payment_request: &str,
+        amount_sats: Option<u64>,
+        idempotency_key: Option<&str>,
+    ) -> Result<String, SparkError> {
         let request = payment_request.trim();
         if request.is_empty() {
             return Err(SparkError::InvalidPaymentRequest(
@@ -392,7 +402,7 @@ impl SparkWallet {
             .send_payment(SendPaymentRequest {
                 prepare_response,
                 options: None,
-                idempotency_key: None,
+                idempotency_key: idempotency_key.map(str::to_string),
             })
             .await
             .map_err(|error| SparkError::Wallet(error.to_string()))?;

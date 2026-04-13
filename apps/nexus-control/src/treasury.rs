@@ -37,6 +37,7 @@ const ENV_TREASURY_WALLET_API_KEY_ENV: &str = "NEXUS_CONTROL_TREASURY_WALLET_API
 const ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS";
 const ENV_TREASURY_MAX_CONCURRENT_SENDS: &str = "NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS";
+const ENV_TREASURY_SEND_TIMEOUT_SECONDS: &str = "NEXUS_CONTROL_TREASURY_SEND_TIMEOUT_SECONDS";
 const ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS";
 const ENV_TREASURY_POLICY_APPLY_ENV: &str = "NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV";
@@ -57,6 +58,7 @@ const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wa
 const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
 const DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS: u64 = 3;
 const DEFAULT_TREASURY_MAX_CONCURRENT_SENDS: usize = 16;
+const DEFAULT_TREASURY_SEND_TIMEOUT_SECONDS: u64 = 180;
 const DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS: u64 = 86_400;
 const DEFAULT_TREASURY_POLICY_APPLY_ENV: bool = false;
 const DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: bool = false;
@@ -113,6 +115,7 @@ pub struct TreasuryConfig {
     pub wallet_api_key_env: Option<String>,
     pub wallet_status_refresh_seconds: u64,
     pub max_concurrent_sends: usize,
+    pub send_timeout_seconds: u64,
     pub registration_challenge_ttl_seconds: u64,
 }
 
@@ -151,6 +154,11 @@ impl TreasuryConfig {
         )?
         .clamp(1, TREASURY_MAX_CONCURRENT_SENDS_LIMIT as u64)
             as usize;
+        let send_timeout_seconds = parse_u64_env(
+            ENV_TREASURY_SEND_TIMEOUT_SECONDS,
+            DEFAULT_TREASURY_SEND_TIMEOUT_SECONDS,
+        )?
+        .max(1);
         let reconciliation_horizon_seconds = parse_u64_env(
             ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS,
             DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS,
@@ -203,6 +211,7 @@ impl TreasuryConfig {
                 .filter(|value| !value.is_empty()),
             wallet_status_refresh_seconds,
             max_concurrent_sends,
+            send_timeout_seconds,
             registration_challenge_ttl_seconds,
         })
     }
@@ -236,8 +245,7 @@ impl TreasuryConfig {
 
     pub fn dispatch_result_timeout_ms(&self, payout_interval_ms: u64) -> u64 {
         let _ = payout_interval_ms;
-        TREASURY_DISPATCH_RESULT_TIMEOUT_MS
-            .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
+        TREASURY_DISPATCH_RESULT_TIMEOUT_MS.max(self.send_timeout_seconds.saturating_mul(1_000))
     }
 
     pub fn max_concurrent_send_operations(&self, plan_count: usize) -> usize {
@@ -3509,9 +3517,10 @@ pub async fn dispatch_live_payouts(
                 let outcome =
                     dispatch_outcome_from_send_future(plan.clone(), send_timeout_ms, async move {
                         wallet
-                            .send_payment_simple(
+                            .send_payment_simple_with_idempotency_key(
                                 plan.payment_request.as_str(),
                                 Some(plan.amount_sats),
+                                Some(plan.payout_key.as_str()),
                             )
                             .await
                     })
@@ -5520,6 +5529,7 @@ mod tests {
             wallet_api_key_env: None,
             wallet_status_refresh_seconds: 30,
             max_concurrent_sends: 16,
+            send_timeout_seconds: 180,
             registration_challenge_ttl_seconds: 300,
         }
     }
@@ -7337,6 +7347,16 @@ mod tests {
         assert_eq!(config.max_concurrent_send_operations(4), 4);
         assert_eq!(config.max_concurrent_send_operations(16), 16);
         assert_eq!(config.max_concurrent_send_operations(128), 16);
+    }
+
+    #[test]
+    fn dispatch_result_timeout_uses_configured_send_timeout() {
+        let mut config = test_treasury_config();
+        config.send_timeout_seconds = 180;
+        assert_eq!(config.dispatch_result_timeout_ms(config.payout_interval_ms()), 180_000);
+
+        config.send_timeout_seconds = 30;
+        assert_eq!(config.dispatch_result_timeout_ms(config.payout_interval_ms()), 60_000);
     }
 
     #[test]
