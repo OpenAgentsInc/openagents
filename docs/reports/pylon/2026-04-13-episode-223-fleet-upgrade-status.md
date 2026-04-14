@@ -57,6 +57,40 @@ The remaining Episode 223 blockers from this audit are now the live-fleet and
 live-Nexus proof steps tracked in `openagents#4338`, `openagents#4343`, and
 the workspace tracker.
 
+## Update After Mac/Linux CS336 A1 Lane Broadening
+
+The next cross-repo blocker is now fixed in code on `main`, but it is not yet
+cut into a fresh Pylon release.
+
+Current truth after the latest `psionic-train` and `pylon` changes:
+
+- the bounded `CS336 A1 Demo` lane is still the same small four-step host-CPU
+  homework lane
+- that lane's minimum machine class is now
+  `cross_platform_cpu_compatible_operator`, which means the claim boundary is
+  honest host-CPU system-memory posture, not "must be a pure CPU box with no
+  accelerators attached"
+- `pylon` now advertises that bounded lane on Mac and Linux hosts that can run
+  the host-CPU path, even when those machines also expose Apple-silicon or
+  CUDA accelerators
+- admitted Apple or H100-class hosts still advertise their stronger native
+  lanes, but weak Apple and consumer CUDA hosts now fall back into the bounded
+  CS336 lane instead of getting stranded below trainer tier
+
+That closes the last contract bug that made the recording goal impossible in
+principle.
+
+The remaining blocker is now operational:
+
+- cut a fresh `pylon-v...` release that contains these lane-broadening changes
+- upgrade one Mac and one Linux host to that release
+- retain one proof bundle showing both machines actually participating in the
+  bounded A1 homework path
+
+Local dry-run closure for that code path is now retained separately at:
+
+- `docs/reports/pylon/2026-04-13-episode-223-local-cs336-a1-dry-run.md`
+
 ## What Was Confirmed
 
 ### 1. The release exists
@@ -126,15 +160,15 @@ But it still remained:
 because the reachable Linux box is an `RTX 4080` with `16 GiB`, not an admitted
 `H100 80 GiB` trainer.
 
-So the Linux version proof is real, but it is still not a worker that can
-honestly claim the current bounded A1 demo lane as currently wired.
+So the Linux version proof is real, but this retained proof still predates the
+later lane-broadening changes on `main`.
 
 ## The Main Blocker
 
-The blocker is not "the release is missing."
+The blocker is no longer "the lane contract is impossible."
 
-The blocker is that the bounded CS336 A1 demo contract is internally stricter
-and more inconsistent than the recording plan implies.
+The blocker is that the live fleet has not yet been re-proven on a release that
+contains the later fixes.
 
 Current truth in the code:
 
@@ -142,18 +176,18 @@ Current truth in the code:
   - `psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1`
   - backend family `cpu`
   - topology `single_host_cpu_reference`
-- `nexus-control` currently maps that same environment ref to backend family
-  `cuda`
-- `pylon` currently only advertises that same environment ref when the host is
-  an admitted `H100`-class CUDA trainer
+- minimum machine class `cross_platform_cpu_compatible_operator`
+- `nexus-control` now maps that same environment ref to backend family `cpu`
+- `pylon` now advertises that same environment on compatible Mac, Linux CPU,
+  consumer-CUDA, and Apple hosts through the bounded host-CPU path
 
 That means the accessible real devices do not line up with the demo contract:
 
-- `macbook-pro-m2` is on the right architecture for the release asset but is a
-  `16 GiB` Apple machine with no local runtime ready
-- `archlinux` is on the right architecture for the release asset and has the
-  right Psionic surface once pointed at a fresh checkout, but it is still a
-  consumer `RTX 4080` validation-tier node, not an admitted strong trainer
+- `macbook-pro-m2` is on the right architecture for the release asset but the
+  retained proof in this report was still captured before the new lane
+  broadening landed
+- `archlinux` is on the right architecture for the release asset and that
+  retained proof was also captured before the new lane broadening landed
 - the stored SSH credential path to `imac-pro-bertha` did not produce a
   trustworthy login in this pass, so it could not be used as the Mac proof host
 
@@ -168,22 +202,28 @@ Done:
 - one Linux device has the `linux-x86_64` bundle and passes a binary smoke path
 - Linux runtime-surface detection was proven to depend on a fresh Psionic
   checkout or explicit `OPENAGENTS_PSIONIC_REPO`
+- the code on `main` now honestly allows the bounded A1 homework lane to run on
+  both Mac and Linux Pylons through the host-CPU path
 
 Not done:
 
-- a reachable Mac node and a reachable Linux node that can both honestly be
-  described as "ready to take the `CS336 A1 Demo` run"
+- a fresh Pylon release that actually contains the later contract/runtime
+  fixes and the Mac/Linux lane broadening
+- a reachable Mac node and a reachable Linux node both re-verified on that new
+  release line
 - a live fleet proof bundle showing the named A1 demo lane can actually be
-  claimed on the upgraded hardware
+  claimed and executed on the upgraded hardware by both machines
 
 ## What Has To Change Next
 
-One of these must happen before `#4338` can close honestly:
+All of these must happen before `#4338` can close honestly:
 
-1. provide access to a real admitted strong trainer that matches the current A1
-   demo contract
-2. or change the bounded A1 demo contract so it matches the real Episode 223
-   hardware we actually have available
+1. cut and deploy a fresh Pylon release that includes the current `main`
+   lane/runtime fixes
+2. re-run fleet proof on one reachable Mac and one reachable Linux host with
+   that build
+3. retain one proof bundle showing both hosts actually taking the bounded A1
+   homework path
 
-Without one of those, `#4343` is also blocked because there is no honest live
-fleet proof path for the named run yet.
+Without that full sequence, `#4343` is also blocked because there is no honest
+live fleet proof path for the named run yet.
