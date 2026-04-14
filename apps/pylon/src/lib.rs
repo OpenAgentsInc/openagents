@@ -6646,6 +6646,15 @@ impl PylonTrainingCoordinatorClient {
     }
 
     pub async fn get_training_run(&self, training_run_id: &str) -> Result<ComputeTrainingRun> {
+        if let Some(training_run) = self
+            .get_public_training_json_with_retry(
+                format!("/api/training/runs/{training_run_id}").as_str(),
+                format!("training run {training_run_id}").as_str(),
+            )
+            .await?
+        {
+            return Ok(training_run);
+        }
         self.kernel_authority
             .get_compute_training_run(training_run_id)
             .await
@@ -6655,50 +6664,21 @@ impl PylonTrainingCoordinatorClient {
         &self,
         artifact_id: &str,
     ) -> Result<PylonTrainingArtifactResolverResponse> {
-        let url = self.training_authority_url(&format!(
-            "/v1/kernel/compute/training/artifacts/{artifact_id}"
-        ));
-        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
-            let mut request = self.client.get(url.as_str());
-            if let Some(token) = self.bearer_auth.as_deref() {
-                request = request.bearer_auth(token);
-            }
-            match request.send().await {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        return response.json::<PylonTrainingArtifactResolverResponse>().await.with_context(
-                            || format!("failed to decode training artifact resolver response for {artifact_id}"),
-                        );
-                    }
-                    let status = response.status();
-                    let detail = response.text().await.unwrap_or_else(|_| {
-                        format!(
-                            "failed to decode training artifact resolver error for {artifact_id}"
-                        )
-                    });
-                    if training_authority_status_is_retryable(status)
-                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
-                    {
-                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
-                        continue;
-                    }
-                    bail!(
-                        "training artifact resolver failed with status {}: {detail}",
-                        status.as_u16()
-                    );
-                }
-                Err(error) => {
-                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
-                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
-                        continue;
-                    }
-                    return Err(error).with_context(|| {
-                        format!("failed to resolve training artifact {artifact_id}")
-                    });
-                }
-            }
+        if let Some(resolver) = self
+            .get_public_training_json_with_retry(
+                format!("/api/training/artifacts/{artifact_id}").as_str(),
+                format!("training artifact resolver {artifact_id}").as_str(),
+            )
+            .await?
+        {
+            return Ok(resolver);
         }
-        bail!("training artifact resolver exhausted retry budget")
+        self.get_training_authority_json_with_retry(
+            format!("/v1/kernel/compute/training/artifacts/{artifact_id}").as_str(),
+            format!("training artifact resolver {artifact_id}").as_str(),
+            true,
+        )
+        .await
     }
 
     pub async fn request_training_artifact_signed_access(
@@ -6706,57 +6686,23 @@ impl PylonTrainingCoordinatorClient {
         artifact_id: &str,
         payload: &PylonTrainingArtifactSignedAccessRequest,
     ) -> Result<PylonTrainingArtifactSignedAccessResponse> {
-        let url = self.training_authority_url(&format!(
-            "/v1/kernel/compute/training/artifacts/{artifact_id}/signed-access"
-        ));
-        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
-            let mut request = self.client.post(url.as_str()).json(payload);
-            if let Some(token) = self.bearer_auth.as_deref() {
-                request = request.bearer_auth(token);
-            }
-            match request.send().await {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        return response
-                            .json::<PylonTrainingArtifactSignedAccessResponse>()
-                            .await
-                            .with_context(|| {
-                                format!(
-                                    "failed to decode training artifact signed access response for {artifact_id}"
-                                )
-                            });
-                    }
-                    let status = response.status();
-                    let detail = response.text().await.unwrap_or_else(|_| {
-                        format!(
-                            "failed to decode training artifact signed access error for {artifact_id}"
-                        )
-                    });
-                    if training_authority_status_is_retryable(status)
-                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
-                    {
-                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
-                        continue;
-                    }
-                    bail!(
-                        "training artifact signed access failed with status {}: {detail}",
-                        status.as_u16()
-                    );
-                }
-                Err(error) => {
-                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
-                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
-                        continue;
-                    }
-                    return Err(error).with_context(|| {
-                        format!(
-                            "failed to request signed training artifact access for {artifact_id}"
-                        )
-                    });
-                }
-            }
+        if let Some(response) = self
+            .post_public_training_json_with_retry(
+                format!("/api/training/artifacts/{artifact_id}/signed-access").as_str(),
+                payload,
+                format!("training artifact signed access {artifact_id}").as_str(),
+            )
+            .await?
+        {
+            return Ok(response);
         }
-        bail!("training artifact signed access exhausted retry budget")
+        self.post_training_authority_json_with_retry(
+            format!("/v1/kernel/compute/training/artifacts/{artifact_id}/signed-access").as_str(),
+            payload,
+            format!("training artifact signed access {artifact_id}").as_str(),
+            true,
+        )
+        .await
     }
 
     pub async fn get_adapter_training_window(
@@ -6773,6 +6719,23 @@ impl PylonTrainingCoordinatorClient {
         training_run_id: Option<&str>,
         status: Option<ComputeAdapterWindowStatus>,
     ) -> Result<Vec<ComputeAdapterTrainingWindow>> {
+        let mut query = Vec::new();
+        if let Some(training_run_id) = training_run_id {
+            query.push(("training_run_id", training_run_id.to_string()));
+        }
+        if let Some(status) = status {
+            query.push(("status", status.label().to_string()));
+        }
+        if let Some(windows) = self
+            .get_public_training_json_with_retry_and_query(
+                "/api/training/windows",
+                query.as_slice(),
+                "training windows",
+            )
+            .await?
+        {
+            return Ok(windows);
+        }
         self.kernel_authority
             .list_compute_adapter_training_windows(training_run_id, status)
             .await
@@ -6784,6 +6747,26 @@ impl PylonTrainingCoordinatorClient {
         window_id: Option<&str>,
         disposition: Option<ComputeAdapterContributionDisposition>,
     ) -> Result<Vec<ComputeAdapterContributionOutcome>> {
+        let mut query = Vec::new();
+        if let Some(training_run_id) = training_run_id {
+            query.push(("training_run_id", training_run_id.to_string()));
+        }
+        if let Some(window_id) = window_id {
+            query.push(("window_id", window_id.to_string()));
+        }
+        if let Some(disposition) = disposition {
+            query.push(("disposition", disposition.label().to_string()));
+        }
+        if let Some(outcomes) = self
+            .get_public_training_json_with_retry_and_query(
+                "/api/training/contributions",
+                query.as_slice(),
+                "training contribution outcomes",
+            )
+            .await?
+        {
+            return Ok(outcomes);
+        }
         self.kernel_authority
             .list_compute_adapter_contribution_outcomes(training_run_id, window_id, disposition)
             .await
@@ -6794,6 +6777,23 @@ impl PylonTrainingCoordinatorClient {
         outcome_kind: Option<ComputeAcceptedOutcomeKind>,
         environment_ref: Option<&str>,
     ) -> Result<Vec<ComputeAcceptedOutcome>> {
+        let mut query = Vec::new();
+        if let Some(outcome_kind) = outcome_kind {
+            query.push(("outcome_kind", outcome_kind.label().to_string()));
+        }
+        if let Some(environment_ref) = environment_ref {
+            query.push(("environment_ref", environment_ref.to_string()));
+        }
+        if let Some(outcomes) = self
+            .get_public_training_json_with_retry_and_query(
+                "/api/training/outcomes",
+                query.as_slice(),
+                "accepted training outcomes",
+            )
+            .await?
+        {
+            return Ok(outcomes);
+        }
         self.kernel_authority
             .list_compute_accepted_outcomes(outcome_kind, environment_ref)
             .await
@@ -6920,6 +6920,228 @@ impl PylonTrainingCoordinatorClient {
         )
     }
 
+    async fn get_public_training_json_with_retry<R>(
+        &self,
+        path: &str,
+        action: &str,
+    ) -> Result<Option<R>>
+    where
+        R: DeserializeOwned,
+    {
+        self.get_public_training_json_with_retry_and_query(path, &[], action)
+            .await
+    }
+
+    async fn get_public_training_json_with_retry_and_query<R>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        action: &str,
+    ) -> Result<Option<R>>
+    where
+        R: DeserializeOwned,
+    {
+        let url = self.training_authority_url(path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let request = self.client.get(url.as_str()).query(query);
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.map(Some).with_context(|| {
+                            format!("failed to decode public training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    if training_public_read_route_missing(status) {
+                        return Ok(None);
+                    }
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode public training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "public training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to get public training authority {action} from {url}")
+                    });
+                }
+            }
+        }
+        bail!("public training authority {action} exhausted retry budget")
+    }
+
+    async fn post_public_training_json_with_retry<T, R>(
+        &self,
+        path: &str,
+        payload: &T,
+        action: &str,
+    ) -> Result<Option<R>>
+    where
+        T: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        let url = self.training_authority_url(path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            match self.client.post(url.as_str()).json(payload).send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.map(Some).with_context(|| {
+                            format!("failed to decode public training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    if training_public_read_route_missing(status) {
+                        return Ok(None);
+                    }
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode public training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "public training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to post public training authority {action} to {url}")
+                    });
+                }
+            }
+        }
+        bail!("public training authority {action} exhausted retry budget")
+    }
+
+    async fn get_training_authority_json_with_retry<R>(
+        &self,
+        path: &str,
+        action: &str,
+        include_bearer_auth: bool,
+    ) -> Result<R>
+    where
+        R: DeserializeOwned,
+    {
+        let url = self.training_authority_url(path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let mut request = self.client.get(url.as_str());
+            if include_bearer_auth {
+                if let Some(token) = self.bearer_auth.as_deref() {
+                    request = request.bearer_auth(token);
+                }
+            }
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.with_context(|| {
+                            format!("failed to decode training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to get training authority {action} from {url}")
+                    });
+                }
+            }
+        }
+        bail!("training authority {action} exhausted retry budget")
+    }
+
+    async fn post_training_authority_json_with_retry<T, R>(
+        &self,
+        path: &str,
+        payload: &T,
+        action: &str,
+        include_bearer_auth: bool,
+    ) -> Result<R>
+    where
+        T: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        let url = self.training_authority_url(path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let mut request = self.client.post(url.as_str()).json(payload);
+            if include_bearer_auth {
+                if let Some(token) = self.bearer_auth.as_deref() {
+                    request = request.bearer_auth(token);
+                }
+            }
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.with_context(|| {
+                            format!("failed to decode training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to post training authority {action} to {url}")
+                    });
+                }
+            }
+        }
+        bail!("training authority {action} exhausted retry budget")
+    }
+
     async fn post_training_coordination_json_with_retry<T, R>(
         &self,
         path: &str,
@@ -6976,6 +7198,10 @@ impl PylonTrainingCoordinatorClient {
         }
         bail!("training authority {action} exhausted retry budget")
     }
+}
+
+fn training_public_read_route_missing(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::METHOD_NOT_ALLOWED
 }
 
 fn training_authority_status_is_retryable(status: reqwest::StatusCode) -> bool {
@@ -16826,35 +17052,38 @@ fn derive_adapter_training_contributor_availability(
     let coordinator_match_supported = host_has_training_network_posture(host);
     let authority_receipt_supported = host_has_training_checkpoint_posture(host);
     let has_cuda_backend = host_has_cuda_training_backend(host);
+    let admitted_cuda_backend = admitted_cuda_training_gpu(host).is_some();
     let has_apple_backend =
         runtime_surface.supports_apple_windowed_training && host_has_apple_training_backend(host);
+    let admitted_apple_backend = admitted_apple_training_host(host, runtime_surface);
     let has_cs336_a1_demo_backend = runtime_surface.supports_cs336_a1_demo
         && host_matches_training_lane_machine_class(host, PSION_CS336_A1_DEMO_LANE_ID);
-    let available_memory_gb = host_max_cuda_training_memory_gb(host)
-        .or_else(|| host_apple_training_memory_gb(host))
-        .or_else(|| {
-            has_cs336_a1_demo_backend
-                .then(|| host_system_training_memory_gb(host))
-                .flatten()
-        });
-    let contributor_supported = (admitted_cuda_training_gpu(host).is_some()
-        || admitted_apple_training_host(host, runtime_surface)
-        || has_cs336_a1_demo_backend)
-        && coordinator_match_supported
-        && authority_receipt_supported;
+    let available_memory_gb = if admitted_cuda_backend {
+        host_max_cuda_training_memory_gb(host)
+    } else if admitted_apple_backend {
+        host_apple_training_memory_gb(host)
+    } else if has_cs336_a1_demo_backend {
+        host_system_training_memory_gb(host)
+    } else {
+        host_max_cuda_training_memory_gb(host).or_else(|| host_apple_training_memory_gb(host))
+    };
+    let contributor_supported =
+        (admitted_cuda_backend || admitted_apple_backend || has_cs336_a1_demo_backend)
+            && coordinator_match_supported
+            && authority_receipt_supported;
     let mut environment_refs = Vec::new();
-    if has_cuda_backend {
+    if admitted_cuda_backend {
         environment_refs.push(PYLON_TRAINING_ENVIRONMENT_REF.to_string());
     }
     if has_cs336_a1_demo_backend {
         environment_refs.push(PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string());
     }
-    if has_apple_backend {
+    if admitted_apple_backend {
         environment_refs.push(PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string());
     }
-    let minimum_memory_gb = if admitted_cuda_training_gpu(host).is_some() || has_cuda_backend {
+    let minimum_memory_gb = if admitted_cuda_backend {
         Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB)
-    } else if has_apple_backend {
+    } else if admitted_apple_backend {
         Some(PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB)
     } else {
         None
@@ -17431,9 +17660,7 @@ fn host_matches_training_lane_machine_class(
     lane_id: &str,
 ) -> bool {
     match lane_id {
-        PSION_CS336_A1_DEMO_LANE_ID => {
-            host_system_training_memory_gb(host).is_some() && !host_has_cuda_training_backend(host)
-        }
+        PSION_CS336_A1_DEMO_LANE_ID => host_system_training_memory_gb(host).is_some(),
         PSION_APPLE_WINDOWED_TRAINING_LANE_ID => host_has_apple_training_backend(host),
         PSION_ACTUAL_PRETRAINING_LANE_ID => host_has_cuda_training_backend(host),
         _ => false,
@@ -17750,7 +17977,6 @@ mod tests {
         PSION_CS336_A1_DEMO_LANE_ID, PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CHECKPOINT_FAMILY,
         PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF, PYLON_TRAINING_ENVIRONMENT_REF,
-        PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB, PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB,
         PYLON_TRAINING_VALIDATOR_POLICY_REF, PsionicTrainRuntimeSurface, PylonConfig, PylonLedger,
         PylonLedgerJob, PylonSettlementRecord, PylonTrainingActiveRuntimeState,
         PylonTrainingArtifactStoreClient, PylonTrainingAssignmentAckRequest,
@@ -18633,7 +18859,7 @@ mod tests {
     }
 
     #[test]
-    fn adapter_training_detection_reports_cuda_contract_but_refuses_non_admitted_gpu()
+    fn adapter_training_detection_routes_non_admitted_cuda_hosts_into_cs336_a1_demo_lane()
     -> Result<(), Box<dyn std::error::Error>> {
         let host = training_host_snapshot(Some("NVIDIA A100-SXM4-80GB"), Some(80), Some(512), true);
         let runtime_surface = psionic_train_runtime_surface_fixture();
@@ -18641,8 +18867,8 @@ mod tests {
             derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
 
         ensure(
-            !availability.contributor_supported,
-            "non-H100 CUDA hosts should not advertise admitted training contribution support",
+            availability.contributor_supported,
+            "non-admitted CUDA hosts should still advertise sellable contribution support when they can honestly run the bounded CS336 A1 host-CPU lane",
         )?;
         ensure(
             availability.coordinator_match_supported && availability.authority_receipt_supported,
@@ -18661,15 +18887,15 @@ mod tests {
                 && availability.checkpoint_families
                     == vec![PYLON_TRAINING_CHECKPOINT_FAMILY.to_string()]
                 && availability.environment_refs
-                    == vec![PYLON_TRAINING_ENVIRONMENT_REF.to_string()],
+                    == vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()],
             "runtime detection should project the frozen Pylon training contract ids",
         )?;
         ensure(
-            availability.minimum_memory_gb == Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB)
-                && availability.available_memory_gb == Some(80)
+            availability.minimum_memory_gb.is_none()
+                && availability.available_memory_gb == Some(32)
                 && availability.settlement_trigger
                     == Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow),
-            "runtime detection should project the admitted CUDA memory floor and sealed-window settlement trigger",
+            "fallback CS336 A1 detection should drop the H100 floor and use the host-CPU memory posture for sealed-window settlement",
         )
     }
 
@@ -18693,12 +18919,36 @@ mod tests {
                     PYLON_TRAINING_ENVIRONMENT_REF.to_string(),
                     PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
                 ],
-            "admitted H100 hosts should advertise the packaged CS336 A1 demo environment beside the main CUDA lane",
+            "admitted H100 hosts should advertise both the canonical CUDA lane and the bounded CS336 A1 host-CPU lane",
         )
     }
 
     #[test]
-    fn adapter_training_detection_reports_apple_contract_but_refuses_insufficient_memory()
+    fn adapter_training_detection_marks_cpu_reference_hosts_ready_for_cs336_a1_demo()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let host = training_host_snapshot(None, None, Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+
+        ensure(
+            availability.contributor_supported
+                && availability.coordinator_match_supported
+                && availability.authority_receipt_supported
+                && availability.execution_backends
+                    == vec![ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend],
+            "reference CPU hosts with the packaged demo lane should still surface one real worker-ready execution backend when runtime and control-plane posture match",
+        )?;
+        ensure(
+            availability.environment_refs
+                == vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()]
+                && availability.minimum_memory_gb.is_none(),
+            "reference CPU hosts should advertise only the packaged CS336 A1 demo environment and should not inherit the H100/Apple memory floors",
+        )
+    }
+
+    #[test]
+    fn adapter_training_detection_routes_subfloor_apple_hosts_into_cs336_a1_demo_lane()
     -> Result<(), Box<dyn std::error::Error>> {
         let host = apple_training_host_snapshot(Some(16), Some(512), true);
         let runtime_surface = psionic_train_runtime_surface_fixture();
@@ -18706,8 +18956,8 @@ mod tests {
             derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
 
         ensure(
-            !availability.contributor_supported,
-            "Apple hosts below the admitted memory floor should not advertise sellable training contribution support",
+            availability.contributor_supported,
+            "Apple hosts below the admitted Apple memory floor should still advertise sellable contribution support when they can run the bounded CS336 A1 host-CPU lane",
         )?;
         ensure(
             availability.coordinator_match_supported && availability.authority_receipt_supported,
@@ -18719,10 +18969,11 @@ mod tests {
             "Apple-capable hosts should use the same admitted psionic-train execution backend",
         )?;
         ensure(
-            availability.environment_refs == vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string()]
-                && availability.minimum_memory_gb == Some(PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB)
+            availability.environment_refs
+                == vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()]
+                && availability.minimum_memory_gb.is_none()
                 && availability.available_memory_gb == Some(16),
-            "Apple capability detection should publish the admitted Apple environment identity and memory posture",
+            "subfloor Apple hosts should publish only the bounded CS336 A1 environment identity and should not inherit the Apple lane memory floor",
         )
     }
 
@@ -18739,33 +18990,11 @@ mod tests {
                 && availability.coordinator_match_supported
                 && availability.authority_receipt_supported
                 && availability.environment_refs
-                    == vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string()],
-            "admitted Apple Silicon hosts should advertise the Apple training lane under the same control plane",
-        )
-    }
-
-    #[test]
-    fn adapter_training_detection_allows_apple_hosts_to_advertise_cpu_demo_lane()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let host = apple_training_host_snapshot(Some(16), Some(512), true);
-        let runtime_surface = psionic_train_runtime_surface_fixture();
-        let availability =
-            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
-        let backend_families =
-            super::training_capability_backend_families_for_contributor(&host, &availability);
-
-        ensure(
-            availability.contributor_supported
-                && availability
-                    .environment_refs
-                    .iter()
-                    .any(|value| value == PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF)
-                && backend_families.iter().any(|value| value == "cpu"),
-            "Apple hosts should still be able to advertise the packaged CS336 A1 demo lane as a CPU contract so local Macs can honestly claim the bounded demo run",
-        )?;
-        ensure(
-            !backend_families.iter().all(|value| value == "metal"),
-            "adding Apple-host support for the bounded demo must not collapse the canonical CPU backend identity into a Metal-only contract",
+                    == vec![
+                        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
+                        PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string(),
+                    ],
+            "admitted Apple Silicon hosts should advertise both the bounded CS336 A1 host-CPU lane and the Apple lane under the same control plane",
         )
     }
 
@@ -18790,11 +19019,11 @@ mod tests {
 
         ensure(
             profile.tier == ProviderTrainingCapabilityTier::Tier3Island
-                && profile.backend_families == vec!["cuda".to_string()]
+                && profile.backend_families == vec!["cpu".to_string(), "cuda".to_string()]
                 && profile.throughput_band == ProviderTrainingThroughputBand::Island
                 && profile.replay_capability == ProviderTrainingReplayCapability::ShortWindow
                 && profile.lease_reliability == ProviderTrainingLeaseReliabilityClass::Steady,
-            "strong admitted CUDA workers should project an island-capable tier profile",
+            "strong admitted CUDA workers should remain island-tier while also surfacing the bounded CS336 A1 host-CPU lane",
         )
     }
 
@@ -18820,6 +19049,61 @@ mod tests {
                 && profile.backend_families == vec!["cpu".to_string()]
                 && profile.replay_capability == ProviderTrainingReplayCapability::ShortWindow,
             "worker-role reference CPU hosts should project a trainer-tier CPU contract for the bounded A1 demo lane",
+        )
+    }
+
+    #[test]
+    fn training_capability_tier_marks_consumer_cuda_cs336_worker_as_tier2_trainer()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut config = default_config(temp_dir.path());
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Worker];
+        let host =
+            training_host_snapshot(Some("NVIDIA GeForce RTX 4080"), Some(16), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+        let profile = derive_training_capability_tier_profile(
+            &config,
+            &PylonTrainingRuntimeState::default(),
+            &host,
+            &availability,
+        );
+
+        ensure(
+            profile.tier == ProviderTrainingCapabilityTier::Tier2Trainer
+                && profile.backend_families == vec!["cpu".to_string(), "cuda".to_string()]
+                && profile.memory_floor_gb.is_none()
+                && profile.available_memory_gb == Some(32)
+                && profile.throughput_band == ProviderTrainingThroughputBand::Medium,
+            "consumer CUDA workers should promote to the bounded CS336 A1 trainer tier without inheriting the H100 floor",
+        )
+    }
+
+    #[test]
+    fn training_capability_tier_marks_subfloor_apple_cs336_worker_as_tier2_trainer()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut config = default_config(temp_dir.path());
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Worker];
+        let host = apple_training_host_snapshot(Some(16), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+        let profile = derive_training_capability_tier_profile(
+            &config,
+            &PylonTrainingRuntimeState::default(),
+            &host,
+            &availability,
+        );
+
+        ensure(
+            profile.tier == ProviderTrainingCapabilityTier::Tier2Trainer
+                && profile.backend_families == vec!["cpu".to_string(), "metal".to_string()]
+                && profile.memory_floor_gb.is_none()
+                && profile.available_memory_gb == Some(16)
+                && profile.throughput_band == ProviderTrainingThroughputBand::Low,
+            "subfloor Apple workers should still promote to the bounded CS336 A1 trainer tier without inheriting the Apple lane floor",
         )
     }
 
@@ -20087,27 +20371,23 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let latest_pointer_resolver_for_server = latest_pointer_resolver.clone();
         let checkpoint_manifest_resolver_for_server = checkpoint_manifest_resolver.clone();
         let base_url = start_mock_http_server(move |method, path, _body| {
-            if method == "GET" && path == "/v1/kernel/compute/training/runs/run.alpha" {
-                let response = compute_contracts::get_compute_training_run_response_to_proto(
-                    &training_run_for_server,
-                )
-                .expect("training run proto response");
-                return (
-                    200,
-                    "application/json",
-                    serde_json::to_string(&response).expect("training run json"),
-                );
-            }
             let mut counts = request_counts_for_server
                 .lock()
                 .expect("training assignment intake request counts");
             let count = counts.entry(path.clone()).or_insert(0);
             *count += 1;
             drop(counts);
+            if method == "GET" && path == "/api/training/runs/run.alpha" {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&training_run_for_server).expect("training run json"),
+                );
+            }
             if method == "GET"
                 && path
                     == format!(
-                        "/v1/kernel/compute/training/artifacts/{}",
+                        "/api/training/artifacts/{}",
                         run_manifest_resolver_for_server.artifact_id
                     )
             {
@@ -20121,7 +20401,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             if method == "GET"
                 && path
                     == format!(
-                        "/v1/kernel/compute/training/artifacts/{}",
+                        "/api/training/artifacts/{}",
                         latest_pointer_resolver_for_server.artifact_id
                     )
             {
@@ -20135,7 +20415,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             if method == "GET"
                 && path
                     == format!(
-                        "/v1/kernel/compute/training/artifacts/{}",
+                        "/api/training/artifacts/{}",
                         checkpoint_manifest_resolver_for_server.artifact_id
                     )
             {
@@ -20210,7 +20490,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 value
                     if value
                         == format!(
-                            "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                            "/api/training/artifacts/{}/signed-access",
                             run_manifest_resolver_for_server.artifact_id
                         ) =>
                 {
@@ -20231,7 +20511,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 value
                     if value
                         == format!(
-                            "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                            "/api/training/artifacts/{}/signed-access",
                             latest_pointer_resolver_for_server.artifact_id
                         ) =>
                 {
@@ -20252,7 +20532,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 value
                     if value
                         == format!(
-                            "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                            "/api/training/artifacts/{}/signed-access",
                             checkpoint_manifest_resolver_for_server.artifact_id
                         ) =>
                 {
@@ -20410,26 +20690,28 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             counts.get("/api/training/nodes/admission") == Some(&1)
                 && counts.get("/api/training/leases/claim") == Some(&1)
-                && counts.get("/api/training/assignments/ack") == Some(&1),
-            "training assignment intake should admit, claim, and acknowledge exactly once for one new lease",
+                && counts.get("/api/training/assignments/ack") == Some(&1)
+                && counts.get("/api/training/runs/run.alpha") == Some(&1),
+            "training assignment intake should admit, claim, acknowledge, and load the leased run exactly once",
         )?;
         ensure(
             counts.get(
                 format!(
-                    "/v1/kernel/compute/training/artifacts/{}",
+                    "/api/training/artifacts/{}",
                     run_manifest_resolver.artifact_id
                 )
                 .as_str(),
             ) == Some(&1)
                 && counts.get(
                     format!(
-                        "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                        "/api/training/artifacts/{}/signed-access",
                         latest_pointer_resolver.artifact_id
                     )
                     .as_str(),
                 ) == Some(&1)
+                && !counts.contains_key("/v1/kernel/compute/training/runs/run.alpha")
                 && counts.get("/signed/training/checkpoint-manifest-42") == Some(&1),
-            "assignment intake should resolve signed artifact access and fetch the retained runtime inputs once",
+            "assignment intake should resolve runtime inputs through the public training surface without falling back to the older kernel artifact routes",
         )
     }
 
@@ -22412,44 +22694,32 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             recorded_at_ms: 1_762_491_210_100,
             metadata: json!({}),
         };
-        let contribution_response =
-            compute_contracts::list_compute_adapter_contribution_outcomes_response_to_proto(&[
-                contribution_outcome.clone(),
-            ])?;
-        let windows_response =
-            compute_contracts::list_compute_adapter_training_windows_response_to_proto(&[
-                adapter_window.clone(),
-            ])?;
-        let outcomes_response =
-            compute_contracts::list_compute_accepted_outcomes_response_to_proto(&[
-                accepted_outcome.clone(),
-            ])?;
         config.training.nexus_authority_base_url = start_mock_http_server(move |method, path, _body| {
             match (method.as_str(), path.as_str()) {
                 (
                     "GET",
-                    "/v1/kernel/compute/training/adapter-contributions?training_run_id=run.alpha&window_id=window.0001",
+                    "/api/training/contributions?training_run_id=run.alpha&window_id=window.0001",
                 ) => (
                     200,
                     "application/json",
-                    serde_json::to_string(&contribution_response)
+                    serde_json::to_string(&vec![contribution_outcome.clone()])
                         .expect("contribution response"),
                 ),
                 (
                     "GET",
-                    "/v1/kernel/compute/training/adapter-windows?training_run_id=run.alpha",
+                    "/api/training/windows?training_run_id=run.alpha",
                 ) => (
                     200,
                     "application/json",
-                    serde_json::to_string(&windows_response).expect("windows response"),
+                    serde_json::to_string(&vec![adapter_window.clone()]).expect("windows response"),
                 ),
                 (
                     "GET",
-                    "/v1/kernel/compute/outcomes?outcome_kind=training_run&environment_ref=env.openagents.cuda.train",
+                    "/api/training/outcomes?outcome_kind=training_run&environment_ref=env.openagents.cuda.train",
                 ) => (
                     200,
                     "application/json",
-                    serde_json::to_string(&outcomes_response).expect("outcomes response"),
+                    serde_json::to_string(&vec![accepted_outcome.clone()]).expect("outcomes response"),
                 ),
                 _ => (
                     404,
