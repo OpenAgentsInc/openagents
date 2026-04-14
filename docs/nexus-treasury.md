@@ -86,6 +86,33 @@ and the node has a registered payout target. That preserves payout continuity
 for validation-replay style work classes that may close after the worker has
 gone idle.
 
+## Local Accepted-Work Dry Run
+
+`nexus-control` now has a repo-owned local treasury proof mode for dry runs
+that need a confirmed payout without touching the live Spark send path:
+
+- `NEXUS_CONTROL_TREASURY_DISPATCH_MODE=synthetic_confirmed`
+- `NEXUS_CONTROL_TREASURY_SYNTHETIC_START_BALANCE_SATS=<starting_balance>`
+
+This mode is for local rehearsal only. It uses the normal treasury loop,
+records `dispatched` and `confirmed` payout receipts, mutates the persisted
+treasury state, and updates `/api/stats` and `GET /v1/treasury/status` as if
+the payout completed, but it does not hit the external wallet send path.
+
+For a truthful local accepted-work rehearsal:
+
+- set `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=disabled`
+- keep one bounded accepted-work lane active
+- verify the payout through:
+  - `GET /api/training/summary`
+  - `GET /api/stats`
+  - the local `receipts.ndjson`
+  - the local `treasury-state.json`
+
+The retained proof report for the first end-to-end CS336 A1 local payout is:
+
+- `docs/reports/pylon/2026-04-13-local-nexus-pylon-paid-dry-run.md`
+
 ## Supported Breez Floor
 
 The repo-owned Spark integration is now pinned to `breez/spark-sdk 0.12.2`.

@@ -17381,6 +17381,50 @@ fn bytes_to_gib_ceil(value: u64) -> u32 {
     u32::try_from(gib).unwrap_or(u32::MAX)
 }
 
+fn host_system_training_memory_gb(host: &ProviderHostTelemetrySnapshot) -> Option<u32> {
+    host.memory
+        .as_ref()
+        .map(|memory| memory.total_bytes.max(memory.available_bytes))
+        .filter(|bytes| *bytes > 0)
+        .map(bytes_to_gib_ceil)
+}
+
+fn host_matches_training_lane_machine_class(
+    host: &ProviderHostTelemetrySnapshot,
+    lane_id: &str,
+) -> bool {
+    let Ok(contract) = PsionicTrainLaneContract::for_lane(lane_id) else {
+        return false;
+    };
+    match contract.minimum_machine_class {
+        PsionicTrainMinimumMachineClass::ReferenceHostCpuOperator => {
+            host_system_training_memory_gb(host).is_some() && !host_has_cuda_training_backend(host)
+        }
+        PsionicTrainMinimumMachineClass::AppleSiliconOperator => {
+            host_has_apple_training_backend(host)
+        }
+        PsionicTrainMinimumMachineClass::StrongCudaTrainer => host_has_cuda_training_backend(host),
+    }
+}
+
+fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<&'static str> {
+    let lane_id = match environment_ref.trim() {
+        PYLON_TRAINING_ENVIRONMENT_REF | PSIONIC_TRAIN_ACTUAL_PRETRAINING_ENVIRONMENT_REF => {
+            PSION_ACTUAL_PRETRAINING_LANE_ID
+        }
+        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF => PSION_CS336_A1_DEMO_LANE_ID,
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF => PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
+        _ => return None,
+    };
+    let contract = PsionicTrainLaneContract::for_lane(lane_id).ok()?;
+    match contract.backend_family.as_str() {
+        "cpu" => Some("cpu"),
+        "cuda" => Some("cuda"),
+        "metal" => Some("metal"),
+        "mlx" => Some("mlx"),
+        _ => None,
+    }
+}
 async fn detect_local_gemma(
     client: &reqwest::Client,
     config: &PylonConfig,
@@ -18667,6 +18711,31 @@ mod tests {
                 && availability.environment_refs
                     == vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string()],
             "admitted Apple Silicon hosts should advertise the Apple training lane under the same control plane",
+        )
+    }
+
+    #[test]
+    fn adapter_training_detection_allows_apple_hosts_to_advertise_cpu_demo_lane()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let host = apple_training_host_snapshot(Some(16), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+        let backend_families =
+            super::training_capability_backend_families_for_contributor(&host, &availability);
+
+        ensure(
+            availability.contributor_supported
+                && availability
+                    .environment_refs
+                    .iter()
+                    .any(|value| value == PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF)
+                && backend_families.iter().any(|value| value == "cpu"),
+            "Apple hosts should still be able to advertise the packaged CS336 A1 demo lane as a CPU contract so local Macs can honestly claim the bounded demo run",
+        )?;
+        ensure(
+            !backend_families.iter().all(|value| value == "metal"),
+            "adding Apple-host support for the bounded demo must not collapse the canonical CPU backend identity into a Metal-only contract",
         )
     }
 

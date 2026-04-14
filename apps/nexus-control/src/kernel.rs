@@ -126,6 +126,7 @@ const COMPUTE_DELIVERY_REJECTION_GUARDED_RATE: f64 = 0.10;
 const COMPUTE_DELIVERY_REJECTION_TRIPPED_RATE: f64 = 0.25;
 const TRAINING_NODE_HEARTBEAT_INTERVAL_MS: i64 = 5_000;
 const TRAINING_NODE_HEARTBEAT_STALE_AFTER_MS: i64 = 120_000;
+const TRAINING_NODE_BOOTSTRAP_ONLINE_AFTER_ADMISSION_MS: i64 = 30_000;
 
 #[derive(Debug, Clone)]
 pub struct ComputeRuntimePolicy {
@@ -14629,13 +14630,7 @@ fn training_node_available_disk_gb(node: &AdmittedTrainingNode) -> Option<u64> {
     Some(disk.available_space_bytes / (1024 * 1024 * 1024))
 }
 
-fn training_node_is_online(node: &AdmittedTrainingNode, now_unix_ms: i64) -> bool {
-    let Some(last_heartbeat_at_ms) = node.last_heartbeat_at_ms else {
-        return false;
-    };
-    if now_unix_ms.saturating_sub(last_heartbeat_at_ms) > TRAINING_NODE_HEARTBEAT_STALE_AFTER_MS {
-        return false;
-    }
+fn training_node_process_is_active(node: &AdmittedTrainingNode) -> bool {
     !matches!(
         node.last_process_state,
         Some(TrainingNodeProcessState::Stopped | TrainingNodeProcessState::Failed)
@@ -14643,6 +14638,19 @@ fn training_node_is_online(node: &AdmittedTrainingNode, now_unix_ms: i64) -> boo
         node.last_desired_state,
         Some(TrainingNodeDesiredState::Stopped)
     )
+}
+
+fn training_node_is_online(node: &AdmittedTrainingNode, now_unix_ms: i64) -> bool {
+    if !training_node_process_is_active(node) {
+        return false;
+    }
+    if let Some(last_heartbeat_at_ms) = node.last_heartbeat_at_ms {
+        return now_unix_ms.saturating_sub(last_heartbeat_at_ms)
+            <= TRAINING_NODE_HEARTBEAT_STALE_AFTER_MS;
+    }
+    let bootstrap_online_at_ms = node.updated_at_ms.max(node.admitted_at_ms);
+    now_unix_ms.saturating_sub(bootstrap_online_at_ms)
+        <= TRAINING_NODE_BOOTSTRAP_ONLINE_AFTER_ADMISSION_MS
 }
 
 fn training_node_is_eligible(node: &AdmittedTrainingNode) -> bool {
@@ -15343,12 +15351,12 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ComputeBondDraw, ComputeProductRecord, ComputeRiskTrigger,
+        AdmittedTrainingNode, ComputeBondDraw, ComputeProductRecord, ComputeRiskTrigger,
         FinalizeValidatorChallengeRequest, KernelMutationContext, KernelState,
         LeaseValidatorChallengeRequest, RetryValidatorChallengeRequest,
-        ScheduleValidatorChallengeRequest, compute_index_family_id, compute_index_methodology_id,
-        compute_index_minimum_proof_posture, decode_metadata_struct, floor_to_minute_utc,
-        money_amount_value,
+        ScheduleValidatorChallengeRequest, TrainingNodeRoleClaim, compute_index_family_id,
+        compute_index_methodology_id, compute_index_minimum_proof_posture, decode_metadata_struct,
+        floor_to_minute_utc, money_amount_value, training_node_is_online,
     };
     use openagents_kernel_core::authority::{
         AcceptComputeOutcomeRequest, AppendComputeEvaluationSamplesRequest,
@@ -15409,6 +15417,10 @@ mod tests {
         CoverageBinding, CoverageBindingStatus, CoverageOffer, CoverageOfferStatus, RiskClaim,
         RiskClaimStatus,
     };
+    use openagents_provider_substrate::{
+        ProviderAdapterTrainingContributorAvailability, ProviderTrainingCapabilityEnvelopeV2,
+        ProviderTrainingCapabilityTierProfile,
+    };
     use openagents_validator_service::{
         GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeProtocolKind,
         ValidatorChallengeRequest, ValidatorChallengeResult, ValidatorChallengeStatus,
@@ -15423,6 +15435,51 @@ mod tests {
             session_id: "session.test".to_string(),
             now_unix_ms,
         }
+    }
+
+    fn admitted_training_node_fixture(admitted_at_ms: i64) -> AdmittedTrainingNode {
+        AdmittedTrainingNode {
+            admission_id: "admission.node-alpha".to_string(),
+            node_pubkey_hex: "node-alpha".to_string(),
+            release_id: "openagents.pylon@0.1.1-rc1".to_string(),
+            node_label: Some("node-alpha".to_string()),
+            role_claims: vec![TrainingNodeRoleClaim::Worker],
+            allowed_networks: vec!["trainnet.cs336.a1.demo".to_string()],
+            build_version: Some("0.1.1-rc1".to_string()),
+            build_digest: "sha256:build-alpha".to_string(),
+            contributor_availability: ProviderAdapterTrainingContributorAvailability::default(),
+            capability_tier: ProviderTrainingCapabilityTierProfile::default(),
+            capability_envelope_v2: ProviderTrainingCapabilityEnvelopeV2::default(),
+            host_telemetry: None,
+            active_reputation_labels: Vec::new(),
+            settlement_destination: Some("spark:node-alpha".to_string()),
+            admitted_at_ms,
+            updated_at_ms: admitted_at_ms,
+            last_heartbeat_at_ms: None,
+            last_training_run_id: None,
+            last_window_id: None,
+            last_assignment_id: None,
+            last_lease_id: None,
+            last_desired_state: None,
+            last_process_state: None,
+            last_exit_code: None,
+            last_successful_run_id: None,
+            last_successful_window_id: None,
+        }
+    }
+
+    #[test]
+    fn training_node_bootstrap_window_keeps_fresh_admission_online_before_first_heartbeat() {
+        let admitted_at_ms = 1_762_499_000_000i64;
+        let node = admitted_training_node_fixture(admitted_at_ms);
+        assert!(training_node_is_online(&node, admitted_at_ms + 20_000));
+    }
+
+    #[test]
+    fn training_node_bootstrap_window_expires_without_first_heartbeat() {
+        let admitted_at_ms = 1_762_499_000_000i64;
+        let node = admitted_training_node_fixture(admitted_at_ms);
+        assert!(!training_node_is_online(&node, admitted_at_ms + 30_001));
     }
 
     fn apple_benchmark_metadata(
