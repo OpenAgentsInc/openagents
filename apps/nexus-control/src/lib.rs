@@ -103,6 +103,10 @@ use openagents_provider_substrate::{
 };
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
+use psionic_train::{
+    PSION_ACTUAL_PRETRAINING_LANE_ID, PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
+    PSION_CS336_A1_DEMO_LANE_ID, PsionicTrainLaneContract,
+};
 use reqwest::Url;
 use ring::rand::SystemRandom;
 use ring::signature::{self, RsaKeyPair};
@@ -135,8 +139,9 @@ use crate::kernel::{
 use crate::treasury::{
     OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
     ProviderPayoutTargetChallengeResponse, ProviderPayoutTargetRegistrationRequest,
-    ProviderPayoutTargetRegistrationResponse, TreasuryConfig, TreasuryDispatchBatchResult,
-    TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryPayoutClass,
+    ProviderPayoutTargetRegistrationResponse, TreasuryCanonicalPublicSnapshot, TreasuryConfig,
+    TreasuryDispatchBatchResult, TreasuryFundingTargetRequest, TreasuryFundingTargetResponse,
+    TreasuryIntegrationExportResponse, TreasuryIntegrationImportResponse, TreasuryPayoutClass,
     TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPublicStats,
     TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse,
     TreasuryTrainingPayoutLedgerSummary, create_live_funding_target, dispatch_live_payouts,
@@ -3977,13 +3982,24 @@ fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<
     if normalized.is_empty() {
         return None;
     }
+    if let Some(backend_family) =
+        training_psionic_backend_family_for_environment_ref(normalized.as_str())
+    {
+        return Some(backend_family);
+    }
     if normalized == PYLON_TRAINING_CUDA_ENVIRONMENT_REF
-        || normalized == PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF
         || normalized.contains(".cuda.")
         || normalized.starts_with("env.cuda.")
         || normalized.ends_with(".cuda.train")
     {
         return Some("cuda");
+    }
+    if normalized.contains(".cpu.")
+        || normalized.contains(".host_cpu.")
+        || normalized.starts_with("env.cpu.")
+        || normalized.ends_with(".cpu.train")
+    {
+        return Some("cpu");
     }
     if normalized.contains(".mlx.") || normalized.starts_with("env.mlx.") {
         return Some("mlx");
@@ -3999,6 +4015,25 @@ fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<
         return Some("metal");
     }
     None
+}
+
+fn training_psionic_backend_family_for_environment_ref(
+    environment_ref: &str,
+) -> Option<&'static str> {
+    let lane_id = match environment_ref {
+        PYLON_TRAINING_CUDA_ENVIRONMENT_REF => PSION_ACTUAL_PRETRAINING_LANE_ID,
+        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF => PSION_CS336_A1_DEMO_LANE_ID,
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF => PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
+        _ => return None,
+    };
+    let contract = PsionicTrainLaneContract::for_lane(lane_id).ok()?;
+    match contract.backend_family.as_str() {
+        "cpu" => Some("cpu"),
+        "cuda" => Some("cuda"),
+        "metal" => Some("metal"),
+        "mlx" => Some("mlx"),
+        _ => None,
+    }
 }
 
 fn training_validator_node_matches_window(
@@ -6428,6 +6463,12 @@ struct ProviderPresenceMetrics {
     pylons_seen_24h: u64,
     pylon_sessions_online_now: u64,
     sellable_pylons_online_now: u64,
+    inference_ready_pylons_online_now: u64,
+    inference_ready_pylon_sessions_online_now: u64,
+    pylon_reported_hosts_online_now: u64,
+    pylon_sessions_missing_host_fingerprint_online_now: u64,
+    likely_same_host_pylon_sessions_online_now: u64,
+    likely_same_host_pylons_online_now: u64,
     recent_pylons: Vec<PublicRecentPylon>,
     recent_pylon_diagnostics: Vec<PublicRecentPylonDiagnostic>,
 }
@@ -6537,6 +6578,64 @@ const STARTER_DEMAND_TEMPLATES: [StarterDemandTemplate; 4] = [
     },
 ];
 
+fn provider_presence_record_is_inference_ready(record: &ProviderPresenceRecord) -> bool {
+    let ready_model = record.ready_model.as_deref().or(record
+        .hosting_telemetry
+        .availability
+        .local_gemma
+        .ready_model
+        .as_deref());
+    if ready_model.is_none() {
+        return false;
+    }
+    if record.hosting_telemetry.availability.local_gemma.ready {
+        return true;
+    }
+    record.hosting_telemetry.inventory_rows.iter().any(|row| {
+        row.backend_ready
+            && row.eligible
+            && row.available_quantity > 0
+            && row.delivery_state.eq_ignore_ascii_case("open")
+    })
+}
+
+fn provider_presence_host_fingerprint(record: &ProviderPresenceRecord) -> Option<String> {
+    let host = record.hosting_telemetry.host.as_ref()?;
+    let memory_total_bytes = host
+        .memory
+        .as_ref()
+        .map(|memory| memory.total_bytes)
+        .unwrap_or(0);
+    let gpu_summary = host
+        .gpus
+        .iter()
+        .map(|gpu| {
+            format!(
+                "{}:{}",
+                gpu.model,
+                gpu.memory_total_label.as_deref().unwrap_or("")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("|");
+    let payload = format!(
+        "{}|{}|{}|{}|{}|{}",
+        host.host_name.as_deref().unwrap_or(""),
+        host.cpu_brand.as_deref().unwrap_or(""),
+        host.cpu_arch.as_deref().unwrap_or(""),
+        host.logical_cpu_count,
+        memory_total_bytes,
+        gpu_summary
+    );
+    if payload
+        .chars()
+        .all(|ch| ch == '|' || ch == '0' || ch.is_ascii_whitespace())
+    {
+        return None;
+    }
+    Some(sha256_prefixed_bytes(payload.as_bytes()))
+}
+
 impl ProviderPresenceState {
     fn record_heartbeat(
         &mut self,
@@ -6627,22 +6726,55 @@ impl ProviderPresenceState {
 
     fn online_identities(&self, now_unix_ms: u64, stale_after_ms: u64) -> Vec<OnlinePylonIdentity> {
         let stale_cutoff = now_unix_ms.saturating_sub(stale_after_ms);
-        let mut identities = BTreeMap::<String, bool>::new();
+        let mut identities =
+            BTreeMap::<String, (bool, Option<String>, bool, Option<String>, u64)>::new();
         for record in self.rows_by_key.values() {
             if !(record.online && record.last_seen_at_unix_ms >= stale_cutoff) {
                 continue;
             }
+            let inference_ready = provider_presence_record_is_inference_ready(record);
+            let host_fingerprint = provider_presence_host_fingerprint(record);
             identities
                 .entry(record.nostr_pubkey_hex.clone())
-                .and_modify(|sellable| *sellable |= record.eligible_product_count > 0)
-                .or_insert(record.eligible_product_count > 0);
+                .and_modify(
+                    |(
+                        sellable,
+                        client_version,
+                        aggregated_inference_ready,
+                        aggregated_host_fingerprint,
+                        last_seen_at_unix_ms,
+                    )| {
+                        *sellable |= record.eligible_product_count > 0;
+                        *aggregated_inference_ready |= inference_ready;
+                        if record.last_seen_at_unix_ms >= *last_seen_at_unix_ms {
+                            *client_version = record.client_version.clone();
+                            *aggregated_host_fingerprint = host_fingerprint.clone();
+                            *last_seen_at_unix_ms = record.last_seen_at_unix_ms;
+                        }
+                    },
+                )
+                .or_insert((
+                    record.eligible_product_count > 0,
+                    record.client_version.clone(),
+                    inference_ready,
+                    host_fingerprint,
+                    record.last_seen_at_unix_ms,
+                ));
         }
         identities
             .into_iter()
-            .map(|(nostr_pubkey_hex, sellable)| OnlinePylonIdentity {
-                nostr_pubkey_hex,
-                sellable,
-            })
+            .map(
+                |(
+                    nostr_pubkey_hex,
+                    (sellable, client_version, inference_ready, host_fingerprint, _),
+                )| OnlinePylonIdentity {
+                    nostr_pubkey_hex,
+                    sellable,
+                    client_version,
+                    inference_ready,
+                    host_fingerprint,
+                },
+            )
             .collect()
     }
 
@@ -6652,20 +6784,52 @@ impl ProviderPresenceState {
         let mut online_identities = HashSet::new();
         let mut seen_identities = HashSet::new();
         let mut sellable_identities = HashSet::new();
+        let mut inference_ready_identities = HashSet::new();
         let mut pylon_sessions_online_now = 0u64;
+        let mut inference_ready_pylon_sessions_online_now = 0u64;
+        let mut pylon_sessions_missing_host_fingerprint_online_now = 0u64;
+        let mut host_session_counts = BTreeMap::<String, u64>::new();
+        let mut host_identity_sets = BTreeMap::<String, BTreeSet<String>>::new();
 
         for record in self.rows_by_key.values() {
             if record.last_seen_at_unix_ms >= seen_cutoff {
                 seen_identities.insert(record.nostr_pubkey_hex.clone());
             }
             if record.online && record.last_seen_at_unix_ms >= stale_cutoff {
+                let inference_ready = provider_presence_record_is_inference_ready(record);
+                let host_fingerprint = provider_presence_host_fingerprint(record);
                 online_identities.insert(record.nostr_pubkey_hex.clone());
                 pylon_sessions_online_now = pylon_sessions_online_now.saturating_add(1);
                 if record.eligible_product_count > 0 {
                     sellable_identities.insert(record.nostr_pubkey_hex.clone());
                 }
+                if inference_ready {
+                    inference_ready_identities.insert(record.nostr_pubkey_hex.clone());
+                    inference_ready_pylon_sessions_online_now =
+                        inference_ready_pylon_sessions_online_now.saturating_add(1);
+                }
+                if let Some(host_fingerprint) = host_fingerprint {
+                    *host_session_counts
+                        .entry(host_fingerprint.clone())
+                        .or_default() += 1;
+                    host_identity_sets
+                        .entry(host_fingerprint)
+                        .or_default()
+                        .insert(record.nostr_pubkey_hex.clone());
+                } else {
+                    pylon_sessions_missing_host_fingerprint_online_now =
+                        pylon_sessions_missing_host_fingerprint_online_now.saturating_add(1);
+                }
             }
         }
+        let likely_same_host_pylon_sessions_online_now = host_session_counts
+            .values()
+            .map(|count| count.saturating_sub(1))
+            .sum::<u64>();
+        let likely_same_host_pylons_online_now = host_identity_sets
+            .values()
+            .map(|identities| identities.len().saturating_sub(1) as u64)
+            .sum::<u64>();
 
         let mut recent_pylons = self.rows_by_key.values().cloned().collect::<Vec<_>>();
         recent_pylons.sort_by(|left, right| {
@@ -6711,19 +6875,35 @@ impl ProviderPresenceState {
             sellable_pylons_online_now: sellable_identities.len() as u64,
             recent_pylons: recent_pylons
                 .into_iter()
-                .map(|record| PublicRecentPylon {
-                    node_label: record.node_label,
-                    nostr_pubkey_short: truncate_nostr_pubkey(record.nostr_pubkey_hex.as_str()),
-                    last_seen_at_unix_ms: record.last_seen_at_unix_ms,
-                    client_version: record.client_version,
-                    relay_urls: record.relay_urls,
-                    eligible_product_count: record.eligible_product_count,
-                    products: record.products,
-                    ready_model: record.ready_model,
-                    runtime_state: record.runtime_state,
-                    training_capability_envelope_v2: record.training_capability_envelope_v2,
+                .map(|record| {
+                    let inference_ready = provider_presence_record_is_inference_ready(&record);
+                    let ready_model = record.ready_model.clone().or(record
+                        .hosting_telemetry
+                        .availability
+                        .local_gemma
+                        .ready_model
+                        .clone());
+                    PublicRecentPylon {
+                        node_label: record.node_label,
+                        nostr_pubkey_short: truncate_nostr_pubkey(record.nostr_pubkey_hex.as_str()),
+                        last_seen_at_unix_ms: record.last_seen_at_unix_ms,
+                        client_version: record.client_version,
+                        relay_urls: record.relay_urls,
+                        eligible_product_count: record.eligible_product_count,
+                        products: record.products,
+                        ready_model,
+                        runtime_state: record.runtime_state,
+                        inference_ready,
+                        training_capability_envelope_v2: record.training_capability_envelope_v2,
+                    }
                 })
                 .collect(),
+            inference_ready_pylons_online_now: inference_ready_identities.len() as u64,
+            inference_ready_pylon_sessions_online_now,
+            pylon_reported_hosts_online_now: host_session_counts.len() as u64,
+            pylon_sessions_missing_host_fingerprint_online_now,
+            likely_same_host_pylon_sessions_online_now,
+            likely_same_host_pylons_online_now,
             recent_pylon_diagnostics,
         }
     }
@@ -6876,6 +7056,14 @@ fn build_api_router_with_state(state: AppState) -> Router {
             post(complete_starter_demand_offer),
         )
         .route("/v1/treasury/status", get(treasury_status))
+        .route(
+            "/v1/treasury/integration/export",
+            get(treasury_integration_export),
+        )
+        .route(
+            "/v1/treasury/integration/public-snapshot",
+            post(import_treasury_public_snapshot),
+        )
         .route(
             "/v1/treasury/funding-target",
             post(create_treasury_funding_target),
@@ -10833,6 +11021,51 @@ async fn treasury_status(
     ))
 }
 
+async fn treasury_integration_export(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<TreasuryIntegrationExportResponse>, ApiError> {
+    authenticate_treasury_integration(&state, &headers)?;
+    let now = now_unix_ms();
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let online_identities = store
+        .provider_presence
+        .online_identities(now, state.config.provider_presence_stale_after_ms);
+    Ok(Json(TreasuryIntegrationExportResponse {
+        authority: "openagents-hosted-nexus".to_string(),
+        generated_at_unix_ms: now,
+        policy: store
+            .treasury
+            .integration_policy_snapshot(&state.config.treasury),
+        payout_sats_paid_total_floor: store.treasury.payout_sats_paid_total,
+        payout_target_identities: store.treasury.payout_target_identity_rows(),
+        online_identities,
+    }))
+}
+
+async fn import_treasury_public_snapshot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(snapshot): Json<TreasuryCanonicalPublicSnapshot>,
+) -> Result<Json<TreasuryIntegrationImportResponse>, ApiError> {
+    authenticate_treasury_integration(&state, &headers)?;
+    let now = now_unix_ms();
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.treasury.import_canonical_public_snapshot(
+        &state.config.treasury,
+        snapshot,
+        now,
+    )))
+}
+
 async fn create_treasury_funding_target(
     State(state): State<AppState>,
     Json(request): Json<TreasuryFundingTargetRequest>,
@@ -10868,6 +11101,8 @@ async fn create_treasury_funding_target(
         authority: "openagents-hosted-nexus".to_string(),
         wallet_runtime_status: material.wallet_snapshot.runtime_status,
         wallet_runtime_detail: material.wallet_snapshot.runtime_detail,
+        wallet_hydration_mode: material.wallet_snapshot.wallet_hydration_mode,
+        wallet_payment_scan_mode: material.wallet_snapshot.wallet_payment_scan_mode,
         wallet_balance_sats: material.wallet_snapshot.balance_sats,
         wallet_balance_updated_at_unix_ms: now,
         spark_address: material.spark_address,
@@ -16461,6 +16696,17 @@ fn runtime_snapshot(
         pylons_seen_24h: provider_presence_metrics.pylons_seen_24h,
         pylon_sessions_online_now: provider_presence_metrics.pylon_sessions_online_now,
         sellable_pylons_online_now: provider_presence_metrics.sellable_pylons_online_now,
+        inference_ready_pylons_online_now: provider_presence_metrics
+            .inference_ready_pylons_online_now,
+        inference_ready_pylon_sessions_online_now: provider_presence_metrics
+            .inference_ready_pylon_sessions_online_now,
+        pylon_reported_hosts_online_now: provider_presence_metrics.pylon_reported_hosts_online_now,
+        pylon_sessions_missing_host_fingerprint_online_now: provider_presence_metrics
+            .pylon_sessions_missing_host_fingerprint_online_now,
+        likely_same_host_pylon_sessions_online_now: provider_presence_metrics
+            .likely_same_host_pylon_sessions_online_now,
+        likely_same_host_pylons_online_now: provider_presence_metrics
+            .likely_same_host_pylons_online_now,
         pylon_presence_stale_after_ms: config.provider_presence_stale_after_ms,
         sessions_active: store.sessions_by_access_token.len(),
         sync_tokens_active: store.sync_tokens.len(),
@@ -16484,6 +16730,7 @@ fn runtime_snapshot(
         nexus_treasury_payout_interval_seconds: treasury_runtime.payout_interval_seconds,
         nexus_treasury_require_sellable: treasury_runtime.require_sellable,
         nexus_treasury_daily_budget_cap_sats: treasury_runtime.daily_budget_cap_sats,
+        nexus_placeholder_payout_mode: treasury_runtime.placeholder_payout_mode,
         nexus_registered_payout_identities: treasury_runtime.registered_payout_identities,
         nexus_payout_sats_paid_total: treasury_runtime.payout_sats_paid_total,
         nexus_payout_sats_paid_24h: treasury_runtime.payout_sats_paid_24h,
@@ -16508,6 +16755,12 @@ fn runtime_snapshot(
         nexus_payouts_confirmed_24h: treasury_runtime.payouts_confirmed_24h,
         nexus_payouts_failed_24h: treasury_runtime.payouts_failed_24h,
         nexus_payouts_skipped_24h: treasury_runtime.payouts_skipped_24h,
+        nexus_placeholder_payout_eligible_online_targets: treasury_runtime
+            .eligible_online_payout_targets,
+        nexus_inference_ready_online_payout_targets: treasury_runtime
+            .inference_ready_online_payout_targets,
+        nexus_duplicate_host_placeholder_blocked_online_targets: treasury_runtime
+            .duplicate_host_placeholder_blocked_online_targets,
         training_nodes_admitted: training_metrics.admitted_nodes,
         training_admitted_contributors: training_metrics.admitted_nodes,
         training_assigned_contributors: training_metrics.assigned_contributors,
@@ -19244,6 +19497,53 @@ fn parse_u64_env(key: &str, default: u64) -> Result<u64, String> {
         })
 }
 
+fn bearer_token_from_headers(headers: &HeaderMap) -> Result<&str, ApiError> {
+    let header = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            error: "unauthorized",
+            reason: "missing_bearer_token".to_string(),
+        })?;
+    header
+        .strip_prefix("Bearer ")
+        .or_else(|| header.strip_prefix("bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            error: "unauthorized",
+            reason: "invalid_bearer_token".to_string(),
+        })
+}
+
+fn authenticate_treasury_integration(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(), ApiError> {
+    let expected = state
+        .config
+        .treasury
+        .integration_token
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: "treasury_integration_disabled".to_string(),
+        })?;
+    let token = bearer_token_from_headers(headers)?;
+    if token != expected {
+        return Err(ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            error: "unauthorized",
+            reason: "invalid_treasury_integration_token".to_string(),
+        });
+    }
+    Ok(())
+}
+
 fn parse_bool_env(key: &str, default: bool) -> Result<bool, String> {
     std::env::var(key)
         .ok()
@@ -19553,9 +19853,11 @@ mod tests {
     use crate::treasury::{
         ProviderPayoutTargetChallengeRequest, ProviderPayoutTargetChallengeResponse,
         ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
-        RegisteredPayoutTarget, TreasuryFundingMaterial, TreasuryFundingTargetRequest,
-        TreasuryFundingTargetResponse, TreasuryPayoutClass, TreasuryPayoutClassification,
-        TreasuryPayoutRecord, TreasuryState, TreasuryStatusResponse, TreasuryWalletSnapshot,
+        RegisteredPayoutTarget, TreasuryCanonicalPublicSnapshot, TreasuryFundingMaterial,
+        TreasuryFundingTargetRequest, TreasuryFundingTargetResponse,
+        TreasuryIntegrationExportResponse, TreasuryIntegrationImportResponse, TreasuryPayoutClass,
+        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode,
+        TreasuryState, TreasuryStatusResponse, TreasuryWalletSnapshot,
         set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
         treasury_test_hook_lock,
     };
@@ -19620,6 +19922,10 @@ mod tests {
                 payout_interval_seconds: 60,
                 require_sellable: false,
                 daily_budget_cap_sats: 1_000,
+                placeholder_payout_mode: TreasuryPlaceholderPayoutMode::InferenceReady,
+                dedupe_placeholder_hosts: true,
+                min_new_accrual_pylon_version: None,
+                min_new_accrual_started_at_unix_ms: None,
                 reconciliation_horizon_seconds: 300,
                 apply_env_policy: false,
                 allow_destructive_env_policy_change: false,
@@ -19639,6 +19945,7 @@ mod tests {
                 max_concurrent_sends: 16,
                 send_timeout_seconds: 180,
                 registration_challenge_ttl_seconds: 300,
+                integration_token: None,
             },
         })
     }
@@ -20237,12 +20544,32 @@ mod tests {
             .find_map(|value| super::training_backend_family_for_environment_ref(value))
             .map(|value| vec![value.to_string()])
             .unwrap_or_default();
+        if request
+            .capability_tier
+            .backend_families
+            .iter()
+            .any(|value| value == "cpu")
+            && request.capability_tier.tier.ordinal()
+                < ProviderTrainingCapabilityTier::Tier2Trainer.ordinal()
+        {
+            request.capability_tier.tier = ProviderTrainingCapabilityTier::Tier2Trainer;
+        }
         request.capability_envelope_v2 = training_capability_envelope_v2(
             &request.capability_tier,
             request.contributor_availability.contributor_supported,
             !request.contributor_availability.environment_refs.is_empty(),
         );
         request
+    }
+
+    #[test]
+    fn training_backend_family_maps_cs336_a1_demo_environment_to_cpu() {
+        assert_eq!(
+            super::training_backend_family_for_environment_ref(
+                PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
+            ),
+            Some("cpu")
+        );
     }
 
     fn training_capability_envelope_v2(
@@ -20287,7 +20614,15 @@ mod tests {
                 minimum_tier: ProviderTrainingCapabilityTier::Tier2Trainer,
                 replica_types: vec![ComputeTrainingReplicaType::SingleNode],
                 required_backend_families: capability_tier.backend_families.clone(),
-                minimum_memory_gb: capability_tier.memory_floor_gb.or(Some(32)),
+                minimum_memory_gb: if capability_tier
+                    .backend_families
+                    .iter()
+                    .any(|value| value == "cpu")
+                {
+                    capability_tier.memory_floor_gb
+                } else {
+                    capability_tier.memory_floor_gb.or(Some(32))
+                },
                 required_throughput_band: ProviderTrainingThroughputBand::Unknown,
                 required_replay_capability: ProviderTrainingReplayCapability::None,
                 benchmark_lane_required: false,
@@ -23582,6 +23917,11 @@ mod tests {
         assert_eq!(empty.pylons_seen_24h, 0);
         assert_eq!(empty.pylon_sessions_online_now, 0);
         assert_eq!(empty.sellable_pylons_online_now, 0);
+        assert_eq!(empty.inference_ready_pylons_online_now, 0);
+        assert_eq!(empty.inference_ready_pylon_sessions_online_now, 0);
+        assert_eq!(empty.pylon_reported_hosts_online_now, 0);
+        assert_eq!(empty.likely_same_host_pylon_sessions_online_now, 0);
+        assert_eq!(empty.likely_same_host_pylons_online_now, 0);
         assert_eq!(empty.sessions_active, 0);
         assert_eq!(empty.sync_tokens_active, 0);
         assert!(empty.recent_pylons.is_empty());
@@ -23668,11 +24008,17 @@ mod tests {
             "gemma-4-e4b",
             "completed",
         )];
+        let mut beta =
+            provider_presence_request("bbccddee11223344", "session-b-1", "beta", 2, "online");
+        beta.ready_model = None;
+        beta.hosting_telemetry.availability.local_gemma.ready = false;
+        beta.hosting_telemetry.availability.local_gemma.ready_model = None;
+        beta.hosting_telemetry.inventory_rows.clear();
 
         for request in [
             alpha,
             provider_presence_request("aabbccdd00112233", "session-a-2", "alpha-2", 0, "degraded"),
-            provider_presence_request("bbccddee11223344", "session-b-1", "beta", 2, "online"),
+            beta,
         ] {
             let response = app
                 .clone()
@@ -23702,6 +24048,12 @@ mod tests {
         assert_eq!(stats.pylons_seen_24h, 2);
         assert_eq!(stats.pylon_sessions_online_now, 3);
         assert_eq!(stats.sellable_pylons_online_now, 2);
+        assert_eq!(stats.inference_ready_pylons_online_now, 1);
+        assert_eq!(stats.inference_ready_pylon_sessions_online_now, 2);
+        assert_eq!(stats.pylon_reported_hosts_online_now, 1);
+        assert_eq!(stats.pylon_sessions_missing_host_fingerprint_online_now, 0);
+        assert_eq!(stats.likely_same_host_pylon_sessions_online_now, 2);
+        assert_eq!(stats.likely_same_host_pylons_online_now, 1);
         assert_eq!(
             stats.pylon_presence_stale_after_ms,
             DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS
@@ -23712,6 +24064,18 @@ mod tests {
                 .recent_pylons
                 .iter()
                 .any(|row| row.nostr_pubkey_short == "bbccddee11223344")
+        );
+        assert!(
+            stats
+                .recent_pylons
+                .iter()
+                .any(|row| row.nostr_pubkey_short == "aabbccdd00112233" && row.inference_ready)
+        );
+        assert!(
+            stats
+                .recent_pylons
+                .iter()
+                .any(|row| row.nostr_pubkey_short == "bbccddee11223344" && !row.inference_ready)
         );
         assert_eq!(stats.recent_pylon_diagnostics.len(), 1);
         assert_eq!(
@@ -23754,6 +24118,11 @@ mod tests {
         assert_eq!(stats.pylons_seen_24h, 2);
         assert_eq!(stats.pylon_sessions_online_now, 2);
         assert_eq!(stats.sellable_pylons_online_now, 1);
+        assert_eq!(stats.inference_ready_pylons_online_now, 1);
+        assert_eq!(stats.inference_ready_pylon_sessions_online_now, 1);
+        assert_eq!(stats.pylon_reported_hosts_online_now, 1);
+        assert_eq!(stats.likely_same_host_pylon_sessions_online_now, 1);
+        assert_eq!(stats.likely_same_host_pylons_online_now, 1);
         Ok(())
     }
 
@@ -23797,6 +24166,9 @@ mod tests {
         assert_eq!(stats.pylons_seen_24h, 0);
         assert_eq!(stats.pylon_sessions_online_now, 0);
         assert_eq!(stats.sellable_pylons_online_now, 0);
+        assert_eq!(stats.inference_ready_pylons_online_now, 0);
+        assert_eq!(stats.pylon_reported_hosts_online_now, 0);
+        assert_eq!(stats.likely_same_host_pylon_sessions_online_now, 0);
         assert!(stats.recent_pylons.is_empty());
         assert!(stats.recent_pylon_diagnostics.is_empty());
         Ok(())
@@ -23950,6 +24322,12 @@ mod tests {
         assert_eq!(fresh.pylons_seen_24h, 2);
         assert_eq!(fresh.pylon_sessions_online_now, 3);
         assert_eq!(fresh.sellable_pylons_online_now, 2);
+        assert_eq!(fresh.inference_ready_pylons_online_now, 2);
+        assert_eq!(fresh.inference_ready_pylon_sessions_online_now, 3);
+        assert_eq!(fresh.pylon_reported_hosts_online_now, 1);
+        assert_eq!(fresh.pylon_sessions_missing_host_fingerprint_online_now, 0);
+        assert_eq!(fresh.likely_same_host_pylon_sessions_online_now, 2);
+        assert_eq!(fresh.likely_same_host_pylons_online_now, 1);
         assert_eq!(
             fresh.recent_pylons[0]
                 .training_capability_envelope_v2
@@ -23975,6 +24353,11 @@ mod tests {
         assert_eq!(after_offline.pylons_seen_24h, 2);
         assert_eq!(after_offline.pylon_sessions_online_now, 2);
         assert_eq!(after_offline.sellable_pylons_online_now, 1);
+        assert_eq!(after_offline.inference_ready_pylons_online_now, 2);
+        assert_eq!(after_offline.inference_ready_pylon_sessions_online_now, 2);
+        assert_eq!(after_offline.pylon_reported_hosts_online_now, 1);
+        assert_eq!(after_offline.likely_same_host_pylon_sessions_online_now, 1);
+        assert_eq!(after_offline.likely_same_host_pylons_online_now, 1);
 
         let stale = presence.metrics(
             100_000 + DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS + 1,
@@ -23982,6 +24365,9 @@ mod tests {
         );
         assert_eq!(stale.pylons_online_now, 0);
         assert_eq!(stale.pylon_sessions_online_now, 0);
+        assert_eq!(stale.inference_ready_pylons_online_now, 0);
+        assert_eq!(stale.pylon_reported_hosts_online_now, 0);
+        assert_eq!(stale.likely_same_host_pylon_sessions_online_now, 0);
         assert_eq!(stale.pylons_seen_24h, 2);
 
         let pruned_at = 110_000 + PROVIDER_PRESENCE_RETENTION_WINDOW_MS + 1;
@@ -23989,8 +24375,49 @@ mod tests {
         let pruned = presence.metrics(pruned_at, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
         assert_eq!(pruned.pylons_online_now, 0);
         assert_eq!(pruned.pylons_seen_24h, 0);
+        assert_eq!(pruned.inference_ready_pylons_online_now, 0);
+        assert_eq!(pruned.pylon_reported_hosts_online_now, 0);
         assert!(pruned.recent_pylons.is_empty());
         assert!(pruned.recent_pylon_diagnostics.is_empty());
+    }
+
+    #[test]
+    fn provider_presence_online_identities_carry_readiness_and_host_fingerprint() {
+        let mut presence = ProviderPresenceState::default();
+        presence.record_heartbeat(
+            provider_presence_request("aabbccdd00112233", "session-a-1", "alpha", 1, "online"),
+            100_000,
+        );
+
+        let mut not_ready =
+            provider_presence_request("bbccddee11223344", "session-b-1", "beta", 0, "online");
+        not_ready.ready_model = None;
+        not_ready.hosting_telemetry.availability.local_gemma.ready = false;
+        not_ready
+            .hosting_telemetry
+            .availability
+            .local_gemma
+            .ready_model = None;
+        not_ready.hosting_telemetry.inventory_rows.clear();
+        presence.record_heartbeat(not_ready, 100_100);
+
+        let identities =
+            presence.online_identities(100_100, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
+        assert_eq!(identities.len(), 2);
+
+        let ready_identity = identities
+            .iter()
+            .find(|identity| identity.nostr_pubkey_hex == "aabbccdd00112233")
+            .expect("ready identity");
+        assert!(ready_identity.inference_ready);
+        assert!(ready_identity.host_fingerprint.is_some());
+
+        let not_ready_identity = identities
+            .iter()
+            .find(|identity| identity.nostr_pubkey_hex == "bbccddee11223344")
+            .expect("presence-only identity");
+        assert!(!not_ready_identity.inference_ready);
+        assert!(not_ready_identity.host_fingerprint.is_some());
     }
 
     #[test]
@@ -24096,6 +24523,12 @@ mod tests {
 
         let metrics = presence.metrics(100_000, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS);
         let public_row = serde_json::to_value(&metrics.recent_pylons[0]).expect("public row");
+        assert_eq!(
+            public_row
+                .get("inference_ready")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
         assert!(public_row.get("hosting_telemetry").is_none());
         assert!(public_row.get("host_name").is_none());
     }
@@ -24246,6 +24679,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             })
@@ -24276,6 +24711,8 @@ mod tests {
                 wallet_snapshot: TreasuryWalletSnapshot {
                     runtime_status: "connected".to_string(),
                     runtime_detail: None,
+                    wallet_hydration_mode: None,
+                    wallet_payment_scan_mode: None,
                     balance_sats: 710,
                     payments: Vec::new(),
                 },
@@ -24320,6 +24757,236 @@ mod tests {
 
         set_test_wallet_snapshot_hook(None);
         set_test_wallet_funding_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_integration_export_requires_token_and_projects_online_inputs() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.integration_token = Some("integration-secret".to_string());
+        let app = build_router_with_state(build_app_state(config));
+        let nostr_pubkey_hex = "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa";
+        let private_key_hex = "1111111111111111111111111111111111111111111111111111111111111111";
+
+        let unauthorized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/integration/export")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let heartbeat = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-presence/heartbeat")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&provider_presence_request(
+                        nostr_pubkey_hex,
+                        "session-a",
+                        "alpha",
+                        1,
+                        "online",
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(heartbeat.status(), StatusCode::OK);
+
+        let challenge_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-payout-target/challenge")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ProviderPayoutTargetChallengeRequest {
+                            nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                            session_id: "session-a".to_string(),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(challenge_response.status(), StatusCode::OK);
+        let challenge: ProviderPayoutTargetChallengeResponse =
+            response_json(challenge_response).await?;
+
+        let signature = sign_provider_payout_target_registration(
+            private_key_hex,
+            nostr_pubkey_hex,
+            "session-a",
+            challenge.challenge.as_str(),
+            "spark:alice",
+        )
+        .map_err(anyhow::Error::msg)?;
+        let register_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-payout-target/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ProviderPayoutTargetRegistrationRequest {
+                            nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                            session_id: "session-a".to_string(),
+                            spark_address: "spark:alice".to_string(),
+                            bitcoin_address: Some("bc1qalice".to_string()),
+                            challenge: challenge.challenge,
+                            challenge_signature_hex: signature,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(register_response.status(), StatusCode::OK);
+        let _: ProviderPayoutTargetRegistrationResponse = response_json(register_response).await?;
+
+        let export_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/integration/export")
+                    .header("authorization", "Bearer integration-secret")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(export_response.status(), StatusCode::OK);
+        let export: TreasuryIntegrationExportResponse = response_json(export_response).await?;
+        assert!(export.policy.treasury_enabled);
+        assert_eq!(export.policy.payout_sats_per_window, 0);
+        assert_eq!(export.payout_target_identities.len(), 1);
+        assert_eq!(
+            export.payout_target_identities[0].nostr_pubkey_hex,
+            nostr_pubkey_hex
+        );
+        assert_eq!(export.online_identities.len(), 1);
+        assert_eq!(
+            export.online_identities[0].nostr_pubkey_hex,
+            nostr_pubkey_hex
+        );
+        assert!(export.online_identities[0].sellable);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_integration_import_overlays_public_stats_and_status() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.integration_token = Some("integration-secret".to_string());
+        let app = build_router_with_state(build_app_state(config));
+        let snapshot_generated_at_unix_ms = now_unix_ms();
+        let import_request = TreasuryCanonicalPublicSnapshot {
+            version: "v1".to_string(),
+            source: "treasury".to_string(),
+            generated_at_unix_ms: snapshot_generated_at_unix_ms,
+            stale_after_unix_ms: snapshot_generated_at_unix_ms.saturating_add(60_000),
+            health_status: "healthy".to_string(),
+            mode: "drain".to_string(),
+            drain_active: true,
+            payout_sats_paid_total: 777,
+            payout_sats_paid_24h: 333,
+            payouts_dispatched_24h: 10,
+            payouts_confirmed_24h: 9,
+            payouts_failed_24h: 1,
+            payouts_skipped_24h: 0,
+            backlog_total: 12,
+            backlog_retryable: 4,
+            wallet_runtime_status: Some("connected".to_string()),
+            wallet_last_error: None,
+            wallet_hydration_mode: Some("get_balance_ensure_synced".to_string()),
+            wallet_payment_scan_mode: Some("recent_only".to_string()),
+        };
+
+        let unauthorized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/treasury/integration/public-snapshot")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&import_request)?))?,
+            )
+            .await?;
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let import_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/treasury/integration/public-snapshot")
+                    .header("authorization", "Bearer integration-secret")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&import_request)?))?,
+            )
+            .await?;
+        assert_eq!(import_response.status(), StatusCode::OK);
+        let imported: TreasuryIntegrationImportResponse = response_json(import_response).await?;
+        assert_eq!(imported.public_snapshot_source, "treasury");
+        assert_eq!(
+            imported.public_snapshot_generated_at_unix_ms,
+            snapshot_generated_at_unix_ms
+        );
+        assert_eq!(imported.payout_sats_paid_total, 777);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_payout_sats_paid_total, 777);
+        assert_eq!(stats.nexus_payout_sats_paid_24h, 333);
+        assert_eq!(stats.nexus_payouts_dispatched_24h, 10);
+        assert_eq!(stats.nexus_payouts_confirmed_24h, 9);
+        assert_eq!(stats.nexus_payout_loop_health, "healthy");
+        assert_eq!(
+            stats.nexus_treasury_snapshot_generated_at_unix_ms,
+            Some(snapshot_generated_at_unix_ms)
+        );
+        assert_eq!(
+            stats.nexus_wallet_runtime_status.as_deref(),
+            Some("connected")
+        );
+
+        let status_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/status")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(status_response.status(), StatusCode::OK);
+        let status: TreasuryStatusResponse = response_json(status_response).await?;
+        assert_eq!(status.public_snapshot_source, "treasury");
+        assert_eq!(status.public_snapshot_mode.as_deref(), Some("drain"));
+        assert_eq!(
+            status.public_snapshot_health_status.as_deref(),
+            Some("healthy")
+        );
+        assert_eq!(status.backlog_total, 12);
+        assert_eq!(status.backlog_retryable, 4);
+        assert_eq!(status.payout_sats_paid_total, 777);
+        assert_eq!(
+            status.wallet_hydration_mode.as_deref(),
+            Some("get_balance_ensure_synced")
+        );
+        assert_eq!(
+            status.wallet_payment_scan_mode.as_deref(),
+            Some("recent_only")
+        );
         Ok(())
     }
 
@@ -24387,6 +25054,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             })
@@ -24475,6 +25144,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             })
@@ -24529,6 +25200,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             })
@@ -24573,6 +25246,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: if call_index == 0 { 500 } else { 710 },
                 payments: Vec::new(),
             })
@@ -24615,6 +25290,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: if call_index == 0 { 500 } else { 710 },
                 payments: Vec::new(),
             })
@@ -24717,6 +25394,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: if call_index == 0 { 500 } else { 710 },
                 payments: Vec::new(),
             })
@@ -24766,6 +25445,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             })
@@ -28145,7 +28826,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn training_scheduler_claims_named_cs336_a1_demo_run_and_surfaces_display_name()
+    async fn training_scheduler_claims_two_slot_named_cs336_a1_demo_run_and_surfaces_display_name()
     -> Result<()> {
         let state = build_app_state(test_config()?);
         let app = build_api_router_with_state(state.clone());
@@ -28266,7 +28947,7 @@ mod tests {
                 "display_name": "CS336 A1 Demo",
                 "pylon_training_scheduler": training_scheduler_metadata_with_contract(
                     network_id,
-                    1,
+                    2,
                     0,
                     0,
                     window_id,
@@ -28281,25 +28962,50 @@ mod tests {
                 )
                 .expect("create training run");
 
-            let mut node = training_node_admission_request_with_environment_refs(
-                "node-cs336-a1-demo",
-                "sha256:build-cs336-a1-demo",
+            let mut mac_node = training_node_admission_request_with_environment_refs(
+                "node-cs336-a1-demo-mac",
+                "sha256:build-cs336-a1-demo-mac",
                 Vec::new(),
                 Vec::new(),
-                Some(80),
+                Some(128),
                 vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
             );
-            node.requested_at_ms = created_at_ms as i64 + 700;
+            mac_node.requested_at_ms = created_at_ms as i64 + 700;
+            mac_node.node_label = Some("Episode 223 Mac".to_string());
             store
                 .kernel
                 .record_training_node_admission(
-                    &training_kernel_mutation_context("node-cs336-a1-demo", created_at_ms + 700),
-                    node,
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-mac",
+                        created_at_ms + 700,
+                    ),
+                    mac_node,
                 )
-                .expect("admit node");
+                .expect("admit Mac node");
+
+            let mut linux_node = training_node_admission_request_with_environment_refs(
+                "node-cs336-a1-demo-linux",
+                "sha256:build-cs336-a1-demo-linux",
+                Vec::new(),
+                Vec::new(),
+                Some(126),
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
+            );
+            linux_node.requested_at_ms = created_at_ms as i64 + 760;
+            linux_node.node_label = Some("Episode 223 Linux".to_string());
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-linux",
+                        created_at_ms + 760,
+                    ),
+                    linux_node,
+                )
+                .expect("admit Linux node");
         }
 
-        let lease_response = app
+        let mac_lease_response = app
             .clone()
             .oneshot(
                 Request::builder()
@@ -28308,9 +29014,9 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
                         &training_run_lease_request_for_scope(
-                            "idemp.training.lease.cs336-a1-demo.auto",
+                            "idemp.training.lease.cs336-a1-demo.mac",
                             created_at_ms as i64 + 20_000,
-                            "node-cs336-a1-demo",
+                            "node-cs336-a1-demo-mac",
                             TrainingNodeRoleClaim::Worker,
                             Some(network_id),
                             None,
@@ -28318,17 +29024,52 @@ mod tests {
                     )?))?,
             )
             .await?;
-        assert_eq!(lease_response.status(), StatusCode::OK);
-        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
-        assert_eq!(lease.training_run_id, training_run_id);
-        assert_eq!(lease.window_id, window_id);
+        assert_eq!(mac_lease_response.status(), StatusCode::OK);
+        let mac_lease = response_json::<RecordTrainingRunLeaseResponse>(mac_lease_response).await?;
+        assert_eq!(mac_lease.training_run_id, training_run_id);
+        assert_eq!(mac_lease.window_id, window_id);
+
+        let linux_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.cs336-a1-demo.linux",
+                            created_at_ms as i64 + 20_050,
+                            "node-cs336-a1-demo-linux",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(linux_lease_response.status(), StatusCode::OK);
+        let linux_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(linux_lease_response).await?;
+        assert_eq!(linux_lease.training_run_id, training_run_id);
+        assert_eq!(linux_lease.window_id, window_id);
+        assert_ne!(mac_lease.assignment_id, linux_lease.assignment_id);
+        assert_ne!(mac_lease.lease_id, linux_lease.lease_id);
         {
             let store = state.store.read().expect("read store");
-            let node = store
+            let mac_node = store
                 .kernel
-                .get_admitted_training_node("node-cs336-a1-demo", created_at_ms as i64 + 710)
-                .expect("admitted node");
-            assert!(node.online);
+                .get_admitted_training_node("node-cs336-a1-demo-mac", created_at_ms as i64 + 710)
+                .expect("admitted Mac node");
+            assert!(mac_node.online);
+            let linux_node = store
+                .kernel
+                .get_admitted_training_node(
+                    "node-cs336-a1-demo-linux",
+                    created_at_ms as i64 + 770,
+                )
+                .expect("admitted Linux node");
+            assert!(linux_node.online);
         }
 
         let stats_response = app
@@ -28350,18 +29091,24 @@ mod tests {
             .expect("public run");
         assert_eq!(public_run.display_name.as_deref(), Some("CS336 A1 Demo"));
         assert_eq!(public_run.work_class, "small_model_local_training");
-        assert_eq!(public_run.assigned_contributors, 1);
+        assert_eq!(public_run.assigned_contributors, 2);
+        assert_eq!(public_run.weak_device_assigned_contributors, 2);
         assert_eq!(public_run.accepted_contributors, 0);
         assert_eq!(public_run.model_progress_contributors, 0);
 
         let summary = fetch_training_summary(&app).await?;
-        let run_summary = summary
+        let summary_run = summary
             .runs
             .iter()
             .find(|run| run.training_run_id == training_run_id)
-            .expect("run summary");
-        assert_eq!(run_summary.participation.admitted_nodes, 1);
-        assert_eq!(run_summary.participation.assigned_contributors, 1);
+            .expect("summary run");
+        assert_eq!(summary_run.participation.worker_target_count, 2);
+        assert_eq!(summary_run.participation.assigned_contributors, 2);
+        assert_eq!(
+            summary_run.participation.weak_device_assigned_contributors,
+            2
+        );
+        assert_eq!(summary_run.progress.accepted_contributors, 0);
 
         let visualization = fetch_training_visualization(&app).await?;
         let visualized_run = visualization
@@ -28374,7 +29121,9 @@ mod tests {
             Some("CS336 A1 Demo")
         );
         assert_eq!(visualized_run.work_class, "small_model_local_training");
-        assert_eq!(visualized_run.assigned_contributors, 1);
+        assert_eq!(visualized_run.replica_type, "single_node");
+        assert_eq!(visualized_run.assigned_contributors, 2);
+        assert_eq!(visualized_run.weak_device_assigned_contributors, 2);
         assert_eq!(visualized_run.accepted_contributors, 0);
         assert_eq!(visualized_run.model_progress_contributors, 0);
 
@@ -34866,6 +35615,8 @@ mod tests {
         let homepage = fetch_homepage(&app).await?;
         assert_eq!(homepage.stats.pylons_online_now, 1);
         assert_eq!(homepage.stats.sellable_pylons_online_now, 1);
+        assert_eq!(homepage.stats.inference_ready_pylons_online_now, 1);
+        assert_eq!(homepage.stats.pylon_reported_hosts_online_now, 1);
         assert_eq!(homepage.stats.recent_pylons.len(), 1);
         assert_eq!(
             homepage

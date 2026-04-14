@@ -20,10 +20,55 @@ HTTP:
 
 - `GET /v1/treasury/status`
 - `POST /v1/treasury/funding-target`
+- `GET /v1/treasury/integration/export`
+- `POST /v1/treasury/integration/public-snapshot`
 
 `treasury funding-target` uses the repo-owned Spark integration and returns the
 current treasury Spark receive address, Bitcoin receive address, and an optional
 Bolt11 invoice when an amount is requested.
+
+## Private Treasury Integration
+
+`nexus-control` now exposes a narrow bridge for the private `treasury` service
+to drain backlog and publish canonical payout state without handing over
+broader market authority.
+
+Authentication:
+
+- `Authorization: Bearer <token>`
+- token source: `NEXUS_CONTROL_TREASURY_INTEGRATION_TOKEN`
+- if the token is unset, both integration endpoints fail closed with
+  `treasury_integration_disabled`
+
+Export contract:
+
+- `GET /v1/treasury/integration/export`
+- returns the canonical payout inputs that the private service needs:
+  - current treasury policy
+  - current paid-total floor
+  - registered payout target identities
+  - live online identities from provider-presence
+
+Import contract:
+
+- `POST /v1/treasury/integration/public-snapshot`
+- accepts the private service's canonical public treasury snapshot:
+  - source and generation time
+  - health and mode
+  - wallet runtime projection
+  - public payout totals / 24h counters
+  - backlog counters
+
+Overlay rules:
+
+- a fresh imported canonical snapshot overrides the public treasury counters
+  shown through `/api/stats` and `/v1/treasury/status`
+- imported payout totals are treated as canonical floors and never allow the
+  local paid-total counter to move backward
+- local continuity alerts stay local-only; they are hidden from public stats
+  when the imported snapshot is the active source
+- if the imported snapshot goes stale, `nexus-control` falls back to its local
+  treasury projection automatically
 
 ## Public Payout Accounting
 
@@ -122,6 +167,7 @@ Wallet/runtime envs:
 - `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS`
 - `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS`
 - `NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS`
+- `NEXUS_CONTROL_TREASURY_INTEGRATION_TOKEN`
 
 Bootstrap / explicit policy-apply envs:
 
@@ -130,6 +176,8 @@ Bootstrap / explicit policy-apply envs:
 - `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS`
 - `NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE`
 - `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS`
+- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE`
+- `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS`
 - `NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV`
 - `NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE`
 - `NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON`
@@ -162,6 +210,8 @@ For the hosted production Nexus, the current safe reference treasury policy is:
 - `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600`
 - `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000`
 - `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4`
+- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=inference_ready`
+- `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true`
 
 That policy keeps the hosted treasury under `864000 sats/day` even if the
 eligible set reaches `240` providers and holds the steady-state Spark send rate
@@ -169,6 +219,45 @@ to `0.4` transfers/second instead of the unsustainable `5+` transfers/second
 range that a `2 sats / 20s` policy reaches once the provider set crosses `100`.
 The lower concurrent-send cap keeps a single wedged Spark batch from occupying
 all live payout slots at once.
+
+`NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE` controls what a placeholder
+window actually means:
+
+- `presence_only` pays any otherwise-eligible online client
+- `inference_ready` only pays clients that are actually advertising a ready
+  local Gemma lane or an open backend-ready inventory row
+- `disabled` stops placeholder accrual entirely while leaving accepted-work
+  payouts alone
+
+`NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true` adds a cheap same-machine
+guard for that placeholder lane. Nexus derives a best-effort host fingerprint
+from provider heartbeat telemetry and blocks extra placeholder payouts when
+multiple clients appear to be the same underlying machine. This dedupe does not
+change accepted-work payouts; it only stops presence/readiness inflation.
+
+Fresh config defaults now use `inference_ready` plus host dedupe. Old persisted
+policy blobs that predate these fields still deserialize as the legacy
+`presence_only` lane until an explicit policy apply changes them, so production
+can roll forward safely without silently tightening payout rules.
+
+When the fleet is ready to stop awarding fresh windows to the old
+`0.0.1-rc*` line, Nexus now supports a separate new-accrual version floor:
+
+- `NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION=<tag>`
+- `NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS=<cutover_ms>`
+
+That split is intentional:
+
+- payout records for windows before the cutoff still reconcile and dispatch,
+  even for old RC clients
+- payout records for windows at or after the cutoff require the configured
+  minimum Pylon version
+- missing or invalid client-version claims are treated as blocked for new
+  accrual once the cutoff is active
+
+For Episode 223, the intended first floor is
+`NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION=pylon-v0.1.1-rc1`. Leave
+both envs unset until the mixed Mac/Linux upgrade path is actually live.
 
 For the production VM, `scripts/deploy/nexus/03-configure-and-start.sh` now
 loads the persisted policy from `${NEXUS_CONTROL_TREASURY_STATE_PATH}` by
@@ -183,16 +272,22 @@ To intentionally change policy through deploy env:
 4. if the change is destructive, also set `NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE=true`
 
 Destructive policy changes include disabling treasury, lowering payout amount,
-lowering the daily budget cap, widening the payout interval, or turning on
-`require_sellable`. Without the explicit destructive override, the deploy
-script now fails closed.
+lowering the daily budget cap, widening the payout interval, turning on
+`require_sellable`, tightening placeholder payouts from `presence_only` to
+`inference_ready` or `disabled`, turning on placeholder host dedupe, introducing
+a live new-accrual version floor, raising that floor, or moving its cutoff
+earlier. Without the explicit destructive override, the deploy script now fails
+closed.
 
 If `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS` is unset,
 `nexus-control` refreshes wallet-backed treasury stats every 3 seconds by
 default. Treasury snapshots are treated as stale only after two missed refresh
 windows, with a minimum 15 second stale budget, and the background refresh now
-reads cached wallet balance plus bounded recent payment history instead of
-walking the entire Spark payment ledger on every refresh. The refresh loop
+forces an explicit Spark `sync_wallet` hydration before reading cached wallet
+balance plus bounded recent payment history. The refresh loop now refuses to
+accept a `0 sats` post-sync balance when treasury state already proves large
+completed funding receives beyond the paid-out total; that case is treated as a
+wallet hydration error instead of silently feeding dispatch. The refresh loop
 tracks unresolved payout payment IDs and caps each cycle to a small page budget
 so the paid-total counter keeps moving even after the wallet has accumulated
 tens of thousands of payouts. `/api/stats` and
@@ -385,9 +480,42 @@ Public-safe treasury counters now project through `nexus-control /api/stats`:
 - `nexus_payouts_confirmed_24h`
 - `nexus_payouts_failed_24h`
 - `nexus_payouts_skipped_24h`
+- `nexus_placeholder_payout_mode`
+- `nexus_placeholder_payout_eligible_online_targets`
+- `nexus_inference_ready_online_payout_targets`
+- `nexus_duplicate_host_placeholder_blocked_online_targets`
+- `inference_ready_pylons_online_now`
+- `inference_ready_pylon_sessions_online_now`
+- `pylon_reported_hosts_online_now`
+- `pylon_sessions_missing_host_fingerprint_online_now`
+- `likely_same_host_pylon_sessions_online_now`
+- `likely_same_host_pylons_online_now`
+
+Interpretation rules for the new `/api/stats` readiness counters:
+
+- `pylons_online_now` is the distinct-provider count, not raw session count.
+- `pylon_sessions_online_now` is the raw online session count.
+- `inference_ready_pylons_online_now` and
+  `inference_ready_pylon_sessions_online_now` separate ready providers from
+  ready sessions so the public surface does not imply more capacity than is
+  actually available.
+- `pylon_reported_hosts_online_now` is the number of online sessions that
+  published a host fingerprint Nexus can group.
+- `likely_same_host_pylon_sessions_online_now` and
+  `likely_same_host_pylons_online_now` are best-effort duplicate signals so the
+  homepage can show when several Pylons appear to come from the same machine.
+- `nexus_placeholder_payout_eligible_online_targets` is the count that still
+  qualifies for placeholder payout under the active policy.
+- `nexus_inference_ready_online_payout_targets` is the stricter inference-ready
+  subset the payout loop can use as placeholder policy tightens.
+- `nexus_duplicate_host_placeholder_blocked_online_targets` is the online count
+  currently blocked from placeholder payout because a same-host duplicate rule
+  applied.
 
 Operator-safe loop health now projects through `GET /v1/treasury/status`:
 
+- `wallet_hydration_mode`
+- `wallet_payment_scan_mode`
 - `wallet_storage_runtime_mode`
 - `wallet_storage_report_path`
 - `wallet_storage_rollback_dir`
@@ -402,8 +530,16 @@ Operator-safe loop health now projects through `GET /v1/treasury/status`:
 - `public_snapshot_generated_at_unix_ms`
 - `snapshot_age_ms`
 - `wallet_sync_lag_ms`
+- `min_new_accrual_pylon_version`
+- `min_new_accrual_started_at_unix_ms`
+- `min_new_accrual_version_gate_active`
+- `placeholder_payout_mode`
 - `eligible_online_payout_targets`
 - `sellable_pylons_online_now`
+- `inference_ready_online_payout_targets`
+- `duplicate_host_placeholder_blocked_online_targets`
+- `min_new_accrual_version_blocked_online_targets`
+- `min_new_accrual_unknown_version_online_targets`
 - `latest_eligible_window_started_at_unix_ms`
 - `last_dispatch_at_unix_ms`
 - `last_confirmed_payout_at_unix_ms`

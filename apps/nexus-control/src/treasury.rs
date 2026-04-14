@@ -16,6 +16,7 @@ use openagents_spark::{
     DepositClaimFeePolicy, Network as SparkNetwork, PaymentSummary, SparkSigner, SparkWallet,
     WalletConfig,
 };
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex as AsyncMutex;
@@ -30,6 +31,13 @@ const ENV_TREASURY_PAYOUT_SATS_PER_WINDOW: &str = "NEXUS_CONTROL_TREASURY_PAYOUT
 const ENV_TREASURY_PAYOUT_INTERVAL_SECONDS: &str = "NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS";
 const ENV_TREASURY_REQUIRE_SELLABLE: &str = "NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE";
 const ENV_TREASURY_DAILY_BUDGET_CAP_SATS: &str = "NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS";
+const ENV_TREASURY_PLACEHOLDER_PAYOUT_MODE: &str = "NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE";
+const ENV_TREASURY_DEDUPE_PLACEHOLDER_HOSTS: &str =
+    "NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS";
+const ENV_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION: &str =
+    "NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION";
+const ENV_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS: &str =
+    "NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS";
 const ENV_TREASURY_WALLET_MNEMONIC_PATH: &str = "NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH";
 const ENV_TREASURY_WALLET_STORAGE_DIR: &str = "NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR";
 const ENV_TREASURY_WALLET_NETWORK: &str = "NEXUS_CONTROL_TREASURY_WALLET_NETWORK";
@@ -46,6 +54,7 @@ const ENV_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: &str =
 const ENV_TREASURY_POLICY_CHANGE_REASON: &str = "NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON";
 const ENV_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS";
+const ENV_TREASURY_INTEGRATION_TOKEN: &str = "NEXUS_CONTROL_TREASURY_INTEGRATION_TOKEN";
 
 const DEFAULT_TREASURY_STATE_PATH: &str = "var/nexus-control/treasury-state.json";
 const DEFAULT_TREASURY_ENABLED: bool = false;
@@ -53,6 +62,8 @@ const DEFAULT_TREASURY_PAYOUT_SATS_PER_WINDOW: u64 = 0;
 const DEFAULT_TREASURY_PAYOUT_INTERVAL_SECONDS: u64 = 3_600;
 const DEFAULT_TREASURY_REQUIRE_SELLABLE: bool = false;
 const DEFAULT_TREASURY_DAILY_BUDGET_CAP_SATS: u64 = 21_000;
+const DEFAULT_TREASURY_DEDUPE_PLACEHOLDER_HOSTS: bool = true;
+const DEFAULT_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS: Option<u64> = None;
 const DEFAULT_TREASURY_WALLET_MNEMONIC_PATH: &str = "var/nexus-control/treasury.mnemonic";
 const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wallet";
 const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
@@ -65,7 +76,7 @@ const DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: bool = false;
 const DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: u64 = 300;
 const TREASURY_PUBLIC_STATS_WINDOW_MS: u64 = 86_400_000;
 const TREASURY_PAYOUT_TARGET_DOMAIN: &str = "openagents:nexus-treasury-payout-target:v1";
-const TREASURY_POLICY_SCHEMA_VERSION: u32 = 1;
+const TREASURY_POLICY_SCHEMA_VERSION: u32 = 3;
 const TREASURY_STATE_RETENTION_WINDOW_MS: u64 = 30 * 86_400_000;
 const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 60_000;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
@@ -88,6 +99,7 @@ const TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES: usize = 8;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_EARLY_SLACK_MS: u64 = 5 * 60_000;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_WINDOW_MS: u64 = 30 * 60_000;
 const TREASURY_DISPATCH_CONFIRMATION_TIMEOUT_MS: u64 = 30 * 60_000;
+const TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL: &str = "nexus_control";
 const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
     &["public_snapshot"],
     &["public_snapshot", "active_continuity_alerts"],
@@ -98,6 +110,33 @@ const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
     ],
 ];
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TreasuryPlaceholderPayoutMode {
+    #[default]
+    InferenceReady,
+    PresenceOnly,
+    Disabled,
+}
+
+impl TreasuryPlaceholderPayoutMode {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::InferenceReady => "inference_ready",
+            Self::PresenceOnly => "presence_only",
+            Self::Disabled => "disabled",
+        }
+    }
+}
+
+const fn legacy_treasury_placeholder_payout_mode() -> TreasuryPlaceholderPayoutMode {
+    TreasuryPlaceholderPayoutMode::PresenceOnly
+}
+
+fn default_treasury_public_snapshot_source() -> String {
+    TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL.to_string()
+}
+
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
     pub enabled: bool,
@@ -105,6 +144,10 @@ pub struct TreasuryConfig {
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    pub dedupe_placeholder_hosts: bool,
+    pub min_new_accrual_pylon_version: Option<String>,
+    pub min_new_accrual_started_at_unix_ms: Option<u64>,
     pub reconciliation_horizon_seconds: u64,
     pub apply_env_policy: bool,
     pub allow_destructive_env_policy_change: bool,
@@ -118,6 +161,7 @@ pub struct TreasuryConfig {
     pub max_concurrent_sends: usize,
     pub send_timeout_seconds: u64,
     pub registration_challenge_ttl_seconds: u64,
+    pub integration_token: Option<String>,
 }
 
 impl TreasuryConfig {
@@ -144,6 +188,31 @@ impl TreasuryConfig {
             ENV_TREASURY_DAILY_BUDGET_CAP_SATS,
             DEFAULT_TREASURY_DAILY_BUDGET_CAP_SATS,
         )?;
+        let placeholder_payout_mode = parse_placeholder_payout_mode_env(
+            ENV_TREASURY_PLACEHOLDER_PAYOUT_MODE,
+            TreasuryPlaceholderPayoutMode::InferenceReady,
+        )?;
+        let dedupe_placeholder_hosts = parse_bool_env(
+            ENV_TREASURY_DEDUPE_PLACEHOLDER_HOSTS,
+            DEFAULT_TREASURY_DEDUPE_PLACEHOLDER_HOSTS,
+        )?;
+        let min_new_accrual_pylon_version =
+            read_env_nonempty(ENV_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION);
+        let min_new_accrual_started_at_unix_ms = parse_optional_u64_env(
+            ENV_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS,
+            DEFAULT_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS,
+        )?;
+        if min_new_accrual_started_at_unix_ms.is_some() && min_new_accrual_pylon_version.is_none() {
+            return Err(format!(
+                "{ENV_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS} requires \
+                 {ENV_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}"
+            ));
+        }
+        if let Some(version) = min_new_accrual_pylon_version.as_deref() {
+            parse_pylon_client_version(version).map_err(|error| {
+                format!("invalid {ENV_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}: {error}")
+            })?;
+        }
         let wallet_status_refresh_seconds = parse_u64_env(
             ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS,
             DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS,
@@ -185,6 +254,10 @@ impl TreasuryConfig {
             payout_interval_seconds,
             require_sellable,
             daily_budget_cap_sats,
+            placeholder_payout_mode,
+            dedupe_placeholder_hosts,
+            min_new_accrual_pylon_version,
+            min_new_accrual_started_at_unix_ms,
             reconciliation_horizon_seconds,
             apply_env_policy,
             allow_destructive_env_policy_change,
@@ -214,6 +287,7 @@ impl TreasuryConfig {
             max_concurrent_sends,
             send_timeout_seconds,
             registration_challenge_ttl_seconds,
+            integration_token: read_env_nonempty(ENV_TREASURY_INTEGRATION_TOKEN),
         })
     }
 
@@ -308,6 +382,10 @@ pub struct TreasuryFundingTargetResponse {
     pub wallet_runtime_status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_runtime_detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_hydration_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_payment_scan_mode: Option<String>,
     pub wallet_balance_sats: u64,
     pub wallet_balance_updated_at_unix_ms: u64,
     pub spark_address: String,
@@ -435,6 +513,8 @@ pub struct TreasuryContinuityAlert {
 struct TreasuryContinuitySignalSnapshot {
     eligible_online_payout_targets: u64,
     sellable_pylons_online_now: u64,
+    inference_ready_online_payout_targets: u64,
+    duplicate_host_placeholder_blocked_online_targets: u64,
     latest_eligible_window_started_at_unix_ms: Option<u64>,
     last_dispatch_at_unix_ms: Option<u64>,
     last_confirmed_at_unix_ms: Option<u64>,
@@ -451,6 +531,14 @@ pub struct TreasuryRuntimePolicy {
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    #[serde(default = "legacy_treasury_placeholder_payout_mode")]
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    #[serde(default)]
+    pub dedupe_placeholder_hosts: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_new_accrual_pylon_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_new_accrual_started_at_unix_ms: Option<u64>,
     pub checksum: String,
 }
 
@@ -462,6 +550,10 @@ impl TreasuryRuntimePolicy {
             config.payout_interval_seconds,
             config.require_sellable,
             config.daily_budget_cap_sats,
+            config.placeholder_payout_mode,
+            config.dedupe_placeholder_hosts,
+            config.min_new_accrual_pylon_version.clone(),
+            config.min_new_accrual_started_at_unix_ms,
         )
     }
 
@@ -471,6 +563,10 @@ impl TreasuryRuntimePolicy {
         payout_interval_seconds: u64,
         require_sellable: bool,
         daily_budget_cap_sats: u64,
+        placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+        dedupe_placeholder_hosts: bool,
+        min_new_accrual_pylon_version: Option<String>,
+        min_new_accrual_started_at_unix_ms: Option<u64>,
     ) -> Self {
         let payload = TreasuryRuntimePolicyChecksumPayload {
             schema_version: TREASURY_POLICY_SCHEMA_VERSION,
@@ -479,6 +575,10 @@ impl TreasuryRuntimePolicy {
             payout_interval_seconds,
             require_sellable,
             daily_budget_cap_sats,
+            placeholder_payout_mode,
+            dedupe_placeholder_hosts,
+            min_new_accrual_pylon_version: min_new_accrual_pylon_version.clone(),
+            min_new_accrual_started_at_unix_ms,
         };
         let checksum = format!(
             "sha256:{}",
@@ -493,12 +593,89 @@ impl TreasuryRuntimePolicy {
             payout_interval_seconds,
             require_sellable,
             daily_budget_cap_sats,
+            placeholder_payout_mode,
+            dedupe_placeholder_hosts,
+            min_new_accrual_pylon_version,
+            min_new_accrual_started_at_unix_ms,
             checksum,
         }
     }
 
     pub fn payout_interval_ms(&self) -> u64 {
         self.payout_interval_seconds.saturating_mul(1_000)
+    }
+
+    fn new_accrual_version_gate_active(&self) -> bool {
+        self.min_new_accrual_pylon_version.is_some()
+            && self.min_new_accrual_started_at_unix_ms.is_some()
+    }
+
+    fn new_accrual_version_gate_applies_to_window(&self, window_started_at_unix_ms: u64) -> bool {
+        self.min_new_accrual_started_at_unix_ms
+            .is_some_and(|cutoff| {
+                self.min_new_accrual_pylon_version.is_some() && window_started_at_unix_ms >= cutoff
+            })
+    }
+
+    fn new_accrual_version_gate_verdict(
+        &self,
+        client_version: Option<&str>,
+        window_started_at_unix_ms: u64,
+    ) -> NewAccrualVersionGateVerdict {
+        if !self.new_accrual_version_gate_applies_to_window(window_started_at_unix_ms) {
+            return NewAccrualVersionGateVerdict::Allowed;
+        }
+        let Some(required_version) = self.min_new_accrual_pylon_version.as_deref() else {
+            return NewAccrualVersionGateVerdict::Allowed;
+        };
+        let Ok(required_version) = parse_pylon_client_version(required_version) else {
+            return NewAccrualVersionGateVerdict::InvalidPolicy;
+        };
+        let Some(client_version) = client_version else {
+            return NewAccrualVersionGateVerdict::MissingClientVersion;
+        };
+        let Ok(client_version) = parse_pylon_client_version(client_version) else {
+            return NewAccrualVersionGateVerdict::InvalidClientVersion;
+        };
+        if client_version >= required_version {
+            NewAccrualVersionGateVerdict::Allowed
+        } else {
+            NewAccrualVersionGateVerdict::BelowFloor
+        }
+    }
+
+    fn placeholder_payout_verdict(
+        &self,
+        identity: &OnlinePylonIdentity,
+        seen_host_fingerprints: &mut BTreeSet<String>,
+    ) -> PlaceholderPayoutEligibilityVerdict {
+        match self.placeholder_payout_mode {
+            TreasuryPlaceholderPayoutMode::Disabled => {
+                return PlaceholderPayoutEligibilityVerdict::Disabled;
+            }
+            TreasuryPlaceholderPayoutMode::InferenceReady if !identity.inference_ready => {
+                return PlaceholderPayoutEligibilityVerdict::RequiresInferenceReady;
+            }
+            TreasuryPlaceholderPayoutMode::InferenceReady
+            | TreasuryPlaceholderPayoutMode::PresenceOnly => {}
+        }
+
+        if self.dedupe_placeholder_hosts
+            && let Some(host_fingerprint) = identity.host_fingerprint.clone()
+            && !seen_host_fingerprints.insert(host_fingerprint)
+        {
+            return PlaceholderPayoutEligibilityVerdict::DuplicateHost;
+        }
+
+        PlaceholderPayoutEligibilityVerdict::Allowed
+    }
+
+    fn placeholder_payout_classification(&self) -> TreasuryPayoutClassification {
+        TreasuryPayoutClassification {
+            payout_class: TreasuryPayoutClass::PlaceholderLiveness,
+            payout_basis: Some(self.placeholder_payout_mode.label().to_string()),
+            ..TreasuryPayoutClassification::default()
+        }
     }
 }
 
@@ -510,6 +687,10 @@ struct TreasuryRuntimePolicyChecksumPayload {
     payout_interval_seconds: u64,
     require_sellable: bool,
     daily_budget_cap_sats: u64,
+    placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    dedupe_placeholder_hosts: bool,
+    min_new_accrual_pylon_version: Option<String>,
+    min_new_accrual_started_at_unix_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -534,6 +715,14 @@ pub struct TreasuryStatusResponse {
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    pub dedupe_placeholder_hosts: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_new_accrual_pylon_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_new_accrual_started_at_unix_ms: Option<u64>,
+    #[serde(default)]
+    pub min_new_accrual_version_gate_active: bool,
     pub registered_payout_identities: u64,
     pub wallet_balance_sats: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -542,6 +731,10 @@ pub struct TreasuryStatusResponse {
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_hydration_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_payment_scan_mode: Option<String>,
     #[serde(default = "default_wallet_storage_runtime_mode")]
     pub wallet_storage_runtime_mode: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -566,14 +759,32 @@ pub struct TreasuryStatusResponse {
     pub payout_loop_last_completed_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_snapshot_generated_at_unix_ms: Option<u64>,
+    #[serde(default = "default_treasury_public_snapshot_source")]
+    pub public_snapshot_source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_snapshot_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_snapshot_health_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_age_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_sync_lag_ms: Option<u64>,
     #[serde(default)]
+    pub backlog_total: u64,
+    #[serde(default)]
+    pub backlog_retryable: u64,
+    #[serde(default)]
     pub eligible_online_payout_targets: u64,
     #[serde(default)]
     pub sellable_pylons_online_now: u64,
+    #[serde(default)]
+    pub inference_ready_online_payout_targets: u64,
+    #[serde(default)]
+    pub duplicate_host_placeholder_blocked_online_targets: u64,
+    #[serde(default)]
+    pub min_new_accrual_version_blocked_online_targets: u64,
+    #[serde(default)]
+    pub min_new_accrual_unknown_version_online_targets: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_eligible_window_started_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -713,11 +924,23 @@ impl Default for TreasuryTrainingPayoutLedgerSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TreasuryPublicSnapshot {
     pub generated_at_unix_ms: u64,
+    #[serde(default = "default_treasury_public_snapshot_source")]
+    pub source: String,
     pub treasury_enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    #[serde(default = "legacy_treasury_placeholder_payout_mode")]
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    #[serde(default)]
+    pub dedupe_placeholder_hosts: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_new_accrual_pylon_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_new_accrual_started_at_unix_ms: Option<u64>,
+    #[serde(default)]
+    pub min_new_accrual_version_gate_active: bool,
     pub registered_payout_identities: u64,
     pub wallet_balance_sats: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -767,8 +990,20 @@ pub struct TreasuryPublicSnapshot {
     pub payouts_confirmed_24h: u64,
     pub payouts_failed_24h: u64,
     pub payouts_skipped_24h: u64,
+    #[serde(default)]
+    pub backlog_total: u64,
+    #[serde(default)]
+    pub backlog_retryable: u64,
     pub eligible_online_payout_targets: u64,
     pub sellable_pylons_online_now: u64,
+    #[serde(default)]
+    pub inference_ready_online_payout_targets: u64,
+    #[serde(default)]
+    pub duplicate_host_placeholder_blocked_online_targets: u64,
+    #[serde(default)]
+    pub min_new_accrual_version_blocked_online_targets: u64,
+    #[serde(default)]
+    pub min_new_accrual_unknown_version_online_targets: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_eligible_window_started_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -783,6 +1018,10 @@ pub struct TreasuryPublicSnapshot {
     pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degraded_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health_status: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -814,11 +1053,18 @@ pub struct TreasuryPublicStats {
     pub payout_interval_seconds: u64,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    pub dedupe_placeholder_hosts: bool,
+    pub min_new_accrual_pylon_version: Option<String>,
+    pub min_new_accrual_started_at_unix_ms: Option<u64>,
+    pub min_new_accrual_version_gate_active: bool,
     pub registered_payout_identities: u64,
     pub wallet_balance_sats: u64,
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     pub wallet_runtime_status: Option<String>,
     pub wallet_last_error: Option<String>,
+    pub wallet_hydration_mode: Option<String>,
+    pub wallet_payment_scan_mode: Option<String>,
     pub wallet_storage_runtime_mode: String,
     pub payout_loop_runtime_status: Option<String>,
     pub payout_loop_last_error: Option<String>,
@@ -826,10 +1072,19 @@ pub struct TreasuryPublicStats {
     pub payout_loop_last_started_at_unix_ms: Option<u64>,
     pub payout_loop_last_completed_at_unix_ms: Option<u64>,
     pub public_snapshot_generated_at_unix_ms: Option<u64>,
+    pub public_snapshot_source: String,
+    pub public_snapshot_mode: Option<String>,
+    pub public_snapshot_health_status: Option<String>,
     pub snapshot_age_ms: Option<u64>,
     pub wallet_sync_lag_ms: Option<u64>,
+    pub backlog_total: u64,
+    pub backlog_retryable: u64,
     pub eligible_online_payout_targets: u64,
     pub sellable_pylons_online_now: u64,
+    pub inference_ready_online_payout_targets: u64,
+    pub duplicate_host_placeholder_blocked_online_targets: u64,
+    pub min_new_accrual_version_blocked_online_targets: u64,
+    pub min_new_accrual_unknown_version_online_targets: u64,
     pub latest_eligible_window_started_at_unix_ms: Option<u64>,
     pub last_dispatch_at_unix_ms: Option<u64>,
     pub last_confirmed_payout_at_unix_ms: Option<u64>,
@@ -859,10 +1114,122 @@ pub struct TreasuryPublicStats {
     pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OnlinePylonIdentity {
     pub nostr_pubkey_hex: String,
     pub sellable: bool,
+    pub client_version: Option<String>,
+    pub inference_ready: bool,
+    pub host_fingerprint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryCanonicalPublicSnapshot {
+    pub version: String,
+    pub source: String,
+    pub generated_at_unix_ms: u64,
+    pub stale_after_unix_ms: u64,
+    pub health_status: String,
+    pub mode: String,
+    pub drain_active: bool,
+    pub payout_sats_paid_total: u64,
+    pub payout_sats_paid_24h: u64,
+    pub payouts_dispatched_24h: u64,
+    pub payouts_confirmed_24h: u64,
+    pub payouts_failed_24h: u64,
+    pub payouts_skipped_24h: u64,
+    pub backlog_total: u64,
+    pub backlog_retryable: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_runtime_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_hydration_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_payment_scan_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryIntegrationPolicySnapshot {
+    pub treasury_enabled: bool,
+    pub payout_sats_per_window: u64,
+    pub payout_interval_seconds: u64,
+    pub require_sellable: bool,
+    pub daily_budget_cap_sats: u64,
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    pub dedupe_placeholder_hosts: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_new_accrual_pylon_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_new_accrual_started_at_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryIntegrationExportResponse {
+    pub authority: String,
+    pub generated_at_unix_ms: u64,
+    pub policy: TreasuryIntegrationPolicySnapshot,
+    pub payout_sats_paid_total_floor: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payout_target_identities: Vec<TreasuryPayoutTargetIdentityStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub online_identities: Vec<OnlinePylonIdentity>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryIntegrationImportResponse {
+    pub authority: String,
+    pub public_snapshot_source: String,
+    pub public_snapshot_generated_at_unix_ms: u64,
+    pub payout_sats_paid_total: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NewAccrualVersionGateVerdict {
+    Allowed,
+    MissingClientVersion,
+    InvalidClientVersion,
+    BelowFloor,
+    InvalidPolicy,
+}
+
+impl NewAccrualVersionGateVerdict {
+    const fn skip_reason(self) -> Option<&'static str> {
+        match self {
+            Self::Allowed => None,
+            Self::MissingClientVersion => Some("missing_client_version_for_new_accrual"),
+            Self::InvalidClientVersion => Some("invalid_client_version_for_new_accrual"),
+            Self::BelowFloor => Some("below_min_new_accrual_version_floor"),
+            Self::InvalidPolicy => Some("invalid_min_new_accrual_version_policy"),
+        }
+    }
+
+    const fn counts_as_unknown_version(self) -> bool {
+        matches!(
+            self,
+            Self::MissingClientVersion | Self::InvalidClientVersion
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlaceholderPayoutEligibilityVerdict {
+    Allowed,
+    Disabled,
+    RequiresInferenceReady,
+    DuplicateHost,
+}
+
+impl PlaceholderPayoutEligibilityVerdict {
+    const fn skip_reason(self) -> Option<&'static str> {
+        match self {
+            Self::Allowed => None,
+            Self::Disabled => Some("placeholder_payouts_disabled"),
+            Self::RequiresInferenceReady => Some("placeholder_requires_inference_ready"),
+            Self::DuplicateHost => Some("duplicate_host_placeholder_readiness"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -1016,6 +1383,8 @@ pub struct TreasuryState {
     pub policy_last_error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_snapshot: Option<TreasuryPublicSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_public_snapshot: Option<TreasuryCanonicalPublicSnapshot>,
     #[serde(default)]
     pub payout_targets_by_identity: BTreeMap<String, RegisteredPayoutTarget>,
     #[serde(default)]
@@ -1028,6 +1397,10 @@ pub struct TreasuryState {
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_hydration_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_payment_scan_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_storage_runtime_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1060,6 +1433,14 @@ pub struct TreasuryState {
     pub eligible_online_payout_targets: u64,
     #[serde(default)]
     pub sellable_pylons_online_now: u64,
+    #[serde(default)]
+    pub inference_ready_online_payout_targets: u64,
+    #[serde(default)]
+    pub duplicate_host_placeholder_blocked_online_targets: u64,
+    #[serde(default)]
+    pub min_new_accrual_version_blocked_online_targets: u64,
+    #[serde(default)]
+    pub min_new_accrual_unknown_version_online_targets: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub latest_eligible_window_started_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1176,6 +1557,8 @@ impl TreasuryPayoutTotals {
 pub struct TreasuryWalletSnapshot {
     pub runtime_status: String,
     pub runtime_detail: Option<String>,
+    pub wallet_hydration_mode: Option<String>,
+    pub wallet_payment_scan_mode: Option<String>,
     pub balance_sats: u64,
     pub payments: Vec<PaymentSummary>,
 }
@@ -1184,6 +1567,9 @@ pub struct TreasuryWalletSnapshot {
 pub struct TreasuryWalletRefreshPlan {
     tracked_payment_ids: BTreeSet<String>,
     history_scan_page_offset: usize,
+    expected_nonzero_balance: bool,
+    historical_receive_total_sats: u64,
+    payout_sats_paid_total: u64,
 }
 
 impl TreasuryWalletRefreshPlan {
@@ -1210,6 +1596,10 @@ impl TreasuryWalletRefreshPlan {
         }
 
         budget
+    }
+
+    fn expects_funded_balance(&self) -> bool {
+        self.expected_nonzero_balance
     }
 }
 
@@ -1584,12 +1974,17 @@ impl TreasuryState {
             .filter(|identity| identity.sellable)
             .count() as u64;
         self.eligible_online_payout_targets = 0;
+        self.inference_ready_online_payout_targets = 0;
+        self.duplicate_host_placeholder_blocked_online_targets = 0;
+        self.min_new_accrual_version_blocked_online_targets = 0;
+        self.min_new_accrual_unknown_version_online_targets = 0;
         if !policy.treasury_enabled || policy.payout_interval_seconds == 0 {
             return;
         }
 
         let payout_interval_ms = policy.payout_interval_ms();
         let mut latest_eligible_window_started_at_unix_ms: Option<u64> = None;
+        let mut seen_placeholder_host_fingerprints = BTreeSet::new();
         for identity in online_identities {
             if policy.require_sellable && !identity.sellable {
                 continue;
@@ -1600,13 +1995,42 @@ impl TreasuryState {
             {
                 continue;
             }
-            self.eligible_online_payout_targets =
-                self.eligible_online_payout_targets.saturating_add(1);
+            if identity.inference_ready {
+                self.inference_ready_online_payout_targets =
+                    self.inference_ready_online_payout_targets.saturating_add(1);
+            }
+            let placeholder_verdict = policy
+                .placeholder_payout_verdict(identity, &mut seen_placeholder_host_fingerprints);
+            if placeholder_verdict == PlaceholderPayoutEligibilityVerdict::DuplicateHost {
+                self.duplicate_host_placeholder_blocked_online_targets = self
+                    .duplicate_host_placeholder_blocked_online_targets
+                    .saturating_add(1);
+            }
+            if placeholder_verdict != PlaceholderPayoutEligibilityVerdict::Allowed {
+                continue;
+            }
             let window_started_at_unix_ms = payout_window_started_at_for_identity(
                 now_unix_ms,
                 payout_interval_ms,
                 identity.nostr_pubkey_hex.as_str(),
             );
+            let gate_verdict = policy.new_accrual_version_gate_verdict(
+                identity.client_version.as_deref(),
+                window_started_at_unix_ms,
+            );
+            if gate_verdict != NewAccrualVersionGateVerdict::Allowed {
+                self.min_new_accrual_version_blocked_online_targets = self
+                    .min_new_accrual_version_blocked_online_targets
+                    .saturating_add(1);
+                if gate_verdict.counts_as_unknown_version() {
+                    self.min_new_accrual_unknown_version_online_targets = self
+                        .min_new_accrual_unknown_version_online_targets
+                        .saturating_add(1);
+                }
+                continue;
+            }
+            self.eligible_online_payout_targets =
+                self.eligible_online_payout_targets.saturating_add(1);
             latest_eligible_window_started_at_unix_ms =
                 Some(match latest_eligible_window_started_at_unix_ms {
                     Some(existing) => existing.max(window_started_at_unix_ms),
@@ -1789,6 +2213,9 @@ impl TreasuryState {
         TreasuryContinuitySignalSnapshot {
             eligible_online_payout_targets: self.eligible_online_payout_targets,
             sellable_pylons_online_now: self.sellable_pylons_online_now,
+            inference_ready_online_payout_targets: self.inference_ready_online_payout_targets,
+            duplicate_host_placeholder_blocked_online_targets: self
+                .duplicate_host_placeholder_blocked_online_targets,
             latest_eligible_window_started_at_unix_ms,
             last_dispatch_at_unix_ms: self.last_dispatch_at_unix_ms,
             last_confirmed_at_unix_ms: self.last_confirmed_payout_at_unix_ms,
@@ -1861,6 +2288,32 @@ impl TreasuryState {
         .into_iter()
         .flatten()
         .max()
+    }
+
+    fn backlog_counts(&self) -> (u64, u64) {
+        let mut backlog_total = 0u64;
+        let mut backlog_retryable = 0u64;
+        for record in self.payout_records_by_key.values() {
+            if !matches!(record.status.as_str(), "confirmed" | "skipped") {
+                backlog_total = backlog_total.saturating_add(1);
+            }
+            if record.payment_id.is_none()
+                && !record.payout_target.trim().is_empty()
+                && matches!(record.status.as_str(), "failed" | "dispatching")
+            {
+                backlog_retryable = backlog_retryable.saturating_add(1);
+            }
+        }
+        (backlog_total, backlog_retryable)
+    }
+
+    fn active_canonical_public_snapshot(
+        &self,
+        now_unix_ms: u64,
+    ) -> Option<&TreasuryCanonicalPublicSnapshot> {
+        self.canonical_public_snapshot
+            .as_ref()
+            .filter(|snapshot| snapshot.stale_after_unix_ms >= now_unix_ms)
     }
 
     fn wallet_runtime_view(
@@ -1968,6 +2421,7 @@ impl TreasuryState {
         let mut payouts_confirmed_24h = 0u64;
         let mut payouts_failed_24h = 0u64;
         let mut payouts_skipped_24h = 0u64;
+        let (backlog_total, backlog_retryable) = self.backlog_counts();
 
         for record in self.payout_records_by_key.values() {
             if record.status == "dispatched" && !record.counted_in_paid_total {
@@ -1998,13 +2452,19 @@ impl TreasuryState {
             }
         }
 
-        TreasuryPublicSnapshot {
+        let mut snapshot = TreasuryPublicSnapshot {
             generated_at_unix_ms: now_unix_ms,
+            source: default_treasury_public_snapshot_source(),
             treasury_enabled: policy.treasury_enabled,
             payout_sats_per_window: policy.payout_sats_per_window,
             payout_interval_seconds: policy.payout_interval_seconds,
             require_sellable: policy.require_sellable,
             daily_budget_cap_sats: policy.daily_budget_cap_sats,
+            placeholder_payout_mode: policy.placeholder_payout_mode,
+            dedupe_placeholder_hosts: policy.dedupe_placeholder_hosts,
+            min_new_accrual_pylon_version: policy.min_new_accrual_pylon_version.clone(),
+            min_new_accrual_started_at_unix_ms: policy.min_new_accrual_started_at_unix_ms,
+            min_new_accrual_version_gate_active: policy.new_accrual_version_gate_active(),
             registered_payout_identities: self.payout_targets_by_identity.len() as u64,
             wallet_balance_sats: self.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: self.wallet_balance_updated_at_unix_ms,
@@ -2068,8 +2528,17 @@ impl TreasuryState {
             payouts_confirmed_24h,
             payouts_failed_24h,
             payouts_skipped_24h,
+            backlog_total,
+            backlog_retryable,
             eligible_online_payout_targets: continuity.eligible_online_payout_targets,
             sellable_pylons_online_now: continuity.sellable_pylons_online_now,
+            inference_ready_online_payout_targets: continuity.inference_ready_online_payout_targets,
+            duplicate_host_placeholder_blocked_online_targets: continuity
+                .duplicate_host_placeholder_blocked_online_targets,
+            min_new_accrual_version_blocked_online_targets: self
+                .min_new_accrual_version_blocked_online_targets,
+            min_new_accrual_unknown_version_online_targets: self
+                .min_new_accrual_unknown_version_online_targets,
             latest_eligible_window_started_at_unix_ms: continuity
                 .latest_eligible_window_started_at_unix_ms,
             last_dispatch_at_unix_ms: continuity.last_dispatch_at_unix_ms,
@@ -2078,7 +2547,48 @@ impl TreasuryState {
             fail_reason_metrics_24h: continuity.fail_reason_metrics_24h,
             active_continuity_alerts: self.active_continuity_alerts.clone(),
             degraded_reason: self.degraded_reason(config, now_unix_ms),
+            mode: None,
+            health_status: None,
+        };
+
+        if let Some(canonical) = self.active_canonical_public_snapshot(now_unix_ms) {
+            snapshot.generated_at_unix_ms = canonical.generated_at_unix_ms;
+            snapshot.source = canonical.source.clone();
+            snapshot.wallet_runtime_status = canonical
+                .wallet_runtime_status
+                .clone()
+                .or(snapshot.wallet_runtime_status);
+            snapshot.wallet_last_error = canonical
+                .wallet_last_error
+                .clone()
+                .or(snapshot.wallet_last_error);
+            snapshot.payout_loop_health = if canonical.health_status == "healthy" {
+                "healthy".to_string()
+            } else {
+                "degraded".to_string()
+            };
+            snapshot.payout_sats_paid_total = canonical.payout_sats_paid_total;
+            snapshot.payout_sats_paid_24h = canonical.payout_sats_paid_24h;
+            snapshot.payouts_dispatched_24h = canonical.payouts_dispatched_24h;
+            snapshot.payouts_confirmed_24h = canonical.payouts_confirmed_24h;
+            snapshot.payouts_failed_24h = canonical.payouts_failed_24h;
+            snapshot.payouts_skipped_24h = canonical.payouts_skipped_24h;
+            snapshot.backlog_total = canonical.backlog_total;
+            snapshot.backlog_retryable = canonical.backlog_retryable;
+            snapshot.active_continuity_alerts = Vec::new();
+            snapshot.degraded_reason = if canonical.health_status == "healthy" {
+                None
+            } else {
+                canonical
+                    .wallet_last_error
+                    .clone()
+                    .or_else(|| Some("treasury_service_degraded".to_string()))
+            };
+            snapshot.mode = Some(canonical.mode.clone());
+            snapshot.health_status = Some(canonical.health_status.clone());
         }
+
+        snapshot
     }
 
     pub fn refresh_public_snapshot(&mut self, config: &TreasuryConfig, now_unix_ms: u64) {
@@ -2094,20 +2604,52 @@ impl TreasuryState {
         let continuity = self.continuity_signal_snapshot(config, now_unix_ms);
         let (wallet_runtime_status, wallet_last_error) =
             self.wallet_runtime_view(config, now_unix_ms);
+        let canonical = self.active_canonical_public_snapshot(now_unix_ms);
+        let wallet_runtime_status = canonical
+            .and_then(|snapshot| snapshot.wallet_runtime_status.clone())
+            .or(wallet_runtime_status);
+        let wallet_last_error = canonical
+            .and_then(|snapshot| snapshot.wallet_last_error.clone())
+            .or(wallet_last_error);
+        let wallet_hydration_mode = canonical
+            .and_then(|snapshot| snapshot.wallet_hydration_mode.clone())
+            .or_else(|| self.wallet_hydration_mode.clone());
+        let wallet_payment_scan_mode = canonical
+            .and_then(|snapshot| snapshot.wallet_payment_scan_mode.clone())
+            .or_else(|| self.wallet_payment_scan_mode.clone());
         let wallet_sync_lag_ms = self
             .latest_wallet_activity_at_unix_ms()
             .map(|last_activity| now_unix_ms.saturating_sub(last_activity));
+        let use_local_continuity_alerts = snapshot.source == TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL;
+        let payout_loop_health = if use_local_continuity_alerts {
+            self.payout_loop_health(config)
+        } else {
+            snapshot.payout_loop_health.clone()
+        };
+        let degraded_reason = if use_local_continuity_alerts {
+            self.degraded_reason(config, now_unix_ms)
+        } else {
+            snapshot.degraded_reason.clone()
+        };
+
         TreasuryPublicStats {
             treasury_enabled: snapshot.treasury_enabled,
             payout_sats_per_window: snapshot.payout_sats_per_window,
             payout_interval_seconds: snapshot.payout_interval_seconds,
             require_sellable: snapshot.require_sellable,
             daily_budget_cap_sats: snapshot.daily_budget_cap_sats,
+            placeholder_payout_mode: snapshot.placeholder_payout_mode,
+            dedupe_placeholder_hosts: snapshot.dedupe_placeholder_hosts,
+            min_new_accrual_pylon_version: snapshot.min_new_accrual_pylon_version,
+            min_new_accrual_started_at_unix_ms: snapshot.min_new_accrual_started_at_unix_ms,
+            min_new_accrual_version_gate_active: snapshot.min_new_accrual_version_gate_active,
             registered_payout_identities: snapshot.registered_payout_identities,
             wallet_balance_sats: snapshot.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: snapshot.wallet_balance_updated_at_unix_ms,
             wallet_runtime_status,
             wallet_last_error,
+            wallet_hydration_mode,
+            wallet_payment_scan_mode,
             wallet_storage_runtime_mode: snapshot.wallet_storage_runtime_mode,
             payout_loop_runtime_status: snapshot.payout_loop_runtime_status,
             payout_loop_last_error: snapshot.payout_loop_last_error,
@@ -2115,10 +2657,22 @@ impl TreasuryState {
             payout_loop_last_started_at_unix_ms: snapshot.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: snapshot.payout_loop_last_completed_at_unix_ms,
             public_snapshot_generated_at_unix_ms: Some(snapshot.generated_at_unix_ms),
+            public_snapshot_source: snapshot.source,
+            public_snapshot_mode: snapshot.mode,
+            public_snapshot_health_status: snapshot.health_status,
             snapshot_age_ms: Some(now_unix_ms.saturating_sub(snapshot.generated_at_unix_ms)),
             wallet_sync_lag_ms,
+            backlog_total: snapshot.backlog_total,
+            backlog_retryable: snapshot.backlog_retryable,
             eligible_online_payout_targets: snapshot.eligible_online_payout_targets,
             sellable_pylons_online_now: snapshot.sellable_pylons_online_now,
+            inference_ready_online_payout_targets: snapshot.inference_ready_online_payout_targets,
+            duplicate_host_placeholder_blocked_online_targets: snapshot
+                .duplicate_host_placeholder_blocked_online_targets,
+            min_new_accrual_version_blocked_online_targets: snapshot
+                .min_new_accrual_version_blocked_online_targets,
+            min_new_accrual_unknown_version_online_targets: snapshot
+                .min_new_accrual_unknown_version_online_targets,
             latest_eligible_window_started_at_unix_ms: snapshot
                 .latest_eligible_window_started_at_unix_ms,
             last_dispatch_at_unix_ms: snapshot.last_dispatch_at_unix_ms,
@@ -2129,8 +2683,8 @@ impl TreasuryState {
             ),
             dispatch_lag_ms: lag_since(now_unix_ms, snapshot.last_dispatch_at_unix_ms),
             confirm_lag_ms: lag_since(now_unix_ms, snapshot.last_confirmed_payout_at_unix_ms),
-            payout_loop_health: self.payout_loop_health(config),
-            degraded_reason: self.degraded_reason(config, now_unix_ms),
+            payout_loop_health,
+            degraded_reason,
             payout_sats_paid_total: snapshot.payout_sats_paid_total,
             payout_sats_paid_24h: snapshot.payout_sats_paid_24h,
             accepted_work_payout_sats_paid_total: snapshot.accepted_work_payout_sats_paid_total,
@@ -2153,11 +2707,15 @@ impl TreasuryState {
             payouts_skipped_24h: snapshot.payouts_skipped_24h,
             skip_reason_metrics_24h: snapshot.skip_reason_metrics_24h,
             fail_reason_metrics_24h: snapshot.fail_reason_metrics_24h,
-            active_continuity_alerts: continuity.active_alerts,
+            active_continuity_alerts: if use_local_continuity_alerts {
+                continuity.active_alerts
+            } else {
+                Vec::new()
+            },
         }
     }
 
-    fn payout_target_identity_rows(&self) -> Vec<TreasuryPayoutTargetIdentityStatus> {
+    pub(crate) fn payout_target_identity_rows(&self) -> Vec<TreasuryPayoutTargetIdentityStatus> {
         let mut rows = self
             .payout_targets_by_identity
             .values()
@@ -2327,11 +2885,18 @@ impl TreasuryState {
             payout_interval_seconds: stats.payout_interval_seconds,
             require_sellable: stats.require_sellable,
             daily_budget_cap_sats: stats.daily_budget_cap_sats,
+            placeholder_payout_mode: stats.placeholder_payout_mode,
+            dedupe_placeholder_hosts: stats.dedupe_placeholder_hosts,
+            min_new_accrual_pylon_version: stats.min_new_accrual_pylon_version,
+            min_new_accrual_started_at_unix_ms: stats.min_new_accrual_started_at_unix_ms,
+            min_new_accrual_version_gate_active: stats.min_new_accrual_version_gate_active,
             registered_payout_identities: stats.registered_payout_identities,
             wallet_balance_sats: stats.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: stats.wallet_balance_updated_at_unix_ms,
             wallet_runtime_status: stats.wallet_runtime_status,
             wallet_last_error: stats.wallet_last_error,
+            wallet_hydration_mode: stats.wallet_hydration_mode,
+            wallet_payment_scan_mode: stats.wallet_payment_scan_mode,
             wallet_storage_runtime_mode: stats.wallet_storage_runtime_mode,
             wallet_storage_report_path: self.wallet_storage_report_path.clone(),
             wallet_storage_rollback_dir: self.wallet_storage_rollback_dir.clone(),
@@ -2350,10 +2915,22 @@ impl TreasuryState {
             payout_loop_last_started_at_unix_ms: stats.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: stats.payout_loop_last_completed_at_unix_ms,
             public_snapshot_generated_at_unix_ms: stats.public_snapshot_generated_at_unix_ms,
+            public_snapshot_source: stats.public_snapshot_source,
+            public_snapshot_mode: stats.public_snapshot_mode,
+            public_snapshot_health_status: stats.public_snapshot_health_status,
             snapshot_age_ms: stats.snapshot_age_ms,
             wallet_sync_lag_ms: stats.wallet_sync_lag_ms,
+            backlog_total: stats.backlog_total,
+            backlog_retryable: stats.backlog_retryable,
             eligible_online_payout_targets: stats.eligible_online_payout_targets,
             sellable_pylons_online_now: stats.sellable_pylons_online_now,
+            inference_ready_online_payout_targets: stats.inference_ready_online_payout_targets,
+            duplicate_host_placeholder_blocked_online_targets: stats
+                .duplicate_host_placeholder_blocked_online_targets,
+            min_new_accrual_version_blocked_online_targets: stats
+                .min_new_accrual_version_blocked_online_targets,
+            min_new_accrual_unknown_version_online_targets: stats
+                .min_new_accrual_unknown_version_online_targets,
             latest_eligible_window_started_at_unix_ms: stats
                 .latest_eligible_window_started_at_unix_ms,
             last_dispatch_at_unix_ms: stats.last_dispatch_at_unix_ms,
@@ -2403,6 +2980,48 @@ impl TreasuryState {
         }
     }
 
+    pub fn integration_policy_snapshot(
+        &self,
+        config: &TreasuryConfig,
+    ) -> TreasuryIntegrationPolicySnapshot {
+        let policy = self.active_policy(config);
+        TreasuryIntegrationPolicySnapshot {
+            treasury_enabled: policy.treasury_enabled,
+            payout_sats_per_window: policy.payout_sats_per_window,
+            payout_interval_seconds: policy.payout_interval_seconds,
+            require_sellable: policy.require_sellable,
+            daily_budget_cap_sats: policy.daily_budget_cap_sats,
+            placeholder_payout_mode: policy.placeholder_payout_mode,
+            dedupe_placeholder_hosts: policy.dedupe_placeholder_hosts,
+            min_new_accrual_pylon_version: policy.min_new_accrual_pylon_version,
+            min_new_accrual_started_at_unix_ms: policy.min_new_accrual_started_at_unix_ms,
+        }
+    }
+
+    pub fn import_canonical_public_snapshot(
+        &mut self,
+        config: &TreasuryConfig,
+        mut snapshot: TreasuryCanonicalPublicSnapshot,
+        now_unix_ms: u64,
+    ) -> TreasuryIntegrationImportResponse {
+        if let Some(existing) = self.canonical_public_snapshot.as_ref() {
+            if snapshot.generated_at_unix_ms < existing.generated_at_unix_ms
+                && snapshot.payout_sats_paid_total <= existing.payout_sats_paid_total
+            {
+                snapshot = existing.clone();
+            }
+        }
+        self.apply_paid_total_floor(snapshot.payout_sats_paid_total);
+        self.canonical_public_snapshot = Some(snapshot.clone());
+        self.refresh_public_snapshot(config, now_unix_ms);
+        TreasuryIntegrationImportResponse {
+            authority: "openagents-hosted-nexus".to_string(),
+            public_snapshot_source: snapshot.source,
+            public_snapshot_generated_at_unix_ms: snapshot.generated_at_unix_ms,
+            payout_sats_paid_total: snapshot.payout_sats_paid_total,
+        }
+    }
+
     pub fn record_wallet_error(&mut self, detail: impl Into<String>) {
         self.wallet_runtime_status = Some("error".to_string());
         self.wallet_last_error = Some(detail.into());
@@ -2439,6 +3058,16 @@ impl TreasuryState {
     pub fn wallet_refresh_plan(&self) -> TreasuryWalletRefreshPlan {
         let mut plan = TreasuryWalletRefreshPlan::recent_only();
         plan.history_scan_page_offset = self.wallet_refresh_history_page_offset;
+        let completed_receive_total_sats = self.completed_funding_receive_total_sats();
+        if completed_receive_total_sats
+            > self
+                .payout_sats_paid_total
+                .saturating_add(TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS)
+        {
+            plan.expected_nonzero_balance = true;
+            plan.historical_receive_total_sats = completed_receive_total_sats;
+            plan.payout_sats_paid_total = self.payout_sats_paid_total;
+        }
         for record in self.payout_records_by_key.values() {
             if record.status != "dispatched" || record.counted_in_paid_total {
                 continue;
@@ -2491,6 +3120,8 @@ impl TreasuryState {
     pub fn note_payout_loop_started(&mut self, now_unix_ms: u64) {
         self.payout_loop_runtime_status = Some("running".to_string());
         self.payout_loop_last_started_at_unix_ms = Some(now_unix_ms);
+        self.last_payout_reconciliation_at_unix_ms
+            .get_or_insert(now_unix_ms);
     }
 
     pub fn note_payout_loop_completed(
@@ -2498,7 +3129,6 @@ impl TreasuryState {
         now_unix_ms: u64,
         reconciliation_degraded_reason: Option<String>,
     ) {
-        self.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms);
         self.payout_loop_last_completed_at_unix_ms = Some(now_unix_ms);
         if let Some(reason) = reconciliation_degraded_reason {
             self.payout_loop_runtime_status = Some("degraded".to_string());
@@ -2727,8 +3357,12 @@ impl TreasuryState {
         let payout_interval_ms = policy.payout_interval_ms();
         let (reconciliation_started_at_unix_ms, reconciliation_degraded_reason) =
             self.payout_reconciliation_started_at(config, now_unix_ms);
+        let placeholder_classification = policy.placeholder_payout_classification();
+        let mut seen_placeholder_host_fingerprints = BTreeSet::new();
 
         for identity in online_identities {
+            let placeholder_verdict = policy
+                .placeholder_payout_verdict(identity, &mut seen_placeholder_host_fingerprints);
             let current_window_started_at_unix_ms = payout_window_started_at_for_identity(
                 now_unix_ms,
                 payout_interval_ms,
@@ -2771,7 +3405,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: true,
                             counted_in_paid_total: false,
-                            classification: TreasuryPayoutClassification::default(),
+                            classification: placeholder_classification.clone(),
                         };
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
@@ -2803,7 +3437,75 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: true,
                             counted_in_paid_total: false,
-                            classification: TreasuryPayoutClassification::default(),
+                            classification: placeholder_classification.clone(),
+                        };
+                        self.payout_records_by_key
+                            .insert(payout_key, record.clone());
+                        receipt_events.push(skipped_payout_receipt(&record));
+                        if window_started_at_unix_ms >= current_window_started_at_unix_ms {
+                            break;
+                        }
+                        window_started_at_unix_ms =
+                            window_started_at_unix_ms.saturating_add(payout_interval_ms);
+                        continue;
+                    }
+
+                    if let Some(reason) = placeholder_verdict.skip_reason() {
+                        let record = TreasuryPayoutRecord {
+                            payout_key: payout_key.clone(),
+                            nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
+                            payout_target: target.spark_address.clone(),
+                            amount_sats: policy.payout_sats_per_window,
+                            status: "skipped".to_string(),
+                            reason: Some(reason.to_string()),
+                            payment_id: None,
+                            window_started_at_unix_ms,
+                            window_ends_at_unix_ms,
+                            created_at_unix_ms: now_unix_ms,
+                            updated_at_unix_ms: now_unix_ms,
+                            sellable_at_window_open: identity.sellable,
+                            dispatch_receipt_recorded: false,
+                            confirm_receipt_recorded: false,
+                            fail_receipt_recorded: false,
+                            skip_receipt_recorded: true,
+                            counted_in_paid_total: false,
+                            classification: placeholder_classification.clone(),
+                        };
+                        self.payout_records_by_key
+                            .insert(payout_key, record.clone());
+                        receipt_events.push(skipped_payout_receipt(&record));
+                        if window_started_at_unix_ms >= current_window_started_at_unix_ms {
+                            break;
+                        }
+                        window_started_at_unix_ms =
+                            window_started_at_unix_ms.saturating_add(payout_interval_ms);
+                        continue;
+                    }
+
+                    let gate_verdict = policy.new_accrual_version_gate_verdict(
+                        identity.client_version.as_deref(),
+                        window_started_at_unix_ms,
+                    );
+                    if let Some(reason) = gate_verdict.skip_reason() {
+                        let record = TreasuryPayoutRecord {
+                            payout_key: payout_key.clone(),
+                            nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
+                            payout_target: target.spark_address.clone(),
+                            amount_sats: policy.payout_sats_per_window,
+                            status: "skipped".to_string(),
+                            reason: Some(reason.to_string()),
+                            payment_id: None,
+                            window_started_at_unix_ms,
+                            window_ends_at_unix_ms,
+                            created_at_unix_ms: now_unix_ms,
+                            updated_at_unix_ms: now_unix_ms,
+                            sellable_at_window_open: identity.sellable,
+                            dispatch_receipt_recorded: false,
+                            confirm_receipt_recorded: false,
+                            fail_receipt_recorded: false,
+                            skip_receipt_recorded: true,
+                            counted_in_paid_total: false,
+                            classification: placeholder_classification.clone(),
                         };
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
@@ -2838,7 +3540,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: true,
                             counted_in_paid_total: false,
-                            classification: TreasuryPayoutClassification::default(),
+                            classification: placeholder_classification.clone(),
                         };
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
@@ -2873,7 +3575,7 @@ impl TreasuryState {
                             fail_receipt_recorded: false,
                             skip_receipt_recorded: false,
                             counted_in_paid_total: false,
-                            classification: TreasuryPayoutClassification::default(),
+                            classification: placeholder_classification.clone(),
                         },
                     );
                     dispatch_plans.push(TreasuryDispatchPlan {
@@ -2951,6 +3653,8 @@ impl TreasuryState {
     ) -> Vec<TreasuryReceiptEvent> {
         self.wallet_runtime_status = Some(snapshot.runtime_status.clone());
         self.wallet_last_error = snapshot.runtime_detail.clone();
+        self.wallet_hydration_mode = snapshot.wallet_hydration_mode.clone();
+        self.wallet_payment_scan_mode = snapshot.wallet_payment_scan_mode.clone();
         self.wallet_balance_sats = snapshot.balance_sats;
         self.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
         self.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
@@ -3768,6 +4472,8 @@ pub async fn run_treasury_command(
                 authority: "openagents-hosted-nexus".to_string(),
                 wallet_runtime_status: material.wallet_snapshot.runtime_status,
                 wallet_runtime_detail: material.wallet_snapshot.runtime_detail,
+                wallet_hydration_mode: material.wallet_snapshot.wallet_hydration_mode,
+                wallet_payment_scan_mode: material.wallet_snapshot.wallet_payment_scan_mode,
                 wallet_balance_sats: material.wallet_snapshot.balance_sats,
                 wallet_balance_updated_at_unix_ms: now_unix_ms(),
                 spark_address: material.spark_address,
@@ -4319,6 +5025,18 @@ fn treasury_policy_changed_fields(
     if before.daily_budget_cap_sats != after.daily_budget_cap_sats {
         changed_fields.push("daily_budget_cap_sats".to_string());
     }
+    if before.placeholder_payout_mode != after.placeholder_payout_mode {
+        changed_fields.push("placeholder_payout_mode".to_string());
+    }
+    if before.dedupe_placeholder_hosts != after.dedupe_placeholder_hosts {
+        changed_fields.push("dedupe_placeholder_hosts".to_string());
+    }
+    if before.min_new_accrual_pylon_version != after.min_new_accrual_pylon_version {
+        changed_fields.push("min_new_accrual_pylon_version".to_string());
+    }
+    if before.min_new_accrual_started_at_unix_ms != after.min_new_accrual_started_at_unix_ms {
+        changed_fields.push("min_new_accrual_started_at_unix_ms".to_string());
+    }
     changed_fields
 }
 
@@ -4331,6 +5049,8 @@ fn treasury_policy_change_is_destructive(
         || after.daily_budget_cap_sats < before.daily_budget_cap_sats
         || after.payout_interval_seconds > before.payout_interval_seconds
         || (!before.require_sellable && after.require_sellable)
+        || treasury_policy_placeholder_lane_is_more_restrictive(before, after)
+        || treasury_policy_gate_is_more_restrictive(before, after)
 }
 
 fn build_treasury_policy_change_record(
@@ -4349,6 +5069,10 @@ fn build_treasury_policy_change_record(
                 "payout_interval_seconds".to_string(),
                 "require_sellable".to_string(),
                 "daily_budget_cap_sats".to_string(),
+                "placeholder_payout_mode".to_string(),
+                "dedupe_placeholder_hosts".to_string(),
+                "min_new_accrual_pylon_version".to_string(),
+                "min_new_accrual_started_at_unix_ms".to_string(),
             ]
         });
     let destructive = before
@@ -4470,6 +5194,18 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
             response.wallet_storage_runtime_mode
         ),
         format!(
+            "min_new_accrual_version_gate_active: {}",
+            response.min_new_accrual_version_gate_active
+        ),
+        format!(
+            "placeholder_payout_mode: {}",
+            response.placeholder_payout_mode.label()
+        ),
+        format!(
+            "dedupe_placeholder_hosts: {}",
+            response.dedupe_placeholder_hosts
+        ),
+        format!(
             "payout_sats_paid_total: {}",
             response.payout_sats_paid_total
         ),
@@ -4519,6 +5255,22 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
             response.registered_payout_identities
         ),
         format!(
+            "min_new_accrual_version_blocked_online_targets: {}",
+            response.min_new_accrual_version_blocked_online_targets
+        ),
+        format!(
+            "min_new_accrual_unknown_version_online_targets: {}",
+            response.min_new_accrual_unknown_version_online_targets
+        ),
+        format!(
+            "inference_ready_online_payout_targets: {}",
+            response.inference_ready_online_payout_targets
+        ),
+        format!(
+            "duplicate_host_placeholder_blocked_online_targets: {}",
+            response.duplicate_host_placeholder_blocked_online_targets
+        ),
+        format!(
             "training_payout_reconciliation_status: {}",
             response
                 .training_payout_ledger_summary
@@ -4562,8 +5314,20 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
     if let Some(status) = response.wallet_runtime_status.as_deref() {
         lines.push(format!("wallet_runtime_status: {status}"));
     }
+    if let Some(version) = response.min_new_accrual_pylon_version.as_deref() {
+        lines.push(format!("min_new_accrual_pylon_version: {version}"));
+    }
+    if let Some(cutoff) = response.min_new_accrual_started_at_unix_ms {
+        lines.push(format!("min_new_accrual_started_at_unix_ms: {cutoff}"));
+    }
     if let Some(error) = response.wallet_last_error.as_deref() {
         lines.push(format!("wallet_last_error: {error}"));
+    }
+    if let Some(mode) = response.wallet_hydration_mode.as_deref() {
+        lines.push(format!("wallet_hydration_mode: {mode}"));
+    }
+    if let Some(mode) = response.wallet_payment_scan_mode.as_deref() {
+        lines.push(format!("wallet_payment_scan_mode: {mode}"));
     }
     if let Some(report_path) = response.wallet_storage_report_path.as_deref() {
         lines.push(format!("wallet_storage_report_path: {report_path}"));
@@ -4606,12 +5370,24 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
             "public_snapshot_generated_at_unix_ms: {snapshot_generated_at_unix_ms}"
         ));
     }
+    lines.push(format!(
+        "public_snapshot_source: {}",
+        response.public_snapshot_source
+    ));
+    if let Some(mode) = response.public_snapshot_mode.as_deref() {
+        lines.push(format!("public_snapshot_mode: {mode}"));
+    }
+    if let Some(status) = response.public_snapshot_health_status.as_deref() {
+        lines.push(format!("public_snapshot_health_status: {status}"));
+    }
     if let Some(snapshot_age_ms) = response.snapshot_age_ms {
         lines.push(format!("snapshot_age_ms: {snapshot_age_ms}"));
     }
     if let Some(wallet_sync_lag_ms) = response.wallet_sync_lag_ms {
         lines.push(format!("wallet_sync_lag_ms: {wallet_sync_lag_ms}"));
     }
+    lines.push(format!("backlog_total: {}", response.backlog_total));
+    lines.push(format!("backlog_retryable: {}", response.backlog_retryable));
     lines.push(format!(
         "eligible_online_payout_targets: {}",
         response.eligible_online_payout_targets
@@ -4692,6 +5468,12 @@ fn render_treasury_funding_target_response(response: &TreasuryFundingTargetRespo
     }
     if let Some(detail) = response.wallet_runtime_detail.as_deref() {
         lines.push(format!("wallet_runtime_detail: {detail}"));
+    }
+    if let Some(mode) = response.wallet_hydration_mode.as_deref() {
+        lines.push(format!("wallet_hydration_mode: {mode}"));
+    }
+    if let Some(mode) = response.wallet_payment_scan_mode.as_deref() {
+        lines.push(format!("wallet_payment_scan_mode: {mode}"));
     }
     lines.join("\n")
 }
@@ -5308,11 +6090,37 @@ async fn wallet_snapshot_from_wallet(
     .map(|result| result.snapshot)
 }
 
+fn wallet_payment_scan_mode(plan: &TreasuryWalletRefreshPlan) -> &'static str {
+    if plan.history_scan_page_offset > 0 || plan.tracked_payment_count() > 0 {
+        "recent_plus_backfill"
+    } else {
+        "recent_only"
+    }
+}
+
+fn validate_wallet_hydration_balance(
+    plan: &TreasuryWalletRefreshPlan,
+    balance_sats: u64,
+    hydration_mode: &str,
+) -> Result<()> {
+    if balance_sats > 0 || !plan.expects_funded_balance() {
+        return Ok(());
+    }
+
+    bail!(
+        "wallet_hydration_zero_balance_after_{}:{}:{}",
+        hydration_mode,
+        plan.historical_receive_total_sats,
+        plan.payout_sats_paid_total
+    );
+}
+
 async fn wallet_snapshot_from_wallet_with_plan_result(
     config: &TreasuryConfig,
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
+    let mut hydration_mode = "cached_balance_recent_payment_refresh";
     let mut balance = wallet
         .get_balance_cached()
         .await
@@ -5336,12 +6144,15 @@ async fn wallet_snapshot_from_wallet_with_plan_result(
         refresh = wallet_refresh_payments(wallet, plan)
             .await
             .context("failed to refresh treasury Spark payments after sync")?;
+        hydration_mode = "sync_wallet_then_cached_balance_bounded_live_sync";
     }
-
+    validate_wallet_hydration_balance(plan, balance.total_sats(), hydration_mode)?;
     Ok(TreasuryWalletRefreshResult {
         snapshot: TreasuryWalletSnapshot {
             runtime_status: "connected".to_string(),
             runtime_detail: None,
+            wallet_hydration_mode: Some(hydration_mode.to_string()),
+            wallet_payment_scan_mode: Some(wallet_payment_scan_mode(plan).to_string()),
             balance_sats: balance.total_sats(),
             payments: refresh.payments,
         },
@@ -5465,6 +6276,41 @@ fn parse_u64_env(name: &str, default: u64) -> Result<u64, String> {
     }
 }
 
+fn parse_optional_u64_env(name: &str, default: Option<u64>) -> Result<Option<u64>, String> {
+    match std::env::var(name) {
+        Ok(value) => {
+            let value = value.trim();
+            if value.is_empty() {
+                Ok(default)
+            } else {
+                value
+                    .parse::<u64>()
+                    .map(Some)
+                    .map_err(|error| format!("invalid {name}: {error}"))
+            }
+        }
+        Err(_) => Ok(default),
+    }
+}
+
+fn parse_placeholder_payout_mode_env(
+    name: &str,
+    default: TreasuryPlaceholderPayoutMode,
+) -> Result<TreasuryPlaceholderPayoutMode, String> {
+    match std::env::var(name) {
+        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "" => Ok(default),
+            "presence_only" => Ok(TreasuryPlaceholderPayoutMode::PresenceOnly),
+            "inference_ready" | "readiness" => Ok(TreasuryPlaceholderPayoutMode::InferenceReady),
+            "disabled" => Ok(TreasuryPlaceholderPayoutMode::Disabled),
+            other => Err(format!(
+                "invalid {name}: expected presence_only, inference_ready, or disabled, got '{other}'"
+            )),
+        },
+        Err(_) => Ok(default),
+    }
+}
+
 fn read_path_env(name: &str, default: &str) -> PathBuf {
     std::env::var(name)
         .ok()
@@ -5472,6 +6318,77 @@ fn read_path_env(name: &str, default: &str) -> PathBuf {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(default))
+}
+
+fn parse_pylon_client_version(raw: &str) -> Result<Version, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("empty version".to_string());
+    }
+    let lowered = trimmed.to_ascii_lowercase();
+    let normalized = if lowered.starts_with("pylon-v") {
+        &trimmed["pylon-v".len()..]
+    } else if lowered.starts_with("pylon/") {
+        &trimmed["pylon/".len()..]
+    } else if lowered.starts_with("pylon-") {
+        &trimmed["pylon-".len()..]
+    } else if lowered.starts_with('v') {
+        &trimmed[1..]
+    } else {
+        trimmed
+    };
+    Version::parse(normalized.trim()).map_err(|error| error.to_string())
+}
+
+fn treasury_policy_gate_is_more_restrictive(
+    before: &TreasuryRuntimePolicy,
+    after: &TreasuryRuntimePolicy,
+) -> bool {
+    let before_active = before.new_accrual_version_gate_active();
+    let after_active = after.new_accrual_version_gate_active();
+    if !before_active {
+        return after_active;
+    }
+    if !after_active {
+        return false;
+    }
+
+    if before
+        .min_new_accrual_started_at_unix_ms
+        .zip(after.min_new_accrual_started_at_unix_ms)
+        .is_some_and(|(before_cutoff, after_cutoff)| after_cutoff < before_cutoff)
+    {
+        return true;
+    }
+
+    match (
+        before
+            .min_new_accrual_pylon_version
+            .as_deref()
+            .map(parse_pylon_client_version),
+        after
+            .min_new_accrual_pylon_version
+            .as_deref()
+            .map(parse_pylon_client_version),
+    ) {
+        (Some(Ok(before_version)), Some(Ok(after_version))) => after_version > before_version,
+        _ => before.min_new_accrual_pylon_version != after.min_new_accrual_pylon_version,
+    }
+}
+
+fn treasury_policy_placeholder_lane_is_more_restrictive(
+    before: &TreasuryRuntimePolicy,
+    after: &TreasuryRuntimePolicy,
+) -> bool {
+    let placeholder_rank = |mode: TreasuryPlaceholderPayoutMode| match mode {
+        TreasuryPlaceholderPayoutMode::PresenceOnly => 0u8,
+        TreasuryPlaceholderPayoutMode::InferenceReady => 1u8,
+        TreasuryPlaceholderPayoutMode::Disabled => 2u8,
+    };
+
+    placeholder_rank(after.placeholder_payout_mode)
+        > placeholder_rank(before.placeholder_payout_mode)
+        || (!before.dedupe_placeholder_hosts && after.dedupe_placeholder_hosts)
 }
 
 fn now_unix_ms() -> u64 {
@@ -5580,22 +6497,23 @@ pub(crate) fn set_test_wallet_send_hook(hook: Option<TestWalletSendHook>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        OnlinePylonIdentity, TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES,
-        TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE,
-        TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES, TreasuryConfig, TreasuryDispatchOutcome,
-        TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryPayoutClass,
-        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPublicStats,
+        OnlinePylonIdentity, TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS,
+        TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
+        TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES,
+        TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial, TreasuryFundingReceive,
+        TreasuryFundingTargetRequest, TreasuryPayoutClass, TreasuryPayoutClassification,
+        TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryPublicStats,
         TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
         TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
         TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan, TreasuryWalletRefreshProgress,
         TreasuryWalletSnapshot, apply_treasury_wallet_recovery_cutover,
         build_treasury_wallet_recovery_comparison, create_live_funding_target,
-        dispatch_live_payouts, parse_treasury_command, payout_phase_offset_ms,
+        dispatch_live_payouts, parse_treasury_command, payout_phase_offset_ms, payout_window_key,
         payout_window_started_at, payout_window_started_at_for_identity,
         set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        treasury_test_hook_lock, verify_payout_target_registration_signature,
-        wallet_refresh_page_offsets, wallet_refresh_payment_page_budget,
-        wallet_send_idempotency_key, write_json_file,
+        treasury_test_hook_lock, validate_wallet_hydration_balance,
+        verify_payout_target_registration_signature, wallet_refresh_page_offsets,
+        wallet_refresh_payment_page_budget, wallet_send_idempotency_key, write_json_file,
     };
     use openagents_provider_substrate::sign_provider_payout_target_registration;
     use openagents_spark::PaymentSummary;
@@ -5610,6 +6528,10 @@ mod tests {
             payout_interval_seconds: 60,
             require_sellable: false,
             daily_budget_cap_sats: 1_000,
+            placeholder_payout_mode: TreasuryPlaceholderPayoutMode::InferenceReady,
+            dedupe_placeholder_hosts: true,
+            min_new_accrual_pylon_version: None,
+            min_new_accrual_started_at_unix_ms: None,
             reconciliation_horizon_seconds: 300,
             apply_env_policy: false,
             allow_destructive_env_policy_change: false,
@@ -5623,6 +6545,7 @@ mod tests {
             max_concurrent_sends: 16,
             send_timeout_seconds: 180,
             registration_challenge_ttl_seconds: 300,
+            integration_token: None,
         }
     }
 
@@ -5863,6 +6786,9 @@ mod tests {
             &[OnlinePylonIdentity {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
+                client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             }],
             now_unix_ms,
         );
@@ -5892,6 +6818,9 @@ mod tests {
         let online = vec![OnlinePylonIdentity {
             nostr_pubkey_hex: "pubkey-a".to_string(),
             sellable: true,
+            client_version: None,
+            inference_ready: true,
+            host_fingerprint: None,
         }];
         let now_unix_ms = super::now_unix_ms();
         let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
@@ -5901,6 +6830,228 @@ mod tests {
         let prepared_again = state.prepare_due_payouts(&config, &online, now_unix_ms);
         assert!(prepared_again.dispatch_plans.is_empty());
         assert!(prepared_again.receipt_events.is_empty());
+    }
+
+    #[test]
+    fn payout_preparation_keeps_pre_cutoff_backlog_but_blocks_new_accrual_below_floor() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.min_new_accrual_pylon_version = Some("pylon-v0.1.1-rc1".to_string());
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let now_unix_ms = 1_800_000;
+        let payout_interval_ms = config.payout_interval_ms();
+        let current_window_started_at_unix_ms =
+            payout_window_started_at_for_identity(now_unix_ms, payout_interval_ms, "pubkey-a");
+        config.min_new_accrual_started_at_unix_ms = Some(current_window_started_at_unix_ms);
+        state.last_payout_reconciliation_at_unix_ms =
+            Some(current_window_started_at_unix_ms.saturating_sub(payout_interval_ms));
+
+        let prepared = state.prepare_due_payouts(
+            &config,
+            &[OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+                client_version: Some("0.0.1-rc12".to_string()),
+                inference_ready: true,
+                host_fingerprint: None,
+            }],
+            now_unix_ms,
+        );
+
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(
+            prepared.dispatch_plans[0].payout_key,
+            payout_window_key(
+                current_window_started_at_unix_ms.saturating_sub(payout_interval_ms),
+                "pubkey-a"
+            )
+        );
+
+        let blocked_record = state
+            .payout_records_by_key
+            .get(payout_window_key(current_window_started_at_unix_ms, "pubkey-a").as_str())
+            .expect("post-cutoff payout record");
+        assert_eq!(blocked_record.status, "skipped");
+        assert_eq!(
+            blocked_record.reason.as_deref(),
+            Some("below_min_new_accrual_version_floor")
+        );
+    }
+
+    #[test]
+    fn observe_payout_eligibility_surfaces_version_floor_blocks() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.min_new_accrual_pylon_version = Some("pylon-v0.1.1-rc1".to_string());
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let now_unix_ms = 1_800_000;
+        config.min_new_accrual_started_at_unix_ms = Some(payout_window_started_at_for_identity(
+            now_unix_ms,
+            config.payout_interval_ms(),
+            "pubkey-a",
+        ));
+        state.observe_payout_eligibility(
+            &config,
+            &[OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+                client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
+            }],
+            now_unix_ms,
+        );
+
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert!(stats.min_new_accrual_version_gate_active);
+        assert_eq!(
+            stats.min_new_accrual_pylon_version.as_deref(),
+            Some("pylon-v0.1.1-rc1")
+        );
+        assert_eq!(stats.eligible_online_payout_targets, 0);
+        assert_eq!(stats.min_new_accrual_version_blocked_online_targets, 1);
+        assert_eq!(stats.min_new_accrual_unknown_version_online_targets, 1);
+    }
+
+    #[test]
+    fn placeholder_payout_mode_inference_ready_skips_presence_only_nodes() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let now_unix_ms = 1_800_000;
+        let prepared = state.prepare_due_payouts(
+            &config,
+            &[OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+                client_version: Some("pylon-v0.1.1-rc1".to_string()),
+                inference_ready: false,
+                host_fingerprint: None,
+            }],
+            now_unix_ms,
+        );
+
+        assert!(prepared.dispatch_plans.is_empty());
+        let payout_key = payout_window_key(
+            payout_window_started_at_for_identity(
+                now_unix_ms,
+                config.payout_interval_ms(),
+                "pubkey-a",
+            ),
+            "pubkey-a",
+        );
+        let record = state
+            .payout_records_by_key
+            .get(payout_key.as_str())
+            .expect("placeholder skip");
+        assert_eq!(
+            record.reason.as_deref(),
+            Some("placeholder_requires_inference_ready")
+        );
+        assert_eq!(
+            record.classification.payout_basis.as_deref(),
+            Some("inference_ready")
+        );
+    }
+
+    #[test]
+    fn placeholder_payouts_dedupe_same_host_clients() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        for (nostr_pubkey_hex, spark_address) in
+            [("pubkey-a", "spark:alice"), ("pubkey-b", "spark:bob")]
+        {
+            state.payout_targets_by_identity.insert(
+                nostr_pubkey_hex.to_string(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                    source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    spark_address: spark_address.to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+        }
+
+        let now_unix_ms = 1_800_000;
+        let online = vec![
+            OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                sellable: true,
+                client_version: Some("pylon-v0.1.1-rc1".to_string()),
+                inference_ready: true,
+                host_fingerprint: Some("sha256:host-alpha".to_string()),
+            },
+            OnlinePylonIdentity {
+                nostr_pubkey_hex: "pubkey-b".to_string(),
+                sellable: true,
+                client_version: Some("pylon-v0.1.1-rc1".to_string()),
+                inference_ready: true,
+                host_fingerprint: Some("sha256:host-alpha".to_string()),
+            },
+        ];
+        state.observe_payout_eligibility(&config, &online, now_unix_ms);
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(stats.inference_ready_online_payout_targets, 2);
+        assert_eq!(stats.eligible_online_payout_targets, 1);
+        assert_eq!(stats.duplicate_host_placeholder_blocked_online_targets, 1);
+
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        let duplicate_key = payout_window_key(
+            payout_window_started_at_for_identity(
+                now_unix_ms,
+                config.payout_interval_ms(),
+                "pubkey-b",
+            ),
+            "pubkey-b",
+        );
+        let duplicate_record = state
+            .payout_records_by_key
+            .get(duplicate_key.as_str())
+            .expect("duplicate placeholder skip");
+        assert_eq!(
+            duplicate_record.reason.as_deref(),
+            Some("duplicate_host_placeholder_readiness")
+        );
+        assert_eq!(
+            duplicate_record.classification.payout_basis.as_deref(),
+            Some("inference_ready")
+        );
     }
 
     #[test]
@@ -5946,10 +7097,16 @@ mod tests {
             OnlinePylonIdentity {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
+                client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             },
             OnlinePylonIdentity {
                 nostr_pubkey_hex: "pubkey-b".to_string(),
                 sellable: true,
+                client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             },
         ];
         let now_unix_ms = 1_800_000;
@@ -6011,6 +7168,9 @@ mod tests {
             &[OnlinePylonIdentity {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
+                client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             }],
             now_unix_ms,
         );
@@ -6045,6 +7205,9 @@ mod tests {
             &[OnlinePylonIdentity {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
+                client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             }],
             now_unix_ms,
         );
@@ -6092,6 +7255,8 @@ mod tests {
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 880,
                 payments: vec![
                     PaymentSummary {
@@ -6179,6 +7344,8 @@ mod tests {
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 830,
                 payments: vec![PaymentSummary {
                     id: "payment-send-recovered".to_string(),
@@ -6265,6 +7432,8 @@ mod tests {
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 830,
                 payments: vec![PaymentSummary {
                     id: "payment-send-unmatched".to_string(),
@@ -6383,6 +7552,8 @@ mod tests {
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 830,
                 payments: vec![PaymentSummary {
                     id: "payment-send-known-001".to_string(),
@@ -6618,6 +7789,8 @@ mod tests {
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             },
@@ -7063,6 +8236,9 @@ mod tests {
             &[OnlinePylonIdentity {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
+                client_version: None,
+                inference_ready: false,
+                host_fingerprint: None,
             }],
             eligible_at_unix_ms,
         );
@@ -7291,6 +8467,9 @@ mod tests {
             &[OnlinePylonIdentity {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 sellable: true,
+                client_version: None,
+                inference_ready: true,
+                host_fingerprint: None,
             }],
             now_unix_ms,
         );
@@ -7335,6 +8514,8 @@ mod tests {
                 wallet_snapshot: TreasuryWalletSnapshot {
                     runtime_status: "connected".to_string(),
                     runtime_detail: None,
+                    wallet_hydration_mode: None,
+                    wallet_payment_scan_mode: None,
                     balance_sats: 500,
                     payments: Vec::new(),
                 },
@@ -7367,6 +8548,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 380,
                 payments: vec![PaymentSummary {
                     id: "payment-send-001".to_string(),
@@ -7588,6 +8771,52 @@ mod tests {
         assert_eq!(
             page_offsets.len(),
             TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES
+        );
+    }
+
+    #[test]
+    fn wallet_refresh_plan_marks_funded_history_as_nonzero_expected() {
+        let mut state = TreasuryState::default();
+        state.payout_sats_paid_total = 100;
+        state.funding_receives_by_payment_id.insert(
+            "receive-001".to_string(),
+            TreasuryFundingReceive {
+                payment_id: "receive-001".to_string(),
+                status: "completed".to_string(),
+                amount_sats: TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS + 1_500,
+                method: "spark".to_string(),
+                description: Some("fund treasury".to_string()),
+                recorded_at_unix_ms: 10,
+                updated_at_unix_ms: 10,
+            },
+        );
+
+        let plan = state.wallet_refresh_plan();
+
+        assert!(plan.expects_funded_balance());
+        assert_eq!(
+            plan.historical_receive_total_sats,
+            TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS + 1_500
+        );
+        assert_eq!(plan.payout_sats_paid_total, 100);
+    }
+
+    #[test]
+    fn validate_wallet_hydration_balance_rejects_zero_when_funded_history_exists() {
+        let mut plan = TreasuryWalletRefreshPlan::recent_only();
+        plan.expected_nonzero_balance = true;
+        plan.historical_receive_total_sats = 2_500;
+        plan.payout_sats_paid_total = 100;
+
+        let error = validate_wallet_hydration_balance(&plan, 0, "sync_wallet_then_cached_balance")
+            .expect_err("zero balance should fail when funded history exists")
+            .to_string();
+
+        assert!(error.contains(
+            "wallet_hydration_zero_balance_after_sync_wallet_then_cached_balance:2500:100"
+        ));
+        assert!(
+            validate_wallet_hydration_balance(&plan, 1, "sync_wallet_then_cached_balance").is_ok()
         );
     }
 

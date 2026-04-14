@@ -58,9 +58,12 @@ What changed:
 - `Nexus` can now create and lease a `small_model_local_training` run bound to
   the packaged CS336 A1 demo environment instead of relying on a local-only
   `Psionic` launch.
-- the scheduler now treats that CS336 A1 environment as a CUDA-backed strong
-  trainer lane, so the same admitted-node gating applies when a worker claims
-  it
+- the scheduler now treats that CS336 A1 environment as a CPU-backed bounded
+  host lane through the canonical `psionic-train` contract instead of
+  backfilling a fake CUDA identity
+- `Pylon` now routes that bounded host-CPU lane onto Mac and Linux operator
+  hosts with enough honest system-memory posture, even when those machines also
+  expose Apple-silicon or CUDA accelerators
 - the public training stats and visualization payloads now preserve a run
   `display_name`, which makes a named demo run legible on camera without extra
   narration
@@ -69,15 +72,46 @@ What this closes:
 
 - one named A1 demo run can be admitted, leased, and surfaced through the
   existing authority and public-truth path
+- the bounded A1 homework lane can now be advertised honestly by real Mac and
+  Linux Pylons instead of only by strict CPU-only or H100-shaped hosts
 - assigned contributor count remains distinct from accepted and
   model-progress-bearing contributor counts for that named run
 
 What still remains after this issue:
 
+- cutting a fresh `pylon-v...` release that includes the later lane/runtime
+  fixes instead of leaning on stale `0.1.1-rc1` binaries
+- proving one Mac Pylon and one Linux Pylon both actually claim and execute the
+  bounded A1 lane on the upgraded release line
 - projecting that named run onto the separate website/public stats presentation
   repo
 - running and settling the real public demo on live Pylons rather than only
   proving the lane contract in repo tests
+
+## 2026-04-13 Episode 223 Local Dry Run Update
+
+The current `main` branch now also has one retained local dry-run gate focused
+specifically on the Episode 223 CS336 A1 story:
+
+- script:
+  `scripts/release/check-pylon-episode-223-cs336-a1-local.sh`
+- retained report:
+  `docs/reports/pylon/2026-04-13-episode-223-local-cs336-a1-dry-run.md`
+
+That gate passed on a fresh run and proved the following local path end to end:
+
+- the packaged `psionic-train` CS336 A1 lane executes through the machine
+  manifest path
+- weak Apple and consumer-CUDA hosts both promote into the bounded A1 trainer
+  lane
+- `Nexus` can schedule and surface one two-slot named `CS336 A1 Demo` run so a
+  Mac Pylon and a Linux Pylon can each take one worker slot while still
+  running the single-host bounded lane honestly
+- `Pylon` can map, claim, launch, and terminal-sync that run locally
+
+That local pass matters because it moves the blocker fully out of the code
+contract lane. The remaining blocker for Episode 223 is now live release and
+live fleet proof, not whether the Mac/Linux A1 path exists in the code at all.
 
 ## Short Version
 
