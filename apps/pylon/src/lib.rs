@@ -4,6 +4,7 @@ mod training_trn_mapping;
 mod wallet_runtime;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
@@ -3622,19 +3623,98 @@ fn render_gemma_diagnostic_report(report: &GemmaDiagnosticReport) -> String {
     lines.join("\n")
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn discover_psionic_repo_root_from(start: &Path) -> Option<PathBuf> {
+    discover_psionic_repo_roots_from(start).into_iter().next()
+}
+
+fn push_psionic_repo_root_candidate(candidates: &mut Vec<PathBuf>, candidate: PathBuf) {
+    if candidate.join("Cargo.toml").exists()
+        && !candidates.iter().any(|existing| existing == &candidate)
+    {
+        candidates.push(candidate);
+    }
+}
+
+fn discover_psionic_repo_roots_from(start: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
     for ancestor in start.ancestors() {
-        let candidate = ancestor.join("psionic");
-        if candidate.join("Cargo.toml").exists() {
-            return Some(candidate);
+        push_psionic_repo_root_candidate(&mut candidates, ancestor.join("psionic"));
+
+        let Ok(entries) = std::fs::read_dir(ancestor.join(".worktrees")) else {
+            continue;
+        };
+        let mut worktree_candidates = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(OsStr::to_str)
+                    .map(|name: &str| name == "psionic" || name.starts_with("psionic-"))
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+        worktree_candidates.sort();
+        for candidate in worktree_candidates {
+            push_psionic_repo_root_candidate(&mut candidates, candidate);
         }
     }
-    None
+    candidates
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn discover_psionic_repo_root_from_candidates<'a, I>(starts: I) -> Option<PathBuf>
+where
+    I: IntoIterator<Item = &'a Path>,
+{
+    discover_psionic_repo_roots_from_candidates(starts)
+        .into_iter()
+        .next()
+}
+
+fn discover_psionic_repo_roots_from_candidates<'a, I>(starts: I) -> Vec<PathBuf>
+where
+    I: IntoIterator<Item = &'a Path>,
+{
+    let mut candidates = Vec::new();
+    for start in starts {
+        for candidate in discover_psionic_repo_roots_from(start) {
+            if !candidates.iter().any(|existing| existing == &candidate) {
+                candidates.push(candidate);
+            }
+        }
+    }
+    candidates
+}
+
+fn default_psionic_repo_root_candidates() -> Vec<PathBuf> {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let executable_dir = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf));
+    let current_dir = std::env::current_dir().ok();
+    let candidates = discover_psionic_repo_roots_from_candidates(
+        [
+            executable_dir.as_deref(),
+            current_dir.as_deref(),
+            Some(manifest_dir.as_path()),
+        ]
+        .into_iter()
+        .flatten(),
+    )
+    .into_iter()
+    .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return vec![manifest_dir.join("../../../psionic")];
+    }
+    candidates
 }
 
 fn default_psionic_repo_root() -> PathBuf {
-    discover_psionic_repo_root_from(Path::new(env!("CARGO_MANIFEST_DIR")))
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../psionic"))
+    default_psionic_repo_root_candidates()
+        .into_iter()
+        .next()
+        .expect("default Psionic repo candidates should never be empty")
 }
 
 fn configured_psionic_repo_root() -> PathBuf {
@@ -3659,8 +3739,29 @@ fn ensure_psionic_repo_root_exists(repo_root: &Path) -> Result<()> {
 }
 
 fn inspect_psionic_train_runtime_surface() -> Result<PsionicTrainRuntimeSurface> {
-    let repo_root = configured_psionic_repo_root();
-    inspect_psionic_train_runtime_surface_at(repo_root.as_path())
+    if std::env::var(ENV_PSIONIC_REPO)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        let repo_root = configured_psionic_repo_root();
+        return inspect_psionic_train_runtime_surface_at(repo_root.as_path());
+    }
+
+    let mut first_error = None;
+    for repo_root in default_psionic_repo_root_candidates() {
+        match inspect_psionic_train_runtime_surface_at(repo_root.as_path()) {
+            Ok(surface) => return Ok(surface),
+            Err(error) => {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+    }
+    Err(first_error
+        .unwrap_or_else(|| anyhow!("failed to resolve Psionic training runtime surface")))
 }
 
 fn inspect_psionic_train_runtime_surface_at(
@@ -4485,20 +4586,43 @@ async fn ensure_training_assignment_runtime_manifest(
 }
 
 fn resolve_psionic_repo_root() -> Result<PathBuf> {
-    let repo_root = configured_psionic_repo_root();
-    ensure_psionic_repo_root_exists(repo_root.as_path())?;
-    let example_path = repo_root
-        .join("crates")
-        .join("psionic-serve")
-        .join("examples")
-        .join("gemma4_bench.rs");
-    if !example_path.exists() {
-        bail!(
-            "Psionic checkout at {} does not contain crates/psionic-serve/examples/gemma4_bench.rs",
-            repo_root.display()
-        );
+    let resolve_at = |repo_root: &Path| -> Result<PathBuf> {
+        ensure_psionic_repo_root_exists(repo_root)?;
+        let example_path = repo_root
+            .join("crates")
+            .join("psionic-serve")
+            .join("examples")
+            .join("gemma4_bench.rs");
+        if !example_path.exists() {
+            bail!(
+                "Psionic checkout at {} does not contain crates/psionic-serve/examples/gemma4_bench.rs",
+                repo_root.display()
+            );
+        }
+        Ok(repo_root.to_path_buf())
+    };
+
+    if std::env::var(ENV_PSIONIC_REPO)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        return resolve_at(configured_psionic_repo_root().as_path());
     }
-    Ok(repo_root)
+
+    let mut first_error = None;
+    for repo_root in default_psionic_repo_root_candidates() {
+        match resolve_at(repo_root.as_path()) {
+            Ok(resolved) => return Ok(resolved),
+            Err(error) => {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+    }
+    Err(first_error.unwrap_or_else(|| anyhow!("failed to resolve Psionic checkout")))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -17960,6 +18084,7 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::anyhow;
     use std::path::{Path, PathBuf};
     use std::process::Command as StdCommand;
     use std::sync::{Arc, Mutex, OnceLock};
@@ -19147,27 +19272,32 @@ mod tests {
         )
     }
 
-    #[test]
-    fn inspect_psionic_train_runtime_surface_accepts_minimal_machine_runtime_layout()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let temp_dir = tempfile::tempdir()?;
-        std::fs::create_dir_all(temp_dir.path().join("crates/psionic-train/src"))?;
-        std::fs::write(temp_dir.path().join("Cargo.toml"), "[workspace]\n")?;
-        std::fs::write(temp_dir.path().join("TRAIN"), "#!/bin/sh\n")?;
+    fn write_minimal_psionic_train_runtime_layout(
+        repo_root: &Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        std::fs::create_dir_all(repo_root.join("crates/psionic-train/src"))?;
+        std::fs::write(repo_root.join("Cargo.toml"), "[workspace]\n")?;
+        std::fs::write(repo_root.join("TRAIN"), "#!/bin/sh\n")?;
         std::fs::write(
-            temp_dir.path().join("crates/psionic-train/src/main.rs"),
+            repo_root.join("crates/psionic-train/src/main.rs"),
             "fn main() {}\n",
         )?;
         std::fs::write(
-            temp_dir
-                .path()
-                .join("crates/psionic-train/src/train_runtime.rs"),
+            repo_root.join("crates/psionic-train/src/train_runtime.rs"),
             "pub const SURFACE: &str = \"psionic-train.runtime.v1\";\n\
 pub const PSION_APPLE_WINDOWED_TRAINING_LANE_ID: &str = \"psion_apple_windowed_training_v1\";\n\
 pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1\";\n\
 pub const PSION_CS336_A1_DEMO_LANE_ID: &str = \"psion_cs336_a1_demo_v1\";\n\
 pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1\";\n",
         )?;
+        Ok(())
+    }
+
+    #[test]
+    fn inspect_psionic_train_runtime_surface_accepts_minimal_machine_runtime_layout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        write_minimal_psionic_train_runtime_layout(temp_dir.path())?;
 
         let surface = inspect_psionic_train_runtime_surface_at(temp_dir.path())?;
         ensure(
@@ -19198,6 +19328,88 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             discovered == psionic_root,
             "worktree-based openagents checkouts should resolve the sibling workspace psionic repo instead of assuming a nonexistent .worktrees/psionic path",
+        )
+    }
+
+    #[test]
+    fn discover_psionic_repo_root_from_packaged_release_layout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let code_root = temp_dir.path().join("code");
+        let release_dir = code_root.join("pylon-v0.1.1-rc4-darwin-arm64");
+        let psionic_root = code_root.join("psionic");
+        std::fs::create_dir_all(&release_dir)?;
+        std::fs::create_dir_all(&psionic_root)?;
+        std::fs::write(psionic_root.join("Cargo.toml"), "[workspace]\n")?;
+
+        let discovered = super::discover_psionic_repo_root_from_candidates([release_dir.as_path()])
+            .expect(
+                "expected sibling psionic checkout to be discovered from packaged release layout",
+            );
+        ensure(
+            discovered == psionic_root,
+            "packaged Pylon releases should resolve the sibling psionic checkout from the installed binary location",
+        )
+    }
+
+    #[test]
+    fn discover_psionic_repo_roots_from_packaged_release_layout_includes_clean_worktree()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let code_root = temp_dir.path().join("code");
+        let release_dir = code_root.join("pylon-v0.1.1-rc4-darwin-arm64");
+        let stale_psionic_root = code_root.join("psionic");
+        let clean_psionic_worktree = code_root.join(".worktrees/psionic-ep223-m2");
+        std::fs::create_dir_all(&release_dir)?;
+        std::fs::create_dir_all(&stale_psionic_root)?;
+        std::fs::write(stale_psionic_root.join("Cargo.toml"), "[workspace]\n")?;
+        write_minimal_psionic_train_runtime_layout(clean_psionic_worktree.as_path())?;
+
+        let discovered =
+            super::discover_psionic_repo_roots_from_candidates([release_dir.as_path()]);
+        ensure(
+            discovered == vec![stale_psionic_root, clean_psionic_worktree],
+            "packaged Pylon releases should enumerate both the sibling psionic checkout and clean psionic worktrees under .worktrees",
+        )
+    }
+
+    #[test]
+    fn inspect_psionic_train_runtime_surface_skips_stale_sibling_in_favor_of_clean_worktree()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let stale_psionic_root = temp_dir.path().join("code/psionic");
+        let clean_psionic_worktree = temp_dir.path().join("code/.worktrees/psionic-ep223-m2");
+        std::fs::create_dir_all(&stale_psionic_root)?;
+        std::fs::write(stale_psionic_root.join("Cargo.toml"), "[workspace]\n")?;
+        write_minimal_psionic_train_runtime_layout(clean_psionic_worktree.as_path())?;
+
+        let candidates = vec![stale_psionic_root, clean_psionic_worktree.clone()];
+        let mut first_error = None;
+        let mut chosen = None;
+        for repo_root in candidates {
+            match inspect_psionic_train_runtime_surface_at(repo_root.as_path()) {
+                Ok(surface) => {
+                    chosen = Some(surface);
+                    break;
+                }
+                Err(error) => {
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                }
+            }
+        }
+        let surface = chosen.ok_or_else(|| {
+            anyhow!(
+                "expected a clean worktree candidate to be selected after stale sibling failure: {}",
+                first_error
+                    .map(|error| error.to_string())
+                    .unwrap_or_else(|| String::from("missing candidate error"))
+            )
+        })?;
+        ensure(
+            surface.repo_root == clean_psionic_worktree,
+            "training surface selection should skip a stale sibling checkout and use the clean worktree candidate instead",
         )
     }
 
