@@ -11047,6 +11047,8 @@ async fn create_treasury_funding_target(
         authority: "openagents-hosted-nexus".to_string(),
         wallet_runtime_status: material.wallet_snapshot.runtime_status,
         wallet_runtime_detail: material.wallet_snapshot.runtime_detail,
+        wallet_hydration_mode: material.wallet_snapshot.wallet_hydration_mode,
+        wallet_payment_scan_mode: material.wallet_snapshot.wallet_payment_scan_mode,
         wallet_balance_sats: material.wallet_snapshot.balance_sats,
         wallet_balance_updated_at_unix_ms: now,
         spark_address: material.spark_address,
@@ -24576,6 +24578,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             })
@@ -24606,6 +24610,8 @@ mod tests {
                 wallet_snapshot: TreasuryWalletSnapshot {
                     runtime_status: "connected".to_string(),
                     runtime_detail: None,
+                    wallet_hydration_mode: None,
+                    wallet_payment_scan_mode: None,
                     balance_sats: 710,
                     payments: Vec::new(),
                 },
@@ -24717,6 +24723,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             })
@@ -24805,6 +24813,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             })
@@ -24859,6 +24869,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             })
@@ -24903,6 +24915,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: if call_index == 0 { 500 } else { 710 },
                 payments: Vec::new(),
             })
@@ -24945,6 +24959,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: if call_index == 0 { 500 } else { 710 },
                 payments: Vec::new(),
             })
@@ -25055,6 +25071,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             })

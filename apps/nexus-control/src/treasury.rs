@@ -364,6 +364,10 @@ pub struct TreasuryFundingTargetResponse {
     pub wallet_runtime_status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_runtime_detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_hydration_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_payment_scan_mode: Option<String>,
     pub wallet_balance_sats: u64,
     pub wallet_balance_updated_at_unix_ms: u64,
     pub spark_address: String,
@@ -709,6 +713,10 @@ pub struct TreasuryStatusResponse {
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_hydration_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_payment_scan_mode: Option<String>,
     #[serde(default = "default_wallet_storage_runtime_mode")]
     pub wallet_storage_runtime_mode: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1017,6 +1025,8 @@ pub struct TreasuryPublicStats {
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     pub wallet_runtime_status: Option<String>,
     pub wallet_last_error: Option<String>,
+    pub wallet_hydration_mode: Option<String>,
+    pub wallet_payment_scan_mode: Option<String>,
     pub wallet_storage_runtime_mode: String,
     pub payout_loop_runtime_status: Option<String>,
     pub payout_loop_last_error: Option<String>,
@@ -1281,6 +1291,10 @@ pub struct TreasuryState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_last_error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_hydration_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_payment_scan_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_storage_runtime_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_storage_report_path: Option<String>,
@@ -1436,6 +1450,8 @@ impl TreasuryPayoutTotals {
 pub struct TreasuryWalletSnapshot {
     pub runtime_status: String,
     pub runtime_detail: Option<String>,
+    pub wallet_hydration_mode: Option<String>,
+    pub wallet_payment_scan_mode: Option<String>,
     pub balance_sats: u64,
     pub payments: Vec<PaymentSummary>,
 }
@@ -1444,6 +1460,9 @@ pub struct TreasuryWalletSnapshot {
 pub struct TreasuryWalletRefreshPlan {
     tracked_payment_ids: BTreeSet<String>,
     history_scan_page_offset: usize,
+    expected_nonzero_balance: bool,
+    historical_receive_total_sats: u64,
+    payout_sats_paid_total: u64,
 }
 
 impl TreasuryWalletRefreshPlan {
@@ -1470,6 +1489,10 @@ impl TreasuryWalletRefreshPlan {
         }
 
         budget
+    }
+
+    fn expects_funded_balance(&self) -> bool {
+        self.expected_nonzero_balance
     }
 }
 
@@ -2430,6 +2453,8 @@ impl TreasuryState {
             wallet_balance_updated_at_unix_ms: snapshot.wallet_balance_updated_at_unix_ms,
             wallet_runtime_status,
             wallet_last_error,
+            wallet_hydration_mode: self.wallet_hydration_mode.clone(),
+            wallet_payment_scan_mode: self.wallet_payment_scan_mode.clone(),
             wallet_storage_runtime_mode: snapshot.wallet_storage_runtime_mode,
             payout_loop_runtime_status: snapshot.payout_loop_runtime_status,
             payout_loop_last_error: snapshot.payout_loop_last_error,
@@ -2666,6 +2691,8 @@ impl TreasuryState {
             wallet_balance_updated_at_unix_ms: stats.wallet_balance_updated_at_unix_ms,
             wallet_runtime_status: stats.wallet_runtime_status,
             wallet_last_error: stats.wallet_last_error,
+            wallet_hydration_mode: stats.wallet_hydration_mode,
+            wallet_payment_scan_mode: stats.wallet_payment_scan_mode,
             wallet_storage_runtime_mode: stats.wallet_storage_runtime_mode,
             wallet_storage_report_path: self.wallet_storage_report_path.clone(),
             wallet_storage_rollback_dir: self.wallet_storage_rollback_dir.clone(),
@@ -2780,6 +2807,16 @@ impl TreasuryState {
     pub fn wallet_refresh_plan(&self) -> TreasuryWalletRefreshPlan {
         let mut plan = TreasuryWalletRefreshPlan::recent_only();
         plan.history_scan_page_offset = self.wallet_refresh_history_page_offset;
+        let completed_receive_total_sats = self.completed_funding_receive_total_sats();
+        if completed_receive_total_sats
+            > self
+                .payout_sats_paid_total
+                .saturating_add(TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS)
+        {
+            plan.expected_nonzero_balance = true;
+            plan.historical_receive_total_sats = completed_receive_total_sats;
+            plan.payout_sats_paid_total = self.payout_sats_paid_total;
+        }
         for record in self.payout_records_by_key.values() {
             if record.status != "dispatched" || record.counted_in_paid_total {
                 continue;
@@ -3365,6 +3402,8 @@ impl TreasuryState {
     ) -> Vec<TreasuryReceiptEvent> {
         self.wallet_runtime_status = Some(snapshot.runtime_status.clone());
         self.wallet_last_error = snapshot.runtime_detail.clone();
+        self.wallet_hydration_mode = snapshot.wallet_hydration_mode.clone();
+        self.wallet_payment_scan_mode = snapshot.wallet_payment_scan_mode.clone();
         self.wallet_balance_sats = snapshot.balance_sats;
         self.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
         self.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
@@ -4134,6 +4173,8 @@ pub async fn run_treasury_command(
                 authority: "openagents-hosted-nexus".to_string(),
                 wallet_runtime_status: material.wallet_snapshot.runtime_status,
                 wallet_runtime_detail: material.wallet_snapshot.runtime_detail,
+                wallet_hydration_mode: material.wallet_snapshot.wallet_hydration_mode,
+                wallet_payment_scan_mode: material.wallet_snapshot.wallet_payment_scan_mode,
                 wallet_balance_sats: material.wallet_snapshot.balance_sats,
                 wallet_balance_updated_at_unix_ms: now_unix_ms(),
                 spark_address: material.spark_address,
@@ -4983,6 +5024,12 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
     if let Some(error) = response.wallet_last_error.as_deref() {
         lines.push(format!("wallet_last_error: {error}"));
     }
+    if let Some(mode) = response.wallet_hydration_mode.as_deref() {
+        lines.push(format!("wallet_hydration_mode: {mode}"));
+    }
+    if let Some(mode) = response.wallet_payment_scan_mode.as_deref() {
+        lines.push(format!("wallet_payment_scan_mode: {mode}"));
+    }
     if let Some(report_path) = response.wallet_storage_report_path.as_deref() {
         lines.push(format!("wallet_storage_report_path: {report_path}"));
     }
@@ -5110,6 +5157,12 @@ fn render_treasury_funding_target_response(response: &TreasuryFundingTargetRespo
     }
     if let Some(detail) = response.wallet_runtime_detail.as_deref() {
         lines.push(format!("wallet_runtime_detail: {detail}"));
+    }
+    if let Some(mode) = response.wallet_hydration_mode.as_deref() {
+        lines.push(format!("wallet_hydration_mode: {mode}"));
+    }
+    if let Some(mode) = response.wallet_payment_scan_mode.as_deref() {
+        lines.push(format!("wallet_payment_scan_mode: {mode}"));
     }
     lines.join("\n")
 }
@@ -5674,6 +5727,31 @@ fn wallet_refresh_page_offsets(plan: &TreasuryWalletRefreshPlan) -> Vec<usize> {
     page_offsets
 }
 
+fn wallet_payment_scan_mode(plan: &TreasuryWalletRefreshPlan) -> &'static str {
+    if plan.history_scan_page_offset > 0 || plan.tracked_payment_count() > 0 {
+        "recent_plus_backfill"
+    } else {
+        "recent_only"
+    }
+}
+
+fn validate_wallet_hydration_balance(
+    plan: &TreasuryWalletRefreshPlan,
+    balance_sats: u64,
+    hydration_mode: &str,
+) -> Result<()> {
+    if balance_sats > 0 || !plan.expects_funded_balance() {
+        return Ok(());
+    }
+
+    bail!(
+        "wallet_hydration_zero_balance_after_{}:{}:{}",
+        hydration_mode,
+        plan.historical_receive_total_sats,
+        plan.payout_sats_paid_total
+    );
+}
+
 async fn wallet_snapshot_from_wallet(wallet: &SparkWallet) -> Result<TreasuryWalletSnapshot> {
     wallet_snapshot_from_wallet_with_plan_result(wallet, &TreasuryWalletRefreshPlan::recent_only())
         .await
@@ -5684,15 +5762,23 @@ async fn wallet_snapshot_from_wallet_with_plan_result(
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
+    wallet
+        .sync_wallet_state()
+        .await
+        .context("failed to hydrate treasury Spark wallet with sync_wallet")?;
     let balance = wallet
         .get_balance_cached()
         .await
         .context("failed to fetch treasury Spark balance")?;
     let refresh = wallet_refresh_payments(wallet, plan).await?;
+    let hydration_mode = "sync_wallet_then_cached_balance";
+    validate_wallet_hydration_balance(plan, balance.total_sats(), hydration_mode)?;
     Ok(TreasuryWalletRefreshResult {
         snapshot: TreasuryWalletSnapshot {
             runtime_status: "connected".to_string(),
             runtime_detail: None,
+            wallet_hydration_mode: Some(hydration_mode.to_string()),
+            wallet_payment_scan_mode: Some(wallet_payment_scan_mode(plan).to_string()),
             balance_sats: balance.total_sats(),
             payments: refresh.payments,
         },
@@ -6034,12 +6120,13 @@ pub(crate) fn set_test_wallet_send_hook(hook: Option<TestWalletSendHook>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        OnlinePylonIdentity, TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES,
-        TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE,
-        TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES, TreasuryConfig, TreasuryDispatchOutcome,
-        TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryPayoutClass,
-        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode,
-        TreasuryPublicStats, TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
+        OnlinePylonIdentity, TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS,
+        TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
+        TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES,
+        TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial, TreasuryFundingReceive,
+        TreasuryFundingTargetRequest, TreasuryPayoutClass, TreasuryPayoutClassification,
+        TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryPublicStats,
+        TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
         TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
         TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan, TreasuryWalletRefreshProgress,
         TreasuryWalletSnapshot, apply_treasury_wallet_recovery_cutover,
@@ -6047,8 +6134,9 @@ mod tests {
         dispatch_live_payouts, parse_treasury_command, payout_phase_offset_ms, payout_window_key,
         payout_window_started_at, payout_window_started_at_for_identity,
         set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        treasury_test_hook_lock, verify_payout_target_registration_signature,
-        wallet_refresh_page_offsets, wallet_refresh_payment_page_budget, write_json_file,
+        treasury_test_hook_lock, validate_wallet_hydration_balance,
+        verify_payout_target_registration_signature, wallet_refresh_page_offsets,
+        wallet_refresh_payment_page_budget, write_json_file,
     };
     use openagents_provider_substrate::sign_provider_payout_target_registration;
     use openagents_spark::PaymentSummary;
@@ -6788,6 +6876,8 @@ mod tests {
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 880,
                 payments: vec![
                     PaymentSummary {
@@ -6875,6 +6965,8 @@ mod tests {
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 830,
                 payments: vec![PaymentSummary {
                     id: "payment-send-recovered".to_string(),
@@ -6961,6 +7053,8 @@ mod tests {
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 830,
                 payments: vec![PaymentSummary {
                     id: "payment-send-unmatched".to_string(),
@@ -7193,6 +7287,8 @@ mod tests {
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 500,
                 payments: Vec::new(),
             },
@@ -7916,6 +8012,8 @@ mod tests {
                 wallet_snapshot: TreasuryWalletSnapshot {
                     runtime_status: "connected".to_string(),
                     runtime_detail: None,
+                    wallet_hydration_mode: None,
+                    wallet_payment_scan_mode: None,
                     balance_sats: 500,
                     payments: Vec::new(),
                 },
@@ -7944,6 +8042,8 @@ mod tests {
             Ok(TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
                 balance_sats: 380,
                 payments: vec![PaymentSummary {
                     id: "payment-send-001".to_string(),
@@ -8135,6 +8235,52 @@ mod tests {
         assert_eq!(
             page_offsets.len(),
             TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES
+        );
+    }
+
+    #[test]
+    fn wallet_refresh_plan_marks_funded_history_as_nonzero_expected() {
+        let mut state = TreasuryState::default();
+        state.payout_sats_paid_total = 100;
+        state.funding_receives_by_payment_id.insert(
+            "receive-001".to_string(),
+            TreasuryFundingReceive {
+                payment_id: "receive-001".to_string(),
+                status: "completed".to_string(),
+                amount_sats: TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS + 1_500,
+                method: "spark".to_string(),
+                description: Some("fund treasury".to_string()),
+                recorded_at_unix_ms: 10,
+                updated_at_unix_ms: 10,
+            },
+        );
+
+        let plan = state.wallet_refresh_plan();
+
+        assert!(plan.expects_funded_balance());
+        assert_eq!(
+            plan.historical_receive_total_sats,
+            TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS + 1_500
+        );
+        assert_eq!(plan.payout_sats_paid_total, 100);
+    }
+
+    #[test]
+    fn validate_wallet_hydration_balance_rejects_zero_when_funded_history_exists() {
+        let mut plan = TreasuryWalletRefreshPlan::recent_only();
+        plan.expected_nonzero_balance = true;
+        plan.historical_receive_total_sats = 2_500;
+        plan.payout_sats_paid_total = 100;
+
+        let error = validate_wallet_hydration_balance(&plan, 0, "sync_wallet_then_cached_balance")
+            .expect_err("zero balance should fail when funded history exists")
+            .to_string();
+
+        assert!(error.contains(
+            "wallet_hydration_zero_balance_after_sync_wallet_then_cached_balance:2500:100"
+        ));
+        assert!(
+            validate_wallet_hydration_balance(&plan, 1, "sync_wallet_then_cached_balance").is_ok()
         );
     }
 
