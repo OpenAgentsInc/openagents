@@ -28786,7 +28786,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn training_scheduler_claims_named_cs336_a1_demo_run_and_surfaces_display_name()
+    async fn training_scheduler_claims_two_slot_named_cs336_a1_demo_run_and_surfaces_display_name()
     -> Result<()> {
         let state = build_app_state(test_config()?);
         let app = build_api_router_with_state(state.clone());
@@ -28907,7 +28907,7 @@ mod tests {
                 "display_name": "CS336 A1 Demo",
                 "pylon_training_scheduler": training_scheduler_metadata_with_contract(
                     network_id,
-                    1,
+                    2,
                     0,
                     0,
                     window_id,
@@ -28922,40 +28922,86 @@ mod tests {
                 )
                 .expect("create training run");
 
-            let mut node = training_node_admission_request_with_environment_refs(
-                "node-cs336-a1-demo",
-                "sha256:build-cs336-a1-demo",
+            let mut mac_node = training_node_admission_request_with_environment_refs(
+                "node-cs336-a1-demo-mac",
+                "sha256:build-cs336-a1-demo-mac",
                 vec![network_id],
                 Vec::new(),
-                Some(16),
+                Some(128),
                 vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
             );
-            node.requested_at_ms = created_at_ms as i64 + 700;
+            mac_node.requested_at_ms = created_at_ms as i64 + 700;
+            mac_node.node_label = Some("Episode 223 Mac".to_string());
             store
                 .kernel
                 .record_training_node_admission(
-                    &training_kernel_mutation_context("node-cs336-a1-demo", created_at_ms + 700),
-                    node,
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-mac",
+                        created_at_ms + 700,
+                    ),
+                    mac_node,
                 )
-                .expect("admit node");
-            let mut heartbeat = training_node_heartbeat_request_for_scope(
-                "node-cs336-a1-demo",
-                "sha256:build-cs336-a1-demo",
+                .expect("admit Mac node");
+            let mut mac_heartbeat = training_node_heartbeat_request_for_scope(
+                "node-cs336-a1-demo-mac",
+                "sha256:build-cs336-a1-demo-mac",
                 training_run_id,
                 window_id,
             );
-            heartbeat.recorded_at_ms = created_at_ms as i64 + 750;
-            heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 750);
+            mac_heartbeat.recorded_at_ms = created_at_ms as i64 + 750;
+            mac_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 750);
             store
                 .kernel
                 .record_training_node_heartbeat(
-                    &training_kernel_mutation_context("node-cs336-a1-demo", created_at_ms + 750),
-                    heartbeat,
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-mac",
+                        created_at_ms + 750,
+                    ),
+                    mac_heartbeat,
                 )
-                .expect("heartbeat node");
+                .expect("heartbeat Mac node");
+
+            let mut linux_node = training_node_admission_request_with_environment_refs(
+                "node-cs336-a1-demo-linux",
+                "sha256:build-cs336-a1-demo-linux",
+                vec![network_id],
+                Vec::new(),
+                Some(126),
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
+            );
+            linux_node.requested_at_ms = created_at_ms as i64 + 760;
+            linux_node.node_label = Some("Episode 223 Linux".to_string());
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-linux",
+                        created_at_ms + 760,
+                    ),
+                    linux_node,
+                )
+                .expect("admit Linux node");
+            let mut linux_heartbeat = training_node_heartbeat_request_for_scope(
+                "node-cs336-a1-demo-linux",
+                "sha256:build-cs336-a1-demo-linux",
+                training_run_id,
+                window_id,
+            );
+            linux_heartbeat.recorded_at_ms = created_at_ms as i64 + 780;
+            linux_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 780);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-linux",
+                        created_at_ms + 780,
+                    ),
+                    linux_heartbeat,
+                )
+                .expect("heartbeat Linux node");
         }
 
-        let lease_response = app
+        let mac_lease_response = app
             .clone()
             .oneshot(
                 Request::builder()
@@ -28964,9 +29010,9 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
                         &training_run_lease_request_for_scope(
-                            "idemp.training.lease.cs336-a1-demo.auto",
+                            "idemp.training.lease.cs336-a1-demo.mac",
                             created_at_ms as i64 + 20_000,
-                            "node-cs336-a1-demo",
+                            "node-cs336-a1-demo-mac",
                             TrainingNodeRoleClaim::Worker,
                             Some(network_id),
                             None,
@@ -28974,10 +29020,37 @@ mod tests {
                     )?))?,
             )
             .await?;
-        assert_eq!(lease_response.status(), StatusCode::OK);
-        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
-        assert_eq!(lease.training_run_id, training_run_id);
-        assert_eq!(lease.window_id, window_id);
+        assert_eq!(mac_lease_response.status(), StatusCode::OK);
+        let mac_lease = response_json::<RecordTrainingRunLeaseResponse>(mac_lease_response).await?;
+        assert_eq!(mac_lease.training_run_id, training_run_id);
+        assert_eq!(mac_lease.window_id, window_id);
+
+        let linux_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.cs336-a1-demo.linux",
+                            created_at_ms as i64 + 20_050,
+                            "node-cs336-a1-demo-linux",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(linux_lease_response.status(), StatusCode::OK);
+        let linux_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(linux_lease_response).await?;
+        assert_eq!(linux_lease.training_run_id, training_run_id);
+        assert_eq!(linux_lease.window_id, window_id);
+        assert_ne!(mac_lease.assignment_id, linux_lease.assignment_id);
+        assert_ne!(mac_lease.lease_id, linux_lease.lease_id);
 
         let stats_response = app
             .clone()
@@ -28998,9 +29071,24 @@ mod tests {
             .expect("public run");
         assert_eq!(public_run.display_name.as_deref(), Some("CS336 A1 Demo"));
         assert_eq!(public_run.work_class, "small_model_local_training");
-        assert_eq!(public_run.assigned_contributors, 1);
+        assert_eq!(public_run.assigned_contributors, 2);
+        assert_eq!(public_run.weak_device_assigned_contributors, 2);
         assert_eq!(public_run.accepted_contributors, 0);
         assert_eq!(public_run.model_progress_contributors, 0);
+
+        let summary = fetch_training_summary(&app).await?;
+        let summary_run = summary
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == training_run_id)
+            .expect("summary run");
+        assert_eq!(summary_run.participation.worker_target_count, 2);
+        assert_eq!(summary_run.participation.assigned_contributors, 2);
+        assert_eq!(
+            summary_run.participation.weak_device_assigned_contributors,
+            2
+        );
+        assert_eq!(summary_run.progress.accepted_contributors, 0);
 
         let visualization = fetch_training_visualization(&app).await?;
         let visualized_run = visualization
@@ -29013,7 +29101,9 @@ mod tests {
             Some("CS336 A1 Demo")
         );
         assert_eq!(visualized_run.work_class, "small_model_local_training");
-        assert_eq!(visualized_run.assigned_contributors, 1);
+        assert_eq!(visualized_run.replica_type, "single_node");
+        assert_eq!(visualized_run.assigned_contributors, 2);
+        assert_eq!(visualized_run.weak_device_assigned_contributors, 2);
         assert_eq!(visualized_run.accepted_contributors, 0);
         assert_eq!(visualized_run.model_progress_contributors, 0);
 
