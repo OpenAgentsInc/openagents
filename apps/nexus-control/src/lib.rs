@@ -139,8 +139,9 @@ use crate::kernel::{
 use crate::treasury::{
     OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
     ProviderPayoutTargetChallengeResponse, ProviderPayoutTargetRegistrationRequest,
-    ProviderPayoutTargetRegistrationResponse, TreasuryConfig, TreasuryDispatchBatchResult,
-    TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryPayoutClass,
+    ProviderPayoutTargetRegistrationResponse, TreasuryCanonicalPublicSnapshot, TreasuryConfig,
+    TreasuryDispatchBatchResult, TreasuryFundingTargetRequest, TreasuryFundingTargetResponse,
+    TreasuryIntegrationExportResponse, TreasuryIntegrationImportResponse, TreasuryPayoutClass,
     TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPublicStats,
     TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse,
     TreasuryTrainingPayoutLedgerSummary, create_live_funding_target, dispatch_live_payouts,
@@ -7056,6 +7057,14 @@ fn build_api_router_with_state(state: AppState) -> Router {
         )
         .route("/v1/treasury/status", get(treasury_status))
         .route(
+            "/v1/treasury/integration/export",
+            get(treasury_integration_export),
+        )
+        .route(
+            "/v1/treasury/integration/public-snapshot",
+            post(import_treasury_public_snapshot),
+        )
+        .route(
             "/v1/treasury/funding-target",
             post(create_treasury_funding_target),
         )
@@ -11010,6 +11019,51 @@ async fn treasury_status(
     Ok(Json(
         store.treasury.status_response(&state.config.treasury, now),
     ))
+}
+
+async fn treasury_integration_export(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<TreasuryIntegrationExportResponse>, ApiError> {
+    authenticate_treasury_integration(&state, &headers)?;
+    let now = now_unix_ms();
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let online_identities = store
+        .provider_presence
+        .online_identities(now, state.config.provider_presence_stale_after_ms);
+    Ok(Json(TreasuryIntegrationExportResponse {
+        authority: "openagents-hosted-nexus".to_string(),
+        generated_at_unix_ms: now,
+        policy: store
+            .treasury
+            .integration_policy_snapshot(&state.config.treasury),
+        payout_sats_paid_total_floor: store.treasury.payout_sats_paid_total,
+        payout_target_identities: store.treasury.payout_target_identity_rows(),
+        online_identities,
+    }))
+}
+
+async fn import_treasury_public_snapshot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(snapshot): Json<TreasuryCanonicalPublicSnapshot>,
+) -> Result<Json<TreasuryIntegrationImportResponse>, ApiError> {
+    authenticate_treasury_integration(&state, &headers)?;
+    let now = now_unix_ms();
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.treasury.import_canonical_public_snapshot(
+        &state.config.treasury,
+        snapshot,
+        now,
+    )))
 }
 
 async fn create_treasury_funding_target(
@@ -19451,6 +19505,53 @@ fn parse_u64_env(key: &str, default: u64) -> Result<u64, String> {
         })
 }
 
+fn bearer_token_from_headers(headers: &HeaderMap) -> Result<&str, ApiError> {
+    let header = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            error: "unauthorized",
+            reason: "missing_bearer_token".to_string(),
+        })?;
+    header
+        .strip_prefix("Bearer ")
+        .or_else(|| header.strip_prefix("bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            error: "unauthorized",
+            reason: "invalid_bearer_token".to_string(),
+        })
+}
+
+fn authenticate_treasury_integration(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(), ApiError> {
+    let expected = state
+        .config
+        .treasury
+        .integration_token
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: "treasury_integration_disabled".to_string(),
+        })?;
+    let token = bearer_token_from_headers(headers)?;
+    if token != expected {
+        return Err(ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            error: "unauthorized",
+            reason: "invalid_treasury_integration_token".to_string(),
+        });
+    }
+    Ok(())
+}
+
 fn parse_bool_env(key: &str, default: bool) -> Result<bool, String> {
     std::env::var(key)
         .ok()
@@ -19760,11 +19861,13 @@ mod tests {
     use crate::treasury::{
         ProviderPayoutTargetChallengeRequest, ProviderPayoutTargetChallengeResponse,
         ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
-        RegisteredPayoutTarget, TreasuryFundingMaterial, TreasuryFundingTargetRequest,
-        TreasuryFundingTargetResponse, TreasuryPayoutClass, TreasuryPayoutClassification,
-        TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryState, TreasuryStatusResponse,
-        TreasuryWalletSnapshot, set_test_wallet_funding_hook, set_test_wallet_send_hook,
-        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
+        RegisteredPayoutTarget, TreasuryCanonicalPublicSnapshot, TreasuryFundingMaterial,
+        TreasuryFundingTargetRequest, TreasuryFundingTargetResponse,
+        TreasuryIntegrationExportResponse, TreasuryIntegrationImportResponse, TreasuryPayoutClass,
+        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode,
+        TreasuryState, TreasuryStatusResponse, TreasuryWalletSnapshot,
+        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
+        treasury_test_hook_lock,
     };
 
     use super::{
@@ -19849,6 +19952,7 @@ mod tests {
                 wallet_status_refresh_seconds: 30,
                 max_concurrent_sends: 16,
                 registration_challenge_ttl_seconds: 300,
+                integration_token: None,
             },
         })
     }
@@ -24656,6 +24760,236 @@ mod tests {
 
         set_test_wallet_snapshot_hook(None);
         set_test_wallet_funding_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_integration_export_requires_token_and_projects_online_inputs() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.integration_token = Some("integration-secret".to_string());
+        let app = build_router_with_state(build_app_state(config));
+        let nostr_pubkey_hex = "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa";
+        let private_key_hex = "1111111111111111111111111111111111111111111111111111111111111111";
+
+        let unauthorized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/integration/export")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let heartbeat = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-presence/heartbeat")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&provider_presence_request(
+                        nostr_pubkey_hex,
+                        "session-a",
+                        "alpha",
+                        1,
+                        "online",
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(heartbeat.status(), StatusCode::OK);
+
+        let challenge_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-payout-target/challenge")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ProviderPayoutTargetChallengeRequest {
+                            nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                            session_id: "session-a".to_string(),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(challenge_response.status(), StatusCode::OK);
+        let challenge: ProviderPayoutTargetChallengeResponse =
+            response_json(challenge_response).await?;
+
+        let signature = sign_provider_payout_target_registration(
+            private_key_hex,
+            nostr_pubkey_hex,
+            "session-a",
+            challenge.challenge.as_str(),
+            "spark:alice",
+        )
+        .map_err(anyhow::Error::msg)?;
+        let register_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-payout-target/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ProviderPayoutTargetRegistrationRequest {
+                            nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                            session_id: "session-a".to_string(),
+                            spark_address: "spark:alice".to_string(),
+                            bitcoin_address: Some("bc1qalice".to_string()),
+                            challenge: challenge.challenge,
+                            challenge_signature_hex: signature,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(register_response.status(), StatusCode::OK);
+        let _: ProviderPayoutTargetRegistrationResponse = response_json(register_response).await?;
+
+        let export_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/integration/export")
+                    .header("authorization", "Bearer integration-secret")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(export_response.status(), StatusCode::OK);
+        let export: TreasuryIntegrationExportResponse = response_json(export_response).await?;
+        assert!(export.policy.treasury_enabled);
+        assert_eq!(export.policy.payout_sats_per_window, 0);
+        assert_eq!(export.payout_target_identities.len(), 1);
+        assert_eq!(
+            export.payout_target_identities[0].nostr_pubkey_hex,
+            nostr_pubkey_hex
+        );
+        assert_eq!(export.online_identities.len(), 1);
+        assert_eq!(
+            export.online_identities[0].nostr_pubkey_hex,
+            nostr_pubkey_hex
+        );
+        assert!(export.online_identities[0].sellable);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_integration_import_overlays_public_stats_and_status() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.integration_token = Some("integration-secret".to_string());
+        let app = build_router_with_state(build_app_state(config));
+        let snapshot_generated_at_unix_ms = now_unix_ms();
+        let import_request = TreasuryCanonicalPublicSnapshot {
+            version: "v1".to_string(),
+            source: "treasury".to_string(),
+            generated_at_unix_ms: snapshot_generated_at_unix_ms,
+            stale_after_unix_ms: snapshot_generated_at_unix_ms.saturating_add(60_000),
+            health_status: "healthy".to_string(),
+            mode: "drain".to_string(),
+            drain_active: true,
+            payout_sats_paid_total: 777,
+            payout_sats_paid_24h: 333,
+            payouts_dispatched_24h: 10,
+            payouts_confirmed_24h: 9,
+            payouts_failed_24h: 1,
+            payouts_skipped_24h: 0,
+            backlog_total: 12,
+            backlog_retryable: 4,
+            wallet_runtime_status: Some("connected".to_string()),
+            wallet_last_error: None,
+            wallet_hydration_mode: Some("get_balance_ensure_synced".to_string()),
+            wallet_payment_scan_mode: Some("recent_only".to_string()),
+        };
+
+        let unauthorized = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/treasury/integration/public-snapshot")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&import_request)?))?,
+            )
+            .await?;
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let import_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/treasury/integration/public-snapshot")
+                    .header("authorization", "Bearer integration-secret")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&import_request)?))?,
+            )
+            .await?;
+        assert_eq!(import_response.status(), StatusCode::OK);
+        let imported: TreasuryIntegrationImportResponse = response_json(import_response).await?;
+        assert_eq!(imported.public_snapshot_source, "treasury");
+        assert_eq!(
+            imported.public_snapshot_generated_at_unix_ms,
+            snapshot_generated_at_unix_ms
+        );
+        assert_eq!(imported.payout_sats_paid_total, 777);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_payout_sats_paid_total, 777);
+        assert_eq!(stats.nexus_payout_sats_paid_24h, 333);
+        assert_eq!(stats.nexus_payouts_dispatched_24h, 10);
+        assert_eq!(stats.nexus_payouts_confirmed_24h, 9);
+        assert_eq!(stats.nexus_payout_loop_health, "healthy");
+        assert_eq!(
+            stats.nexus_treasury_snapshot_generated_at_unix_ms,
+            Some(snapshot_generated_at_unix_ms)
+        );
+        assert_eq!(
+            stats.nexus_wallet_runtime_status.as_deref(),
+            Some("connected")
+        );
+
+        let status_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/status")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(status_response.status(), StatusCode::OK);
+        let status: TreasuryStatusResponse = response_json(status_response).await?;
+        assert_eq!(status.public_snapshot_source, "treasury");
+        assert_eq!(status.public_snapshot_mode.as_deref(), Some("drain"));
+        assert_eq!(
+            status.public_snapshot_health_status.as_deref(),
+            Some("healthy")
+        );
+        assert_eq!(status.backlog_total, 12);
+        assert_eq!(status.backlog_retryable, 4);
+        assert_eq!(status.payout_sats_paid_total, 777);
+        assert_eq!(
+            status.wallet_hydration_mode.as_deref(),
+            Some("get_balance_ensure_synced")
+        );
+        assert_eq!(
+            status.wallet_payment_scan_mode.as_deref(),
+            Some("recent_only")
+        );
         Ok(())
     }
 

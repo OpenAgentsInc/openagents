@@ -20,10 +20,55 @@ HTTP:
 
 - `GET /v1/treasury/status`
 - `POST /v1/treasury/funding-target`
+- `GET /v1/treasury/integration/export`
+- `POST /v1/treasury/integration/public-snapshot`
 
 `treasury funding-target` uses the repo-owned Spark integration and returns the
 current treasury Spark receive address, Bitcoin receive address, and an optional
 Bolt11 invoice when an amount is requested.
+
+## Private Treasury Integration
+
+`nexus-control` now exposes a narrow bridge for the private `treasury` service
+to drain backlog and publish canonical payout state without handing over
+broader market authority.
+
+Authentication:
+
+- `Authorization: Bearer <token>`
+- token source: `NEXUS_CONTROL_TREASURY_INTEGRATION_TOKEN`
+- if the token is unset, both integration endpoints fail closed with
+  `treasury_integration_disabled`
+
+Export contract:
+
+- `GET /v1/treasury/integration/export`
+- returns the canonical payout inputs that the private service needs:
+  - current treasury policy
+  - current paid-total floor
+  - registered payout target identities
+  - live online identities from provider-presence
+
+Import contract:
+
+- `POST /v1/treasury/integration/public-snapshot`
+- accepts the private service's canonical public treasury snapshot:
+  - source and generation time
+  - health and mode
+  - wallet runtime projection
+  - public payout totals / 24h counters
+  - backlog counters
+
+Overlay rules:
+
+- a fresh imported canonical snapshot overrides the public treasury counters
+  shown through `/api/stats` and `/v1/treasury/status`
+- imported payout totals are treated as canonical floors and never allow the
+  local paid-total counter to move backward
+- local continuity alerts stay local-only; they are hidden from public stats
+  when the imported snapshot is the active source
+- if the imported snapshot goes stale, `nexus-control` falls back to its local
+  treasury projection automatically
 
 ## Public Payout Accounting
 
@@ -122,6 +167,7 @@ Wallet/runtime envs:
 - `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS`
 - `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS`
 - `NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS`
+- `NEXUS_CONTROL_TREASURY_INTEGRATION_TOKEN`
 
 Bootstrap / explicit policy-apply envs:
 
