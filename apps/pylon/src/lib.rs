@@ -17106,35 +17106,38 @@ fn derive_adapter_training_contributor_availability(
     let coordinator_match_supported = host_has_training_network_posture(host);
     let authority_receipt_supported = host_has_training_checkpoint_posture(host);
     let has_cuda_backend = host_has_cuda_training_backend(host);
+    let admitted_cuda_backend = admitted_cuda_training_gpu(host).is_some();
     let has_apple_backend =
         runtime_surface.supports_apple_windowed_training && host_has_apple_training_backend(host);
+    let admitted_apple_backend = admitted_apple_training_host(host, runtime_surface);
     let has_cs336_a1_demo_backend = runtime_surface.supports_cs336_a1_demo
         && host_matches_training_lane_machine_class(host, PSION_CS336_A1_DEMO_LANE_ID);
-    let available_memory_gb = host_max_cuda_training_memory_gb(host)
-        .or_else(|| host_apple_training_memory_gb(host))
-        .or_else(|| {
-            has_cs336_a1_demo_backend
-                .then(|| host_system_training_memory_gb(host))
-                .flatten()
-        });
-    let contributor_supported = (admitted_cuda_training_gpu(host).is_some()
-        || admitted_apple_training_host(host, runtime_surface)
-        || has_cs336_a1_demo_backend)
-        && coordinator_match_supported
-        && authority_receipt_supported;
+    let available_memory_gb = if admitted_cuda_backend {
+        host_max_cuda_training_memory_gb(host)
+    } else if admitted_apple_backend {
+        host_apple_training_memory_gb(host)
+    } else if has_cs336_a1_demo_backend {
+        host_system_training_memory_gb(host)
+    } else {
+        host_max_cuda_training_memory_gb(host).or_else(|| host_apple_training_memory_gb(host))
+    };
+    let contributor_supported =
+        (admitted_cuda_backend || admitted_apple_backend || has_cs336_a1_demo_backend)
+            && coordinator_match_supported
+            && authority_receipt_supported;
     let mut environment_refs = Vec::new();
-    if has_cuda_backend {
+    if admitted_cuda_backend {
         environment_refs.push(PYLON_TRAINING_ENVIRONMENT_REF.to_string());
     }
     if has_cs336_a1_demo_backend {
         environment_refs.push(PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string());
     }
-    if has_apple_backend {
+    if admitted_apple_backend {
         environment_refs.push(PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string());
     }
-    let minimum_memory_gb = if admitted_cuda_training_gpu(host).is_some() || has_cuda_backend {
+    let minimum_memory_gb = if admitted_cuda_backend {
         Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB)
-    } else if has_apple_backend {
+    } else if admitted_apple_backend {
         Some(PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB)
     } else {
         None
@@ -17719,6 +17722,9 @@ fn host_matches_training_lane_machine_class(
                 && !host_has_cuda_training_backend(host)
                 && !host_has_apple_training_backend(host)
         }
+        PsionicTrainMinimumMachineClass::CrossPlatformCpuCompatibleOperator => {
+            host_system_training_memory_gb(host).is_some()
+        }
         PsionicTrainMinimumMachineClass::AppleSiliconOperator => {
             host_has_apple_training_backend(host)
         }
@@ -18045,7 +18051,6 @@ mod tests {
         PSION_CS336_A1_DEMO_LANE_ID, PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CHECKPOINT_FAMILY,
         PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF, PYLON_TRAINING_ENVIRONMENT_REF,
-        PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB, PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB,
         PYLON_TRAINING_VALIDATOR_POLICY_REF, PsionicRepoRootCandidate, PsionicTrainRuntimeSurface,
         PylonConfig, PylonLedger, PylonLedgerJob, PylonSettlementRecord,
         PylonTrainingActiveRuntimeState, PylonTrainingArtifactStoreClient,
@@ -18950,7 +18955,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     }
 
     #[test]
-    fn adapter_training_detection_reports_cuda_contract_but_refuses_non_admitted_gpu()
+    fn adapter_training_detection_routes_non_admitted_cuda_hosts_into_cs336_a1_demo_lane()
     -> Result<(), Box<dyn std::error::Error>> {
         let host = training_host_snapshot(Some("NVIDIA A100-SXM4-80GB"), Some(80), Some(512), true);
         let runtime_surface = psionic_train_runtime_surface_fixture();
@@ -18958,8 +18963,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
 
         ensure(
-            !availability.contributor_supported,
-            "non-H100 CUDA hosts should not advertise admitted training contribution support",
+            availability.contributor_supported,
+            "non-admitted CUDA hosts should still advertise sellable contribution support when they can honestly run the bounded CS336 A1 host-CPU lane",
         )?;
         ensure(
             availability.coordinator_match_supported && availability.authority_receipt_supported,
@@ -18978,15 +18983,15 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && availability.checkpoint_families
                     == vec![PYLON_TRAINING_CHECKPOINT_FAMILY.to_string()]
                 && availability.environment_refs
-                    == vec![PYLON_TRAINING_ENVIRONMENT_REF.to_string()],
+                    == vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()],
             "runtime detection should project the frozen Pylon training contract ids",
         )?;
         ensure(
-            availability.minimum_memory_gb == Some(PYLON_TRAINING_MINIMUM_CUDA_MEMORY_GB)
-                && availability.available_memory_gb == Some(80)
+            availability.minimum_memory_gb.is_none()
+                && availability.available_memory_gb == Some(32)
                 && availability.settlement_trigger
                     == Some(ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow),
-            "runtime detection should project the admitted CUDA memory floor and sealed-window settlement trigger",
+            "fallback CS336 A1 detection should drop the H100 floor and use the host-CPU memory posture for sealed-window settlement",
         )
     }
 
@@ -19005,8 +19010,12 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "admitted H100 hosts should report sellable training contribution support only when runtime, network, and local checkpoint posture are all present",
         )?;
         ensure(
-            availability.environment_refs == vec![PYLON_TRAINING_ENVIRONMENT_REF.to_string()],
-            "admitted H100 hosts should advertise only the canonical CUDA environment until the bounded demo has its own explicit CUDA lane",
+            availability.environment_refs
+                == vec![
+                    PYLON_TRAINING_ENVIRONMENT_REF.to_string(),
+                    PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
+                ],
+            "admitted H100 hosts should advertise both the canonical CUDA lane and the bounded CS336 A1 host-CPU lane",
         )
     }
 
@@ -19035,7 +19044,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     }
 
     #[test]
-    fn adapter_training_detection_reports_apple_contract_but_refuses_insufficient_memory()
+    fn adapter_training_detection_routes_subfloor_apple_hosts_into_cs336_a1_demo_lane()
     -> Result<(), Box<dyn std::error::Error>> {
         let host = apple_training_host_snapshot(Some(16), Some(512), true);
         let runtime_surface = psionic_train_runtime_surface_fixture();
@@ -19043,8 +19052,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
 
         ensure(
-            !availability.contributor_supported,
-            "Apple hosts below the admitted memory floor should not advertise sellable training contribution support",
+            availability.contributor_supported,
+            "Apple hosts below the admitted Apple memory floor should still advertise sellable contribution support when they can run the bounded CS336 A1 host-CPU lane",
         )?;
         ensure(
             availability.coordinator_match_supported && availability.authority_receipt_supported,
@@ -19056,10 +19065,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "Apple-capable hosts should use the same admitted psionic-train execution backend",
         )?;
         ensure(
-            availability.environment_refs == vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string()]
-                && availability.minimum_memory_gb == Some(PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB)
+            availability.environment_refs
+                == vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()]
+                && availability.minimum_memory_gb.is_none()
                 && availability.available_memory_gb == Some(16),
-            "Apple capability detection should publish the admitted Apple environment identity and memory posture",
+            "subfloor Apple hosts should publish only the bounded CS336 A1 environment identity and should not inherit the Apple lane memory floor",
         )
     }
 
@@ -19076,8 +19086,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && availability.coordinator_match_supported
                 && availability.authority_receipt_supported
                 && availability.environment_refs
-                    == vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string()],
-            "admitted Apple Silicon hosts should advertise the Apple training lane under the same control plane",
+                    == vec![
+                        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
+                        PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string(),
+                    ],
+            "admitted Apple Silicon hosts should advertise both the bounded CS336 A1 host-CPU lane and the Apple lane under the same control plane",
         )
     }
 
@@ -19102,11 +19115,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
 
         ensure(
             profile.tier == ProviderTrainingCapabilityTier::Tier3Island
-                && profile.backend_families == vec!["cuda".to_string()]
+                && profile.backend_families == vec!["cpu".to_string(), "cuda".to_string()]
                 && profile.throughput_band == ProviderTrainingThroughputBand::Island
                 && profile.replay_capability == ProviderTrainingReplayCapability::ShortWindow
                 && profile.lease_reliability == ProviderTrainingLeaseReliabilityClass::Steady,
-            "strong admitted CUDA workers should project only the canonical CUDA training contract until an explicit CUDA variant of the bounded demo exists",
+            "strong admitted CUDA workers should remain island-tier while also surfacing the bounded CS336 A1 host-CPU lane",
         )
     }
 
@@ -19132,6 +19145,61 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && profile.backend_families == vec!["cpu".to_string()]
                 && profile.replay_capability == ProviderTrainingReplayCapability::ShortWindow,
             "worker-role reference CPU hosts should project a trainer-tier CPU contract for the bounded A1 demo lane",
+        )
+    }
+
+    #[test]
+    fn training_capability_tier_marks_consumer_cuda_cs336_worker_as_tier2_trainer()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut config = default_config(temp_dir.path());
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Worker];
+        let host =
+            training_host_snapshot(Some("NVIDIA GeForce RTX 4080"), Some(16), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+        let profile = derive_training_capability_tier_profile(
+            &config,
+            &PylonTrainingRuntimeState::default(),
+            &host,
+            &availability,
+        );
+
+        ensure(
+            profile.tier == ProviderTrainingCapabilityTier::Tier2Trainer
+                && profile.backend_families == vec!["cpu".to_string(), "cuda".to_string()]
+                && profile.memory_floor_gb.is_none()
+                && profile.available_memory_gb == Some(32)
+                && profile.throughput_band == ProviderTrainingThroughputBand::Medium,
+            "consumer CUDA workers should promote to the bounded CS336 A1 trainer tier without inheriting the H100 floor",
+        )
+    }
+
+    #[test]
+    fn training_capability_tier_marks_subfloor_apple_cs336_worker_as_tier2_trainer()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut config = default_config(temp_dir.path());
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Worker];
+        let host = apple_training_host_snapshot(Some(16), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+        let profile = derive_training_capability_tier_profile(
+            &config,
+            &PylonTrainingRuntimeState::default(),
+            &host,
+            &availability,
+        );
+
+        ensure(
+            profile.tier == ProviderTrainingCapabilityTier::Tier2Trainer
+                && profile.backend_families == vec!["cpu".to_string(), "metal".to_string()]
+                && profile.memory_floor_gb.is_none()
+                && profile.available_memory_gb == Some(16)
+                && profile.throughput_band == ProviderTrainingThroughputBand::Low,
+            "subfloor Apple workers should still promote to the bounded CS336 A1 trainer tier without inheriting the Apple lane floor",
         )
     }
 
