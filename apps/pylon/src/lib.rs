@@ -148,10 +148,10 @@ const DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS: u64 = 1;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
-const DEFAULT_PROVIDER_PRESENCE_HTTP_TIMEOUT_SECONDS: u64 = 15;
+const DEFAULT_PROVIDER_PRESENCE_HTTP_TIMEOUT_SECONDS: u64 = 60;
 const DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS: usize = 3;
 const DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS: u64 = 50;
-const DEFAULT_TRAINING_COORDINATION_HTTP_TIMEOUT_SECONDS: u64 = 20;
+const DEFAULT_TRAINING_COORDINATION_HTTP_TIMEOUT_SECONDS: u64 = 60;
 #[allow(dead_code)]
 const DEFAULT_TRAINING_GCS_ENDPOINT: &str = "https://storage.googleapis.com";
 #[allow(dead_code)]
@@ -16455,8 +16455,7 @@ async fn report_provider_presence_heartbeat(
         &request,
         "heartbeat",
     )
-    .await?;
-    sync_provider_payout_target(client, config_path, config, identity, session_id).await
+    .await
 }
 
 async fn report_provider_presence_offline(
@@ -23778,8 +23777,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             .find(|(route, _)| route == "POST /api/provider-presence/offline")
             .ok_or("missing offline request")?;
         ensure(
-            requests.len() == 4,
-            "provider presence should send heartbeat, payout-target sync, and offline reports",
+            requests.len() == 2,
+            "provider presence should send heartbeat and offline reports without coupling payout-target sync",
         )?;
         ensure(
             heartbeat_request.1["nostr_pubkey_hex"] == json!(identity.public_key_hex),
