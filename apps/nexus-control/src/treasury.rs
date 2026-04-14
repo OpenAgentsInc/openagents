@@ -80,6 +80,7 @@ const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
 const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
 const TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS: u64 = 5_000;
+const TREASURY_MAX_LIVE_WALLET_SYNC_TIMEOUT_MS: u64 = 30_000;
 const TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES: usize = 1;
 const TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES: usize = 8;
 const TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE: usize = 100;
@@ -3405,7 +3406,7 @@ pub async fn create_live_funding_target(
             Some(_) => bail!("treasury funding amount must be greater than 0"),
             None => None,
         };
-        let wallet_snapshot = wallet_snapshot_from_wallet(wallet.as_ref()).await?;
+        let wallet_snapshot = wallet_snapshot_from_wallet(config, wallet.as_ref()).await?;
         Ok(TreasuryFundingMaterial {
             spark_address,
             bitcoin_address,
@@ -5152,7 +5153,7 @@ async fn load_live_wallet_refresh_result_once(
     refresh_plan: TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
     with_live_wallet(config, create_if_missing, move |wallet| async move {
-        wallet_snapshot_from_wallet_with_plan_result(wallet.as_ref(), &refresh_plan).await
+        wallet_snapshot_from_wallet_with_plan_result(config, wallet.as_ref(), &refresh_plan).await
     })
     .await
 }
@@ -5294,25 +5295,49 @@ fn wallet_refresh_page_offsets(plan: &TreasuryWalletRefreshPlan) -> Vec<usize> {
     page_offsets
 }
 
-async fn wallet_snapshot_from_wallet(wallet: &SparkWallet) -> Result<TreasuryWalletSnapshot> {
-    wallet_snapshot_from_wallet_with_plan_result(wallet, &TreasuryWalletRefreshPlan::recent_only())
-        .await
-        .map(|result| result.snapshot)
+async fn wallet_snapshot_from_wallet(
+    config: &TreasuryConfig,
+    wallet: &SparkWallet,
+) -> Result<TreasuryWalletSnapshot> {
+    wallet_snapshot_from_wallet_with_plan_result(
+        config,
+        wallet,
+        &TreasuryWalletRefreshPlan::recent_only(),
+    )
+    .await
+    .map(|result| result.snapshot)
 }
 
 async fn wallet_snapshot_from_wallet_with_plan_result(
+    config: &TreasuryConfig,
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
-    // Do not block payout dispatch on a full Spark runtime sync here.
-    // The treasury refresh loop is allowed to serve from cached wallet storage
-    // so the dispatch path can keep sending even when the upstream Spark sync
-    // lane is degraded or timing out.
-    let balance = wallet
+    let mut balance = wallet
         .get_balance_cached()
         .await
         .context("failed to fetch treasury Spark balance")?;
-    let refresh = wallet_refresh_payments(wallet, plan).await?;
+    let mut refresh = wallet_refresh_payments(wallet, plan).await?;
+
+    if balance.total_sats() == 0 && refresh.payments.is_empty() {
+        let sync_timeout_ms = config
+            .wallet_refresh_timeout_ms()
+            .min(TREASURY_MAX_LIVE_WALLET_SYNC_TIMEOUT_MS);
+        // Hydrate cached wallet state with a hard cap so refreshes can recover
+        // funded wallets without wedging the payout lane for minutes at a time.
+        tokio::time::timeout(Duration::from_millis(sync_timeout_ms), wallet.sync())
+            .await
+            .with_context(|| format!("treasury wallet sync timed out after {sync_timeout_ms}ms"))?
+            .context("failed to sync treasury Spark wallet runtime state")?;
+        balance = wallet
+            .get_balance_cached()
+            .await
+            .context("failed to fetch treasury Spark balance after sync")?;
+        refresh = wallet_refresh_payments(wallet, plan)
+            .await
+            .context("failed to refresh treasury Spark payments after sync")?;
+    }
+
     Ok(TreasuryWalletRefreshResult {
         snapshot: TreasuryWalletSnapshot {
             runtime_status: "connected".to_string(),
@@ -5325,10 +5350,11 @@ async fn wallet_snapshot_from_wallet_with_plan_result(
 }
 
 async fn wallet_snapshot_from_wallet_with_plan(
+    config: &TreasuryConfig,
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletSnapshot> {
-    wallet_snapshot_from_wallet_with_plan_result(wallet, plan)
+    wallet_snapshot_from_wallet_with_plan_result(config, wallet, plan)
         .await
         .map(|result| result.snapshot)
 }
