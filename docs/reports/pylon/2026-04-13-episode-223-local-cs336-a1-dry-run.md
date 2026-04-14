@@ -16,7 +16,7 @@ The retained bundle came from:
 - script:
   `scripts/release/check-pylon-episode-223-cs336-a1-local.sh`
 - output root:
-  `target/pylon-episode-223-cs336-a1-local/20260414T111348Z-51711/`
+  `target/pylon-episode-223-cs336-a1-local/20260414T124213Z-14885/`
 - sibling Psionic checkout:
   `/Users/christopherdavid/work/.worktrees/psionic-ep223-mac-linux-a1`
 
