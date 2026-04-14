@@ -3925,10 +3925,12 @@ dependencies = [
  "openagents-provider-substrate",
  "openagents-spark",
  "openagents-validator-service",
+ "psionic-train",
  "rand 0.9.2",
  "reqwest",
  "ring 0.17.14",
  "rustls 0.23.37",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
@@ -4333,7 +4335,7 @@ dependencies = [
  "bitcoin 0.32.8",
  "hex",
  "openagents-kernel-core",
- "psionic-sandbox",
+ "psionic-sandbox 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
  "reqwest",
  "rusqlite",
  "serde",
@@ -4361,7 +4363,7 @@ name = "openagents-validator-service"
 version = "0.1.0"
 dependencies = [
  "hex",
- "psionic-runtime",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
  "serde",
  "serde_json",
  "sha2",
@@ -5064,16 +5066,66 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
 
 [[package]]
+name = "psionic-adapters"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-datastream",
+ "safetensors",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-apple-fm"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "futures-util",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "reqwest",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
 name = "psionic-array"
 version = "0.1.1"
 source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919#d001e792ee0b4e973a8411a4e7be6666aef01919"
 dependencies = [
- "psionic-backend-cuda",
- "psionic-backend-metal",
- "psionic-compiler",
- "psionic-core",
- "psionic-ir",
- "psionic-runtime",
+ "psionic-backend-cuda 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-backend-metal 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-array"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "psionic-backend-cuda 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-backend-metal 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
  "rand 0.9.2",
  "serde",
  "serde_json",
@@ -5089,10 +5141,25 @@ dependencies = [
  "cc",
  "half",
  "libloading",
- "psionic-compiler",
- "psionic-core",
- "psionic-ir",
- "psionic-runtime",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "rayon",
+]
+
+[[package]]
+name = "psionic-backend-cuda"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "cc",
+ "half",
+ "libloading",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
  "rayon",
 ]
 
@@ -5102,10 +5169,22 @@ version = "0.1.1"
 source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919#d001e792ee0b4e973a8411a4e7be6666aef01919"
 dependencies = [
  "metal",
- "psionic-compiler",
- "psionic-core",
- "psionic-ir",
- "psionic-runtime",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+]
+
+[[package]]
+name = "psionic-backend-metal"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "metal",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
 ]
 
 [[package]]
@@ -5123,14 +5202,77 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-catalog"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "libc",
+ "memmap2",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-cluster"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "psionic-datastream",
+ "psionic-net",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "psionic-collectives"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "serde",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "psionic-compiler"
 version = "0.1.1"
 source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919#d001e792ee0b4e973a8411a4e7be6666aef01919"
 dependencies = [
  "hex",
- "psionic-core",
- "psionic-ir",
- "psionic-runtime",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "wasm-encoder 0.244.0",
+ "wasmparser 0.244.0",
+ "wat",
+]
+
+[[package]]
+name = "psionic-compiler"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
  "serde",
  "serde_json",
  "sha2",
@@ -5151,12 +5293,110 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-core"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "serde",
+ "sha2",
+]
+
+[[package]]
+name = "psionic-data"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "fancy-regex 0.16.2",
+ "hex",
+ "psionic-datastream",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-datastream"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "serde",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-environments"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "psionic-data",
+ "psionic-models 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-eval"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "psionic-adapters",
+ "psionic-apple-fm",
+ "psionic-catalog 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-cluster",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-data",
+ "psionic-datastream",
+ "psionic-environments",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-models 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-nn 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-optimize",
+ "psionic-router",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-sandbox 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-transformer 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "safetensors",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "psionic-ir"
 version = "0.1.1"
 source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919#d001e792ee0b4e973a8411a4e7be6666aef01919"
 dependencies = [
  "hex",
- "psionic-core",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "wasm-encoder 0.244.0",
+ "wasmparser 0.244.0",
+]
+
+[[package]]
+name = "psionic-ir"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
  "serde",
  "serde_json",
  "sha2",
@@ -5174,12 +5414,12 @@ dependencies = [
  "half",
  "hex",
  "openai-harmony",
- "psionic-catalog",
- "psionic-core",
- "psionic-ir",
- "psionic-nn",
- "psionic-runtime",
- "psionic-transformer",
+ "psionic-catalog 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-nn 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-transformer 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
  "safetensors",
  "serde",
  "serde_json",
@@ -5188,13 +5428,105 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-models"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "fancy-regex 0.16.2",
+ "half",
+ "hex",
+ "openai-harmony",
+ "psionic-catalog 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-nn 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-transformer 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "safetensors",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-net"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "hex",
+ "psionic-observe",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "psionic-nn"
 version = "0.1.1"
 source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919#d001e792ee0b4e973a8411a4e7be6666aef01919"
 dependencies = [
  "hex",
- "psionic-core",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
  "serde",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-nn"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "serde",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-observe"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "psionic-optimize"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-router"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-environments",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-models 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-sandbox 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "serde",
+ "serde_json",
  "sha2",
  "thiserror 2.0.18",
 ]
@@ -5206,8 +5538,33 @@ source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973
 dependencies = [
  "ed25519-dalek",
  "hex",
- "psionic-core",
- "psionic-ir",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "rand 0.9.2",
+ "regex",
+ "regex-syntax",
+ "reqwest",
+ "roxmltree",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "url",
+ "wasm-encoder 0.244.0",
+ "wasmi",
+ "wasmparser 0.244.0",
+]
+
+[[package]]
+name = "psionic-runtime"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
  "rand 0.9.2",
  "regex",
  "regex-syntax",
@@ -5230,10 +5587,10 @@ version = "0.1.1"
 source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919#d001e792ee0b4e973a8411a4e7be6666aef01919"
 dependencies = [
  "hex",
- "psionic-compiler",
- "psionic-core",
- "psionic-models",
- "psionic-runtime",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-models 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
  "serde",
  "serde_json",
  "sha2",
@@ -5241,13 +5598,78 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-sandbox"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "hex",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-models 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-train"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "ed25519-dalek",
+ "flate2",
+ "half",
+ "hex",
+ "psionic-adapters",
+ "psionic-array 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-backend-cuda 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-backend-metal 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-cluster",
+ "psionic-collectives",
+ "psionic-compiler 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-data",
+ "psionic-datastream",
+ "psionic-environments",
+ "psionic-eval",
+ "psionic-ir 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-models 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-nn 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-runtime 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-sandbox 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-transformer 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "rayon",
+ "reqwest",
+ "safetensors",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "zstd",
+]
+
+[[package]]
 name = "psionic-transformer"
 version = "0.1.1"
 source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919#d001e792ee0b4e973a8411a4e7be6666aef01919"
 dependencies = [
- "psionic-array",
- "psionic-core",
- "psionic-nn",
+ "psionic-array 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "psionic-nn 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=d001e792ee0b4e973a8411a4e7be6666aef01919)",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "psionic-transformer"
+version = "0.1.1"
+source = "git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69#f23aeb4379a25c414f85a94ed6b1a4de19e85e69"
+dependencies = [
+ "psionic-array 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-core 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
+ "psionic-nn 0.1.1 (git+https://github.com/OpenAgentsInc/psionic.git?rev=f23aeb4379a25c414f85a94ed6b1a4de19e85e69)",
  "serde",
  "thiserror 2.0.18",
 ]
@@ -6172,8 +6594,21 @@ checksum = "a2b42f36aa1cd011945615b92222f6bf73c599a102a300334cd7f8dbeec726cc"
 dependencies = [
  "dyn-clone",
  "ref-cast",
+ "schemars_derive",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d115b50f4aaeea07e79c1912f645c7513d81715d0420f8bc77a18c6260b307f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -6381,6 +6816,17 @@ name = "serde_derive"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "serde_derive_internals"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8670,6 +9116,34 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+
+[[package]]
+name = "zstd"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
+dependencies = [
+ "zstd-safe",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "7.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f49c4d5f0abb602a93fb8736af2a4f4dd9512e36f7f570d66e65ff867ed3b9d"
+dependencies = [
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "2.0.16+zstd.1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748"
+dependencies = [
+ "cc",
+ "pkg-config",
+]
 
 [[package]]
 name = "zune-core"
