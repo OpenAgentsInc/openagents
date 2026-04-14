@@ -3,17 +3,20 @@
 Date: 2026-04-13  
 Repo: `openagents`
 
-This report records the latest retained local dry run after broadening the
-bounded `CS336 A1 Demo` lane and strengthening the named-run proof so both Mac
-and Linux Pylons can each take one worker slot on the same bounded homework
-run.
+This report records the retained local dry run after combining two things on
+the same branch:
+
+- the dual-host Episode 223 lane broadening so weak Apple and consumer-CUDA
+  Linux hosts can honestly take the bounded `CS336 A1 Demo` lane
+- the public Nexus training-read fix so post-lease run/window/artifact reads do
+  not strand live Pylons before manifest materialization
 
 The retained bundle came from:
 
 - script:
   `scripts/release/check-pylon-episode-223-cs336-a1-local.sh`
 - output root:
-  `target/pylon-episode-223-cs336-a1-local/20260414T051244Z-58844/`
+  `target/pylon-episode-223-cs336-a1-local/20260414T111348Z-51711/`
 - sibling Psionic checkout:
   `/Users/christopherdavid/work/.worktrees/psionic-ep223-mac-linux-a1`
 
@@ -28,9 +31,9 @@ What that local pass actually proves:
 - weak Apple hosts can honestly promote into the bounded A1 trainer lane
 - consumer CUDA Linux hosts can honestly promote into the bounded A1 trainer
   lane
-- `Nexus` can schedule one two-slot named `CS336 A1 Demo` run, preserve the
-  display name through the public summary surfaces, and retain both worker
-  slots on that same run
+- `Nexus` can schedule one named dual-host `CS336 A1 Demo` run, preserve the
+  display name through the public summary surfaces, and answer the public run
+  plus window reads needed after lease claim
 - `Pylon` can map that environment into the packaged demo lane, claim it,
   launch it, and sync terminal artifacts back to `Nexus`
 
@@ -40,30 +43,32 @@ What it does **not** prove yet:
   these fixes
 - that a real Mac Pylon and a real Linux Pylon have both already completed the
   homework on the public network
-- that the public Nexus homepage is already showing the fresh live run
+- that the public Nexus homepage is already showing the fresh live dual-host
+  run
 
 ## Step Results
 
 The retained summary recorded these passing steps:
 
 - `psionic_machine_manifest` in `1s`
-- `mac_cs336_fallback` in `186s`
-- `linux_cs336_fallback` in `1s`
-- `nexus_named_run` in `198s`
+- `mac_cs336_fallback` in `1s`
+- `linux_cs336_fallback` in `0s`
+- `nexus_named_run` in `0s`
 - `pylon_manifest_mapping` in `0s`
 - `pylon_assignment_intake` in `1s`
 - `pylon_runtime_launch` in `1s`
-- `pylon_terminal_sync` in `0s`
+- `pylon_terminal_sync` in `1s`
 
 ## Honest Next Step
 
-The next honest step is not more local contract work. It is operational:
+The next honest step is live, not more local contract work:
 
-1. cut a fresh `pylon-v...` release that contains the post-`rc1` runtime fixes
-   plus the new Mac/Linux lane broadening
+1. cut or deploy a Nexus/Pylon build that contains both the dual-host lane
+   broadening and the public training-read fix
 2. upgrade one reachable Mac Pylon and one reachable Linux Pylon to that build
-3. retain one live proof bundle showing both machines actually taking the two
-   worker slots on the bounded A1 homework run
+3. retain one live proof bundle showing both machines materialize manifests,
+   launch the runtime, and contribute on the same named
+   `run.cs336.a1.demo` / `trainnet.cs336.a1.demo`
 
 That is the remaining gap between "the system works locally" and "Episode 223
 can honestly show both Mac and Linux Pylons doing the homework live."
