@@ -23,6 +23,33 @@ The important distinction is simple:
 
 Those are related, but they are not identical.
 
+## 2026-04-13 Local Paid Dry-Run Update
+
+The current retained stack now also has one honest local end-to-end proof that
+uses the real `Nexus` scheduler, the real `Pylon` training intake path, the
+real training closeout path, and the real treasury payout loop together.
+
+The retained proof report is:
+
+- `docs/reports/pylon/2026-04-13-local-nexus-pylon-paid-dry-run.md`
+
+What that local proof closes:
+
+- `Pylon` can take the named `CS336 A1 Demo` lease through the current
+  packaged training intake path
+- the accepted closeout can use the manifest digest cached by the real leased
+  runtime instead of an invented digest
+- `Nexus` can mark the window `rewarded`
+- the treasury loop can record and confirm an accepted-work payout for that
+  exact training contribution
+
+What still remains after this update:
+
+- scripted production deploy of the same code
+- live `Nexus` health verification after deploy
+- at least one upgraded real Pylon proving the same accepted-work payout path
+  against the hosted treasury
+
 ## 2026-04-12 Retained Rehearsal Update
 
 The current hard blockers for Transcript 222 launch-hardening now have passing

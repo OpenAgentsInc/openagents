@@ -1672,6 +1672,29 @@ struct RecordTrainingRunLeaseResponse {
     network_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingAssignmentAckRequest {
+    idempotency_key: String,
+    acked_at_ms: i64,
+    node_pubkey_hex: String,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manifest_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingAssignmentAckResponse {
+    ack: TrainingCoordinatorAck,
+    accepted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lease_state: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct TrainingWindowAssignmentPlan {
     assignment_id: String,
@@ -3376,6 +3399,57 @@ impl ScheduledTrainingRun {
             window_state: Some(self.window_state.label().to_string()),
             network_id: Some(self.network_id.clone()),
         }
+    }
+
+    fn record_assignment_ack(
+        &mut self,
+        request: &RecordTrainingAssignmentAckRequest,
+    ) -> Result<RecordTrainingAssignmentAckResponse, String> {
+        if self.training_run_id != request.training_run_id {
+            return Err("training_scheduler_run_mismatch".to_string());
+        }
+        if self.current_window_id != request.window_id {
+            return Err("training_scheduler_window_mismatch".to_string());
+        }
+        let assignment = self
+            .assignments
+            .iter_mut()
+            .find(|assignment| {
+                assignment.assignment_id == request.assignment_id
+                    && assignment.lease_id.as_deref() == Some(request.lease_id.as_str())
+            })
+            .ok_or_else(|| "training_scheduler_assignment_not_found".to_string())?;
+        if assignment.node_pubkey_hex.as_deref() != Some(request.node_pubkey_hex.as_str()) {
+            return Err("training_scheduler_assignment_node_mismatch".to_string());
+        }
+        match assignment.state {
+            TrainingAssignmentState::Leased => {
+                assignment.state = TrainingAssignmentState::Acked;
+            }
+            TrainingAssignmentState::Acked
+            | TrainingAssignmentState::Active
+            | TrainingAssignmentState::Completed => {}
+            TrainingAssignmentState::Planned
+            | TrainingAssignmentState::Expired
+            | TrainingAssignmentState::Drained
+            | TrainingAssignmentState::Failed => {
+                return Err("training_scheduler_assignment_not_ackable".to_string());
+            }
+        }
+        if let Some(manifest_digest) = normalize_optional_field(request.manifest_digest.as_deref())
+        {
+            assignment.manifest_digest = Some(manifest_digest);
+        }
+        self.updated_at_ms = self.updated_at_ms.max(request.acked_at_ms);
+        Ok(RecordTrainingAssignmentAckResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: request.idempotency_key.clone(),
+                recorded_at_ms: request.acked_at_ms,
+                authority_state: "assignment_acked".to_string(),
+            },
+            accepted: true,
+            lease_state: Some(assignment.state.label().to_string()),
+        })
     }
 
     fn refresh_from_kernel_run(
@@ -6994,6 +7068,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
             post(record_training_node_heartbeat),
         )
         .route("/api/training/leases/claim", post(claim_training_run_lease))
+        .route(
+            "/api/training/assignments/ack",
+            post(record_training_assignment_ack),
+        )
         .route("/api/training/windows/plan", post(plan_training_window))
         .route(
             "/api/training/windows/{window_id}/activate",
@@ -7780,6 +7858,71 @@ async fn claim_training_run_lease(
             .map_err(kernel_api_error)?;
         response
     };
+    Ok(Json(response))
+}
+
+async fn record_training_assignment_ack(
+    State(state): State<AppState>,
+    Json(mut request): Json<RecordTrainingAssignmentAckRequest>,
+) -> Result<Json<RecordTrainingAssignmentAckResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_scheduler_idempotency_key_missing",
+    )?;
+    request.node_pubkey_hex = normalize_required_field(
+        request.node_pubkey_hex.as_str(),
+        "training_node_pubkey_missing",
+    )?;
+    request.training_run_id = normalize_required_field(
+        request.training_run_id.as_str(),
+        "compute_training_run_id_missing",
+    )?;
+    request.window_id = normalize_required_field(
+        request.window_id.as_str(),
+        "compute_adapter_window_id_missing",
+    )?;
+    request.assignment_id = normalize_required_field(
+        request.assignment_id.as_str(),
+        "training_assignment_id_missing",
+    )?;
+    request.lease_id =
+        normalize_required_field(request.lease_id.as_str(), "training_lease_id_missing")?;
+    request.acked_at_ms = if request.acked_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.acked_at_ms
+    };
+    request.manifest_digest = normalize_optional_field(request.manifest_digest.as_deref());
+    request.manifest_path = normalize_optional_field(request.manifest_path.as_deref());
+
+    let caller_id = training_node_caller_id(request.node_pubkey_hex.as_str());
+    let response = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get_mut(request.training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_scheduler_run_not_found".to_string()))?;
+        let response = scheduled_run
+            .record_assignment_ack(&request)
+            .map_err(kernel_api_error)?;
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
+        response
+    };
+    record_training_coordination_observability(
+        &state,
+        request.acked_at_ms as u64,
+        caller_id.as_str(),
+        "kernel.training_assignment.acked",
+        None,
+        None,
+    );
     Ok(Json(response))
 }
 
@@ -19758,11 +19901,12 @@ mod tests {
     use crate::treasury::{
         ProviderPayoutTargetChallengeRequest, ProviderPayoutTargetChallengeResponse,
         ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
-        RegisteredPayoutTarget, TreasuryFundingMaterial, TreasuryFundingTargetRequest,
-        TreasuryFundingTargetResponse, TreasuryPayoutClass, TreasuryPayoutClassification,
-        TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryState, TreasuryStatusResponse,
-        TreasuryWalletSnapshot, set_test_wallet_funding_hook, set_test_wallet_send_hook,
-        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
+        RegisteredPayoutTarget, TreasuryDispatchMode, TreasuryFundingMaterial,
+        TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryPayoutClass,
+        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode,
+        TreasuryState, TreasuryStatusResponse, TreasuryWalletSnapshot,
+        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
+        treasury_test_hook_lock,
     };
 
     use super::{
@@ -19846,6 +19990,8 @@ mod tests {
                 wallet_api_key_env: None,
                 wallet_status_refresh_seconds: 30,
                 max_concurrent_sends: 16,
+                dispatch_mode: TreasuryDispatchMode::Live,
+                synthetic_start_balance_sats: 1_000,
                 registration_challenge_ttl_seconds: 300,
             },
         })
@@ -21147,7 +21293,7 @@ mod tests {
         }
     }
 
-    fn seed_training_scheduler_run_with_environment_contract_and_topology(
+    fn seed_training_scheduler_run_with_environment_contract_and_topology_inner(
         state: &AppState,
         created_at_ms: u64,
         training_run_id: &str,
@@ -21159,16 +21305,21 @@ mod tests {
         work_class: ComputeTrainingWorkClass,
         replica_type: ComputeTrainingReplicaType,
         available_memory_gb: Option<u32>,
+        emit_initial_heartbeat: bool,
     ) {
         let shared_catalog_at_ms = 1_762_491_000_000i64;
         let mut store = state.store.write().expect("write store");
-        for (ordinal, environment_ref) in [
+        let mut supported_environment_refs = vec![
             PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
             PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
-        ]
-        .into_iter()
-        .enumerate()
+        ];
+        if !supported_environment_refs
+            .iter()
+            .any(|value| *value == environment_ref)
         {
+            supported_environment_refs.push(environment_ref);
+        }
+        for (ordinal, environment_ref) in supported_environment_refs.iter().copied().enumerate() {
             store
                 .kernel
                 .register_compute_environment_package(
@@ -21195,10 +21346,10 @@ mod tests {
         );
         checkpoint_policy_request
             .policy_record
-            .allowed_environment_refs = vec![
-            PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
-            PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string(),
-        ];
+            .allowed_environment_refs = supported_environment_refs
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect();
         checkpoint_policy_request.policy_record.validator_policy_ref =
             Some("policy://validator/mvp/v1".to_string());
         store
@@ -21229,10 +21380,10 @@ mod tests {
         );
         training_policy_request.training_policy.training_policy_ref =
             "policy://training/mvp/v1".to_string();
-        training_policy_request.training_policy.environment_refs = vec![
-            PYLON_TRAINING_CUDA_ENVIRONMENT_REF.to_string(),
-            PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string(),
-        ];
+        training_policy_request.training_policy.environment_refs = supported_environment_refs
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect();
         training_policy_request.training_policy.validator_policy_ref =
             "policy://validator/mvp/v1".to_string();
         training_policy_request
@@ -21307,21 +21458,52 @@ mod tests {
                 node,
             )
             .expect("admit node");
-        let mut heartbeat = training_node_heartbeat_request_for_scope(
-            node_pubkey_hex,
-            build_digest,
+        if emit_initial_heartbeat {
+            let mut heartbeat = training_node_heartbeat_request_for_scope(
+                node_pubkey_hex,
+                build_digest,
+                training_run_id,
+                initial_window_id,
+            );
+            heartbeat.recorded_at_ms = created_at_ms as i64 + 750;
+            heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 750);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(node_pubkey_hex, created_at_ms + 750),
+                    heartbeat,
+                )
+                .expect("heartbeat node");
+        }
+    }
+
+    fn seed_training_scheduler_run_with_environment_contract_and_topology(
+        state: &AppState,
+        created_at_ms: u64,
+        training_run_id: &str,
+        initial_window_id: &str,
+        network_id: &str,
+        node_pubkey_hex: &str,
+        build_digest: &str,
+        environment_ref: &str,
+        work_class: ComputeTrainingWorkClass,
+        replica_type: ComputeTrainingReplicaType,
+        available_memory_gb: Option<u32>,
+    ) {
+        seed_training_scheduler_run_with_environment_contract_and_topology_inner(
+            state,
+            created_at_ms,
             training_run_id,
             initial_window_id,
+            network_id,
+            node_pubkey_hex,
+            build_digest,
+            environment_ref,
+            work_class,
+            replica_type,
+            available_memory_gb,
+            true,
         );
-        heartbeat.recorded_at_ms = created_at_ms as i64 + 750;
-        heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 750);
-        store
-            .kernel
-            .record_training_node_heartbeat(
-                &training_kernel_mutation_context(node_pubkey_hex, created_at_ms + 750),
-                heartbeat,
-            )
-            .expect("heartbeat node");
     }
 
     fn seed_training_scheduler_run_with_environment_contract(
@@ -27686,6 +27868,94 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn training_assignment_ack_route_persists_acked_state_and_manifest_digest() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_650_000u64;
+        let training_run_id = "run.assignment.ack";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-ack-alpha",
+            "sha256:build-ack-alpha",
+        );
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.assignment.ack",
+                            created_at_ms as i64 + 1_000,
+                            "node-ack-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let ack_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/assignments/ack")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &super::RecordTrainingAssignmentAckRequest {
+                            idempotency_key: "idemp.training.assignment.ack".to_string(),
+                            acked_at_ms: created_at_ms as i64 + 1_050,
+                            node_pubkey_hex: "node-ack-alpha".to_string(),
+                            training_run_id: training_run_id.to_string(),
+                            window_id: "window.0001".to_string(),
+                            assignment_id: lease.assignment_id.clone(),
+                            lease_id: lease.lease_id.clone(),
+                            manifest_digest: Some("sha256:manifest-assignment-ack".to_string()),
+                            manifest_path: Some(
+                                "/tmp/run.assignment.ack/manifests/run_manifest.json".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(ack_response.status(), StatusCode::OK);
+        let ack = response_json::<super::RecordTrainingAssignmentAckResponse>(ack_response).await?;
+        assert!(ack.accepted);
+        assert_eq!(ack.lease_state.as_deref(), Some("acked"));
+
+        {
+            let store = state.store.read().expect("read store");
+            let assignment = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .assignments
+                .iter()
+                .find(|assignment| assignment.assignment_id == lease.assignment_id)
+                .expect("scheduled assignment");
+            assert_eq!(assignment.state, TrainingAssignmentState::Acked);
+            assert_eq!(
+                assignment.manifest_digest.as_deref(),
+                Some("sha256:manifest-assignment-ack")
+            );
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn training_node_admission_rejects_missing_build_digest() -> Result<()> {
         let app = build_router(test_config()?);
         let mut request = training_node_admission_request(
@@ -28664,6 +28934,68 @@ mod tests {
         assert_eq!(visualized_run.assigned_contributors, 1);
         assert_eq!(visualized_run.accepted_contributors, 0);
         assert_eq!(visualized_run.model_progress_contributors, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_allows_initial_cs336_a1_demo_lease_before_first_heartbeat()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_479_000u64;
+        let network_id = "trainnet.cs336.a1.demo";
+        let training_run_id = "run.cs336.a1.demo.bootstrap";
+        let window_id = "window.cs336.a1.demo.bootstrap.0001";
+
+        seed_training_scheduler_run_with_environment_contract_and_topology_inner(
+            &state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            network_id,
+            "node-cs336-a1-bootstrap",
+            "sha256:build-cs336-a1-bootstrap",
+            PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::SmallModelLocalTraining,
+            ComputeTrainingReplicaType::SingleNode,
+            Some(16),
+            false,
+        );
+
+        {
+            let store = state.store.read().expect("read store");
+            let node = store
+                .kernel
+                .get_admitted_training_node("node-cs336-a1-bootstrap", created_at_ms as i64 + 5_000)
+                .expect("bootstrap admitted node");
+            assert!(node.online);
+            assert!(node.last_heartbeat_at_ms.is_none());
+        }
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.cs336-a1-demo.bootstrap",
+                            created_at_ms as i64 + 5_000,
+                            "node-cs336-a1-bootstrap",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            Some(training_run_id),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+        assert_eq!(lease.training_run_id, training_run_id);
+        assert_eq!(lease.window_id, window_id);
 
         Ok(())
     }

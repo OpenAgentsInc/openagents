@@ -17715,9 +17715,7 @@ fn host_matches_training_lane_machine_class(
     };
     match contract.minimum_machine_class {
         PsionicTrainMinimumMachineClass::ReferenceHostCpuOperator => {
-            host_system_training_memory_gb(host).is_some()
-                && !host_has_cuda_training_backend(host)
-                && !host_has_apple_training_backend(host)
+            host_system_training_memory_gb(host).is_some() && !host_has_cuda_training_backend(host)
         }
         PsionicTrainMinimumMachineClass::AppleSiliconOperator => {
             host_has_apple_training_backend(host)
@@ -19078,6 +19076,31 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && availability.environment_refs
                     == vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF.to_string()],
             "admitted Apple Silicon hosts should advertise the Apple training lane under the same control plane",
+        )
+    }
+
+    #[test]
+    fn adapter_training_detection_allows_apple_hosts_to_advertise_cpu_demo_lane()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let host = apple_training_host_snapshot(Some(16), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let availability =
+            derive_adapter_training_contributor_availability(&host, Some(&runtime_surface));
+        let backend_families =
+            super::training_capability_backend_families_for_contributor(&host, &availability);
+
+        ensure(
+            availability.contributor_supported
+                && availability
+                    .environment_refs
+                    .iter()
+                    .any(|value| value == PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF)
+                && backend_families.iter().any(|value| value == "cpu"),
+            "Apple hosts should still be able to advertise the packaged CS336 A1 demo lane as a CPU contract so local Macs can honestly claim the bounded demo run",
+        )?;
+        ensure(
+            !backend_families.iter().all(|value| value == "metal"),
+            "adding Apple-host support for the bounded demo must not collapse the canonical CPU backend identity into a Metal-only contract",
         )
     }
 

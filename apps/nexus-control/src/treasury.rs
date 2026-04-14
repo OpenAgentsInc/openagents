@@ -47,6 +47,9 @@ const ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS: &str =
 const ENV_TREASURY_MAX_CONCURRENT_SENDS: &str = "NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS";
 const ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS";
+const ENV_TREASURY_DISPATCH_MODE: &str = "NEXUS_CONTROL_TREASURY_DISPATCH_MODE";
+const ENV_TREASURY_SYNTHETIC_START_BALANCE_SATS: &str =
+    "NEXUS_CONTROL_TREASURY_SYNTHETIC_START_BALANCE_SATS";
 const ENV_TREASURY_POLICY_APPLY_ENV: &str = "NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV";
 const ENV_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: &str =
     "NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE";
@@ -68,6 +71,8 @@ const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
 const DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS: u64 = 3;
 const DEFAULT_TREASURY_MAX_CONCURRENT_SENDS: usize = 16;
 const DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS: u64 = 86_400;
+const DEFAULT_TREASURY_DISPATCH_MODE: TreasuryDispatchMode = TreasuryDispatchMode::Live;
+const DEFAULT_TREASURY_SYNTHETIC_START_BALANCE_SATS: u64 = 1_000_000;
 const DEFAULT_TREASURY_POLICY_APPLY_ENV: bool = false;
 const DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: bool = false;
 const DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: u64 = 300;
@@ -127,6 +132,23 @@ const fn legacy_treasury_placeholder_payout_mode() -> TreasuryPlaceholderPayoutM
     TreasuryPlaceholderPayoutMode::PresenceOnly
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TreasuryDispatchMode {
+    #[default]
+    Live,
+    SyntheticConfirmed,
+}
+
+impl TreasuryDispatchMode {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::SyntheticConfirmed => "synthetic_confirmed",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
     pub enabled: bool,
@@ -149,6 +171,8 @@ pub struct TreasuryConfig {
     pub wallet_api_key_env: Option<String>,
     pub wallet_status_refresh_seconds: u64,
     pub max_concurrent_sends: usize,
+    pub dispatch_mode: TreasuryDispatchMode,
+    pub synthetic_start_balance_sats: u64,
     pub registration_challenge_ttl_seconds: u64,
 }
 
@@ -217,6 +241,12 @@ impl TreasuryConfig {
             DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS,
         )?
         .max(1);
+        let dispatch_mode =
+            parse_dispatch_mode_env(ENV_TREASURY_DISPATCH_MODE, DEFAULT_TREASURY_DISPATCH_MODE)?;
+        let synthetic_start_balance_sats = parse_u64_env(
+            ENV_TREASURY_SYNTHETIC_START_BALANCE_SATS,
+            DEFAULT_TREASURY_SYNTHETIC_START_BALANCE_SATS,
+        )?;
         let apply_env_policy = parse_bool_env(
             ENV_TREASURY_POLICY_APPLY_ENV,
             DEFAULT_TREASURY_POLICY_APPLY_ENV,
@@ -268,6 +298,8 @@ impl TreasuryConfig {
                 .filter(|value| !value.is_empty()),
             wallet_status_refresh_seconds,
             max_concurrent_sends,
+            dispatch_mode,
+            synthetic_start_balance_sats,
             registration_challenge_ttl_seconds,
         })
     }
@@ -3821,6 +3853,95 @@ pub async fn load_live_wallet_snapshot(
     .map(|result| result.snapshot)
 }
 
+#[derive(Debug, Clone)]
+struct SyntheticTreasuryWallet {
+    balance_sats: u64,
+    payments: Vec<PaymentSummary>,
+}
+
+impl SyntheticTreasuryWallet {
+    fn from_config(config: &TreasuryConfig) -> Self {
+        Self {
+            balance_sats: config.synthetic_start_balance_sats,
+            payments: Vec::new(),
+        }
+    }
+
+    fn snapshot(&self) -> TreasuryWalletSnapshot {
+        TreasuryWalletSnapshot {
+            runtime_status: "connected".to_string(),
+            runtime_detail: Some(format!(
+                "synthetic_dispatch_mode:{}",
+                TreasuryDispatchMode::SyntheticConfirmed.label()
+            )),
+            balance_sats: self.balance_sats,
+            payments: self.payments.clone(),
+        }
+    }
+}
+
+fn synthetic_wallet_state() -> &'static AsyncMutex<Option<SyntheticTreasuryWallet>> {
+    static STATE: OnceLock<AsyncMutex<Option<SyntheticTreasuryWallet>>> = OnceLock::new();
+    STATE.get_or_init(|| AsyncMutex::new(None))
+}
+
+#[cfg(test)]
+async fn reset_synthetic_wallet_state_for_test() {
+    *synthetic_wallet_state().lock().await = None;
+}
+
+async fn load_synthetic_wallet_snapshot(config: &TreasuryConfig) -> TreasuryWalletRefreshResult {
+    let mut state = synthetic_wallet_state().lock().await;
+    let wallet = state
+        .get_or_insert_with(|| SyntheticTreasuryWallet::from_config(config))
+        .clone();
+    TreasuryWalletRefreshResult {
+        snapshot: wallet.snapshot(),
+        progress: TreasuryWalletRefreshProgress::default(),
+    }
+}
+
+async fn dispatch_synthetic_confirmed_payouts(
+    config: &TreasuryConfig,
+    plans: &[TreasuryDispatchPlan],
+) -> TreasuryDispatchBatchResult {
+    let mut state = synthetic_wallet_state().lock().await;
+    let wallet = state.get_or_insert_with(|| SyntheticTreasuryWallet::from_config(config));
+    let mut outcomes = Vec::with_capacity(plans.len());
+    let now_unix_seconds = now_unix_ms().saturating_div(1_000);
+
+    for plan in plans {
+        let payment_id = format!("synthetic-payment-{}", plan.payout_key);
+        wallet.balance_sats = wallet.balance_sats.saturating_sub(plan.amount_sats);
+        wallet.payments.push(PaymentSummary {
+            id: payment_id.clone(),
+            direction: "send".to_string(),
+            status: "completed".to_string(),
+            amount_sats: plan.amount_sats,
+            fees_sats: 0,
+            timestamp: now_unix_seconds,
+            method: "synthetic".to_string(),
+            description: Some("synthetic confirmed payout".to_string()),
+            invoice: Some(plan.payment_request.clone()),
+            destination_pubkey: None,
+            payment_hash: None,
+            htlc_status: None,
+            htlc_expiry_epoch_seconds: None,
+            status_detail: Some("synthetic_confirmed".to_string()),
+        });
+        outcomes.push(TreasuryDispatchOutcome::Dispatched {
+            payout_key: plan.payout_key.clone(),
+            payment_id,
+        });
+    }
+
+    TreasuryDispatchBatchResult {
+        outcomes,
+        wallet_snapshot: Some(wallet.snapshot()),
+        wallet_error: None,
+    }
+}
+
 pub async fn load_live_wallet_refresh_result_with_plan(
     config: &TreasuryConfig,
     create_if_missing: bool,
@@ -3836,6 +3957,10 @@ pub async fn load_live_wallet_refresh_result_with_plan(
             snapshot,
             progress: TreasuryWalletRefreshProgress::default(),
         });
+    }
+
+    if config.dispatch_mode == TreasuryDispatchMode::SyntheticConfirmed {
+        return Ok(load_synthetic_wallet_snapshot(config).await);
     }
 
     with_live_wallet(config, create_if_missing, move |wallet| async move {
@@ -3860,6 +3985,10 @@ pub async fn dispatch_live_payouts(
 ) -> TreasuryDispatchBatchResult {
     if plans.is_empty() {
         return TreasuryDispatchBatchResult::default();
+    }
+
+    if config.dispatch_mode == TreasuryDispatchMode::SyntheticConfirmed {
+        return dispatch_synthetic_confirmed_payouts(config, plans).await;
     }
 
     #[cfg(test)]
@@ -5850,6 +5979,23 @@ fn parse_placeholder_payout_mode_env(
     }
 }
 
+fn parse_dispatch_mode_env(
+    name: &str,
+    default: TreasuryDispatchMode,
+) -> Result<TreasuryDispatchMode, String> {
+    match std::env::var(name) {
+        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "" => Ok(default),
+            "live" => Ok(TreasuryDispatchMode::Live),
+            "synthetic_confirmed" | "synthetic" => Ok(TreasuryDispatchMode::SyntheticConfirmed),
+            other => Err(format!(
+                "invalid {name}: expected live or synthetic_confirmed, got '{other}'"
+            )),
+        },
+        Err(_) => Ok(default),
+    }
+}
+
 fn read_path_env(name: &str, default: &str) -> PathBuf {
     std::env::var(name)
         .ok()
@@ -6036,19 +6182,21 @@ mod tests {
     use super::{
         OnlinePylonIdentity, TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES,
         TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE,
-        TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES, TreasuryConfig, TreasuryDispatchOutcome,
-        TreasuryFundingMaterial, TreasuryFundingTargetRequest, TreasuryPayoutClass,
-        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode,
-        TreasuryPublicStats, TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
-        TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
-        TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan, TreasuryWalletRefreshProgress,
-        TreasuryWalletSnapshot, apply_treasury_wallet_recovery_cutover,
-        build_treasury_wallet_recovery_comparison, create_live_funding_target,
-        dispatch_live_payouts, parse_treasury_command, payout_phase_offset_ms, payout_window_key,
+        TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES, TreasuryConfig, TreasuryDispatchMode,
+        TreasuryDispatchOutcome, TreasuryFundingMaterial, TreasuryFundingTargetRequest,
+        TreasuryPayoutClass, TreasuryPayoutClassification, TreasuryPayoutRecord,
+        TreasuryPlaceholderPayoutMode, TreasuryPublicStats, TreasuryQueuedPayoutRequest,
+        TreasuryState, TreasuryWalletInspection, TreasuryWalletPaymentAggregate,
+        TreasuryWalletRecoveryComparison, TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan,
+        TreasuryWalletRefreshProgress, TreasuryWalletSnapshot,
+        apply_treasury_wallet_recovery_cutover, build_treasury_wallet_recovery_comparison,
+        create_live_funding_target, dispatch_live_payouts, load_live_wallet_snapshot,
+        parse_treasury_command, payout_phase_offset_ms, payout_window_key,
         payout_window_started_at, payout_window_started_at_for_identity,
-        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        treasury_test_hook_lock, verify_payout_target_registration_signature,
-        wallet_refresh_page_offsets, wallet_refresh_payment_page_budget, write_json_file,
+        reset_synthetic_wallet_state_for_test, set_test_wallet_funding_hook,
+        set_test_wallet_send_hook, set_test_wallet_snapshot_hook, treasury_test_hook_lock,
+        verify_payout_target_registration_signature, wallet_refresh_page_offsets,
+        wallet_refresh_payment_page_budget, write_json_file,
     };
     use openagents_provider_substrate::sign_provider_payout_target_registration;
     use openagents_spark::PaymentSummary;
@@ -6078,6 +6226,8 @@ mod tests {
             wallet_api_key_env: None,
             wallet_status_refresh_seconds: 30,
             max_concurrent_sends: 16,
+            dispatch_mode: TreasuryDispatchMode::Live,
+            synthetic_start_balance_sats: 1_000,
             registration_challenge_ttl_seconds: 300,
         }
     }
@@ -7985,6 +8135,64 @@ mod tests {
 
         set_test_wallet_send_hook(None);
         set_test_wallet_snapshot_hook(None);
+    }
+
+    #[tokio::test]
+    async fn synthetic_confirmed_dispatch_mode_returns_immediate_confirmed_snapshot() {
+        reset_synthetic_wallet_state_for_test().await;
+
+        let mut config = test_treasury_config();
+        config.dispatch_mode = TreasuryDispatchMode::SyntheticConfirmed;
+        config.synthetic_start_balance_sats = 500;
+
+        let initial_snapshot = load_live_wallet_snapshot(&config, true)
+            .await
+            .expect("synthetic wallet snapshot");
+        assert_eq!(initial_snapshot.balance_sats, 500);
+        assert!(
+            initial_snapshot
+                .runtime_detail
+                .as_deref()
+                .is_some_and(|value| value.contains("synthetic_dispatch_mode")),
+            "synthetic dispatch mode should surface explicit runtime detail",
+        );
+
+        let batch = dispatch_live_payouts(
+            &config,
+            &[super::TreasuryDispatchPlan {
+                payout_key: "accepted_work:test:pubkey-alpha".to_string(),
+                payment_request: "spark:alpha".to_string(),
+                amount_sats: 120,
+            }],
+        )
+        .await;
+        assert_eq!(batch.outcomes.len(), 1);
+        assert!(matches!(
+            batch.outcomes[0],
+            TreasuryDispatchOutcome::Dispatched { .. }
+        ));
+        assert_eq!(
+            batch
+                .wallet_snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.balance_sats),
+            Some(380)
+        );
+        assert_eq!(
+            batch
+                .wallet_snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.payments.len()),
+            Some(1)
+        );
+        assert_eq!(
+            batch
+                .wallet_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.payments.first())
+                .map(|payment| payment.status.as_str()),
+            Some("completed")
+        );
     }
 
     #[tokio::test]
