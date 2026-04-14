@@ -148,8 +148,10 @@ const DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS: u64 = 1;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
+const DEFAULT_PROVIDER_PRESENCE_HTTP_TIMEOUT_SECONDS: u64 = 15;
 const DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS: usize = 3;
 const DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS: u64 = 50;
+const DEFAULT_TRAINING_COORDINATION_HTTP_TIMEOUT_SECONDS: u64 = 20;
 #[allow(dead_code)]
 const DEFAULT_TRAINING_GCS_ENDPOINT: &str = "https://storage.googleapis.com";
 #[allow(dead_code)]
@@ -6880,7 +6882,9 @@ impl PylonTrainingCoordinatorClient {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(
+                DEFAULT_TRAINING_COORDINATION_HTTP_TIMEOUT_SECONDS,
+            ))
             .build()
             .context("failed to build pylon training coordinator client")?;
         let kernel_authority = HttpKernelAuthorityClient::with_client(
@@ -16939,7 +16943,9 @@ async fn sync_provider_payout_target_with_report(
 
 fn provider_presence_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(
+            DEFAULT_PROVIDER_PRESENCE_HTTP_TIMEOUT_SECONDS,
+        ))
         .build()
         .context("failed to build pylon provider-presence client")
 }
