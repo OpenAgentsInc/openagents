@@ -4073,6 +4073,21 @@ fn training_run_manifest_local_path(
     local_run_root.join(training_run_manifest_relative_path(window_id, assignment_id))
 }
 
+fn training_manifest_inspection_path_for_active_runtime(
+    active_runtime: &PylonTrainingActiveRuntimeState,
+) -> PathBuf {
+    let manifest_path = PathBuf::from(active_runtime.manifest_path.as_str());
+    if manifest_path.file_name().and_then(|value| value.to_str()) == Some("invocation_manifest.json")
+    {
+        return training_run_manifest_local_path(
+            Path::new(active_runtime.run_root.as_str()),
+            active_runtime.window_id.as_str(),
+            active_runtime.assignment_id.as_str(),
+        );
+    }
+    manifest_path
+}
+
 #[cfg(test)]
 fn training_run_manifest_local_path_from_manifest(
     manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
@@ -8564,7 +8579,7 @@ fn load_training_manifest_inspection_contexts(
 ) -> Result<Vec<TrainingManifestInspectionContext>> {
     let mut manifest_paths = BTreeSet::<PathBuf>::new();
     if let Some(active_runtime) = state.active_runtime.as_ref() {
-        manifest_paths.insert(PathBuf::from(active_runtime.manifest_path.clone()));
+        manifest_paths.insert(training_manifest_inspection_path_for_active_runtime(active_runtime));
     }
     let runs_root = training_runs_root(config);
     if runs_root.is_dir() {
@@ -23547,6 +23562,62 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && (human.contains("psionic repo root:")
                     || human.contains("runtime surface error:")),
             "the human training status renderer should summarize the blocked runtime, checkpoint, validator queue, and the Psionic runtime-discovery detail",
+        )
+    }
+
+    #[test]
+    fn training_status_report_uses_run_manifest_when_active_runtime_points_at_invocation_manifest()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let run_root = training_run_root_for_id(&config, "run.alpha");
+        let run_manifest = training_manifest_fixture(run_root.as_path(), "gs://bucket")?;
+        let run_manifest_path = training_run_manifest_local_path_from_manifest(&run_manifest);
+        std::fs::create_dir_all(
+            run_manifest_path
+                .parent()
+                .ok_or_else(|| std::io::Error::other("missing run manifest parent"))?,
+        )?;
+        std::fs::write(
+            run_manifest_path.as_path(),
+            run_manifest.canonical_json_bytes()?.as_slice(),
+        )?;
+        let invocation_manifest_path = run_root.join("manifests").join("invocation_manifest.json");
+        std::fs::create_dir_all(
+            invocation_manifest_path
+                .parent()
+                .ok_or_else(|| std::io::Error::other("missing invocation manifest parent"))?,
+        )?;
+        std::fs::write(
+            invocation_manifest_path.as_path(),
+            serde_json::to_vec(&json!({
+                "schema_version": "psionic.train.invocation_manifest.v1",
+                "run_id": "run.alpha",
+                "window_id": "window.0001",
+                "assignment_id": "assign.node01.window0001",
+            }))?,
+        )?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let mut active_runtime = training_active_runtime_fixture();
+        active_runtime.training_run_id = "run.alpha".to_string();
+        active_runtime.window_id = "window.0001".to_string();
+        active_runtime.assignment_id = "assign.node01.window0001".to_string();
+        active_runtime.manifest_path = invocation_manifest_path.display().to_string();
+        active_runtime.run_root = run_root.display().to_string();
+        state.active_runtime = Some(active_runtime);
+        save_training_runtime_state(&config, &state)?;
+
+        let report = load_training_status_report_local(config_path.as_path())?;
+        ensure(
+            report.manifest_count == 1
+                && report.current_run_id.as_deref() == Some("run.alpha")
+                && report.active_window_id.as_deref() == Some("window.0001")
+                && report.active_runtime.as_ref().is_some_and(|runtime| {
+                    runtime.manifest_path == invocation_manifest_path.display().to_string()
+                }),
+            "training status should preserve the active invocation manifest path while loading inspection context from the assignment run manifest",
         )
     }
 
