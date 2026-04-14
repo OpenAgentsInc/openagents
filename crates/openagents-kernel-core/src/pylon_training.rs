@@ -278,7 +278,7 @@ pub struct PylonTrainingCredentialResolution {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PylonTrainingArtifactBundleKind {
-    RunManifest,
+    RunManifest { assignment_id: String },
     LatestCheckpointPointer,
     CheckpointManifest { optimizer_step: u64 },
     Contribution { assignment_id: String },
@@ -1144,8 +1144,12 @@ impl PylonTrainingArtifactLayout {
         format!("{}/{}", self.normalized_bucket_uri(), self.window_prefix())
     }
 
-    pub fn run_manifest_path(&self) -> String {
-        format!("{}/manifests/run_manifest.json", self.run_root())
+    pub fn run_manifest_path(&self, assignment_id: &str) -> String {
+        format!(
+            "{}/windows/{}/assignments/{assignment_id}/run_manifest.json",
+            self.run_root(),
+            self.window_id
+        )
     }
 
     pub fn latest_pointer_path(&self) -> String {
@@ -1282,7 +1286,8 @@ impl PylonTrainingArtifactScope {
         require_artifact_scope_component(self.run_id.as_str(), "run_id")?;
         if matches!(
             kind,
-            PylonTrainingArtifactKind::LocalUpdate
+            PylonTrainingArtifactKind::RunManifest
+                | PylonTrainingArtifactKind::LocalUpdate
                 | PylonTrainingArtifactKind::ProofBundle
                 | PylonTrainingArtifactKind::ValidatorVerdict
                 | PylonTrainingArtifactKind::SealedWindow
@@ -1297,7 +1302,9 @@ impl PylonTrainingArtifactScope {
         }
         if matches!(
             kind,
-            PylonTrainingArtifactKind::LocalUpdate | PylonTrainingArtifactKind::ProofBundle
+            PylonTrainingArtifactKind::RunManifest
+                | PylonTrainingArtifactKind::LocalUpdate
+                | PylonTrainingArtifactKind::ProofBundle
         ) {
             require_artifact_scope_component(
                 self.assignment_id
@@ -1478,7 +1485,11 @@ pub fn pylon_training_artifact_relative_path_from_scope(
 ) -> ContractResult<String> {
     scope.validate_for_kind(kind)?;
     Ok(match kind {
-        PylonTrainingArtifactKind::RunManifest => "manifests/run_manifest.json".to_string(),
+        PylonTrainingArtifactKind::RunManifest => format!(
+            "windows/{}/assignments/{}/run_manifest.json",
+            scope.window_id.as_deref().unwrap_or_default(),
+            scope.assignment_id.as_deref().unwrap_or_default()
+        ),
         PylonTrainingArtifactKind::LatestCheckpointPointer => {
             "checkpoints/latest_pointer.json".to_string()
         }
@@ -1557,10 +1568,21 @@ fn pylon_training_artifact_scope_from_relative_path(
         optimizer_step,
     };
     match parts.as_slice() {
-        [manifests, file] if manifests == "manifests" && file == "run_manifest.json" => Ok((
-            PylonTrainingArtifactKind::RunManifest,
-            scope(None, None, None, None),
-        )),
+        [windows, window_id, assignments, assignment_id, file]
+            if windows == "windows"
+                && assignments == "assignments"
+                && file == "run_manifest.json" =>
+        {
+            Ok((
+                PylonTrainingArtifactKind::RunManifest,
+                scope(
+                    Some(window_id.clone()),
+                    Some(assignment_id.clone()),
+                    None,
+                    None,
+                ),
+            ))
+        }
         [checkpoints, file] if checkpoints == "checkpoints" && file == "latest_pointer.json" => {
             Ok((
                 PylonTrainingArtifactKind::LatestCheckpointPointer,
@@ -2157,7 +2179,7 @@ pub fn pylon_training_hard_gate_reason(labels: &[String]) -> Option<String> {
 impl PylonTrainingArtifactBundleKind {
     pub fn bundle_id(&self) -> String {
         match self {
-            Self::RunManifest => "run_manifest".to_string(),
+            Self::RunManifest { assignment_id } => format!("run_manifest:{assignment_id}"),
             Self::LatestCheckpointPointer => "latest_checkpoint_pointer".to_string(),
             Self::CheckpointManifest { optimizer_step } => {
                 format!("checkpoint_manifest:{optimizer_step}")
@@ -2171,7 +2193,7 @@ impl PylonTrainingArtifactBundleKind {
 
     pub fn bundle_kind_label(&self) -> &'static str {
         match self {
-            Self::RunManifest => "run_manifest",
+            Self::RunManifest { .. } => "run_manifest",
             Self::LatestCheckpointPointer => "latest_checkpoint_pointer",
             Self::CheckpointManifest { .. } => "checkpoint_manifest",
             Self::Contribution { .. } => "contribution",
@@ -2183,7 +2205,9 @@ impl PylonTrainingArtifactBundleKind {
 
     pub fn required_paths(&self, layout: &PylonTrainingArtifactLayout) -> BTreeSet<String> {
         match self {
-            Self::RunManifest => BTreeSet::from([layout.run_manifest_path()]),
+            Self::RunManifest { assignment_id } => {
+                BTreeSet::from([layout.run_manifest_path(assignment_id.as_str())])
+            }
             Self::LatestCheckpointPointer => BTreeSet::from([layout.latest_pointer_path()]),
             Self::CheckpointManifest { optimizer_step } => {
                 BTreeSet::from([layout.checkpoint_manifest_path(*optimizer_step)])
@@ -2830,8 +2854,8 @@ mod tests {
             window_id: "window.000123".to_string(),
         };
         assert_eq!(
-            layout.run_manifest_path(),
-            "gs://bucket/networks/trainnet.alpha/runs/run.alpha/manifests/run_manifest.json"
+            layout.run_manifest_path("assign.node01.window000123"),
+            "gs://bucket/networks/trainnet.alpha/runs/run.alpha/windows/window.000123/assignments/assign.node01.window000123/run_manifest.json"
         );
         assert_eq!(
             layout.latest_pointer_path(),
@@ -2931,8 +2955,11 @@ mod tests {
             "gs://bucket/networks/trainnet.alpha/runs/run.alpha"
         );
         assert_eq!(
-            PylonTrainingArtifactBundleKind::RunManifest.bundle_id(),
-            "run_manifest"
+            PylonTrainingArtifactBundleKind::RunManifest {
+                assignment_id: "assign.node01.window000123".to_string()
+            }
+            .bundle_id(),
+            "run_manifest:assign.node01.window000123"
         );
         assert_eq!(
             PylonTrainingArtifactBundleKind::LatestCheckpointPointer.bundle_id(),
@@ -3044,10 +3071,10 @@ mod tests {
         let layout = PylonTrainingArtifactLayout::from_manifest(&manifest).expect("layout");
         let cases = vec![
             (
-                layout.run_manifest_path(),
+                layout.run_manifest_path("assign.node01.window000123"),
                 PylonTrainingArtifactKind::RunManifest,
                 PylonTrainingArtifactClass::Config,
-                "manifests/run_manifest.json",
+                "windows/window.000123/assignments/assign.node01.window000123/run_manifest.json",
             ),
             (
                 layout.latest_pointer_path(),

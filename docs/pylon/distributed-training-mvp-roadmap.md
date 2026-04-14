@@ -459,12 +459,12 @@ gs://<bucket>/networks/<network_id>/runs/<run_id>/windows/<window_id>/
 
 Required run-scoped objects:
 
-- `manifests/run_manifest.json`
 - `checkpoints/latest_pointer.json`
 - `checkpoints/step-<optimizer_step>/checkpoint_manifest.json`
 
 Required window-scoped objects:
 
+- `assignments/<assignment_id>/run_manifest.json`
 - `contributions/<assignment_id>/adapter_delta_bundle.json`
 - `contributions/<assignment_id>/proof_bundle.json`
 - `validators/<challenge_id>/verdict.json`

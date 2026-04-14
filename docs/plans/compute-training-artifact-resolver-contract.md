@@ -184,7 +184,7 @@ The current launch-critical `Pylon` artifact objects map like this:
 
 | Current object path suffix | Logical kind | Notes |
 | --- | --- | --- |
-| `manifests/run_manifest.json` | `run_manifest` | assignment and runtime handoff config |
+| `windows/<window>/assignments/<assignment>/run_manifest.json` | `run_manifest` | assignment-scoped runtime handoff config |
 | `checkpoints/latest_pointer.json` | `latest_checkpoint_pointer` | latest promoted checkpoint pointer |
 | `checkpoints/step-<n>/checkpoint_manifest.json` | `checkpoint_manifest` | step-specific checkpoint manifest |
 | `windows/<window>/contributions/<assignment>/adapter_delta_bundle.json` | `local_update` | contributor update bundle |

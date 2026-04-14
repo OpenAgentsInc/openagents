@@ -4057,6 +4057,33 @@ fn training_assignment_artifact_scope(
     })
 }
 
+fn training_run_manifest_relative_path(window_id: &str, assignment_id: &str) -> PathBuf {
+    PathBuf::from("windows")
+        .join(window_id)
+        .join("assignments")
+        .join(assignment_id)
+        .join("run_manifest.json")
+}
+
+fn training_run_manifest_local_path(
+    local_run_root: &Path,
+    window_id: &str,
+    assignment_id: &str,
+) -> PathBuf {
+    local_run_root.join(training_run_manifest_relative_path(window_id, assignment_id))
+}
+
+#[cfg(test)]
+fn training_run_manifest_local_path_from_manifest(
+    manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+) -> PathBuf {
+    training_run_manifest_local_path(
+        Path::new(manifest.artifacts.local_run_root.as_str()),
+        manifest.window_id.as_str(),
+        manifest.assignment_id.as_str(),
+    )
+}
+
 fn training_checkpoint_manifest_step(payload: &[u8], source_path: &Path) -> Result<Option<u64>> {
     let decoded: Value = serde_json::from_slice(payload).with_context(|| {
         format!(
@@ -4320,19 +4347,14 @@ async fn ensure_training_assignment_runtime_artifacts(
         config,
         client,
         PylonTrainingArtifactKind::RunManifest,
-        PylonTrainingArtifactScope {
-            network_id: scope.network_id.clone(),
-            run_id: scope.run_id.clone(),
-            window_id: None,
-            assignment_id: None,
-            challenge_id: None,
-            optimizer_step: None,
-        },
+        scope.clone(),
         run_root,
-        run_root
-            .join("manifests")
-            .join("run_manifest.json")
-            .as_path(),
+        training_run_manifest_local_path(
+            run_root,
+            scope.window_id.as_deref().unwrap_or_default(),
+            scope.assignment_id.as_deref().unwrap_or_default(),
+        )
+        .as_path(),
     )
     .await?;
     if training_run
@@ -8506,9 +8528,25 @@ fn load_training_manifest_inspection_contexts(
             if !entry.file_type()?.is_dir() {
                 continue;
             }
-            let manifest_path = entry.path().join("manifests").join("run_manifest.json");
-            if manifest_path.is_file() {
-                manifest_paths.insert(manifest_path);
+            let mut stack = vec![entry.path()];
+            while let Some(path) = stack.pop() {
+                for child in std::fs::read_dir(path.as_path())
+                    .with_context(|| format!("failed to read training path {}", path.display()))?
+                {
+                    let child = child?;
+                    let child_path = child.path();
+                    if child.file_type()?.is_dir() {
+                        stack.push(child_path);
+                        continue;
+                    }
+                    if child_path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        == Some("run_manifest.json")
+                    {
+                        manifest_paths.insert(child_path);
+                    }
+                }
             }
         }
     }
@@ -8551,7 +8589,9 @@ fn inspect_manifest_local_artifacts(
     let mut bundles = Vec::new();
     bundles.push(inspect_training_artifact_bundle(
         context,
-        PylonTrainingArtifactBundleKind::RunManifest,
+        PylonTrainingArtifactBundleKind::RunManifest {
+            assignment_id: context.manifest.assignment_id.clone(),
+        },
     )?);
     let latest_pointer_path = context
         .local_run_root
@@ -11616,7 +11656,11 @@ fn training_bundle_kind_from_entry(
     entry: &TrainingArtifactBundleInspectionEntry,
 ) -> Option<PylonTrainingArtifactBundleKind> {
     match entry.bundle_kind.as_str() {
-        "run_manifest" => Some(PylonTrainingArtifactBundleKind::RunManifest),
+        "run_manifest" => entry.bundle_id.split_once(':').map(|(_, assignment_id)| {
+            PylonTrainingArtifactBundleKind::RunManifest {
+                assignment_id: assignment_id.to_string(),
+            }
+        }),
         "latest_checkpoint_pointer" => {
             Some(PylonTrainingArtifactBundleKind::LatestCheckpointPointer)
         }
@@ -18341,8 +18385,9 @@ mod tests {
         sync_provider_payout_target_with_report, sync_training_authority_state,
         sync_training_terminal_runtime_once, training_artifact_digest_from_locator_payload,
         training_artifact_resolved_cache_key, training_download_cache_root,
-        training_run_root_for_id, training_runtime_state_path, training_settlement_destination,
-        watch_buyer_jobs,
+        training_run_manifest_local_path, training_run_manifest_local_path_from_manifest,
+        training_run_root_for_id, training_runtime_state_path,
+        training_settlement_destination, watch_buyer_jobs,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -18992,9 +19037,14 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         Box<dyn std::error::Error>,
     > {
         let manifest = training_manifest_fixture(local_run_root, bucket_uri)?;
-        std::fs::create_dir_all(local_run_root.join("manifests"))?;
+        let manifest_path = training_run_manifest_local_path_from_manifest(&manifest);
+        std::fs::create_dir_all(
+            manifest_path
+                .parent()
+                .ok_or_else(|| std::io::Error::other("missing training manifest parent"))?,
+        )?;
         std::fs::write(
-            local_run_root.join("manifests").join("run_manifest.json"),
+            manifest_path,
             manifest.canonical_json_bytes()?,
         )?;
         std::fs::create_dir_all(local_run_root.join("checkpoints").join("step-42"))?;
@@ -19138,11 +19188,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 window_id: "window.0001".to_string(),
                 assignment_id: "assign.node01.window0001".to_string(),
                 lease_id: "lease.node01.window0001".to_string(),
-                manifest_path: local_run_root
-                    .join("manifests")
-                    .join("run_manifest.json")
-                    .display()
-                    .to_string(),
+                manifest_path: training_run_manifest_local_path(
+                    local_run_root,
+                    "window.0001",
+                    "assign.node01.window0001",
+                )
+                .display()
+                .to_string(),
                 desired_state: PylonTrainingSupervisorDesiredState::Running,
                 process_state: PylonTrainingSupervisorProcessState::Failed,
                 exit_code: Some(exit_code),
@@ -20745,9 +20797,17 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             challenge_id: None,
             optimizer_step: None,
         };
+        let run_manifest_scope = PylonTrainingArtifactScope {
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: Some("window.0001".to_string()),
+            assignment_id: Some("assign.node01.window0001".to_string()),
+            challenge_id: None,
+            optimizer_step: None,
+        };
         let run_manifest_resolver = PylonTrainingArtifactResolverResponse::new(
             PylonTrainingArtifactKind::RunManifest,
-            base_scope.clone(),
+            run_manifest_scope,
         )
         .expect("run manifest resolver");
         let latest_pointer_resolver = PylonTrainingArtifactResolverResponse::new(
@@ -21016,7 +21076,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let manifest: PsionicTrainInvocationManifest =
             serde_json::from_slice(&std::fs::read(manifest_path.as_path())?)?;
         manifest.validate_machine_contract()?;
-        let run_manifest_path = run_root.join("manifests").join("run_manifest.json");
+        let run_manifest_path = training_run_manifest_local_path(
+            run_root.as_path(),
+            "window.0001",
+            "assign.node01.window0001",
+        );
         let latest_pointer_path = run_root.join("checkpoints").join("latest_pointer.json");
         let checkpoint_manifest_path = run_root
             .join("checkpoints")
@@ -21160,12 +21224,18 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         })
         .to_string()
         .into_bytes();
-        std::fs::create_dir_all(run_root.join("manifests"))?;
-        std::fs::create_dir_all(run_root.join("checkpoints").join("step-42"))?;
-        std::fs::write(
-            run_root.join("manifests").join("run_manifest.json"),
-            run_manifest_payload.as_slice(),
+        let run_manifest_path = training_run_manifest_local_path(
+            run_root.as_path(),
+            "window.0001",
+            "assign.node01.window0001",
+        );
+        std::fs::create_dir_all(
+            run_manifest_path
+                .parent()
+                .ok_or_else(|| std::io::Error::other("missing training manifest parent"))?,
         )?;
+        std::fs::create_dir_all(run_root.join("checkpoints").join("step-42"))?;
+        std::fs::write(run_manifest_path.as_path(), run_manifest_payload.as_slice())?;
         std::fs::write(
             run_root.join("checkpoints").join("latest_pointer.json"),
             latest_pointer_payload.as_slice(),
@@ -21185,9 +21255,17 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             challenge_id: None,
             optimizer_step: None,
         };
+        let run_manifest_scope = PylonTrainingArtifactScope {
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: Some("window.0001".to_string()),
+            assignment_id: Some("assign.node01.window0001".to_string()),
+            challenge_id: None,
+            optimizer_step: None,
+        };
         let mut run_manifest_resolver = PylonTrainingArtifactResolverResponse::new(
             PylonTrainingArtifactKind::RunManifest,
-            base_scope.clone(),
+            run_manifest_scope,
         )
         .expect("run manifest resolver");
         run_manifest_resolver.digest = Some(training_artifact_digest_from_locator_payload(
@@ -21585,14 +21663,15 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 "training".to_string(),
                 "publish".to_string(),
                 "--manifest".to_string(),
-                "/tmp/run.alpha/manifests/run_manifest.json".to_string(),
+                "/tmp/run.alpha/windows/window.0001/assignments/assign.node01.window0001/run_manifest.json"
+                    .to_string(),
                 "--json".to_string(),
             ])?
             .command
                 == Command::Training {
                     command: TrainingCommand::Publish {
                         manifest_path: Some(std::path::PathBuf::from(
-                            "/tmp/run.alpha/manifests/run_manifest.json",
+                            "/tmp/run.alpha/windows/window.0001/assignments/assign.node01.window0001/run_manifest.json",
                         )),
                         json: true,
                     },
@@ -21843,18 +21922,12 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
         manifest.trn.relay_urls = vec![relay.url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
-        std::fs::write(
-            local_run_root.join("manifests").join("run_manifest.json"),
-            manifest.canonical_json_bytes()?,
-        )?;
+        let manifest_path = training_run_manifest_local_path_from_manifest(&manifest);
+        std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
 
         let mut state = load_or_create_training_runtime_state(&config)?;
         let mut active_runtime = training_active_runtime_fixture();
-        active_runtime.manifest_path = local_run_root
-            .join("manifests")
-            .join("run_manifest.json")
-            .display()
-            .to_string();
+        active_runtime.manifest_path = manifest_path.display().to_string();
         active_runtime.run_root = local_run_root.display().to_string();
         state.active_runtime = Some(active_runtime);
         save_training_runtime_state(&config, &state)?;
@@ -22074,7 +22147,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
         manifest.trn.relay_urls = vec!["ws://127.0.0.1:9".to_string()];
         manifest.manifest_digest = manifest.canonical_digest()?;
-        let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
+        let manifest_path = training_run_manifest_local_path_from_manifest(&manifest);
         std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
 
         let mut state = load_or_create_training_runtime_state(&config)?;
@@ -22302,7 +22375,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
         manifest.trn.relay_urls = vec![relay.url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
-        let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
+        let manifest_path = training_run_manifest_local_path_from_manifest(&manifest);
         std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
         write_training_terminal_status_packets(
             local_run_root.as_path(),
@@ -22608,7 +22681,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
         manifest.trn.relay_urls = vec![relay.url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
-        let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
+        let manifest_path = training_run_manifest_local_path_from_manifest(&manifest);
         std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
         write_training_terminal_status_packets(
             local_run_root.as_path(),
@@ -22819,18 +22892,12 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
         manifest.trn.relay_urls = vec![relay_url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
-        std::fs::write(
-            local_run_root.join("manifests").join("run_manifest.json"),
-            manifest.canonical_json_bytes()?,
-        )?;
+        let manifest_path = training_run_manifest_local_path_from_manifest(&manifest);
+        std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
 
         let mut state = load_or_create_training_runtime_state(&config)?;
         state.active_runtime = Some(PylonTrainingActiveRuntimeState {
-            manifest_path: local_run_root
-                .join("manifests")
-                .join("run_manifest.json")
-                .display()
-                .to_string(),
+            manifest_path: manifest_path.display().to_string(),
             run_root: local_run_root.display().to_string(),
             ..training_active_runtime_fixture()
         });
@@ -23150,19 +23217,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         config.relay_urls = vec![relay_url.clone()];
         manifest.trn.relay_urls = vec![relay_url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
-        std::fs::write(
-            local_run_root.join("manifests").join("run_manifest.json"),
-            manifest.canonical_json_bytes()?,
-        )?;
+        let manifest_path = training_run_manifest_local_path_from_manifest(&manifest);
+        std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
         save_config(config_path.as_path(), &config)?;
 
         let mut state = load_or_create_training_runtime_state(&config)?;
         let mut active_runtime = training_active_runtime_fixture();
-        active_runtime.manifest_path = local_run_root
-            .join("manifests")
-            .join("run_manifest.json")
-            .display()
-            .to_string();
+        active_runtime.manifest_path = manifest_path.display().to_string();
         active_runtime.run_root = local_run_root.display().to_string();
         state.active_runtime = Some(active_runtime);
         save_training_runtime_state(&config, &state)?;
@@ -23265,11 +23326,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 window_id: "window.0001".to_string(),
                 assignment_id: "assign.node01.window0001".to_string(),
                 lease_id: "lease.node01.window0001".to_string(),
-                manifest_path: local_run_root
-                    .join("manifests")
-                    .join("run_manifest.json")
-                    .display()
-                    .to_string(),
+                manifest_path: training_run_manifest_local_path(
+                    local_run_root.as_path(),
+                    "window.0001",
+                    "assign.node01.window0001",
+                )
+                .display()
+                .to_string(),
                 desired_state: PylonTrainingSupervisorDesiredState::Running,
                 process_state: PylonTrainingSupervisorProcessState::Failed,
                 exit_code: Some(17),
@@ -23280,11 +23343,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
 
         let mut state = load_or_create_training_runtime_state(&config)?;
         state.active_runtime = Some(PylonTrainingActiveRuntimeState {
-            manifest_path: local_run_root
-                .join("manifests")
-                .join("run_manifest.json")
-                .display()
-                .to_string(),
+            manifest_path: training_run_manifest_local_path(
+                local_run_root.as_path(),
+                "window.0001",
+                "assign.node01.window0001",
+            )
+            .display()
+            .to_string(),
             run_root: local_run_root.display().to_string(),
             process_state: PylonTrainingSupervisorProcessState::Failed,
             last_failure_reason: Some("checkpoint_missing".to_string()),
@@ -23441,11 +23506,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
         let mut state = load_or_create_training_runtime_state(&config)?;
         state.active_runtime = Some(PylonTrainingActiveRuntimeState {
-            manifest_path: local_run_root
-                .join("manifests")
-                .join("run_manifest.json")
-                .display()
-                .to_string(),
+            manifest_path: training_run_manifest_local_path(
+                local_run_root.as_path(),
+                "window.0001",
+                "assign.node01.window0001",
+            )
+            .display()
+            .to_string(),
             run_root: local_run_root.display().to_string(),
             ..training_active_runtime_fixture()
         });
@@ -23483,11 +23550,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
         let mut state = load_or_create_training_runtime_state(&config)?;
         state.active_runtime = Some(PylonTrainingActiveRuntimeState {
-            manifest_path: local_run_root
-                .join("manifests")
-                .join("run_manifest.json")
-                .display()
-                .to_string(),
+            manifest_path: training_run_manifest_local_path(
+                local_run_root.as_path(),
+                "window.0001",
+                "assign.node01.window0001",
+            )
+            .display()
+            .to_string(),
             run_root: local_run_root.display().to_string(),
             ..training_active_runtime_fixture()
         });
@@ -23507,7 +23576,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             report.manifests.len() == 1
                 && report.bundles.iter().any(|bundle| {
-                    bundle.bundle_id == "run_manifest" && bundle.state == "local_only"
+                    bundle.bundle_id == "run_manifest:assign.node01.window0001"
+                        && bundle.state == "local_only"
                 })
                 && report
                     .bundles
@@ -23525,7 +23595,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         )?;
         ensure(
             parse_pylon_training_run_manifest_json(&std::fs::read(
-                local_run_root.join("manifests").join("run_manifest.json"),
+                training_run_manifest_local_path(
+                    local_run_root.as_path(),
+                    "window.0001",
+                    "assign.node01.window0001",
+                ),
             )?)? == manifest,
             "inspection fixtures should keep the canonical local manifest parseable",
         )?;

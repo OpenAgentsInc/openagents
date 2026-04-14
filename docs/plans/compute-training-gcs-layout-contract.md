@@ -81,9 +81,9 @@ gs://<bucket>/networks/<network_id>/runs/<run_id>/_tmp/<artifact_id>/
 
 Final launch-critical objects remain:
 
-- `manifests/run_manifest.json`
 - `checkpoints/latest_pointer.json`
 - `checkpoints/step-<optimizer_step>/checkpoint_manifest.json`
+- `windows/<window_id>/assignments/<assignment_id>/run_manifest.json`
 - `windows/<window_id>/contributions/<assignment_id>/adapter_delta_bundle.json`
 - `windows/<window_id>/contributions/<assignment_id>/proof_bundle.json`
 - `windows/<window_id>/validators/<challenge_id>/verdict.json`
