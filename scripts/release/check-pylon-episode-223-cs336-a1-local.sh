@@ -99,7 +99,7 @@ fleet run:
 
 - the packaged `psionic-train` CS336 A1 lane writes retained checkpoint and
   closeout outputs through the machine-manifest path
-- `Nexus` can schedule and surface one named `CS336 A1 Demo` run
+- `Nexus` can schedule and surface one two-slot named `CS336 A1 Demo` run
 - `Pylon` maps that run into the packaged demo lane, claims it, launches it,
   and syncs terminal artifacts back to `Nexus`
 - weak Apple and consumer-CUDA hosts both promote into the bounded A1 trainer
@@ -115,7 +115,7 @@ did the run.
 | Packaged CS336 lane executes through machine manifest | `psionic_machine_manifest` |
 | Weak Mac host can do the homework | `mac_cs336_fallback` |
 | Linux consumer CUDA host can do the homework | `linux_cs336_fallback` |
-| Nexus can schedule and name the run | `nexus_named_run` |
+| Nexus can schedule, name, and two-slot the run | `nexus_named_run` |
 | Pylon maps the environment into the packaged lane | `pylon_manifest_mapping` |
 | Pylon claims and acknowledges the assignment | `pylon_assignment_intake` |
 | Pylon launches the retained runtime | `pylon_runtime_launch` |
@@ -190,8 +190,8 @@ run_step \
 
 run_step \
   "nexus_named_run" \
-  "Nexus schedules one named CS336 A1 Demo run and projects the display name through the public summary surfaces" \
-  "cargo test -p nexus-control --manifest-path '$ROOT_DIR/Cargo.toml' --lib training_scheduler_claims_named_cs336_a1_demo_run_and_surfaces_display_name -- --nocapture"
+  "Nexus schedules one two-slot named CS336 A1 Demo run and projects the display name plus dual-worker assignment through the public summary surfaces" \
+  "cargo test -p nexus-control --manifest-path '$ROOT_DIR/Cargo.toml' --lib training_scheduler_claims_two_slot_named_cs336_a1_demo_run_and_surfaces_display_name -- --nocapture"
 
 run_step \
   "pylon_manifest_mapping" \

@@ -104,7 +104,9 @@ That gate passed on a fresh run and proved the following local path end to end:
   manifest path
 - weak Apple and consumer-CUDA hosts both promote into the bounded A1 trainer
   lane
-- `Nexus` can schedule and surface one named `CS336 A1 Demo` run
+- `Nexus` can schedule and surface one two-slot named `CS336 A1 Demo` run so a
+  Mac Pylon and a Linux Pylon can each take one worker slot while still
+  running the single-host bounded lane honestly
 - `Pylon` can map, claim, launch, and terminal-sync that run locally
 
 That local pass matters because it moves the blocker fully out of the code

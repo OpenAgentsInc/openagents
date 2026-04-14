@@ -87,6 +87,26 @@ The remaining blocker is now operational:
 - retain one proof bundle showing both machines actually participating in the
   bounded A1 homework path
 
+## Update After `rc2` Packaged Host Proof And Two-Slot Run Clarification
+
+Two more things are now true:
+
+- `pylon-v0.1.1-rc2` exists and both the local Mac proof host plus the
+  reachable Linux proof host now pass packaged `training status` with no
+  manual `OPENAGENTS_PSIONIC_REPO` override
+- the Episode 223 named-run bar is now frozen more explicitly: the live
+  `CS336 A1 Demo` run should use `worker_count = 2` while staying
+  `replica_type = single_node`, so the Mac and Linux Pylons each take one
+  worker slot and both fully do the bounded homework path
+
+That means the remaining blocker is not packaged runtime discovery anymore.
+It is the retained proof bundle for the actual upgraded hosts plus the live
+two-slot named run.
+
+The retained packaged-host proof for that narrower `rc2` claim now lives at:
+
+- `docs/reports/pylon/2026-04-13-episode-223-rc2-packaged-host-proof.md`
+
 Local dry-run closure for that code path is now retained separately at:
 
 - `docs/reports/pylon/2026-04-13-episode-223-local-cs336-a1-dry-run.md`
