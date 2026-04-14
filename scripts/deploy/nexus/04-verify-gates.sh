@@ -209,6 +209,7 @@ payload = {
     "treasury_enabled": parse_bool("NEXUS_CONTROL_TREASURY_ENABLED"),
     "payout_sats_per_window": parse_u64("NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW"),
     "payout_interval_seconds": parse_u64("NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS"),
+    "placeholder_payout_mode": values.get("NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE", "").strip() or "inference_ready",
     "require_sellable": parse_bool("NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE"),
     "daily_budget_cap_sats": parse_u64("NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS"),
 }
@@ -348,6 +349,7 @@ jq -n \
       treasury_enabled: $treasury_result.body.treasury_enabled,
       payout_sats_per_window: $treasury_result.body.payout_sats_per_window,
       payout_interval_seconds: $treasury_result.body.payout_interval_seconds,
+      placeholder_payout_mode: ($treasury_result.body.placeholder_payout_mode // "inference_ready"),
       require_sellable: $treasury_result.body.require_sellable,
       daily_budget_cap_sats: $treasury_result.body.daily_budget_cap_sats,
       policy_checksum: $treasury_result.body.policy_checksum,
@@ -359,6 +361,7 @@ jq -n \
       if $treasury_result.body.treasury_enabled != $treasury_env.treasury_enabled then "treasury_enabled" else empty end,
       if $treasury_result.body.payout_sats_per_window != $treasury_env.payout_sats_per_window then "payout_sats_per_window" else empty end,
       if $treasury_result.body.payout_interval_seconds != $treasury_env.payout_interval_seconds then "payout_interval_seconds" else empty end,
+      if (($treasury_result.body.placeholder_payout_mode // "inference_ready") != $treasury_env.placeholder_payout_mode) then "placeholder_payout_mode" else empty end,
       if $treasury_result.body.require_sellable != $treasury_env.require_sellable then "require_sellable" else empty end,
       if $treasury_result.body.daily_budget_cap_sats != $treasury_env.daily_budget_cap_sats then "daily_budget_cap_sats" else empty end
     ] end;

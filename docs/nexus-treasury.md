@@ -111,7 +111,7 @@ For a truthful local accepted-work rehearsal:
 
 The retained proof report for the first end-to-end CS336 A1 local payout is:
 
-- `docs/reports/pylon/2026-04-13-local-nexus-pylon-paid-dry-run.md`
+- `docs/reports/pylon/2026-04-13-local-nexus-pylon-paid-dry-run-worktree-proof.md`
 
 ## Supported Breez Floor
 
@@ -155,6 +155,7 @@ Bootstrap / explicit policy-apply envs:
 - `NEXUS_CONTROL_TREASURY_ENABLED`
 - `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW`
 - `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS`
+- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE`
 - `NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE`
 - `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS`
 - `NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV`
@@ -166,6 +167,17 @@ stipend cadence. `nexus-control` now phases each identity deterministically
 within that interval, so online Pylons still receive one payout per interval
 but dispatches roll across the window instead of bunching on a single wall-clock
 boundary.
+
+`NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE` is now part of the persisted
+runtime policy itself. Supported values are:
+
+- `presence_only`
+- `inference_ready`
+- `disabled`
+
+`/v1/treasury/status` and the public treasury stats now expose the active
+`placeholder_payout_mode`, so operators can verify the live policy without
+opening the state file directly.
 
 `run_server()` now starts a dedicated treasury payout loop every 2 seconds. The
 provider heartbeat route only updates presence; it no longer dispatches wallet
@@ -211,8 +223,20 @@ To intentionally change policy through deploy env:
 
 Destructive policy changes include disabling treasury, lowering payout amount,
 lowering the daily budget cap, widening the payout interval, or turning on
-`require_sellable`. Without the explicit destructive override, the deploy
-script now fails closed.
+`require_sellable`. Tightening `placeholder_payout_mode` also counts as
+destructive:
+
+- `presence_only -> inference_ready`
+- `presence_only -> disabled`
+- `inference_ready -> disabled`
+
+Without the explicit destructive override, the deploy script now fails closed.
+
+One local dry-run gotcha is now explicit: `cargo test` alone is not enough to
+prove the live server is honoring a changed treasury policy. If the built
+`nexus-control` binary is stale, `/v1/treasury/status` can still show the old
+schema version and missing `placeholder_payout_mode` even though the tests
+pass. Rebuild the actual server binary before claiming the policy is live.
 
 If `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS` is unset,
 `nexus-control` refreshes wallet-backed treasury stats every 3 seconds by

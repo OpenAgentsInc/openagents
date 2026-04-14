@@ -7,6 +7,7 @@ TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_ENABLED
   NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW
   NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS
+  NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE
   NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE
   NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS
   NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS
@@ -96,6 +97,7 @@ treasury_policy_change_requested() {
   [[ "$(jq -r '.treasury_enabled' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_ENABLED}" ]] && return 0
   [[ "$(jq -r '.payout_sats_per_window' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW}" ]] && return 0
   [[ "$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS}" ]] && return 0
+  [[ "$(jq -r '.placeholder_payout_mode // "inference_ready"' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE}" ]] && return 0
   [[ "$(jq -r '.require_sellable' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}" ]] && return 0
   [[ "$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS}" ]] && return 0
   return 1
@@ -103,10 +105,11 @@ treasury_policy_change_requested() {
 
 treasury_policy_change_is_destructive() {
   local persisted_policy_json="$1"
-  local persisted_enabled persisted_payout persisted_interval persisted_require_sellable persisted_budget
+  local persisted_enabled persisted_payout persisted_interval persisted_placeholder_mode persisted_require_sellable persisted_budget
   persisted_enabled="$(jq -r '.treasury_enabled' <<<"$persisted_policy_json")"
   persisted_payout="$(jq -r '.payout_sats_per_window' <<<"$persisted_policy_json")"
   persisted_interval="$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")"
+  persisted_placeholder_mode="$(jq -r '.placeholder_payout_mode // "inference_ready"' <<<"$persisted_policy_json")"
   persisted_require_sellable="$(jq -r '.require_sellable' <<<"$persisted_policy_json")"
   persisted_budget="$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")"
 
@@ -114,6 +117,11 @@ treasury_policy_change_is_destructive() {
   (( NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW < persisted_payout )) && return 0
   (( NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS > persisted_interval )) && return 0
   (( NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS < persisted_budget )) && return 0
+  if [[ "$persisted_placeholder_mode" == "presence_only" ]]; then
+    [[ "${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE}" != "presence_only" ]] && return 0
+  elif [[ "$persisted_placeholder_mode" == "inference_ready" ]]; then
+    [[ "${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE}" == "disabled" ]] && return 0
+  fi
   [[ "$persisted_require_sellable" != "true" && "${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}" == "true" ]] && return 0
   return 1
 }
@@ -127,6 +135,7 @@ preserve_or_validate_persisted_treasury_policy() {
     export NEXUS_CONTROL_TREASURY_ENABLED="$(jq -r '.treasury_enabled' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW="$(jq -r '.payout_sats_per_window' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS="$(jq -r '.payout_interval_seconds' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE="$(jq -r '.placeholder_payout_mode // "inference_ready"' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE="$(jq -r '.require_sellable' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS="$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")"
     log "Preserving persisted treasury policy checksum=$(jq -r '.checksum' <<<"$persisted_policy_json")"
@@ -317,6 +326,7 @@ NEXUS_CONTROL_RECEIPT_LOG_PATH=${NEXUS_RECEIPT_LOG_PATH}
 NEXUS_CONTROL_TREASURY_ENABLED=${NEXUS_CONTROL_TREASURY_ENABLED}
 NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=${NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW}
 NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=${NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS}
+NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE}
 NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=${NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE}
 NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=${NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS}
 NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS=${NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS}

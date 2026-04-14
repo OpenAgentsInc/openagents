@@ -4051,13 +4051,24 @@ fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<
     if normalized.is_empty() {
         return None;
     }
+    if let Some(backend_family) =
+        training_psionic_backend_family_for_environment_ref(normalized.as_str())
+    {
+        return Some(backend_family);
+    }
     if normalized == PYLON_TRAINING_CUDA_ENVIRONMENT_REF
-        || normalized == PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF
         || normalized.contains(".cuda.")
         || normalized.starts_with("env.cuda.")
         || normalized.ends_with(".cuda.train")
     {
         return Some("cuda");
+    }
+    if normalized.contains(".cpu.")
+        || normalized.contains(".host_cpu.")
+        || normalized.starts_with("env.cpu.")
+        || normalized.ends_with(".cpu.train")
+    {
+        return Some("cpu");
     }
     if normalized.contains(".mlx.") || normalized.starts_with("env.mlx.") {
         return Some("mlx");
@@ -4073,6 +4084,17 @@ fn training_backend_family_for_environment_ref(environment_ref: &str) -> Option<
         return Some("metal");
     }
     None
+}
+
+fn training_psionic_backend_family_for_environment_ref(
+    environment_ref: &str,
+) -> Option<&'static str> {
+    match environment_ref {
+        PYLON_TRAINING_CUDA_ENVIRONMENT_REF => Some("cuda"),
+        PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF => Some("cpu"),
+        PYLON_TRAINING_APPLE_ENVIRONMENT_REF => Some("metal"),
+        _ => None,
+    }
 }
 
 fn training_validator_node_matches_window(
@@ -19761,6 +19783,7 @@ mod tests {
                 enabled: false,
                 payout_sats_per_window: 0,
                 payout_interval_seconds: 60,
+                placeholder_payout_mode: TreasuryPlaceholderPayoutMode::InferenceReady,
                 require_sellable: false,
                 daily_budget_cap_sats: 1_000,
                 reconciliation_horizon_seconds: 300,
@@ -20382,12 +20405,32 @@ mod tests {
             .find_map(|value| super::training_backend_family_for_environment_ref(value))
             .map(|value| vec![value.to_string()])
             .unwrap_or_default();
+        if request
+            .capability_tier
+            .backend_families
+            .iter()
+            .any(|value| value == "cpu")
+            && request.capability_tier.tier.ordinal()
+                < ProviderTrainingCapabilityTier::Tier2Trainer.ordinal()
+        {
+            request.capability_tier.tier = ProviderTrainingCapabilityTier::Tier2Trainer;
+        }
         request.capability_envelope_v2 = training_capability_envelope_v2(
             &request.capability_tier,
             request.contributor_availability.contributor_supported,
             !request.contributor_availability.environment_refs.is_empty(),
         );
         request
+    }
+
+    #[test]
+    fn training_backend_family_maps_cs336_a1_demo_environment_to_cpu() {
+        assert_eq!(
+            super::training_backend_family_for_environment_ref(
+                PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
+            ),
+            Some("cpu")
+        );
     }
 
     fn training_capability_envelope_v2(
@@ -20432,7 +20475,15 @@ mod tests {
                 minimum_tier: ProviderTrainingCapabilityTier::Tier2Trainer,
                 replica_types: vec![ComputeTrainingReplicaType::SingleNode],
                 required_backend_families: capability_tier.backend_families.clone(),
-                minimum_memory_gb: capability_tier.memory_floor_gb.or(Some(32)),
+                minimum_memory_gb: if capability_tier
+                    .backend_families
+                    .iter()
+                    .any(|value| value == "cpu")
+                {
+                    capability_tier.memory_floor_gb
+                } else {
+                    capability_tier.memory_floor_gb.or(Some(32))
+                },
                 required_throughput_band: ProviderTrainingThroughputBand::Unknown,
                 required_replay_capability: ProviderTrainingReplayCapability::None,
                 benchmark_lane_required: false,
@@ -24009,10 +24060,12 @@ mod tests {
             .expect("treasury hook guard");
         let send_calls = Arc::new(AtomicUsize::new(0));
         let send_calls_clone = send_calls.clone();
-        set_test_wallet_send_hook(Some(Arc::new(move |_target, _amount_sats, _idempotency_key| {
-            send_calls_clone.fetch_add(1, Ordering::SeqCst);
-            Ok("payment-send-inline".to_string())
-        })));
+        set_test_wallet_send_hook(Some(Arc::new(
+            move |_target, _amount_sats, _idempotency_key| {
+                send_calls_clone.fetch_add(1, Ordering::SeqCst);
+                Ok("payment-send-inline".to_string())
+            },
+        )));
 
         let response = app
             .oneshot(
@@ -24071,10 +24124,12 @@ mod tests {
             .expect("treasury hook guard");
         let send_calls = Arc::new(AtomicUsize::new(0));
         let send_calls_clone = send_calls.clone();
-        set_test_wallet_send_hook(Some(Arc::new(move |_target, _amount_sats, _idempotency_key| {
-            let call_index = send_calls_clone.fetch_add(1, Ordering::SeqCst);
-            Ok(format!("payment-send-{call_index}"))
-        })));
+        set_test_wallet_send_hook(Some(Arc::new(
+            move |_target, _amount_sats, _idempotency_key| {
+                let call_index = send_calls_clone.fetch_add(1, Ordering::SeqCst);
+                Ok(format!("payment-send-{call_index}"))
+            },
+        )));
 
         run_treasury_dispatch_cycle(&state).await;
 
@@ -24909,7 +24964,10 @@ mod tests {
         let store = state.store.read().expect("store read after due refresh");
         assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
         assert_eq!(store.treasury.wallet_balance_sats, 710);
-        assert_eq!(store.treasury.wallet_runtime_status.as_deref(), Some("connected"));
+        assert_eq!(
+            store.treasury.wallet_runtime_status.as_deref(),
+            Some("connected")
+        );
 
         set_test_wallet_snapshot_hook(None);
         Ok(())
@@ -35704,12 +35762,14 @@ mod tests {
             .expect("treasury hook guard");
         let payment_counter = Arc::new(Mutex::new(0u64));
         let payment_counter_for_hook = Arc::clone(&payment_counter);
-        set_test_wallet_send_hook(Some(Arc::new(move |_target, amount_sats, _idempotency_key| {
-            assert_eq!(amount_sats, PAYOUT_SATS_PER_WINDOW);
-            let mut counter = payment_counter_for_hook.lock().expect("payment counter");
-            *counter = counter.saturating_add(1);
-            Ok(format!("payment-send-transcript222-{:03}", *counter))
-        })));
+        set_test_wallet_send_hook(Some(Arc::new(
+            move |_target, amount_sats, _idempotency_key| {
+                assert_eq!(amount_sats, PAYOUT_SATS_PER_WINDOW);
+                let mut counter = payment_counter_for_hook.lock().expect("payment counter");
+                *counter = counter.saturating_add(1);
+                Ok(format!("payment-send-transcript222-{:03}", *counter))
+            },
+        )));
         run_treasury_dispatch_cycle(&state).await;
 
         let stats_response = app

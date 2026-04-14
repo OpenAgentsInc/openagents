@@ -28,6 +28,7 @@ const ENV_TREASURY_STATE_PATH: &str = "NEXUS_CONTROL_TREASURY_STATE_PATH";
 const ENV_TREASURY_ENABLED: &str = "NEXUS_CONTROL_TREASURY_ENABLED";
 const ENV_TREASURY_PAYOUT_SATS_PER_WINDOW: &str = "NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW";
 const ENV_TREASURY_PAYOUT_INTERVAL_SECONDS: &str = "NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS";
+const ENV_TREASURY_PLACEHOLDER_PAYOUT_MODE: &str = "NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE";
 const ENV_TREASURY_REQUIRE_SELLABLE: &str = "NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE";
 const ENV_TREASURY_DAILY_BUDGET_CAP_SATS: &str = "NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS";
 const ENV_TREASURY_WALLET_MNEMONIC_PATH: &str = "NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH";
@@ -54,6 +55,8 @@ const DEFAULT_TREASURY_STATE_PATH: &str = "var/nexus-control/treasury-state.json
 const DEFAULT_TREASURY_ENABLED: bool = false;
 const DEFAULT_TREASURY_PAYOUT_SATS_PER_WINDOW: u64 = 0;
 const DEFAULT_TREASURY_PAYOUT_INTERVAL_SECONDS: u64 = 3_600;
+const DEFAULT_TREASURY_PLACEHOLDER_PAYOUT_MODE: TreasuryPlaceholderPayoutMode =
+    TreasuryPlaceholderPayoutMode::InferenceReady;
 const DEFAULT_TREASURY_REQUIRE_SELLABLE: bool = false;
 const DEFAULT_TREASURY_DAILY_BUDGET_CAP_SATS: u64 = 21_000;
 const DEFAULT_TREASURY_WALLET_MNEMONIC_PATH: &str = "var/nexus-control/treasury.mnemonic";
@@ -70,7 +73,7 @@ const DEFAULT_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: bool = false;
 const DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: u64 = 300;
 const TREASURY_PUBLIC_STATS_WINDOW_MS: u64 = 86_400_000;
 const TREASURY_PAYOUT_TARGET_DOMAIN: &str = "openagents:nexus-treasury-payout-target:v1";
-const TREASURY_POLICY_SCHEMA_VERSION: u32 = 1;
+const TREASURY_POLICY_SCHEMA_VERSION: u32 = 2;
 const TREASURY_STATE_RETENTION_WINDOW_MS: u64 = 30 * 86_400_000;
 const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 60_000;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
@@ -147,6 +150,7 @@ pub struct TreasuryConfig {
     pub enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
     pub reconciliation_horizon_seconds: u64,
@@ -182,6 +186,10 @@ impl TreasuryConfig {
                 "{ENV_TREASURY_PAYOUT_INTERVAL_SECONDS} must be greater than zero"
             ));
         }
+        let placeholder_payout_mode = parse_placeholder_payout_mode_env(
+            ENV_TREASURY_PLACEHOLDER_PAYOUT_MODE,
+            DEFAULT_TREASURY_PLACEHOLDER_PAYOUT_MODE,
+        )?;
         let require_sellable = parse_bool_env(
             ENV_TREASURY_REQUIRE_SELLABLE,
             DEFAULT_TREASURY_REQUIRE_SELLABLE,
@@ -235,6 +243,7 @@ impl TreasuryConfig {
             enabled,
             payout_sats_per_window,
             payout_interval_seconds,
+            placeholder_payout_mode,
             require_sellable,
             daily_budget_cap_sats,
             reconciliation_horizon_seconds,
@@ -503,6 +512,8 @@ pub struct TreasuryRuntimePolicy {
     pub treasury_enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
+    #[serde(default = "legacy_treasury_placeholder_payout_mode")]
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
     pub checksum: String,
@@ -514,6 +525,7 @@ impl TreasuryRuntimePolicy {
             config.enabled,
             config.payout_sats_per_window,
             config.payout_interval_seconds,
+            config.placeholder_payout_mode,
             config.require_sellable,
             config.daily_budget_cap_sats,
         )
@@ -523,6 +535,7 @@ impl TreasuryRuntimePolicy {
         treasury_enabled: bool,
         payout_sats_per_window: u64,
         payout_interval_seconds: u64,
+        placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
         require_sellable: bool,
         daily_budget_cap_sats: u64,
     ) -> Self {
@@ -531,6 +544,7 @@ impl TreasuryRuntimePolicy {
             treasury_enabled,
             payout_sats_per_window,
             payout_interval_seconds,
+            placeholder_payout_mode,
             require_sellable,
             daily_budget_cap_sats,
         };
@@ -545,6 +559,7 @@ impl TreasuryRuntimePolicy {
             treasury_enabled,
             payout_sats_per_window,
             payout_interval_seconds,
+            placeholder_payout_mode,
             require_sellable,
             daily_budget_cap_sats,
             checksum,
@@ -554,6 +569,14 @@ impl TreasuryRuntimePolicy {
     pub fn payout_interval_ms(&self) -> u64 {
         self.payout_interval_seconds.saturating_mul(1_000)
     }
+
+    fn placeholder_candidate(&self, identity: &OnlinePylonIdentity) -> bool {
+        match self.placeholder_payout_mode {
+            TreasuryPlaceholderPayoutMode::Disabled => false,
+            TreasuryPlaceholderPayoutMode::PresenceOnly => true,
+            TreasuryPlaceholderPayoutMode::InferenceReady => identity.sellable,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -562,6 +585,7 @@ struct TreasuryRuntimePolicyChecksumPayload {
     treasury_enabled: bool,
     payout_sats_per_window: u64,
     payout_interval_seconds: u64,
+    placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
     require_sellable: bool,
     daily_budget_cap_sats: u64,
 }
@@ -586,6 +610,8 @@ pub struct TreasuryStatusResponse {
     pub treasury_enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
+    #[serde(default = "legacy_treasury_placeholder_payout_mode")]
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
     pub registered_payout_identities: u64,
@@ -770,6 +796,8 @@ pub struct TreasuryPublicSnapshot {
     pub treasury_enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
+    #[serde(default = "legacy_treasury_placeholder_payout_mode")]
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
     pub registered_payout_identities: u64,
@@ -866,6 +894,7 @@ pub struct TreasuryPublicStats {
     pub treasury_enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
     pub require_sellable: bool,
     pub daily_budget_cap_sats: u64,
     pub registered_payout_identities: u64,
@@ -1645,6 +1674,9 @@ impl TreasuryState {
         let payout_interval_ms = policy.payout_interval_ms();
         let mut latest_eligible_window_started_at_unix_ms: Option<u64> = None;
         for identity in online_identities {
+            if !policy.placeholder_candidate(identity) {
+                continue;
+            }
             if policy.require_sellable && !identity.sellable {
                 continue;
             }
@@ -2057,6 +2089,7 @@ impl TreasuryState {
             treasury_enabled: policy.treasury_enabled,
             payout_sats_per_window: policy.payout_sats_per_window,
             payout_interval_seconds: policy.payout_interval_seconds,
+            placeholder_payout_mode: policy.placeholder_payout_mode,
             require_sellable: policy.require_sellable,
             daily_budget_cap_sats: policy.daily_budget_cap_sats,
             registered_payout_identities: self.payout_targets_by_identity.len() as u64,
@@ -2155,6 +2188,7 @@ impl TreasuryState {
             treasury_enabled: snapshot.treasury_enabled,
             payout_sats_per_window: snapshot.payout_sats_per_window,
             payout_interval_seconds: snapshot.payout_interval_seconds,
+            placeholder_payout_mode: snapshot.placeholder_payout_mode,
             require_sellable: snapshot.require_sellable,
             daily_budget_cap_sats: snapshot.daily_budget_cap_sats,
             registered_payout_identities: snapshot.registered_payout_identities,
@@ -2379,6 +2413,7 @@ impl TreasuryState {
             treasury_enabled: stats.treasury_enabled,
             payout_sats_per_window: stats.payout_sats_per_window,
             payout_interval_seconds: stats.payout_interval_seconds,
+            placeholder_payout_mode: stats.placeholder_payout_mode,
             require_sellable: stats.require_sellable,
             daily_budget_cap_sats: stats.daily_budget_cap_sats,
             registered_payout_identities: stats.registered_payout_identities,
@@ -2777,12 +2812,24 @@ impl TreasuryState {
                 reconciliation_degraded_reason: None,
             };
         }
+        let placeholder_online_identities = online_identities
+            .iter()
+            .filter(|identity| policy.placeholder_candidate(identity))
+            .collect::<Vec<_>>();
+        if placeholder_online_identities.is_empty() {
+            self.refresh_public_snapshot(config, now_unix_ms);
+            return TreasuryPayoutPreparation {
+                dispatch_plans,
+                receipt_events,
+                reconciliation_degraded_reason: None,
+            };
+        }
 
         let payout_interval_ms = policy.payout_interval_ms();
         let (reconciliation_started_at_unix_ms, reconciliation_degraded_reason) =
             self.payout_reconciliation_started_at(config, now_unix_ms);
 
-        for identity in online_identities {
+        for identity in placeholder_online_identities {
             let current_window_started_at_unix_ms = payout_window_started_at_for_identity(
                 now_unix_ms,
                 payout_interval_ms,
@@ -3212,8 +3259,7 @@ impl TreasuryState {
     ) -> Vec<TreasuryReceiptEvent> {
         let timeout_ms =
             config.dispatch_result_timeout_ms(self.active_policy(config).payout_interval_ms());
-        let confirmation_timeout_ms =
-            TREASURY_DISPATCH_CONFIRMATION_TIMEOUT_MS.max(timeout_ms);
+        let confirmation_timeout_ms = TREASURY_DISPATCH_CONFIRMATION_TIMEOUT_MS.max(timeout_ms);
         let mut receipt_events = Vec::new();
         for record in self.payout_records_by_key.values_mut() {
             match record.status.as_str() {
@@ -4464,6 +4510,9 @@ fn treasury_policy_changed_fields(
     if before.payout_interval_seconds != after.payout_interval_seconds {
         changed_fields.push("payout_interval_seconds".to_string());
     }
+    if before.placeholder_payout_mode != after.placeholder_payout_mode {
+        changed_fields.push("placeholder_payout_mode".to_string());
+    }
     if before.require_sellable != after.require_sellable {
         changed_fields.push("require_sellable".to_string());
     }
@@ -4481,7 +4530,17 @@ fn treasury_policy_change_is_destructive(
         || after.payout_sats_per_window < before.payout_sats_per_window
         || after.daily_budget_cap_sats < before.daily_budget_cap_sats
         || after.payout_interval_seconds > before.payout_interval_seconds
+        || placeholder_payout_mode_rank(after.placeholder_payout_mode)
+            < placeholder_payout_mode_rank(before.placeholder_payout_mode)
         || (!before.require_sellable && after.require_sellable)
+}
+
+const fn placeholder_payout_mode_rank(mode: TreasuryPlaceholderPayoutMode) -> u8 {
+    match mode {
+        TreasuryPlaceholderPayoutMode::Disabled => 0,
+        TreasuryPlaceholderPayoutMode::InferenceReady => 1,
+        TreasuryPlaceholderPayoutMode::PresenceOnly => 2,
+    }
 }
 
 fn build_treasury_policy_change_record(
@@ -4498,6 +4557,7 @@ fn build_treasury_policy_change_record(
                 "treasury_enabled".to_string(),
                 "payout_sats_per_window".to_string(),
                 "payout_interval_seconds".to_string(),
+                "placeholder_payout_mode".to_string(),
                 "require_sellable".to_string(),
                 "daily_budget_cap_sats".to_string(),
             ]
@@ -4615,6 +4675,10 @@ fn treasury_payout_reconciliation_status(record: &TreasuryPayoutRecord) -> &'sta
 fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String {
     let mut lines = vec![
         format!("treasury_enabled: {}", response.treasury_enabled),
+        format!(
+            "placeholder_payout_mode: {}",
+            response.placeholder_payout_mode.label()
+        ),
         format!("wallet_balance_sats: {}", response.wallet_balance_sats),
         format!(
             "wallet_storage_runtime_mode: {}",
@@ -5734,8 +5798,13 @@ fn dispatch_with_test_hooks(plans: &[TreasuryDispatchPlan]) -> TreasuryDispatchB
         match send_hook
             .as_ref()
             .ok_or_else(|| anyhow!("missing treasury send hook"))
-            .and_then(|hook| hook(plan.payment_request.clone(), plan.amount_sats, idempotency_key))
-        {
+            .and_then(|hook| {
+                hook(
+                    plan.payment_request.clone(),
+                    plan.amount_sats,
+                    idempotency_key,
+                )
+            }) {
             Ok(payment_id) => outcomes.push(TreasuryDispatchOutcome::Dispatched {
                 payout_key: plan.payout_key.clone(),
                 payment_id,
@@ -5782,19 +5851,19 @@ pub(crate) fn set_test_wallet_send_hook(hook: Option<TestWalletSendHook>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        OnlinePylonIdentity, TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES,
-        TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE,
-        TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES, TreasuryConfig, TreasuryDispatchMode,
-        TreasuryDispatchOutcome, TreasuryFundingMaterial, TreasuryFundingTargetRequest,
-        TreasuryPayoutClass, TreasuryPayoutClassification, TreasuryPayoutRecord,
-        TreasuryPlaceholderPayoutMode, TreasuryPublicStats, TreasuryQueuedPayoutRequest,
-        TreasuryState, TreasuryWalletInspection, TreasuryWalletPaymentAggregate,
-        TreasuryWalletRecoveryComparison, TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan,
-        TreasuryWalletRefreshProgress, TreasuryWalletSnapshot,
-        apply_treasury_wallet_recovery_cutover, build_treasury_wallet_recovery_comparison,
-        create_live_funding_target, dispatch_live_payouts, load_live_wallet_snapshot,
-        parse_treasury_command, payout_phase_offset_ms, payout_window_key,
-        payout_window_started_at, payout_window_started_at_for_identity,
+        DEFAULT_TREASURY_PLACEHOLDER_PAYOUT_MODE, OnlinePylonIdentity,
+        TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
+        TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES,
+        TreasuryConfig, TreasuryDispatchMode, TreasuryDispatchOutcome, TreasuryFundingMaterial,
+        TreasuryFundingTargetRequest, TreasuryPayoutClass, TreasuryPayoutClassification,
+        TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryPublicStats,
+        TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
+        TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
+        TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan, TreasuryWalletRefreshProgress,
+        TreasuryWalletSnapshot, apply_treasury_wallet_recovery_cutover,
+        build_treasury_wallet_recovery_comparison, create_live_funding_target,
+        dispatch_live_payouts, load_live_wallet_snapshot, parse_treasury_command,
+        payout_phase_offset_ms, payout_window_started_at, payout_window_started_at_for_identity,
         reset_synthetic_wallet_state_for_test, set_test_wallet_funding_hook,
         set_test_wallet_send_hook, set_test_wallet_snapshot_hook, treasury_test_hook_lock,
         verify_payout_target_registration_signature, wallet_refresh_page_offsets,
@@ -5811,6 +5880,7 @@ mod tests {
             enabled: true,
             payout_sats_per_window: 120,
             payout_interval_seconds: 60,
+            placeholder_payout_mode: DEFAULT_TREASURY_PLACEHOLDER_PAYOUT_MODE,
             require_sellable: false,
             daily_budget_cap_sats: 1_000,
             reconciliation_horizon_seconds: 300,
@@ -6006,6 +6076,44 @@ mod tests {
             Some(original_checksum.as_str())
         );
         assert_eq!(state.policy_change_history.len(), 1);
+    }
+
+    #[test]
+    fn runtime_policy_blocks_placeholder_mode_tightening_without_override() {
+        let mut config = test_treasury_config();
+        config.state_path = unique_treasury_state_path("blocked-placeholder-mode-change");
+        config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::PresenceOnly;
+        let mut state = TreasuryState::new(config.state_path.clone());
+        state.initialize_runtime_policy(&config, 100);
+        let original_checksum = state
+            .active_policy
+            .as_ref()
+            .map(|policy| policy.checksum.clone())
+            .expect("bootstrapped policy checksum");
+
+        let mut destructive_config = config.clone();
+        destructive_config.apply_env_policy = true;
+        destructive_config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
+        destructive_config.policy_change_reason = Some("disable_placeholder".to_string());
+        let receipts = state.initialize_runtime_policy(&destructive_config, 200);
+
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].receipt_type, "treasury.policy.change_blocked");
+        assert_eq!(state.policy_runtime_status.as_deref(), Some("blocked"));
+        assert_eq!(
+            state
+                .active_policy
+                .as_ref()
+                .map(|policy| policy.checksum.as_str()),
+            Some(original_checksum.as_str())
+        );
+        assert_eq!(
+            state
+                .active_policy
+                .as_ref()
+                .map(|policy| policy.placeholder_payout_mode),
+            Some(TreasuryPlaceholderPayoutMode::PresenceOnly)
+        );
     }
 
     #[test]
@@ -6543,10 +6651,7 @@ mod tests {
             record.reason.as_deref(),
             Some("dispatch_confirmation_timeout")
         );
-        assert_eq!(
-            record.payment_id.as_deref(),
-            Some("payment-send-stale-001")
-        );
+        assert_eq!(record.payment_id.as_deref(), Some("payment-send-stale-001"));
         assert_eq!(receipts.len(), 1);
         assert_eq!(receipts[0].receipt_type, "treasury.payout.failed");
         assert_eq!(state.wallet_refresh_plan().tracked_payment_count(), 0);
@@ -6583,7 +6688,9 @@ mod tests {
             },
         );
 
-        let payment_timestamp = created_at_unix_ms.saturating_add(120_000).saturating_div(1_000);
+        let payment_timestamp = created_at_unix_ms
+            .saturating_add(120_000)
+            .saturating_div(1_000);
         let receipts = state.apply_wallet_snapshot(
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
@@ -6786,6 +6893,88 @@ mod tests {
                 .map(String::as_str),
             Some("accepted_work")
         );
+    }
+
+    #[test]
+    fn disabled_placeholder_mode_skips_presence_payouts_but_dispatches_accepted_work_queue() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.enabled = true;
+        config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
+        let now_unix_ms = super::now_unix_ms();
+
+        state.payout_targets_by_identity.insert(
+            "pubkey-worker".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-worker".to_string(),
+                source_session_id: "session-worker".to_string(),
+                spark_address: "spark:worker".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: now_unix_ms.saturating_sub(10),
+                last_verified_at_unix_ms: now_unix_ms.saturating_sub(10),
+            },
+        );
+
+        let online_identities = vec![OnlinePylonIdentity {
+            nostr_pubkey_hex: "pubkey-worker".to_string(),
+            sellable: true,
+        }];
+        let prepared = state.prepare_due_payouts(&config, &online_identities, now_unix_ms);
+        assert!(prepared.dispatch_plans.is_empty());
+        assert!(state.payout_records_by_key.is_empty());
+        let initial_stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(
+            initial_stats.placeholder_payout_mode,
+            TreasuryPlaceholderPayoutMode::Disabled
+        );
+        assert_eq!(initial_stats.eligible_online_payout_targets, 0);
+
+        state.queue_payout_requests(
+            &config,
+            &[TreasuryQueuedPayoutRequest {
+                payout_key: "accepted_work:closeout-003:contrib-003:pubkey-worker".to_string(),
+                nostr_pubkey_hex: "pubkey-worker".to_string(),
+                amount_sats: 120,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("aggregation_weight".to_string()),
+                    work_class: Some("small_model_local_training".to_string()),
+                    progress_class: Some("model_progress".to_string()),
+                    accepted_outcome_id: Some(
+                        "accepted.training_window.window.cs336.a1.demo.0001".to_string(),
+                    ),
+                    training_run_id: Some("run.cs336.a1.demo".to_string()),
+                    window_id: Some("window.cs336.a1.demo.0001".to_string()),
+                    contribution_id: Some("contrib-003".to_string()),
+                    assignment_id: Some("assign-003".to_string()),
+                    share_bps: Some(10_000),
+                    weight_basis: Some("tokens".to_string()),
+                    weight_value: Some(4_096),
+                    weak_device_bearing: false,
+                    progress_bearing: true,
+                },
+                queue_block_reason: None,
+            }],
+            now_unix_ms,
+        );
+
+        let prepared = state.prepare_due_payouts(&config, &online_identities, now_unix_ms + 1);
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:worker");
+        assert_eq!(prepared.dispatch_plans[0].amount_sats, 120);
+        assert_eq!(state.payout_records_by_key.len(), 1);
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get("accepted_work:closeout-003:contrib-003:pubkey-worker")
+                .map(|record| record.status.as_str()),
+            Some("dispatching")
+        );
+        let stats = state.public_stats(&config, now_unix_ms + 1);
+        assert_eq!(stats.placeholder_payout_sats_paid_total, 0);
+        assert_eq!(stats.eligible_online_payout_targets, 0);
     }
 
     #[test]
@@ -7732,10 +7921,16 @@ mod tests {
     fn dispatch_result_timeout_uses_configured_send_timeout() {
         let mut config = test_treasury_config();
         config.send_timeout_seconds = 180;
-        assert_eq!(config.dispatch_result_timeout_ms(config.payout_interval_ms()), 180_000);
+        assert_eq!(
+            config.dispatch_result_timeout_ms(config.payout_interval_ms()),
+            180_000
+        );
 
         config.send_timeout_seconds = 30;
-        assert_eq!(config.dispatch_result_timeout_ms(config.payout_interval_ms()), 60_000);
+        assert_eq!(
+            config.dispatch_result_timeout_ms(config.payout_interval_ms()),
+            60_000
+        );
     }
 
     #[test]

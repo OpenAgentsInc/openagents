@@ -216,6 +216,7 @@ Treasury deployment note:
 export NEXUS_CONTROL_TREASURY_ENABLED=true
 export NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=25
 export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600
+export NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=inference_ready
 export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=true
 export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000
 export NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS=30
@@ -239,6 +240,9 @@ Why the extra two envs matter:
   reduces Spark transfer pressure to `0.4` sends/second even if the eligible
   set reaches `240` providers, while keeping the daily ceiling under
   `864000 sats` at that scale.
+- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE` is part of the persisted
+  policy now, so deploy env and `GET /v1/treasury/status` must agree on it just
+  like payout amount, interval, and budget.
 - `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4` caps the per-cycle Spark
   fan-out so one stalled upstream batch cannot occupy all live payout slots at
   once.
