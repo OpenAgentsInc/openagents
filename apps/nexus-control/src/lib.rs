@@ -897,15 +897,16 @@ async fn materialize_synthesized_training_run_manifest_if_needed(
         )?
     };
     let issued_at_unix = now_unix_ms() / 1_000;
+    let upload_request = PylonTrainingArtifactSignedAccessRequest {
+        mode: openagents_kernel_core::pylon_training::PylonTrainingArtifactSignedAccessMode::Write,
+        ttl_seconds: Some(config.default_ttl_seconds),
+        digest: Some(sha256_prefixed_bytes(payload.as_slice())),
+        size_bytes: Some(payload.len() as u64),
+    };
     let signed_access = issue_training_artifact_signed_access(
         &config,
         resolver,
-        &PylonTrainingArtifactSignedAccessRequest {
-            mode: openagents_kernel_core::pylon_training::PylonTrainingArtifactSignedAccessMode::Write,
-            ttl_seconds: Some(config.default_ttl_seconds),
-            digest: None,
-            size_bytes: None,
-        },
+        &upload_request,
         issued_at_unix,
     )
     .map_err(|reason| ApiError {
@@ -20587,6 +20588,7 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
+    use openagents_kernel_core::ids::sha256_prefixed_bytes;
     use openagents_kernel_core::authority::{
         AcceptComputeOutcomeRequest, AdjustReservePartitionRequest, AdjustReservePartitionResponse,
         AppendComputeEvaluationSamplesRequest, AppendComputeSyntheticDataSamplesRequest,
@@ -20662,7 +20664,8 @@ mod tests {
         PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PylonTrainingAggregateResolution,
         PylonTrainingArtifactClass, PylonTrainingArtifactGcsLayoutPolicy,
         PylonTrainingArtifactKind, PylonTrainingArtifactResolverResponse,
-        PylonTrainingArtifactScope, PylonTrainingArtifactSignedAccessResponse,
+        PylonTrainingArtifactScope, PylonTrainingArtifactSignedAccessMode,
+        PylonTrainingArtifactSignedAccessRequest, PylonTrainingArtifactSignedAccessResponse,
         PylonTrainingContributionVerdict, PylonTrainingRefusalCode,
         PylonTrainingTopologyBackendFamily, parse_pylon_training_run_manifest_json,
         pylon_training_assignment_seed,
@@ -40500,6 +40503,25 @@ mod tests {
         );
         assert!(signed_access.signed_url.contains("X-Goog-Signature="));
         Ok(())
+    }
+
+    #[test]
+    fn synthesized_training_run_manifest_upload_request_includes_digest_and_size() {
+        let payload = br#"{"schema_version":"openagents.pylon_training_run_manifest.v1"}"#;
+        let request = PylonTrainingArtifactSignedAccessRequest {
+            mode: PylonTrainingArtifactSignedAccessMode::Write,
+            ttl_seconds: Some(900),
+            digest: Some(sha256_prefixed_bytes(payload.as_slice())),
+            size_bytes: Some(payload.len() as u64),
+        };
+
+        assert_eq!(request.ttl_seconds, Some(900));
+        assert_eq!(request.size_bytes, Some(payload.len() as u64));
+        assert_eq!(
+            request.digest.as_deref(),
+            Some(sha256_prefixed_bytes(payload.as_slice()).as_str())
+        );
+        assert!(request.validate().is_ok());
     }
 
     #[tokio::test]

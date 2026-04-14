@@ -3,6 +3,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WATCHDOG_INSTALL_SCRIPT="${SCRIPT_DIR}/10-install-treasury-watchdog.sh"
+TRAINING_ARTIFACT_ENV_VARS=(
+  NEXUS_CONTROL_TRAINING_GCS_BUCKET_URI
+  NEXUS_CONTROL_TRAINING_GCS_ENDPOINT
+  NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_TTL_SECONDS
+  NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS
+  NEXUS_CONTROL_TRAINING_GCS_SIGNING_CREDENTIALS_PATH
+)
 TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_ENABLED
   NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW
@@ -27,6 +34,12 @@ TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE
   NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON
 )
+EXPLICIT_TRAINING_ARTIFACT_ENV_VARS=""
+for var in "${TRAINING_ARTIFACT_ENV_VARS[@]}"; do
+  if [[ ${!var+x} == x ]]; then
+    EXPLICIT_TRAINING_ARTIFACT_ENV_VARS+=" ${var}"
+  fi
+done
 EXPLICIT_TREASURY_ENV_VARS=""
 for var in "${TREASURY_ENV_VARS[@]}"; do
   if [[ ${!var+x} == x ]]; then
@@ -40,11 +53,46 @@ require_cmd jq
 
 ensure_gcloud_context
 
+training_artifact_env_is_explicit() {
+  case " ${EXPLICIT_TRAINING_ARTIFACT_ENV_VARS} " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
 treasury_env_is_explicit() {
   case " ${EXPLICIT_TREASURY_ENV_VARS} " in
     *" $1 "*) return 0 ;;
   esac
   return 1
+}
+
+preserve_remote_training_artifact_env() {
+  local remote_env_path="/etc/nexus-relay/nexus-relay.env"
+  local remote_env
+  remote_env="$(
+    gcloud compute ssh "$NEXUS_VM" \
+      --tunnel-through-iap \
+      --project "$GCP_PROJECT" \
+      --zone "$GCP_ZONE" \
+      --command "sudo test -f '${remote_env_path}' && sudo cat '${remote_env_path}' || true"
+  )"
+
+  [[ -n "$remote_env" ]] || return 0
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+      NEXUS_CONTROL_TRAINING_GCS_*)
+        value="${value%$'\r'}"
+        [[ -n "$value" ]] || continue
+        if training_artifact_env_is_explicit "$key"; then
+          continue
+        fi
+        export "${key}=${value}"
+        log "Preserving live training artifact env ${key}=${value}"
+        ;;
+    esac
+  done <<< "$remote_env"
 }
 
 preserve_remote_treasury_env() {
@@ -326,6 +374,7 @@ fi
 
 PREVIOUS_DEPLOY_IMAGE="$(current_remote_deploy_image || true)"
 
+preserve_remote_training_artifact_env
 preserve_remote_treasury_env
 
 : "${NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV:=false}"
