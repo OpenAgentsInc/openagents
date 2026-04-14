@@ -6907,6 +6907,15 @@ impl PylonTrainingCoordinatorClient {
     }
 
     pub async fn get_training_run(&self, training_run_id: &str) -> Result<ComputeTrainingRun> {
+        if let Some(training_run) = self
+            .get_public_training_json_with_retry(
+                format!("/api/training/runs/{training_run_id}").as_str(),
+                format!("training run {training_run_id}").as_str(),
+            )
+            .await?
+        {
+            return Ok(training_run);
+        }
         self.kernel_authority
             .get_compute_training_run(training_run_id)
             .await
@@ -6916,50 +6925,21 @@ impl PylonTrainingCoordinatorClient {
         &self,
         artifact_id: &str,
     ) -> Result<PylonTrainingArtifactResolverResponse> {
-        let url = self.training_authority_url(&format!(
-            "/v1/kernel/compute/training/artifacts/{artifact_id}"
-        ));
-        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
-            let mut request = self.client.get(url.as_str());
-            if let Some(token) = self.bearer_auth.as_deref() {
-                request = request.bearer_auth(token);
-            }
-            match request.send().await {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        return response.json::<PylonTrainingArtifactResolverResponse>().await.with_context(
-                            || format!("failed to decode training artifact resolver response for {artifact_id}"),
-                        );
-                    }
-                    let status = response.status();
-                    let detail = response.text().await.unwrap_or_else(|_| {
-                        format!(
-                            "failed to decode training artifact resolver error for {artifact_id}"
-                        )
-                    });
-                    if training_authority_status_is_retryable(status)
-                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
-                    {
-                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
-                        continue;
-                    }
-                    bail!(
-                        "training artifact resolver failed with status {}: {detail}",
-                        status.as_u16()
-                    );
-                }
-                Err(error) => {
-                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
-                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
-                        continue;
-                    }
-                    return Err(error).with_context(|| {
-                        format!("failed to resolve training artifact {artifact_id}")
-                    });
-                }
-            }
+        if let Some(resolver) = self
+            .get_public_training_json_with_retry(
+                format!("/api/training/artifacts/{artifact_id}").as_str(),
+                format!("training artifact resolver {artifact_id}").as_str(),
+            )
+            .await?
+        {
+            return Ok(resolver);
         }
-        bail!("training artifact resolver exhausted retry budget")
+        self.get_training_authority_json_with_retry(
+            format!("/v1/kernel/compute/training/artifacts/{artifact_id}").as_str(),
+            format!("training artifact resolver {artifact_id}").as_str(),
+            true,
+        )
+        .await
     }
 
     pub async fn request_training_artifact_signed_access(
@@ -6967,57 +6947,23 @@ impl PylonTrainingCoordinatorClient {
         artifact_id: &str,
         payload: &PylonTrainingArtifactSignedAccessRequest,
     ) -> Result<PylonTrainingArtifactSignedAccessResponse> {
-        let url = self.training_authority_url(&format!(
-            "/v1/kernel/compute/training/artifacts/{artifact_id}/signed-access"
-        ));
-        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
-            let mut request = self.client.post(url.as_str()).json(payload);
-            if let Some(token) = self.bearer_auth.as_deref() {
-                request = request.bearer_auth(token);
-            }
-            match request.send().await {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        return response
-                            .json::<PylonTrainingArtifactSignedAccessResponse>()
-                            .await
-                            .with_context(|| {
-                                format!(
-                                    "failed to decode training artifact signed access response for {artifact_id}"
-                                )
-                            });
-                    }
-                    let status = response.status();
-                    let detail = response.text().await.unwrap_or_else(|_| {
-                        format!(
-                            "failed to decode training artifact signed access error for {artifact_id}"
-                        )
-                    });
-                    if training_authority_status_is_retryable(status)
-                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
-                    {
-                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
-                        continue;
-                    }
-                    bail!(
-                        "training artifact signed access failed with status {}: {detail}",
-                        status.as_u16()
-                    );
-                }
-                Err(error) => {
-                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
-                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
-                        continue;
-                    }
-                    return Err(error).with_context(|| {
-                        format!(
-                            "failed to request signed training artifact access for {artifact_id}"
-                        )
-                    });
-                }
-            }
+        if let Some(response) = self
+            .post_public_training_json_with_retry(
+                format!("/api/training/artifacts/{artifact_id}/signed-access").as_str(),
+                payload,
+                format!("training artifact signed access {artifact_id}").as_str(),
+            )
+            .await?
+        {
+            return Ok(response);
         }
-        bail!("training artifact signed access exhausted retry budget")
+        self.post_training_authority_json_with_retry(
+            format!("/v1/kernel/compute/training/artifacts/{artifact_id}/signed-access").as_str(),
+            payload,
+            format!("training artifact signed access {artifact_id}").as_str(),
+            true,
+        )
+        .await
     }
 
     pub async fn get_adapter_training_window(
@@ -7034,6 +6980,23 @@ impl PylonTrainingCoordinatorClient {
         training_run_id: Option<&str>,
         status: Option<ComputeAdapterWindowStatus>,
     ) -> Result<Vec<ComputeAdapterTrainingWindow>> {
+        let mut query = Vec::new();
+        if let Some(training_run_id) = training_run_id {
+            query.push(("training_run_id", training_run_id.to_string()));
+        }
+        if let Some(status) = status {
+            query.push(("status", status.label().to_string()));
+        }
+        if let Some(windows) = self
+            .get_public_training_json_with_retry_and_query(
+                "/api/training/windows",
+                query.as_slice(),
+                "training windows",
+            )
+            .await?
+        {
+            return Ok(windows);
+        }
         self.kernel_authority
             .list_compute_adapter_training_windows(training_run_id, status)
             .await
@@ -7045,6 +7008,26 @@ impl PylonTrainingCoordinatorClient {
         window_id: Option<&str>,
         disposition: Option<ComputeAdapterContributionDisposition>,
     ) -> Result<Vec<ComputeAdapterContributionOutcome>> {
+        let mut query = Vec::new();
+        if let Some(training_run_id) = training_run_id {
+            query.push(("training_run_id", training_run_id.to_string()));
+        }
+        if let Some(window_id) = window_id {
+            query.push(("window_id", window_id.to_string()));
+        }
+        if let Some(disposition) = disposition {
+            query.push(("disposition", disposition.label().to_string()));
+        }
+        if let Some(outcomes) = self
+            .get_public_training_json_with_retry_and_query(
+                "/api/training/contributions",
+                query.as_slice(),
+                "training contribution outcomes",
+            )
+            .await?
+        {
+            return Ok(outcomes);
+        }
         self.kernel_authority
             .list_compute_adapter_contribution_outcomes(training_run_id, window_id, disposition)
             .await
@@ -7055,6 +7038,23 @@ impl PylonTrainingCoordinatorClient {
         outcome_kind: Option<ComputeAcceptedOutcomeKind>,
         environment_ref: Option<&str>,
     ) -> Result<Vec<ComputeAcceptedOutcome>> {
+        let mut query = Vec::new();
+        if let Some(outcome_kind) = outcome_kind {
+            query.push(("outcome_kind", outcome_kind.label().to_string()));
+        }
+        if let Some(environment_ref) = environment_ref {
+            query.push(("environment_ref", environment_ref.to_string()));
+        }
+        if let Some(outcomes) = self
+            .get_public_training_json_with_retry_and_query(
+                "/api/training/outcomes",
+                query.as_slice(),
+                "accepted training outcomes",
+            )
+            .await?
+        {
+            return Ok(outcomes);
+        }
         self.kernel_authority
             .list_compute_accepted_outcomes(outcome_kind, environment_ref)
             .await
@@ -7181,6 +7181,228 @@ impl PylonTrainingCoordinatorClient {
         )
     }
 
+    async fn get_public_training_json_with_retry<R>(
+        &self,
+        path: &str,
+        action: &str,
+    ) -> Result<Option<R>>
+    where
+        R: DeserializeOwned,
+    {
+        self.get_public_training_json_with_retry_and_query(path, &[], action)
+            .await
+    }
+
+    async fn get_public_training_json_with_retry_and_query<R>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        action: &str,
+    ) -> Result<Option<R>>
+    where
+        R: DeserializeOwned,
+    {
+        let url = self.training_authority_url(path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let request = self.client.get(url.as_str()).query(query);
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.map(Some).with_context(|| {
+                            format!("failed to decode public training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    if training_public_read_route_missing(status) {
+                        return Ok(None);
+                    }
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode public training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "public training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to get public training authority {action} from {url}")
+                    });
+                }
+            }
+        }
+        bail!("public training authority {action} exhausted retry budget")
+    }
+
+    async fn post_public_training_json_with_retry<T, R>(
+        &self,
+        path: &str,
+        payload: &T,
+        action: &str,
+    ) -> Result<Option<R>>
+    where
+        T: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        let url = self.training_authority_url(path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            match self.client.post(url.as_str()).json(payload).send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.map(Some).with_context(|| {
+                            format!("failed to decode public training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    if training_public_read_route_missing(status) {
+                        return Ok(None);
+                    }
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode public training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "public training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to post public training authority {action} to {url}")
+                    });
+                }
+            }
+        }
+        bail!("public training authority {action} exhausted retry budget")
+    }
+
+    async fn get_training_authority_json_with_retry<R>(
+        &self,
+        path: &str,
+        action: &str,
+        include_bearer_auth: bool,
+    ) -> Result<R>
+    where
+        R: DeserializeOwned,
+    {
+        let url = self.training_authority_url(path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let mut request = self.client.get(url.as_str());
+            if include_bearer_auth {
+                if let Some(token) = self.bearer_auth.as_deref() {
+                    request = request.bearer_auth(token);
+                }
+            }
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.with_context(|| {
+                            format!("failed to decode training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to get training authority {action} from {url}")
+                    });
+                }
+            }
+        }
+        bail!("training authority {action} exhausted retry budget")
+    }
+
+    async fn post_training_authority_json_with_retry<T, R>(
+        &self,
+        path: &str,
+        payload: &T,
+        action: &str,
+        include_bearer_auth: bool,
+    ) -> Result<R>
+    where
+        T: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        let url = self.training_authority_url(path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let mut request = self.client.post(url.as_str()).json(payload);
+            if include_bearer_auth {
+                if let Some(token) = self.bearer_auth.as_deref() {
+                    request = request.bearer_auth(token);
+                }
+            }
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.with_context(|| {
+                            format!("failed to decode training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to post training authority {action} to {url}")
+                    });
+                }
+            }
+        }
+        bail!("training authority {action} exhausted retry budget")
+    }
+
     async fn post_training_coordination_json_with_retry<T, R>(
         &self,
         path: &str,
@@ -7237,6 +7459,10 @@ impl PylonTrainingCoordinatorClient {
         }
         bail!("training authority {action} exhausted retry budget")
     }
+}
+
+fn training_public_read_route_missing(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::METHOD_NOT_ALLOWED
 }
 
 fn training_authority_status_is_retryable(status: reqwest::StatusCode) -> bool {
@@ -20557,27 +20783,23 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let latest_pointer_resolver_for_server = latest_pointer_resolver.clone();
         let checkpoint_manifest_resolver_for_server = checkpoint_manifest_resolver.clone();
         let base_url = start_mock_http_server(move |method, path, _body| {
-            if method == "GET" && path == "/v1/kernel/compute/training/runs/run.alpha" {
-                let response = compute_contracts::get_compute_training_run_response_to_proto(
-                    &training_run_for_server,
-                )
-                .expect("training run proto response");
-                return (
-                    200,
-                    "application/json",
-                    serde_json::to_string(&response).expect("training run json"),
-                );
-            }
             let mut counts = request_counts_for_server
                 .lock()
                 .expect("training assignment intake request counts");
             let count = counts.entry(path.clone()).or_insert(0);
             *count += 1;
             drop(counts);
+            if method == "GET" && path == "/api/training/runs/run.alpha" {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&training_run_for_server).expect("training run json"),
+                );
+            }
             if method == "GET"
                 && path
                     == format!(
-                        "/v1/kernel/compute/training/artifacts/{}",
+                        "/api/training/artifacts/{}",
                         run_manifest_resolver_for_server.artifact_id
                     )
             {
@@ -20591,7 +20813,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             if method == "GET"
                 && path
                     == format!(
-                        "/v1/kernel/compute/training/artifacts/{}",
+                        "/api/training/artifacts/{}",
                         latest_pointer_resolver_for_server.artifact_id
                     )
             {
@@ -20605,7 +20827,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             if method == "GET"
                 && path
                     == format!(
-                        "/v1/kernel/compute/training/artifacts/{}",
+                        "/api/training/artifacts/{}",
                         checkpoint_manifest_resolver_for_server.artifact_id
                     )
             {
@@ -20680,7 +20902,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 value
                     if value
                         == format!(
-                            "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                            "/api/training/artifacts/{}/signed-access",
                             run_manifest_resolver_for_server.artifact_id
                         ) =>
                 {
@@ -20701,7 +20923,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 value
                     if value
                         == format!(
-                            "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                            "/api/training/artifacts/{}/signed-access",
                             latest_pointer_resolver_for_server.artifact_id
                         ) =>
                 {
@@ -20722,7 +20944,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 value
                     if value
                         == format!(
-                            "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                            "/api/training/artifacts/{}/signed-access",
                             checkpoint_manifest_resolver_for_server.artifact_id
                         ) =>
                 {
@@ -20880,26 +21102,28 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             counts.get("/api/training/nodes/admission") == Some(&1)
                 && counts.get("/api/training/leases/claim") == Some(&1)
-                && counts.get("/api/training/assignments/ack") == Some(&1),
-            "training assignment intake should admit, claim, and acknowledge exactly once for one new lease",
+                && counts.get("/api/training/assignments/ack") == Some(&1)
+                && counts.get("/api/training/runs/run.alpha") == Some(&1),
+            "training assignment intake should admit, claim, acknowledge, and load the leased run exactly once",
         )?;
         ensure(
             counts.get(
                 format!(
-                    "/v1/kernel/compute/training/artifacts/{}",
+                    "/api/training/artifacts/{}",
                     run_manifest_resolver.artifact_id
                 )
                 .as_str(),
             ) == Some(&1)
                 && counts.get(
                     format!(
-                        "/v1/kernel/compute/training/artifacts/{}/signed-access",
+                        "/api/training/artifacts/{}/signed-access",
                         latest_pointer_resolver.artifact_id
                     )
                     .as_str(),
                 ) == Some(&1)
+                && !counts.contains_key("/v1/kernel/compute/training/runs/run.alpha")
                 && counts.get("/signed/training/checkpoint-manifest-42") == Some(&1),
-            "assignment intake should resolve signed artifact access and fetch the retained runtime inputs once",
+            "assignment intake should resolve runtime inputs through the public training surface without falling back to the older kernel artifact routes",
         )
     }
 
@@ -22882,44 +23106,32 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             recorded_at_ms: 1_762_491_210_100,
             metadata: json!({}),
         };
-        let contribution_response =
-            compute_contracts::list_compute_adapter_contribution_outcomes_response_to_proto(&[
-                contribution_outcome.clone(),
-            ])?;
-        let windows_response =
-            compute_contracts::list_compute_adapter_training_windows_response_to_proto(&[
-                adapter_window.clone(),
-            ])?;
-        let outcomes_response =
-            compute_contracts::list_compute_accepted_outcomes_response_to_proto(&[
-                accepted_outcome.clone(),
-            ])?;
         config.training.nexus_authority_base_url = start_mock_http_server(move |method, path, _body| {
             match (method.as_str(), path.as_str()) {
                 (
                     "GET",
-                    "/v1/kernel/compute/training/adapter-contributions?training_run_id=run.alpha&window_id=window.0001",
+                    "/api/training/contributions?training_run_id=run.alpha&window_id=window.0001",
                 ) => (
                     200,
                     "application/json",
-                    serde_json::to_string(&contribution_response)
+                    serde_json::to_string(&vec![contribution_outcome.clone()])
                         .expect("contribution response"),
                 ),
                 (
                     "GET",
-                    "/v1/kernel/compute/training/adapter-windows?training_run_id=run.alpha",
+                    "/api/training/windows?training_run_id=run.alpha",
                 ) => (
                     200,
                     "application/json",
-                    serde_json::to_string(&windows_response).expect("windows response"),
+                    serde_json::to_string(&vec![adapter_window.clone()]).expect("windows response"),
                 ),
                 (
                     "GET",
-                    "/v1/kernel/compute/outcomes?outcome_kind=training_run&environment_ref=env.openagents.cuda.train",
+                    "/api/training/outcomes?outcome_kind=training_run&environment_ref=env.openagents.cuda.train",
                 ) => (
                     200,
                     "application/json",
-                    serde_json::to_string(&outcomes_response).expect("outcomes response"),
+                    serde_json::to_string(&vec![accepted_outcome.clone()]).expect("outcomes response"),
                 ),
                 _ => (
                     404,

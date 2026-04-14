@@ -7030,6 +7030,27 @@ fn build_api_router_with_state(state: AppState) -> Router {
         )
         .route("/api/training/summary", get(training_operator_summary))
         .route("/api/training/visualization", get(training_visualization))
+        .route(
+            "/api/training/runs/{training_run_id}",
+            get(get_public_training_run),
+        )
+        .route("/api/training/windows", get(list_public_training_windows))
+        .route(
+            "/api/training/contributions",
+            get(list_public_training_contribution_outcomes),
+        )
+        .route(
+            "/api/training/outcomes",
+            get(list_public_training_accepted_outcomes),
+        )
+        .route(
+            "/api/training/artifacts/{artifact_id}",
+            get(get_public_training_artifact_resolver),
+        )
+        .route(
+            "/api/training/artifacts/{artifact_id}/signed-access",
+            post(post_public_training_artifact_signed_access),
+        )
         .route("/api/training/nodes", get(list_training_nodes))
         .route(
             "/api/training/nodes/{node_pubkey_hex}",
@@ -7453,6 +7474,166 @@ async fn training_visualization(
         reason: "session_store_poisoned".to_string(),
     })?;
     Ok(Json(training_visualization_snapshot(&store, now)))
+}
+
+async fn get_public_training_run(
+    State(state): State<AppState>,
+    Path(training_run_id): Path<String>,
+) -> Result<Json<ComputeTrainingRun>, ApiError> {
+    let training_run_id =
+        normalize_required_field(training_run_id.as_str(), "compute_training_run_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(training_run) = store
+        .kernel
+        .get_compute_training_run(training_run_id.as_str())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_training_run_not_found".to_string(),
+        });
+    };
+    Ok(Json(training_run))
+}
+
+async fn list_public_training_windows(
+    State(state): State<AppState>,
+    Query(query): Query<ComputeAdapterTrainingWindowsQuery>,
+) -> Result<Json<Vec<ComputeAdapterTrainingWindow>>, ApiError> {
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_compute_adapter_training_windows(
+        query.training_run_id.as_deref(),
+        query.status,
+    )))
+}
+
+async fn list_public_training_contribution_outcomes(
+    State(state): State<AppState>,
+    Query(query): Query<ComputeAdapterContributionOutcomesQuery>,
+) -> Result<Json<Vec<ComputeAdapterContributionOutcome>>, ApiError> {
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(
+        store.kernel.list_compute_adapter_contribution_outcomes(
+            query.training_run_id.as_deref(),
+            query.window_id.as_deref(),
+            query.disposition,
+        ),
+    ))
+}
+
+async fn list_public_training_accepted_outcomes(
+    State(state): State<AppState>,
+    Query(query): Query<ComputeAcceptedOutcomesQuery>,
+) -> Result<Json<Vec<ComputeAcceptedOutcome>>, ApiError> {
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_compute_accepted_outcomes(
+        query.outcome_kind,
+        query.environment_ref.as_deref(),
+    )))
+}
+
+async fn get_public_training_artifact_resolver(
+    State(state): State<AppState>,
+    Path(artifact_id): Path<String>,
+) -> Result<Json<PylonTrainingArtifactResolverResponse>, ApiError> {
+    let started = std::time::Instant::now();
+    let result = (|| -> Result<PylonTrainingArtifactResolverResponse, ApiError> {
+        let artifact_id =
+            normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .resolve_compute_training_artifact(artifact_id.as_str())
+            .map_err(|reason| ApiError {
+                status: StatusCode::BAD_REQUEST,
+                error: "invalid_request",
+                reason,
+            })
+    })();
+    record_training_launch_latency_sample(
+        &state,
+        TrainingLaunchLatencyMetricKind::ResolverLookup,
+        started.elapsed().as_millis() as u64,
+    );
+    result.map(Json)
+}
+
+async fn post_public_training_artifact_signed_access(
+    State(state): State<AppState>,
+    Path(artifact_id): Path<String>,
+    Json(request): Json<PylonTrainingArtifactSignedAccessRequest>,
+) -> Result<Json<PylonTrainingArtifactSignedAccessResponse>, ApiError> {
+    let started = std::time::Instant::now();
+    let result = (|| -> Result<PylonTrainingArtifactSignedAccessResponse, ApiError> {
+        let artifact_id =
+            normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
+        let resolver = {
+            let store = state.store.read().map_err(|_| ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error: "internal_error",
+                reason: "session_store_poisoned".to_string(),
+            })?;
+            store
+                .kernel
+                .resolve_compute_training_artifact(artifact_id.as_str())
+                .map_err(|reason| ApiError {
+                    status: StatusCode::BAD_REQUEST,
+                    error: "invalid_request",
+                    reason,
+                })?
+        };
+        let config = state
+            .config
+            .training_artifact_signed_url
+            .as_ref()
+            .ok_or(ApiError {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                error: "service_unavailable",
+                reason: "compute_training_artifact_signed_access_unconfigured".to_string(),
+            })?;
+        let issued_at_unix = now_unix_ms() / 1_000;
+        issue_training_artifact_signed_access(config, &resolver, &request, issued_at_unix).map_err(
+            |reason| ApiError {
+                status: if reason.starts_with("pylon_training_artifact_signed_access_") {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::SERVICE_UNAVAILABLE
+                },
+                error: if reason.starts_with("pylon_training_artifact_signed_access_") {
+                    "invalid_request"
+                } else {
+                    "service_unavailable"
+                },
+                reason,
+            },
+        )
+    })();
+    record_training_launch_latency_sample(
+        &state,
+        TrainingLaunchLatencyMetricKind::SignedAccess,
+        started.elapsed().as_millis() as u64,
+    );
+    result.map(Json)
 }
 
 async fn homepage_snapshot(
@@ -29064,13 +29245,54 @@ mod tests {
             assert!(mac_node.online);
             let linux_node = store
                 .kernel
-                .get_admitted_training_node(
-                    "node-cs336-a1-demo-linux",
-                    created_at_ms as i64 + 770,
-                )
+                .get_admitted_training_node("node-cs336-a1-demo-linux", created_at_ms as i64 + 770)
                 .expect("admitted Linux node");
             assert!(linux_node.online);
         }
+
+        let public_training_run_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(public_training_run_response.status(), StatusCode::OK);
+        let public_training_run: ComputeTrainingRun =
+            response_json(public_training_run_response).await?;
+        assert_eq!(public_training_run.training_run_id, training_run_id);
+        assert_eq!(
+            public_training_run.work_class,
+            ComputeTrainingWorkClass::SmallModelLocalTraining
+        );
+        assert_eq!(
+            public_training_run
+                .metadata
+                .get("display_name")
+                .and_then(serde_json::Value::as_str),
+            Some("CS336 A1 Demo")
+        );
+
+        let public_windows_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/training/windows?training_run_id={training_run_id}"
+                    ))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(public_windows_response.status(), StatusCode::OK);
+        let public_windows: Vec<ComputeAdapterTrainingWindow> =
+            response_json(public_windows_response).await?;
+        assert!(
+            public_windows.is_empty(),
+            "the public window route should respond even before the seeded demo run has recorded an adapter window closeout"
+        );
 
         let stats_response = app
             .clone()
