@@ -30,6 +30,7 @@ gcloud compute ssh "$NEXUS_VM" \
       --network host \
       --env-file /etc/nexus-relay/nexus-relay.env \
       -v '${NEXUS_DATA_DIR}:${NEXUS_DATA_DIR}' \
+      -v '/etc/nexus-relay:/etc/nexus-relay:ro' \
       '$DEPLOY_IMAGE' \
       treasury recovery-cutover --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json; \
     sudo systemctl start nexus-relay; \
