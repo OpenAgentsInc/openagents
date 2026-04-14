@@ -78,19 +78,17 @@ use openagents_kernel_core::data_contracts;
 use openagents_kernel_core::ids::sha256_prefixed_bytes;
 use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
-    PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PYLON_TRAINING_LEASE_DURATION_MS,
-    PYLON_TRAINING_GCS_CREDENTIAL_SOURCE,
-    PYLON_TRAINING_SEAL_GRACE_PERIOD_MS, PYLON_TRAINING_WINDOW_MAX_DURATION_MS,
-    PylonTrainingAggregateResolution, PylonTrainingArtifactGcsLayoutPolicy,
+    PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PYLON_TRAINING_GCS_CREDENTIAL_SOURCE,
+    PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
+    PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
+    PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactResolverResponse,
+    PylonTrainingArtifactSignedAccessRequest, PylonTrainingArtifactSignedAccessResponse,
     PylonTrainingArtifacts, PylonTrainingCheckpointBinding, PylonTrainingCollectiveKind,
-    PylonTrainingDatasetAssignment, PylonTrainingElasticBoundary,
-    PylonTrainingManifestRole,
-    PylonTrainingArtifactResolverResponse, PylonTrainingArtifactSignedAccessRequest,
-    PylonTrainingArtifactSignedAccessResponse, PylonTrainingContributionSampleCandidate,
-    PylonTrainingContributionVerdict, PylonTrainingRefusalCode, PylonTrainingReputationLabel,
-    PylonTrainingReputationNamespace, PylonTrainingSchedulerEffect,
-    PylonTrainingRunManifestCommon, PylonTrainingRunManifestV1, PylonTrainingTopology,
-    PylonTrainingTopologyBackendFamily, PylonTrainingTrn,
+    PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
+    PylonTrainingDatasetAssignment, PylonTrainingElasticBoundary, PylonTrainingManifestRole,
+    PylonTrainingRefusalCode, PylonTrainingReputationLabel, PylonTrainingReputationNamespace,
+    PylonTrainingRunManifestCommon, PylonTrainingRunManifestV1, PylonTrainingSchedulerEffect,
+    PylonTrainingTopology, PylonTrainingTopologyBackendFamily, PylonTrainingTrn,
     pylon_training_artifact_object_uri, pylon_training_assignment_id,
     pylon_training_assignment_seed, pylon_training_hard_gate_reason, pylon_training_lease_id,
     pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
@@ -675,12 +673,14 @@ fn training_topology_backend_family_for_node(
         .capability_tier
         .backend_families
         .iter()
-        .find_map(|backend| match backend.trim().to_ascii_lowercase().as_str() {
-            "cuda" => Some(PylonTrainingTopologyBackendFamily::Cuda),
-            "metal" => Some(PylonTrainingTopologyBackendFamily::Metal),
-            "mlx" => Some(PylonTrainingTopologyBackendFamily::Mlx),
-            _ => None,
-        });
+        .find_map(
+            |backend| match backend.trim().to_ascii_lowercase().as_str() {
+                "cuda" => Some(PylonTrainingTopologyBackendFamily::Cuda),
+                "metal" => Some(PylonTrainingTopologyBackendFamily::Metal),
+                "mlx" => Some(PylonTrainingTopologyBackendFamily::Mlx),
+                _ => None,
+            },
+        );
     backend_family.unwrap_or(PylonTrainingTopologyBackendFamily::Mixed)
 }
 
@@ -707,7 +707,8 @@ fn build_synthesized_training_run_manifest_payload(
     config: &ServiceConfig,
     resolver: &PylonTrainingArtifactResolverResponse,
 ) -> Result<Vec<u8>, String> {
-    if resolver.artifact_kind != openagents_kernel_core::pylon_training::PylonTrainingArtifactKind::RunManifest
+    if resolver.artifact_kind
+        != openagents_kernel_core::pylon_training::PylonTrainingArtifactKind::RunManifest
     {
         return Err("training_run_manifest_artifact_kind_invalid".to_string());
     }
@@ -903,17 +904,13 @@ async fn materialize_synthesized_training_run_manifest_if_needed(
         digest: Some(sha256_prefixed_bytes(payload.as_slice())),
         size_bytes: Some(payload.len() as u64),
     };
-    let signed_access = issue_training_artifact_signed_access(
-        &config,
-        resolver,
-        &upload_request,
-        issued_at_unix,
-    )
-    .map_err(|reason| ApiError {
-        status: StatusCode::SERVICE_UNAVAILABLE,
-        error: "service_unavailable",
-        reason,
-    })?;
+    let signed_access =
+        issue_training_artifact_signed_access(&config, resolver, &upload_request, issued_at_unix)
+            .map_err(|reason| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason,
+        })?;
     let response = reqwest::Client::new()
         .put(signed_access.signed_url.as_str())
         .body(payload)
@@ -3608,6 +3605,23 @@ impl ScheduledTrainingRun {
         }
     }
 
+    fn advance_to_next_window(&mut self) {
+        let previous_window_id = self.current_window_id.clone();
+        for assignment in &mut self.assignments {
+            if training_assignment_targets_window(assignment, previous_window_id.as_str())
+                && !matches!(
+                    assignment.state,
+                    TrainingAssignmentState::Expired
+                        | TrainingAssignmentState::Failed
+                        | TrainingAssignmentState::Drained
+                )
+            {
+                assignment.state = TrainingAssignmentState::Drained;
+            }
+        }
+        self.current_window_id = training_window_next_id(previous_window_id.as_str());
+    }
+
     fn active_assignment_for_node(
         &self,
         node_pubkey_hex: &str,
@@ -4505,6 +4519,15 @@ fn training_assignment_state_is_active(assignment: &ScheduledTrainingAssignment)
     )
 }
 
+fn training_assignment_targets_window(
+    assignment: &ScheduledTrainingAssignment,
+    window_id: &str,
+) -> bool {
+    assignment
+        .assignment_id
+        .contains(format!(".{window_id}.").as_str())
+}
+
 fn training_window_active_assignments_for_role(
     scheduled_run: &ScheduledTrainingRun,
     role: TrainingNodeRoleClaim,
@@ -4514,6 +4537,9 @@ fn training_window_active_assignments_for_role(
         .iter()
         .filter(|assignment| assignment.role == role)
         .filter(|assignment| training_assignment_state_is_active(assignment))
+        .filter(|assignment| {
+            training_assignment_targets_window(assignment, scheduled_run.current_window_id.as_str())
+        })
         .filter(|assignment| assignment.node_pubkey_hex.is_some())
         .cloned()
         .collect::<Vec<_>>();
@@ -7394,7 +7420,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
             post(record_training_node_heartbeat),
         )
         .route("/api/training/leases/claim", post(claim_training_run_lease))
-        .route("/api/training/assignments/ack", post(ack_training_assignment))
+        .route(
+            "/api/training/assignments/ack",
+            post(ack_training_assignment),
+        )
         .route("/api/training/windows/plan", post(plan_training_window))
         .route(
             "/api/training/windows/{window_id}/activate",
@@ -9014,8 +9043,7 @@ async fn recover_empty_training_window(
             scheduled_run.window_state = TrainingSchedulerWindowState::Accepted;
             scheduled_run.updated_at_ms = request.recorded_at_ms;
             if scheduled_run.current_window_id == updated_window.window_id {
-                scheduled_run.current_window_id =
-                    training_window_next_id(updated_window.window_id.as_str());
+                scheduled_run.advance_to_next_window();
             }
         }
         store
@@ -9290,8 +9318,7 @@ async fn reconcile_training_window(
             };
             scheduled_run.updated_at_ms = request.recorded_at_ms;
             if scheduled_run.current_window_id == updated_window.window_id {
-                scheduled_run.current_window_id =
-                    training_window_next_id(updated_window.window_id.as_str());
+                scheduled_run.advance_to_next_window();
             }
         }
         store
@@ -20559,22 +20586,23 @@ mod tests {
 
     use super::{
         ClaimTrainingValidatorChallengeRequest, FinalizeTrainingValidatorChallengeRequest,
-        PublishTrainingTrnStateRequest, RetryTrainingValidatorChallengeRequest,
-        RecordTrainingAssignmentAckRequest, RecordTrainingAssignmentAckResponse,
-        ScheduledTrainingRun, TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS,
-        TRN_TRAINING_ARTIFACT_LOCATOR_KIND, TRN_TRAINING_CLOSEOUT_KIND,
-        TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND, TRN_TRAINING_WINDOW_KIND,
-        TrainingFleetAbuseNodeSnapshot, TrainingFleetAbuseSnapshot,
+        PublishTrainingTrnStateRequest, RecordTrainingAssignmentAckRequest,
+        RecordTrainingAssignmentAckResponse, RetryTrainingValidatorChallengeRequest,
+        ScheduledTrainingAssignment, ScheduledTrainingRun,
+        TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS, TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+        TRN_TRAINING_CLOSEOUT_KIND, TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND,
+        TRN_TRAINING_WINDOW_KIND, TrainingFleetAbuseNodeSnapshot, TrainingFleetAbuseSnapshot,
         TrainingOperatorSummaryResponse, TrainingRolloutAbuseControls, TrainingRolloutChannel,
         TrainingRolloutCohort, TrainingRolloutGate, TrainingRolloutPolicyResponse,
-        TrainingRolloutPolicyUpdateRequest, TrainingRolloutTargetKind,
+        TrainingRolloutPolicyUpdateRequest, TrainingRolloutTargetKind, TrainingSchedulerRolePlan,
         TrainingSchedulerWindowState, TrainingTrnPublicationReport,
         TrainingValidatorChallengeCoordinatorResponse, TrainingWindowCloseoutStatus,
         TrainingWindowDefensibilityArtifactAudit, TrainingWindowDefensibilityAudit,
         TrainingWindowDefensibilityPromotionAudit, TrainingWindowDefensibilityValidatorAudit,
         TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
-        training_contributor_tier_projection, training_fleet_abuse_snapshot,
-        training_scheduler_metadata_from_run, training_window_closeout_outcome,
+        training_assignment_targets_window, training_contributor_tier_projection,
+        training_fleet_abuse_snapshot, training_scheduler_metadata_from_run,
+        training_window_assignment_plans, training_window_closeout_outcome,
         training_window_closeout_status, training_window_closeout_treasury_payout_requests,
         training_window_metadata_value, validator_service,
     };
@@ -20588,7 +20616,6 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
-    use openagents_kernel_core::ids::sha256_prefixed_bytes;
     use openagents_kernel_core::authority::{
         AcceptComputeOutcomeRequest, AdjustReservePartitionRequest, AdjustReservePartitionResponse,
         AppendComputeEvaluationSamplesRequest, AppendComputeSyntheticDataSamplesRequest,
@@ -20651,6 +20678,7 @@ mod tests {
         MmluMultipleChoiceCaseMetadata, adapt_compute_benchmark_import,
     };
     use openagents_kernel_core::compute_contracts;
+    use openagents_kernel_core::ids::sha256_prefixed_bytes;
     use openagents_kernel_core::labor::{
         Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, SubmissionStatus,
         Verdict, VerdictOutcome, WorkUnit, WorkUnitStatus,
@@ -20746,9 +20774,9 @@ mod tests {
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
         SyncTokenResponse, TrainingArtifactSignedUrlConfig, TrainingAssignmentState,
         TrainingVisualizationResponse, TrainingWindowAssignmentPlan,
-        TrainingWindowContributionInput,
-        TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
-        build_api_router_with_state, build_app_state, build_router, build_router_with_state,
+        TrainingWindowContributionInput, TrainingWindowCoordinatorResponse,
+        TransitionTrainingWindowRequest, TreasuryConfig, build_api_router_with_state,
+        build_app_state, build_router, build_router_with_state,
         build_synthesized_training_run_manifest_payload, now_unix_ms, random_token,
         run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
         training_kernel_mutation_context, training_scheduler_run_definition,
@@ -30452,8 +30480,10 @@ mod tests {
             );
             mac_node.requested_at_ms = created_at_ms as i64 + 700;
             mac_node.capability_tier.backend_families = vec!["metal".to_string()];
-            mac_node.capability_envelope_v2.tier_profile.backend_families =
-                vec!["metal".to_string()];
+            mac_node
+                .capability_envelope_v2
+                .tier_profile
+                .backend_families = vec!["metal".to_string()];
             store
                 .kernel
                 .record_training_node_admission(
@@ -30489,7 +30519,11 @@ mod tests {
                         .map(|definition| (run.training_run_id.clone(), definition))
                 })
                 .collect::<HashMap<_, _>>();
-            let abuse_controls = store.training_scheduler.rollout_policy().abuse_controls.clone();
+            let abuse_controls = store
+                .training_scheduler
+                .rollout_policy()
+                .abuse_controls
+                .clone();
             let abuse_snapshot = training_fleet_abuse_snapshot(
                 &store.kernel,
                 &store.training_scheduler,
@@ -30516,8 +30550,8 @@ mod tests {
                 .record_compute_adapter_window(
                     &training_kernel_mutation_context("scheduler", created_at_ms + 900),
                     RecordComputeAdapterWindowRequest {
-                        idempotency_key:
-                            "idemp.scheduler.window.cs336-a1-demo.manifest".to_string(),
+                        idempotency_key: "idemp.scheduler.window.cs336-a1-demo.manifest"
+                            .to_string(),
                         trace: TraceContext::default(),
                         policy: kernel_policy(),
                         window: ComputeAdapterTrainingWindow {
@@ -30575,8 +30609,8 @@ mod tests {
                                 network_id: network_id.to_string(),
                                 artifact_bucket_uri:
                                     "gs://openagentsgemini-openagents-training-prod".to_string(),
-                                environment_ref:
-                                    PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
+                                environment_ref: PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF
+                                    .to_string(),
                                 backend_family: "cpu".to_string(),
                                 membership_revision: lease
                                     .membership_revision
@@ -30637,7 +30671,10 @@ mod tests {
             lease.membership_revision.expect("membership revision")
         );
         assert_eq!(manifest.environment_version, "2026.04.13");
-        assert_eq!(manifest.topology.backend_family, PylonTrainingTopologyBackendFamily::Metal);
+        assert_eq!(
+            manifest.topology.backend_family,
+            PylonTrainingTopologyBackendFamily::Metal
+        );
         assert_eq!(dataset.slice_id, "slice://window.cs336.a1.demo.0002.0001");
         assert_eq!(
             dataset.assignment_seed,
@@ -30655,13 +30692,174 @@ mod tests {
             .expect("assignment seed")
         );
         assert!(
-            manifest
-                .artifacts
-                .local_run_root
-                .contains(training_run_id),
+            manifest.artifacts.local_run_root.contains(training_run_id),
             "synthesized run manifest should carry a deterministic placeholder local run root"
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn scheduled_training_run_advances_to_next_window_and_replans_new_assignment_ids() {
+        let mut scheduled_run = ScheduledTrainingRun {
+            training_run_id: "run.cs336.a1.demo".to_string(),
+            network_id: "trainnet.cs336.a1.demo".to_string(),
+            artifact_bucket_uri: "gs://openagentsgemini-openagents-training-prod".to_string(),
+            current_window_id: "window.cs336.a1.demo.0002".to_string(),
+            checkpoint_ref: Some("checkpoint://decoder/base".to_string()),
+            role_plan: TrainingSchedulerRolePlan {
+                worker_count: 2,
+                validator_count: 0,
+                recovery_source_count: 0,
+            },
+            membership_revision: 117,
+            lease_issue_count: 2,
+            window_state: TrainingSchedulerWindowState::Accepted,
+            assignments: vec![
+                ScheduledTrainingAssignment {
+                    assignment_id:
+                        "assign.run.cs336.a1.demo.window.cs336.a1.demo.0002.worker.1.attempt62"
+                            .to_string(),
+                    role: TrainingNodeRoleClaim::Worker,
+                    slot_ordinal: 1,
+                    attempt: 62,
+                    state: TrainingAssignmentState::Acked,
+                    node_pubkey_hex: Some(
+                        "5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8"
+                            .to_string(),
+                    ),
+                    lease_id: Some(
+                        "lease.run.cs336.a1.demo.window.cs336.a1.demo.0002.worker.1.attempt62.rev117"
+                            .to_string(),
+                    ),
+                    issued_at_ms: Some(1_776_206_463_000),
+                    expires_at_ms: Some(1_776_206_523_000),
+                    manifest_digest: Some("sha256:manifest-62".to_string()),
+                },
+                ScheduledTrainingAssignment {
+                    assignment_id:
+                        "assign.run.cs336.a1.demo.window.cs336.a1.demo.0002.worker.2.attempt54"
+                            .to_string(),
+                    role: TrainingNodeRoleClaim::Worker,
+                    slot_ordinal: 2,
+                    attempt: 54,
+                    state: TrainingAssignmentState::Completed,
+                    node_pubkey_hex: Some(
+                        "112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a"
+                            .to_string(),
+                    ),
+                    lease_id: Some(
+                        "lease.run.cs336.a1.demo.window.cs336.a1.demo.0002.worker.2.attempt54.rev116"
+                            .to_string(),
+                    ),
+                    issued_at_ms: Some(1_776_206_463_100),
+                    expires_at_ms: Some(1_776_206_523_100),
+                    manifest_digest: Some("sha256:manifest-54".to_string()),
+                },
+            ],
+            updated_at_ms: 1_776_206_463_200,
+        };
+
+        scheduled_run.advance_to_next_window();
+
+        assert_eq!(scheduled_run.current_window_id, "window.cs336.a1.demo.0003");
+        assert!(
+            scheduled_run
+                .assignments
+                .iter()
+                .filter(|assignment| training_assignment_targets_window(
+                    assignment,
+                    "window.cs336.a1.demo.0002",
+                ))
+                .all(|assignment| assignment.state == TrainingAssignmentState::Drained)
+        );
+
+        let slot_one_index = scheduled_run
+            .plan_replacement_assignment(TrainingNodeRoleClaim::Worker)
+            .expect("slot one replacement");
+        let slot_two_index = scheduled_run
+            .plan_replacement_assignment(TrainingNodeRoleClaim::Worker)
+            .expect("slot two replacement");
+        assert_eq!(
+            scheduled_run.assignments[slot_one_index].assignment_id,
+            "assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.1.attempt63"
+        );
+        assert_eq!(
+            scheduled_run.assignments[slot_two_index].assignment_id,
+            "assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55"
+        );
+    }
+
+    #[test]
+    fn training_window_assignment_plans_ignore_stale_assignments_from_old_windows()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let scheduled_run = ScheduledTrainingRun {
+            training_run_id: "run.cs336.a1.demo".to_string(),
+            network_id: "trainnet.cs336.a1.demo".to_string(),
+            artifact_bucket_uri: "gs://openagentsgemini-openagents-training-prod".to_string(),
+            current_window_id: "window.cs336.a1.demo.0003".to_string(),
+            checkpoint_ref: Some("checkpoint://decoder/base".to_string()),
+            role_plan: TrainingSchedulerRolePlan {
+                worker_count: 1,
+                validator_count: 0,
+                recovery_source_count: 0,
+            },
+            membership_revision: 117,
+            lease_issue_count: 3,
+            window_state: TrainingSchedulerWindowState::Active,
+            assignments: vec![
+                ScheduledTrainingAssignment {
+                    assignment_id:
+                        "assign.run.cs336.a1.demo.window.cs336.a1.demo.0002.worker.1.attempt62"
+                            .to_string(),
+                    role: TrainingNodeRoleClaim::Worker,
+                    slot_ordinal: 1,
+                    attempt: 62,
+                    state: TrainingAssignmentState::Active,
+                    node_pubkey_hex: Some(
+                        "5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8"
+                            .to_string(),
+                    ),
+                    lease_id: None,
+                    issued_at_ms: None,
+                    expires_at_ms: None,
+                    manifest_digest: None,
+                },
+                ScheduledTrainingAssignment {
+                    assignment_id:
+                        "assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.1.attempt63"
+                            .to_string(),
+                    role: TrainingNodeRoleClaim::Worker,
+                    slot_ordinal: 1,
+                    attempt: 63,
+                    state: TrainingAssignmentState::Active,
+                    node_pubkey_hex: Some(
+                        "5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8"
+                            .to_string(),
+                    ),
+                    lease_id: None,
+                    issued_at_ms: None,
+                    expires_at_ms: None,
+                    manifest_digest: None,
+                },
+            ],
+            updated_at_ms: 1_776_206_463_200,
+        };
+
+        let plans = training_window_assignment_plans(
+            &scheduled_run,
+            &[training_window_dataset_slice(
+                "slice://window.cs336.a1.demo.0003.0001",
+                "sha256:cs336-a1-demo-0003-slice-1",
+            )],
+            "members.rev117",
+        )?;
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(
+            plans[0].assignment_id,
+            "assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.1.attempt63"
+        );
         Ok(())
     }
 
