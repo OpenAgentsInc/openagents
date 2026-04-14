@@ -207,6 +207,8 @@ Owns:
 - Durable receipts, snapshots, projections, and market-policy enforcement.
 - Acceptance of delivery, challenge, and settlement outcomes into canonical
   market truth.
+- The public integration contract that the private `treasury` service consumes
+  and the canonical payout snapshots it imports back into public stats.
 
 Must not own:
 
@@ -214,6 +216,9 @@ Must not own:
 - Reusable execution runtimes.
 - Provider-local orchestration that belongs in the desktop app or reusable
   provider crates.
+- The long-lived closed-source treasury send engine, wallet-operation worker,
+  or backlog-drain supervisor that now belong in the separate private
+  `treasury` repo.
 
 ## Planned Compute Extension Surfaces
 

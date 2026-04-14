@@ -53,6 +53,7 @@ const ENV_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE: &str =
 const ENV_TREASURY_POLICY_CHANGE_REASON: &str = "NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON";
 const ENV_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS";
+const ENV_TREASURY_INTEGRATION_TOKEN: &str = "NEXUS_CONTROL_TREASURY_INTEGRATION_TOKEN";
 
 const DEFAULT_TREASURY_STATE_PATH: &str = "var/nexus-control/treasury-state.json";
 const DEFAULT_TREASURY_ENABLED: bool = false;
@@ -94,6 +95,7 @@ const TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE: usize = 100;
 const TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES: usize = 8;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_EARLY_SLACK_MS: u64 = 5 * 60_000;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_WINDOW_MS: u64 = 30 * 60_000;
+const TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL: &str = "nexus_control";
 const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
     &["public_snapshot"],
     &["public_snapshot", "active_continuity_alerts"],
@@ -127,6 +129,10 @@ const fn legacy_treasury_placeholder_payout_mode() -> TreasuryPlaceholderPayoutM
     TreasuryPlaceholderPayoutMode::PresenceOnly
 }
 
+fn default_treasury_public_snapshot_source() -> String {
+    TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL.to_string()
+}
+
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
     pub enabled: bool,
@@ -150,6 +156,7 @@ pub struct TreasuryConfig {
     pub wallet_status_refresh_seconds: u64,
     pub max_concurrent_sends: usize,
     pub registration_challenge_ttl_seconds: u64,
+    pub integration_token: Option<String>,
 }
 
 impl TreasuryConfig {
@@ -269,6 +276,7 @@ impl TreasuryConfig {
             wallet_status_refresh_seconds,
             max_concurrent_sends,
             registration_challenge_ttl_seconds,
+            integration_token: read_env_nonempty(ENV_TREASURY_INTEGRATION_TOKEN),
         })
     }
 
@@ -741,10 +749,20 @@ pub struct TreasuryStatusResponse {
     pub payout_loop_last_completed_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_snapshot_generated_at_unix_ms: Option<u64>,
+    #[serde(default = "default_treasury_public_snapshot_source")]
+    pub public_snapshot_source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_snapshot_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_snapshot_health_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_age_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_sync_lag_ms: Option<u64>,
+    #[serde(default)]
+    pub backlog_total: u64,
+    #[serde(default)]
+    pub backlog_retryable: u64,
     #[serde(default)]
     pub eligible_online_payout_targets: u64,
     #[serde(default)]
@@ -896,6 +914,8 @@ impl Default for TreasuryTrainingPayoutLedgerSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TreasuryPublicSnapshot {
     pub generated_at_unix_ms: u64,
+    #[serde(default = "default_treasury_public_snapshot_source")]
+    pub source: String,
     pub treasury_enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
@@ -960,6 +980,10 @@ pub struct TreasuryPublicSnapshot {
     pub payouts_confirmed_24h: u64,
     pub payouts_failed_24h: u64,
     pub payouts_skipped_24h: u64,
+    #[serde(default)]
+    pub backlog_total: u64,
+    #[serde(default)]
+    pub backlog_retryable: u64,
     pub eligible_online_payout_targets: u64,
     pub sellable_pylons_online_now: u64,
     #[serde(default)]
@@ -984,6 +1008,10 @@ pub struct TreasuryPublicSnapshot {
     pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degraded_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health_status: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1034,8 +1062,13 @@ pub struct TreasuryPublicStats {
     pub payout_loop_last_started_at_unix_ms: Option<u64>,
     pub payout_loop_last_completed_at_unix_ms: Option<u64>,
     pub public_snapshot_generated_at_unix_ms: Option<u64>,
+    pub public_snapshot_source: String,
+    pub public_snapshot_mode: Option<String>,
+    pub public_snapshot_health_status: Option<String>,
     pub snapshot_age_ms: Option<u64>,
     pub wallet_sync_lag_ms: Option<u64>,
+    pub backlog_total: u64,
+    pub backlog_retryable: u64,
     pub eligible_online_payout_targets: u64,
     pub sellable_pylons_online_now: u64,
     pub inference_ready_online_payout_targets: u64,
@@ -1071,13 +1104,75 @@ pub struct TreasuryPublicStats {
     pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OnlinePylonIdentity {
     pub nostr_pubkey_hex: String,
     pub sellable: bool,
     pub client_version: Option<String>,
     pub inference_ready: bool,
     pub host_fingerprint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryCanonicalPublicSnapshot {
+    pub version: String,
+    pub source: String,
+    pub generated_at_unix_ms: u64,
+    pub stale_after_unix_ms: u64,
+    pub health_status: String,
+    pub mode: String,
+    pub drain_active: bool,
+    pub payout_sats_paid_total: u64,
+    pub payout_sats_paid_24h: u64,
+    pub payouts_dispatched_24h: u64,
+    pub payouts_confirmed_24h: u64,
+    pub payouts_failed_24h: u64,
+    pub payouts_skipped_24h: u64,
+    pub backlog_total: u64,
+    pub backlog_retryable: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_runtime_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_hydration_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_payment_scan_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryIntegrationPolicySnapshot {
+    pub treasury_enabled: bool,
+    pub payout_sats_per_window: u64,
+    pub payout_interval_seconds: u64,
+    pub require_sellable: bool,
+    pub daily_budget_cap_sats: u64,
+    pub placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
+    pub dedupe_placeholder_hosts: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_new_accrual_pylon_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_new_accrual_started_at_unix_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryIntegrationExportResponse {
+    pub authority: String,
+    pub generated_at_unix_ms: u64,
+    pub policy: TreasuryIntegrationPolicySnapshot,
+    pub payout_sats_paid_total_floor: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payout_target_identities: Vec<TreasuryPayoutTargetIdentityStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub online_identities: Vec<OnlinePylonIdentity>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryIntegrationImportResponse {
+    pub authority: String,
+    pub public_snapshot_source: String,
+    pub public_snapshot_generated_at_unix_ms: u64,
+    pub payout_sats_paid_total: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1278,6 +1373,8 @@ pub struct TreasuryState {
     pub policy_last_error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_snapshot: Option<TreasuryPublicSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_public_snapshot: Option<TreasuryCanonicalPublicSnapshot>,
     #[serde(default)]
     pub payout_targets_by_identity: BTreeMap<String, RegisteredPayoutTarget>,
     #[serde(default)]
@@ -2191,6 +2288,32 @@ impl TreasuryState {
         .max()
     }
 
+    fn backlog_counts(&self) -> (u64, u64) {
+        let mut backlog_total = 0u64;
+        let mut backlog_retryable = 0u64;
+        for record in self.payout_records_by_key.values() {
+            if !matches!(record.status.as_str(), "confirmed" | "skipped") {
+                backlog_total = backlog_total.saturating_add(1);
+            }
+            if record.payment_id.is_none()
+                && !record.payout_target.trim().is_empty()
+                && matches!(record.status.as_str(), "failed" | "dispatching")
+            {
+                backlog_retryable = backlog_retryable.saturating_add(1);
+            }
+        }
+        (backlog_total, backlog_retryable)
+    }
+
+    fn active_canonical_public_snapshot(
+        &self,
+        now_unix_ms: u64,
+    ) -> Option<&TreasuryCanonicalPublicSnapshot> {
+        self.canonical_public_snapshot
+            .as_ref()
+            .filter(|snapshot| snapshot.stale_after_unix_ms >= now_unix_ms)
+    }
+
     fn wallet_runtime_view(
         &self,
         config: &TreasuryConfig,
@@ -2296,6 +2419,7 @@ impl TreasuryState {
         let mut payouts_confirmed_24h = 0u64;
         let mut payouts_failed_24h = 0u64;
         let mut payouts_skipped_24h = 0u64;
+        let (backlog_total, backlog_retryable) = self.backlog_counts();
 
         for record in self.payout_records_by_key.values() {
             if record.status == "dispatched" && !record.counted_in_paid_total {
@@ -2326,8 +2450,9 @@ impl TreasuryState {
             }
         }
 
-        TreasuryPublicSnapshot {
+        let mut snapshot = TreasuryPublicSnapshot {
             generated_at_unix_ms: now_unix_ms,
+            source: default_treasury_public_snapshot_source(),
             treasury_enabled: policy.treasury_enabled,
             payout_sats_per_window: policy.payout_sats_per_window,
             payout_interval_seconds: policy.payout_interval_seconds,
@@ -2401,6 +2526,8 @@ impl TreasuryState {
             payouts_confirmed_24h,
             payouts_failed_24h,
             payouts_skipped_24h,
+            backlog_total,
+            backlog_retryable,
             eligible_online_payout_targets: continuity.eligible_online_payout_targets,
             sellable_pylons_online_now: continuity.sellable_pylons_online_now,
             inference_ready_online_payout_targets: continuity.inference_ready_online_payout_targets,
@@ -2418,7 +2545,48 @@ impl TreasuryState {
             fail_reason_metrics_24h: continuity.fail_reason_metrics_24h,
             active_continuity_alerts: self.active_continuity_alerts.clone(),
             degraded_reason: self.degraded_reason(config, now_unix_ms),
+            mode: None,
+            health_status: None,
+        };
+
+        if let Some(canonical) = self.active_canonical_public_snapshot(now_unix_ms) {
+            snapshot.generated_at_unix_ms = canonical.generated_at_unix_ms;
+            snapshot.source = canonical.source.clone();
+            snapshot.wallet_runtime_status = canonical
+                .wallet_runtime_status
+                .clone()
+                .or(snapshot.wallet_runtime_status);
+            snapshot.wallet_last_error = canonical
+                .wallet_last_error
+                .clone()
+                .or(snapshot.wallet_last_error);
+            snapshot.payout_loop_health = if canonical.health_status == "healthy" {
+                "healthy".to_string()
+            } else {
+                "degraded".to_string()
+            };
+            snapshot.payout_sats_paid_total = canonical.payout_sats_paid_total;
+            snapshot.payout_sats_paid_24h = canonical.payout_sats_paid_24h;
+            snapshot.payouts_dispatched_24h = canonical.payouts_dispatched_24h;
+            snapshot.payouts_confirmed_24h = canonical.payouts_confirmed_24h;
+            snapshot.payouts_failed_24h = canonical.payouts_failed_24h;
+            snapshot.payouts_skipped_24h = canonical.payouts_skipped_24h;
+            snapshot.backlog_total = canonical.backlog_total;
+            snapshot.backlog_retryable = canonical.backlog_retryable;
+            snapshot.active_continuity_alerts = Vec::new();
+            snapshot.degraded_reason = if canonical.health_status == "healthy" {
+                None
+            } else {
+                canonical
+                    .wallet_last_error
+                    .clone()
+                    .or_else(|| Some("treasury_service_degraded".to_string()))
+            };
+            snapshot.mode = Some(canonical.mode.clone());
+            snapshot.health_status = Some(canonical.health_status.clone());
         }
+
+        snapshot
     }
 
     pub fn refresh_public_snapshot(&mut self, config: &TreasuryConfig, now_unix_ms: u64) {
@@ -2434,9 +2602,34 @@ impl TreasuryState {
         let continuity = self.continuity_signal_snapshot(config, now_unix_ms);
         let (wallet_runtime_status, wallet_last_error) =
             self.wallet_runtime_view(config, now_unix_ms);
+        let canonical = self.active_canonical_public_snapshot(now_unix_ms);
+        let wallet_runtime_status = canonical
+            .and_then(|snapshot| snapshot.wallet_runtime_status.clone())
+            .or(wallet_runtime_status);
+        let wallet_last_error = canonical
+            .and_then(|snapshot| snapshot.wallet_last_error.clone())
+            .or(wallet_last_error);
+        let wallet_hydration_mode = canonical
+            .and_then(|snapshot| snapshot.wallet_hydration_mode.clone())
+            .or_else(|| self.wallet_hydration_mode.clone());
+        let wallet_payment_scan_mode = canonical
+            .and_then(|snapshot| snapshot.wallet_payment_scan_mode.clone())
+            .or_else(|| self.wallet_payment_scan_mode.clone());
         let wallet_sync_lag_ms = self
             .latest_wallet_activity_at_unix_ms()
             .map(|last_activity| now_unix_ms.saturating_sub(last_activity));
+        let use_local_continuity_alerts = snapshot.source == TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL;
+        let payout_loop_health = if use_local_continuity_alerts {
+            self.payout_loop_health(config)
+        } else {
+            snapshot.payout_loop_health.clone()
+        };
+        let degraded_reason = if use_local_continuity_alerts {
+            self.degraded_reason(config, now_unix_ms)
+        } else {
+            snapshot.degraded_reason.clone()
+        };
+
         TreasuryPublicStats {
             treasury_enabled: snapshot.treasury_enabled,
             payout_sats_per_window: snapshot.payout_sats_per_window,
@@ -2453,8 +2646,8 @@ impl TreasuryState {
             wallet_balance_updated_at_unix_ms: snapshot.wallet_balance_updated_at_unix_ms,
             wallet_runtime_status,
             wallet_last_error,
-            wallet_hydration_mode: self.wallet_hydration_mode.clone(),
-            wallet_payment_scan_mode: self.wallet_payment_scan_mode.clone(),
+            wallet_hydration_mode,
+            wallet_payment_scan_mode,
             wallet_storage_runtime_mode: snapshot.wallet_storage_runtime_mode,
             payout_loop_runtime_status: snapshot.payout_loop_runtime_status,
             payout_loop_last_error: snapshot.payout_loop_last_error,
@@ -2462,8 +2655,13 @@ impl TreasuryState {
             payout_loop_last_started_at_unix_ms: snapshot.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: snapshot.payout_loop_last_completed_at_unix_ms,
             public_snapshot_generated_at_unix_ms: Some(snapshot.generated_at_unix_ms),
+            public_snapshot_source: snapshot.source,
+            public_snapshot_mode: snapshot.mode,
+            public_snapshot_health_status: snapshot.health_status,
             snapshot_age_ms: Some(now_unix_ms.saturating_sub(snapshot.generated_at_unix_ms)),
             wallet_sync_lag_ms,
+            backlog_total: snapshot.backlog_total,
+            backlog_retryable: snapshot.backlog_retryable,
             eligible_online_payout_targets: snapshot.eligible_online_payout_targets,
             sellable_pylons_online_now: snapshot.sellable_pylons_online_now,
             inference_ready_online_payout_targets: snapshot.inference_ready_online_payout_targets,
@@ -2483,8 +2681,8 @@ impl TreasuryState {
             ),
             dispatch_lag_ms: lag_since(now_unix_ms, snapshot.last_dispatch_at_unix_ms),
             confirm_lag_ms: lag_since(now_unix_ms, snapshot.last_confirmed_payout_at_unix_ms),
-            payout_loop_health: self.payout_loop_health(config),
-            degraded_reason: self.degraded_reason(config, now_unix_ms),
+            payout_loop_health,
+            degraded_reason,
             payout_sats_paid_total: snapshot.payout_sats_paid_total,
             payout_sats_paid_24h: snapshot.payout_sats_paid_24h,
             accepted_work_payout_sats_paid_total: snapshot.accepted_work_payout_sats_paid_total,
@@ -2507,11 +2705,15 @@ impl TreasuryState {
             payouts_skipped_24h: snapshot.payouts_skipped_24h,
             skip_reason_metrics_24h: snapshot.skip_reason_metrics_24h,
             fail_reason_metrics_24h: snapshot.fail_reason_metrics_24h,
-            active_continuity_alerts: continuity.active_alerts,
+            active_continuity_alerts: if use_local_continuity_alerts {
+                continuity.active_alerts
+            } else {
+                Vec::new()
+            },
         }
     }
 
-    fn payout_target_identity_rows(&self) -> Vec<TreasuryPayoutTargetIdentityStatus> {
+    pub(crate) fn payout_target_identity_rows(&self) -> Vec<TreasuryPayoutTargetIdentityStatus> {
         let mut rows = self
             .payout_targets_by_identity
             .values()
@@ -2711,8 +2913,13 @@ impl TreasuryState {
             payout_loop_last_started_at_unix_ms: stats.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: stats.payout_loop_last_completed_at_unix_ms,
             public_snapshot_generated_at_unix_ms: stats.public_snapshot_generated_at_unix_ms,
+            public_snapshot_source: stats.public_snapshot_source,
+            public_snapshot_mode: stats.public_snapshot_mode,
+            public_snapshot_health_status: stats.public_snapshot_health_status,
             snapshot_age_ms: stats.snapshot_age_ms,
             wallet_sync_lag_ms: stats.wallet_sync_lag_ms,
+            backlog_total: stats.backlog_total,
+            backlog_retryable: stats.backlog_retryable,
             eligible_online_payout_targets: stats.eligible_online_payout_targets,
             sellable_pylons_online_now: stats.sellable_pylons_online_now,
             inference_ready_online_payout_targets: stats.inference_ready_online_payout_targets,
@@ -2768,6 +2975,48 @@ impl TreasuryState {
             training_payout_ledger_summary,
             payout_target_identities,
             recent_training_payouts,
+        }
+    }
+
+    pub fn integration_policy_snapshot(
+        &self,
+        config: &TreasuryConfig,
+    ) -> TreasuryIntegrationPolicySnapshot {
+        let policy = self.active_policy(config);
+        TreasuryIntegrationPolicySnapshot {
+            treasury_enabled: policy.treasury_enabled,
+            payout_sats_per_window: policy.payout_sats_per_window,
+            payout_interval_seconds: policy.payout_interval_seconds,
+            require_sellable: policy.require_sellable,
+            daily_budget_cap_sats: policy.daily_budget_cap_sats,
+            placeholder_payout_mode: policy.placeholder_payout_mode,
+            dedupe_placeholder_hosts: policy.dedupe_placeholder_hosts,
+            min_new_accrual_pylon_version: policy.min_new_accrual_pylon_version,
+            min_new_accrual_started_at_unix_ms: policy.min_new_accrual_started_at_unix_ms,
+        }
+    }
+
+    pub fn import_canonical_public_snapshot(
+        &mut self,
+        config: &TreasuryConfig,
+        mut snapshot: TreasuryCanonicalPublicSnapshot,
+        now_unix_ms: u64,
+    ) -> TreasuryIntegrationImportResponse {
+        if let Some(existing) = self.canonical_public_snapshot.as_ref() {
+            if snapshot.generated_at_unix_ms < existing.generated_at_unix_ms
+                && snapshot.payout_sats_paid_total <= existing.payout_sats_paid_total
+            {
+                snapshot = existing.clone();
+            }
+        }
+        self.apply_paid_total_floor(snapshot.payout_sats_paid_total);
+        self.canonical_public_snapshot = Some(snapshot.clone());
+        self.refresh_public_snapshot(config, now_unix_ms);
+        TreasuryIntegrationImportResponse {
+            authority: "openagents-hosted-nexus".to_string(),
+            public_snapshot_source: snapshot.source,
+            public_snapshot_generated_at_unix_ms: snapshot.generated_at_unix_ms,
+            payout_sats_paid_total: snapshot.payout_sats_paid_total,
         }
     }
 
@@ -5071,12 +5320,24 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
             "public_snapshot_generated_at_unix_ms: {snapshot_generated_at_unix_ms}"
         ));
     }
+    lines.push(format!(
+        "public_snapshot_source: {}",
+        response.public_snapshot_source
+    ));
+    if let Some(mode) = response.public_snapshot_mode.as_deref() {
+        lines.push(format!("public_snapshot_mode: {mode}"));
+    }
+    if let Some(status) = response.public_snapshot_health_status.as_deref() {
+        lines.push(format!("public_snapshot_health_status: {status}"));
+    }
     if let Some(snapshot_age_ms) = response.snapshot_age_ms {
         lines.push(format!("snapshot_age_ms: {snapshot_age_ms}"));
     }
     if let Some(wallet_sync_lag_ms) = response.wallet_sync_lag_ms {
         lines.push(format!("wallet_sync_lag_ms: {wallet_sync_lag_ms}"));
     }
+    lines.push(format!("backlog_total: {}", response.backlog_total));
+    lines.push(format!("backlog_retryable: {}", response.backlog_retryable));
     lines.push(format!(
         "eligible_online_payout_targets: {}",
         response.eligible_online_payout_targets
@@ -6167,6 +6428,7 @@ mod tests {
             wallet_status_refresh_seconds: 30,
             max_concurrent_sends: 16,
             registration_challenge_ttl_seconds: 300,
+            integration_token: None,
         }
     }
 
