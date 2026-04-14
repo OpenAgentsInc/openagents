@@ -1979,6 +1979,13 @@ struct TransitionTrainingWindowRequest {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecoverEmptyTrainingWindowRequest {
+    idempotency_key: String,
+    recorded_at_ms: i64,
+    window_id: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct TrainingWindowContributionInput {
     contribution_id: String,
     assignment_id: String,
@@ -7005,6 +7012,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
             post(seal_training_window),
         )
         .route(
+            "/api/training/windows/{window_id}/recover-empty",
+            post(recover_empty_training_window),
+        )
+        .route(
             "/api/training/windows/{window_id}/reconcile",
             post(reconcile_training_window),
         )
@@ -8366,6 +8377,215 @@ async fn seal_training_window(
         "kernel.training_window.sealed",
         receipt_event,
         snapshot_event,
+    );
+    Ok(Json(response))
+}
+
+async fn recover_empty_training_window(
+    State(state): State<AppState>,
+    Path(window_id): Path<String>,
+    Json(mut request): Json<RecoverEmptyTrainingWindowRequest>,
+) -> Result<Json<TrainingWindowCoordinatorResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_window_idempotency_key_missing",
+    )?;
+    request.window_id =
+        normalize_required_field(window_id.as_str(), "compute_adapter_window_id_missing")?;
+    request.recorded_at_ms = if request.recorded_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.recorded_at_ms
+    };
+
+    let caller_id = training_window_caller_id(request.window_id.as_str());
+    let (
+        response,
+        outcome_receipt_event,
+        outcome_snapshot_event,
+        window_receipt_event,
+        window_snapshot_event,
+    ) = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let window = store
+            .kernel
+            .get_compute_adapter_training_window(request.window_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_window_not_found".to_string()))?;
+        if window.status != ComputeAdapterWindowStatus::Active {
+            return Err(kernel_api_error(
+                "training_window_status_invalid".to_string(),
+            ));
+        }
+        if window.total_contributions > 0
+            || window.admitted_contributions > 0
+            || window.accepted_contributions > 0
+            || window.quarantined_contributions > 0
+            || window.rejected_contributions > 0
+            || window.replay_required_contributions > 0
+        {
+            return Err(kernel_api_error(
+                "training_window_recovery_requires_empty_window".to_string(),
+            ));
+        }
+        let training_run = store
+            .kernel
+            .get_compute_training_run(window.training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("compute_training_run_not_found".to_string()))?;
+        let mut metadata =
+            training_window_metadata_from_value(&window.metadata).map_err(kernel_api_error)?;
+        if metadata.seal_deadline_ms > request.recorded_at_ms {
+            return Err(kernel_api_error(
+                "training_window_recovery_not_due".to_string(),
+            ));
+        }
+        let assignment_plans = metadata.assignment_plans.clone();
+        let closeout_status = TrainingWindowCloseoutStatus::NoReward;
+        metadata.sealed_at_ms = metadata.sealed_at_ms.or(Some(request.recorded_at_ms));
+        metadata.reconciled_at_ms = Some(request.recorded_at_ms);
+        metadata.defensibility = Some(serde_json::json!({
+            "status": "recovered_empty_window",
+            "reason": "seal_deadline_elapsed_without_contributions",
+        }));
+
+        let mut updated_window = window.clone();
+        updated_window.status = ComputeAdapterWindowStatus::Reconciled;
+        updated_window.total_contributions = 0;
+        updated_window.admitted_contributions = 0;
+        updated_window.accepted_contributions = 0;
+        updated_window.quarantined_contributions = 0;
+        updated_window.rejected_contributions = 0;
+        updated_window.replay_required_contributions = 0;
+        updated_window.replay_checked_contributions = 0;
+        updated_window.held_out_average_score_bps = None;
+        updated_window.benchmark_pass_rate_bps = None;
+        updated_window.runtime_smoke_passed = None;
+        updated_window.promotion_ready = false;
+        updated_window.gate_reason_codes.clear();
+        updated_window.promotion_disposition = None;
+        updated_window.hold_reason_codes.clear();
+        updated_window.aggregated_delta_digest = None;
+        updated_window.accepted_aggregate_id = None;
+        updated_window.output_policy_revision = None;
+        updated_window.output_checkpoint_pointer = None;
+        updated_window.promoted_checkpoint_ref = None;
+        updated_window.recorded_at_ms = request.recorded_at_ms;
+        updated_window.metadata = training_window_metadata_value(&metadata);
+        updated_window.window_summary_digest =
+            training_window_summary_digest(&updated_window, &[], &metadata)
+                .map_err(kernel_api_error)?;
+        let interim_result = store
+            .kernel
+            .record_compute_adapter_window(
+                &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
+                training_window_record_request(
+                    format!("{}.recover-empty.window", request.idempotency_key),
+                    updated_window.clone(),
+                    Vec::new(),
+                ),
+            )
+            .map_err(kernel_api_error)?;
+        let closeout_outcome = ComputeAcceptedOutcome {
+            outcome_id: training_window_closeout_outcome_id(updated_window.window_id.as_str()),
+            outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+            source_run_id: training_run.training_run_id.clone(),
+            environment_binding: training_run.environment_binding.clone(),
+            checkpoint_binding: Some(training_run.checkpoint_binding.clone()),
+            validator_policy_ref: Some(training_run.validator_policy_ref.clone()),
+            benchmark_package_refs: training_run.benchmark_package_refs.clone(),
+            accepted_at_ms: request.recorded_at_ms,
+            evaluation_summary: None,
+            training_summary: Some(training_window_closeout_summary(
+                &training_run,
+                &updated_window,
+                closeout_status,
+            )),
+            metadata: serde_json::json!({
+                "network_id": metadata.network_id,
+                "window_id": updated_window.window_id,
+                "closeout_scope": "expired_empty_window",
+                "closeout_status": closeout_status.label(),
+                "payout_eligible": false,
+                "work_class": updated_window.work_class.label(),
+                "replica_type": updated_window.replica_type.label(),
+                "window_summary_digest": updated_window.window_summary_digest,
+                "recovery_reason": "seal_deadline_elapsed_without_contributions",
+                "contribution_counts": {
+                    "total": 0,
+                    "accepted": 0,
+                    "quarantined": 0,
+                    "rejected": 0,
+                    "replay_required": 0,
+                },
+            }),
+        };
+        let accepted_outcome_result = store
+            .kernel
+            .accept_compute_outcome(
+                &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
+                AcceptComputeOutcomeRequest {
+                    idempotency_key: format!("{}.recover-empty.closeout", request.idempotency_key),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    outcome: closeout_outcome.clone(),
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .map_err(kernel_api_error)?;
+        updated_window.accepted_outcome_id = Some(closeout_outcome.outcome_id);
+        let result = store
+            .kernel
+            .record_compute_adapter_window(
+                &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
+                training_window_record_request(
+                    request.idempotency_key.clone(),
+                    updated_window.clone(),
+                    Vec::new(),
+                ),
+            )
+            .map_err(kernel_api_error)?;
+        if let Some(scheduled_run) = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get_mut(updated_window.training_run_id.as_str())
+        {
+            scheduled_run.window_state = TrainingSchedulerWindowState::Accepted;
+            scheduled_run.updated_at_ms = request.recorded_at_ms;
+            if scheduled_run.current_window_id == updated_window.window_id {
+                scheduled_run.current_window_id =
+                    training_window_next_id(updated_window.window_id.as_str());
+            }
+        }
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
+        (
+            training_window_response(result.response, assignment_plans),
+            accepted_outcome_result.receipt_event,
+            accepted_outcome_result.snapshot_event,
+            result.receipt_event.or(interim_result.receipt_event),
+            result.snapshot_event.or(interim_result.snapshot_event),
+        )
+    };
+    record_training_coordination_observability(
+        &state,
+        request.recorded_at_ms as u64,
+        caller_id.as_str(),
+        "kernel.training_window.empty_recovered.closeout",
+        outcome_receipt_event,
+        outcome_snapshot_event,
+    );
+    record_training_coordination_observability(
+        &state,
+        request.recorded_at_ms as u64,
+        caller_id.as_str(),
+        "kernel.training_window.empty_recovered",
+        window_receipt_event,
+        window_snapshot_event,
     );
     Ok(Json(response))
 }
@@ -21047,6 +21267,18 @@ mod tests {
         }
     }
 
+    fn recover_empty_training_window_request(
+        idempotency_key: &str,
+        recorded_at_ms: i64,
+        window_id: &str,
+    ) -> super::RecoverEmptyTrainingWindowRequest {
+        super::RecoverEmptyTrainingWindowRequest {
+            idempotency_key: idempotency_key.to_string(),
+            recorded_at_ms,
+            window_id: window_id.to_string(),
+        }
+    }
+
     fn training_window_dataset_slice(
         slice_id: &str,
         slice_digest: &str,
@@ -29348,6 +29580,424 @@ mod tests {
         assert_eq!(visualized_run.weak_device_assigned_contributors, 2);
         assert_eq!(visualized_run.accepted_contributors, 0);
         assert_eq!(visualized_run.model_progress_contributors, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn recover_empty_training_window_advances_cs336_demo_to_next_window() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_477_000u64;
+        let network_id = "trainnet.cs336.a1.demo";
+        let training_run_id = "run.cs336.a1.demo";
+        let window_id = "window.cs336.a1.demo.0001";
+        let training_policy_ref = "policy://training/cs336/a1-demo/v1";
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut environment_request = compute_environment_package_request(
+                PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
+                "2026.04.13",
+                "idemp.scheduler.environment.cs336-a1-demo",
+                created_at_ms as i64 + 100,
+            );
+            environment_request.package.family = "training".to_string();
+            environment_request.package.display_name = "Psion CS336 A1 Demo".to_string();
+            environment_request.package.description =
+                Some("Bounded CS336 assignment 1 demo environment".to_string());
+            environment_request.package.metadata = json!({"lane": "cs336_a1_demo"});
+            store
+                .kernel
+                .register_compute_environment_package(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 100),
+                    environment_request,
+                )
+                .expect("register cs336 a1 demo environment");
+
+            let mut checkpoint_policy_request = compute_checkpoint_family_policy_request(
+                "idemp.scheduler.checkpoint.cs336-a1-demo",
+                created_at_ms as i64 + 200,
+            );
+            checkpoint_policy_request
+                .policy_record
+                .allowed_environment_refs =
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()];
+            checkpoint_policy_request.policy_record.validator_policy_ref =
+                Some("policy://validator/mvp/v1".to_string());
+            store
+                .kernel
+                .register_compute_checkpoint_family_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 200),
+                    checkpoint_policy_request,
+                )
+                .expect("register checkpoint policy");
+
+            let mut validator_policy_request = compute_validator_policy_request(
+                "idemp.scheduler.validator.cs336-a1-demo",
+                created_at_ms as i64 + 300,
+            );
+            validator_policy_request.policy_record.policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            validator_policy_request
+                .policy_record
+                .benchmark_package_refs = Vec::new();
+            store
+                .kernel
+                .register_compute_validator_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 300),
+                    validator_policy_request,
+                )
+                .expect("register validator policy");
+
+            let mut training_policy_request = compute_training_policy_request(
+                "idemp.scheduler.training_policy.cs336-a1-demo",
+                created_at_ms as i64 + 500,
+            );
+            training_policy_request.training_policy.training_policy_ref =
+                training_policy_ref.to_string();
+            training_policy_request.training_policy.environment_refs =
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()];
+            training_policy_request.training_policy.validator_policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            training_policy_request
+                .training_policy
+                .benchmark_package_refs = Vec::new();
+            training_policy_request.training_policy.metadata =
+                training_run_definition_metadata_value(
+                    "rundef.cs336.assignment1.demo.v1",
+                    "psion_reference_demo",
+                    "stanford_cs336_assignment1_demo",
+                    "single_host_reference",
+                    "dataset://cs336/assignment1/tinystories-demo",
+                    "dataset_slice_family.cs336_assignment1_demo",
+                    "cs336.assignment1.demo_page_proof_family",
+                    None,
+                    "training_policy_version",
+                );
+            store
+                .kernel
+                .register_compute_training_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 500),
+                    training_policy_request,
+                )
+                .expect("register training policy");
+
+            let mut training_run_request = compute_training_run_request(
+                "idemp.scheduler.run.cs336-a1-demo",
+                created_at_ms as i64 + 600,
+            );
+            training_run_request.training_run.training_run_id = training_run_id.to_string();
+            training_run_request.training_run.training_policy_ref = training_policy_ref.to_string();
+            training_run_request.training_run.benchmark_package_refs = Vec::new();
+            training_run_request
+                .training_run
+                .environment_binding
+                .environment_ref = PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string();
+            training_run_request.training_run.validator_policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            training_run_request.training_run.status = ComputeTrainingRunStatus::Running;
+            training_run_request.training_run.started_at_ms = Some(created_at_ms as i64 + 600);
+            training_run_request.training_run.work_class =
+                ComputeTrainingWorkClass::SmallModelLocalTraining;
+            training_run_request.training_run.replica_type = ComputeTrainingReplicaType::SingleNode;
+            training_run_request.training_run.metadata = json!({
+                "display_name": "CS336 A1 Demo",
+                "pylon_training_scheduler": training_scheduler_metadata_with_contract(
+                    network_id,
+                    2,
+                    0,
+                    0,
+                    window_id,
+                    "checkpoint://decoder/base"
+                )["pylon_training_scheduler"].clone(),
+            });
+            store
+                .kernel
+                .create_compute_training_run(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 600),
+                    training_run_request,
+                )
+                .expect("create training run");
+
+            let mut mac_node = training_node_admission_request_with_environment_refs(
+                "node-cs336-a1-demo-mac",
+                "sha256:build-cs336-a1-demo-mac",
+                Vec::new(),
+                Vec::new(),
+                Some(128),
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
+            );
+            mac_node.requested_at_ms = created_at_ms as i64 + 700;
+            mac_node.node_label = Some("Episode 223 Mac".to_string());
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-mac",
+                        created_at_ms + 700,
+                    ),
+                    mac_node,
+                )
+                .expect("admit Mac node");
+
+            let mut linux_node = training_node_admission_request_with_environment_refs(
+                "node-cs336-a1-demo-linux",
+                "sha256:build-cs336-a1-demo-linux",
+                Vec::new(),
+                Vec::new(),
+                Some(126),
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
+            );
+            linux_node.requested_at_ms = created_at_ms as i64 + 760;
+            linux_node.node_label = Some("Episode 223 Linux".to_string());
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-linux",
+                        created_at_ms + 760,
+                    ),
+                    linux_node,
+                )
+                .expect("admit Linux node");
+        }
+
+        let mac_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.cs336-a1-demo.mac.recover",
+                            created_at_ms as i64 + 20_000,
+                            "node-cs336-a1-demo-mac",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(mac_lease_response.status(), StatusCode::OK);
+        let mac_lease = response_json::<RecordTrainingRunLeaseResponse>(mac_lease_response).await?;
+        assert_eq!(mac_lease.window_id, window_id);
+
+        let linux_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.cs336-a1-demo.linux.recover",
+                            created_at_ms as i64 + 20_050,
+                            "node-cs336-a1-demo-linux",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(linux_lease_response.status(), StatusCode::OK);
+        let linux_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(linux_lease_response).await?;
+        assert_eq!(linux_lease.window_id, window_id);
+
+        let planned_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.cs336-a1-demo.recover",
+                            created_at_ms as i64 + 21_000,
+                            training_run_id,
+                            vec![
+                                training_window_dataset_slice("slice://0001", "sha256:slice-0001"),
+                                training_window_dataset_slice("slice://0002", "sha256:slice-0002"),
+                            ],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned_response.status(), StatusCode::OK);
+
+        let activated_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/activate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.cs336-a1-demo.recover",
+                            created_at_ms as i64 + 21_100,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated_response.status(), StatusCode::OK);
+
+        let recovered_at_ms = created_at_ms as i64 + 10_000_000;
+        let recover_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/recover-empty"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &recover_empty_training_window_request(
+                            "idemp.training.window.recover-empty.cs336-a1-demo",
+                            recovered_at_ms,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        let recover_status = recover_response.status();
+        let recover_bytes = to_bytes(recover_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            recover_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(recover_bytes.as_ref())
+        );
+        let recovered: TrainingWindowCoordinatorResponse =
+            serde_json::from_slice(recover_bytes.as_ref())?;
+        assert_eq!(recovered.window.window_id, window_id);
+        assert_eq!(
+            recovered.window.status,
+            ComputeAdapterWindowStatus::Reconciled
+        );
+        assert_eq!(recovered.window.accepted_contributions, 0);
+        assert_eq!(
+            recovered.window.accepted_outcome_id.as_deref(),
+            Some("accepted.training_window.window.cs336.a1.demo.0001")
+        );
+
+        let summary = fetch_training_summary(&app).await?;
+        let summary_run = summary
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == training_run_id)
+            .expect("summary run");
+        assert_eq!(summary_run.current_window_id, "window.cs336.a1.demo.0002");
+        assert_eq!(summary_run.scheduler_window_state, "accepted");
+        assert_eq!(
+            summary_run.latest_closeout_status.as_deref(),
+            Some("no_reward")
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut mac_heartbeat = training_node_heartbeat_request_for_scope(
+                "node-cs336-a1-demo-mac",
+                "sha256:build-cs336-a1-demo-mac",
+                training_run_id,
+                "window.cs336.a1.demo.0002",
+            );
+            mac_heartbeat.recorded_at_ms = recovered_at_ms + 100;
+            mac_heartbeat.last_heartbeat_at_ms = Some(recovered_at_ms + 100);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-mac",
+                        (recovered_at_ms + 100) as u64,
+                    ),
+                    mac_heartbeat,
+                )
+                .expect("heartbeat Mac node after recovery");
+
+            let mut linux_heartbeat = training_node_heartbeat_request_for_scope(
+                "node-cs336-a1-demo-linux",
+                "sha256:build-cs336-a1-demo-linux",
+                training_run_id,
+                "window.cs336.a1.demo.0002",
+            );
+            linux_heartbeat.recorded_at_ms = recovered_at_ms + 110;
+            linux_heartbeat.last_heartbeat_at_ms = Some(recovered_at_ms + 110);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-linux",
+                        (recovered_at_ms + 110) as u64,
+                    ),
+                    linux_heartbeat,
+                )
+                .expect("heartbeat Linux node after recovery");
+        }
+
+        let mac_next_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.cs336-a1-demo.mac.after-recover",
+                            recovered_at_ms + 1_000,
+                            "node-cs336-a1-demo-mac",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        let mac_next_lease_status = mac_next_lease_response.status();
+        let mac_next_lease_bytes =
+            to_bytes(mac_next_lease_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            mac_next_lease_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(mac_next_lease_bytes.as_ref())
+        );
+        let mac_next_lease: RecordTrainingRunLeaseResponse =
+            serde_json::from_slice(mac_next_lease_bytes.as_ref())?;
+        assert_eq!(mac_next_lease.window_id, "window.cs336.a1.demo.0002");
+
+        let linux_next_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.cs336-a1-demo.linux.after-recover",
+                            recovered_at_ms + 1_050,
+                            "node-cs336-a1-demo-linux",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(linux_next_lease_response.status(), StatusCode::OK);
+        let linux_next_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(linux_next_lease_response).await?;
+        assert_eq!(linux_next_lease.window_id, "window.cs336.a1.demo.0002");
+        assert_ne!(mac_next_lease.assignment_id, linux_next_lease.assignment_id);
 
         Ok(())
     }
