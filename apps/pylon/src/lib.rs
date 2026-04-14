@@ -303,6 +303,7 @@ pub struct PylonConfig {
 struct PylonPublicInventoryControls {
     local_gemma_inference_enabled: bool,
     local_gemma_embeddings_enabled: bool,
+    adapter_training_contributor_enabled: bool,
     sandbox_container_exec_enabled: bool,
     sandbox_python_exec_enabled: bool,
     sandbox_node_exec_enabled: bool,
@@ -314,6 +315,7 @@ impl From<&ProviderInventoryControls> for PylonPublicInventoryControls {
         Self {
             local_gemma_inference_enabled: value.local_gemma_inference_enabled,
             local_gemma_embeddings_enabled: value.local_gemma_embeddings_enabled,
+            adapter_training_contributor_enabled: value.adapter_training_contributor_enabled,
             sandbox_container_exec_enabled: value.sandbox_container_exec_enabled,
             sandbox_python_exec_enabled: value.sandbox_python_exec_enabled,
             sandbox_node_exec_enabled: value.sandbox_node_exec_enabled,
@@ -17924,6 +17926,9 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
         | "backend.ollama_embeddings_enabled" => {
             next.inventory_controls.local_gemma_embeddings_enabled = parse_bool(value)?;
         }
+        "backend.adapter_training_contributor_enabled" => {
+            next.inventory_controls.adapter_training_contributor_enabled = parse_bool(value)?;
+        }
         "backend.sandbox_container_exec_enabled" => {
             next.inventory_controls.sandbox_container_exec_enabled = parse_bool(value)?;
         }
@@ -19436,6 +19441,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "public config should expose local Gemma inventory toggles",
         )?;
         ensure(
+            json.contains("\"adapter_training_contributor_enabled\""),
+            "public config should expose the training contributor toggle",
+        )?;
+        ensure(
             json.contains("\"training\"")
                 && json.contains("\"checkpoint_serve_addr\"")
                 && json.contains("\"artifact_credential_source_names\""),
@@ -19524,6 +19533,43 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             config.buyer_auto_pay_enabled,
             "config set should update buyer_auto_pay_enabled",
+        )
+    }
+
+    #[test]
+    fn config_set_updates_training_contributor_toggle() -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        apply_config_set(
+            &mut config,
+            "backend.adapter_training_contributor_enabled",
+            "true",
+        )?;
+        ensure(
+            config
+                .inventory_controls
+                .adapter_training_contributor_enabled,
+            "config set should update the training contributor toggle",
+        )
+    }
+
+    #[test]
+    fn save_config_preserves_training_contributor_toggle() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = default_config(temp_dir.path());
+        config
+            .inventory_controls
+            .adapter_training_contributor_enabled = true;
+
+        save_config(config_path.as_path(), &config)?;
+        let reloaded = super::load_config(config_path.as_path())?;
+
+        ensure(
+            reloaded
+                .inventory_controls
+                .adapter_training_contributor_enabled,
+            "config saves should preserve the training contributor toggle",
         )
     }
 
