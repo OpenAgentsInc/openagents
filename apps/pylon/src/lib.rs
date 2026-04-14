@@ -1650,6 +1650,13 @@ struct DoctorReport {
     availability: ProviderAvailability,
     products: Vec<ProductEntry>,
     training: TrainingDoctorStatus,
+    nexus_treasury: Option<NexusTreasuryHealthSnapshot>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NexusTreasuryHealthSnapshot {
+    pub payout_loop_health: String,
+    pub degraded_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -5149,6 +5156,7 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             let products =
                 public_product_entries(products_from_availability(&config, &availability));
             let training = build_training_doctor_status(cli.config_path.as_path(), &config)?;
+            let nexus_treasury = fetch_nexus_treasury_health(&config).await.ok();
             Ok(Some(serde_json::to_string_pretty(&DoctorReport {
                 config_path: cli.config_path.display().to_string(),
                 node_label: config.node_label.clone(),
@@ -5157,6 +5165,7 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 availability,
                 products,
                 training,
+                nexus_treasury,
             })?))
         }
         Command::Serve => {
@@ -16596,6 +16605,28 @@ fn collect_provider_thermal_telemetry(
         .collect::<Vec<_>>();
     rows.sort_by(|left, right| left.label.cmp(&right.label));
     rows
+}
+
+pub async fn fetch_nexus_treasury_health(
+    config: &PylonConfig,
+) -> Result<NexusTreasuryHealthSnapshot> {
+    let url = nexus_control_url(config, "v1/treasury/status");
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url.as_str())
+        .send()
+        .await
+        .with_context(|| format!("failed to fetch nexus treasury status from {url}"))?;
+    if !response.status().is_success() {
+        bail!(
+            "nexus treasury status returned {}",
+            response.status()
+        );
+    }
+    response
+        .json::<NexusTreasuryHealthSnapshot>()
+        .await
+        .with_context(|| "failed to decode nexus treasury status response")
 }
 
 async fn post_nexus_provider_presence<T: Serialize>(

@@ -336,6 +336,7 @@ enum WorkerEvent {
         last_error: Option<String>,
         last_wallet_error: Option<String>,
         provider_presence_online: bool,
+        nexus_treasury_health: Option<pylon::NexusTreasuryHealthSnapshot>,
     },
     StreamStarted(String),
     StreamDelta(String),
@@ -490,6 +491,8 @@ struct AppShell {
     session_started_at_ms: u64,
     latest_paid_moment: Option<(u64, Instant)>,
     latest_rank_up_moment: Option<(String, String, Instant)>,
+    nexus_treasury_health: Option<pylon::NexusTreasuryHealthSnapshot>,
+    next_nexus_treasury_refresh_at: Instant,
 }
 
 impl AppShell {
@@ -550,6 +553,8 @@ impl AppShell {
             session_started_at_ms: current_epoch_ms_u64(),
             latest_paid_moment: None,
             latest_rank_up_moment: None,
+            nexus_treasury_health: None,
+            next_nexus_treasury_refresh_at: Instant::now(),
         }
     }
 
@@ -991,6 +996,7 @@ impl AppShell {
                 last_error,
                 last_wallet_error,
                 provider_presence_online,
+                nexus_treasury_health,
             } => {
                 let previous_stats = self.operator_stats.clone();
                 let operator_stats =
@@ -1029,6 +1035,7 @@ impl AppShell {
                 self.last_error = last_error;
                 self.last_wallet_error = last_wallet_error;
                 self.provider_presence_online = provider_presence_online;
+                self.nexus_treasury_health = nexus_treasury_health;
                 self.refresh_in_flight = false;
                 self.last_refresh_at = Some(Instant::now());
                 self.next_refresh_at = Instant::now() + REFRESH_RATE;
@@ -2320,6 +2327,11 @@ impl AppShell {
         let provider_presence_online = self.provider_presence_online;
         let session_started_at_ms = self.session_started_at_ms;
         let heartbeat_due = Instant::now() >= self.next_provider_presence_heartbeat_at;
+        let treasury_refresh_due = Instant::now() >= self.next_nexus_treasury_refresh_at;
+        let current_nexus_treasury = self.nexus_treasury_health.clone();
+        if treasury_refresh_due {
+            self.next_nexus_treasury_refresh_at = Instant::now() + GPU_REFRESH_RATE;
+        }
         std::thread::spawn(move || {
             let installed_gemma_models = installed_gemma_models(config_path.as_path());
             let runtime = match tokio::runtime::Builder::new_current_thread()
@@ -2336,6 +2348,7 @@ impl AppShell {
                         last_error: Some(error.to_string()),
                         last_wallet_error: None,
                         provider_presence_online,
+                        nexus_treasury_health: current_nexus_treasury,
                     });
                     return;
                 }
@@ -2354,8 +2367,17 @@ impl AppShell {
                                     last_error: Some(error.to_string()),
                                     last_wallet_error: None,
                                     provider_presence_online,
+                                    nexus_treasury_health: current_nexus_treasury,
                                 };
                             }
+                        };
+                        let nexus_treasury_health = if treasury_refresh_due {
+                            pylon::fetch_nexus_treasury_health(&config)
+                                .await
+                                .ok()
+                                .or(current_nexus_treasury)
+                        } else {
+                            current_nexus_treasury
                         };
                         let (wallet_status, last_wallet_error) =
                             match pylon::load_wallet_balance_status_report(config_path.as_path())
@@ -2399,6 +2421,7 @@ impl AppShell {
                                     last_error: None,
                                     last_wallet_error,
                                     provider_presence_online,
+                                    nexus_treasury_health,
                                 }
                             }
                             Err(error) => {
@@ -2435,6 +2458,7 @@ impl AppShell {
                                     last_error: Some(error.to_string()),
                                     last_wallet_error,
                                     provider_presence_online,
+                                    nexus_treasury_health,
                                 }
                             }
                         }
@@ -2469,6 +2493,7 @@ impl AppShell {
                             last_error: Some(error.to_string()),
                             last_wallet_error: None,
                             provider_presence_online,
+                            nexus_treasury_health: current_nexus_treasury,
                         }
                     }
                 }
@@ -2664,6 +2689,7 @@ impl AppShell {
         top_spans.extend(mission_control_signal_spans(
             operator_state.as_str(),
             animation_tick,
+            self.nexus_treasury_degraded(),
         ));
         let top_line = Line::from(top_spans);
 
@@ -2799,12 +2825,20 @@ impl AppShell {
         }
     }
 
+    fn nexus_treasury_degraded(&self) -> bool {
+        self.nexus_treasury_health
+            .as_ref()
+            .map(|h| h.payout_loop_health != "healthy")
+            .unwrap_or(false)
+    }
+
     fn hero_status_copy(&self) -> String {
         let (state_label, detail) = self.operator_state_label_and_detail();
         match state_label.as_str() {
             "Listening for work" => "Listening across relays for paid work".to_string(),
             "Earning now" => "Local Gemma is actively working a paid request".to_string(),
             "Waiting for payout" => "Work is done. Waiting for sats to settle".to_string(),
+            "Ready to earn" if self.nexus_treasury_degraded() => "Payouts paused — awaiting Nexus recovery.".to_string(),
             "Ready to earn" => "Standing by for the next paid match".to_string(),
             "Preparing to earn" => detail.unwrap_or_else(|| "Booting local earnings lane".to_string()),
             "Needs attention" => detail.unwrap_or_else(|| "A local runtime issue needs attention".to_string()),
@@ -3073,7 +3107,16 @@ impl AppShell {
     fn operator_lines(&self) -> Vec<Line<'static>> {
         let animation_phase = self.animation_phase();
         let total_earnings = self.total_earnings_label();
-        let mut lines = vec![
+        let mut lines = vec![];
+        if let Some(health) = &self.nexus_treasury_health {
+            if health.payout_loop_health != "healthy" {
+                lines.push(Line::from(Span::styled(
+                    "Nexus treasury degraded — payouts temporarily paused",
+                    warning_accent(),
+                )));
+            }
+        }
+        lines.extend(vec![
             Line::from(vec![
                 key_label("Session stack"),
                 Span::styled(
@@ -3113,7 +3156,7 @@ impl AppShell {
                     },
                 ),
             ]),
-        ];
+        ]);
         if let Some((amount_sats, _)) = self.visible_paid_moment() {
             lines.push(Line::from(vec![
                 key_label("Fresh payout"),
@@ -3866,9 +3909,19 @@ fn animated_stack_gain_suffix(phase: usize, active: bool) -> &'static str {
     }
 }
 
-fn mission_control_signal_spans(state_label: &str, tick: usize) -> Vec<Span<'static>> {
+fn mission_control_signal_spans(
+    state_label: &str,
+    tick: usize,
+    treasury_degraded: bool,
+) -> Vec<Span<'static>> {
     let mut spans = vec![Span::raw("  ")];
     match state_label {
+        "Ready to earn" if treasury_degraded => {
+            return vec![
+                Span::raw(" "),
+                Span::styled(animated_boot_spinner(tick), muted_text()),
+            ];
+        }
         "Ready to earn" => {
             spans.push(Span::styled(animated_ready_heartbeat(tick), muted_text()));
         }
@@ -3914,7 +3967,6 @@ fn animated_payout_pulse(tick: usize) -> &'static str {
     }
 }
 
-#[allow(dead_code)]
 fn animated_boot_spinner(phase: usize) -> &'static str {
     match phase % 4 {
         0 => "◐",
@@ -5551,11 +5603,11 @@ mod tests {
 
     #[test]
     fn motion_helpers_match_shell_states() {
-        let ready = mission_control_signal_spans("Ready to earn", 0)
+        let ready = mission_control_signal_spans("Ready to earn", 0, false)
             .iter()
             .map(ToString::to_string)
             .collect::<String>();
-        let listening = mission_control_signal_spans("Listening for work", 1)
+        let listening = mission_control_signal_spans("Listening for work", 1, false)
             .iter()
             .map(ToString::to_string)
             .collect::<String>();
@@ -5588,6 +5640,7 @@ mod tests {
             last_error: None,
             last_wallet_error: None,
             provider_presence_online: false,
+            nexus_treasury_health: None,
         });
 
         assert!(app.live_activity_pulse_until.is_some());
@@ -5613,6 +5666,7 @@ mod tests {
             last_error: None,
             last_wallet_error: None,
             provider_presence_online: true,
+            nexus_treasury_health: None,
         });
 
         assert!(app.visible_paid_moment().is_some());
