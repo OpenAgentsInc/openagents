@@ -181,6 +181,9 @@ It runs:
 - durable relay storage under `${NEXUS_DATA_DIR}` (`/var/lib/nexus-relay` by default)
 - the in-process authority/API routes merged into the same service
 - receipt persistence through `NEXUS_CONTROL_RECEIPT_LOG_PATH`
+- kernel state + training identity persistence through
+  `NEXUS_CONTROL_KERNEL_STATE_PATH` and
+  `NEXUS_CONTROL_TRAINING_TRN_IDENTITY_PATH`
 - treasury wallet + payout state on the same persistent disk when
   `NEXUS_CONTROL_TREASURY_ENABLED=true`
 
@@ -193,6 +196,17 @@ Treasury deployment note:
 - do not redeploy or roll back production Nexus onto the older `0.6.6` Spark
   pin; that version can report `0 sats` after backend enum drift even when the
   wallet still has funds
+- `scripts/deploy/nexus/03-configure-and-start.sh` now writes
+  `NEXUS_CONTROL_KERNEL_STATE_PATH` and
+  `NEXUS_CONTROL_TRAINING_TRN_IDENTITY_PATH` onto
+  `${NEXUS_DATA_DIR}/nexus-control/...` so kernel compute and training
+  mutations do not silently fall back to the repo-relative
+  `var/nexus-control/...` defaults inside the container
+- `scripts/deploy/nexus/03-configure-and-start.sh` now passes through the
+  optional `NEXUS_CONTROL_TRAINING_GCS_*` envs so the training artifact
+  signed-access path can be enabled without ad hoc live env edits
+- `scripts/deploy/nexus/03-configure-and-start.sh` now creates
+  `${NEXUS_DATA_DIR}/nexus-control` before restarting the container
 - `scripts/deploy/nexus/03-configure-and-start.sh` now writes
   `NEXUS_CONTROL_TREASURY_STATE_PATH`,
   `NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH`, and

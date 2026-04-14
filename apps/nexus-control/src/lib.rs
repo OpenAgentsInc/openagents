@@ -16984,10 +16984,11 @@ fn training_operator_summary_snapshot(
                 .iter()
                 .filter(|node| {
                     (network_id != "unknown"
-                        && node
-                            .allowed_networks
-                            .iter()
-                            .any(|allowed| allowed == &network_id))
+                        && (node.allowed_networks.is_empty()
+                            || node
+                                .allowed_networks
+                                .iter()
+                                .any(|allowed| allowed == &network_id)))
                         || node.last_training_run_id.as_deref()
                             == Some(run.training_run_id.as_str())
                 })
@@ -23827,10 +23828,12 @@ mod tests {
             .expect("treasury hook guard");
         let send_calls = Arc::new(AtomicUsize::new(0));
         let send_calls_clone = send_calls.clone();
-        set_test_wallet_send_hook(Some(Arc::new(move |_target, _amount_sats, _idempotency_key| {
-            send_calls_clone.fetch_add(1, Ordering::SeqCst);
-            Ok("payment-send-inline".to_string())
-        })));
+        set_test_wallet_send_hook(Some(Arc::new(
+            move |_target, _amount_sats, _idempotency_key| {
+                send_calls_clone.fetch_add(1, Ordering::SeqCst);
+                Ok("payment-send-inline".to_string())
+            },
+        )));
 
         let response = app
             .oneshot(
@@ -23889,10 +23892,12 @@ mod tests {
             .expect("treasury hook guard");
         let send_calls = Arc::new(AtomicUsize::new(0));
         let send_calls_clone = send_calls.clone();
-        set_test_wallet_send_hook(Some(Arc::new(move |_target, _amount_sats, _idempotency_key| {
-            let call_index = send_calls_clone.fetch_add(1, Ordering::SeqCst);
-            Ok(format!("payment-send-{call_index}"))
-        })));
+        set_test_wallet_send_hook(Some(Arc::new(
+            move |_target, _amount_sats, _idempotency_key| {
+                let call_index = send_calls_clone.fetch_add(1, Ordering::SeqCst);
+                Ok(format!("payment-send-{call_index}"))
+            },
+        )));
 
         run_treasury_dispatch_cycle(&state).await;
 
@@ -24727,7 +24732,10 @@ mod tests {
         let store = state.store.read().expect("store read after due refresh");
         assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
         assert_eq!(store.treasury.wallet_balance_sats, 710);
-        assert_eq!(store.treasury.wallet_runtime_status.as_deref(), Some("connected"));
+        assert_eq!(
+            store.treasury.wallet_runtime_status.as_deref(),
+            Some("connected")
+        );
 
         set_test_wallet_snapshot_hook(None);
         Ok(())
@@ -28276,7 +28284,7 @@ mod tests {
             let mut node = training_node_admission_request_with_environment_refs(
                 "node-cs336-a1-demo",
                 "sha256:build-cs336-a1-demo",
-                vec![network_id],
+                Vec::new(),
                 Vec::new(),
                 Some(80),
                 vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
@@ -28289,21 +28297,6 @@ mod tests {
                     node,
                 )
                 .expect("admit node");
-            let mut heartbeat = training_node_heartbeat_request_for_scope(
-                "node-cs336-a1-demo",
-                "sha256:build-cs336-a1-demo",
-                training_run_id,
-                window_id,
-            );
-            heartbeat.recorded_at_ms = created_at_ms as i64 + 750;
-            heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 750);
-            store
-                .kernel
-                .record_training_node_heartbeat(
-                    &training_kernel_mutation_context("node-cs336-a1-demo", created_at_ms + 750),
-                    heartbeat,
-                )
-                .expect("heartbeat node");
         }
 
         let lease_response = app
@@ -28329,6 +28322,14 @@ mod tests {
         let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
         assert_eq!(lease.training_run_id, training_run_id);
         assert_eq!(lease.window_id, window_id);
+        {
+            let store = state.store.read().expect("read store");
+            let node = store
+                .kernel
+                .get_admitted_training_node("node-cs336-a1-demo", created_at_ms as i64 + 710)
+                .expect("admitted node");
+            assert!(node.online);
+        }
 
         let stats_response = app
             .clone()
@@ -28352,6 +28353,15 @@ mod tests {
         assert_eq!(public_run.assigned_contributors, 1);
         assert_eq!(public_run.accepted_contributors, 0);
         assert_eq!(public_run.model_progress_contributors, 0);
+
+        let summary = fetch_training_summary(&app).await?;
+        let run_summary = summary
+            .runs
+            .iter()
+            .find(|run| run.training_run_id == training_run_id)
+            .expect("run summary");
+        assert_eq!(run_summary.participation.admitted_nodes, 1);
+        assert_eq!(run_summary.participation.assigned_contributors, 1);
 
         let visualization = fetch_training_visualization(&app).await?;
         let visualized_run = visualization
@@ -35372,12 +35382,14 @@ mod tests {
             .expect("treasury hook guard");
         let payment_counter = Arc::new(Mutex::new(0u64));
         let payment_counter_for_hook = Arc::clone(&payment_counter);
-        set_test_wallet_send_hook(Some(Arc::new(move |_target, amount_sats, _idempotency_key| {
-            assert_eq!(amount_sats, PAYOUT_SATS_PER_WINDOW);
-            let mut counter = payment_counter_for_hook.lock().expect("payment counter");
-            *counter = counter.saturating_add(1);
-            Ok(format!("payment-send-transcript222-{:03}", *counter))
-        })));
+        set_test_wallet_send_hook(Some(Arc::new(
+            move |_target, amount_sats, _idempotency_key| {
+                assert_eq!(amount_sats, PAYOUT_SATS_PER_WINDOW);
+                let mut counter = payment_counter_for_hook.lock().expect("payment counter");
+                *counter = counter.saturating_add(1);
+                Ok(format!("payment-send-transcript222-{:03}", *counter))
+            },
+        )));
         run_treasury_dispatch_cycle(&state).await;
 
         let stats_response = app

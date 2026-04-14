@@ -14703,6 +14703,10 @@ fn admitted_training_node_from_request(
     admission_id: String,
     build_digest: String,
 ) -> AdmittedTrainingNode {
+    let refreshed_heartbeat_at_ms = existing
+        .and_then(|node| node.last_heartbeat_at_ms)
+        .map(|value| value.max(req.requested_at_ms))
+        .unwrap_or(req.requested_at_ms);
     AdmittedTrainingNode {
         admission_id,
         node_pubkey_hex: req.node_pubkey_hex.clone(),
@@ -14722,7 +14726,7 @@ fn admitted_training_node_from_request(
             .map(|node| node.admitted_at_ms)
             .unwrap_or(req.requested_at_ms),
         updated_at_ms: req.requested_at_ms,
-        last_heartbeat_at_ms: existing.and_then(|node| node.last_heartbeat_at_ms),
+        last_heartbeat_at_ms: Some(refreshed_heartbeat_at_ms),
         last_training_run_id: existing.and_then(|node| node.last_training_run_id.clone()),
         last_window_id: existing.and_then(|node| node.last_window_id.clone()),
         last_assignment_id: existing.and_then(|node| node.last_assignment_id.clone()),
