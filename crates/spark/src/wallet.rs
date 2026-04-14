@@ -230,8 +230,16 @@ impl SparkWallet {
         &self.config
     }
 
+    pub async fn sync_wallet_state(&self) -> Result<(), SparkError> {
+        self.sdk
+            .sync_wallet(SyncWalletRequest {})
+            .await
+            .map(|_| ())
+            .map_err(|error| SparkError::Wallet(error.to_string()))
+    }
+
     pub async fn network_status(&self) -> NetworkStatusReport {
-        match self.sdk.sync_wallet(SyncWalletRequest {}).await {
+        match self.sync_wallet_state().await {
             Ok(_) => NetworkStatusReport {
                 status: NetworkStatus::Connected,
                 detail: None,
