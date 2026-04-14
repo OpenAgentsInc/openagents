@@ -6904,6 +6904,9 @@ impl PylonTrainingCoordinatorClient {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
         let client = reqwest::Client::builder()
+            // The public Nexus edge is currently reliable over HTTP/1.1 but
+            // intermittently stalls or times out under HTTP/2.
+            .http1_only()
             .timeout(Duration::from_secs(
                 DEFAULT_TRAINING_COORDINATION_HTTP_TIMEOUT_SECONDS,
             ))
@@ -16986,6 +16989,10 @@ async fn sync_provider_payout_target_with_report(
 
 fn provider_presence_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
+        // Keep provider-presence heartbeats on the same transport path as the
+        // training coordinator to avoid Cloudflare HTTP/2 stalls during live
+        // fleet proof.
+        .http1_only()
         .timeout(Duration::from_secs(
             DEFAULT_PROVIDER_PRESENCE_HTTP_TIMEOUT_SECONDS,
         ))
