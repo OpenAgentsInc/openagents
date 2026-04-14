@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM rust:1.88-bookworm AS build-base
+FROM rust:1.94-bookworm AS build-base
 
 ARG SCCACHE_VERSION=0.8.2
 
