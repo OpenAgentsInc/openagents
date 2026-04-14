@@ -79,12 +79,18 @@ use openagents_kernel_core::ids::sha256_prefixed_bytes;
 use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
     PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PYLON_TRAINING_LEASE_DURATION_MS,
+    PYLON_TRAINING_GCS_CREDENTIAL_SOURCE,
     PYLON_TRAINING_SEAL_GRACE_PERIOD_MS, PYLON_TRAINING_WINDOW_MAX_DURATION_MS,
     PylonTrainingAggregateResolution, PylonTrainingArtifactGcsLayoutPolicy,
+    PylonTrainingArtifacts, PylonTrainingCheckpointBinding, PylonTrainingCollectiveKind,
+    PylonTrainingDatasetAssignment, PylonTrainingElasticBoundary,
+    PylonTrainingManifestRole,
     PylonTrainingArtifactResolverResponse, PylonTrainingArtifactSignedAccessRequest,
     PylonTrainingArtifactSignedAccessResponse, PylonTrainingContributionSampleCandidate,
     PylonTrainingContributionVerdict, PylonTrainingRefusalCode, PylonTrainingReputationLabel,
     PylonTrainingReputationNamespace, PylonTrainingSchedulerEffect,
+    PylonTrainingRunManifestCommon, PylonTrainingRunManifestV1, PylonTrainingTopology,
+    PylonTrainingTopologyBackendFamily, PylonTrainingTrn,
     pylon_training_artifact_object_uri, pylon_training_assignment_id,
     pylon_training_assignment_seed, pylon_training_hard_gate_reason, pylon_training_lease_id,
     pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
@@ -634,6 +640,302 @@ fn build_google_cloud_storage_signed_url(
         canonical_uri,
         canonical_query
     ))
+}
+
+fn training_authority_base_url_from_relay_url(relay_url: &str) -> Result<String, String> {
+    let relay_url = relay_url.trim();
+    if relay_url.is_empty() {
+        return Err("training_trn_relay_url_missing".to_string());
+    }
+    let relay_url =
+        Url::parse(relay_url).map_err(|error| format!("training_trn_relay_url_invalid:{error}"))?;
+    let scheme = match relay_url.scheme() {
+        "wss" => "https",
+        "ws" => "http",
+        "https" | "http" => relay_url.scheme(),
+        other => return Err(format!("training_trn_relay_url_scheme_invalid:{other}")),
+    };
+    let host = relay_url
+        .host_str()
+        .ok_or_else(|| "training_trn_relay_url_host_missing".to_string())?;
+    let authority = relay_url
+        .port()
+        .map_or_else(|| host.to_string(), |port| format!("{host}:{port}"));
+    Ok(format!("{scheme}://{authority}"))
+}
+
+fn training_manifest_placeholder_local_run_root(training_run_id: &str) -> String {
+    format!("/var/lib/openagents/pylon/training/runs/{training_run_id}")
+}
+
+fn training_topology_backend_family_for_node(
+    node: &AdmittedTrainingNodeView,
+) -> PylonTrainingTopologyBackendFamily {
+    let backend_family = node
+        .capability_tier
+        .backend_families
+        .iter()
+        .find_map(|backend| match backend.trim().to_ascii_lowercase().as_str() {
+            "cuda" => Some(PylonTrainingTopologyBackendFamily::Cuda),
+            "metal" => Some(PylonTrainingTopologyBackendFamily::Metal),
+            "mlx" => Some(PylonTrainingTopologyBackendFamily::Mlx),
+            _ => None,
+        });
+    backend_family.unwrap_or(PylonTrainingTopologyBackendFamily::Mixed)
+}
+
+fn training_assignment_plan_for_slot<'a>(
+    metadata: &'a TrainingWindowMetadata,
+    slot_ordinal: u32,
+) -> Result<&'a TrainingWindowAssignmentPlan, String> {
+    let worker_id = format!("worker.{slot_ordinal:04}");
+    metadata
+        .assignment_plans
+        .iter()
+        .find(|assignment| assignment.worker_id == worker_id)
+        .or_else(|| {
+            metadata
+                .assignment_plans
+                .iter()
+                .nth(slot_ordinal.saturating_sub(1) as usize)
+        })
+        .ok_or_else(|| "training_window_assignment_missing".to_string())
+}
+
+fn build_synthesized_training_run_manifest_payload(
+    store: &ControlStore,
+    config: &ServiceConfig,
+    resolver: &PylonTrainingArtifactResolverResponse,
+) -> Result<Vec<u8>, String> {
+    if resolver.artifact_kind != openagents_kernel_core::pylon_training::PylonTrainingArtifactKind::RunManifest
+    {
+        return Err("training_run_manifest_artifact_kind_invalid".to_string());
+    }
+    let assignment_id = resolver
+        .scope
+        .assignment_id
+        .as_deref()
+        .ok_or_else(|| "training_run_manifest_assignment_missing".to_string())?;
+    let window_id = resolver
+        .scope
+        .window_id
+        .as_deref()
+        .ok_or_else(|| "training_run_manifest_window_missing".to_string())?;
+    let scheduled_run = store
+        .training_scheduler
+        .runs_by_training_run_id
+        .get(resolver.scope.run_id.as_str())
+        .ok_or_else(|| "training_scheduler_run_not_found".to_string())?;
+    let assignment = scheduled_run
+        .assignments
+        .iter()
+        .find(|assignment| assignment.assignment_id == assignment_id)
+        .ok_or_else(|| "training_scheduler_assignment_not_found".to_string())?;
+    if assignment.role != TrainingNodeRoleClaim::Worker {
+        return Err("training_run_manifest_role_unsupported".to_string());
+    }
+    let node_pubkey_hex = assignment
+        .node_pubkey_hex
+        .as_deref()
+        .ok_or_else(|| "training_scheduler_assignment_node_missing".to_string())?;
+    let lease_id = assignment
+        .lease_id
+        .as_deref()
+        .ok_or_else(|| "training_scheduler_lease_not_found".to_string())?;
+    let issued_at_ms = u64::try_from(assignment.issued_at_ms.unwrap_or_default().max(0))
+        .map_err(|_| "training_run_manifest_issued_at_invalid".to_string())?;
+    let expires_at_ms = u64::try_from(assignment.expires_at_ms.unwrap_or_default().max(0))
+        .map_err(|_| "training_run_manifest_expires_at_invalid".to_string())?;
+    let training_run = store
+        .kernel
+        .get_compute_training_run(resolver.scope.run_id.as_str())
+        .ok_or_else(|| "compute_training_run_not_found".to_string())?;
+    let run_definition = training_scheduler_run_definition(&store.kernel, &training_run)?;
+    let environment = training_scheduler_run_definition_environment(&run_definition, &training_run)
+        .ok_or_else(|| "compute_environment_version_missing".to_string())?;
+    let window = store
+        .kernel
+        .get_compute_adapter_training_window(window_id)
+        .ok_or_else(|| "compute_adapter_window_not_found".to_string())?;
+    let metadata = training_window_metadata_from_value(&window.metadata)?;
+    let plan = training_assignment_plan_for_slot(&metadata, assignment.slot_ordinal)?;
+    let membership_revision =
+        pylon_training_membership_revision_label(scheduled_run.membership_revision);
+    let assignment_seed = pylon_training_assignment_seed(
+        resolver.scope.run_id.as_str(),
+        window_id,
+        membership_revision.as_str(),
+        assignment_id,
+        node_pubkey_hex,
+        &plan.dataset_slice,
+    )?;
+    let coordinator_pubkey = load_identity_from_path(config.training_trn_identity_path.as_path())
+        .map(|identity| identity.public_key_hex)
+        .unwrap_or_else(|_| node_pubkey_hex.to_string());
+    let authority_base_url =
+        training_authority_base_url_from_relay_url(config.hosted_nexus_relay_url.as_str())?;
+    let layout = openagents_kernel_core::pylon_training::PylonTrainingArtifactLayout {
+        bucket_uri: metadata.artifact_bucket_uri.clone(),
+        network_id: metadata.network_id.clone(),
+        run_id: training_run.training_run_id.clone(),
+        window_id: window.window_id.clone(),
+    };
+    let common = PylonTrainingRunManifestCommon {
+        manifest_id: format!("manifest.{assignment_id}"),
+        issued_at_ms,
+        expires_at_ms,
+        network_id: metadata.network_id.clone(),
+        run_id: training_run.training_run_id.clone(),
+        window_id: window.window_id.clone(),
+        assignment_id: assignment_id.to_string(),
+        lease_id: lease_id.to_string(),
+        lease_sequence: u64::from(assignment.attempt),
+        membership_revision,
+        node_pubkey: node_pubkey_hex.to_string(),
+        coordinator_pubkey: coordinator_pubkey.clone(),
+        authority_base_url,
+        training_policy_ref: training_run.training_policy_ref.clone(),
+        validator_policy_ref: training_run.validator_policy_ref.clone(),
+        environment_ref: training_run.environment_binding.environment_ref.clone(),
+        environment_version: environment.version.clone(),
+    };
+    let topology = PylonTrainingTopology {
+        backend_family: training_topology_backend_family_for_node(
+            &store
+                .kernel
+                .get_admitted_training_node(node_pubkey_hex, now_unix_ms() as i64)
+                .ok_or_else(|| "training_node_not_found".to_string())?,
+        ),
+        world_size: 1,
+        rank: 0,
+        local_device_ids: vec![0],
+        collective_kind: PylonTrainingCollectiveKind::DataParallel,
+        elastic_boundary: PylonTrainingElasticBoundary::Window,
+    };
+    let checkpoint = PylonTrainingCheckpointBinding {
+        checkpoint_family: training_run.checkpoint_binding.checkpoint_family.clone(),
+        checkpoint_ref: training_run
+            .checkpoint_binding
+            .latest_checkpoint_ref
+            .clone()
+            .unwrap_or_else(|| window.source_checkpoint_pointer.checkpoint_ref.clone()),
+        manifest_digest: window.source_checkpoint_pointer.manifest_digest.clone(),
+        latest_pointer_ref: layout.latest_pointer_path(),
+    };
+    let artifacts = PylonTrainingArtifacts {
+        bucket_uri: layout.bucket_uri.clone(),
+        run_prefix: layout.run_prefix(),
+        window_prefix: layout.window_prefix(),
+        local_run_root: training_manifest_placeholder_local_run_root(
+            training_run.training_run_id.as_str(),
+        ),
+        credential_source: PYLON_TRAINING_GCS_CREDENTIAL_SOURCE.to_string(),
+    };
+    let trn = PylonTrainingTrn {
+        network_coordinate: format!(
+            "{TRN_TRAINING_NETWORK_CONTRACT_KIND}:{coordinator_pubkey}:{}",
+            metadata.network_id
+        ),
+        window_coordinate: format!(
+            "{TRN_TRAINING_WINDOW_KIND}:{coordinator_pubkey}:{}",
+            window.window_id
+        ),
+        relay_urls: config.training_trn_relay_urls.clone(),
+    };
+    let dataset = PylonTrainingDatasetAssignment {
+        dataset_id: plan.dataset_slice.dataset_id.clone(),
+        slice_id: plan.dataset_slice.slice_id.clone(),
+        slice_digest: plan.dataset_slice.slice_digest.clone(),
+        assignment_seed,
+    };
+    PylonTrainingRunManifestV1::builder(
+        PylonTrainingManifestRole::Worker,
+        common,
+        topology,
+        checkpoint,
+        artifacts,
+        trn,
+    )
+    .dataset(dataset)
+    .build()
+    .and_then(|manifest| manifest.canonical_json_bytes())
+}
+
+async fn materialize_synthesized_training_run_manifest_if_needed(
+    state: &AppState,
+    resolver: &PylonTrainingArtifactResolverResponse,
+    request: &PylonTrainingArtifactSignedAccessRequest,
+) -> Result<(), ApiError> {
+    if resolver.artifact_kind
+        != openagents_kernel_core::pylon_training::PylonTrainingArtifactKind::RunManifest
+        || request.mode
+            != openagents_kernel_core::pylon_training::PylonTrainingArtifactSignedAccessMode::Read
+    {
+        return Ok(());
+    }
+    let config = state
+        .config
+        .training_artifact_signed_url
+        .clone()
+        .ok_or(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: "compute_training_artifact_signed_access_unconfigured".to_string(),
+        })?;
+    let payload = {
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        build_synthesized_training_run_manifest_payload(&store, &state.config, resolver).map_err(
+            |reason| ApiError {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                error: "service_unavailable",
+                reason,
+            },
+        )?
+    };
+    let issued_at_unix = now_unix_ms() / 1_000;
+    let signed_access = issue_training_artifact_signed_access(
+        &config,
+        resolver,
+        &PylonTrainingArtifactSignedAccessRequest {
+            mode: openagents_kernel_core::pylon_training::PylonTrainingArtifactSignedAccessMode::Write,
+            ttl_seconds: Some(config.default_ttl_seconds),
+            digest: None,
+            size_bytes: None,
+        },
+        issued_at_unix,
+    )
+    .map_err(|reason| ApiError {
+        status: StatusCode::SERVICE_UNAVAILABLE,
+        error: "service_unavailable",
+        reason,
+    })?;
+    let response = reqwest::Client::new()
+        .put(signed_access.signed_url.as_str())
+        .body(payload)
+        .send()
+        .await
+        .map_err(|error| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: format!("training_run_manifest_upload_failed:{error}"),
+        })?;
+    if !response.status().is_success() {
+        let status = response.status().as_u16();
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode training manifest upload error".to_string());
+        return Err(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: format!("training_run_manifest_upload_failed:{status}:{detail}"),
+        });
+    }
+    Ok(())
 }
 
 fn load_training_artifact_signing_credentials(
@@ -7685,7 +7987,7 @@ async fn post_public_training_artifact_signed_access(
     Json(request): Json<PylonTrainingArtifactSignedAccessRequest>,
 ) -> Result<Json<PylonTrainingArtifactSignedAccessResponse>, ApiError> {
     let started = std::time::Instant::now();
-    let result = (|| -> Result<PylonTrainingArtifactSignedAccessResponse, ApiError> {
+    let result = async {
         let artifact_id =
             normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
         let resolver = {
@@ -7703,6 +8005,8 @@ async fn post_public_training_artifact_signed_access(
                     reason,
                 })?
         };
+        materialize_synthesized_training_run_manifest_if_needed(&state, &resolver, &request)
+            .await?;
         let config = state
             .config
             .training_artifact_signed_url
@@ -7728,7 +8032,8 @@ async fn post_public_training_artifact_signed_access(
                 reason,
             },
         )
-    })();
+    }
+    .await;
     record_training_launch_latency_sample(
         &state,
         TrainingLaunchLatencyMetricKind::SignedAccess,
@@ -13316,7 +13621,7 @@ async fn post_kernel_compute_training_artifact_signed_access(
     Json(request): Json<PylonTrainingArtifactSignedAccessRequest>,
 ) -> Result<Json<PylonTrainingArtifactSignedAccessResponse>, ApiError> {
     let started = std::time::Instant::now();
-    let result = (|| -> Result<PylonTrainingArtifactSignedAccessResponse, ApiError> {
+    let result = async {
         let _session = authenticate_session(&state, &headers)?;
         let artifact_id =
             normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
@@ -13335,6 +13640,8 @@ async fn post_kernel_compute_training_artifact_signed_access(
                     reason,
                 })?
         };
+        materialize_synthesized_training_run_manifest_if_needed(&state, &resolver, &request)
+            .await?;
         let config = state
             .config
             .training_artifact_signed_url
@@ -13360,7 +13667,8 @@ async fn post_kernel_compute_training_artifact_signed_access(
                 reason,
             },
         )
-    })();
+    }
+    .await;
     record_training_launch_latency_sample(
         &state,
         TrainingLaunchLatencyMetricKind::SignedAccess,
@@ -20353,8 +20661,11 @@ mod tests {
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
         PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PylonTrainingAggregateResolution,
         PylonTrainingArtifactClass, PylonTrainingArtifactGcsLayoutPolicy,
-        PylonTrainingArtifactResolverResponse, PylonTrainingArtifactSignedAccessResponse,
+        PylonTrainingArtifactKind, PylonTrainingArtifactResolverResponse,
+        PylonTrainingArtifactScope, PylonTrainingArtifactSignedAccessResponse,
         PylonTrainingContributionVerdict, PylonTrainingRefusalCode,
+        PylonTrainingTopologyBackendFamily, parse_pylon_training_run_manifest_json,
+        pylon_training_assignment_seed,
     };
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, Receipt, ReceiptHints, TraceContext,
@@ -20431,11 +20742,13 @@ mod tests {
         StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
         SyncTokenResponse, TrainingArtifactSignedUrlConfig, TrainingAssignmentState,
-        TrainingVisualizationResponse, TrainingWindowContributionInput,
+        TrainingVisualizationResponse, TrainingWindowAssignmentPlan,
+        TrainingWindowContributionInput,
         TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
         build_api_router_with_state, build_app_state, build_router, build_router_with_state,
-        now_unix_ms, random_token, run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
-        training_kernel_mutation_context,
+        build_synthesized_training_run_manifest_payload, now_unix_ms, random_token,
+        run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
+        training_kernel_mutation_context, training_scheduler_run_definition,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -29988,6 +30301,363 @@ mod tests {
         assert_eq!(visualized_run.weak_device_assigned_contributors, 2);
         assert_eq!(visualized_run.accepted_contributors, 0);
         assert_eq!(visualized_run.model_progress_contributors, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore = "fixture setup still needs a route-backed scheduler seed before lease claims"]
+    async fn synthesized_training_run_manifest_payload_uses_current_window_assignment_context()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let created_at_ms = 1_762_491_476_000u64;
+        let network_id = "trainnet.cs336.a1.demo";
+        let training_run_id = "run.cs336.a1.demo";
+        let window_id = "window.cs336.a1.demo.0002";
+        let training_policy_ref = "policy://training/cs336/a1-demo/v1";
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut environment_request = compute_environment_package_request(
+                PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
+                "2026.04.13",
+                "idemp.scheduler.environment.cs336-a1-demo.manifest",
+                created_at_ms as i64 + 100,
+            );
+            environment_request.package.family = "training".to_string();
+            environment_request.package.display_name = "Psion CS336 A1 Demo".to_string();
+            store
+                .kernel
+                .register_compute_environment_package(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 100),
+                    environment_request,
+                )
+                .expect("register cs336 a1 demo environment");
+
+            let mut checkpoint_policy_request = compute_checkpoint_family_policy_request(
+                "idemp.scheduler.checkpoint.cs336-a1-demo.manifest",
+                created_at_ms as i64 + 200,
+            );
+            checkpoint_policy_request
+                .policy_record
+                .allowed_environment_refs =
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()];
+            checkpoint_policy_request.policy_record.validator_policy_ref =
+                Some("policy://validator/mvp/v1".to_string());
+            store
+                .kernel
+                .register_compute_checkpoint_family_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 200),
+                    checkpoint_policy_request,
+                )
+                .expect("register checkpoint policy");
+
+            let mut validator_policy_request = compute_validator_policy_request(
+                "idemp.scheduler.validator.cs336-a1-demo.manifest",
+                created_at_ms as i64 + 300,
+            );
+            validator_policy_request.policy_record.policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            validator_policy_request
+                .policy_record
+                .benchmark_package_refs = Vec::new();
+            store
+                .kernel
+                .register_compute_validator_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 300),
+                    validator_policy_request,
+                )
+                .expect("register validator policy");
+
+            let mut training_policy_request = compute_training_policy_request(
+                "idemp.scheduler.training_policy.cs336-a1-demo.manifest",
+                created_at_ms as i64 + 500,
+            );
+            training_policy_request.training_policy.training_policy_ref =
+                training_policy_ref.to_string();
+            training_policy_request.training_policy.environment_refs =
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()];
+            training_policy_request.training_policy.validator_policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            training_policy_request
+                .training_policy
+                .benchmark_package_refs = Vec::new();
+            training_policy_request.training_policy.metadata =
+                training_run_definition_metadata_value(
+                    "rundef.cs336.assignment1.demo.v1",
+                    "psion_reference_demo",
+                    "stanford_cs336_assignment1_demo",
+                    "single_host_reference",
+                    "dataset://cs336/assignment1/tinystories-demo",
+                    "dataset_slice_family.cs336_assignment1_demo",
+                    "cs336.assignment1.demo_page_proof_family",
+                    None,
+                    "training_policy_version",
+                );
+            store
+                .kernel
+                .register_compute_training_policy(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 500),
+                    training_policy_request,
+                )
+                .expect("register training policy");
+
+            let mut training_run_request = compute_training_run_request(
+                "idemp.scheduler.run.cs336-a1-demo.manifest",
+                created_at_ms as i64 + 600,
+            );
+            training_run_request.training_run.training_run_id = training_run_id.to_string();
+            training_run_request.training_run.training_policy_ref = training_policy_ref.to_string();
+            training_run_request.training_run.benchmark_package_refs = Vec::new();
+            training_run_request
+                .training_run
+                .environment_binding
+                .environment_ref = PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string();
+            training_run_request.training_run.validator_policy_ref =
+                "policy://validator/mvp/v1".to_string();
+            training_run_request.training_run.status = ComputeTrainingRunStatus::Running;
+            training_run_request.training_run.started_at_ms = Some(created_at_ms as i64 + 600);
+            training_run_request.training_run.work_class =
+                ComputeTrainingWorkClass::SmallModelLocalTraining;
+            training_run_request.training_run.replica_type = ComputeTrainingReplicaType::SingleNode;
+            training_run_request.training_run.metadata = json!({
+                "display_name": "CS336 A1 Demo",
+                "pylon_training_scheduler": training_scheduler_metadata_with_contract(
+                    network_id,
+                    1,
+                    0,
+                    0,
+                    window_id,
+                    "checkpoint://decoder/base"
+                )["pylon_training_scheduler"].clone(),
+            });
+            store
+                .kernel
+                .create_compute_training_run(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 600),
+                    training_run_request,
+                )
+                .expect("create training run");
+
+            let mut mac_node = training_node_admission_request_with_environment_refs(
+                "node-cs336-a1-demo-mac",
+                "sha256:build-cs336-a1-demo-mac",
+                Vec::new(),
+                Vec::new(),
+                Some(128),
+                vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
+            );
+            mac_node.requested_at_ms = created_at_ms as i64 + 700;
+            mac_node.capability_tier.backend_families = vec!["metal".to_string()];
+            mac_node.capability_envelope_v2.tier_profile.backend_families =
+                vec!["metal".to_string()];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context(
+                        "node-cs336-a1-demo-mac",
+                        created_at_ms + 700,
+                    ),
+                    mac_node,
+                )
+                .expect("admit Mac node");
+        }
+
+        let lease = {
+            let mut store = state.store.write().expect("write store");
+            let request = training_run_lease_request_for_scope(
+                "idemp.training.lease.cs336-a1-demo.manifest",
+                created_at_ms as i64 + 20_000,
+                "node-cs336-a1-demo-mac",
+                TrainingNodeRoleClaim::Worker,
+                Some(network_id),
+                None,
+            );
+            let node = store
+                .kernel
+                .get_admitted_training_node("node-cs336-a1-demo-mac", created_at_ms as i64 + 20_000)
+                .expect("admitted Mac node");
+            let candidate_runs = store.kernel.list_compute_training_runs(None, None, None);
+            let run_definitions_by_training_run_id = candidate_runs
+                .iter()
+                .filter_map(|run| {
+                    training_scheduler_run_definition(&store.kernel, run)
+                        .ok()
+                        .map(|definition| (run.training_run_id.clone(), definition))
+                })
+                .collect::<HashMap<_, _>>();
+            let abuse_controls = store.training_scheduler.rollout_policy().abuse_controls.clone();
+            let abuse_snapshot = training_fleet_abuse_snapshot(
+                &store.kernel,
+                &store.training_scheduler,
+                &abuse_controls,
+                created_at_ms + 20_000,
+            );
+            store
+                .training_scheduler
+                .claim_lease(
+                    node,
+                    candidate_runs,
+                    &run_definitions_by_training_run_id,
+                    &abuse_snapshot,
+                    &request,
+                    created_at_ms as i64 + 20_000,
+                )
+                .expect("claim training lease")
+        };
+
+        {
+            let mut store = state.store.write().expect("write store");
+            store
+                .kernel
+                .record_compute_adapter_window(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 900),
+                    RecordComputeAdapterWindowRequest {
+                        idempotency_key:
+                            "idemp.scheduler.window.cs336-a1-demo.manifest".to_string(),
+                        trace: TraceContext::default(),
+                        policy: kernel_policy(),
+                        window: ComputeAdapterTrainingWindow {
+                            window_id: window_id.to_string(),
+                            training_run_id: training_run_id.to_string(),
+                            stage_id: "stage.cs336.demo".to_string(),
+                            contributor_set_revision_id: lease
+                                .membership_revision
+                                .clone()
+                                .expect("membership revision"),
+                            validator_policy_ref: "policy://validator/mvp/v1".to_string(),
+                            work_class: ComputeTrainingWorkClass::SmallModelLocalTraining,
+                            replica_type: ComputeTrainingReplicaType::SingleNode,
+                            round_index: Some(2),
+                            base_checkpoint_ref: "checkpoint://decoder/base".to_string(),
+                            planned_local_step_count: Some(64),
+                            aggregation_rule: None,
+                            aggregation_weight_basis: None,
+                            adapter_target_id: String::new(),
+                            adapter_family: String::new(),
+                            base_model_ref: "model://cs336/demo".to_string(),
+                            adapter_format: String::new(),
+                            source_policy_revision: compute_adapter_policy_revision(
+                                "policy-rev.cs336.demo",
+                                created_at_ms as i64 + 880,
+                            ),
+                            source_checkpoint_pointer: compute_adapter_checkpoint_pointer(
+                                "sha256:pointer.cs336.demo",
+                                created_at_ms as i64 + 890,
+                            ),
+                            status: ComputeAdapterWindowStatus::Active,
+                            total_contributions: 0,
+                            admitted_contributions: 0,
+                            accepted_contributions: 0,
+                            quarantined_contributions: 0,
+                            rejected_contributions: 0,
+                            replay_required_contributions: 0,
+                            replay_checked_contributions: 0,
+                            held_out_average_score_bps: None,
+                            benchmark_pass_rate_bps: None,
+                            runtime_smoke_passed: None,
+                            promotion_ready: false,
+                            gate_reason_codes: Vec::new(),
+                            window_summary_digest: "sha256:window-summary-cs336-demo".to_string(),
+                            promotion_disposition: None,
+                            hold_reason_codes: Vec::new(),
+                            aggregated_delta_digest: None,
+                            accepted_aggregate_id: None,
+                            output_policy_revision: None,
+                            output_checkpoint_pointer: None,
+                            promoted_checkpoint_ref: None,
+                            accepted_outcome_id: None,
+                            recorded_at_ms: created_at_ms as i64 + 900,
+                            metadata: training_window_metadata_value(&TrainingWindowMetadata {
+                                network_id: network_id.to_string(),
+                                artifact_bucket_uri:
+                                    "gs://openagentsgemini-openagents-training-prod".to_string(),
+                                environment_ref:
+                                    PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
+                                backend_family: "cpu".to_string(),
+                                membership_revision: lease
+                                    .membership_revision
+                                    .clone()
+                                    .expect("membership revision"),
+                                assignment_plans: vec![TrainingWindowAssignmentPlan {
+                                    assignment_id: lease.assignment_id.clone(),
+                                    node_pubkey_hex: "node-cs336-a1-demo-mac".to_string(),
+                                    contributor_node_id: "node-cs336-a1-demo-mac".to_string(),
+                                    worker_id: "worker.0001".to_string(),
+                                    dataset_slice: training_window_dataset_slice(
+                                        "slice://window.cs336.a1.demo.0002.0001",
+                                        "sha256:cs336-a1-demo-0002-slice-1",
+                                    ),
+                                    assignment_seed: "sha256:stale-assignment-seed".to_string(),
+                                }],
+                                validation: None,
+                                planned_at_ms: created_at_ms as i64 + 850,
+                                activated_at_ms: Some(created_at_ms as i64 + 875),
+                                sealed_at_ms: None,
+                                reconciled_at_ms: None,
+                                defensibility: None,
+                                seal_deadline_ms: created_at_ms as i64 + 300_000,
+                            }),
+                        },
+                        contribution_outcomes: Vec::new(),
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .expect("record training window");
+        }
+
+        let resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::RunManifest,
+            PylonTrainingArtifactScope {
+                network_id: network_id.to_string(),
+                run_id: training_run_id.to_string(),
+                window_id: Some(window_id.to_string()),
+                assignment_id: Some(lease.assignment_id.clone()),
+                challenge_id: None,
+                optimizer_step: None,
+            },
+        )
+        .expect("run manifest resolver");
+        let payload = {
+            let store = state.store.read().expect("read store");
+            build_synthesized_training_run_manifest_payload(&store, &state.config, &resolver)
+                .expect("synthesized training run manifest payload")
+        };
+        let manifest = parse_pylon_training_run_manifest_json(payload.as_slice())
+            .expect("parse synthesized run manifest");
+        let dataset = manifest.dataset.clone().expect("worker dataset");
+        assert_eq!(manifest.assignment_id, lease.assignment_id);
+        assert_eq!(manifest.lease_id, lease.lease_id);
+        assert_eq!(
+            manifest.membership_revision,
+            lease.membership_revision.expect("membership revision")
+        );
+        assert_eq!(manifest.environment_version, "2026.04.13");
+        assert_eq!(manifest.topology.backend_family, PylonTrainingTopologyBackendFamily::Metal);
+        assert_eq!(dataset.slice_id, "slice://window.cs336.a1.demo.0002.0001");
+        assert_eq!(
+            dataset.assignment_seed,
+            pylon_training_assignment_seed(
+                training_run_id,
+                window_id,
+                manifest.membership_revision.as_str(),
+                manifest.assignment_id.as_str(),
+                "node-cs336-a1-demo-mac",
+                &training_window_dataset_slice(
+                    "slice://window.cs336.a1.demo.0002.0001",
+                    "sha256:cs336-a1-demo-0002-slice-1",
+                ),
+            )
+            .expect("assignment seed")
+        );
+        assert!(
+            manifest
+                .artifacts
+                .local_run_root
+                .contains(training_run_id),
+            "synthesized run manifest should carry a deterministic placeholder local run root"
+        );
 
         Ok(())
     }

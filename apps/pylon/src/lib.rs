@@ -4335,6 +4335,44 @@ async fn resolve_and_materialize_training_artifact(
     materialize_training_artifact(config, client, resolver, run_root, local_path).await
 }
 
+fn localize_materialized_training_run_manifest(
+    config: &PylonConfig,
+    artifact: &MaterializedTrainingArtifact,
+    run_root: &Path,
+    local_path: &Path,
+) -> Result<()> {
+    let mut manifest = parse_pylon_training_run_manifest_json(artifact.payload.as_slice())
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let localized_run_root = run_root.display().to_string();
+    if manifest.artifacts.local_run_root == localized_run_root {
+        return Ok(());
+    }
+    manifest.artifacts.local_run_root = localized_run_root;
+    manifest.manifest_digest = manifest
+        .canonical_digest()
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let payload = manifest
+        .canonical_json_bytes()
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let cache_relative = training_resolved_artifact_cache_relative_path(
+        artifact.resolver.artifact_id.as_str(),
+        artifact.resolver.relative_object_path.as_str(),
+    );
+    let destinations = BTreeSet::from([
+        local_path.to_path_buf(),
+        run_root
+            .join("artifacts")
+            .join("resolved")
+            .join(cache_relative.as_path()),
+        training_download_cache_root(config)
+            .join("resolved")
+            .join(cache_relative),
+    ])
+    .into_iter()
+    .collect::<Vec<_>>();
+    write_training_artifact_destinations(&destinations, payload.as_slice())
+}
+
 async fn ensure_training_assignment_runtime_artifacts(
     config: &PylonConfig,
     client: &PylonTrainingCoordinatorClient,
@@ -4343,20 +4381,26 @@ async fn ensure_training_assignment_runtime_artifacts(
     run_root: &Path,
 ) -> Result<()> {
     let scope = training_assignment_artifact_scope(training_run, lease)?;
-    resolve_and_materialize_training_artifact(
+    let run_manifest_path = training_run_manifest_local_path(
+        run_root,
+        scope.window_id.as_deref().unwrap_or_default(),
+        scope.assignment_id.as_deref().unwrap_or_default(),
+    );
+    let run_manifest_artifact = resolve_and_materialize_training_artifact(
         config,
         client,
         PylonTrainingArtifactKind::RunManifest,
         scope.clone(),
         run_root,
-        training_run_manifest_local_path(
-            run_root,
-            scope.window_id.as_deref().unwrap_or_default(),
-            scope.assignment_id.as_deref().unwrap_or_default(),
-        )
-        .as_path(),
+        run_manifest_path.as_path(),
     )
     .await?;
+    localize_materialized_training_run_manifest(
+        config,
+        &run_manifest_artifact,
+        run_root,
+        run_manifest_path.as_path(),
+    )?;
     if training_run
         .checkpoint_binding
         .latest_checkpoint_ref
@@ -20844,8 +20888,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "optimizer_step":42
         })
         .to_string();
+        let coordinator_run_root = temp_dir.path().join("coordinator-placeholder-run-root");
         let run_manifest_payload = String::from_utf8(
-            training_manifest_fixture(run_root.as_path(), "gs://bucket")?.canonical_json_bytes()?,
+            training_manifest_fixture(coordinator_run_root.as_path(), "gs://bucket")?
+                .canonical_json_bytes()?,
         )?;
         let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
         let request_counts_for_server = Arc::clone(&request_counts);
@@ -21088,6 +21134,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "window.0001",
             "assign.node01.window0001",
         );
+        let localized_run_manifest = parse_pylon_training_run_manifest_json(
+            &std::fs::read(run_manifest_path.as_path())?,
+        )
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         let latest_pointer_path = run_root.join("checkpoints").join("latest_pointer.json");
         let checkpoint_manifest_path = run_root
             .join("checkpoints")
@@ -21111,6 +21161,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     == Some("assign.node01.window0001")
                 && manifest.coordination.membership_revision == Some(2),
             "assignment intake should materialize one valid psionic-train invocation manifest for the leased worker assignment",
+        )?;
+        ensure(
+            localized_run_manifest.artifacts.local_run_root == run_root.display().to_string(),
+            "assignment intake should localize the retained run manifest to the actual host run root",
         )?;
         ensure(
             run_manifest_path.is_file()
