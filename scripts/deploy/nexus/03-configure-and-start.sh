@@ -104,8 +104,8 @@ treasury_policy_change_requested() {
   [[ "$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS}" ]] && return 0
   [[ "$(jq -r '.placeholder_payout_mode // "presence_only"' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE}" ]] && return 0
   [[ "$(jq -r '.dedupe_placeholder_hosts // false' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS}" ]] && return 0
-  [[ "$(jq -r '.min_new_accrual_pylon_version // \"\"' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}" ]] && return 0
-  [[ "$(jq -r '.min_new_accrual_started_at_unix_ms // \"\"' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS}" ]] && return 0
+  [[ "$(jq -r '.min_new_accrual_pylon_version // ""' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION}" ]] && return 0
+  [[ "$(jq -r '.min_new_accrual_started_at_unix_ms // ""' <<<"$persisted_policy_json")" != "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS}" ]] && return 0
   return 1
 }
 
@@ -122,8 +122,8 @@ treasury_policy_change_is_destructive() {
   persisted_budget="$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")"
   persisted_placeholder_mode="$(jq -r '.placeholder_payout_mode // "presence_only"' <<<"$persisted_policy_json")"
   persisted_dedupe_placeholder_hosts="$(jq -r '.dedupe_placeholder_hosts // false' <<<"$persisted_policy_json")"
-  persisted_min_new_accrual_version="$(jq -r '.min_new_accrual_pylon_version // \"\"' <<<"$persisted_policy_json")"
-  persisted_min_new_accrual_started_at_unix_ms="$(jq -r '.min_new_accrual_started_at_unix_ms // \"\"' <<<"$persisted_policy_json")"
+  persisted_min_new_accrual_version="$(jq -r '.min_new_accrual_pylon_version // ""' <<<"$persisted_policy_json")"
+  persisted_min_new_accrual_started_at_unix_ms="$(jq -r '.min_new_accrual_started_at_unix_ms // ""' <<<"$persisted_policy_json")"
 
   [[ "$persisted_enabled" == "true" && "${NEXUS_CONTROL_TREASURY_ENABLED}" != "true" ]] && return 0
   (( NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW < persisted_payout )) && return 0
@@ -178,8 +178,8 @@ preserve_or_validate_persisted_treasury_policy() {
     export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS="$(jq -r '.daily_budget_cap_sats' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE="$(jq -r '.placeholder_payout_mode // "presence_only"' <<<"$persisted_policy_json")"
     export NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS="$(jq -r '.dedupe_placeholder_hosts // false' <<<"$persisted_policy_json")"
-    export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION="$(jq -r '.min_new_accrual_pylon_version // \"\"' <<<"$persisted_policy_json")"
-    export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS="$(jq -r '.min_new_accrual_started_at_unix_ms // \"\"' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION="$(jq -r '.min_new_accrual_pylon_version // ""' <<<"$persisted_policy_json")"
+    export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS="$(jq -r '.min_new_accrual_started_at_unix_ms // ""' <<<"$persisted_policy_json")"
     log "Preserving persisted treasury policy checksum=$(jq -r '.checksum' <<<"$persisted_policy_json")"
     return 0
   fi
