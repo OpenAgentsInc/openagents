@@ -232,6 +232,49 @@ This is the authority-facing answer to the UI request for:
 - participation versus progress
 - payout references that stay legible after closeout
 
+## Named Run Detail Snapshot
+
+Nexus now also exposes one public named-run detail read model at:
+
+- `/api/training/runs/{training_run_id}`
+
+This endpoint is the website-oriented companion to `/api/training/summary` and
+`/api/training/visualization`.
+
+It exists so public consumers can render one proof-grade run page without
+needing authenticated kernel access or private reconstruction logic.
+
+The named run detail snapshot projects:
+
+- one normalized run record
+  - run status, work class, progress class, replica type, and current window
+  - assigned, accepted, and model-progress contributor counts
+  - latest checkpoint, aggregate, and promoted-checkpoint refs
+- one featured window
+  - current window when present, otherwise the latest run window
+  - full public window state including acceptance, payout-eligibility, and
+    checkpoint-lineage fields
+- full public window history for the named run
+- contribution rows
+  - contribution, assignment, worker, and contributor identity
+  - validator disposition and aggregation eligibility
+  - manifest, object, provenance, validator, replay, and promotion digests
+- participating node rows
+  - admitted node identity, role claims, release/build metadata, eligibility,
+    and latest run/window linkage
+- queue pressure, launch-health, and treasury caveats that materially affect
+  interpretation of the run
+
+This endpoint is intended for proof pages such as public homework-run
+visualization on `openagents.com`, where consumers need one stable record that
+answers:
+
+- what run is this
+- which window is the current or proving window
+- which hosts contributed
+- what artifacts and digests identify the accepted work
+- what public caveats still apply to settlement or validation
+
 ## Work-Class Settlement Projection
 
 The accepted-outcome closeout record now also carries explicit settlement

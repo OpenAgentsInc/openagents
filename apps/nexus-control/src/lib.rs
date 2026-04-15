@@ -120,8 +120,10 @@ use tokio_stream::wrappers::BroadcastStream;
 use crate::economy::{
     AuthorityReceiptContext, PublicRecentPylon, PublicRecentPylonDiagnostic, PublicRuntimeSnapshot,
     PublicStatsSnapshot, PublicTrainingLaunchAlert, PublicTrainingLaunchHealthSnapshot,
-    PublicTrainingQueuePressure, PublicTrainingRunState, PublicTrainingStatsSnapshot,
-    PublicTrainingWindowState, PublicTrainingWorkClassState, ReceiptLedger,
+    PublicTrainingQueuePressure, PublicTrainingRunCaveat, PublicTrainingRunContributionRow,
+    PublicTrainingRunDetailSnapshot, PublicTrainingRunNodeRow, PublicTrainingRunState,
+    PublicTrainingRunTreasuryStatus, PublicTrainingStatsSnapshot, PublicTrainingWindowState,
+    PublicTrainingWorkClassState, ReceiptLedger,
 };
 use crate::kernel::{
     AdmittedTrainingNodeView, ComputeAcceptedOutcomePublicationSource,
@@ -7028,6 +7030,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
             "/api/training/rollout",
             get(training_rollout_policy).post(update_training_rollout_policy),
         )
+        .route(
+            "/api/training/runs/{training_run_id}",
+            get(get_training_run_detail),
+        )
         .route("/api/training/summary", get(training_operator_summary))
         .route("/api/training/visualization", get(training_visualization))
         .route("/api/training/nodes", get(list_training_nodes))
@@ -7453,6 +7459,41 @@ async fn training_visualization(
         reason: "session_store_poisoned".to_string(),
     })?;
     Ok(Json(training_visualization_snapshot(&store, now)))
+}
+
+async fn get_training_run_detail(
+    State(state): State<AppState>,
+    Path(training_run_id): Path<String>,
+) -> Result<Json<PublicTrainingRunDetailSnapshot>, ApiError> {
+    let training_run_id =
+        normalize_required_field(training_run_id.as_str(), "training_run_id_missing")?;
+    let now = now_unix_ms();
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let launch_metrics = training_launch_live_metrics_snapshot(&state);
+    let public_stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
+    let summary = training_operator_summary_snapshot(&store, now);
+    let visualization = training_visualization_snapshot_with_summary(&store, now, summary.clone());
+    let snapshot = training_run_detail_snapshot(
+        &store,
+        &public_stats,
+        &summary,
+        &visualization,
+        now,
+        training_run_id.as_str(),
+    )
+    .map_err(|reason| match reason.as_str() {
+        "training_run_not_found" => ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason,
+        },
+        _ => kernel_api_error(reason),
+    })?;
+    Ok(Json(snapshot))
 }
 
 async fn homepage_snapshot(
@@ -17833,6 +17874,363 @@ fn training_default_run<'a>(
         .or_else(|| runs.first())
 }
 
+fn training_public_run_state(
+    summary_run: &TrainingOperatorRunSummary,
+    visualization_run: &TrainingVisualizationRun,
+) -> PublicTrainingRunState {
+    PublicTrainingRunState {
+        training_run_id: visualization_run.training_run_id.clone(),
+        display_name: visualization_run.display_name.clone(),
+        network_id: visualization_run.network_id.clone(),
+        run_status: visualization_run.run_status.clone(),
+        scheduler_window_state: visualization_run.scheduler_window_state.clone(),
+        current_window_id: visualization_run.current_window_id.clone(),
+        work_class: visualization_run.work_class.clone(),
+        progress_class: visualization_run.progress_class.clone(),
+        replica_type: visualization_run.replica_type.clone(),
+        assigned_contributors: visualization_run.assigned_contributors,
+        weak_device_assigned_contributors: visualization_run.weak_device_assigned_contributors,
+        accepted_contributors: visualization_run.accepted_contributors,
+        weak_device_accepted_contributors: visualization_run.weak_device_accepted_contributors,
+        model_progress_contributors: visualization_run.model_progress_contributors,
+        active_window_count: visualization_run.active_window_count,
+        pending_validation_window_count: visualization_run.pending_validation_window_count,
+        validator_challenges_open: summary_run.open_validator_challenges,
+        validator_challenges_queued: summary_run.queued_validator_challenges,
+        latest_checkpoint_ref: visualization_run.latest_checkpoint_ref.clone(),
+        latest_checkpoint_age_ms: visualization_run.latest_checkpoint_age_ms,
+        latest_window_id: summary_run.latest_window_id.clone(),
+        latest_window_status: visualization_run.latest_window_status.clone(),
+        latest_closeout_status: visualization_run.latest_closeout_status.clone(),
+        latest_aggregate_ref: visualization_run.latest_aggregate_ref.clone(),
+        latest_promoted_checkpoint_ref: visualization_run.latest_promoted_checkpoint_ref.clone(),
+    }
+}
+
+fn training_public_window_state(window: &TrainingVisualizationWindow) -> PublicTrainingWindowState {
+    PublicTrainingWindowState {
+        window_id: window.window_id.clone(),
+        training_run_id: window.training_run_id.clone(),
+        network_id: window.network_id.clone(),
+        status: window.status.clone(),
+        stage_id: window.stage_id.clone(),
+        work_class: window.work_class.clone(),
+        progress_class: window.progress_class.clone(),
+        replica_type: window.replica_type.clone(),
+        round_index: window.round_index,
+        base_checkpoint_ref: window.base_checkpoint_ref.clone(),
+        planned_local_step_count: window.planned_local_step_count,
+        aggregation_rule: window.aggregation_rule.clone(),
+        aggregation_weight_basis: window.aggregation_weight_basis.clone(),
+        total_contributions: window.total_contributions,
+        admitted_contributions: window.admitted_contributions,
+        accepted_contributions: window.accepted_contributions,
+        replay_required_contributions: window.replay_required_contributions,
+        validator_challenges_open: window.validator_challenges_open,
+        validator_challenges_queued: window.validator_challenges_queued,
+        aggregated_delta_digest: window.aggregated_delta_digest.clone(),
+        accepted_aggregate_id: window.accepted_aggregate_id.clone(),
+        output_checkpoint_ref: window.output_checkpoint_ref.clone(),
+        promoted_checkpoint_ref: window.promoted_checkpoint_ref.clone(),
+        accepted_outcome_id: window.accepted_outcome_id.clone(),
+        closeout_status: window.closeout_status.clone(),
+        payout_eligible: window.payout_eligible,
+        weak_device_bearing: window.weak_device_bearing,
+        lineage_advanced: window.lineage_advanced,
+        planned_at_ms: window.planned_at_ms,
+        activated_at_ms: window.activated_at_ms,
+        sealed_at_ms: window.sealed_at_ms,
+        reconciled_at_ms: window.reconciled_at_ms,
+    }
+}
+
+fn training_window_sort_key(window: &PublicTrainingWindowState) -> i64 {
+    window
+        .reconciled_at_ms
+        .or(window.sealed_at_ms)
+        .or(window.activated_at_ms)
+        .unwrap_or(window.planned_at_ms)
+}
+
+fn training_run_detail_featured_window_id(run: &PublicTrainingRunState) -> Option<String> {
+    let current_window_id = run.current_window_id.trim();
+    if !current_window_id.is_empty() && current_window_id != "unknown" {
+        return Some(current_window_id.to_string());
+    }
+    run.latest_window_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "unknown")
+        .map(str::to_string)
+}
+
+fn training_run_detail_contribution_row(
+    contribution: &ComputeAdapterContributionOutcome,
+    node_label: Option<&str>,
+) -> PublicTrainingRunContributionRow {
+    PublicTrainingRunContributionRow {
+        contribution_id: contribution.contribution_id.clone(),
+        training_run_id: contribution.training_run_id.clone(),
+        window_id: contribution.window_id.clone(),
+        stage_id: contribution.stage_id.clone(),
+        assignment_id: contribution.assignment_id.clone(),
+        contributor_node_id: contribution.contributor_node_id.clone(),
+        node_label: node_label.map(str::to_string),
+        worker_id: contribution.worker_id.clone(),
+        validator_disposition: serialized_label(&contribution.validator_disposition),
+        aggregation_eligibility: serialized_label(&contribution.aggregation_eligibility),
+        accepted_for_aggregation: contribution.accepted_for_aggregation,
+        local_step_count: contribution.local_step_count,
+        consumed_token_count: contribution.consumed_token_count,
+        consumed_example_count: contribution.consumed_example_count,
+        submission_receipt_digest: contribution.submission_receipt_digest.clone(),
+        manifest_digest: contribution.manifest_digest.clone(),
+        object_digest: contribution.object_digest.clone(),
+        provenance_bundle_digest: contribution.provenance_bundle_digest.clone(),
+        validator_receipt_digest: contribution.validator_receipt_digest.clone(),
+        replay_receipt_digest: contribution.replay_receipt_digest.clone(),
+        promotion_receipt_digest: contribution.promotion_receipt_digest.clone(),
+        recorded_at_ms: contribution.recorded_at_ms,
+    }
+}
+
+fn training_run_detail_node_row(node: &AdmittedTrainingNodeView) -> PublicTrainingRunNodeRow {
+    PublicTrainingRunNodeRow {
+        node_pubkey_hex: node.node_pubkey_hex.clone(),
+        node_label: node.node_label.clone(),
+        role_claims: node
+            .role_claims
+            .iter()
+            .map(serialized_label)
+            .collect::<Vec<_>>(),
+        allowed_networks: node.allowed_networks.clone(),
+        release_id: node.release_id.clone(),
+        build_version: node.build_version.clone(),
+        build_digest: node.build_digest.clone(),
+        online: node.online,
+        eligible: node.eligible,
+        last_training_run_id: node.last_training_run_id.clone(),
+        last_window_id: node.last_window_id.clone(),
+        last_assignment_id: node.last_assignment_id.clone(),
+        last_successful_run_id: node.last_successful_run_id.clone(),
+        last_successful_window_id: node.last_successful_window_id.clone(),
+    }
+}
+
+fn push_training_run_caveat(
+    caveats: &mut Vec<PublicTrainingRunCaveat>,
+    seen: &mut HashSet<String>,
+    caveat_id: impl Into<String>,
+    severity: impl Into<String>,
+    title: impl Into<String>,
+    detail: impl Into<String>,
+) {
+    let caveat_id = caveat_id.into();
+    if !seen.insert(caveat_id.clone()) {
+        return;
+    }
+    caveats.push(PublicTrainingRunCaveat {
+        caveat_id,
+        severity: severity.into(),
+        title: title.into(),
+        detail: detail.into(),
+    });
+}
+
+fn training_run_detail_caveats(
+    public_stats: &PublicStatsSnapshot,
+    featured_window: Option<&PublicTrainingWindowState>,
+) -> Vec<PublicTrainingRunCaveat> {
+    let mut caveats = Vec::<PublicTrainingRunCaveat>::new();
+    let mut seen = HashSet::<String>::new();
+
+    for alert in &public_stats.training_public_state.launch_health.alerts {
+        push_training_run_caveat(
+            &mut caveats,
+            &mut seen,
+            alert.alert_id.clone(),
+            alert.severity.clone(),
+            alert.title.clone(),
+            alert.detail.clone(),
+        );
+    }
+
+    if let Some(reason) = public_stats.nexus_treasury_degraded_reason.as_deref() {
+        push_training_run_caveat(
+            &mut caveats,
+            &mut seen,
+            "treasury_degraded",
+            "critical",
+            "Treasury degraded",
+            reason.to_string(),
+        );
+    }
+
+    if let Some(status) = public_stats.nexus_wallet_runtime_status.as_deref() {
+        if status != "connected" {
+            push_training_run_caveat(
+                &mut caveats,
+                &mut seen,
+                "wallet_runtime",
+                "warning",
+                "Wallet runtime not fully healthy",
+                public_stats
+                    .nexus_wallet_last_error
+                    .clone()
+                    .unwrap_or_else(|| format!("wallet runtime status is {status}")),
+            );
+        }
+    }
+
+    if let Some(window) = featured_window {
+        if window.status == "sealed" && window.reconciled_at_ms.is_none() {
+            push_training_run_caveat(
+                &mut caveats,
+                &mut seen,
+                "window_validation_pending",
+                "warning",
+                "Window validation still pending",
+                format!(
+                    "{} is sealed but not yet reconciled into a final closeout.",
+                    window.window_id
+                ),
+            );
+        }
+    }
+
+    caveats
+}
+
+fn training_run_detail_snapshot(
+    store: &ControlStore,
+    public_stats: &PublicStatsSnapshot,
+    summary: &TrainingOperatorSummaryResponse,
+    visualization: &TrainingVisualizationResponse,
+    now_unix_ms: u64,
+    training_run_id: &str,
+) -> Result<PublicTrainingRunDetailSnapshot, String> {
+    let training_run_id =
+        normalize_required_training_string(training_run_id, "training_run_id_missing")?;
+    let summary_run = summary
+        .runs
+        .iter()
+        .find(|run| run.training_run_id == training_run_id)
+        .ok_or_else(|| "training_run_not_found".to_string())?;
+    let visualization_run = visualization
+        .runs
+        .iter()
+        .find(|run| run.training_run_id == training_run_id)
+        .ok_or_else(|| "training_run_not_found".to_string())?;
+    let run = training_public_run_state(summary_run, visualization_run);
+
+    let mut windows = visualization
+        .windows
+        .iter()
+        .filter(|window| window.training_run_id == training_run_id)
+        .map(training_public_window_state)
+        .collect::<Vec<_>>();
+    windows.sort_by(|lhs, rhs| {
+        training_window_sort_key(rhs)
+            .cmp(&training_window_sort_key(lhs))
+            .then_with(|| lhs.window_id.cmp(&rhs.window_id))
+    });
+
+    let mut admitted_nodes = store.kernel.list_admitted_training_nodes(
+        &TrainingNodeQuery {
+            network_id: None,
+            role: None,
+            online_only: false,
+            eligible_only: false,
+        },
+        now_unix_ms as i64,
+    );
+    admitted_nodes.sort_by(|lhs, rhs| {
+        lhs.node_label
+            .as_deref()
+            .unwrap_or(lhs.node_pubkey_hex.as_str())
+            .cmp(
+                rhs.node_label
+                    .as_deref()
+                    .unwrap_or(rhs.node_pubkey_hex.as_str()),
+            )
+            .then_with(|| lhs.node_pubkey_hex.cmp(&rhs.node_pubkey_hex))
+    });
+    let admitted_nodes_by_id = admitted_nodes
+        .iter()
+        .map(|node| (node.node_pubkey_hex.as_str(), node))
+        .collect::<HashMap<_, _>>();
+
+    let mut contributions = store
+        .kernel
+        .list_compute_adapter_contribution_outcomes(Some(training_run_id.as_str()), None, None)
+        .into_iter()
+        .map(|contribution| {
+            let node_label = admitted_nodes_by_id
+                .get(contribution.contributor_node_id.as_str())
+                .and_then(|node| node.node_label.as_deref());
+            training_run_detail_contribution_row(&contribution, node_label)
+        })
+        .collect::<Vec<_>>();
+    contributions.sort_by(|lhs, rhs| {
+        rhs.recorded_at_ms
+            .cmp(&lhs.recorded_at_ms)
+            .then_with(|| lhs.contribution_id.cmp(&rhs.contribution_id))
+    });
+
+    let requested_featured_window_id = training_run_detail_featured_window_id(&run);
+    let featured_window = requested_featured_window_id
+        .as_deref()
+        .and_then(|window_id| {
+            windows
+                .iter()
+                .find(|window| window.window_id == window_id)
+                .cloned()
+        })
+        .or_else(|| windows.first().cloned());
+    let featured_window_id = featured_window
+        .as_ref()
+        .map(|window| window.window_id.clone())
+        .or(requested_featured_window_id);
+
+    let participant_node_ids = contributions
+        .iter()
+        .map(|contribution| contribution.contributor_node_id.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .collect::<HashSet<_>>();
+    let nodes = admitted_nodes
+        .iter()
+        .filter(|node| {
+            participant_node_ids.contains(node.node_pubkey_hex.as_str())
+                || node.last_training_run_id.as_deref() == Some(training_run_id.as_str())
+                || node.last_successful_run_id.as_deref() == Some(training_run_id.as_str())
+                || featured_window_id.as_deref() == node.last_window_id.as_deref()
+                || featured_window_id.as_deref() == node.last_successful_window_id.as_deref()
+        })
+        .map(training_run_detail_node_row)
+        .collect::<Vec<_>>();
+    let caveats = training_run_detail_caveats(public_stats, featured_window.as_ref());
+
+    Ok(PublicTrainingRunDetailSnapshot {
+        generated_at_unix_ms: now_unix_ms,
+        training_run_id,
+        run,
+        featured_window_id,
+        featured_window,
+        queue_pressure: public_stats.training_public_state.queue_pressure.clone(),
+        launch_health: public_stats.training_public_state.launch_health.clone(),
+        treasury: PublicTrainingRunTreasuryStatus {
+            payout_loop_health: public_stats.nexus_payout_loop_health.clone(),
+            degraded_reason: public_stats.nexus_treasury_degraded_reason.clone(),
+            wallet_runtime_status: public_stats.nexus_wallet_runtime_status.clone(),
+            wallet_last_error: public_stats.nexus_wallet_last_error.clone(),
+        },
+        windows,
+        contributions,
+        nodes,
+        caveats,
+    })
+}
+
 fn training_queue_pressure_state(summary: &TrainingOperatorSummaryResponse) -> &'static str {
     if summary.validator_challenges_queued > 0 || summary.pending_validation_windows > 0 {
         "pending_validation"
@@ -17934,37 +18332,9 @@ fn training_public_stats_snapshot(
             let summary_run = summary_runs_by_id
                 .get(run.training_run_id.as_str())
                 .copied();
-            PublicTrainingRunState {
-                training_run_id: run.training_run_id.clone(),
-                display_name: run.display_name.clone(),
-                network_id: run.network_id.clone(),
-                run_status: run.run_status.clone(),
-                scheduler_window_state: run.scheduler_window_state.clone(),
-                current_window_id: run.current_window_id.clone(),
-                work_class: run.work_class.clone(),
-                progress_class: run.progress_class.clone(),
-                replica_type: run.replica_type.clone(),
-                assigned_contributors: run.assigned_contributors,
-                weak_device_assigned_contributors: run.weak_device_assigned_contributors,
-                accepted_contributors: run.accepted_contributors,
-                weak_device_accepted_contributors: run.weak_device_accepted_contributors,
-                model_progress_contributors: run.model_progress_contributors,
-                active_window_count: run.active_window_count,
-                pending_validation_window_count: run.pending_validation_window_count,
-                validator_challenges_open: summary_run
-                    .map_or(0, |summary_run| summary_run.open_validator_challenges),
-                validator_challenges_queued: summary_run
-                    .map_or(0, |summary_run| summary_run.queued_validator_challenges),
-                latest_checkpoint_ref: run.latest_checkpoint_ref.clone(),
-                latest_checkpoint_age_ms: run.latest_checkpoint_age_ms,
-                latest_window_id: summary_run
-                    .and_then(|summary_run| summary_run.latest_window_id.clone()),
-                latest_window_status: run.latest_window_status.clone(),
-                latest_closeout_status: run.latest_closeout_status.clone(),
-                latest_aggregate_ref: run.latest_aggregate_ref.clone(),
-                latest_promoted_checkpoint_ref: run.latest_promoted_checkpoint_ref.clone(),
-            }
+            summary_run.map(|summary_run| training_public_run_state(summary_run, run))
         })
+        .flatten()
         .collect::<Vec<_>>();
     runs.sort_by(|lhs, rhs| {
         let lhs_default = default_run_id.as_deref() == Some(lhs.training_run_id.as_str());
@@ -18007,54 +18377,11 @@ fn training_public_stats_snapshot(
                     || default_window_ids.contains(window.window_id.as_str())
                     || window.closeout_status.is_some())
         })
-        .map(|window| PublicTrainingWindowState {
-            window_id: window.window_id.clone(),
-            training_run_id: window.training_run_id.clone(),
-            network_id: window.network_id.clone(),
-            status: window.status.clone(),
-            stage_id: window.stage_id.clone(),
-            work_class: window.work_class.clone(),
-            progress_class: window.progress_class.clone(),
-            replica_type: window.replica_type.clone(),
-            round_index: window.round_index,
-            base_checkpoint_ref: window.base_checkpoint_ref.clone(),
-            planned_local_step_count: window.planned_local_step_count,
-            aggregation_rule: window.aggregation_rule.clone(),
-            aggregation_weight_basis: window.aggregation_weight_basis.clone(),
-            total_contributions: window.total_contributions,
-            admitted_contributions: window.admitted_contributions,
-            accepted_contributions: window.accepted_contributions,
-            replay_required_contributions: window.replay_required_contributions,
-            validator_challenges_open: window.validator_challenges_open,
-            validator_challenges_queued: window.validator_challenges_queued,
-            aggregated_delta_digest: window.aggregated_delta_digest.clone(),
-            accepted_aggregate_id: window.accepted_aggregate_id.clone(),
-            output_checkpoint_ref: window.output_checkpoint_ref.clone(),
-            promoted_checkpoint_ref: window.promoted_checkpoint_ref.clone(),
-            accepted_outcome_id: window.accepted_outcome_id.clone(),
-            closeout_status: window.closeout_status.clone(),
-            payout_eligible: window.payout_eligible,
-            weak_device_bearing: window.weak_device_bearing,
-            lineage_advanced: window.lineage_advanced,
-            planned_at_ms: window.planned_at_ms,
-            activated_at_ms: window.activated_at_ms,
-            sealed_at_ms: window.sealed_at_ms,
-            reconciled_at_ms: window.reconciled_at_ms,
-        })
+        .map(training_public_window_state)
         .collect::<Vec<_>>();
     windows.sort_by(|lhs, rhs| {
-        let lhs_sort_key = lhs
-            .reconciled_at_ms
-            .or(lhs.sealed_at_ms)
-            .or(lhs.activated_at_ms)
-            .unwrap_or(lhs.planned_at_ms);
-        let rhs_sort_key = rhs
-            .reconciled_at_ms
-            .or(rhs.sealed_at_ms)
-            .or(rhs.activated_at_ms)
-            .unwrap_or(rhs.planned_at_ms);
-        rhs_sort_key
-            .cmp(&lhs_sort_key)
+        training_window_sort_key(rhs)
+            .cmp(&training_window_sort_key(lhs))
             .then_with(|| lhs.training_run_id.cmp(&rhs.training_run_id))
             .then_with(|| lhs.window_id.cmp(&rhs.window_id))
     });
@@ -19852,7 +20179,9 @@ mod tests {
     use tokio_tungstenite::tungstenite::Message;
     use tower::ServiceExt;
 
-    use crate::economy::{AuthorityReceipt, AuthorityReceiptContext};
+    use crate::economy::{
+        AuthorityReceipt, AuthorityReceiptContext, PublicTrainingRunDetailSnapshot,
+    };
     use crate::kernel::{
         RecordTrainingNodeAdmissionRequest, RecordTrainingNodeAdmissionResponse,
         RecordTrainingNodeHeartbeatRequest, RecordTrainingNodeHeartbeatResponse,
@@ -33666,6 +33995,203 @@ mod tests {
         assert_eq!(
             visualization.closeouts[0].payout_basis.as_deref(),
             Some("aggregation_weight")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_run_detail_endpoint_surfaces_sealed_window_contributions_and_caveats()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = super::now_unix_ms().saturating_sub(30_000);
+        let training_run_id = "run.detail.alpha";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut validator = training_node_admission_request(
+                "validator-alpha",
+                "sha256:validator-alpha",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            validator.requested_at_ms = created_at_ms as i64 + 760;
+            validator.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 760),
+                    validator,
+                )
+                .expect("admit validator");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-alpha", "sha256:validator-alpha");
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 770;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 770);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = "window.0001".to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-alpha", created_at_ms + 770),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator");
+        }
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.detail.alpha",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.detail.alpha",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://0001",
+                                "sha256:slice-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/activate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.detail.alpha",
+                            created_at_ms as i64 + 1_200,
+                            "window.0001",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/seal")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.detail.alpha".to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.detail.alpha",
+                                    &lease,
+                                    "sha256:validator-pending-detail-alpha",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let detail_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(detail_response.status(), StatusCode::OK);
+        let detail = response_json::<PublicTrainingRunDetailSnapshot>(detail_response).await?;
+
+        assert_eq!(detail.training_run_id, training_run_id);
+        assert_eq!(detail.run.training_run_id, training_run_id);
+        assert_eq!(detail.run.network_id, "trainnet.alpha");
+        assert_eq!(detail.featured_window_id.as_deref(), Some("window.0001"));
+        assert_eq!(
+            detail
+                .featured_window
+                .as_ref()
+                .map(|window| window.status.as_str()),
+            Some("sealed")
+        );
+        assert_eq!(detail.windows.len(), 1);
+        assert_eq!(detail.windows[0].window_id, "window.0001");
+        assert_eq!(detail.windows[0].status, "sealed");
+        assert_eq!(detail.contributions.len(), 1);
+        assert_eq!(
+            detail.contributions[0].contribution_id,
+            "contrib.window.detail.alpha"
+        );
+        assert_eq!(detail.contributions[0].assignment_id, lease.assignment_id);
+        assert_eq!(detail.contributions[0].contributor_node_id, "node-alpha");
+        assert_eq!(
+            detail.contributions[0].node_label.as_deref(),
+            Some("node-node-alpha")
+        );
+        assert!(!detail.contributions[0].validator_disposition.is_empty());
+        assert!(
+            detail
+                .nodes
+                .iter()
+                .any(|node| node.node_pubkey_hex == "node-alpha"
+                    && node.node_label.as_deref() == Some("node-node-alpha"))
+        );
+        assert!(
+            detail
+                .caveats
+                .iter()
+                .any(|caveat| caveat.caveat_id == "validator_backlog")
+        );
+        assert!(
+            detail
+                .caveats
+                .iter()
+                .any(|caveat| caveat.caveat_id == "window_validation_pending")
         );
 
         Ok(())
