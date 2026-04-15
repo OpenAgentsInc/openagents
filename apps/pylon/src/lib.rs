@@ -4060,6 +4060,25 @@ fn training_assignment_artifact_scope(
     })
 }
 
+fn localize_training_run_manifest_payload(payload: Vec<u8>, run_root: &Path) -> Result<Vec<u8>> {
+    let mut manifest = parse_pylon_training_run_manifest_json(payload.as_slice())
+        .map_err(anyhow::Error::msg)
+        .context("failed to parse downloaded training run manifest")?;
+    let localized_run_root = run_root.display().to_string();
+    if manifest.artifacts.local_run_root == localized_run_root {
+        return Ok(payload);
+    }
+    manifest.artifacts.local_run_root = localized_run_root;
+    manifest.manifest_digest = manifest
+        .canonical_digest()
+        .map_err(anyhow::Error::msg)
+        .context("failed to recompute localized training run manifest digest")?;
+    manifest
+        .canonical_json_bytes()
+        .map_err(anyhow::Error::msg)
+        .context("failed to encode localized training run manifest")
+}
+
 fn training_checkpoint_manifest_step(payload: &[u8], source_path: &Path) -> Result<Option<u64>> {
     let decoded: Value = serde_json::from_slice(payload).with_context(|| {
         format!(
@@ -4213,19 +4232,19 @@ async fn materialize_training_artifact(
         )
     })?;
     let payload = payload.to_vec();
-    let digest = training_artifact_digest_from_locator_payload(
+    let remote_digest = training_artifact_digest_from_locator_payload(
         resolver.relative_object_path.as_str(),
         payload.as_slice(),
     )?;
-    let size_bytes = u64::try_from(payload.len()).unwrap_or(u64::MAX);
+    let remote_size_bytes = u64::try_from(payload.len()).unwrap_or(u64::MAX);
     if signed_access
         .expected_digest
         .as_deref()
         .or(expected_digest.as_deref())
-        .is_some_and(|expected| expected != digest)
+        .is_some_and(|expected| expected != remote_digest)
     {
         bail!(
-            "{}: expected {} for {}, got {digest}",
+            "{}: expected {} for {}, got {remote_digest}",
             openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactDigestMismatch
                 .label(),
             signed_access
@@ -4239,10 +4258,10 @@ async fn materialize_training_artifact(
     if signed_access
         .expected_size_bytes
         .or(expected_size_bytes)
-        .is_some_and(|expected| expected != size_bytes)
+        .is_some_and(|expected| expected != remote_size_bytes)
     {
         bail!(
-            "{}: expected {} bytes for {}, got {size_bytes}",
+            "{}: expected {} bytes for {}, got {remote_size_bytes}",
             openagents_kernel_core::pylon_training::PylonTrainingRefusalCode::ArtifactIncomplete
                 .label(),
             signed_access
@@ -4252,6 +4271,16 @@ async fn materialize_training_artifact(
             resolver.artifact_id
         );
     }
+    let payload = if resolver.artifact_kind == PylonTrainingArtifactKind::RunManifest {
+        localize_training_run_manifest_payload(payload, run_root)?
+    } else {
+        payload
+    };
+    let digest = training_artifact_digest_from_locator_payload(
+        resolver.relative_object_path.as_str(),
+        payload.as_slice(),
+    )?;
+    let size_bytes = u64::try_from(payload.len()).unwrap_or(u64::MAX);
 
     let cache_relative = training_resolved_artifact_cache_relative_path(
         resolver.artifact_id.as_str(),
@@ -7648,7 +7677,10 @@ async fn run_training_assignment_intake_once_with_context(
         );
     }
     client
-        .report_heartbeat(&training_idle_presence_heartbeat_request(identity, now_epoch_ms()))
+        .report_heartbeat(&training_idle_presence_heartbeat_request(
+            identity,
+            now_epoch_ms(),
+        ))
         .await?;
 
     for role in supported_roles {
@@ -16732,10 +16764,7 @@ pub async fn fetch_nexus_treasury_health(
         .await
         .with_context(|| format!("failed to fetch nexus treasury status from {url}"))?;
     if !response.status().is_success() {
-        bail!(
-            "nexus treasury status returned {}",
-            response.status()
-        );
+        bail!("nexus treasury status returned {}", response.status());
     }
     response
         .json::<NexusTreasuryHealthSnapshot>()

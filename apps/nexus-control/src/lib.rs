@@ -85,13 +85,19 @@ use openagents_kernel_core::data_contracts;
 use openagents_kernel_core::ids::sha256_prefixed_bytes;
 use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
-    PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PYLON_TRAINING_LEASE_DURATION_MS,
-    PYLON_TRAINING_SEAL_GRACE_PERIOD_MS, PYLON_TRAINING_WINDOW_MAX_DURATION_MS,
-    PylonTrainingAggregateResolution, PylonTrainingArtifactGcsLayoutPolicy,
-    PylonTrainingArtifactResolverResponse, PylonTrainingArtifactSignedAccessRequest,
-    PylonTrainingArtifactSignedAccessResponse, PylonTrainingContributionSampleCandidate,
-    PylonTrainingContributionVerdict, PylonTrainingRefusalCode, PylonTrainingReputationLabel,
-    PylonTrainingReputationNamespace, PylonTrainingSchedulerEffect,
+    PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PYLON_TRAINING_GCS_CREDENTIAL_SOURCE,
+    PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
+    PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
+    PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactKind,
+    PylonTrainingArtifactResolverResponse, PylonTrainingArtifactScope,
+    PylonTrainingArtifactSignedAccessMode, PylonTrainingArtifactSignedAccessRequest,
+    PylonTrainingArtifactSignedAccessResponse, PylonTrainingArtifacts,
+    PylonTrainingCheckpointBinding, PylonTrainingCollectiveKind,
+    PylonTrainingContributionSampleCandidate, PylonTrainingContributionVerdict,
+    PylonTrainingDatasetAssignment, PylonTrainingElasticBoundary, PylonTrainingManifestRole,
+    PylonTrainingRefusalCode, PylonTrainingReputationLabel, PylonTrainingReputationNamespace,
+    PylonTrainingRunManifestCommon, PylonTrainingRunManifestV1, PylonTrainingSchedulerEffect,
+    PylonTrainingTopology, PylonTrainingTopologyBackendFamily, PylonTrainingTrn,
     pylon_training_artifact_object_uri, pylon_training_assignment_id,
     pylon_training_assignment_seed, pylon_training_hard_gate_reason, pylon_training_lease_id,
     pylon_training_manifest_binding_digest, pylon_training_membership_revision_label,
@@ -3111,7 +3117,7 @@ impl TrainingSchedulerState {
             return Ok(run);
         }
 
-        let mut best_match: Option<((u8, u8, u8), ComputeTrainingRun)> = None;
+        let mut best_match: Option<((u8, u8, u8, i64), ComputeTrainingRun)> = None;
         for run in candidate_runs {
             if !training_run_schedulable(&run) {
                 continue;
@@ -4042,11 +4048,12 @@ fn training_scheduler_minimum_tier_for_replica_type(
 fn training_scheduler_run_priority(
     role: TrainingNodeRoleClaim,
     run: &ComputeTrainingRun,
-) -> (u8, u8, u8) {
+) -> (u8, u8, u8, i64) {
     (
         training_scheduler_minimum_tier_for_work_class(role, run.work_class).ordinal(),
         training_scheduler_minimum_tier_for_replica_type(role, run.replica_type).ordinal(),
         training_scheduler_work_class_priority(run.work_class),
+        run.created_at_ms,
     )
 }
 
@@ -7622,6 +7629,18 @@ async fn launch_cs336_a1_demo_run(
     if let Some(snapshot_event) = launch_result.snapshot_event.clone() {
         let _ = state.kernel_snapshot_tx.send(snapshot_event);
     }
+    if launch_result.launch_state == "created"
+        && state.config.training_artifact_signed_url.is_some()
+    {
+        publish_cs336_a1_demo_bootstrap_artifacts(
+            &launch_result.lane_contract,
+            &state.config,
+            now,
+            launch_result.training_run_id.as_str(),
+        )
+        .await
+        .map_err(kernel_api_error)?;
+    }
 
     let run_detail = {
         let store = state.store.read().map_err(|_| ApiError {
@@ -7923,6 +7942,278 @@ fn cs336_a1_demo_training_run_request(
         evidence: Vec::new(),
         hints: ReceiptHints::default(),
     })
+}
+
+#[derive(Debug, Clone)]
+struct Cs336A1DemoBootstrapArtifact {
+    resolver: PylonTrainingArtifactResolverResponse,
+    object_uri: String,
+    payload: Vec<u8>,
+}
+
+fn cs336_a1_demo_authority_base_url(config: &ServiceConfig) -> String {
+    let normalized = config.hosted_nexus_relay_url.trim().trim_end_matches('/');
+    if let Some(value) = normalized.strip_prefix("wss://") {
+        return format!("https://{value}");
+    }
+    if let Some(value) = normalized.strip_prefix("ws://") {
+        return format!("http://{value}");
+    }
+    if normalized.starts_with("http://") || normalized.starts_with("https://") {
+        return normalized.to_string();
+    }
+    "https://nexus.openagents.com".to_string()
+}
+
+fn cs336_a1_demo_bootstrap_placeholder_run_root(training_run_id: &str) -> String {
+    format!("/var/lib/openagents/pylon/runs/{training_run_id}")
+}
+
+fn cs336_a1_demo_bootstrap_artifact(
+    artifact_bucket_uri: &str,
+    kind: PylonTrainingArtifactKind,
+    scope: PylonTrainingArtifactScope,
+    payload: Vec<u8>,
+) -> Result<Cs336A1DemoBootstrapArtifact, String> {
+    let resolver = PylonTrainingArtifactResolverResponse::new(kind, scope)
+        .map_err(|error| format!("cs336_a1_demo_bootstrap_artifact_resolver_invalid:{error}"))?;
+    let object_uri = pylon_training_artifact_object_uri(artifact_bucket_uri, &resolver)
+        .map_err(|error| format!("cs336_a1_demo_bootstrap_artifact_object_uri_invalid:{error}"))?;
+    Ok(Cs336A1DemoBootstrapArtifact {
+        resolver,
+        object_uri,
+        payload,
+    })
+}
+
+fn build_cs336_a1_demo_bootstrap_artifacts(
+    lane_contract: &PsionicTrainLaneContract,
+    config: &ServiceConfig,
+    now_unix_ms: u64,
+    training_run_id: &str,
+) -> Result<Vec<Cs336A1DemoBootstrapArtifact>, String> {
+    let artifact_bucket_uri = cs336_a1_demo_artifact_bucket_uri(config);
+    let network_id = EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string();
+    let window_id = cs336_a1_demo_initial_window_id(training_run_id);
+    let checkpoint_ref = EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string();
+    let assignment_id =
+        pylon_training_assignment_id(training_run_id, window_id.as_str(), "worker", 1, 1);
+    let membership_revision = 1_u64;
+    let membership_revision_label = pylon_training_membership_revision_label(membership_revision);
+    let lease_id = pylon_training_lease_id(
+        training_run_id,
+        window_id.as_str(),
+        "worker",
+        1,
+        1,
+        membership_revision,
+    );
+    let latest_pointer_artifact = cs336_a1_demo_bootstrap_artifact(
+        artifact_bucket_uri.as_str(),
+        PylonTrainingArtifactKind::LatestCheckpointPointer,
+        PylonTrainingArtifactScope {
+            network_id: network_id.clone(),
+            run_id: training_run_id.to_string(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: None,
+        },
+        serde_json::to_vec(&json!({
+            "schema_version": "openagents.pylon_training.latest_pointer.v1",
+            "checkpoint_ref": checkpoint_ref.clone(),
+            "optimizer_step": 0,
+        }))
+        .map_err(|error| format!("cs336_a1_demo_latest_pointer_encode_failed:{error}"))?,
+    )?;
+    let checkpoint_manifest_payload = serde_json::to_vec(&json!({
+        "schema_version": "openagents.pylon_training.checkpoint_manifest.v1",
+        "checkpoint_ref": checkpoint_ref.clone(),
+        "optimizer_step": 0,
+    }))
+    .map_err(|error| format!("cs336_a1_demo_checkpoint_manifest_encode_failed:{error}"))?;
+    let checkpoint_manifest_digest = sha256_prefixed_bytes(checkpoint_manifest_payload.as_slice());
+    let checkpoint_manifest_artifact = cs336_a1_demo_bootstrap_artifact(
+        artifact_bucket_uri.as_str(),
+        PylonTrainingArtifactKind::CheckpointManifest,
+        PylonTrainingArtifactScope {
+            network_id: network_id.clone(),
+            run_id: training_run_id.to_string(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: Some(0),
+        },
+        checkpoint_manifest_payload,
+    )?;
+
+    let dataset_slice = ComputeAdapterDatasetSlice {
+        dataset_id: EPISODE_224_CS336_A1_DEMO_DATASET_REF.to_string(),
+        split_name: "train".to_string(),
+        slice_id: format!("slice.{training_run_id}.worker.1"),
+        slice_digest: sha256_prefixed_bytes(
+            format!("{training_run_id}:{assignment_id}:dataset_slice").as_bytes(),
+        ),
+    };
+    let placeholder_node_pubkey = "0".repeat(64);
+    let coordinator_pubkey = "1".repeat(64);
+    let manifest = PylonTrainingRunManifestV1::builder(
+        PylonTrainingManifestRole::Worker,
+        PylonTrainingRunManifestCommon {
+            manifest_id: format!("manifest.{training_run_id}.bootstrap"),
+            issued_at_ms: now_unix_ms,
+            expires_at_ms: now_unix_ms.saturating_add(86_400_000),
+            network_id: network_id.clone(),
+            run_id: training_run_id.to_string(),
+            window_id: window_id.clone(),
+            assignment_id: assignment_id.clone(),
+            lease_id,
+            lease_sequence: 1,
+            membership_revision: membership_revision_label.clone(),
+            node_pubkey: placeholder_node_pubkey.clone(),
+            coordinator_pubkey: coordinator_pubkey.clone(),
+            authority_base_url: cs336_a1_demo_authority_base_url(config),
+            training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
+            validator_policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
+            environment_ref: lane_contract.environment_ref.clone(),
+            environment_version: EPISODE_224_CS336_A1_DEMO_POLICY_VERSION.to_string(),
+        },
+        PylonTrainingTopology {
+            backend_family: PylonTrainingTopologyBackendFamily::Cuda,
+            world_size: 1,
+            rank: 0,
+            local_device_ids: vec![0],
+            collective_kind: PylonTrainingCollectiveKind::DataParallel,
+            elastic_boundary: PylonTrainingElasticBoundary::Window,
+        },
+        PylonTrainingCheckpointBinding {
+            checkpoint_family: EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY.to_string(),
+            checkpoint_ref: EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string(),
+            manifest_digest: checkpoint_manifest_digest,
+            latest_pointer_ref: latest_pointer_artifact.object_uri.clone(),
+        },
+        PylonTrainingArtifacts {
+            bucket_uri: artifact_bucket_uri.clone(),
+            run_prefix: format!("networks/{network_id}/runs/{training_run_id}"),
+            window_prefix: format!(
+                "networks/{network_id}/runs/{training_run_id}/windows/{window_id}"
+            ),
+            local_run_root: cs336_a1_demo_bootstrap_placeholder_run_root(training_run_id),
+            credential_source: PYLON_TRAINING_GCS_CREDENTIAL_SOURCE.to_string(),
+        },
+        PylonTrainingTrn {
+            network_coordinate: format!(
+                "39500:{coordinator_pubkey}:{}",
+                EPISODE_224_CS336_A1_DEMO_NETWORK_ID
+            ),
+            window_coordinate: format!("39510:{coordinator_pubkey}:{window_id}"),
+            relay_urls: if config.training_trn_relay_urls.is_empty() {
+                vec![DEFAULT_HOSTED_NEXUS_RELAY_URL.to_string()]
+            } else {
+                config.training_trn_relay_urls.clone()
+            },
+        },
+    )
+    .dataset(PylonTrainingDatasetAssignment {
+        dataset_id: dataset_slice.dataset_id.clone(),
+        slice_id: dataset_slice.slice_id.clone(),
+        slice_digest: dataset_slice.slice_digest.clone(),
+        assignment_seed: pylon_training_assignment_seed(
+            training_run_id,
+            window_id.as_str(),
+            membership_revision_label.as_str(),
+            assignment_id.as_str(),
+            placeholder_node_pubkey.as_str(),
+            &dataset_slice,
+        )?,
+    })
+    .build()
+    .map_err(|error| format!("cs336_a1_demo_bootstrap_manifest_invalid:{error}"))?;
+    let run_manifest_artifact = cs336_a1_demo_bootstrap_artifact(
+        artifact_bucket_uri.as_str(),
+        PylonTrainingArtifactKind::RunManifest,
+        PylonTrainingArtifactScope {
+            network_id,
+            run_id: training_run_id.to_string(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: None,
+        },
+        manifest
+            .canonical_json_bytes()
+            .map_err(|error| format!("cs336_a1_demo_bootstrap_manifest_encode_failed:{error}"))?,
+    )?;
+
+    Ok(vec![
+        run_manifest_artifact,
+        latest_pointer_artifact,
+        checkpoint_manifest_artifact,
+    ])
+}
+
+async fn upload_training_artifact_via_signed_url(
+    config: &TrainingArtifactSignedUrlConfig,
+    client: &reqwest::Client,
+    artifact: &Cs336A1DemoBootstrapArtifact,
+) -> Result<(), String> {
+    let signed_access = issue_training_artifact_signed_access(
+        config,
+        &artifact.resolver,
+        &PylonTrainingArtifactSignedAccessRequest {
+            mode: PylonTrainingArtifactSignedAccessMode::Write,
+            ttl_seconds: None,
+            digest: Some(sha256_prefixed_bytes(artifact.payload.as_slice())),
+            size_bytes: Some(u64::try_from(artifact.payload.len()).unwrap_or(u64::MAX)),
+        },
+        now_unix_ms() / 1_000,
+    )?;
+    let response = client
+        .put(signed_access.signed_url.as_str())
+        .body(artifact.payload.clone())
+        .send()
+        .await
+        .map_err(|error| {
+            format!(
+                "cs336_a1_demo_bootstrap_artifact_upload_failed:{}:{error}",
+                artifact.resolver.artifact_id
+            )
+        })?;
+    if response.status().is_success() {
+        return Ok(());
+    }
+    let status = response.status().as_u16();
+    let detail = response.text().await.unwrap_or_default();
+    Err(format!(
+        "cs336_a1_demo_bootstrap_artifact_upload_failed:{}:{}:{}",
+        artifact.resolver.artifact_id, status, detail
+    ))
+}
+
+async fn publish_cs336_a1_demo_bootstrap_artifacts(
+    lane_contract: &PsionicTrainLaneContract,
+    config: &ServiceConfig,
+    now_unix_ms: u64,
+    training_run_id: &str,
+) -> Result<(), String> {
+    let signed_url_config = config
+        .training_artifact_signed_url
+        .as_ref()
+        .ok_or_else(|| "cs336_a1_demo_bootstrap_artifact_upload_unconfigured".to_string())?;
+    let artifacts = build_cs336_a1_demo_bootstrap_artifacts(
+        lane_contract,
+        config,
+        now_unix_ms,
+        training_run_id,
+    )?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|error| format!("cs336_a1_demo_bootstrap_http_client_invalid:{error}"))?;
+    for artifact in &artifacts {
+        upload_training_artifact_via_signed_url(signed_url_config, &client, artifact).await?;
+    }
+    Ok(())
 }
 
 fn ensure_cs336_a1_demo_registry_contracts(
