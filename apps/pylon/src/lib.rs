@@ -2234,7 +2234,7 @@ const GEMMA_DOWNLOAD_SPECS: [GemmaDownloadSpec; 4] = [
         quantization: "Q8_0",
         psionic_model_id: "gemma4:e2b",
         repo_id: "ggml-org/gemma-4-E2B-it-GGUF",
-        filename: "gemma-4-e2b-it-Q8_0.gguf",
+        filename: "gemma-4-E2B-it-Q8_0.gguf",
         runtime_shape: GemmaRuntimeShape::Dense,
     },
     GemmaDownloadSpec {
@@ -27641,6 +27641,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     -> Result<(), Box<dyn std::error::Error>> {
         let spec = gemma_download_spec("gemma-4-e2b")
             .ok_or_else(|| std::io::Error::other("missing gemma-4-e2b spec"))?;
+        ensure(
+            spec.filename == "gemma-4-E2B-it-Q8_0.gguf",
+            "gemma-4-e2b should use the current uppercase E2B GGUF filename",
+        )?;
         let payload = "x".repeat(16_384);
         let expected_path = format!(
             "/{}/resolve/main/{}?download=true",
