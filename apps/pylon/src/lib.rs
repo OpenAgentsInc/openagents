@@ -7362,6 +7362,90 @@ fn training_lease_claim_error_is_nonfatal(error: &str) -> bool {
         || error.contains("training_scheduler_role_overlap_forbidden")
 }
 
+fn training_node_presence_heartbeat_request(
+    identity: &NostrIdentity,
+    recorded_at_ms: i64,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    desired_state: PylonTrainingSupervisorDesiredState,
+    process_state: PylonTrainingSupervisorProcessState,
+    last_heartbeat_at_ms: Option<i64>,
+    last_exit_code: Option<i32>,
+) -> PylonTrainingHeartbeatRequest {
+    PylonTrainingHeartbeatRequest {
+        idempotency_key: format!("training-heartbeat:{lease_id}:{recorded_at_ms}"),
+        recorded_at_ms,
+        node_pubkey_hex: identity.public_key_hex.clone(),
+        build_digest: local_training_build_digest(),
+        training_run_id,
+        window_id,
+        assignment_id,
+        lease_id,
+        desired_state,
+        process_state,
+        last_heartbeat_at_ms: Some(last_heartbeat_at_ms.unwrap_or(recorded_at_ms)),
+        last_exit_code,
+    }
+}
+
+fn training_idle_presence_heartbeat_request(
+    identity: &NostrIdentity,
+    recorded_at_ms: i64,
+) -> PylonTrainingHeartbeatRequest {
+    training_node_presence_heartbeat_request(
+        identity,
+        recorded_at_ms,
+        "run.idle".to_string(),
+        "window.idle".to_string(),
+        format!("assignment.idle.{}", identity.public_key_hex),
+        format!("lease.idle.{}", identity.public_key_hex),
+        PylonTrainingSupervisorDesiredState::Running,
+        PylonTrainingSupervisorProcessState::Running,
+        Some(recorded_at_ms),
+        None,
+    )
+}
+
+fn training_runtime_presence_heartbeat_request(
+    identity: &NostrIdentity,
+    recorded_at_ms: i64,
+    runtime: &PylonTrainingActiveRuntimeState,
+) -> PylonTrainingHeartbeatRequest {
+    training_node_presence_heartbeat_request(
+        identity,
+        recorded_at_ms,
+        runtime.training_run_id.clone(),
+        runtime.window_id.clone(),
+        runtime.assignment_id.clone(),
+        runtime.lease_id.clone(),
+        runtime.desired_state,
+        runtime.process_state,
+        runtime.last_heartbeat_at_ms,
+        runtime.last_exit_code,
+    )
+}
+
+fn training_lease_presence_heartbeat_request(
+    identity: &NostrIdentity,
+    recorded_at_ms: i64,
+    lease: &PylonTrainingLeaseCacheEntry,
+) -> PylonTrainingHeartbeatRequest {
+    training_node_presence_heartbeat_request(
+        identity,
+        recorded_at_ms,
+        lease.training_run_id.clone(),
+        lease.window_id.clone(),
+        lease.assignment_id.clone(),
+        lease.lease_id.clone(),
+        PylonTrainingSupervisorDesiredState::Running,
+        PylonTrainingSupervisorProcessState::Running,
+        Some(recorded_at_ms),
+        None,
+    )
+}
+
 fn cache_training_run_lease(
     state: &mut PylonTrainingRuntimeState,
     lease: &PylonTrainingRunLeaseResponse,
@@ -7446,11 +7530,21 @@ async fn run_training_assignment_intake_once_with_context(
     host: &ProviderHostTelemetrySnapshot,
     runtime_surface: Option<&PsionicTrainRuntimeSurface>,
 ) -> Result<()> {
+    let client = PylonTrainingCoordinatorClient::new(config)?;
     if state
         .active_runtime
         .as_ref()
         .is_some_and(|runtime| training_supervision_is_active(runtime.process_state))
     {
+        if let Some(runtime) = state.active_runtime.as_ref() {
+            client
+                .report_heartbeat(&training_runtime_presence_heartbeat_request(
+                    identity,
+                    now_epoch_ms(),
+                    runtime,
+                ))
+                .await?;
+        }
         return Ok(());
     }
     if !training_runtime_blocked_label_keys(state).is_empty() {
@@ -7472,8 +7566,14 @@ async fn run_training_assignment_intake_once_with_context(
         return Ok(());
     }
 
-    let client = PylonTrainingCoordinatorClient::new(config)?;
     if let Some(existing_lease) = newest_pending_training_lease_cache_entry(state) {
+        client
+            .report_heartbeat(&training_lease_presence_heartbeat_request(
+                identity,
+                now_epoch_ms(),
+                &existing_lease,
+            ))
+            .await?;
         let runtime_surface = runtime_surface.ok_or_else(|| {
             anyhow!("psionic-train runtime surface is required to materialize a leased assignment")
         })?;
@@ -7547,6 +7647,9 @@ async fn run_training_assignment_intake_once_with_context(
                 .unwrap_or_else(|| "training_node_not_admitted".to_string())
         );
     }
+    client
+        .report_heartbeat(&training_idle_presence_heartbeat_request(identity, now_epoch_ms()))
+        .await?;
 
     for role in supported_roles {
         let membership_revision = training_cached_membership_revision_for_role(state, role);
@@ -7571,6 +7674,16 @@ async fn run_training_assignment_intake_once_with_context(
             {
                 Ok(lease) => {
                     cache_training_run_lease(state, &lease, requested_at_ms);
+                    client
+                        .report_heartbeat(&training_lease_presence_heartbeat_request(
+                            identity,
+                            now_epoch_ms(),
+                            state
+                                .lease_cache
+                                .get(lease.lease_id.as_str())
+                                .expect("cached lease after successful lease response"),
+                        ))
+                        .await?;
                     let runtime_surface = runtime_surface.ok_or_else(|| {
                         anyhow!(
                             "psionic-train runtime surface is required to materialize a leased assignment"
