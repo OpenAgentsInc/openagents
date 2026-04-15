@@ -7559,15 +7559,16 @@ async fn get_training_run_detail(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    let launch_metrics = training_launch_live_metrics_snapshot(&state);
-    let public_stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
     let summary = training_operator_summary_snapshot(&store, now);
     let visualization = training_visualization_snapshot_with_summary(&store, now, summary.clone());
+    let launch_metrics = training_launch_live_metrics_snapshot(&state);
+    let detail_context =
+        training_run_detail_context(&state.config, &store, &summary, &launch_metrics, now);
     let snapshot = training_run_detail_snapshot(
         &store,
-        &public_stats,
         &summary,
         &visualization,
+        &detail_context,
         now,
         training_run_id.as_str(),
     )
@@ -7619,16 +7620,17 @@ async fn launch_cs336_a1_demo_run(
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
-        let launch_metrics = training_launch_live_metrics_snapshot(&state);
-        let public_stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
         let summary = training_operator_summary_snapshot(&store, now);
         let visualization =
             training_visualization_snapshot_with_summary(&store, now, summary.clone());
+        let launch_metrics = training_launch_live_metrics_snapshot(&state);
+        let detail_context =
+            training_run_detail_context(&state.config, &store, &summary, &launch_metrics, now);
         training_run_detail_snapshot(
             &store,
-            &public_stats,
             &summary,
             &visualization,
+            &detail_context,
             now,
             launch_result.training_run_id.as_str(),
         )
@@ -18798,13 +18800,13 @@ fn push_training_run_caveat(
 }
 
 fn training_run_detail_caveats(
-    public_stats: &PublicStatsSnapshot,
+    context: &TrainingRunDetailContext,
     featured_window: Option<&PublicTrainingWindowState>,
 ) -> Vec<PublicTrainingRunCaveat> {
     let mut caveats = Vec::<PublicTrainingRunCaveat>::new();
     let mut seen = HashSet::<String>::new();
 
-    for alert in &public_stats.training_public_state.launch_health.alerts {
+    for alert in &context.launch_health.alerts {
         push_training_run_caveat(
             &mut caveats,
             &mut seen,
@@ -18815,7 +18817,7 @@ fn training_run_detail_caveats(
         );
     }
 
-    if let Some(reason) = public_stats.nexus_treasury_degraded_reason.as_deref() {
+    if let Some(reason) = context.treasury.degraded_reason.as_deref() {
         push_training_run_caveat(
             &mut caveats,
             &mut seen,
@@ -18826,7 +18828,7 @@ fn training_run_detail_caveats(
         );
     }
 
-    if let Some(status) = public_stats.nexus_wallet_runtime_status.as_deref() {
+    if let Some(status) = context.treasury.wallet_runtime_status.as_deref() {
         if status != "connected" {
             push_training_run_caveat(
                 &mut caveats,
@@ -18834,8 +18836,9 @@ fn training_run_detail_caveats(
                 "wallet_runtime",
                 "warning",
                 "Wallet runtime not fully healthy",
-                public_stats
-                    .nexus_wallet_last_error
+                context
+                    .treasury
+                    .wallet_last_error
                     .clone()
                     .unwrap_or_else(|| format!("wallet runtime status is {status}")),
             );
@@ -18863,9 +18866,9 @@ fn training_run_detail_caveats(
 
 fn training_run_detail_snapshot(
     store: &ControlStore,
-    public_stats: &PublicStatsSnapshot,
     summary: &TrainingOperatorSummaryResponse,
     visualization: &TrainingVisualizationResponse,
+    context: &TrainingRunDetailContext,
     now_unix_ms: u64,
     training_run_id: &str,
 ) -> Result<PublicTrainingRunDetailSnapshot, String> {
@@ -18968,7 +18971,7 @@ fn training_run_detail_snapshot(
         })
         .map(training_run_detail_node_row)
         .collect::<Vec<_>>();
-    let caveats = training_run_detail_caveats(public_stats, featured_window.as_ref());
+    let caveats = training_run_detail_caveats(context, featured_window.as_ref());
 
     Ok(PublicTrainingRunDetailSnapshot {
         generated_at_unix_ms: now_unix_ms,
@@ -18976,14 +18979,9 @@ fn training_run_detail_snapshot(
         run,
         featured_window_id,
         featured_window,
-        queue_pressure: public_stats.training_public_state.queue_pressure.clone(),
-        launch_health: public_stats.training_public_state.launch_health.clone(),
-        treasury: PublicTrainingRunTreasuryStatus {
-            payout_loop_health: public_stats.nexus_payout_loop_health.clone(),
-            degraded_reason: public_stats.nexus_treasury_degraded_reason.clone(),
-            wallet_runtime_status: public_stats.nexus_wallet_runtime_status.clone(),
-            wallet_last_error: public_stats.nexus_wallet_last_error.clone(),
-        },
+        queue_pressure: context.queue_pressure.clone(),
+        launch_health: context.launch_health.clone(),
+        treasury: context.treasury.clone(),
         windows,
         contributions,
         nodes,
@@ -19002,6 +19000,57 @@ fn training_queue_pressure_state(summary: &TrainingOperatorSummaryResponse) -> &
         "standing_by"
     } else {
         "none"
+    }
+}
+
+fn training_queue_pressure_snapshot(
+    summary: &TrainingOperatorSummaryResponse,
+) -> PublicTrainingQueuePressure {
+    PublicTrainingQueuePressure {
+        state: training_queue_pressure_state(summary).to_string(),
+        active_windows: summary.active_windows,
+        pending_validation_windows: summary.pending_validation_windows,
+        validator_challenges_open: summary.validator_challenges_open,
+        validator_challenges_queued: summary.validator_challenges_queued,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TrainingRunDetailContext {
+    queue_pressure: PublicTrainingQueuePressure,
+    launch_health: PublicTrainingLaunchHealthSnapshot,
+    treasury: PublicTrainingRunTreasuryStatus,
+}
+
+fn training_run_detail_context(
+    config: &ServiceConfig,
+    store: &ControlStore,
+    summary: &TrainingOperatorSummaryResponse,
+    launch_metrics: &TrainingLaunchLiveMetricsSnapshot,
+    now_unix_ms: u64,
+) -> TrainingRunDetailContext {
+    let treasury_runtime = store.treasury.public_stats(&config.treasury, now_unix_ms);
+    let training_payout_ledger_summary = store
+        .treasury
+        .status_response(&config.treasury, now_unix_ms)
+        .training_payout_ledger_summary;
+    let launch_health = build_training_launch_health_snapshot(
+        summary,
+        &treasury_runtime,
+        &training_payout_ledger_summary,
+        launch_metrics,
+        now_unix_ms,
+    );
+
+    TrainingRunDetailContext {
+        queue_pressure: training_queue_pressure_snapshot(summary),
+        launch_health,
+        treasury: PublicTrainingRunTreasuryStatus {
+            payout_loop_health: treasury_runtime.payout_loop_health,
+            degraded_reason: treasury_runtime.degraded_reason,
+            wallet_runtime_status: treasury_runtime.wallet_runtime_status,
+            wallet_last_error: treasury_runtime.wallet_last_error,
+        },
     }
 }
 
@@ -19168,13 +19217,7 @@ fn training_public_stats_snapshot(
             .and_then(|run| run.latest_window_status.clone()),
         latest_closeout_status: default_visualized_run
             .and_then(|run| run.latest_closeout_status.clone()),
-        queue_pressure: PublicTrainingQueuePressure {
-            state: training_queue_pressure_state(summary).to_string(),
-            active_windows: summary.active_windows,
-            pending_validation_windows: summary.pending_validation_windows,
-            validator_challenges_open: summary.validator_challenges_open,
-            validator_challenges_queued: summary.validator_challenges_queued,
-        },
+        queue_pressure: training_queue_pressure_snapshot(summary),
         launch_health: PublicTrainingLaunchHealthSnapshot::default(),
         work_classes,
         runs,
