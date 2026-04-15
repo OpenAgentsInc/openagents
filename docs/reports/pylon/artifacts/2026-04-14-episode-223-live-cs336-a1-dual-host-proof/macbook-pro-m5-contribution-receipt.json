@@ -1,0 +1,31 @@
+{
+  "schema_version": "psionic.train.contribution_receipt.v1",
+  "lane_id": "psion_cs336_a1_demo_v1",
+  "work_class": "small_model_local_training",
+  "run_id": "run.cs336.a1.demo",
+  "window_id": "window.cs336.a1.demo.0004",
+  "window_execution_id": "6bab78180e4cabcecb5964b09ac48b930a9831cadad9b90148929127c6c3cb5f",
+  "assignment_id": "assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.2.attempt57",
+  "contribution_id": "18aedc0295b914638dd186fd2b3cd5c99a6bb03ac92c9ab13ecf06d21e104378",
+  "node_pubkey": "112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a",
+  "grouped_stage_assignment": null,
+  "role": "worker",
+  "operation": "start",
+  "outcome": "succeeded",
+  "exit_code": 0,
+  "retryable": false,
+  "authority_owner": "pylon",
+  "refusal_class": null,
+  "artifact_manifest": {
+    "artifact_ref": {
+      "artifact_id": "psionic.train.artifact.contribution_artifact_manifest.5dbca5bbbb7bbced9485e4c20b5afcfaf90f1761d77cc39ee91f95b1fb1f943b",
+      "artifact_digest": "5dbca5bbbb7bbced9485e4c20b5afcfaf90f1761d77cc39ee91f95b1fb1f943b",
+      "artifact_bytes": 5935
+    },
+    "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/windows/window.cs336.a1.demo.0004/contributions/18aedc0295b914638dd186fd2b3cd5c99a6bb03ac92c9ab13ecf06d21e104378/artifact_manifest.json"
+  },
+  "artifact_manifest_digest": "411f0fec173ae2c8fc0d40ab9f07ba3e5b3026974defd33b436aedf907e98d89",
+  "artifact_count": 10,
+  "contribution_digest": "077bb0726834e94596ebd10f9c44e634cc8e73d96af537f1a4dca57e879bda40",
+  "detail": "psionic-train completed start for lane `psion_cs336_a1_demo_v1` with retained phase `completed`"
+}

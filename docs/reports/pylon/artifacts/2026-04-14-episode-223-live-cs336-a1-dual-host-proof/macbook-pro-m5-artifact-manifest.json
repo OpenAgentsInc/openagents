@@ -1,0 +1,125 @@
+{
+  "schema_version": "psionic.train.contribution_artifact_manifest.v1",
+  "lane_id": "psion_cs336_a1_demo_v1",
+  "work_class": "small_model_local_training",
+  "run_id": "run.cs336.a1.demo",
+  "window_id": "window.cs336.a1.demo.0004",
+  "assignment_id": "assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.2.attempt57",
+  "contribution_id": "18aedc0295b914638dd186fd2b3cd5c99a6bb03ac92c9ab13ecf06d21e104378",
+  "node_pubkey": "112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a",
+  "grouped_stage_assignment": null,
+  "artifact_count": 10,
+  "artifacts": [
+    {
+      "artifact_kind": "checkpoint_manifest",
+      "binding": {
+        "artifact_ref": {
+          "artifact_id": "psionic.train.artifact.checkpoint_manifest.130ae86f57ed5ea17b7f960735341391922ca4ca424c889c6beb7d53eb40c59d",
+          "artifact_digest": "130ae86f57ed5ea17b7f960735341391922ca4ca424c889c6beb7d53eb40c59d",
+          "artifact_bytes": 736
+        },
+        "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/checkpoints/manifests/checkpoint_manifest_step-000004.json"
+      }
+    },
+    {
+      "artifact_kind": "checkpoint_pointer",
+      "binding": {
+        "artifact_ref": {
+          "artifact_id": "psionic.train.artifact.checkpoint_pointer.a114c5f3ea44e80066999de4bbba1a2bb7dc0178f1a73d6aebae9d522cb836a9",
+          "artifact_digest": "a114c5f3ea44e80066999de4bbba1a2bb7dc0178f1a73d6aebae9d522cb836a9",
+          "artifact_bytes": 678
+        },
+        "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/checkpoints/latest_accepted_checkpoint_pointer.json"
+      }
+    },
+    {
+      "artifact_kind": "checkpoint_surface",
+      "binding": {
+        "artifact_ref": {
+          "artifact_id": "psionic.train.artifact.checkpoint_surface.f23c049e89d50d8fa03785486c3e4dca17ebb2bc85879d77c582c9ef3ffbad94",
+          "artifact_digest": "f23c049e89d50d8fa03785486c3e4dca17ebb2bc85879d77c582c9ef3ffbad94",
+          "artifact_bytes": 1705
+        },
+        "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/status/checkpoint_surface.json"
+      }
+    },
+    {
+      "artifact_kind": "current_status",
+      "binding": {
+        "artifact_ref": {
+          "artifact_id": "psionic.train.artifact.current_status.700601b2ca5ee6fd545a843783a0ddcdb5fd6745ae1c1319377d25dcff205da1",
+          "artifact_digest": "700601b2ca5ee6fd545a843783a0ddcdb5fd6745ae1c1319377d25dcff205da1",
+          "artifact_bytes": 426
+        },
+        "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/status/current_run_status.json"
+      }
+    },
+    {
+      "artifact_kind": "final_closeout_bundle",
+      "binding": {
+        "artifact_ref": {
+          "artifact_id": "psionic.train.artifact.final_closeout_bundle.622e4d9491713a75eb1dc4863bbef17c96431098ff861921ced107f452bfcfbd",
+          "artifact_digest": "622e4d9491713a75eb1dc4863bbef17c96431098ff861921ced107f452bfcfbd",
+          "artifact_bytes": 5509
+        },
+        "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/closeout/closeout_bundle.json"
+      }
+    },
+    {
+      "artifact_kind": "invocation_manifest",
+      "binding": {
+        "artifact_ref": {
+          "artifact_id": "psionic.train.artifact.invocation_manifest.1dce02af998702dc159c7185f0b85fd0f64e6cad9f3ef11bfb53ad3acba5282e",
+          "artifact_digest": "1dce02af998702dc159c7185f0b85fd0f64e6cad9f3ef11bfb53ad3acba5282e",
+          "artifact_bytes": 1778
+        },
+        "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/manifests/invocation_manifest.json"
+      }
+    },
+    {
+      "artifact_kind": "launch_manifest",
+      "binding": {
+        "artifact_ref": {
+          "artifact_id": "psionic.train.artifact.launch_manifest.ef0727069febb171d665ce6588b3675c74affc9fc65d3491500ca6f1713c1fbb",
+          "artifact_digest": "ef0727069febb171d665ce6588b3675c74affc9fc65d3491500ca6f1713c1fbb",
+          "artifact_bytes": 1840
+        },
+        "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/manifests/launch_manifest.json"
+      }
+    },
+    {
+      "artifact_kind": "launcher_log",
+      "binding": {
+        "artifact_ref": {
+          "artifact_id": "psionic.train.artifact.launcher_log.e9014ab7c5b238c83bccace7a2e7c84dbe69da3e394a411e844863ca468666ba",
+          "artifact_digest": "e9014ab7c5b238c83bccace7a2e7c84dbe69da3e394a411e844863ca468666ba",
+          "artifact_bytes": 1740
+        },
+        "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/logs/launcher.log"
+      }
+    },
+    {
+      "artifact_kind": "membership_revision",
+      "binding": {
+        "artifact_ref": {
+          "artifact_id": "psionic.train.artifact.membership_revision.e8fa36f52363aadf62a65a4ead02422b314e04b7dc9fa0e4cd18020f369161fb",
+          "artifact_digest": "e8fa36f52363aadf62a65a4ead02422b314e04b7dc9fa0e4cd18020f369161fb",
+          "artifact_bytes": 1657
+        },
+        "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/status/membership_revision_receipt.json"
+      }
+    },
+    {
+      "artifact_kind": "retained_summary",
+      "binding": {
+        "artifact_ref": {
+          "artifact_id": "psionic.train.artifact.retained_summary.8117e36a237e3bd3feee6fdb1b958e66b71789407221c8cafe9e035efa1cf8dd",
+          "artifact_digest": "8117e36a237e3bd3feee6fdb1b958e66b71789407221c8cafe9e035efa1cf8dd",
+          "artifact_bytes": 1943
+        },
+        "materialized_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/status/retained_summary.json"
+      }
+    }
+  ],
+  "artifact_manifest_digest": "411f0fec173ae2c8fc0d40ab9f07ba3e5b3026974defd33b436aedf907e98d89"
+}

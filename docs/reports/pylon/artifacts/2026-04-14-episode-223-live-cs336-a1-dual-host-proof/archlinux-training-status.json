@@ -1,0 +1,353 @@
+{
+  "generated_at_ms": 1776221071967,
+  "node_label": "pylon",
+  "provider_pubkey": "5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8",
+  "checkpoint_serve_url": "http://127.0.0.1:9570",
+  "runtime_surface_detected": true,
+  "psionic_repo_root": "/home/christopherdavid/code/.worktrees/psionic-223",
+  "psionic_repo_source": "code_worktree",
+  "contributor_supported": true,
+  "capability_tier": {
+    "tier": "tier3_island",
+    "backend_families": [
+      "cpu",
+      "cuda"
+    ],
+    "accelerator_inventory": [
+      {
+        "backend_family": "cuda",
+        "model": "NVIDIA GeForce RTX 4080",
+        "accelerator_count": 1,
+        "memory_per_accelerator_gb": 16
+      }
+    ],
+    "available_memory_gb": 126,
+    "throughput_band": "island",
+    "lease_reliability": "strong",
+    "replay_capability": "short_window",
+    "artifact_upload_latency_class": "fast"
+  },
+  "capability_envelope_v2": {
+    "schema_version": "provider.training_capability_envelope.v2",
+    "tier_profile": {
+      "tier": "tier3_island",
+      "backend_families": [
+        "cpu",
+        "cuda"
+      ],
+      "accelerator_inventory": [
+        {
+          "backend_family": "cuda",
+          "model": "NVIDIA GeForce RTX 4080",
+          "accelerator_count": 1,
+          "memory_per_accelerator_gb": 16
+        }
+      ],
+      "available_memory_gb": 126,
+      "throughput_band": "island",
+      "lease_reliability": "strong",
+      "replay_capability": "short_window",
+      "artifact_upload_latency_class": "fast"
+    },
+    "runtime_surface_detected": true,
+    "contributor_supported": true,
+    "benchmark_lane_available": true,
+    "eligible_work_classes": [
+      {
+        "work_class": "validation_replay",
+        "minimum_tier": "tier1_validation",
+        "replica_types": [
+          "single_node"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "cuda"
+        ],
+        "required_throughput_band": "unknown",
+        "required_replay_capability": "short_window",
+        "benchmark_lane_required": true
+      },
+      {
+        "work_class": "evaluation",
+        "minimum_tier": "tier1_validation",
+        "replica_types": [
+          "single_node"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "cuda"
+        ],
+        "required_throughput_band": "unknown",
+        "required_replay_capability": "short_window",
+        "benchmark_lane_required": true
+      },
+      {
+        "work_class": "adapter_training",
+        "minimum_tier": "tier2_trainer",
+        "replica_types": [
+          "single_node"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "cuda"
+        ],
+        "required_throughput_band": "unknown",
+        "required_replay_capability": "none",
+        "benchmark_lane_required": true
+      },
+      {
+        "work_class": "small_model_local_training",
+        "minimum_tier": "tier2_trainer",
+        "replica_types": [
+          "single_node"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "cuda"
+        ],
+        "required_throughput_band": "unknown",
+        "required_replay_capability": "none",
+        "benchmark_lane_required": false
+      },
+      {
+        "work_class": "grouped_replica_stage_execution",
+        "minimum_tier": "tier2_trainer",
+        "replica_types": [
+          "grouped_replica"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "cuda"
+        ],
+        "required_throughput_band": "unknown",
+        "required_replay_capability": "none",
+        "benchmark_lane_required": true
+      },
+      {
+        "work_class": "full_island_local_update_training",
+        "minimum_tier": "tier3_island",
+        "replica_types": [
+          "island"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "cuda"
+        ],
+        "required_throughput_band": "island",
+        "required_replay_capability": "none",
+        "benchmark_lane_required": true
+      }
+    ],
+    "eligible_replica_types": [
+      {
+        "replica_type": "single_node",
+        "minimum_tier": "tier1_validation",
+        "required_backend_families": [
+          "cpu",
+          "cuda"
+        ]
+      },
+      {
+        "replica_type": "grouped_replica",
+        "minimum_tier": "tier2_trainer",
+        "required_backend_families": [
+          "cpu",
+          "cuda"
+        ]
+      },
+      {
+        "replica_type": "island",
+        "minimum_tier": "tier3_island",
+        "required_backend_families": [
+          "cpu",
+          "cuda"
+        ]
+      }
+    ]
+  },
+  "manifest_count": 4,
+  "publication_pointer_count": 33,
+  "publication_record_count": 33,
+  "pending_publication_count": 0,
+  "contribution_outcome_count": 0,
+  "closeout_count": 3,
+  "last_authority_sync_at_ms": 1776213968466,
+  "current_run_id": "run.cs336.a1.demo",
+  "active_window_id": "window.cs336.a1.demo.0004",
+  "blocked_label_keys": [],
+  "active_runtime": {
+    "training_run_id": "run.cs336.a1.demo",
+    "window_id": "window.cs336.a1.demo.0004",
+    "assignment_id": "assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64",
+    "lease_id": "lease.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64.rev120",
+    "membership_revision": "members.rev121",
+    "role": "worker",
+    "desired_state": "stopped",
+    "process_state": "stopped",
+    "last_heartbeat_at_ms": 1776215324830,
+    "last_exit_code": 0,
+    "manifest_path": "/home/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/manifests/invocation_manifest.json",
+    "run_root": "/home/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo",
+    "launch_count": 1,
+    "restart_count": 0,
+    "updated_at_ms": 1776215332614
+  },
+  "leased_assignment": {
+    "training_run_id": "run.cs336.a1.demo",
+    "window_id": "window.cs336.a1.demo.0004",
+    "assignment_id": "assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64",
+    "lease_id": "lease.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64.rev120",
+    "membership_revision": "members.rev121",
+    "role": "worker",
+    "state": "acked",
+    "manifest_digest": "sha256:2d1be4271f6e804ae6b0e4d5b5a2590792eebc6ececec0605b0718cbc14faefe",
+    "checkpoint_ref": "checkpoint://decoder/base",
+    "expires_at_ms": 1776215400098,
+    "network_id": "trainnet.cs336.a1.demo",
+    "runtime_manifest_path": "/home/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/manifests/invocation_manifest.json",
+    "runtime_manifest_digest": "530b3527e39a02d13be393f81c8fa27e88d1bbaa6c30c57c0596a388c19df793",
+    "runtime_lane_id": "psion_cs336_a1_demo_v1",
+    "runtime_operation": "start",
+    "runtime_work_class": "small_model_local_training",
+    "updated_at_ms": 1776215098303
+  },
+  "current_window": {
+    "training_run_id": "run.cs336.a1.demo",
+    "window_id": "window.cs336.a1.demo.0004",
+    "state": "active",
+    "manifest_digest": "sha256:2d1be4271f6e804ae6b0e4d5b5a2590792eebc6ececec0605b0718cbc14faefe",
+    "updated_at_ms": 1776214937924
+  },
+  "last_checkpoint": {
+    "training_run_id": "run.cs336.a1.demo",
+    "checkpoint_ref": "checkpoint://decoder/base",
+    "optimizer_step": 4,
+    "source_path": "/home/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/checkpoints/latest_pointer.json"
+  },
+  "recent_trn_events": [
+    {
+      "subject_kind": "artifact_locator",
+      "subject_id": "oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004",
+      "event_id": "3a3c184c4f0158a592d9ee2839d223cbe382337103ed8b012e988c55b5c1446c",
+      "a_ref": "39520:5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8:oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004",
+      "published_at_ms": 1776215646844
+    },
+    {
+      "subject_kind": "artifact_uploaded",
+      "subject_id": "oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004",
+      "event_id": "b22e791780490384c41809c9cffac19386edbd324b08814bca37f2195d40e5a3",
+      "a_ref": "39520:5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8:oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004",
+      "published_at_ms": 1776215646844
+    },
+    {
+      "subject_kind": "artifact_uploaded",
+      "subject_id": "oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64",
+      "event_id": "64fcbf18e2a0f3bacb3b2bbe6a8ebc1d39bfa03e8f6a7f75f63aa1764a8f2255",
+      "a_ref": "39520:5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8:oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64",
+      "published_at_ms": 1776215646593
+    },
+    {
+      "subject_kind": "artifact_locator",
+      "subject_id": "oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64",
+      "event_id": "1c2928fbb847fca93489d0266e9f4f0ffd41efd085bbf177d3f5c49bfcef69cb",
+      "a_ref": "39520:5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8:oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64",
+      "published_at_ms": 1776215646592
+    },
+    {
+      "subject_kind": "artifact_uploaded",
+      "subject_id": "oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64",
+      "event_id": "43361b6d0538ace2a1ee148b4b17373f630008a1b384e894d2126c53c4df8880",
+      "a_ref": "39520:5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8:oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64",
+      "published_at_ms": 1776215646592
+    },
+    {
+      "subject_kind": "artifact_locator",
+      "subject_id": "oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64",
+      "event_id": "61526c0e4a7eedbba693090ee979e2dff1f042c45190ac2636ce24cada784c55",
+      "a_ref": "39520:5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8:oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0004~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.1.attempt64",
+      "published_at_ms": 1776215646591
+    },
+    {
+      "subject_kind": "artifact_uploaded",
+      "subject_id": "oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~optimizer_step~0",
+      "event_id": "26a16e19a7fa4817570e690c5f91433dbcee9e58513151482d40ab131a51c535",
+      "a_ref": "39520:5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8:oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~optimizer_step~0",
+      "published_at_ms": 1776215646112
+    },
+    {
+      "subject_kind": "artifact_locator",
+      "subject_id": "oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~optimizer_step~0",
+      "event_id": "480b2a093e8b22e62d3efe2eec23bb171ca03c44fa0eb574000d50769d3a2dd9",
+      "a_ref": "39520:5d80f7098245a5db2ba11e0f03ae0d934325fcfa9220453e279b7c559c0ba2c8:oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~optimizer_step~0",
+      "published_at_ms": 1776215646112
+    }
+  ],
+  "recent_issues": [
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "contribution:6e0ba5d7a9a754d8d99f3fbbf50967d463267ba952cb463b224118c0974284fd",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776215324832,
+      "owner": "pylon",
+      "retryable": true
+    },
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "contribution:d8bb2a422df2885cf1a25446bf5ab88db82cda7112f403b2d72d376cda655655",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776206636064,
+      "owner": "pylon",
+      "retryable": true
+    },
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "contribution:804e8c1b75c05edba1fd0f96608364e8aa42762afbd6515ed1fc2c3103db3a73",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776205081830,
+      "owner": "pylon",
+      "retryable": true
+    },
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "contribution:804e8c1b75c05edba1fd0f96608364e8aa42762afbd6515ed1fc2c3103db3a73",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776205081830,
+      "owner": "pylon",
+      "retryable": true
+    },
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "run_manifest:assign.run.cs336.a1.demo.window.cs336.a1.demo.0002.worker.1.attempt47",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776205081830,
+      "owner": "pylon",
+      "retryable": true
+    }
+  ],
+  "recent_closeouts": [
+    {
+      "outcome_id": "accepted.training_window.window.cs336.a1.demo.0003",
+      "training_run_id": "run.cs336.a1.demo",
+      "window_id": "window.cs336.a1.demo.0003",
+      "closeout_status": "no_reward",
+      "payout_eligible": false,
+      "accepted_at_ms": 1776213070518
+    },
+    {
+      "outcome_id": "accepted.training_window.window.cs336.a1.demo.0002",
+      "training_run_id": "run.cs336.a1.demo",
+      "window_id": "window.cs336.a1.demo.0002",
+      "closeout_status": "no_reward",
+      "payout_eligible": false,
+      "accepted_at_ms": 1776206096856
+    },
+    {
+      "outcome_id": "accepted.training_window.window.cs336.a1.demo.0001",
+      "training_run_id": "run.cs336.a1.demo",
+      "window_id": "window.cs336.a1.demo.0001",
+      "closeout_status": "no_reward",
+      "payout_eligible": false,
+      "accepted_at_ms": 1776188503276
+    }
+  ]
+}

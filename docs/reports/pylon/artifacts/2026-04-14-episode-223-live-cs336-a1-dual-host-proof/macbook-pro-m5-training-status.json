@@ -1,0 +1,377 @@
+{
+  "generated_at_ms": 1776221050166,
+  "node_label": "pylon",
+  "provider_pubkey": "112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a",
+  "checkpoint_serve_url": "http://127.0.0.1:9570",
+  "runtime_surface_detected": true,
+  "psionic_repo_root": "/Users/christopherdavid/work/psionic",
+  "psionic_repo_source": "cwd_ancestor_sibling",
+  "contributor_supported": true,
+  "capability_tier": {
+    "tier": "tier3_island",
+    "backend_families": [
+      "cpu",
+      "metal"
+    ],
+    "accelerator_inventory": [
+      {
+        "backend_family": "metal",
+        "model": "Apple M5 Max",
+        "vendor": "sppci_vendor_Apple",
+        "accelerator_count": 1
+      }
+    ],
+    "memory_floor_gb": 32,
+    "available_memory_gb": 128,
+    "throughput_band": "island",
+    "lease_reliability": "strong",
+    "replay_capability": "short_window",
+    "artifact_upload_latency_class": "fast"
+  },
+  "capability_envelope_v2": {
+    "schema_version": "provider.training_capability_envelope.v2",
+    "tier_profile": {
+      "tier": "tier3_island",
+      "backend_families": [
+        "cpu",
+        "metal"
+      ],
+      "accelerator_inventory": [
+        {
+          "backend_family": "metal",
+          "model": "Apple M5 Max",
+          "vendor": "sppci_vendor_Apple",
+          "accelerator_count": 1
+        }
+      ],
+      "memory_floor_gb": 32,
+      "available_memory_gb": 128,
+      "throughput_band": "island",
+      "lease_reliability": "strong",
+      "replay_capability": "short_window",
+      "artifact_upload_latency_class": "fast"
+    },
+    "runtime_surface_detected": true,
+    "contributor_supported": true,
+    "benchmark_lane_available": true,
+    "eligible_work_classes": [
+      {
+        "work_class": "validation_replay",
+        "minimum_tier": "tier1_validation",
+        "replica_types": [
+          "single_node"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "required_throughput_band": "unknown",
+        "required_replay_capability": "short_window",
+        "benchmark_lane_required": true
+      },
+      {
+        "work_class": "evaluation",
+        "minimum_tier": "tier1_validation",
+        "replica_types": [
+          "single_node"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "required_throughput_band": "unknown",
+        "required_replay_capability": "short_window",
+        "benchmark_lane_required": true
+      },
+      {
+        "work_class": "adapter_training",
+        "minimum_tier": "tier2_trainer",
+        "replica_types": [
+          "single_node"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "minimum_memory_gb": 32,
+        "required_throughput_band": "unknown",
+        "required_replay_capability": "none",
+        "benchmark_lane_required": true
+      },
+      {
+        "work_class": "small_model_local_training",
+        "minimum_tier": "tier2_trainer",
+        "replica_types": [
+          "single_node"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "minimum_memory_gb": 32,
+        "required_throughput_band": "unknown",
+        "required_replay_capability": "none",
+        "benchmark_lane_required": false
+      },
+      {
+        "work_class": "grouped_replica_stage_execution",
+        "minimum_tier": "tier2_trainer",
+        "replica_types": [
+          "grouped_replica"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "minimum_memory_gb": 32,
+        "required_throughput_band": "unknown",
+        "required_replay_capability": "none",
+        "benchmark_lane_required": true
+      },
+      {
+        "work_class": "full_island_local_update_training",
+        "minimum_tier": "tier3_island",
+        "replica_types": [
+          "island"
+        ],
+        "required_backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "minimum_memory_gb": 32,
+        "required_throughput_band": "island",
+        "required_replay_capability": "none",
+        "benchmark_lane_required": true
+      }
+    ],
+    "eligible_replica_types": [
+      {
+        "replica_type": "single_node",
+        "minimum_tier": "tier1_validation",
+        "required_backend_families": [
+          "cpu",
+          "metal"
+        ]
+      },
+      {
+        "replica_type": "grouped_replica",
+        "minimum_tier": "tier2_trainer",
+        "required_backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "minimum_memory_gb": 32
+      },
+      {
+        "replica_type": "island",
+        "minimum_tier": "tier3_island",
+        "required_backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "minimum_memory_gb": 32
+      }
+    ]
+  },
+  "manifest_count": 5,
+  "publication_pointer_count": 25,
+  "publication_record_count": 25,
+  "pending_publication_count": 0,
+  "contribution_outcome_count": 0,
+  "closeout_count": 3,
+  "last_authority_sync_at_ms": 1776213930505,
+  "current_run_id": "run.cs336.a1.demo",
+  "active_window_id": "window.cs336.a1.demo.0004",
+  "blocked_label_keys": [],
+  "active_runtime": {
+    "training_run_id": "run.cs336.a1.demo",
+    "window_id": "window.cs336.a1.demo.0004",
+    "assignment_id": "assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.2.attempt57",
+    "lease_id": "lease.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.2.attempt57.rev121",
+    "membership_revision": "members.rev121",
+    "role": "worker",
+    "desired_state": "stopped",
+    "process_state": "stopped",
+    "last_heartbeat_at_ms": 1776215104451,
+    "last_exit_code": 0,
+    "manifest_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/manifests/invocation_manifest.json",
+    "run_root": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo",
+    "launch_count": 1,
+    "restart_count": 0,
+    "updated_at_ms": 1776215126397
+  },
+  "leased_assignment": {
+    "training_run_id": "run.cs336.a1.demo",
+    "window_id": "window.cs336.a1.demo.0004",
+    "assignment_id": "assign.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.2.attempt57",
+    "lease_id": "lease.run.cs336.a1.demo.window.cs336.a1.demo.0004.worker.2.attempt57.rev121",
+    "membership_revision": "members.rev121",
+    "role": "worker",
+    "state": "acked",
+    "manifest_digest": "sha256:39df4feee497656f6a64d8e857e1bec820bc9ffb33912ec94fc620a9b886c709",
+    "checkpoint_ref": "checkpoint://decoder/base",
+    "expires_at_ms": 1776215433318,
+    "network_id": "trainnet.cs336.a1.demo",
+    "runtime_manifest_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/manifests/invocation_manifest.json",
+    "runtime_manifest_digest": "d2ea1cc8cf56292292dc159405a759129dbefa8419db8a09a24789e9076a57e8",
+    "runtime_lane_id": "psion_cs336_a1_demo_v1",
+    "runtime_operation": "start",
+    "runtime_work_class": "small_model_local_training",
+    "updated_at_ms": 1776215098186
+  },
+  "current_window": {
+    "training_run_id": "run.cs336.a1.demo",
+    "window_id": "window.cs336.a1.demo.0004",
+    "state": "active",
+    "manifest_digest": "sha256:39df4feee497656f6a64d8e857e1bec820bc9ffb33912ec94fc620a9b886c709",
+    "updated_at_ms": 1776214957849
+  },
+  "last_checkpoint": {
+    "training_run_id": "run.cs336.a1.demo",
+    "checkpoint_ref": "checkpoint://decoder/base",
+    "optimizer_step": 4,
+    "source_path": "/Users/christopherdavid/.openagents/pylon/training/runs/run.cs336.a1.demo/checkpoints/latest_pointer.json"
+  },
+  "recent_trn_events": [
+    {
+      "subject_kind": "artifact_uploaded",
+      "subject_id": "oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003",
+      "event_id": "a3c58bc59acfadb5a2e80b28b9e1fde3ee416e5356c838257d7f562a4ef0a4b0",
+      "a_ref": "39520:112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a:oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003",
+      "published_at_ms": 1776212715619
+    },
+    {
+      "subject_kind": "artifact_locator",
+      "subject_id": "oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003",
+      "event_id": "aabeda209714f93acfa100d20662d6de8ec906a5e27424557fbeec85c2c9c6aa",
+      "a_ref": "39520:112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a:oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003",
+      "published_at_ms": 1776212715619
+    },
+    {
+      "subject_kind": "artifact_uploaded",
+      "subject_id": "oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55",
+      "event_id": "24ba66e998221615cee3a7c01a3bf2b70a650f0a6549242f2c7e5d335135cb3d",
+      "a_ref": "39520:112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a:oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55",
+      "published_at_ms": 1776212715401
+    },
+    {
+      "subject_kind": "artifact_locator",
+      "subject_id": "oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55",
+      "event_id": "c7e427cff286ff88da7b7e582f4176b92ef0115e2de0b4b8f0fcaafc410d5d41",
+      "a_ref": "39520:112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a:oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55",
+      "published_at_ms": 1776212715401
+    },
+    {
+      "subject_kind": "artifact_locator",
+      "subject_id": "oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55",
+      "event_id": "c96e282d2df1d198551f4a1f0ba1d5f1f8c95158fe75d641c8ebb36ecc630ef8",
+      "a_ref": "39520:112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a:oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55",
+      "published_at_ms": 1776212715401
+    },
+    {
+      "subject_kind": "artifact_uploaded",
+      "subject_id": "oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55",
+      "event_id": "ebd5da13a0f71f3689003057fc58b9237c5e5372bdee2b0618e4551a41c6e609",
+      "a_ref": "39520:112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a:oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55",
+      "published_at_ms": 1776212715401
+    },
+    {
+      "subject_kind": "artifact_uploaded",
+      "subject_id": "oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~optimizer_step~0",
+      "event_id": "2fb4aeadd0f52889e256de2264a25455035b3ddb4178bdace50e0a6e376ffebd",
+      "a_ref": "39520:112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a:oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~optimizer_step~0",
+      "published_at_ms": 1776212714968
+    },
+    {
+      "subject_kind": "artifact_locator",
+      "subject_id": "oa.train_artifact.v1~kind~run_manifest~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55",
+      "event_id": "23ddec5d96f301ade3bce820a0a6b082809b445218d0a9686e4263424e16d81d",
+      "a_ref": "39520:112667a1b22433dfe785bdafbd3c8a1f46be72979467fd2dad306428bdb0fc3a:oa.train_artifact.v1~kind~run_manifest~network~trainnet.cs336.a1.demo~run~run.cs336.a1.demo~window~window.cs336.a1.demo.0003~assignment~assign.run.cs336.a1.demo.window.cs336.a1.demo.0003.worker.2.attempt55",
+      "published_at_ms": 1776212714967
+    }
+  ],
+  "recent_issues": [
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "contribution:18aedc0295b914638dd186fd2b3cd5c99a6bb03ac92c9ab13ecf06d21e104378",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776215104452,
+      "owner": "pylon",
+      "retryable": true
+    },
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "contribution:d4e4d7c8db3e8c898cc655cf8fdfd4ea24b341672d2b54b4d937cf44b39d00fe",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776206609847,
+      "owner": "pylon",
+      "retryable": true
+    },
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "contribution:5d93126f3ef031cb7f5f152bef98300c78a0b478ece262fe96e3f2aa68335233",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776203652465,
+      "owner": "pylon",
+      "retryable": true
+    },
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "contribution:5d93126f3ef031cb7f5f152bef98300c78a0b478ece262fe96e3f2aa68335233",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776203652465,
+      "owner": "pylon",
+      "retryable": true
+    },
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "contribution:5d93126f3ef031cb7f5f152bef98300c78a0b478ece262fe96e3f2aa68335233",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776203652465,
+      "owner": "pylon",
+      "retryable": true
+    },
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "run_manifest:assign.run.cs336.a1.demo.window.cs336.a1.demo.0002.worker.2.attempt42",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776203652465,
+      "owner": "pylon",
+      "retryable": true
+    },
+    {
+      "kind": "artifact_bundle",
+      "subject_id": "run_manifest:assign.run.cs336.a1.demo.window.cs336.a1.demo.0002.worker.2.attempt44",
+      "reason": "artifact_incomplete",
+      "observed_at_ms": 1776203652465,
+      "owner": "pylon",
+      "retryable": true
+    }
+  ],
+  "recent_closeouts": [
+    {
+      "outcome_id": "accepted.training_window.window.cs336.a1.demo.0003",
+      "training_run_id": "run.cs336.a1.demo",
+      "window_id": "window.cs336.a1.demo.0003",
+      "closeout_status": "no_reward",
+      "payout_eligible": false,
+      "accepted_at_ms": 1776213070518
+    },
+    {
+      "outcome_id": "accepted.training_window.window.cs336.a1.demo.0002",
+      "training_run_id": "run.cs336.a1.demo",
+      "window_id": "window.cs336.a1.demo.0002",
+      "closeout_status": "no_reward",
+      "payout_eligible": false,
+      "accepted_at_ms": 1776206096856
+    },
+    {
+      "outcome_id": "accepted.training_window.window.cs336.a1.demo.0001",
+      "training_run_id": "run.cs336.a1.demo",
+      "window_id": "window.cs336.a1.demo.0001",
+      "closeout_status": "no_reward",
+      "payout_eligible": false,
+      "accepted_at_ms": 1776188503276
+    }
+  ]
+}
