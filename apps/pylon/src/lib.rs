@@ -6887,7 +6887,8 @@ impl PylonTrainingCoordinatorClient {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
+            .connect_timeout(Duration::from_secs(nexus_remote_connect_timeout_seconds()))
+            .timeout(Duration::from_secs(nexus_remote_timeout_seconds()))
             .build()
             .context("failed to build pylon training coordinator client")?;
         let kernel_authority = HttpKernelAuthorityClient::with_client(
@@ -16740,20 +16741,29 @@ async fn sync_provider_payout_target_with_report(
     Ok(())
 }
 
+fn parse_positive_env_u64(name: &str) -> Option<u64> {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+}
+
+fn nexus_remote_connect_timeout_seconds() -> u64 {
+    parse_positive_env_u64("PYLON_NEXUS_CONNECT_TIMEOUT_SECONDS")
+        .or_else(|| parse_positive_env_u64("PYLON_NEXUS_PROVIDER_CONNECT_TIMEOUT_SECONDS"))
+        .unwrap_or(10)
+}
+
+fn nexus_remote_timeout_seconds() -> u64 {
+    parse_positive_env_u64("PYLON_NEXUS_TIMEOUT_SECONDS")
+        .or_else(|| parse_positive_env_u64("PYLON_NEXUS_PROVIDER_TIMEOUT_SECONDS"))
+        .unwrap_or(60)
+}
+
 fn provider_presence_client() -> Result<reqwest::Client> {
-    let connect_timeout_seconds = std::env::var("PYLON_NEXUS_PROVIDER_CONNECT_TIMEOUT_SECONDS")
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(10);
-    let timeout_seconds = std::env::var("PYLON_NEXUS_PROVIDER_TIMEOUT_SECONDS")
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(60);
     reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(connect_timeout_seconds))
-        .timeout(Duration::from_secs(timeout_seconds))
+        .connect_timeout(Duration::from_secs(nexus_remote_connect_timeout_seconds()))
+        .timeout(Duration::from_secs(nexus_remote_timeout_seconds()))
         .build()
         .context("failed to build pylon provider-presence client")
 }
