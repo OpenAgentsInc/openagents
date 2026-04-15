@@ -16741,8 +16741,19 @@ async fn sync_provider_payout_target_with_report(
 }
 
 fn provider_presence_client() -> Result<reqwest::Client> {
+    let connect_timeout_seconds = std::env::var("PYLON_NEXUS_PROVIDER_CONNECT_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(10);
+    let timeout_seconds = std::env::var("PYLON_NEXUS_PROVIDER_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(60);
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
+        .connect_timeout(Duration::from_secs(connect_timeout_seconds))
+        .timeout(Duration::from_secs(timeout_seconds))
         .build()
         .context("failed to build pylon provider-presence client")
 }
