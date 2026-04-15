@@ -39,9 +39,9 @@ use nostr::{
 use nostr_client::{PoolConfig, PublishConfirmation, RelayAuthIdentity, RelayConfig, RelayPool};
 use openagents_kernel_core::authority::{
     AcceptComputeOutcomeRequest, AdjustReservePartitionRequest, AdjustReservePartitionResponse,
-    BindCoverageRequest, BindCoverageResponse, CreateContractRequest, CreateContractResponse,
-    CreateComputeTrainingRunRequest,
-    CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+    BindCoverageRequest, BindCoverageResponse, CreateComputeTrainingRunRequest,
+    CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
+    CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
     CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
     CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
     ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
@@ -61,8 +61,8 @@ use openagents_kernel_core::compute::{
     ComputeAdapterContributionOutcome, ComputeAdapterContributionValidationReasonCode,
     ComputeAdapterDatasetSlice, ComputeAdapterPolicyRevision, ComputeAdapterPromotionDisposition,
     ComputeAdapterPromotionHoldReasonCode, ComputeAdapterTrainingWindow,
-    ComputeAdapterWindowGateReasonCode, ComputeAdapterWindowStatus,
-    ComputeCheckpointBinding, ComputeCheckpointFamilyPolicy, ComputeEnvironmentArtifactExpectation,
+    ComputeAdapterWindowGateReasonCode, ComputeAdapterWindowStatus, ComputeCheckpointBinding,
+    ComputeCheckpointFamilyPolicy, ComputeEnvironmentArtifactExpectation,
     ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
     ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
     ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRunStatus,
@@ -74,8 +74,8 @@ use openagents_kernel_core::compute::{
     ComputeValidatorChallengeFailureCode, ComputeValidatorChallengeLease,
     ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
     ComputeValidatorChallengeResult, ComputeValidatorChallengeSnapshot,
-    ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict,
-    ComputeValidatorPolicy, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
+    ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict, ComputeValidatorPolicy,
+    DeliveryProofStatus, StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::data::{
@@ -231,23 +231,19 @@ const PUBLIC_RECENT_PYLON_LIMIT: usize = 8;
 const MAX_PROVIDER_DIAGNOSTIC_SUMMARIES: usize = 16;
 const EPISODE_224_CS336_A1_DEMO_OWNER_ID: &str = "openagents";
 const EPISODE_224_CS336_A1_DEMO_POLICY_VERSION: &str = "2026.04.14";
-const EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF: &str =
-    "policy://training/cs336/a1-demo/v1";
+const EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF: &str = "policy://training/cs336/a1-demo/v1";
 const EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF: &str = "policy://validator/mvp/v1";
 const EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY: &str = "decoder";
 const EPISODE_224_CS336_A1_DEMO_NETWORK_ID: &str = "trainnet.cs336.a1.demo";
 const EPISODE_224_CS336_A1_DEMO_DISPLAY_NAME: &str = "CS336 A1 Demo";
 const EPISODE_224_CS336_A1_DEMO_ARTIFACT_BUCKET_URI: &str = "gs://openagents-training";
-const EPISODE_224_CS336_A1_DEMO_DATASET_REF: &str =
-    "dataset://cs336/assignment1/tinystories-demo";
+const EPISODE_224_CS336_A1_DEMO_DATASET_REF: &str = "dataset://cs336/assignment1/tinystories-demo";
 const EPISODE_224_CS336_A1_DEMO_DATASET_SLICE_FAMILY: &str =
     "dataset_slice_family.cs336_assignment1_demo";
 const EPISODE_224_CS336_A1_DEMO_PAGE_PROOF_FAMILY: &str =
     "cs336.assignment1.demo_page_proof_family";
-const EPISODE_224_CS336_A1_DEMO_RUN_DEFINITION_REF: &str =
-    "rundef.cs336.assignment1.demo.v1";
-const EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF: &str =
-    "checkpoint://decoder/base";
+const EPISODE_224_CS336_A1_DEMO_RUN_DEFINITION_REF: &str = "rundef.cs336.assignment1.demo.v1";
+const EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF: &str = "checkpoint://decoder/base";
 const EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT: u32 = 2;
 
 #[derive(Debug, Clone)]
@@ -1513,6 +1509,10 @@ impl TrainingSchedulerWindowState {
             Self::Held => "held",
             Self::Refused => "refused",
         }
+    }
+
+    const fn permits_assignment_claims(self) -> bool {
+        !matches!(self, Self::Refused)
     }
 }
 
@@ -2967,6 +2967,9 @@ impl TrainingSchedulerState {
         self.runs_by_training_run_id
             .values()
             .filter_map(|run| {
+                if !run.window_state.permits_assignment_claims() {
+                    return None;
+                }
                 run.active_assignment_for_node(node_pubkey_hex, role)
                     .map(|assignment| {
                         (
@@ -3074,6 +3077,15 @@ impl TrainingSchedulerState {
             if !training_run_schedulable(&run) {
                 return Err("training_scheduler_run_not_schedulable".to_string());
             }
+            if self
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .is_some_and(|scheduled_run| {
+                    !scheduled_run.window_state.permits_assignment_claims()
+                })
+            {
+                return Err("training_scheduler_run_not_schedulable".to_string());
+            }
             let metadata = training_scheduler_metadata_from_run(&run)?;
             let Some(run_definition) = run_definitions_by_training_run_id.get(training_run_id)
             else {
@@ -3100,6 +3112,15 @@ impl TrainingSchedulerState {
         let mut best_match: Option<((u8, u8, u8), ComputeTrainingRun)> = None;
         for run in candidate_runs {
             if !training_run_schedulable(&run) {
+                continue;
+            }
+            if self
+                .runs_by_training_run_id
+                .get(run.training_run_id.as_str())
+                .is_some_and(|scheduled_run| {
+                    !scheduled_run.window_state.permits_assignment_claims()
+                })
+            {
                 continue;
             }
             let Ok(metadata) = training_scheduler_metadata_from_run(&run) else {
@@ -7601,7 +7622,8 @@ async fn launch_cs336_a1_demo_run(
         let launch_metrics = training_launch_live_metrics_snapshot(&state);
         let public_stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
         let summary = training_operator_summary_snapshot(&store, now);
-        let visualization = training_visualization_snapshot_with_summary(&store, now, summary.clone());
+        let visualization =
+            training_visualization_snapshot_with_summary(&store, now, summary.clone());
         training_run_detail_snapshot(
             &store,
             &public_stats,
@@ -7671,8 +7693,10 @@ fn launch_or_reuse_cs336_a1_demo_run(
     now_unix_ms: u64,
     request: LaunchCs336A1DemoRunRequest,
 ) -> Result<Cs336A1DemoLaunchResult, ApiError> {
-    let lane_contract = PsionicTrainLaneContract::for_lane(PSION_CS336_A1_DEMO_LANE_ID)
-        .map_err(|error| kernel_api_error(format!("cs336_a1_demo_lane_contract_invalid:{error}")))?;
+    let lane_contract =
+        PsionicTrainLaneContract::for_lane(PSION_CS336_A1_DEMO_LANE_ID).map_err(|error| {
+            kernel_api_error(format!("cs336_a1_demo_lane_contract_invalid:{error}"))
+        })?;
     ensure_cs336_a1_demo_registry_contracts(store, now_unix_ms, &lane_contract)
         .map_err(kernel_api_error)?;
 
@@ -7712,8 +7736,8 @@ fn launch_or_reuse_cs336_a1_demo_run(
         }
     }
 
-    let training_run_id =
-        requested_training_run_id.unwrap_or_else(|| build_cs336_a1_demo_training_run_id(now_unix_ms));
+    let training_run_id = requested_training_run_id
+        .unwrap_or_else(|| build_cs336_a1_demo_training_run_id(now_unix_ms));
     let display_name = normalize_optional_field(request.display_name.as_deref())
         .unwrap_or_else(|| EPISODE_224_CS336_A1_DEMO_DISPLAY_NAME.to_string());
     let create_result = store
@@ -7743,7 +7767,11 @@ fn launch_or_reuse_cs336_a1_demo_run(
 fn latest_active_cs336_a1_demo_run_id(store: &ControlStore) -> Option<String> {
     store
         .kernel
-        .list_compute_training_runs(Some(EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF), None, None)
+        .list_compute_training_runs(
+            Some(EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF),
+            None,
+            None,
+        )
         .into_iter()
         .rev()
         .find(training_run_schedulable)
@@ -7777,8 +7805,9 @@ fn cs336_a1_demo_artifact_bucket_uri(config: &ServiceConfig) -> String {
 
 fn cs336_a1_demo_training_policy_metadata() -> Result<Value, String> {
     let metadata = ComputeTrainingRunDefinitionMetadata {
-        abi_version: openagents_kernel_core::compute::COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION
-            .to_string(),
+        abi_version:
+            openagents_kernel_core::compute::COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION
+                .to_string(),
         run_definition_ref: EPISODE_224_CS336_A1_DEMO_RUN_DEFINITION_REF.to_string(),
         training_family: "psion_reference_demo".to_string(),
         objective: "stanford_cs336_assignment1_demo".to_string(),
@@ -7908,11 +7937,12 @@ fn ensure_cs336_a1_demo_registry_contracts(
                 created_at_ms: now_unix_ms as i64,
                 updated_at_ms: now_unix_ms as i64 + 100,
                 status: ComputeEnvironmentPackageStatus::Active,
-                description: Some("Bounded Stanford CS336 assignment 1 demo environment".to_string()),
+                description: Some(
+                    "Bounded Stanford CS336 assignment 1 demo environment".to_string(),
+                ),
                 package_digest: Some(format!(
                     "sha256:{}:{}",
-                    lane_contract.environment_ref,
-                    EPISODE_224_CS336_A1_DEMO_POLICY_VERSION
+                    lane_contract.environment_ref, EPISODE_224_CS336_A1_DEMO_POLICY_VERSION
                 )),
                 dataset_bindings: vec![ComputeEnvironmentDatasetBinding {
                     dataset_ref: EPISODE_224_CS336_A1_DEMO_DATASET_REF.to_string(),
@@ -7948,21 +7978,27 @@ fn ensure_cs336_a1_demo_registry_contracts(
                 expected_artifacts: vec![
                     ComputeEnvironmentArtifactExpectation {
                         artifact_kind: "training_manifest".to_string(),
-                        artifact_ref: Some("artifact://cs336/assignment1/demo/manifest".to_string()),
+                        artifact_ref: Some(
+                            "artifact://cs336/assignment1/demo/manifest".to_string(),
+                        ),
                         required: true,
                         verification_policy_ref: None,
                         metadata: json!({"schema": "psionic_train_manifest_v1"}),
                     },
                     ComputeEnvironmentArtifactExpectation {
                         artifact_kind: "checkpoint".to_string(),
-                        artifact_ref: Some("artifact://cs336/assignment1/demo/checkpoint".to_string()),
+                        artifact_ref: Some(
+                            "artifact://cs336/assignment1/demo/checkpoint".to_string(),
+                        ),
                         required: true,
                         verification_policy_ref: None,
                         metadata: json!({"role": "accepted_closeout"}),
                     },
                     ComputeEnvironmentArtifactExpectation {
                         artifact_kind: "closeout_bundle".to_string(),
-                        artifact_ref: Some("artifact://cs336/assignment1/demo/closeout".to_string()),
+                        artifact_ref: Some(
+                            "artifact://cs336/assignment1/demo/closeout".to_string(),
+                        ),
                         required: true,
                         verification_policy_ref: None,
                         metadata: json!({"schema": "accepted_training_closeout_v1"}),
@@ -8027,13 +8063,16 @@ fn ensure_cs336_a1_demo_registry_contracts(
                         trace: TraceContext::default(),
                         policy: PolicyContext::default(),
                         policy_record: ComputeCheckpointFamilyPolicy {
-                            checkpoint_family: EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY.to_string(),
+                            checkpoint_family: EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY
+                                .to_string(),
                             version: EPISODE_224_CS336_A1_DEMO_POLICY_VERSION.to_string(),
                             owner_id: EPISODE_224_CS336_A1_DEMO_OWNER_ID.to_string(),
                             created_at_ms: now_unix_ms as i64,
                             updated_at_ms: now_unix_ms as i64 + 100,
                             status: ComputeRegistryStatus::Active,
-                            description: Some("Decoder checkpoint policy for the bounded CS336 demo".to_string()),
+                            description: Some(
+                                "Decoder checkpoint policy for the bounded CS336 demo".to_string(),
+                            ),
                             source_family: Some("sft".to_string()),
                             default_recovery_posture: Some("warm-resume".to_string()),
                             allowed_environment_refs: vec![lane_contract.environment_ref.clone()],
@@ -8049,7 +8088,9 @@ fn ensure_cs336_a1_demo_registry_contracts(
                         hints: ReceiptHints::default(),
                     },
                 )
-                .map_err(|error| format!("cs336_a1_demo_checkpoint_policy_register_failed:{error}"))?;
+                .map_err(|error| {
+                    format!("cs336_a1_demo_checkpoint_policy_register_failed:{error}")
+                })?;
         }
     }
 
@@ -8092,7 +8133,9 @@ fn ensure_cs336_a1_demo_registry_contracts(
                         hints: ReceiptHints::default(),
                     },
                 )
-                .map_err(|error| format!("cs336_a1_demo_validator_policy_register_failed:{error}"))?;
+                .map_err(|error| {
+                    format!("cs336_a1_demo_validator_policy_register_failed:{error}")
+                })?;
         }
     }
 
@@ -8125,15 +8168,18 @@ fn ensure_cs336_a1_demo_registry_contracts(
                         trace: TraceContext::default(),
                         policy: PolicyContext::default(),
                         training_policy: ComputeTrainingPolicy {
-                            training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
+                            training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF
+                                .to_string(),
                             version: EPISODE_224_CS336_A1_DEMO_POLICY_VERSION.to_string(),
                             owner_id: EPISODE_224_CS336_A1_DEMO_OWNER_ID.to_string(),
                             created_at_ms: now_unix_ms as i64,
                             updated_at_ms: now_unix_ms as i64 + 100,
                             status: ComputeRegistryStatus::Active,
                             environment_refs: vec![lane_contract.environment_ref.clone()],
-                            checkpoint_family: EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY.to_string(),
-                            validator_policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
+                            checkpoint_family: EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY
+                                .to_string(),
+                            validator_policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF
+                                .to_string(),
                             benchmark_package_refs: Vec::new(),
                             stage_policy_refs: vec![
                                 "policy://training/cs336/a1-demo/local_sgd".to_string(),
@@ -8144,7 +8190,9 @@ fn ensure_cs336_a1_demo_registry_contracts(
                         hints: ReceiptHints::default(),
                     },
                 )
-                .map_err(|error| format!("cs336_a1_demo_training_policy_register_failed:{error}"))?;
+                .map_err(|error| {
+                    format!("cs336_a1_demo_training_policy_register_failed:{error}")
+                })?;
         }
     }
 
@@ -13341,7 +13389,7 @@ async fn list_kernel_compute_training_policies(
     headers: HeaderMap,
     Query(query): Query<ComputeTrainingPoliciesQuery>,
 ) -> Result<Json<proto_compute::ListComputeTrainingPoliciesResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -13363,7 +13411,7 @@ async fn get_kernel_compute_training_policy(
     Path(training_policy_ref): Path<String>,
     Query(query): Query<ComputeRegistryVersionQuery>,
 ) -> Result<Json<proto_compute::GetComputeTrainingPolicyResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let training_policy_ref = normalize_required_field(
         training_policy_ref.as_str(),
         "compute_training_policy_ref_missing",
@@ -13395,7 +13443,7 @@ async fn get_kernel_compute_training_run_definition(
     Path(training_policy_ref): Path<String>,
     Query(query): Query<ComputeRegistryVersionQuery>,
 ) -> Result<Json<ComputeTrainingRunDefinition>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let training_policy_ref = normalize_required_field(
         training_policy_ref.as_str(),
         "compute_training_policy_ref_missing",
@@ -13431,7 +13479,7 @@ async fn get_kernel_compute_training_artifact_resolver(
 ) -> Result<Json<PylonTrainingArtifactResolverResponse>, ApiError> {
     let started = std::time::Instant::now();
     let result = (|| -> Result<PylonTrainingArtifactResolverResponse, ApiError> {
-        let _session = authenticate_session(&state, &headers)?;
+        authenticate_training_authority_access(&state, &headers)?;
         let artifact_id =
             normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
         let store = state.store.read().map_err(|_| ApiError {
@@ -13464,7 +13512,7 @@ async fn post_kernel_compute_training_artifact_signed_access(
 ) -> Result<Json<PylonTrainingArtifactSignedAccessResponse>, ApiError> {
     let started = std::time::Instant::now();
     let result = (|| -> Result<PylonTrainingArtifactSignedAccessResponse, ApiError> {
-        let _session = authenticate_session(&state, &headers)?;
+        authenticate_training_authority_access(&state, &headers)?;
         let artifact_id =
             normalize_required_field(artifact_id.as_str(), "compute_training_artifact_id_missing")?;
         let resolver = {
@@ -13520,7 +13568,7 @@ async fn get_kernel_compute_training_artifact_gcs_layout(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<PylonTrainingArtifactGcsLayoutPolicy>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -14449,7 +14497,7 @@ async fn list_kernel_compute_training_runs(
     headers: HeaderMap,
     Query(query): Query<ComputeTrainingRunsQuery>,
 ) -> Result<Json<proto_compute::ListComputeTrainingRunsResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -14474,7 +14522,7 @@ async fn get_kernel_compute_training_run(
     headers: HeaderMap,
     Path(training_run_id): Path<String>,
 ) -> Result<Json<proto_compute::GetComputeTrainingRunResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let training_run_id =
         normalize_required_field(training_run_id.as_str(), "compute_training_run_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -14581,7 +14629,7 @@ async fn list_kernel_compute_adapter_training_windows(
     headers: HeaderMap,
     Query(query): Query<ComputeAdapterTrainingWindowsQuery>,
 ) -> Result<Json<proto_compute::ListComputeAdapterTrainingWindowsResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -14602,7 +14650,7 @@ async fn get_kernel_compute_adapter_training_window(
     headers: HeaderMap,
     Path(window_id): Path<String>,
 ) -> Result<Json<proto_compute::GetComputeAdapterTrainingWindowResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let window_id =
         normalize_required_field(window_id.as_str(), "compute_adapter_window_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -14665,7 +14713,7 @@ async fn list_kernel_compute_adapter_contribution_outcomes(
     headers: HeaderMap,
     Query(query): Query<ComputeAdapterContributionOutcomesQuery>,
 ) -> Result<Json<proto_compute::ListComputeAdapterContributionOutcomesResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -14690,7 +14738,7 @@ async fn get_kernel_compute_adapter_contribution_outcome(
     headers: HeaderMap,
     Path(contribution_id): Path<String>,
 ) -> Result<Json<proto_compute::GetComputeAdapterContributionOutcomeResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let contribution_id = normalize_required_field(
         contribution_id.as_str(),
         "compute_adapter_contribution_id_missing",
@@ -14722,7 +14770,7 @@ async fn list_kernel_compute_accepted_outcomes(
     headers: HeaderMap,
     Query(query): Query<ComputeAcceptedOutcomesQuery>,
 ) -> Result<Json<proto_compute::ListComputeAcceptedOutcomesResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -14743,7 +14791,7 @@ async fn get_kernel_compute_accepted_outcome(
     headers: HeaderMap,
     Path(outcome_id): Path<String>,
 ) -> Result<Json<proto_compute::GetComputeAcceptedOutcomeResponse>, ApiError> {
-    let _session = authenticate_session(&state, &headers)?;
+    authenticate_training_authority_access(&state, &headers)?;
     let outcome_id =
         normalize_required_field(outcome_id.as_str(), "compute_accepted_outcome_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -16717,6 +16765,45 @@ fn authenticate_session(
     Ok(session)
 }
 
+fn optional_bearer_token_from_headers(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| {
+            value
+                .strip_prefix("Bearer ")
+                .or_else(|| value.strip_prefix("bearer "))
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn authenticate_training_authority_access(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(), ApiError> {
+    // Episode 224 demo reads must stay usable from both public surfaces and pylons,
+    // including pylons that still attach a non-session bearer token.
+    let Some(token) = optional_bearer_token_from_headers(headers) else {
+        return Ok(());
+    };
+    if state
+        .config
+        .admin_bearer_token
+        .as_deref()
+        .is_some_and(|expected| token == expected)
+    {
+        return Ok(());
+    }
+    if let Ok(store) = state.store.read()
+        && let Some(session) = store.sessions_by_access_token.get(token)
+        && now_unix_ms() < session.expires_at_unix_ms
+    {
+        return Ok(());
+    }
+    Ok(())
+}
+
 fn prune_expired_starter_offers(
     state: &mut StarterDemandState,
     config: &ServiceConfig,
@@ -18330,7 +18417,11 @@ fn training_operator_summary_snapshot(
                 current_window_id: scheduler_state
                     .map(|value| value.current_window_id.clone())
                     .or_else(|| latest_window.map(|value| value.window_id.clone()))
-                    .or_else(|| metadata.as_ref().and_then(|value| value.initial_window_id.clone()))
+                    .or_else(|| {
+                        metadata
+                            .as_ref()
+                            .and_then(|value| value.initial_window_id.clone())
+                    })
                     .unwrap_or_else(|| "unknown".to_string()),
                 participation,
                 progress: progress.clone(),
@@ -20872,7 +20963,8 @@ mod tests {
         AdmittedTrainingNodeView, AppState, ControlStore, DEFAULT_COMPUTE_POLICY_BUNDLE_ID,
         DEFAULT_COMPUTE_POLICY_VERSION, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
         DesktopSessionCreateRequest, DesktopSessionResponse, FinalizeValidatorChallengeRequest,
-        LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse, NexusHomepageResponse,
+        LaunchCs336A1DemoRunRequest, LaunchCs336A1DemoRunResponse, LeaseValidatorChallengeRequest,
+        LeaseValidatorChallengeResponse, NexusHomepageResponse,
         PROVIDER_PRESENCE_RETENTION_WINDOW_MS, PYLON_TRAINING_LEASE_DURATION_MS,
         PlanTrainingWindowRequest, ProviderPresenceHeartbeatRequest,
         ProviderPresenceOfflineRequest, ProviderPresenceResponse, ProviderPresenceState,
@@ -20887,8 +20979,7 @@ mod tests {
         TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
         build_api_router_with_state, build_app_state, build_router, build_router_with_state,
         now_unix_ms, random_token, run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
-        training_kernel_mutation_context, LaunchCs336A1DemoRunRequest,
-        LaunchCs336A1DemoRunResponse,
+        training_kernel_mutation_context,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -22453,6 +22544,52 @@ mod tests {
             ComputeTrainingReplicaType::SingleNode,
             Some(512),
         );
+    }
+
+    fn create_training_scheduler_run_only_with_existing_catalog(
+        state: &AppState,
+        created_at_ms: u64,
+        training_run_id: &str,
+        initial_window_id: &str,
+        network_id: &str,
+        environment_ref: &str,
+        work_class: ComputeTrainingWorkClass,
+        replica_type: ComputeTrainingReplicaType,
+    ) {
+        let mut store = state.store.write().expect("write store");
+        let mut training_run_request = compute_training_run_request(
+            format!("idemp.scheduler.run.only.{training_run_id}").as_str(),
+            created_at_ms as i64 + 600,
+        );
+        training_run_request.training_run.training_run_id = training_run_id.to_string();
+        training_run_request.training_run.training_policy_ref =
+            "policy://training/mvp/v1".to_string();
+        training_run_request.training_run.benchmark_package_refs = Vec::new();
+        training_run_request
+            .training_run
+            .environment_binding
+            .environment_ref = environment_ref.to_string();
+        training_run_request.training_run.validator_policy_ref =
+            "policy://validator/mvp/v1".to_string();
+        training_run_request.training_run.status = ComputeTrainingRunStatus::Running;
+        training_run_request.training_run.started_at_ms = Some(created_at_ms as i64 + 600);
+        training_run_request.training_run.work_class = work_class;
+        training_run_request.training_run.replica_type = replica_type;
+        training_run_request.training_run.metadata = training_scheduler_metadata_with_contract(
+            network_id,
+            1,
+            0,
+            0,
+            initial_window_id,
+            "checkpoint://decoder/base",
+        );
+        store
+            .kernel
+            .create_compute_training_run(
+                &training_kernel_mutation_context("scheduler", created_at_ms + 600),
+                training_run_request,
+            )
+            .expect("create training run");
     }
 
     fn training_validator_retry_request(
@@ -30292,6 +30429,104 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn training_scheduler_skips_refused_runs_for_replayed_and_new_worker_claims() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_486_000u64;
+        let network_id = "trainnet.refused";
+        let node_pubkey_hex = "node-refused-skip";
+        let build_digest = "sha256:build-refused-skip";
+        let refused_run_id = "run.scheduler.refused";
+        let fresh_run_id = "run.scheduler.fresh";
+
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms,
+            refused_run_id,
+            "window.refused.0001",
+            network_id,
+            node_pubkey_hex,
+            build_digest,
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::SmallModelLocalTraining,
+            ComputeTrainingReplicaType::SingleNode,
+            Some(128),
+        );
+
+        let initial_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.refused.initial",
+                            created_at_ms as i64 + 1_000,
+                            node_pubkey_hex,
+                            refused_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(initial_response.status(), StatusCode::OK);
+        let initial_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(initial_response).await?;
+        assert_eq!(initial_lease.training_run_id, refused_run_id);
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let scheduled_run = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get_mut(refused_run_id)
+                .expect("refused scheduled run");
+            scheduled_run.window_state = TrainingSchedulerWindowState::Refused;
+        }
+
+        create_training_scheduler_run_only_with_existing_catalog(
+            &state,
+            created_at_ms + 10_000,
+            fresh_run_id,
+            "window.fresh.0001",
+            network_id,
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::SmallModelLocalTraining,
+            ComputeTrainingReplicaType::SingleNode,
+        );
+
+        let next_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.refused.followup",
+                            created_at_ms as i64 + 11_000,
+                            node_pubkey_hex,
+                            TrainingNodeRoleClaim::Worker,
+                            Some(network_id),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(next_response.status(), StatusCode::OK);
+        let next_lease = response_json::<RecordTrainingRunLeaseResponse>(next_response).await?;
+        assert_eq!(next_lease.training_run_id, fresh_run_id);
+        assert_eq!(next_lease.window_id, "window.fresh.0001");
+        assert_eq!(next_lease.window_state.as_deref(), Some("active"));
+        assert_ne!(next_lease.assignment_id, initial_lease.assignment_id);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn training_scheduler_refuses_requested_run_when_benchmark_lane_is_unavailable()
     -> Result<()> {
         let state = build_app_state(test_config()?);
@@ -34927,8 +35162,7 @@ mod tests {
             )
             .await?;
         assert_eq!(created_response.status(), StatusCode::OK);
-        let created =
-            response_json::<LaunchCs336A1DemoRunResponse>(created_response).await?;
+        let created = response_json::<LaunchCs336A1DemoRunResponse>(created_response).await?;
         assert_eq!(created.launch_state, "created");
         assert_eq!(created.training_run_id, training_run_id);
         assert_eq!(
@@ -34976,10 +35210,12 @@ mod tests {
                 training_policy.validator_policy_ref,
                 super::EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF
             );
-            assert!(training_policy
-                .environment_refs
-                .iter()
-                .any(|value| value == PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF));
+            assert!(
+                training_policy
+                    .environment_refs
+                    .iter()
+                    .any(|value| value == PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF)
+            );
             let definition = store
                 .kernel
                 .get_compute_training_run_definition(
@@ -39949,6 +40185,144 @@ mod tests {
         assert!(health.signed_access_latency_p95_ms.is_some());
         assert!(health.resolver_lookup_sample_count >= 1);
         assert!(health.signed_access_sample_count >= 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_compute_training_artifact_routes_tolerate_unknown_bearer_tokens() -> Result<()>
+    {
+        let (training_artifact_signed_url, _dir) = test_training_artifact_signed_url_config()?;
+        let mut config = test_config()?;
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        let app = build_router_with_state(build_app_state(config));
+        let artifact_id = "oa.train_artifact.v1~kind~local_update~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123";
+
+        let resolver_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/kernel/compute/training/artifacts/{artifact_id}"
+                    ))
+                    .header("authorization", "Bearer non-session-demo-token")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(resolver_response.status(), StatusCode::OK);
+        let descriptor: PylonTrainingArtifactResolverResponse =
+            response_json(resolver_response).await?;
+        assert_eq!(descriptor.artifact_id, artifact_id);
+
+        let layout_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/training/artifact-storage-layout")
+                    .header("authorization", "Bearer non-session-demo-token")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(layout_response.status(), StatusCode::OK);
+        let layout: PylonTrainingArtifactGcsLayoutPolicy = response_json(layout_response).await?;
+        assert_eq!(layout.bucket_uri_pattern, "gs://<bucket>");
+
+        let signed_access_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/kernel/compute/training/artifacts/{artifact_id}/signed-access"
+                    ))
+                    .header("authorization", "Bearer non-session-demo-token")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "mode": "write",
+                            "ttl_seconds": 7200,
+                            "digest": "sha256:adapter-delta",
+                            "size_bytes": 4096,
+                        })
+                        .to_string(),
+                    ))?,
+            )
+            .await?;
+        assert_eq!(signed_access_response.status(), StatusCode::OK);
+        let signed_access: PylonTrainingArtifactSignedAccessResponse =
+            response_json(signed_access_response).await?;
+        assert_eq!(signed_access.artifact_id, artifact_id);
+        assert_eq!(signed_access.ttl_seconds, 3_600);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_compute_training_run_route_allows_public_demo_reads() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let training_run_id = "run.public.demo";
+
+        seed_training_scheduler_run(
+            &state,
+            1_762_491_910_000u64,
+            training_run_id,
+            "window.public.0001",
+            "node-public-demo",
+            "sha256:build-public-demo",
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/kernel/compute/training/runs/{training_run_id}"
+                    ))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload =
+            response_json::<proto_compute::GetComputeTrainingRunResponse>(response).await?;
+        let run = payload.training_run.expect("training run");
+        assert_eq!(run.training_run_id, training_run_id);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_compute_training_run_route_tolerates_unknown_bearer_tokens() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let training_run_id = "run.public.demo.invalid-bearer";
+
+        seed_training_scheduler_run(
+            &state,
+            1_762_491_911_000u64,
+            training_run_id,
+            "window.public.0002",
+            "node-public-demo-2",
+            "sha256:build-public-demo-2",
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/kernel/compute/training/runs/{training_run_id}"
+                    ))
+                    .header("authorization", "Bearer non-session-demo-token")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload =
+            response_json::<proto_compute::GetComputeTrainingRunResponse>(response).await?;
+        let run = payload.training_run.expect("training run");
+        assert_eq!(run.training_run_id, training_run_id);
 
         Ok(())
     }
