@@ -372,6 +372,138 @@ pub struct PublicTrainingStatsSnapshot {
     pub windows: Vec<PublicTrainingWindowState>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingRunContributionRow {
+    #[serde(default)]
+    pub contribution_id: String,
+    #[serde(default)]
+    pub training_run_id: String,
+    #[serde(default)]
+    pub window_id: String,
+    #[serde(default)]
+    pub stage_id: String,
+    #[serde(default)]
+    pub assignment_id: String,
+    #[serde(default)]
+    pub contributor_node_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_label: Option<String>,
+    #[serde(default)]
+    pub worker_id: String,
+    #[serde(default)]
+    pub validator_disposition: String,
+    #[serde(default)]
+    pub aggregation_eligibility: String,
+    #[serde(default)]
+    pub accepted_for_aggregation: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_step_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consumed_token_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consumed_example_count: Option<u64>,
+    #[serde(default)]
+    pub submission_receipt_digest: String,
+    #[serde(default)]
+    pub manifest_digest: String,
+    #[serde(default)]
+    pub object_digest: String,
+    #[serde(default)]
+    pub provenance_bundle_digest: String,
+    #[serde(default)]
+    pub validator_receipt_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay_receipt_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion_receipt_digest: Option<String>,
+    #[serde(default)]
+    pub recorded_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingRunNodeRow {
+    #[serde(default)]
+    pub node_pubkey_hex: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_label: Option<String>,
+    #[serde(default)]
+    pub role_claims: Vec<String>,
+    #[serde(default)]
+    pub allowed_networks: Vec<String>,
+    #[serde(default)]
+    pub release_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_version: Option<String>,
+    #[serde(default)]
+    pub build_digest: String,
+    #[serde(default)]
+    pub online: bool,
+    #[serde(default)]
+    pub eligible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_successful_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_successful_window_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingRunCaveat {
+    #[serde(default)]
+    pub caveat_id: String,
+    #[serde(default)]
+    pub severity: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingRunTreasuryStatus {
+    #[serde(default)]
+    pub payout_loop_health: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_runtime_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingRunDetailSnapshot {
+    #[serde(default)]
+    pub generated_at_unix_ms: u64,
+    #[serde(default)]
+    pub training_run_id: String,
+    #[serde(default)]
+    pub run: PublicTrainingRunState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub featured_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub featured_window: Option<PublicTrainingWindowState>,
+    #[serde(default)]
+    pub queue_pressure: PublicTrainingQueuePressure,
+    #[serde(default)]
+    pub launch_health: PublicTrainingLaunchHealthSnapshot,
+    #[serde(default)]
+    pub treasury: PublicTrainingRunTreasuryStatus,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub windows: Vec<PublicTrainingWindowState>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contributions: Vec<PublicTrainingRunContributionRow>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nodes: Vec<PublicTrainingRunNodeRow>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caveats: Vec<PublicTrainingRunCaveat>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PublicStatsSnapshot {
     pub service: String,
