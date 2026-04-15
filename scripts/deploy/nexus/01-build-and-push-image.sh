@@ -62,9 +62,10 @@ BUILD_CONTEXT_FILE_COUNT="$(find "$TMP_BUILD_CONTEXT" -type f | wc -l | tr -d '[
 BUILD_CONTEXT_SIZE="$(du -sh "$TMP_BUILD_CONTEXT" | awk '{print $1}')"
 
 log "Building and pushing image: ${NEXUS_IMAGE}"
-log "Submitting Nexus-only build context: files=${BUILD_CONTEXT_FILE_COUNT} size=${BUILD_CONTEXT_SIZE} profile=${NEXUS_BUILD_PROFILE}"
+log "Submitting Nexus-only build context: files=${BUILD_CONTEXT_FILE_COUNT} size=${BUILD_CONTEXT_SIZE} profile=${NEXUS_BUILD_PROFILE} timeout=${NEXUS_BUILD_TIMEOUT}"
 gcloud builds submit "$TMP_BUILD_CONTEXT" \
   --project "$GCP_PROJECT" \
+  --timeout "${NEXUS_BUILD_TIMEOUT}" \
   --config "${ROOT_DIR}/apps/nexus-relay/deploy/cloudbuild.yaml" \
   --substitutions "_IMAGE=${NEXUS_IMAGE},_CACHE_IMAGE=${NEXUS_BUILD_CACHE_IMAGE},_BUILD_PROFILE=${NEXUS_BUILD_PROFILE},_SCCACHE_BUCKET=${SCCACHE_BUCKET_SUBSTITUTION},_SCCACHE_KEY_PREFIX=${SCCACHE_KEY_PREFIX_SUBSTITUTION}"
 
