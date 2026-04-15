@@ -1011,6 +1011,7 @@ const fn launch_cs336_a1_demo_reuse_existing_default() -> bool {
 
 const TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS: u64 = 15_000;
 const TRAINING_PUBLIC_MIRROR_MAX_AGE_MS: u64 = 120_000;
+const TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS: u64 = 120_000;
 const TRAINING_ARTIFACT_RESOLVER_P95_MAX_MS: u64 = 750;
 const TRAINING_ARTIFACT_SIGNED_ACCESS_P95_MAX_MS: u64 = 1_000;
 const TRAINING_LAUNCH_LATENCY_SAMPLE_LIMIT: usize = 64;
@@ -1040,6 +1041,7 @@ struct AppState {
     config: ServiceConfig,
     store: Arc<RwLock<ControlStore>>,
     public_stats_cache: Arc<RwLock<PublicStatsSnapshot>>,
+    training_run_detail_cache: Arc<RwLock<HashMap<String, PublicTrainingRunDetailSnapshot>>>,
     training_launch_metrics: Arc<RwLock<TrainingLaunchLiveMetrics>>,
     kernel_receipt_tx: broadcast::Sender<ReceiptProjectionEvent>,
     kernel_snapshot_tx: broadcast::Sender<SnapshotProjectionEvent>,
@@ -7036,6 +7038,7 @@ fn build_app_state(config: ServiceConfig) -> AppState {
     AppState {
         store: Arc::new(RwLock::new(store)),
         public_stats_cache: Arc::new(RwLock::new(initial_public_stats)),
+        training_run_detail_cache: Arc::new(RwLock::new(HashMap::new())),
         training_launch_metrics: Arc::new(RwLock::new(TrainingLaunchLiveMetrics::default())),
         config,
         kernel_receipt_tx,
@@ -7554,6 +7557,11 @@ async fn get_training_run_detail(
     let training_run_id =
         normalize_required_field(training_run_id.as_str(), "training_run_id_missing")?;
     let now = now_unix_ms();
+    if let Some(snapshot) =
+        cached_training_run_detail_snapshot(&state, training_run_id.as_str(), now)
+    {
+        return Ok(Json(snapshot));
+    }
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
@@ -7580,6 +7588,7 @@ async fn get_training_run_detail(
         },
         _ => kernel_api_error(reason),
     })?;
+    replace_training_run_detail_cache(&state, snapshot.clone());
     Ok(Json(snapshot))
 }
 
@@ -7636,6 +7645,7 @@ async fn launch_cs336_a1_demo_run(
         )
         .map_err(kernel_api_error)?
     };
+    replace_training_run_detail_cache(&state, run_detail.clone());
 
     Ok(Json(LaunchCs336A1DemoRunResponse {
         launched_at_unix_ms: now,
@@ -20303,6 +20313,34 @@ fn replace_public_stats_cache(state: &AppState, snapshot: PublicStatsSnapshot) {
     if let Ok(mut cache) = state.public_stats_cache.write() {
         *cache = snapshot;
     }
+}
+
+fn replace_training_run_detail_cache(state: &AppState, snapshot: PublicTrainingRunDetailSnapshot) {
+    if snapshot.training_run_id.is_empty() {
+        return;
+    }
+    if let Ok(mut cache) = state.training_run_detail_cache.write() {
+        cache.insert(snapshot.training_run_id.clone(), snapshot);
+    }
+}
+
+fn cached_training_run_detail_snapshot(
+    state: &AppState,
+    training_run_id: &str,
+    now_unix_ms: u64,
+) -> Option<PublicTrainingRunDetailSnapshot> {
+    let snapshot = state
+        .training_run_detail_cache
+        .read()
+        .ok()?
+        .get(training_run_id)
+        .cloned()?;
+    if now_unix_ms.saturating_sub(snapshot.generated_at_unix_ms)
+        > TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS
+    {
+        return None;
+    }
+    Some(snapshot)
 }
 
 fn record_training_launch_latency_sample(
@@ -35142,6 +35180,18 @@ mod tests {
                 .iter()
                 .any(|caveat| caveat.caveat_id == "window_validation_pending")
         );
+        let cached_detail = state
+            .training_run_detail_cache
+            .read()
+            .expect("read training run detail cache")
+            .get(training_run_id)
+            .cloned()
+            .expect("cached training run detail");
+        assert_eq!(cached_detail.training_run_id, training_run_id);
+        assert_eq!(
+            cached_detail.featured_window_id.as_deref(),
+            Some("window.0001")
+        );
 
         Ok(())
     }
@@ -35299,6 +35349,18 @@ mod tests {
         assert_eq!(
             reused.run_detail.featured_window_id.as_deref(),
             Some(initial_window_id)
+        );
+        let cached_detail = state
+            .training_run_detail_cache
+            .read()
+            .expect("read training run detail cache")
+            .get(training_run_id)
+            .cloned()
+            .expect("cached training run detail");
+        assert_eq!(cached_detail.training_run_id, training_run_id);
+        assert_eq!(
+            cached_detail.run.display_name.as_deref(),
+            Some("Episode 224 Operator Demo")
         );
 
         Ok(())
