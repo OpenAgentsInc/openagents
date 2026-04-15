@@ -4807,8 +4807,18 @@ fn training_validation_witness() -> Result<validator_service::GpuFreivaldsMerkle
     .map_err(|error| format!("training_window_validation_witness_invalid: {error}"))
 }
 
+fn training_validation_product_id(
+    window: &ComputeAdapterTrainingWindow,
+    training_run: &ComputeTrainingRun,
+) -> Result<String, String> {
+    normalize_optional_field(Some(window.adapter_target_id.as_str()))
+        .or_else(|| normalize_optional_field(training_run.product_id.as_deref()))
+        .ok_or_else(|| "compute_product_id_missing".to_string())
+}
+
 fn training_validation_schedule_request(
     window: &ComputeAdapterTrainingWindow,
+    validator_product_id: &str,
     challenge_plan: &TrainingWindowValidationChallengePlan,
     validator_pool_ref: &str,
     proof_bundle_digest: &str,
@@ -4819,11 +4829,13 @@ fn training_validation_schedule_request(
         challenge_plan.challenge_id.as_str(),
         "validator_challenge_id_missing",
     )?;
+    let validator_product_id =
+        normalize_required_training_string(validator_product_id, "compute_product_id_missing")?;
     let mut context = validator_service::ValidatorChallengeContext::new(
         challenge_id,
         proof_bundle_digest,
         request_digest,
-        window.adapter_target_id.as_str(),
+        validator_product_id.as_str(),
         "psionic_train",
         created_at_ms,
     )
@@ -6405,6 +6417,7 @@ fn training_window_counts(
 
 fn training_window_validation_state_for_seal(
     window: &ComputeAdapterTrainingWindow,
+    training_run: &ComputeTrainingRun,
     contribution_inputs: &[TrainingWindowContributionInput],
     validator_pool_ref: &str,
     recorded_at_ms: i64,
@@ -6415,6 +6428,7 @@ fn training_window_validation_state_for_seal(
     ),
     String,
 > {
+    let validator_product_id = training_validation_product_id(window, training_run)?;
     let sample_candidates = contribution_inputs
         .iter()
         .map(|input| {
@@ -6453,6 +6467,7 @@ fn training_window_validation_state_for_seal(
     };
     requests.push(training_validation_schedule_request(
         window,
+        validator_product_id.as_str(),
         &aggregate_plan,
         validator_pool_ref,
         window.window_summary_digest.as_str(),
@@ -6481,6 +6496,7 @@ fn training_window_validation_state_for_seal(
         };
         requests.push(training_validation_schedule_request(
             window,
+            validator_product_id.as_str(),
             &plan,
             validator_pool_ref,
             input.provenance_bundle_digest.as_str(),
@@ -8786,6 +8802,7 @@ async fn seal_training_window(
             .ok_or_else(|| kernel_api_error("compute_validator_policy_not_found".to_string()))?;
         let (validation_state, schedule_requests) = training_window_validation_state_for_seal(
             &window,
+            &training_run,
             request.contribution_outcomes.as_slice(),
             validator_policy.validator_pool_ref.as_str(),
             request.recorded_at_ms,
@@ -9880,8 +9897,18 @@ async fn finalize_training_validator_challenge(
                     expected_manifest_digests: first_plan.expected_manifest_digests.clone(),
                     training_disposition: None,
                 };
+                let training_run = store
+                    .kernel
+                    .get_compute_training_run(managed.window.training_run_id.as_str())
+                    .ok_or_else(|| {
+                        kernel_api_error("compute_training_run_not_found".to_string())
+                    })?;
+                let validator_product_id =
+                    training_validation_product_id(&managed.window, &training_run)
+                        .map_err(kernel_api_error)?;
                 let schedule_request = training_validation_schedule_request(
                     &managed.window,
+                    validator_product_id.as_str(),
                     &second_plan,
                     validation.validator_pool_ref.as_str(),
                     managed.window.window_summary_digest.as_str(),
@@ -30332,6 +30359,167 @@ mod tests {
         assert_eq!(visualized_run.weak_device_assigned_contributors, 2);
         assert_eq!(visualized_run.accepted_contributors, 0);
         assert_eq!(visualized_run.model_progress_contributors, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sealing_small_model_windows_uses_training_run_product_id_for_validator_challenges()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_478_000u64;
+        let training_run_id = "run.small-model.validator-product";
+        let window_id = "window.small-model.validator-product.0001";
+        let network_id = "trainnet.small-model.validator-product";
+
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            network_id,
+            "node-small-model",
+            "sha256:build-small-model",
+            PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::SmallModelLocalTraining,
+            ComputeTrainingReplicaType::SingleNode,
+            Some(128),
+        );
+
+        let lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.small_model.validator_product",
+                            created_at_ms as i64 + 1_000,
+                            "node-small-model",
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(lease_response.status(), StatusCode::OK);
+        let lease = response_json::<RecordTrainingRunLeaseResponse>(lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.small_model.validator_product",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://small-model-validator-product-0001",
+                                "sha256:slice-small-model-validator-product-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/activate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.small_model.validator_product",
+                            created_at_ms as i64 + 1_200,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut window = store
+                .kernel
+                .get_compute_adapter_training_window(window_id)
+                .expect("active window");
+            window.adapter_target_id.clear();
+            window.adapter_family.clear();
+            window.adapter_format.clear();
+            window.recorded_at_ms = created_at_ms as i64 + 1_250;
+            store
+                .kernel
+                .record_compute_adapter_window(
+                    &training_kernel_mutation_context("scheduler", created_at_ms + 1_250),
+                    super::training_window_record_request(
+                        "idemp.training.window.blank_adapter_target.small_model.validator_product"
+                            .to_string(),
+                        window,
+                        Vec::new(),
+                    ),
+                )
+                .expect("blank adapter target");
+        }
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/seal"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key:
+                                "idemp.training.window.seal.small_model.validator_product"
+                                    .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_300,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.small_model.validator_product",
+                                    &lease,
+                                    "sha256:validator-pending-small-model-validator-product",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        {
+            let store = state.store.read().expect("read store");
+            let run = store
+                .kernel
+                .get_compute_training_run(training_run_id)
+                .expect("training run");
+            let window = store
+                .kernel
+                .get_compute_adapter_training_window(window_id)
+                .expect("sealed window");
+            assert!(window.adapter_target_id.is_empty());
+            let expected_product_id = run.product_id.as_deref().expect("run product id");
+            let challenges = store.kernel.list_validator_challenges(None);
+            assert_eq!(challenges.len(), 2, "scheduled challenges: {challenges:#?}");
+            assert!(
+                challenges
+                    .iter()
+                    .all(|challenge| challenge.request.context.product_id == expected_product_id),
+                "scheduled challenges should use the training run product id when adapter target is blank: {challenges:#?}"
+            );
+        }
 
         Ok(())
     }
