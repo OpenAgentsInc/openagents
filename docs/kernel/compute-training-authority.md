@@ -275,6 +275,50 @@ answers:
 - what artifacts and digests identify the accepted work
 - what public caveats still apply to settlement or validation
 
+## Episode 224 Admin Launch Path
+
+Nexus now also exposes one narrow write-side admin path for the bounded Episode
+224 CS336 demo:
+
+- `POST /v1/admin/training/demo-runs/cs336-a1/launch`
+
+This route is intentionally not a generic public training-run creation surface.
+It is a scoped operator path that exists so `openagents.com` can trigger the
+same bounded demo lane the retained proof already validated.
+
+Authentication:
+
+- requires `Authorization: Bearer <token>`
+- the bearer token is configured through
+  `NEXUS_CONTROL_ADMIN_BEARER_TOKEN`
+- if that env var is absent, the route returns
+  `service_unavailable/admin_bearer_token_unconfigured`
+
+Behavior:
+
+- seeds the CS336 A1 demo registry contracts if they are missing
+  - environment package
+  - checkpoint-family policy
+  - validator policy
+  - training policy with run-definition metadata
+- reuses the latest active bounded demo run when `reuse_existing_run=true` and
+  no explicit run id is supplied
+- otherwise creates one new running bounded demo run with:
+  - training policy `policy://training/cs336/a1-demo/v1`
+  - environment ref `env.openagents.psionic.train.cs336-a1-demo`
+  - fixed network `trainnet.cs336.a1.demo`
+  - fixed worker target count `2`
+- returns the run id plus the full public run-detail snapshot so the caller can
+  redirect immediately into the proof page
+
+Truth boundary:
+
+- this launch path does not claim treasury reconciliation is healthy
+- it does not bypass validator backlog or closeout state
+- the returned run-detail snapshot still carries treasury and validation caveats
+- website/UI consumers must keep those caveats visible rather than implying
+  fully settled payout state
+
 ## Work-Class Settlement Projection
 
 The accepted-outcome closeout record now also carries explicit settlement

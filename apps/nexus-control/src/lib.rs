@@ -40,6 +40,7 @@ use nostr_client::{PoolConfig, PublishConfirmation, RelayAuthIdentity, RelayConf
 use openagents_kernel_core::authority::{
     AcceptComputeOutcomeRequest, AdjustReservePartitionRequest, AdjustReservePartitionResponse,
     BindCoverageRequest, BindCoverageResponse, CreateContractRequest, CreateContractResponse,
+    CreateComputeTrainingRunRequest,
     CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
     CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
     CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
@@ -47,6 +48,8 @@ use openagents_kernel_core::authority::{
     IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
     PlaceCoverageOfferResponse, PublishRiskSignalRequest, PublishRiskSignalResponse,
     RecordComputeAdapterWindowRequest, RecordComputeAdapterWindowResponse,
+    RegisterComputeCheckpointFamilyPolicyRequest, RegisterComputeEnvironmentPackageRequest,
+    RegisterComputeTrainingPolicyRequest, RegisterComputeValidatorPolicyRequest,
     RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
     ResolveRiskClaimResponse, SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest,
     SubmitOutputResponse,
@@ -59,16 +62,20 @@ use openagents_kernel_core::compute::{
     ComputeAdapterDatasetSlice, ComputeAdapterPolicyRevision, ComputeAdapterPromotionDisposition,
     ComputeAdapterPromotionHoldReasonCode, ComputeAdapterTrainingWindow,
     ComputeAdapterWindowGateReasonCode, ComputeAdapterWindowStatus,
-    ComputeEnvironmentPackageStatus, ComputeEvaluationArtifact, ComputeEvaluationMetric,
-    ComputeEvaluationRunStatus, ComputeProductStatus, ComputeRegistryStatus,
-    ComputeSyntheticDataJobStatus, ComputeTrainingReplicaType, ComputeTrainingRun,
-    ComputeTrainingRunDefinition, ComputeTrainingRunDefinitionEnvironment,
-    ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeTrainingWorkClass,
-    ComputeValidatorChallengeContext, ComputeValidatorChallengeFailureCode,
-    ComputeValidatorChallengeLease, ComputeValidatorChallengeProtocolKind,
-    ComputeValidatorChallengeRequest, ComputeValidatorChallengeResult,
-    ComputeValidatorChallengeSnapshot, ComputeValidatorChallengeStatus,
-    ComputeValidatorChallengeVerdict, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
+    ComputeCheckpointBinding, ComputeCheckpointFamilyPolicy, ComputeEnvironmentArtifactExpectation,
+    ComputeEnvironmentBinding, ComputeEnvironmentDatasetBinding, ComputeEnvironmentHarness,
+    ComputeEnvironmentPackage, ComputeEnvironmentPackageStatus, ComputeEnvironmentRubricBinding,
+    ComputeEvaluationArtifact, ComputeEvaluationMetric, ComputeEvaluationRunStatus,
+    ComputeProductStatus, ComputeProofPosture, ComputeRegistryStatus,
+    ComputeSyntheticDataJobStatus, ComputeTrainingPolicy, ComputeTrainingReplicaType,
+    ComputeTrainingRun, ComputeTrainingRunDefinition, ComputeTrainingRunDefinitionEnvironment,
+    ComputeTrainingRunDefinitionMetadata, ComputeTrainingRunStatus, ComputeTrainingSummary,
+    ComputeTrainingWorkClass, ComputeValidatorChallengeContext,
+    ComputeValidatorChallengeFailureCode, ComputeValidatorChallengeLease,
+    ComputeValidatorChallengeProtocolKind, ComputeValidatorChallengeRequest,
+    ComputeValidatorChallengeResult, ComputeValidatorChallengeSnapshot,
+    ComputeValidatorChallengeStatus, ComputeValidatorChallengeVerdict,
+    ComputeValidatorPolicy, DeliveryProofStatus, StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::data::{
@@ -111,7 +118,7 @@ use reqwest::Url;
 use ring::rand::SystemRandom;
 use ring::signature::{self, RsaKeyPair};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
@@ -172,6 +179,7 @@ const ENV_COMPUTE_ENABLE_RECONCILIATION_DIAGNOSTICS: &str =
     "NEXUS_CONTROL_COMPUTE_ENABLE_RECONCILIATION_DIAGNOSTICS";
 const ENV_COMPUTE_POLICY_BUNDLE_ID: &str = "NEXUS_CONTROL_COMPUTE_POLICY_BUNDLE_ID";
 const ENV_COMPUTE_POLICY_VERSION: &str = "NEXUS_CONTROL_COMPUTE_POLICY_VERSION";
+const ENV_ADMIN_BEARER_TOKEN: &str = "NEXUS_CONTROL_ADMIN_BEARER_TOKEN";
 const ENV_STARTER_DEMAND_BUDGET_CAP_SATS: &str = "NEXUS_CONTROL_STARTER_DEMAND_BUDGET_CAP_SATS";
 const ENV_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS";
@@ -221,6 +229,26 @@ const TREASURY_PUBLIC_STATS_LATENCY_SLO_MS: u64 = 250;
 const PROVIDER_PRESENCE_RETENTION_WINDOW_MS: u64 = 86_400_000;
 const PUBLIC_RECENT_PYLON_LIMIT: usize = 8;
 const MAX_PROVIDER_DIAGNOSTIC_SUMMARIES: usize = 16;
+const EPISODE_224_CS336_A1_DEMO_OWNER_ID: &str = "openagents";
+const EPISODE_224_CS336_A1_DEMO_POLICY_VERSION: &str = "2026.04.14";
+const EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF: &str =
+    "policy://training/cs336/a1-demo/v1";
+const EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF: &str = "policy://validator/mvp/v1";
+const EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY: &str = "decoder";
+const EPISODE_224_CS336_A1_DEMO_NETWORK_ID: &str = "trainnet.cs336.a1.demo";
+const EPISODE_224_CS336_A1_DEMO_DISPLAY_NAME: &str = "CS336 A1 Demo";
+const EPISODE_224_CS336_A1_DEMO_ARTIFACT_BUCKET_URI: &str = "gs://openagents-training";
+const EPISODE_224_CS336_A1_DEMO_DATASET_REF: &str =
+    "dataset://cs336/assignment1/tinystories-demo";
+const EPISODE_224_CS336_A1_DEMO_DATASET_SLICE_FAMILY: &str =
+    "dataset_slice_family.cs336_assignment1_demo";
+const EPISODE_224_CS336_A1_DEMO_PAGE_PROOF_FAMILY: &str =
+    "cs336.assignment1.demo_page_proof_family";
+const EPISODE_224_CS336_A1_DEMO_RUN_DEFINITION_REF: &str =
+    "rundef.cs336.assignment1.demo.v1";
+const EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF: &str =
+    "checkpoint://decoder/base";
+const EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT: u32 = 2;
 
 #[derive(Debug, Clone)]
 pub struct TrainingArtifactSignedUrlConfig {
@@ -269,6 +297,7 @@ pub struct ServiceConfig {
     pub compute_enable_reconciliation_diagnostics: bool,
     pub compute_policy_bundle_id: String,
     pub compute_policy_version: String,
+    pub admin_bearer_token: Option<String>,
     pub starter_demand_budget_cap_sats: u64,
     pub starter_demand_dispatch_interval_seconds: u64,
     pub starter_demand_request_ttl_seconds: u64,
@@ -377,6 +406,10 @@ impl ServiceConfig {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| DEFAULT_COMPUTE_POLICY_VERSION.to_string());
+        let admin_bearer_token = std::env::var(ENV_ADMIN_BEARER_TOKEN)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         let starter_demand_budget_cap_sats = parse_u64_env(
             ENV_STARTER_DEMAND_BUDGET_CAP_SATS,
             DEFAULT_STARTER_DEMAND_BUDGET_CAP_SATS,
@@ -466,6 +499,7 @@ impl ServiceConfig {
             compute_enable_reconciliation_diagnostics,
             compute_policy_bundle_id,
             compute_policy_version,
+            admin_bearer_token,
             starter_demand_budget_cap_sats,
             starter_demand_dispatch_interval_seconds,
             starter_demand_request_ttl_seconds,
@@ -950,6 +984,33 @@ pub struct HealthResponse {
 struct ErrorResponse {
     error: String,
     reason: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LaunchCs336A1DemoRunRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default = "launch_cs336_a1_demo_reuse_existing_default")]
+    pub reuse_existing_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LaunchCs336A1DemoRunResponse {
+    pub launched_at_unix_ms: u64,
+    pub launch_state: String,
+    pub training_run_id: String,
+    pub lane_id: String,
+    pub training_policy_ref: String,
+    pub environment_ref: String,
+    pub network_id: String,
+    pub worker_target_count: u32,
+    pub run_detail: PublicTrainingRunDetailSnapshot,
+}
+
+const fn launch_cs336_a1_demo_reuse_existing_default() -> bool {
+    true
 }
 
 const TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS: u64 = 15_000;
@@ -7035,6 +7096,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
             get(get_training_run_detail),
         )
         .route("/api/training/summary", get(training_operator_summary))
+        .route(
+            "/v1/admin/training/demo-runs/cs336-a1/launch",
+            post(launch_cs336_a1_demo_run),
+        )
         .route("/api/training/visualization", get(training_visualization))
         .route("/api/training/nodes", get(list_training_nodes))
         .route(
@@ -7494,6 +7559,600 @@ async fn get_training_run_detail(
         _ => kernel_api_error(reason),
     })?;
     Ok(Json(snapshot))
+}
+
+#[derive(Debug, Clone)]
+struct Cs336A1DemoLaunchResult {
+    training_run_id: String,
+    launch_state: String,
+    lane_contract: PsionicTrainLaneContract,
+    receipt_event: Option<ReceiptProjectionEvent>,
+    snapshot_event: Option<SnapshotProjectionEvent>,
+}
+
+async fn launch_cs336_a1_demo_run(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<LaunchCs336A1DemoRunRequest>,
+) -> Result<Json<LaunchCs336A1DemoRunResponse>, ApiError> {
+    authenticate_admin_bearer_token(&state, &headers)?;
+    let now = now_unix_ms();
+    let launch_result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        launch_or_reuse_cs336_a1_demo_run(&state.config, &mut store, now, request)?
+    };
+    if let Some(receipt_event) = launch_result.receipt_event.clone() {
+        let _ = state.kernel_receipt_tx.send(receipt_event);
+    }
+    if let Some(snapshot_event) = launch_result.snapshot_event.clone() {
+        let _ = state.kernel_snapshot_tx.send(snapshot_event);
+    }
+
+    let run_detail = {
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let launch_metrics = training_launch_live_metrics_snapshot(&state);
+        let public_stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
+        let summary = training_operator_summary_snapshot(&store, now);
+        let visualization = training_visualization_snapshot_with_summary(&store, now, summary.clone());
+        training_run_detail_snapshot(
+            &store,
+            &public_stats,
+            &summary,
+            &visualization,
+            now,
+            launch_result.training_run_id.as_str(),
+        )
+        .map_err(kernel_api_error)?
+    };
+
+    Ok(Json(LaunchCs336A1DemoRunResponse {
+        launched_at_unix_ms: now,
+        launch_state: launch_result.launch_state,
+        training_run_id: launch_result.training_run_id,
+        lane_id: launch_result.lane_contract.lane_id,
+        training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
+        environment_ref: launch_result.lane_contract.environment_ref,
+        network_id: EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string(),
+        worker_target_count: EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT,
+        run_detail,
+    }))
+}
+
+fn authenticate_admin_bearer_token(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+    let configured = state
+        .config
+        .admin_bearer_token
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: "admin_bearer_token_unconfigured".to_string(),
+        })?;
+    let header = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            error: "unauthorized",
+            reason: "missing_admin_bearer_token".to_string(),
+        })?;
+    let token = header
+        .strip_prefix("Bearer ")
+        .or_else(|| header.strip_prefix("bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            error: "unauthorized",
+            reason: "invalid_admin_bearer_token".to_string(),
+        })?;
+    if token != configured {
+        return Err(ApiError {
+            status: StatusCode::FORBIDDEN,
+            error: "forbidden",
+            reason: "admin_bearer_token_mismatch".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn launch_or_reuse_cs336_a1_demo_run(
+    config: &ServiceConfig,
+    store: &mut ControlStore,
+    now_unix_ms: u64,
+    request: LaunchCs336A1DemoRunRequest,
+) -> Result<Cs336A1DemoLaunchResult, ApiError> {
+    let lane_contract = PsionicTrainLaneContract::for_lane(PSION_CS336_A1_DEMO_LANE_ID)
+        .map_err(|error| kernel_api_error(format!("cs336_a1_demo_lane_contract_invalid:{error}")))?;
+    ensure_cs336_a1_demo_registry_contracts(store, now_unix_ms, &lane_contract)
+        .map_err(kernel_api_error)?;
+
+    let requested_training_run_id = request
+        .training_run_id
+        .as_deref()
+        .map(|value| normalize_required_training_string(value, "training_run_id_missing"))
+        .transpose()
+        .map_err(kernel_api_error)?;
+
+    if let Some(training_run_id) = requested_training_run_id.as_deref() {
+        if let Some(existing_run) = store.kernel.get_compute_training_run(training_run_id) {
+            if training_run_schedulable(&existing_run) {
+                return Ok(Cs336A1DemoLaunchResult {
+                    training_run_id: training_run_id.to_string(),
+                    launch_state: "reused_requested_run".to_string(),
+                    lane_contract,
+                    receipt_event: None,
+                    snapshot_event: None,
+                });
+            }
+            return Err(ApiError {
+                status: StatusCode::CONFLICT,
+                error: "conflict",
+                reason: "cs336_a1_demo_training_run_id_conflict".to_string(),
+            });
+        }
+    } else if request.reuse_existing_run {
+        if let Some(active_run_id) = latest_active_cs336_a1_demo_run_id(store) {
+            return Ok(Cs336A1DemoLaunchResult {
+                training_run_id: active_run_id,
+                launch_state: "reused_active_run".to_string(),
+                lane_contract,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+    }
+
+    let training_run_id =
+        requested_training_run_id.unwrap_or_else(|| build_cs336_a1_demo_training_run_id(now_unix_ms));
+    let display_name = normalize_optional_field(request.display_name.as_deref())
+        .unwrap_or_else(|| EPISODE_224_CS336_A1_DEMO_DISPLAY_NAME.to_string());
+    let create_result = store
+        .kernel
+        .create_compute_training_run(
+            &training_kernel_mutation_context("admin:episode_224_demo", now_unix_ms),
+            cs336_a1_demo_training_run_request(
+                &lane_contract,
+                config,
+                now_unix_ms,
+                training_run_id.as_str(),
+                display_name.as_str(),
+            )
+            .map_err(kernel_api_error)?,
+        )
+        .map_err(kernel_api_error)?;
+
+    Ok(Cs336A1DemoLaunchResult {
+        training_run_id,
+        launch_state: "created".to_string(),
+        lane_contract,
+        receipt_event: create_result.receipt_event,
+        snapshot_event: create_result.snapshot_event,
+    })
+}
+
+fn latest_active_cs336_a1_demo_run_id(store: &ControlStore) -> Option<String> {
+    store
+        .kernel
+        .list_compute_training_runs(Some(EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF), None, None)
+        .into_iter()
+        .rev()
+        .find(training_run_schedulable)
+        .map(|run| run.training_run_id)
+}
+
+fn build_cs336_a1_demo_training_run_id(now_unix_ms: u64) -> String {
+    let timestamp = Utc
+        .timestamp_millis_opt(now_unix_ms as i64)
+        .single()
+        .map(|value| value.format("%Y%m%d%H%M%S").to_string())
+        .unwrap_or_else(|| now_unix_ms.to_string());
+    let suffix = random_token().chars().take(8).collect::<String>();
+    format!("run.cs336.a1.demo.{timestamp}.{suffix}")
+}
+
+fn cs336_a1_demo_initial_window_id(training_run_id: &str) -> String {
+    if let Some(suffix) = training_run_id.strip_prefix("run.") {
+        return format!("window.{suffix}.0001");
+    }
+    format!("window.{}.0001", sanitize_identifier(training_run_id))
+}
+
+fn cs336_a1_demo_artifact_bucket_uri(config: &ServiceConfig) -> String {
+    config
+        .training_artifact_signed_url
+        .as_ref()
+        .map(|value| value.bucket_uri.clone())
+        .unwrap_or_else(|| EPISODE_224_CS336_A1_DEMO_ARTIFACT_BUCKET_URI.to_string())
+}
+
+fn cs336_a1_demo_training_policy_metadata() -> Result<Value, String> {
+    let metadata = ComputeTrainingRunDefinitionMetadata {
+        abi_version: openagents_kernel_core::compute::COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION
+            .to_string(),
+        run_definition_ref: EPISODE_224_CS336_A1_DEMO_RUN_DEFINITION_REF.to_string(),
+        training_family: "psion_reference_demo".to_string(),
+        objective: "stanford_cs336_assignment1_demo".to_string(),
+        sync_profile: "single_host_reference".to_string(),
+        dataset_identity: EPISODE_224_CS336_A1_DEMO_DATASET_REF.to_string(),
+        dataset_slice_family: Some(EPISODE_224_CS336_A1_DEMO_DATASET_SLICE_FAMILY.to_string()),
+        page_proof_family: Some(EPISODE_224_CS336_A1_DEMO_PAGE_PROOF_FAMILY.to_string()),
+        benchmark_package_set_ref: None,
+        version_semantics: "training_policy_version".to_string(),
+        window_ref_family: Some("window.family.diloco_round".to_string()),
+        manifest_ref_family: Some("manifest.family.psionic_train".to_string()),
+        trn_ref_family: Some("trn.family.diloco".to_string()),
+        closeout_ref_family: Some("closeout.family.accepted_training".to_string()),
+    };
+    serde_json::to_value(metadata)
+        .map(|value| json!({"run_definition": value}))
+        .map_err(|error| format!("cs336_a1_demo_training_policy_metadata_invalid:{error}"))
+}
+
+fn cs336_a1_demo_scheduler_metadata(
+    config: &ServiceConfig,
+    initial_window_id: &str,
+) -> Result<Value, String> {
+    serde_json::to_value(TrainingSchedulerRunMetadata {
+        network_id: EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string(),
+        artifact_bucket_uri: cs336_a1_demo_artifact_bucket_uri(config),
+        worker_count: EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT,
+        validator_count: 0,
+        recovery_source_count: 0,
+        initial_window_id: Some(initial_window_id.to_string()),
+        checkpoint_ref: Some(EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string()),
+    })
+    .map_err(|error| format!("cs336_a1_demo_scheduler_metadata_invalid:{error}"))
+}
+
+fn cs336_a1_demo_training_run_request(
+    lane_contract: &PsionicTrainLaneContract,
+    config: &ServiceConfig,
+    now_unix_ms: u64,
+    training_run_id: &str,
+    display_name: &str,
+) -> Result<CreateComputeTrainingRunRequest, String> {
+    let initial_window_id = cs336_a1_demo_initial_window_id(training_run_id);
+    let scheduler_metadata = cs336_a1_demo_scheduler_metadata(config, initial_window_id.as_str())?;
+    Ok(CreateComputeTrainingRunRequest {
+        idempotency_key: format!(
+            "idemp.admin.episode224.cs336.run.{}",
+            sanitize_identifier(training_run_id)
+        ),
+        trace: TraceContext::default(),
+        policy: PolicyContext::default(),
+        training_run: ComputeTrainingRun {
+            training_run_id: training_run_id.to_string(),
+            training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
+            environment_binding: ComputeEnvironmentBinding {
+                environment_ref: lane_contract.environment_ref.clone(),
+                environment_version: None,
+                dataset_ref: None,
+                rubric_ref: None,
+                evaluator_policy_ref: None,
+            },
+            checkpoint_binding: ComputeCheckpointBinding {
+                checkpoint_family: EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY.to_string(),
+                latest_checkpoint_ref: Some(
+                    EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string(),
+                ),
+                recovery_posture: Some("warm-resume".to_string()),
+            },
+            validator_policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
+            work_class: ComputeTrainingWorkClass::SmallModelLocalTraining,
+            replica_type: ComputeTrainingReplicaType::SingleNode,
+            benchmark_package_refs: Vec::new(),
+            product_id: Some("psionic.training.cs336_a1_demo".to_string()),
+            capacity_lot_id: None,
+            instrument_id: None,
+            delivery_proof_id: None,
+            model_ref: Some("model://psion/cs336-assignment1-demo".to_string()),
+            source_ref: Some(EPISODE_224_CS336_A1_DEMO_DATASET_REF.to_string()),
+            rollout_verification_eval_run_ids: Vec::new(),
+            created_at_ms: now_unix_ms as i64,
+            started_at_ms: Some(now_unix_ms as i64),
+            finalized_at_ms: None,
+            expected_step_count: Some(64),
+            completed_step_count: None,
+            status: ComputeTrainingRunStatus::Running,
+            final_checkpoint_ref: None,
+            promotion_checkpoint_ref: None,
+            summary: None,
+            metadata: json!({
+                "display_name": display_name,
+                "episode_id": "episode_224",
+                "story_id": "distributed_training_101_demo",
+                "lane_id": lane_contract.lane_id,
+                "release_id": lane_contract.release_id,
+                "backend_family": lane_contract.backend_family,
+                "topology_class": lane_contract.topology_class,
+                "minimum_machine_class": lane_contract.minimum_machine_class.label(),
+                "pylon_training_scheduler": scheduler_metadata,
+            }),
+        },
+        evidence: Vec::new(),
+        hints: ReceiptHints::default(),
+    })
+}
+
+fn ensure_cs336_a1_demo_registry_contracts(
+    store: &mut ControlStore,
+    now_unix_ms: u64,
+    lane_contract: &PsionicTrainLaneContract,
+) -> Result<(), String> {
+    match store
+        .kernel
+        .get_compute_environment_package(lane_contract.environment_ref.as_str(), None)
+    {
+        Some(package) => {
+            if package.status != ComputeEnvironmentPackageStatus::Active {
+                return Err("cs336_a1_demo_environment_inactive".to_string());
+            }
+        }
+        None => {
+            let package = ComputeEnvironmentPackage {
+                environment_ref: lane_contract.environment_ref.clone(),
+                version: EPISODE_224_CS336_A1_DEMO_POLICY_VERSION.to_string(),
+                family: "training".to_string(),
+                display_name: "Psion CS336 A1 Demo".to_string(),
+                owner_id: EPISODE_224_CS336_A1_DEMO_OWNER_ID.to_string(),
+                created_at_ms: now_unix_ms as i64,
+                updated_at_ms: now_unix_ms as i64 + 100,
+                status: ComputeEnvironmentPackageStatus::Active,
+                description: Some("Bounded Stanford CS336 assignment 1 demo environment".to_string()),
+                package_digest: Some(format!(
+                    "sha256:{}:{}",
+                    lane_contract.environment_ref,
+                    EPISODE_224_CS336_A1_DEMO_POLICY_VERSION
+                )),
+                dataset_bindings: vec![ComputeEnvironmentDatasetBinding {
+                    dataset_ref: EPISODE_224_CS336_A1_DEMO_DATASET_REF.to_string(),
+                    split_ref: Some("train".to_string()),
+                    mount_path: Some("/datasets/cs336/assignment1".to_string()),
+                    integrity_ref: Some("sha256:dataset.cs336.assignment1.demo".to_string()),
+                    access_policy_ref: Some("policy://dataset/cs336/assignment1/demo".to_string()),
+                    required: true,
+                    metadata: json!({
+                        "dataset_slice_family": EPISODE_224_CS336_A1_DEMO_DATASET_SLICE_FAMILY,
+                        "page_proof_family": EPISODE_224_CS336_A1_DEMO_PAGE_PROOF_FAMILY,
+                    }),
+                }],
+                harness: Some(ComputeEnvironmentHarness {
+                    harness_ref: "harness://psionic/train/cs336-a1-demo".to_string(),
+                    runtime_family: lane_contract.backend_family.clone(),
+                    entrypoint: Some("psionic-train".to_string()),
+                    args: vec!["--lane".to_string(), "cs336_a1_demo".to_string()],
+                    sandbox_profile_ref: Some("sandbox://training/bounded".to_string()),
+                    evaluator_policy_ref: None,
+                    time_budget_ms: Some(600_000),
+                    metadata: json!({
+                        "lane_id": lane_contract.lane_id,
+                        "topology_class": lane_contract.topology_class,
+                    }),
+                }),
+                rubric_bindings: vec![ComputeEnvironmentRubricBinding {
+                    rubric_ref: "rubric://cs336/assignment1/demo".to_string(),
+                    score_type: Some("loss".to_string()),
+                    pass_threshold_bps: None,
+                    metadata: json!({"objective": "bounded_demo_loss_descent"}),
+                }],
+                expected_artifacts: vec![
+                    ComputeEnvironmentArtifactExpectation {
+                        artifact_kind: "training_manifest".to_string(),
+                        artifact_ref: Some("artifact://cs336/assignment1/demo/manifest".to_string()),
+                        required: true,
+                        verification_policy_ref: None,
+                        metadata: json!({"schema": "psionic_train_manifest_v1"}),
+                    },
+                    ComputeEnvironmentArtifactExpectation {
+                        artifact_kind: "checkpoint".to_string(),
+                        artifact_ref: Some("artifact://cs336/assignment1/demo/checkpoint".to_string()),
+                        required: true,
+                        verification_policy_ref: None,
+                        metadata: json!({"role": "accepted_closeout"}),
+                    },
+                    ComputeEnvironmentArtifactExpectation {
+                        artifact_kind: "closeout_bundle".to_string(),
+                        artifact_ref: Some("artifact://cs336/assignment1/demo/closeout".to_string()),
+                        required: true,
+                        verification_policy_ref: None,
+                        metadata: json!({"schema": "accepted_training_closeout_v1"}),
+                    },
+                ],
+                policy_refs: vec![
+                    EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
+                    EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
+                ],
+                metadata: json!({
+                    "lane_id": lane_contract.lane_id,
+                    "release_id": lane_contract.release_id,
+                    "backend_family": lane_contract.backend_family,
+                    "topology_class": lane_contract.topology_class,
+                    "minimum_machine_class": lane_contract.minimum_machine_class.label(),
+                    "episode_id": "episode_224",
+                }),
+            };
+            store
+                .kernel
+                .register_compute_environment_package(
+                    &training_kernel_mutation_context("admin:episode_224_demo", now_unix_ms),
+                    RegisterComputeEnvironmentPackageRequest {
+                        idempotency_key: format!(
+                            "idemp.admin.episode224.cs336.environment.{}",
+                            sanitize_identifier(lane_contract.environment_ref.as_str())
+                        ),
+                        trace: TraceContext::default(),
+                        policy: PolicyContext::default(),
+                        package,
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .map_err(|error| format!("cs336_a1_demo_environment_register_failed:{error}"))?;
+        }
+    }
+
+    match store
+        .kernel
+        .get_compute_checkpoint_family_policy(EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY, None)
+    {
+        Some(policy) => {
+            if policy.status != ComputeRegistryStatus::Active {
+                return Err("cs336_a1_demo_checkpoint_policy_inactive".to_string());
+            }
+            if !policy
+                .allowed_environment_refs
+                .iter()
+                .any(|value| value == &lane_contract.environment_ref)
+            {
+                return Err("cs336_a1_demo_checkpoint_policy_environment_mismatch".to_string());
+            }
+        }
+        None => {
+            store
+                .kernel
+                .register_compute_checkpoint_family_policy(
+                    &training_kernel_mutation_context("admin:episode_224_demo", now_unix_ms),
+                    RegisterComputeCheckpointFamilyPolicyRequest {
+                        idempotency_key: "idemp.admin.episode224.cs336.checkpoint".to_string(),
+                        trace: TraceContext::default(),
+                        policy: PolicyContext::default(),
+                        policy_record: ComputeCheckpointFamilyPolicy {
+                            checkpoint_family: EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY.to_string(),
+                            version: EPISODE_224_CS336_A1_DEMO_POLICY_VERSION.to_string(),
+                            owner_id: EPISODE_224_CS336_A1_DEMO_OWNER_ID.to_string(),
+                            created_at_ms: now_unix_ms as i64,
+                            updated_at_ms: now_unix_ms as i64 + 100,
+                            status: ComputeRegistryStatus::Active,
+                            description: Some("Decoder checkpoint policy for the bounded CS336 demo".to_string()),
+                            source_family: Some("sft".to_string()),
+                            default_recovery_posture: Some("warm-resume".to_string()),
+                            allowed_environment_refs: vec![lane_contract.environment_ref.clone()],
+                            validator_policy_ref: Some(
+                                EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
+                            ),
+                            retention_policy_ref: Some(
+                                "policy://retention/checkpoints/training".to_string(),
+                            ),
+                            metadata: json!({"lane_id": lane_contract.lane_id}),
+                        },
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .map_err(|error| format!("cs336_a1_demo_checkpoint_policy_register_failed:{error}"))?;
+        }
+    }
+
+    match store
+        .kernel
+        .get_compute_validator_policy(EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF, None)
+    {
+        Some(policy) => {
+            if policy.status != ComputeRegistryStatus::Active {
+                return Err("cs336_a1_demo_validator_policy_inactive".to_string());
+            }
+        }
+        None => {
+            store
+                .kernel
+                .register_compute_validator_policy(
+                    &training_kernel_mutation_context("admin:episode_224_demo", now_unix_ms),
+                    RegisterComputeValidatorPolicyRequest {
+                        idempotency_key: "idemp.admin.episode224.cs336.validator".to_string(),
+                        trace: TraceContext::default(),
+                        policy: PolicyContext::default(),
+                        policy_record: ComputeValidatorPolicy {
+                            policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
+                            version: EPISODE_224_CS336_A1_DEMO_POLICY_VERSION.to_string(),
+                            owner_id: EPISODE_224_CS336_A1_DEMO_OWNER_ID.to_string(),
+                            created_at_ms: now_unix_ms as i64,
+                            updated_at_ms: now_unix_ms as i64 + 100,
+                            status: ComputeRegistryStatus::Active,
+                            validator_pool_ref: "validator-pool.training.mvp".to_string(),
+                            minimum_validator_count: Some(1),
+                            challenge_window_ms: Some(60_000),
+                            required_proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+                            benchmark_package_refs: Vec::new(),
+                            metadata: json!({
+                                "lane_id": lane_contract.lane_id,
+                                "episode_id": "episode_224",
+                            }),
+                        },
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .map_err(|error| format!("cs336_a1_demo_validator_policy_register_failed:{error}"))?;
+        }
+    }
+
+    match store
+        .kernel
+        .get_compute_training_policy(EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF, None)
+    {
+        Some(policy) => {
+            if policy.status != ComputeRegistryStatus::Active {
+                return Err("cs336_a1_demo_training_policy_inactive".to_string());
+            }
+            if policy.validator_policy_ref != EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF {
+                return Err("cs336_a1_demo_training_policy_validator_mismatch".to_string());
+            }
+            if !policy
+                .environment_refs
+                .iter()
+                .any(|value| value == &lane_contract.environment_ref)
+            {
+                return Err("cs336_a1_demo_training_policy_environment_mismatch".to_string());
+            }
+        }
+        None => {
+            store
+                .kernel
+                .register_compute_training_policy(
+                    &training_kernel_mutation_context("admin:episode_224_demo", now_unix_ms),
+                    RegisterComputeTrainingPolicyRequest {
+                        idempotency_key: "idemp.admin.episode224.cs336.training_policy".to_string(),
+                        trace: TraceContext::default(),
+                        policy: PolicyContext::default(),
+                        training_policy: ComputeTrainingPolicy {
+                            training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
+                            version: EPISODE_224_CS336_A1_DEMO_POLICY_VERSION.to_string(),
+                            owner_id: EPISODE_224_CS336_A1_DEMO_OWNER_ID.to_string(),
+                            created_at_ms: now_unix_ms as i64,
+                            updated_at_ms: now_unix_ms as i64 + 100,
+                            status: ComputeRegistryStatus::Active,
+                            environment_refs: vec![lane_contract.environment_ref.clone()],
+                            checkpoint_family: EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY.to_string(),
+                            validator_policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
+                            benchmark_package_refs: Vec::new(),
+                            stage_policy_refs: vec![
+                                "policy://training/cs336/a1-demo/local_sgd".to_string(),
+                            ],
+                            metadata: cs336_a1_demo_training_policy_metadata()?,
+                        },
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .map_err(|error| format!("cs336_a1_demo_training_policy_register_failed:{error}"))?;
+        }
+    }
+
+    store
+        .kernel
+        .get_compute_training_run_definition(EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF, None)
+        .map_err(|error| format!("cs336_a1_demo_run_definition_unavailable:{error}"))?;
+    Ok(())
 }
 
 async fn homepage_snapshot(
@@ -17658,10 +18317,20 @@ fn training_operator_summary_snapshot(
                 scheduler_window_state: scheduler_state
                     .map(|value| value.window_state.label().to_string())
                     .or_else(|| latest_window.map(|value| value.status.label().to_string()))
+                    .or_else(|| {
+                        metadata.as_ref().map(|_| {
+                            if training_run_schedulable(run) {
+                                "active".to_string()
+                            } else {
+                                "unknown".to_string()
+                            }
+                        })
+                    })
                     .unwrap_or_else(|| "unknown".to_string()),
                 current_window_id: scheduler_state
                     .map(|value| value.current_window_id.clone())
                     .or_else(|| latest_window.map(|value| value.window_id.clone()))
+                    .or_else(|| metadata.as_ref().and_then(|value| value.initial_window_id.clone()))
                     .unwrap_or_else(|| "unknown".to_string()),
                 participation,
                 progress: progress.clone(),
@@ -20218,7 +20887,8 @@ mod tests {
         TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
         build_api_router_with_state, build_app_state, build_router, build_router_with_state,
         now_unix_ms, random_token, run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
-        training_kernel_mutation_context,
+        training_kernel_mutation_context, LaunchCs336A1DemoRunRequest,
+        LaunchCs336A1DemoRunResponse,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -20245,6 +20915,7 @@ mod tests {
             compute_enable_reconciliation_diagnostics: true,
             compute_policy_bundle_id: DEFAULT_COMPUTE_POLICY_BUNDLE_ID.to_string(),
             compute_policy_version: DEFAULT_COMPUTE_POLICY_VERSION.to_string(),
+            admin_bearer_token: None,
             starter_demand_budget_cap_sats: 500,
             starter_demand_dispatch_interval_seconds: 1,
             starter_demand_request_ttl_seconds: 120,
@@ -34192,6 +34863,163 @@ mod tests {
                 .caveats
                 .iter()
                 .any(|caveat| caveat.caveat_id == "window_validation_pending")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_cs336_demo_launch_route_requires_admin_bearer_token() -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        let app = build_api_router_with_state(build_app_state(config));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/training/demo-runs/cs336-a1/launch")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &LaunchCs336A1DemoRunRequest {
+                            training_run_id: None,
+                            display_name: None,
+                            reuse_existing_run: true,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            body.get("reason").and_then(serde_json::Value::as_str),
+            Some("missing_admin_bearer_token")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_cs336_demo_launch_route_registers_contracts_creates_run_and_reuses_active_run()
+    -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let training_run_id = "run.cs336.a1.demo.operator";
+        let initial_window_id = "window.cs336.a1.demo.operator.0001";
+
+        let created_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/training/demo-runs/cs336-a1/launch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &LaunchCs336A1DemoRunRequest {
+                            training_run_id: Some(training_run_id.to_string()),
+                            display_name: Some("Episode 224 Operator Demo".to_string()),
+                            reuse_existing_run: true,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(created_response.status(), StatusCode::OK);
+        let created =
+            response_json::<LaunchCs336A1DemoRunResponse>(created_response).await?;
+        assert_eq!(created.launch_state, "created");
+        assert_eq!(created.training_run_id, training_run_id);
+        assert_eq!(
+            created.training_policy_ref,
+            super::EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF
+        );
+        assert_eq!(
+            created.environment_ref,
+            PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF
+        );
+        assert_eq!(
+            created.network_id,
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID
+        );
+        assert_eq!(created.worker_target_count, 2);
+        assert_eq!(created.run_detail.training_run_id, training_run_id);
+        assert_eq!(
+            created.run_detail.run.display_name.as_deref(),
+            Some("Episode 224 Operator Demo")
+        );
+        assert_eq!(created.run_detail.run.run_status, "running");
+        assert_eq!(created.run_detail.run.current_window_id, initial_window_id);
+        assert_eq!(
+            created.run_detail.featured_window_id.as_deref(),
+            Some(initial_window_id)
+        );
+        assert!(created.run_detail.featured_window.is_none());
+        assert_eq!(created.run_detail.contributions.len(), 0);
+
+        {
+            let store = state.store.read().expect("read store");
+            let environment = store
+                .kernel
+                .get_compute_environment_package(PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF, None)
+                .expect("registered environment");
+            assert_eq!(environment.family, "training");
+            let training_policy = store
+                .kernel
+                .get_compute_training_policy(
+                    super::EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF,
+                    None,
+                )
+                .expect("registered training policy");
+            assert_eq!(
+                training_policy.validator_policy_ref,
+                super::EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF
+            );
+            assert!(training_policy
+                .environment_refs
+                .iter()
+                .any(|value| value == PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF));
+            let definition = store
+                .kernel
+                .get_compute_training_run_definition(
+                    super::EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF,
+                    None,
+                )
+                .expect("training run definition");
+            assert_eq!(
+                definition.run_definition_ref,
+                super::EPISODE_224_CS336_A1_DEMO_RUN_DEFINITION_REF
+            );
+            assert_eq!(
+                definition.page_proof_family.as_deref(),
+                Some(super::EPISODE_224_CS336_A1_DEMO_PAGE_PROOF_FAMILY)
+            );
+        }
+
+        let reused_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/training/demo-runs/cs336-a1/launch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &LaunchCs336A1DemoRunRequest {
+                            training_run_id: None,
+                            display_name: None,
+                            reuse_existing_run: true,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reused_response.status(), StatusCode::OK);
+        let reused = response_json::<LaunchCs336A1DemoRunResponse>(reused_response).await?;
+        assert_eq!(reused.launch_state, "reused_active_run");
+        assert_eq!(reused.training_run_id, training_run_id);
+        assert_eq!(
+            reused.run_detail.featured_window_id.as_deref(),
+            Some(initial_window_id)
         );
 
         Ok(())
