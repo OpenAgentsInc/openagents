@@ -3,6 +3,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WATCHDOG_INSTALL_SCRIPT="${SCRIPT_DIR}/10-install-treasury-watchdog.sh"
+RUNTIME_ENV_VARS=(
+  NEXUS_CONTROL_KERNEL_STATE_PATH
+  NEXUS_CONTROL_TRAINING_TRN_IDENTITY_PATH
+  NEXUS_CONTROL_TRAINING_TRN_RELAY_URLS
+  NEXUS_CONTROL_ADMIN_BEARER_TOKEN
+  NEXUS_CONTROL_TRAINING_GCS_BUCKET_URI
+  NEXUS_CONTROL_TRAINING_GCS_ENDPOINT
+  NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_TTL_SECONDS
+  NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS
+  NEXUS_CONTROL_TRAINING_GCS_SIGNING_CREDENTIALS_PATH
+)
 TREASURY_ENV_VARS=(
   NEXUS_CONTROL_TREASURY_ENABLED
   NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW
@@ -32,12 +43,27 @@ for var in "${TREASURY_ENV_VARS[@]}"; do
     EXPLICIT_TREASURY_ENV_VARS+=" ${var}"
   fi
 done
+EXPLICIT_RUNTIME_ENV_VARS=""
+for var in "${RUNTIME_ENV_VARS[@]}"; do
+  if [[ ${!var+x} == x ]]; then
+    EXPLICIT_RUNTIME_ENV_VARS+=" ${var}"
+  fi
+done
 source "${SCRIPT_DIR}/common.sh"
 
 require_cmd gcloud
 require_cmd jq
 
 ensure_gcloud_context
+
+fetch_remote_env() {
+  local remote_env_path="/etc/nexus-relay/nexus-relay.env"
+  gcloud compute ssh "$NEXUS_VM" \
+    --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    --command "sudo test -f '${remote_env_path}' && sudo cat '${remote_env_path}' || true"
+}
 
 treasury_env_is_explicit() {
   case " ${EXPLICIT_TREASURY_ENV_VARS} " in
@@ -46,16 +72,16 @@ treasury_env_is_explicit() {
   return 1
 }
 
+runtime_env_is_explicit() {
+  case " ${EXPLICIT_RUNTIME_ENV_VARS} " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
 preserve_remote_treasury_env() {
-  local remote_env_path="/etc/nexus-relay/nexus-relay.env"
   local remote_env
-  remote_env="$(
-    gcloud compute ssh "$NEXUS_VM" \
-      --tunnel-through-iap \
-      --project "$GCP_PROJECT" \
-      --zone "$GCP_ZONE" \
-      --command "sudo test -f '${remote_env_path}' && sudo cat '${remote_env_path}' || true"
-  )"
+  remote_env="$(fetch_remote_env)"
 
   [[ -n "$remote_env" ]] || return 0
 
@@ -79,6 +105,68 @@ preserve_remote_treasury_env() {
         ;;
     esac
   done <<< "$remote_env"
+}
+
+preserve_remote_runtime_env() {
+  local remote_env
+  remote_env="$(fetch_remote_env)"
+
+  [[ -n "$remote_env" ]] || return 0
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+      NEXUS_CONTROL_KERNEL_STATE_PATH|\
+      NEXUS_CONTROL_TRAINING_TRN_IDENTITY_PATH|\
+      NEXUS_CONTROL_TRAINING_TRN_RELAY_URLS|\
+      NEXUS_CONTROL_ADMIN_BEARER_TOKEN|\
+      NEXUS_CONTROL_TRAINING_GCS_BUCKET_URI|\
+      NEXUS_CONTROL_TRAINING_GCS_ENDPOINT|\
+      NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_TTL_SECONDS|\
+      NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS|\
+      NEXUS_CONTROL_TRAINING_GCS_SIGNING_CREDENTIALS_PATH)
+        value="${value%$'\r'}"
+        [[ -n "$value" ]] || continue
+        if runtime_env_is_explicit "$key"; then
+          continue
+        fi
+        export "${key}=${value}"
+        if [[ "$key" == "NEXUS_CONTROL_ADMIN_BEARER_TOKEN" ]]; then
+          log "Preserving live runtime env ${key}=[redacted]"
+        else
+          log "Preserving live runtime env ${key}=${value}"
+        fi
+        ;;
+    esac
+  done <<< "$remote_env"
+}
+
+set_default_runtime_env() {
+  : "${NEXUS_CONTROL_KERNEL_STATE_PATH:=${NEXUS_DATA_DIR}/nexus-control/kernel-state.json}"
+  : "${NEXUS_CONTROL_TRAINING_TRN_IDENTITY_PATH:=${NEXUS_DATA_DIR}/nexus-control/training-trn-identity.mnemonic}"
+  : "${NEXUS_CONTROL_TRAINING_TRN_RELAY_URLS:=${NEXUS_PUBLIC_WS_URL}}"
+  : "${NEXUS_CONTROL_TRAINING_GCS_BUCKET_URI:=}"
+  : "${NEXUS_CONTROL_TRAINING_GCS_ENDPOINT:=https://storage.googleapis.com}"
+  : "${NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_TTL_SECONDS:=900}"
+  : "${NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS:=3600}"
+  : "${NEXUS_CONTROL_TRAINING_GCS_SIGNING_CREDENTIALS_PATH:=}"
+  : "${NEXUS_CONTROL_ADMIN_BEARER_TOKEN:=}"
+}
+
+require_production_runtime_env() {
+  local required_vars=(
+    NEXUS_CONTROL_ADMIN_BEARER_TOKEN
+    NEXUS_CONTROL_TRAINING_GCS_BUCKET_URI
+    NEXUS_CONTROL_TRAINING_GCS_SIGNING_CREDENTIALS_PATH
+  )
+  local var_name
+
+  [[ "$NEXUS_VM" == "nexus-mainnet-1" ]] || return 0
+
+  for var_name in "${required_vars[@]}"; do
+    if [[ -z "${!var_name}" ]]; then
+      die "Refusing to deploy ${NEXUS_VM} without ${var_name}. Export it explicitly or preserve it from the live host first."
+    fi
+  done
 }
 
 load_remote_treasury_policy() {
@@ -326,6 +414,7 @@ fi
 PREVIOUS_DEPLOY_IMAGE="$(current_remote_deploy_image || true)"
 
 preserve_remote_treasury_env
+preserve_remote_runtime_env
 
 : "${NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV:=false}"
 : "${NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE:=false}"
@@ -340,7 +429,9 @@ preserve_remote_treasury_env
 : "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS:=}"
 : "${TOKIO_WORKER_THREADS:=16}"
 
+set_default_runtime_env
 preserve_or_validate_persisted_treasury_policy
+require_production_runtime_env
 
 if [[ "$NEXUS_VM" == "nexus-mainnet-1" ]] \
   && [[ "${NEXUS_ALLOW_ZERO_TREASURY_IN_PRODUCTION}" != "true" ]] \
@@ -367,6 +458,15 @@ NEXUS_RELAY_PUBLIC_WS_URL=${NEXUS_PUBLIC_WS_URL}
 NEXUS_RELAY_UPSTREAM_CONFIG_FILE=/etc/nexus-relay/upstream-config.toml
 NEXUS_CONTROL_HOSTED_NEXUS_RELAY_URL=${NEXUS_PUBLIC_WS_URL}
 NEXUS_CONTROL_RECEIPT_LOG_PATH=${NEXUS_RECEIPT_LOG_PATH}
+NEXUS_CONTROL_KERNEL_STATE_PATH=${NEXUS_CONTROL_KERNEL_STATE_PATH}
+NEXUS_CONTROL_TRAINING_TRN_IDENTITY_PATH=${NEXUS_CONTROL_TRAINING_TRN_IDENTITY_PATH}
+NEXUS_CONTROL_TRAINING_TRN_RELAY_URLS=${NEXUS_CONTROL_TRAINING_TRN_RELAY_URLS}
+NEXUS_CONTROL_ADMIN_BEARER_TOKEN=${NEXUS_CONTROL_ADMIN_BEARER_TOKEN}
+NEXUS_CONTROL_TRAINING_GCS_BUCKET_URI=${NEXUS_CONTROL_TRAINING_GCS_BUCKET_URI}
+NEXUS_CONTROL_TRAINING_GCS_ENDPOINT=${NEXUS_CONTROL_TRAINING_GCS_ENDPOINT}
+NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_TTL_SECONDS=${NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_TTL_SECONDS}
+NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS=${NEXUS_CONTROL_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS}
+NEXUS_CONTROL_TRAINING_GCS_SIGNING_CREDENTIALS_PATH=${NEXUS_CONTROL_TRAINING_GCS_SIGNING_CREDENTIALS_PATH}
 NEXUS_CONTROL_TREASURY_ENABLED=${NEXUS_CONTROL_TREASURY_ENABLED}
 NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=${NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW}
 NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=${NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS}
