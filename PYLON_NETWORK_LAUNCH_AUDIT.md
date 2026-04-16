@@ -1,7 +1,7 @@
 # Pylon Network Launch Audit
 
 Date: 2026-04-16
-Audited branch tip: `0fab22919` on `pylon-stable-0.1.1`
+Audited branch: `pylon-stable-0.1.1`
 
 ## Scope
 
@@ -11,6 +11,7 @@ This audit answers the launch questions directly:
 2. Does the relay-based Pylon network path actually exist?
 3. Can one run be distributed coherently across a fleet of Pylons?
 4. Will operators automatically get the updated `Pylon` binary from the network?
+5. How do the public promises in Transcript 222 map to what was actually built?
 
 This audit is based on current repo code, current docs, and the local release
 verification lane that was rerun on the `pylon-stable-0.1.1` branch tip.
@@ -91,6 +92,195 @@ Current code does report `client_version` to Nexus during provider presence
 heartbeat, but this audit did not find a standalone rollout controller, minimum
 version enforcement path, or binary distribution path built on top of that.
 
+## Episode 222 Roadmap And Issue Program Status
+
+The broader Episode 222 gap was not left as hand-wavy launch copy. It was
+turned into a concrete launch-hardening program in `workspace/docs/plan222.md`.
+
+The key roadmap phases were:
+
+- Phase 7: Transcript 222 truth contract
+- Phase 8: zero-touch node automation
+- Phase 10: real heterogeneous work delivery
+- Phase 11: public-state and payout truth
+- Phase 12: scale rehearsal and claim readiness
+
+That roadmap was then tracked under `workspace#12`, which is closed in the
+retained launch-truth receipt at
+`workspace/docs/reports/transcript-222/20260412-172432-launch-truth-receipt.json`.
+
+The closed blocker set includes:
+
+- claim-contract and artifact-contract work: `openagents#4295` through
+  `openagents#4299`
+- automatic Pylon assignment, materialization, launch, and receipt upload:
+  `openagents#4300` through `openagents#4304`
+- weak-device and capability-tier launch contract: `openagents#4305` through
+  `openagents#4307`, plus `psionic#932` and `psionic#933`
+- payout and public-truth work: `openagents#4308` through `openagents#4313`,
+  `openagents.com#10`, and `openagents.com#11`
+- rollout and operational hardening: `openagents#4314` through
+  `openagents#4317`, plus `workspace#13`
+- canary and crowd-threshold rehearsals: `openagents#4318` and
+  `openagents#4319`
+- status, matrix, claim-sheet, audit-template, and FAQ follow-ons:
+  `workspace#14` through `workspace#18`, plus `openagents#4320`
+
+The sibling workspace repo also now says overall Transcript 222 launch status
+is `GREEN`.
+
+## Why That Does Not Make This Stable Branch The Full Episode 222 Stack
+
+That `GREEN` status is about the broader retained training-launch package
+across `openagents`, `openagents.com`, and `psionic`.
+
+This audit is narrower. It is about the current standalone stable Pylon branch
+that you asked about for launch.
+
+On this `pylon-stable-0.1.1` branch, the branch-local evidence is much
+narrower:
+
+- the only Transcript 222 plan doc present locally is
+  `docs/plans/transcript-222-launch-truth-contract.md`
+- this branch does not carry the broader workspace launch-status bundle,
+  crowd-rehearsal reports, weak-device FAQ, or launch-SLO docs that the
+  workspace `GREEN` status points at
+- current standalone docs and code in this branch are centered on a relay-based
+  NIP-90 buyer/provider flow for the retained local Gemma lane
+
+So the correct combined reading is:
+
+- the Episode 222 launch-hardening program was closed as a broader training
+  launch package
+- this stable standalone Pylon release is still a narrower product slice
+- you should not collapse those two truths into one claim
+
+## Transcript 222 Promise Status
+
+The important historical point is that the follow-on work split into two
+different programs:
+
+- one program made standalone `Pylon` into a real NIP-90 and wallet-aware node
+- one program narrowed and formalized public launch claims around Transcript 222
+
+Those are not the same thing.
+
+### What The Post-Transcript Roadmap Actually Closed
+
+The April 5 standalone Pylon issue-program audit said the new `apps/pylon`
+still lacked:
+
+- relay runtime
+- NIP-89 announcement surface
+- provider-side NIP-90 intake
+- buyer-side NIP-90 workflow
+- wallet management surface
+- persisted local NIP-90 ledger
+
+That gap is now materially closed.
+
+Current standalone `Pylon` does have:
+
+- relay configuration and NIP-42 handling
+- provider announce / scan / run paths
+- buyer submit / watch / approve / deny paths
+- wallet and payout command surfaces
+- persisted relay, job, wallet, and settlement ledger state
+
+So if the question is "did we close the gap between the old promise of a local
+node and the thin standalone shell we had on April 5," the answer is mostly
+yes.
+
+### What The Claim-Contract Layer Actually Did
+
+The Transcript 222 launch-truth contract did not claim that all the
+training-network promises were now implemented inside this branch.
+
+The broader workspace hardening program did more than this. It also tracked and
+closed a larger retained training-launch package. But the contract document
+itself had a narrower job.
+
+What it actually did was freeze the allowed claim boundary and make the public
+stats contract stricter. The key move was:
+
+- stop inferring training truth from presence and payout counters
+- explicitly forbid stronger public statements until stronger fields exist
+
+That means some Episode 222 promise gaps were closed by narrowing the language,
+not by proving the originally implied system.
+
+### Promise-By-Promise Reading
+
+`The Pylon network has N nodes online and sats paid out`
+
+- Partly real.
+- The online-node and payout counters are real public fields in Nexus.
+- The follow-on truth contract says those fields are presence and payout truth
+  only, not proof of training assignment, accepted work, or model progress.
+- The contract also says the payout counter must not be described as
+  accepted-work-only payout until payout classes are split explicitly.
+
+`Your Pylon should auto-update anyway`
+
+- True only on the existing launcher/bootstrap path.
+- The broader Episode 222 hardening docs treat this as satisfied by the
+  existing bootstrap release path, not by a new in-band update protocol.
+- What exists now is launcher-based update resolution from GitHub Releases.
+- What does not exist is Nexus-driven auto-update, peer-to-peer update
+  distribution, or in-place fleet self-update.
+
+`We are about to send you real work, real pieces of a decentralized training run`
+
+- Not substantiated by the current standalone Pylon implementation.
+- What exists today is a relay-based NIP-90 compute-market flow for the
+  retained local Gemma inference lane.
+- The current standalone release does not show training-shard assignment,
+  training-window admission, accepted training contribution, or model-progress
+  closeout through the Pylon network.
+
+`Weak devices can get a slice of the work`
+
+- Defined at the claim-contract level, not proven as a current public runtime
+  truth surface.
+- The launch-truth contract says `validation_replay` is the default weak-device
+  lane for hardening purposes until a later issue changes that.
+- The same contract also says the public stats path does not yet expose weak-
+  device assigned or accepted contributor counts.
+- Current standalone Pylon docs and code do not present a released weak-device
+  training-work lane to operators.
+
+`This is or will imminently be the largest decentralized training run in the world`
+
+- Not an honest current claim.
+- The launch-truth contract explicitly forbids unqualified "largest run"
+  language.
+- It says any future "largest" claim must name the count family:
+  online, assigned, accepted, or model-progress contributors.
+- The contract also says the public stats surface still lacks the fields needed
+  for assigned-contributor, accepted-contributor, and model-progress-contributor
+  claims.
+
+`The stats page will show what work and math is happening on your computer`
+
+- Only partly true today.
+- Current public stats do expose recent Pylon presence and recent Pylon
+  diagnostic summaries.
+- The Transcript 222 contract says the public stats path still does not expose
+  full training assignment, accepted-work, or model-progress truth.
+
+## Transcript 222 Bottom Line
+
+If the question is "did we build everything Episode 222 implied," the answer is
+no.
+
+If the question is "did we build the narrower standalone Pylon node that the
+later issue program asked for," the answer is mostly yes.
+
+If the question is "did the launch-hardening work make the public claims more
+honest," the answer is yes. But it did that mainly by tightening definitions
+and forbidding overclaims, not by proving that the public distributed-training
+story was already live in this standalone stable branch by itself.
+
 ## What Works
 
 - Standalone install/bootstrap works through `@openagentsinc/pylon`.
@@ -108,13 +298,20 @@ version enforcement path, or binary distribution path built on top of that.
   network truth.
 - `cargo clippy -p pylon --all-targets -- -D warnings` passes.
 
-## What Does Not Work Or Is Not Honest To Claim
+## What This Standalone Stable Branch Does Not Work Or Is Not Honest To Claim
 
 - Standalone `Pylon` does not currently have hosted-Nexus starter-demand parity
   with `Autopilot Desktop`.
 - Standalone `Pylon` does not currently have hosted fleet scheduling.
 - Standalone `Pylon` does not currently coordinate distributed training or
   multi-node shard execution across a fleet.
+- Standalone `Pylon` does not currently publish the Transcript 222 training
+  truth surfaces needed for admitted, assigned, accepted, or model-progress
+  contributor claims.
+- Standalone `Pylon` does not currently publish payout-class splits needed to
+  separate placeholder sats from accepted-work sats.
+- Standalone `Pylon` does not currently expose a released weak-device training
+  lane with public assigned/accepted accounting.
 - Standalone `Pylon` does not currently auto-update peers over the network.
 - This audit does not prove a live public multi-node production fleet is
   currently online and doing real customer work together.
@@ -158,6 +355,38 @@ That is not the same thing as:
 - Nexus pushing binaries to Pylons
 - online Pylons automatically upgrading in place
 
+## Public Truth Surface Status On This Stable Branch
+
+Within this stable standalone branch, the current public-facing Nexus truth
+surface does expose:
+
+- `pylonsOnlineNow`
+- `pylonsSeen24h`
+- `pylonSessionsOnlineNow`
+- `sellablePylonsOnlineNow`
+- `recentPylons[*]`
+- `recentPylonDiagnostics[*]`
+- `nexusPayoutSatsPaidTotal`
+
+The Transcript 222 launch-truth contract in this branch explicitly says the
+public stats contract still does not expose:
+
+- admitted contributor count
+- assigned contributor count
+- accepted contributor count
+- model-progress contributor count
+- weak-device assigned contributor count
+- weak-device accepted contributor count
+- accepted-work sats total
+- placeholder sats total
+- beta-bonus sats total
+- active run id or run family
+- active window id or window family
+
+That is the strongest repo-local evidence that the Episode 222 distributed-
+training claim family is still narrower in implementation than it was in public
+implication.
+
 ## Verified Evidence
 
 These checks were rerun successfully on the current branch tip for this audit:
@@ -180,6 +409,15 @@ The bootstrap package README and tests also confirm the current update behavior:
 
 - `docs/pylon/README.md`
 - `docs/pylon/PYLON_VERIFICATION_MATRIX.md`
+- `docs/transcripts/222.md`
+- `docs/plans/transcript-222-launch-truth-contract.md`
+- `docs/plans/compute-market-launch-truth-checklist.md`
+- `docs/audits/2026-03-15-decentralized-training-target-sequencing-audit.md`
+- `docs/audits/2026-04-05-pylon-nip90-wallet-issue-program-audit.md`
+- `workspace/docs/plan222.md`
+- `workspace/docs/2026-04-12-transcript-222-launch-status.md`
+- `workspace/docs/2026-04-12-transcript-222-vision-implementation-audit.md`
+- `workspace/docs/reports/transcript-222/20260412-172432-launch-truth-receipt.json`
 - `packages/pylon-bootstrap/README.md`
 - `apps/pylon/src/nip90_runtime.rs`
 - `apps/pylon/src/lib.rs`
@@ -194,6 +432,11 @@ The specific current network truths are:
 - docs explicitly state that no standalone hosted-Nexus single-assignee/fair
   scheduling claim is being made
 - Nexus starter-demand proof still requires an `autopilot-desktop` session
+- the Transcript 222 launch-truth contract explicitly narrows public stats and
+  payout counters away from stronger training-run claims
+- the sibling workspace repo marks the broader Transcript 222 hardening package
+  `GREEN`, but that broader package is not the same thing as this standalone
+  stable branch alone
 
 ## Launch Recommendation
 
