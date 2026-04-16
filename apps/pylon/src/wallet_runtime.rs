@@ -366,12 +366,13 @@ pub async fn load_wallet_status_report(config_path: &Path) -> Result<WalletStatu
         sync_wallet_status(
             config_path,
             &report.runtime,
-            report.runtime_status.as_str(),
-            report.runtime_detail.clone(),
-            Some(&report.balance),
-            None,
-            None,
-            report.recent_payments.as_slice(),
+            WalletStatusSync {
+                runtime_status: report.runtime_status.as_str(),
+                runtime_detail: report.runtime_detail.clone(),
+                balance: Some(&report.balance),
+                payments: report.recent_payments.as_slice(),
+                ..WalletStatusSync::default()
+            },
         )?;
         Ok(report)
     }
@@ -408,12 +409,13 @@ pub async fn create_wallet_address_report(config_path: &Path) -> Result<WalletAd
         sync_wallet_status(
             config_path,
             &report.runtime,
-            "connected",
-            None,
-            None,
-            Some(report.spark_address.as_str()),
-            Some(report.bitcoin_address.as_str()),
-            &[],
+            WalletStatusSync {
+                runtime_status: "connected",
+                spark_address: Some(report.spark_address.as_str()),
+                bitcoin_address: Some(report.bitcoin_address.as_str()),
+                payments: &[],
+                ..WalletStatusSync::default()
+            },
         )?;
         Ok(report)
     }
@@ -516,12 +518,12 @@ pub async fn pay_wallet_invoice_report(
         sync_wallet_status(
             config_path,
             &runtime,
-            "connected",
-            None,
-            Some(&post_balance),
-            None,
-            None,
-            std::slice::from_ref(&payment),
+            WalletStatusSync {
+                runtime_status: "connected",
+                balance: Some(&post_balance),
+                payments: std::slice::from_ref(&payment),
+                ..WalletStatusSync::default()
+            },
         )?;
         Ok(WalletPayReport {
             runtime,
@@ -560,12 +562,11 @@ pub async fn load_wallet_history_report(
         sync_wallet_status(
             config_path,
             &runtime,
-            "connected",
-            None,
-            None,
-            None,
-            None,
-            records.as_slice(),
+            WalletStatusSync {
+                runtime_status: "connected",
+                payments: records.as_slice(),
+                ..WalletStatusSync::default()
+            },
         )?;
         Ok(WalletHistoryReport {
             runtime,
@@ -875,28 +876,23 @@ fn payment_record_from_summary(payment: &PaymentSummary) -> PylonWalletPaymentRe
 fn sync_wallet_status(
     config_path: &Path,
     runtime: &WalletRuntimeSurface,
-    runtime_status: &str,
-    runtime_detail: Option<String>,
-    balance: Option<&WalletBalanceSnapshot>,
-    spark_address: Option<&str>,
-    bitcoin_address: Option<&str>,
-    payments: &[PylonWalletPaymentRecord],
+    update: WalletStatusSync<'_>,
 ) -> Result<()> {
     mutate_ledger(config_path, |ledger| {
-        ledger.wallet.runtime_status = Some(runtime_status.to_string());
-        ledger.wallet.last_error = runtime_detail;
+        ledger.wallet.runtime_status = Some(update.runtime_status.to_string());
+        ledger.wallet.last_error = update.runtime_detail;
         ledger.wallet.network = Some(runtime.network.clone());
-        if let Some(balance) = balance {
+        if let Some(balance) = update.balance {
             ledger.wallet.last_balance_sats = Some(balance.total_sats);
             ledger.wallet.last_balance_at_ms = Some(now_epoch_ms() as u64);
         }
-        if let Some(spark_address) = spark_address {
+        if let Some(spark_address) = update.spark_address {
             ledger.wallet.spark_address = Some(spark_address.to_string());
         }
-        if let Some(bitcoin_address) = bitcoin_address {
+        if let Some(bitcoin_address) = update.bitcoin_address {
             ledger.wallet.bitcoin_address = Some(bitcoin_address.to_string());
         }
-        for payment in payments {
+        for payment in update.payments {
             ledger.upsert_wallet_payment(payment.clone());
         }
         Ok(())
@@ -916,7 +912,18 @@ fn sync_wallet_error(
     })
 }
 
+#[derive(Clone, Debug, Default)]
+struct WalletStatusSync<'a> {
+    runtime_status: &'a str,
+    runtime_detail: Option<String>,
+    balance: Option<&'a WalletBalanceSnapshot>,
+    spark_address: Option<&'a str>,
+    bitcoin_address: Option<&'a str>,
+    payments: &'a [PylonWalletPaymentRecord],
+}
+
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::{
         DEFAULT_OPENAGENTS_SPARK_API_KEY, WalletApiKeySource, WalletSubcommand,

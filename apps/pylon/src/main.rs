@@ -106,32 +106,51 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{Result, ensure};
+
     use super::should_launch_tui;
 
     #[test]
-    fn bare_pylon_launches_tui() {
-        assert!(should_launch_tui(&[]).expect("no-arg tui launch"));
-    }
-
-    #[test]
-    fn config_only_launches_tui() {
-        assert!(
-            should_launch_tui(&["--config-path".into(), "/tmp/pylon.json".into()])
-                .expect("config-only tui launch")
+    fn bare_pylon_launches_tui() -> Result<()> {
+        ensure!(
+            should_launch_tui(&[])?,
+            "expected bare pylon to launch the TUI"
         );
+        Ok(())
     }
 
     #[test]
-    fn explicit_help_stays_on_cli_path() {
-        assert!(!should_launch_tui(&["--help".into()]).expect("help path"));
-    }
-
-    #[test]
-    fn explicit_subcommands_stay_on_cli_path() {
-        assert!(!should_launch_tui(&["status".into()]).expect("status path"));
-        assert!(
-            !should_launch_tui(&["--config-path".into(), "/tmp/pylon.json".into(), "status".into()])
-                .expect("status path with config")
+    fn config_only_launches_tui() -> Result<()> {
+        ensure!(
+            should_launch_tui(&["--config-path".into(), "/tmp/pylon.json".into()])?,
+            "expected config-only invocation to launch the TUI"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_help_stays_on_cli_path() -> Result<()> {
+        ensure!(
+            !should_launch_tui(&["--help".into()])?,
+            "expected --help to stay on the CLI path"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_subcommands_stay_on_cli_path() -> Result<()> {
+        ensure!(
+            !should_launch_tui(&["status".into()])?,
+            "expected status to stay on the CLI path"
+        );
+        ensure!(
+            !should_launch_tui(&[
+                "--config-path".into(),
+                "/tmp/pylon.json".into(),
+                "status".into()
+            ])?,
+            "expected config+status to stay on the CLI path"
+        );
+        Ok(())
     }
 }

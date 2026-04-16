@@ -305,29 +305,34 @@ static TEST_WALLET_PAY_HOOK: std::sync::OnceLock<std::sync::Mutex<Option<TestWal
 static TEST_RUNTIME_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
 
 #[cfg(test)]
+fn lock_test_mutex<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(test)]
 pub(crate) fn set_test_wallet_invoice_hook(hook: Option<TestWalletInvoiceHook>) {
     let slot = TEST_WALLET_INVOICE_HOOK.get_or_init(|| std::sync::Mutex::new(None));
-    *slot.lock().expect("test wallet invoice hook lock") = hook;
+    *lock_test_mutex(slot) = hook;
 }
 
 #[cfg(test)]
 pub(crate) fn set_test_wallet_payments_hook(hook: Option<TestWalletPaymentsHook>) {
     let slot = TEST_WALLET_PAYMENTS_HOOK.get_or_init(|| std::sync::Mutex::new(None));
-    *slot.lock().expect("test wallet payments hook lock") = hook;
+    *lock_test_mutex(slot) = hook;
 }
 
 #[cfg(test)]
 pub(crate) fn set_test_wallet_pay_hook(hook: Option<TestWalletPayHook>) {
     let slot = TEST_WALLET_PAY_HOOK.get_or_init(|| std::sync::Mutex::new(None));
-    *slot.lock().expect("test wallet pay hook lock") = hook;
+    *lock_test_mutex(slot) = hook;
 }
 
 #[cfg(test)]
 pub(crate) fn lock_test_runtime() -> std::sync::MutexGuard<'static, ()> {
-    TEST_RUNTIME_LOCK
-        .get_or_init(|| std::sync::Mutex::new(()))
-        .lock()
-        .expect("test runtime lock")
+    let lock = TEST_RUNTIME_LOCK.get_or_init(|| std::sync::Mutex::new(()));
+    lock_test_mutex(lock)
 }
 
 pub async fn load_announcement_report(config_path: &Path) -> Result<AnnouncementReport> {
@@ -942,12 +947,10 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                         continue;
                     }
                 };
-                let pool = match publish_pool.as_ref() {
-                    Some(pool) => pool,
-                    None => {
-                        publish_pool = Some(build_relay_pool(&config, &identity).await?);
-                        publish_pool.as_ref().expect("publish pool should exist")
-                    }
+                let pool = if let Some(pool) = publish_pool.as_ref() {
+                    pool
+                } else {
+                    publish_pool.insert(build_relay_pool(&config, &identity).await?)
                 };
                 let payment_event = match publish_payment_required_feedback(
                     pool,
@@ -1042,12 +1045,10 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
             None,
             None,
         )?;
-        let pool = match publish_pool.as_ref() {
-            Some(pool) => pool,
-            None => {
-                publish_pool = Some(build_relay_pool(&config, &identity).await?);
-                publish_pool.as_ref().expect("publish pool should exist")
-            }
+        let pool = if let Some(pool) = publish_pool.as_ref() {
+            pool
+        } else {
+            publish_pool.insert(build_relay_pool(&config, &identity).await?)
         };
         let processing_event = match publish_processing_feedback(
             pool,
@@ -1541,7 +1542,9 @@ where
                     entry.event_kind == "feedback" && entry.status == "payment-required"
                 })
             {
-                let latest = entries.last().cloned().expect("latest entry");
+                let Some(latest) = entries.last().cloned() else {
+                    continue;
+                };
                 match approve_buyer_job_payment(config_path, latest.request_event_id.as_str()).await
                 {
                     Ok(report) => {
@@ -2549,6 +2552,7 @@ fn provider_job_blocks_reintake(status: &str) -> bool {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn persist_provider_run_state(
     config_path: &Path,
     provider_pubkey: &str,
@@ -2575,12 +2579,13 @@ fn persist_provider_run_state(
                     status,
                 )
             });
-        job.request_event_id = Some(entry.request_event_id.clone());
+        job.request_event_id
+            .clone_from(&Some(entry.request_event_id.clone()));
         job.customer_pubkey = Some(entry.requester_pubkey.clone());
         job.provider_pubkey = Some(provider_pubkey.to_string());
-        job.relay_url = entry.relay_url.clone();
-        job.prompt = entry.prompt_preview.clone();
-        job.model = entry.model.clone();
+        job.relay_url.clone_from(&entry.relay_url);
+        job.prompt.clone_from(&entry.prompt_preview);
+        job.model.clone_from(&entry.model);
         job.bid_msats = entry.bid_msats;
         if let Some(amount_msats) = amount_msats {
             job.amount_msats = Some(amount_msats);
@@ -2723,7 +2728,7 @@ fn record_provider_payment_received(
                 .cloned()
             {
                 let mut updated_invoice = existing_invoice;
-                updated_invoice.status = payment.status.clone();
+                updated_invoice.status.clone_from(&payment.status);
                 ledger.upsert_wallet_invoice(updated_invoice);
             }
         }
@@ -2820,11 +2825,8 @@ async fn load_provider_wallet_payments(
     #[cfg(test)]
     {
         if let Some(slot) = TEST_WALLET_PAYMENTS_HOOK.get() {
-            if let Some(hook) = slot
-                .lock()
-                .expect("test wallet payments hook lock")
-                .as_ref()
-            {
+            let guard = lock_test_mutex(slot);
+            if let Some(hook) = guard.as_ref() {
                 return hook();
             }
         }
@@ -3024,16 +3026,16 @@ fn persist_provider_intake(config_path: &Path, report: &ProviderIntakeReport) ->
             job.request_event_id = Some(entry.request_event_id.clone());
             job.customer_pubkey = Some(entry.requester_pubkey.clone());
             job.provider_pubkey = Some(report.provider_pubkey.clone());
-            job.relay_url = entry.relay_url.clone();
-            job.prompt = entry.prompt_preview.clone();
-            job.model = entry.model.clone();
+            job.relay_url.clone_from(&entry.relay_url);
+            job.prompt.clone_from(&entry.prompt_preview);
+            job.model.clone_from(&entry.model);
             job.bid_msats = entry.bid_msats;
             job.status = if entry.decision == "match" {
                 "observed_match".to_string()
             } else {
                 "observed_drop".to_string()
             };
-            job.error_detail = entry.drop_reason.clone();
+            job.error_detail.clone_from(&entry.drop_reason);
             ledger.upsert_job(job);
             ledger.push_relay_activity(PylonRelayActivity {
                 at_ms: crate::now_epoch_ms() as u64,
@@ -3059,6 +3061,7 @@ fn persist_provider_intake(config_path: &Path, report: &ProviderIntakeReport) ->
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn persist_buyer_job_submission(
     config_path: &Path,
     customer_pubkey: &str,
@@ -3150,14 +3153,14 @@ fn persist_buyer_job_event(config_path: &Path, entry: &BuyerJobWatchEntry) -> Re
             if let Some(preview) = entry.result_preview.as_deref() {
                 job.result_preview = Some(preview.to_string());
             }
-            job.error_detail = entry.detail.clone();
+            job.error_detail.clone_from(&entry.detail);
         } else if entry.event_kind == "result" {
             job.status = "result_received".to_string();
             job.result_event_id = Some(entry.event_id.clone());
             job.amount_msats = entry.amount_msats.or(job.amount_msats);
             job.bolt11 = entry.bolt11.clone().or(job.bolt11.clone());
-            job.result_preview = entry.result_preview.clone();
-            job.error_detail = entry.detail.clone();
+            job.result_preview.clone_from(&entry.result_preview);
+            job.error_detail.clone_from(&entry.detail);
         }
         ledger.upsert_job(job);
         ledger.push_relay_activity(PylonRelayActivity {
@@ -3200,7 +3203,7 @@ fn record_buyer_payment_submission(
             })
             .cloned()
         {
-            provider_pubkey = existing_job.provider_pubkey.clone();
+            provider_pubkey.clone_from(&existing_job.provider_pubkey);
             let mut updated_job = existing_job;
             updated_job.status = "payment_submitted".to_string();
             updated_job.amount_msats = amount_msats.or(updated_job.amount_msats);
@@ -3337,7 +3340,8 @@ async fn create_provider_invoice_report(
     #[cfg(test)]
     {
         if let Some(slot) = TEST_WALLET_INVOICE_HOOK.get() {
-            if let Some(hook) = slot.lock().expect("test wallet invoice hook lock").as_ref() {
+            let guard = lock_test_mutex(slot);
+            if let Some(hook) = guard.as_ref() {
                 return hook(
                     msats_to_sats_rounded_up(amount_msats),
                     description,
@@ -3363,7 +3367,8 @@ async fn pay_buyer_invoice_report(
     #[cfg(test)]
     {
         if let Some(slot) = TEST_WALLET_PAY_HOOK.get() {
-            if let Some(hook) = slot.lock().expect("test wallet pay hook lock").as_ref() {
+            let guard = lock_test_mutex(slot);
+            if let Some(hook) = guard.as_ref() {
                 return hook(bolt11, amount_sats);
             }
         }

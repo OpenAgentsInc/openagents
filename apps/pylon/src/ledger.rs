@@ -172,7 +172,7 @@ pub struct PylonLedgerPayout {
     pub updated_at_ms: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonWalletLedger {
     pub runtime_status: Option<String>,
     pub last_error: Option<String>,
@@ -183,22 +183,6 @@ pub struct PylonWalletLedger {
     pub bitcoin_address: Option<String>,
     pub invoices: Vec<PylonWalletInvoiceRecord>,
     pub payments: Vec<PylonWalletPaymentRecord>,
-}
-
-impl Default for PylonWalletLedger {
-    fn default() -> Self {
-        Self {
-            runtime_status: None,
-            last_error: None,
-            network: None,
-            last_balance_sats: None,
-            last_balance_at_ms: None,
-            spark_address: None,
-            bitcoin_address: None,
-            invoices: Vec::new(),
-            payments: Vec::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -482,6 +466,7 @@ fn now_epoch_ms() -> u64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::{
         PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, PylonRelayState,

@@ -3,6 +3,7 @@ mod nip90_runtime;
 mod wallet_runtime;
 
 use std::collections::BTreeMap;
+use std::io::{self, Write};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
@@ -83,6 +84,18 @@ struct ProviderHostTelemetryCacheEntry {
 
 static PROVIDER_HOST_TELEMETRY_CACHE: OnceLock<Mutex<Option<ProviderHostTelemetryCacheEntry>>> =
     OnceLock::new();
+
+fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn emit_warning(message: impl std::fmt::Display) {
+    let stderr = io::stderr();
+    let mut handle = stderr.lock();
+    let _ = writeln!(handle, "warning: {message}");
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonConfig {
@@ -1543,7 +1556,7 @@ where
                     Err(error) if gemma_download_transport_error(&error) => {
                         attempt_errors.push(format!("reqwest: {error}"));
                         let _ = tokio::fs::remove_file(partial_path.as_path()).await;
-                        let file_bytes = download_gemma_via_reqwest(
+                        download_gemma_via_reqwest(
                             download_url.as_str(),
                             partial_path.as_path(),
                             spec,
@@ -1555,21 +1568,19 @@ where
                             format!(
                                 "Gemma download transport reqwest failed for {download_url}; retry with `pylon gemma download {model_id} --transport curl` if this host is in an SSH/VPN-constrained network context"
                             )
-                        })?;
-                        file_bytes
+                        })?
                     }
                     Err(error) => return Err(error),
                 }
             }
             GemmaDownloadTransport::Curl => {
-                let file_bytes = download_gemma_via_curl(
+                download_gemma_via_curl(
                     download_url.as_str(),
                     partial_path.as_path(),
                     spec,
                     &mut emit,
                 )
-                .await?;
-                file_bytes
+                .await?
             }
             GemmaDownloadTransport::Auto => {
                 match download_gemma_via_reqwest(
@@ -1598,7 +1609,7 @@ where
                             Err(ipv4_error) => {
                                 attempt_errors.push(format!("reqwest-ipv4: {ipv4_error}"));
                                 let _ = tokio::fs::remove_file(partial_path.as_path()).await;
-                                let file_bytes = download_gemma_via_curl(
+                                download_gemma_via_curl(
                                     download_url.as_str(),
                                     partial_path.as_path(),
                                     spec,
@@ -1610,8 +1621,7 @@ where
                                         "Gemma download failed across reqwest and curl transports for {download_url}: {}",
                                         attempt_errors.join(" | ")
                                     )
-                                })?;
-                                file_bytes
+                                })?
                             }
                         }
                     }
@@ -1855,9 +1865,9 @@ fn load_latest_provider_diagnostic_summaries(config_path: &Path) -> Vec<Provider
         Ok(Some(report)) => provider_diagnostic_summaries_from_report(&report),
         Ok(None) => Vec::new(),
         Err(error) => {
-            eprintln!(
-                "warning: failed to load latest Gemma diagnostic report for Nexus heartbeat: {error}"
-            );
+            emit_warning(format!(
+                "failed to load latest Gemma diagnostic report for Nexus heartbeat: {error}"
+            ));
             Vec::new()
         }
     }
@@ -2764,7 +2774,7 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
         }
         Command::Serve => {
             let config = load_or_create_config(cli.config_path.as_path())?;
-            serve(cli.config_path.as_path(), config).await?;
+            Box::pin(serve(cli.config_path.as_path(), config)).await?;
             Ok(None)
         }
         Command::Status { json } => {
@@ -2877,7 +2887,8 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             Ok(Some(render_provider_intake_report(&report)))
         }
         Command::ProviderRun { seconds, json } => {
-            let report = run_provider_requests(cli.config_path.as_path(), seconds).await?;
+            let report =
+                Box::pin(run_provider_requests(cli.config_path.as_path(), seconds)).await?;
             if json {
                 return Ok(Some(serde_json::to_string_pretty(&report)?));
             }
@@ -3714,10 +3725,10 @@ fn parse_gemma_benchmark_command(
             }
             "--prompt" => {
                 index += 1;
-                prompt = args
-                    .get(index)
-                    .ok_or_else(|| anyhow!("missing value for --prompt"))?
-                    .clone();
+                prompt.clone_from(
+                    args.get(index)
+                        .ok_or_else(|| anyhow!("missing value for --prompt"))?,
+                );
                 index += 1;
             }
             "--max-output-tokens" => {
@@ -4348,9 +4359,9 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                         )
                         .await
                         {
-                            eprintln!(
-                                "warning: failed to report pylon provider offline to Nexus: {report_error}"
-                            );
+                            emit_warning(format!(
+                                "failed to report pylon provider offline to Nexus: {report_error}"
+                            ));
                         }
                     }
                     let snapshot = build_error_snapshot(
@@ -4375,7 +4386,9 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
             )
             .await
             {
-                eprintln!("warning: failed to report pylon provider offline to Nexus: {error}");
+                emit_warning(format!(
+                    "failed to report pylon provider offline to Nexus: {error}"
+                ));
             }
             provider_presence_online = false;
             next_provider_presence_heartbeat_at = Instant::now();
@@ -4402,9 +4415,9 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                         )
                         .await
                         {
-                            eprintln!(
-                                "warning: failed to report pylon provider offline to Nexus: {report_error}"
-                            );
+                            emit_warning(format!(
+                                "failed to report pylon provider offline to Nexus: {report_error}"
+                            ));
                         }
                     }
                     return Err(error);
@@ -4420,7 +4433,9 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                 if let Err(error) =
                     sync_live_announcement(config_path, desired_mode, snapshot).await
                 {
-                    eprintln!("warning: failed to publish pylon provider announcement: {error}");
+                    emit_warning(format!(
+                        "failed to publish pylon provider announcement: {error}"
+                    ));
                 }
 
                 if desired_mode == ProviderDesiredMode::Online
@@ -4436,9 +4451,9 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                     )
                     .await
                     {
-                        eprintln!(
-                            "warning: failed to report pylon provider heartbeat to Nexus: {error}"
-                        );
+                        emit_warning(format!(
+                            "failed to report pylon provider heartbeat to Nexus: {error}"
+                        ));
                     } else {
                         provider_presence_online = true;
                     }
@@ -4458,9 +4473,9 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                     )
                     .await
                     {
-                        eprintln!(
-                            "warning: failed to register pylon payout target with Nexus: {error}"
-                        );
+                        emit_warning(format!(
+                            "failed to register pylon payout target with Nexus: {error}"
+                        ));
                     }
                     next_provider_payout_target_sync_at =
                         Instant::now() + provider_payout_target_sync_interval;
@@ -4485,9 +4500,9 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                     )
                     .await
                     {
-                        eprintln!(
-                            "warning: failed to report pylon provider offline to Nexus: {error}"
-                        );
+                        emit_warning(format!(
+                            "failed to report pylon provider offline to Nexus: {error}"
+                        ));
                     }
                 }
                 break;
@@ -6480,7 +6495,8 @@ async fn pay_payout_invoice_report(
     #[cfg(test)]
     {
         if let Some(slot) = TEST_PAYOUT_PAY_HOOK.get() {
-            if let Some(hook) = slot.lock().expect("test payout pay hook lock").as_ref() {
+            let guard = lock_unpoisoned(slot);
+            if let Some(hook) = guard.as_ref() {
                 return hook(payment_request, amount_sats);
             }
         }
@@ -6556,7 +6572,7 @@ fn merge_ledger_earnings(
         .filter(|settlement| settlement.updated_at_ms / 86_400_000 == current_day)
         .count() as u64;
     if let Some(latest_job) = provider_jobs.first() {
-        earnings.last_job_result = latest_job.status.clone();
+        earnings.last_job_result.clone_from(&latest_job.status);
     }
     let terminal_jobs = provider_jobs
         .iter()
@@ -7289,7 +7305,7 @@ fn build_provider_hosting_telemetry(
 fn load_cached_provider_host_telemetry(config_path: &Path) -> ProviderHostTelemetrySnapshot {
     let now = Instant::now();
     let cache = PROVIDER_HOST_TELEMETRY_CACHE.get_or_init(|| Mutex::new(None));
-    let mut guard = cache.lock().expect("provider host telemetry cache");
+    let mut guard = lock_unpoisoned(cache);
     if let Some(entry) = guard.as_ref() {
         let cache_is_fresh = entry.config_path == config_path
             && now.duration_since(entry.refreshed_at)
@@ -8101,10 +8117,17 @@ static TEST_PAYOUT_PAY_HOOK: std::sync::OnceLock<std::sync::Mutex<Option<TestPay
 #[cfg(test)]
 fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
     let slot = TEST_PAYOUT_PAY_HOOK.get_or_init(|| std::sync::Mutex::new(None));
-    *slot.lock().expect("test payout pay hook lock") = hook;
+    *lock_unpoisoned(slot) = hook;
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
+#[allow(clippy::bool_comparison)]
+#[allow(clippy::expect_used)]
+#[allow(clippy::large_futures)]
+#[allow(clippy::panic)]
+#[allow(clippy::panic_in_result_fn)]
+#[allow(clippy::useless_conversion)]
 mod tests {
     use std::sync::{Arc, Mutex};
 
