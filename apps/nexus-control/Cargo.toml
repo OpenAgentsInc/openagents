@@ -23,7 +23,7 @@ openagents-kernel-proto = { path = "../../crates/openagents-kernel-proto" }
 openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
 openagents-spark = { path = "../../crates/spark" }
 openagents-validator-service = { path = "../../crates/openagents-validator-service" }
-psionic-train.workspace = true
+psionic-train-contract = { path = "../../crates/psionic-train-contract" }
 rand.workspace = true
 reqwest.workspace = true
 ring = "0.17"
