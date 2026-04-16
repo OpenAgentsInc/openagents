@@ -77,9 +77,22 @@ The Nexus image build is now an explicit hotfix lane:
 - it stages a Nexus-only source context instead of submitting the whole repo
 - it fills non-Nexus workspace members in that staged context with lightweight
   placeholders so Cargo can still resolve the workspace without the full repo
+- it materializes a `.nexus-build-plan/` dependency layer as the retained
+  `cargo-chef` equivalent for the fallback image lane
 - the Docker build now uses BuildKit registry cache, cache mounts, and
   optional GCS-backed `sccache`
+- the checked-in fallback defaults now pin:
+  - `E2_HIGHCPU_32`
+  - `200 GB` build disk
 - the default build profile is now `fast-release`
+
+The retained hardening proof for this fallback lane is:
+
+- `docs/reports/nexus/2026-04-16-cloudbuild-fallback-hardening.md`
+
+Successful fallback runs now emit a JSON receipt under:
+
+- `docs/reports/nexus/*-cloudbuild-image-<git_short_sha>.json`
 
 `sccache` remains optional. The current fallback path leaves it off until the
 Cloud Build image lane is proven stable with it enabled:
