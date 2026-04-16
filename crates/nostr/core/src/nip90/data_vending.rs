@@ -258,13 +258,13 @@ impl DataVendingRequest {
         }
 
         let mut request = JobRequest::new(self.request_kind)?;
-        request.inputs = self.inputs.clone();
-        request.output = self.output.clone();
+        request.inputs.clone_from(&self.inputs);
+        request.output.clone_from(&self.output);
         request.bid = self.bid;
-        request.relays = self.relays.clone();
-        request.service_providers = self.service_providers.clone();
+        request.relays.clone_from(&self.relays);
+        request.service_providers.clone_from(&self.service_providers);
         request.encrypted = self.encrypted;
-        request.content = self.content.clone();
+        request.content.clone_from(&self.content);
         request.params = vec![
             JobParam::new(PARAM_PROFILE, self.profile_id.clone()),
             JobParam::new(PARAM_ASSET_REF, self.asset_ref.clone()),
@@ -533,11 +533,11 @@ impl DataVendingResult {
             self.customer_pubkey.clone(),
             self.content.clone(),
         )?;
-        result.request = self.request.clone();
-        result.request_relay = self.request_relay.clone();
-        result.inputs = self.inputs.clone();
+        result.request.clone_from(&self.request);
+        result.request_relay.clone_from(&self.request_relay);
+        result.inputs.clone_from(&self.inputs);
         result.amount = self.amount;
-        result.bolt11 = self.bolt11.clone();
+        result.bolt11.clone_from(&self.bolt11);
         result.encrypted = self.encrypted;
         Ok(result)
     }
@@ -766,11 +766,11 @@ impl DataVendingFeedback {
             self.request_id.clone(),
             self.customer_pubkey.clone(),
         );
-        feedback.status_extra = self.status_extra.clone();
-        feedback.request_relay = self.request_relay.clone();
-        feedback.content = self.content.clone();
+        feedback.status_extra.clone_from(&self.status_extra);
+        feedback.request_relay.clone_from(&self.request_relay);
+        feedback.content.clone_from(&self.content);
         feedback.amount = self.amount;
-        feedback.bolt11 = self.bolt11.clone();
+        feedback.bolt11.clone_from(&self.bolt11);
         Ok(feedback)
     }
 
@@ -943,7 +943,7 @@ fn required_param<'a>(params: &'a [JobParam], key: &str) -> Result<&'a str, Nip9
     request_param_value(params, key).ok_or_else(|| Nip90Error::MissingTag(key.to_string()))
 }
 
-fn required_tag_value<'a>(tags: &'a [Vec<String>], key: &str) -> Result<String, Nip90Error> {
+fn required_tag_value(tags: &[Vec<String>], key: &str) -> Result<String, Nip90Error> {
     find_tag_value(tags, key)
         .map(str::to_owned)
         .ok_or_else(|| Nip90Error::MissingTag(key.to_string()))

@@ -12,8 +12,7 @@ These statements must remain true in docs, code, and operator guidance:
 
 - `Pylon` is a standalone provider connector, not the whole product.
 - The market is still the **OpenAgents Compute Market**.
-- Launch compute product families are `inference` and `embeddings`.
-- The current standalone `Pylon` operator lane is one honest local Gemma inference product.
+- The broader compute-market direction still includes `inference` and later `embeddings`, but the current standalone `Pylon` release lane is one honest local Gemma inference product.
 - Non-Gemma local models must not make the node look sellable.
 - Raw accelerator trading is not live at launch.
 - Capability-envelope fields refine supply; they are not the primary product identity.
@@ -48,7 +47,7 @@ If any release note, marketing text, or operator doc violates one of those state
 
 ## Repo-Level Checks
 
-These checks should pass before a release candidate is called valid:
+These checks should pass before a standalone release is called valid:
 
 ```bash
 cargo test -p pylon -- --nocapture

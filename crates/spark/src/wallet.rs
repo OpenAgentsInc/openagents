@@ -53,19 +53,14 @@ impl Default for WalletConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum DepositClaimFeePolicy {
+    #[default]
     Auto,
     Fixed { amount_sats: u64 },
     Rate { sat_per_vbyte: u64 },
     NetworkRecommended { leeway_sat_per_vbyte: u64 },
     Disabled,
-}
-
-impl Default for DepositClaimFeePolicy {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 impl DepositClaimFeePolicy {

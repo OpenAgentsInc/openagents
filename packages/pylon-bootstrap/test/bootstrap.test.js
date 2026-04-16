@@ -151,6 +151,41 @@ describe("@openagentsinc/pylon bootstrap", () => {
     expect(release.tag_name).toBe("pylon-v0.0.1-rc10");
   });
 
+  test("selectLatestPylonRelease prefers a stable tag over prereleases on the same line", () => {
+    const target = resolvePlatformTarget("darwin", "arm64");
+    const release = selectLatestPylonRelease(
+      [
+        {
+          tag_name: "pylon-v0.1.1-rc9",
+          draft: false,
+          assets: [
+            {
+              name: "pylon-v0.1.1-rc9-darwin-arm64.tar.gz",
+            },
+            {
+              name: "pylon-v0.1.1-rc9-darwin-arm64.tar.gz.sha256",
+            },
+          ],
+        },
+        {
+          tag_name: "pylon-v0.1.1",
+          draft: false,
+          assets: [
+            {
+              name: "pylon-v0.1.1-darwin-arm64.tar.gz",
+            },
+            {
+              name: "pylon-v0.1.1-darwin-arm64.tar.gz.sha256",
+            },
+          ],
+        },
+      ],
+      target,
+    );
+
+    expect(release.tag_name).toBe("pylon-v0.1.1");
+  });
+
   test("selectLatestPylonRelease prefers the newest release with matching assets on the default track", () => {
     const target = resolvePlatformTarget("darwin", "arm64");
     const release = selectLatestPylonRelease(

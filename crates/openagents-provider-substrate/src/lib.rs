@@ -600,10 +600,7 @@ pub fn match_adapter_training_contributor(
         reason_codes.push(ProviderAdapterTrainingMatchReasonCode::AuthorityReceiptsUnavailable);
     }
     if request.execution_backend.is_some_and(|backend| {
-        !availability
-            .execution_backends
-            .iter()
-            .any(|value| *value == backend)
+        !availability.execution_backends.contains(&backend)
     }) {
         reason_codes.push(ProviderAdapterTrainingMatchReasonCode::ExecutionBackendUnsupported);
     }
@@ -718,9 +715,7 @@ pub fn settlement_hook_from_authority(
             })
         }
         ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow => {
-            if window.accepted_outcome_id.is_none() {
-                return None;
-            }
+            window.accepted_outcome_id.as_ref()?;
             Some(ProviderAdapterTrainingSettlementHook {
                 training_run_id: window.training_run_id.clone(),
                 window_id: window.window_id.clone(),

@@ -12,12 +12,12 @@ PUBLISH=false
 usage() {
   cat <<EOF
 Usage:
-  $SCRIPT_NAME --version <X.Y.Z[-rcN]> [--publish]
+  $SCRIPT_NAME --version <X.Y.Z[-suffix]> [--publish]
 
 Description:
   Build standalone Pylon binaries for the current host, package them into a
-  GitHub-release-friendly tarball, and optionally publish a prerelease or
-  release to GitHub.
+  GitHub-release-friendly tarball, and optionally publish a stable release or
+  prerelease to GitHub.
 
 Flags:
   --version <version>  Release version label without the leading product name.
@@ -116,8 +116,9 @@ write_release_notes() {
   local path="$1"
   local archive_name="$2"
   local sha_name="$3"
+  local release_kind="$4"
   cat >"$path" <<EOF
-Pylon binary prerelease ${VERSION}
+Pylon binary ${release_kind} ${VERSION}
 
 Assets:
 - ${archive_name}: standalone \`pylon\` and \`pylon-tui\` binaries for $(host_os)-$(host_arch)
@@ -218,7 +219,11 @@ if [[ "$PUBLISH" == true ]]; then
 
   NOTES_FILE=$(mktemp)
   trap 'rm -f "$NOTES_FILE"' EXIT
-  write_release_notes "$NOTES_FILE" "$(basename "$ARCHIVE_PATH")" "$(basename "$SHA_PATH")"
+  RELEASE_KIND="release"
+  if [[ "$VERSION" == *-* ]]; then
+    RELEASE_KIND="prerelease"
+  fi
+  write_release_notes "$NOTES_FILE" "$(basename "$ARCHIVE_PATH")" "$(basename "$SHA_PATH")" "$RELEASE_KIND"
 
   RELEASE_FLAGS=()
   if [[ "$VERSION" == *-* ]]; then

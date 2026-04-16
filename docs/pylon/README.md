@@ -27,7 +27,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.0.1-rc10
+npx @openagentsinc/pylon --version 0.1.1
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
@@ -234,6 +234,8 @@ The first retained buyer controls now also exist in both places:
 - headless: `cargo pylon-headless job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] [--output <mime>] [--request-json <json>] <prompt>`, `cargo pylon-headless job watch [<request_event_id>] [--seconds <n>]`, `cargo pylon-headless job history [--limit <n>]`, `cargo pylon-headless job replay <request_event_id>`, `cargo pylon-headless job approve <request_event_id>`, `cargo pylon-headless job deny <request_event_id>`, `cargo pylon-headless job policy [show|auto|manual]`
 
 That path publishes a retained `kind:5050` buyer request to the configured relays and persists the outbound request locally in the Pylon ledger. It already supports plain prompt text and structured JSON payload mode. The watch path subscribes to retained `kind:7000` feedback and `kind:6050` results for local buyer jobs, streams those updates into the transcript, and persists the observed payment-required and result state back into the same retained ledger record. `job history` projects the retained buyer ledger back into a short local summary list. `job replay` expands one retained request back into its stored lifecycle, settlement state, and matching relay activity.
+
+Routing stays explicit. With `--provider <pubkey>`, Pylon publishes one targeted request for that provider. Without `--provider`, the request is a relay broadcast and more than one eligible provider may pick it up. The current standalone release does not claim hosted-Nexus single-assignee leases or fleet-wide fair scheduling.
 
 When a provider returns `payment-required`, Pylon now keeps the invoice amount, provider pubkey, Bolt11 string, and final payment outcome in the same retained buyer record. Manual buyer mode uses `/job approve <request_event_id>` or `/job deny <request_event_id>`. Auto-pay mode is explicit and off by default. Use `/job policy auto` or `cargo pylon-headless job policy auto` to enable it, and `/job policy manual` to turn it back off.
 

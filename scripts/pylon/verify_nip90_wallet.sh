@@ -12,6 +12,7 @@ export OPENAGENTS_SPARK_NETWORK="regtest"
 cd "$ROOT_DIR"
 
 cargo run -p pylon -- --config-path "$CONFIG_PATH" init >/dev/null
+cargo run -p pylon -- --config-path "$CONFIG_PATH" config set admin_listen_addr 127.0.0.1:0 >/dev/null
 cargo run -p pylon -- --config-path "$CONFIG_PATH" config set wallet_network regtest >/dev/null
 
 config_json="$(cargo run -p pylon -- --config-path "$CONFIG_PATH" config show)"

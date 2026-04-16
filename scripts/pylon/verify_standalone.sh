@@ -14,16 +14,28 @@ status_before_init="$(cargo run -p pylon -- --config-path "$CONFIG_PATH" status)
 grep -q '^state: unconfigured$' <<<"$status_before_init"
 
 cargo run -p pylon -- --config-path "$CONFIG_PATH" init >/dev/null
+cargo run -p pylon -- --config-path "$CONFIG_PATH" config set admin_listen_addr 127.0.0.1:0 >/dev/null
 
 backends_json="$(cargo run -p pylon -- --config-path "$CONFIG_PATH" backends --json)"
-grep -q '"backend_id": "gpt_oss"' <<<"$backends_json"
-grep -q '"backend_id": "apple_foundation_models"' <<<"$backends_json"
+grep -q '"backend_id": "local_gemma"' <<<"$backends_json"
+grep -q '"backend_id": "sandbox"' <<<"$backends_json"
+if grep -q '"backend_id": "gpt_oss"' <<<"$backends_json"; then
+  echo "unexpected legacy gpt_oss backend surfaced" >&2
+  exit 1
+fi
+if grep -q '"backend_id": "apple_foundation_models"' <<<"$backends_json"; then
+  echo "unexpected legacy Apple FM backend surfaced" >&2
+  exit 1
+fi
 
 products_output="$(cargo run -p pylon -- --config-path "$CONFIG_PATH" products)"
-grep -q '^product: psionic.local.inference.gpt_oss.single_node$' <<<"$products_output"
-grep -q '^product: psionic.local.inference.apple_foundation_models.single_node$' <<<"$products_output"
-if grep -q 'apple_foundation_models.embeddings' <<<"$products_output"; then
-  echo "unexpected Apple FM embeddings product surfaced" >&2
+grep -q '^product: psionic.local.inference.gemma.single_node$' <<<"$products_output"
+if grep -q 'psionic.local.inference.gpt_oss.single_node' <<<"$products_output"; then
+  echo "unexpected legacy gpt_oss product surfaced" >&2
+  exit 1
+fi
+if grep -q 'apple_foundation_models' <<<"$products_output"; then
+  echo "unexpected legacy Apple FM product surfaced" >&2
   exit 1
 fi
 

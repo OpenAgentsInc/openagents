@@ -1456,9 +1456,15 @@ fn join_query_pairs(path: &str, pairs: &[(&str, Option<String>)]) -> String {
 }
 
 fn join_path_segments(path: &str, segments: &[&str]) -> String {
-    let mut url = Url::parse("https://openagents.invalid").expect("static base url");
+    let mut url = match Url::parse("https://openagents.invalid") {
+        Ok(url) => url,
+        Err(_) => unreachable!("static base url should always parse"),
+    };
     {
-        let mut path_segments = url.path_segments_mut().expect("path segments");
+        let mut path_segments = match url.path_segments_mut() {
+            Ok(path_segments) => path_segments,
+            Err(()) => unreachable!("static base url should always support path segments"),
+        };
         for segment in path.trim_start_matches('/').split('/') {
             if !segment.is_empty() {
                 path_segments.push(segment);

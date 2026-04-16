@@ -2650,23 +2650,23 @@ pub fn validate_compute_accepted_outcome(outcome: &ComputeAcceptedOutcome) -> Re
     }
     match outcome.outcome_kind {
         ComputeAcceptedOutcomeKind::EvaluationRun => {
-            if outcome.evaluation_summary.is_none() {
-                return Err("compute_accepted_outcome_eval_summary_missing".to_string());
-            }
+            let evaluation_summary = outcome
+                .evaluation_summary
+                .as_ref()
+                .ok_or_else(|| "compute_accepted_outcome_eval_summary_missing".to_string())?;
             if outcome.training_summary.is_some() {
                 return Err("compute_accepted_outcome_kind_mismatch".to_string());
             }
             if outcome.checkpoint_binding.is_some() {
                 return Err("compute_accepted_outcome_checkpoint_binding_invalid".to_string());
             }
-            validate_compute_evaluation_summary(
-                outcome.evaluation_summary.as_ref().expect("checked"),
-            )?;
+            validate_compute_evaluation_summary(evaluation_summary)?;
         }
         ComputeAcceptedOutcomeKind::TrainingRun => {
-            if outcome.training_summary.is_none() {
-                return Err("compute_accepted_outcome_training_summary_missing".to_string());
-            }
+            let training_summary = outcome
+                .training_summary
+                .as_ref()
+                .ok_or_else(|| "compute_accepted_outcome_training_summary_missing".to_string())?;
             if outcome.evaluation_summary.is_some() {
                 return Err("compute_accepted_outcome_kind_mismatch".to_string());
             }
@@ -2677,7 +2677,7 @@ pub fn validate_compute_accepted_outcome(outcome: &ComputeAcceptedOutcome) -> Re
             if checkpoint_binding.checkpoint_family.trim().is_empty() {
                 return Err("compute_checkpoint_family_missing".to_string());
             }
-            validate_compute_training_summary(outcome.training_summary.as_ref().expect("checked"))?;
+            validate_compute_training_summary(training_summary)?;
         }
     }
     Ok(())
