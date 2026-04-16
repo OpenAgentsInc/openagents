@@ -275,16 +275,19 @@ answers:
 - what artifacts and digests identify the accepted work
 - what public caveats still apply to settlement or validation
 
-## Episode 224 Admin Launch Path
+## Homework Admin Launch Path
 
-Nexus now also exposes one narrow write-side admin path for the bounded Episode
-224 CS336 demo:
+Nexus now exposes one authenticated homework-dispatch surface for the bounded
+Episode 224 / CS336-style training lane:
+
+- `POST /api/admin/homework/launch`
+
+The retained CS336 demo route remains as a backward-compatible shim:
 
 - `POST /v1/admin/training/demo-runs/cs336-a1/launch`
 
-This route is intentionally not a generic public training-run creation surface.
-It is a scoped operator path that exists so `openagents.com` can trigger the
-same bounded demo lane the retained proof already validated.
+The shim delegates into the generic homework launch path with fixed CS336 demo
+defaults. The generic route is the operator truth for current launch behavior.
 
 Authentication:
 
@@ -294,6 +297,44 @@ Authentication:
 - if that env var is absent, the route returns
   `service_unavailable/admin_bearer_token_unconfigured`
 
+Request contract:
+
+- course and run identity
+  - `course_id`
+  - `homework_id`
+  - `run_slug`
+  - optional `training_run_id`
+  - optional `network_id`
+  - optional `run_kind`
+  - optional `assignment_family`
+  - optional `artifact_prefix`
+- target selector
+  - `only_online`
+  - optional `min_pylon_version`
+  - `require_updated_build`
+  - `tags_any`
+  - `tags_all`
+- assignment policy
+  - `mode`
+  - optional `max_contributors`
+  - `window_duration_seconds`
+- payout policy
+  - `enabled`
+  - `rail`
+  - `amount_sats`
+  - `pay_only_on_accept`
+
+Response contract:
+
+- `training_run_id`
+- `run_status`
+- `current_window_id`
+- `matched_pylons`
+- `assigned_pylons`
+- `artifact_prefix`
+- `launch_receipt_id`
+- `run_detail`
+
 Behavior:
 
 - seeds the CS336 A1 demo registry contracts if they are missing
@@ -301,15 +342,44 @@ Behavior:
   - checkpoint-family policy
   - validator policy
   - training policy with run-definition metadata
-- reuses the latest active bounded demo run when `reuse_existing_run=true` and
-  no explicit run id is supplied
-- otherwise creates one new running bounded demo run with:
-  - training policy `policy://training/cs336/a1-demo/v1`
-  - environment ref `env.openagents.psionic.train.cs336-a1-demo`
-  - fixed network `trainnet.cs336.a1.demo`
-  - fixed worker target count `2`
+- filters eligible pylons at launch time from one explicit source of truth:
+  - heartbeat fresh
+  - online when `only_online=true`
+  - current release/build when `require_updated_build=true`
+  - optional semantic-version floor when `min_pylon_version` is supplied
+  - not draining or otherwise ineligible
+  - payout target present when payout is enabled
+- persists the matched and assigned pylon set on the launch response so the
+  operator can audit exactly which hosts the run targeted
+- materializes the first window inside the same launch contract instead of
+  returning a run row with no schedulable work
+- publishes the bootstrap triad before the run is considered ready:
+  - `run_manifest.json`
+  - `latest_pointer.json`
+  - `checkpoint_manifest.json`
+- exposes pylon-facing authority seams for the checked-in intake loop:
+  - assignment ack
+  - drain/failure notice
+  - window progress
+  - checkpoint publication
 - returns the run id plus the full public run-detail snapshot so the caller can
   redirect immediately into the proof page
+
+Current homework payout truth:
+
+- the bounded homework validator policy is now configured for pay-on-accept
+  behavior
+  - minimum distinct validators: `1`
+  - challenge window: `0 ms`
+- accepted-work payouts are queued exactly once per accepted contribution
+- `payout.amount_sats` is the per-window payout budget, not a per-contributor
+  fixed payment
+- if more than one accepted contributor shares the rewarded result, that window
+  budget is split by the authority payout projection
+  - for the current homework lane, the split follows aggregation weight when
+    the accepted contributions expose a valid weighting basis
+- queued accepted-work payouts still dispatch even when the global placeholder
+  payout budget is `0`
 
 Truth boundary:
 
@@ -318,6 +388,23 @@ Truth boundary:
 - the returned run-detail snapshot still carries treasury and validation caveats
 - website/UI consumers must keep those caveats visible rather than implying
   fully settled payout state
+
+Operator smoke checklist:
+
+1. `POST /api/admin/homework/launch` with `reuse_existing_run:false`.
+2. Confirm the response returns `training_run_id`, `current_window_id`,
+   non-empty `matched_pylons`, non-empty `assigned_pylons`, and one
+   `artifact_prefix`.
+3. Confirm the public/raw run surfaces show the same `featured_window_id`.
+4. Confirm the bootstrap triad exists under the launched artifact prefix.
+5. Confirm only current updated pylons were assigned.
+6. Confirm at least one assigned pylon claims its lease and sends assignment
+   ack.
+7. Confirm the pylon publishes progress and a checkpoint for the active window.
+8. Confirm reconcile records accepted contributions and queues accepted-work
+   payout records exactly once.
+9. Confirm a retry of the dispatch cycle does not create duplicate payout
+   sends.
 
 ## Work-Class Settlement Projection
 

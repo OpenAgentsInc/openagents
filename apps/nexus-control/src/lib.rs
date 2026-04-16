@@ -44,15 +44,15 @@ use openagents_kernel_core::authority::{
     CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
     CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
     CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
-    ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
-    IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
-    PlaceCoverageOfferResponse, PublishRiskSignalRequest, PublishRiskSignalResponse,
-    RecordComputeAdapterWindowRequest, RecordComputeAdapterWindowResponse,
-    RegisterComputeCheckpointFamilyPolicyRequest, RegisterComputeEnvironmentPackageRequest,
-    RegisterComputeTrainingPolicyRequest, RegisterComputeValidatorPolicyRequest,
-    RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
-    ResolveRiskClaimResponse, SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest,
-    SubmitOutputResponse,
+    ExecuteSettlementIntentResponse, FinalizeComputeTrainingRunRequest, FinalizeVerdictRequest,
+    FinalizeVerdictResponse, IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse,
+    PlaceCoverageOfferRequest, PlaceCoverageOfferResponse, PublishRiskSignalRequest,
+    PublishRiskSignalResponse, RecordComputeAdapterWindowRequest,
+    RecordComputeAdapterWindowResponse, RegisterComputeCheckpointFamilyPolicyRequest,
+    RegisterComputeEnvironmentPackageRequest, RegisterComputeTrainingPolicyRequest,
+    RegisterComputeValidatorPolicyRequest, RegisterReservePartitionRequest,
+    RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
+    SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::compute::{
     CapacityInstrumentStatus, CapacityLotStatus, ComputeAcceptedOutcome,
@@ -123,6 +123,7 @@ use psionic_train_contract::{
 use reqwest::Url;
 use ring::rand::SystemRandom;
 use ring::signature::{self, RsaKeyPair};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -160,7 +161,7 @@ use crate::treasury::{
     TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPublicStats,
     TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse,
     TreasuryTrainingPayoutLedgerSummary, create_live_funding_target, dispatch_live_payouts,
-    load_live_wallet_refresh_result_with_plan,
+    load_live_wallet_refresh_result_with_plan, parse_pylon_client_version,
 };
 
 pub use crate::treasury::{
@@ -241,7 +242,6 @@ const EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF: &str = "policy://training/c
 const EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF: &str = "policy://validator/mvp/v1";
 const EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY: &str = "decoder";
 const EPISODE_224_CS336_A1_DEMO_NETWORK_ID: &str = "trainnet.cs336.a1.demo";
-const EPISODE_224_CS336_A1_DEMO_DISPLAY_NAME: &str = "CS336 A1 Demo";
 const EPISODE_224_CS336_A1_DEMO_ARTIFACT_BUCKET_URI: &str = "gs://openagents-training";
 const EPISODE_224_CS336_A1_DEMO_DATASET_REF: &str = "dataset://cs336/assignment1/tinystories-demo";
 const EPISODE_224_CS336_A1_DEMO_DATASET_SLICE_FAMILY: &str =
@@ -988,6 +988,150 @@ struct ErrorResponse {
     reason: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HomeworkAssignmentMode {
+    #[default]
+    AllMatchingPylons,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HomeworkLaunchTargetRequest {
+    #[serde(default = "homework_launch_only_online_default")]
+    pub only_online: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_pylon_version: Option<String>,
+    #[serde(default = "homework_launch_require_updated_build_default")]
+    pub require_updated_build: bool,
+    #[serde(default)]
+    pub tags_any: Vec<String>,
+    #[serde(default)]
+    pub tags_all: Vec<String>,
+}
+
+impl Default for HomeworkLaunchTargetRequest {
+    fn default() -> Self {
+        Self {
+            only_online: homework_launch_only_online_default(),
+            min_pylon_version: None,
+            require_updated_build: homework_launch_require_updated_build_default(),
+            tags_any: Vec::new(),
+            tags_all: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HomeworkLaunchAssignmentRequest {
+    #[serde(default)]
+    pub mode: HomeworkAssignmentMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_contributors: Option<u32>,
+    #[serde(default = "homework_launch_window_duration_seconds_default")]
+    pub window_duration_seconds: u64,
+}
+
+impl Default for HomeworkLaunchAssignmentRequest {
+    fn default() -> Self {
+        Self {
+            mode: HomeworkAssignmentMode::default(),
+            max_contributors: None,
+            window_duration_seconds: homework_launch_window_duration_seconds_default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HomeworkLaunchPayoutRequest {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amount_sats: Option<u64>,
+    #[serde(default = "homework_launch_pay_only_on_accept_default")]
+    pub pay_only_on_accept: bool,
+}
+
+impl Default for HomeworkLaunchPayoutRequest {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            rail: None,
+            amount_sats: None,
+            pay_only_on_accept: homework_launch_pay_only_on_accept_default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HomeworkLaunchPylonMatch {
+    pub node_pubkey_hex: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_label: Option<String>,
+    pub release_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_version: Option<String>,
+    pub build_digest: String,
+    pub online: bool,
+    pub eligible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_destination: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HomeworkLaunchAssignedPylon {
+    #[serde(flatten)]
+    pub node: HomeworkLaunchPylonMatch,
+    pub assignment_id: String,
+    pub lease_id: String,
+    pub assignment_state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LaunchHomeworkRunRequest {
+    pub course_id: String,
+    pub homework_id: String,
+    pub run_slug: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default = "launch_homework_reuse_existing_default")]
+    pub reuse_existing_run: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment_family: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_prefix: Option<String>,
+    #[serde(default)]
+    pub target: HomeworkLaunchTargetRequest,
+    #[serde(default)]
+    pub assignment: HomeworkLaunchAssignmentRequest,
+    #[serde(default)]
+    pub payout: HomeworkLaunchPayoutRequest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LaunchHomeworkRunResponse {
+    pub launched_at_unix_ms: u64,
+    pub launch_state: String,
+    pub training_run_id: String,
+    pub run_status: String,
+    pub current_window_id: String,
+    #[serde(default)]
+    pub matched_pylons: Vec<HomeworkLaunchPylonMatch>,
+    #[serde(default)]
+    pub assigned_pylons: Vec<HomeworkLaunchAssignedPylon>,
+    pub artifact_prefix: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_receipt_id: Option<String>,
+    pub run_detail: PublicTrainingRunDetailSnapshot,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LaunchCs336A1DemoRunRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1012,6 +1156,26 @@ pub struct LaunchCs336A1DemoRunResponse {
 }
 
 const fn launch_cs336_a1_demo_reuse_existing_default() -> bool {
+    true
+}
+
+const fn launch_homework_reuse_existing_default() -> bool {
+    false
+}
+
+const fn homework_launch_only_online_default() -> bool {
+    true
+}
+
+const fn homework_launch_require_updated_build_default() -> bool {
+    true
+}
+
+const fn homework_launch_window_duration_seconds_default() -> u64 {
+    1_800
+}
+
+const fn homework_launch_pay_only_on_accept_default() -> bool {
     true
 }
 
@@ -1742,6 +1906,114 @@ struct RecordTrainingRunLeaseResponse {
     window_state: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     network_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingAssignmentAckRequest {
+    idempotency_key: String,
+    acked_at_ms: i64,
+    node_pubkey_hex: String,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manifest_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingAssignmentAckResponse {
+    ack: TrainingCoordinatorAck,
+    accepted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lease_state: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingDrainNoticeRequest {
+    idempotency_key: String,
+    reported_at_ms: i64,
+    node_pubkey_hex: String,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingDrainNoticeResponse {
+    ack: TrainingCoordinatorAck,
+    drain_state: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingFailureNoticeRequest {
+    idempotency_key: String,
+    reported_at_ms: i64,
+    node_pubkey_hex: String,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    failure_reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    failure_receipt_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingFailureNoticeResponse {
+    ack: TrainingCoordinatorAck,
+    failure_state: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingWindowProgressRequest {
+    idempotency_key: String,
+    recorded_at_ms: i64,
+    node_pubkey_hex: String,
+    training_run_id: String,
+    window_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    assignment_id: Option<String>,
+    window_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    completed_step_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_checkpoint_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct RecordTrainingWindowProgressResponse {
+    ack: TrainingCoordinatorAck,
+    window_state: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct PublishTrainingCheckpointRequest {
+    idempotency_key: String,
+    published_at_ms: i64,
+    node_pubkey_hex: String,
+    training_run_id: String,
+    window_id: String,
+    checkpoint_ref: String,
+    artifact_locator: String,
+    artifact_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manifest_digest: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct PublishTrainingCheckpointResponse {
+    ack: TrainingCoordinatorAck,
+    checkpoint_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    artifact_locator: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -3471,6 +3743,94 @@ impl ScheduledTrainingRun {
         }
     }
 
+    fn bind_launch_worker_assignments(
+        &mut self,
+        nodes: &[AdmittedTrainingNodeView],
+        issued_at_ms: i64,
+    ) -> Result<Vec<ScheduledTrainingAssignment>, String> {
+        if nodes.is_empty() {
+            return Err("training_scheduler_launch_assignments_missing".to_string());
+        }
+        let worker_target_count =
+            usize::try_from(self.role_plan.worker_count).unwrap_or(usize::MAX);
+        if nodes.len() > worker_target_count {
+            return Err("training_scheduler_launch_assignments_exceed_worker_target".to_string());
+        }
+        if self.assignments.iter().any(|assignment| {
+            assignment.role == TrainingNodeRoleClaim::Worker
+                && assignment.state != TrainingAssignmentState::Planned
+        }) {
+            return Err("training_scheduler_launch_assignments_already_bound".to_string());
+        }
+        let membership_revision = self.membership_revision.max(1);
+        let expires_at_ms = issued_at_ms.saturating_add(PYLON_TRAINING_LEASE_DURATION_MS as i64);
+        let mut bound = Vec::with_capacity(nodes.len());
+        for (offset, node) in nodes.iter().enumerate() {
+            let slot_ordinal = u32::try_from(offset + 1).unwrap_or(u32::MAX);
+            let Some(assignment_index) = self.assignments.iter().position(|assignment| {
+                assignment.role == TrainingNodeRoleClaim::Worker
+                    && assignment.slot_ordinal == slot_ordinal
+                    && assignment.state == TrainingAssignmentState::Planned
+            }) else {
+                return Err("training_scheduler_launch_assignment_missing".to_string());
+            };
+            let assignment = &mut self.assignments[assignment_index];
+            let lease_id = pylon_training_lease_id(
+                self.training_run_id.as_str(),
+                self.current_window_id.as_str(),
+                assignment.role.label(),
+                assignment.slot_ordinal,
+                assignment.attempt,
+                membership_revision,
+            );
+            let manifest_digest = pylon_training_manifest_binding_digest(
+                self.training_run_id.as_str(),
+                self.current_window_id.as_str(),
+                membership_revision,
+                node.node_pubkey_hex.as_str(),
+                assignment.assignment_id.as_str(),
+                assignment.role.label(),
+                self.artifact_bucket_uri.as_str(),
+            );
+            assignment.state = TrainingAssignmentState::Leased;
+            assignment.node_pubkey_hex = Some(node.node_pubkey_hex.clone());
+            assignment.lease_id = Some(lease_id);
+            assignment.issued_at_ms = Some(issued_at_ms);
+            assignment.expires_at_ms = Some(expires_at_ms);
+            assignment.manifest_digest = Some(manifest_digest);
+            bound.push(assignment.clone());
+        }
+        self.lease_issue_count = self
+            .lease_issue_count
+            .saturating_add(u64::try_from(nodes.len()).unwrap_or(u64::MAX));
+        self.updated_at_ms = issued_at_ms;
+        Ok(bound)
+    }
+
+    fn assignment_for_binding_mut(
+        &mut self,
+        assignment_id: &str,
+        lease_id: &str,
+        node_pubkey_hex: &str,
+    ) -> Option<&mut ScheduledTrainingAssignment> {
+        self.assignments.iter_mut().find(|assignment| {
+            assignment.assignment_id == assignment_id
+                && assignment.lease_id.as_deref() == Some(lease_id)
+                && assignment.node_pubkey_hex.as_deref() == Some(node_pubkey_hex)
+        })
+    }
+
+    fn assignment_for_id_mut(
+        &mut self,
+        assignment_id: &str,
+        node_pubkey_hex: &str,
+    ) -> Option<&mut ScheduledTrainingAssignment> {
+        self.assignments.iter_mut().find(|assignment| {
+            assignment.assignment_id == assignment_id
+                && assignment.node_pubkey_hex.as_deref() == Some(node_pubkey_hex)
+        })
+    }
+
     fn refresh_from_kernel_run(
         &mut self,
         run: &ComputeTrainingRun,
@@ -4226,6 +4586,42 @@ fn training_window_active_worker_assignments(
     training_window_active_assignments_for_role(scheduled_run, TrainingNodeRoleClaim::Worker)
 }
 
+fn training_scheduler_window_state_from_label(value: &str) -> Option<TrainingSchedulerWindowState> {
+    match value.trim() {
+        "planned" => Some(TrainingSchedulerWindowState::Planned),
+        "active" => Some(TrainingSchedulerWindowState::Active),
+        "sealing" => Some(TrainingSchedulerWindowState::Sealing),
+        "sealed" => Some(TrainingSchedulerWindowState::Sealed),
+        "validating" => Some(TrainingSchedulerWindowState::Validating),
+        "accepted" => Some(TrainingSchedulerWindowState::Accepted),
+        "held" => Some(TrainingSchedulerWindowState::Held),
+        "refused" => Some(TrainingSchedulerWindowState::Refused),
+        _ => None,
+    }
+}
+
+fn training_assignment_state_from_heartbeat(
+    desired_state: kernel::TrainingNodeDesiredState,
+    process_state: kernel::TrainingNodeProcessState,
+    last_exit_code: Option<i32>,
+) -> TrainingAssignmentState {
+    match (desired_state, process_state, last_exit_code) {
+        (_, kernel::TrainingNodeProcessState::Failed, _) => TrainingAssignmentState::Failed,
+        (
+            kernel::TrainingNodeDesiredState::Draining,
+            kernel::TrainingNodeProcessState::Draining,
+            _,
+        ) => TrainingAssignmentState::Drained,
+        (_, kernel::TrainingNodeProcessState::Stopped, Some(0)) => {
+            TrainingAssignmentState::Completed
+        }
+        (_, kernel::TrainingNodeProcessState::Stopped, Some(_)) => TrainingAssignmentState::Failed,
+        (_, kernel::TrainingNodeProcessState::Running, _) => TrainingAssignmentState::Active,
+        (_, kernel::TrainingNodeProcessState::Launching, _) => TrainingAssignmentState::Acked,
+        _ => TrainingAssignmentState::Acked,
+    }
+}
+
 fn training_scheduler_role_overlap_reason(
     existing_role: TrainingNodeRoleClaim,
     requested_role: TrainingNodeRoleClaim,
@@ -4478,6 +4874,7 @@ fn training_validation_witness() -> Result<validator_service::GpuFreivaldsMerkle
 fn training_validation_schedule_request(
     window: &ComputeAdapterTrainingWindow,
     challenge_plan: &TrainingWindowValidationChallengePlan,
+    product_id: &str,
     validator_pool_ref: &str,
     proof_bundle_digest: &str,
     request_digest: &str,
@@ -4491,7 +4888,7 @@ fn training_validation_schedule_request(
         challenge_id,
         proof_bundle_digest,
         request_digest,
-        window.adapter_target_id.as_str(),
+        normalize_required_training_string(product_id, "compute_product_id_missing")?,
         "psionic_train",
         created_at_ms,
     )
@@ -6074,6 +6471,7 @@ fn training_window_counts(
 fn training_window_validation_state_for_seal(
     window: &ComputeAdapterTrainingWindow,
     contribution_inputs: &[TrainingWindowContributionInput],
+    product_id: &str,
     validator_pool_ref: &str,
     recorded_at_ms: i64,
 ) -> Result<
@@ -6122,6 +6520,7 @@ fn training_window_validation_state_for_seal(
     requests.push(training_validation_schedule_request(
         window,
         &aggregate_plan,
+        product_id,
         validator_pool_ref,
         window.window_summary_digest.as_str(),
         window.window_summary_digest.as_str(),
@@ -6150,6 +6549,7 @@ fn training_window_validation_state_for_seal(
         requests.push(training_validation_schedule_request(
             window,
             &plan,
+            product_id,
             validator_pool_ref,
             input.provenance_bundle_digest.as_str(),
             input.manifest_digest.as_str(),
@@ -7089,6 +7489,23 @@ fn build_api_router_with_state(state: AppState) -> Router {
             post(record_training_node_heartbeat),
         )
         .route("/api/training/leases/claim", post(claim_training_run_lease))
+        .route(
+            "/api/training/assignments/ack",
+            post(record_training_assignment_ack),
+        )
+        .route("/api/training/drains", post(record_training_drain_notice))
+        .route(
+            "/api/training/failures",
+            post(record_training_failure_notice),
+        )
+        .route(
+            "/api/training/windows/progress",
+            post(record_training_window_progress),
+        )
+        .route(
+            "/api/training/checkpoints/publish",
+            post(publish_training_checkpoint),
+        )
         .route("/api/training/windows/plan", post(plan_training_window))
         .route(
             "/api/training/windows/{window_id}/activate",
@@ -7127,6 +7544,8 @@ fn build_api_router_with_state(state: AppState) -> Router {
             get(get_training_run_detail),
         )
         .route("/api/training/summary", get(training_operator_summary))
+        .route("/api/admin/homework/launch", post(launch_homework_run))
+        .route("/v1/admin/homework/launch", post(launch_homework_run))
         .route(
             "/v1/admin/training/demo-runs/cs336-a1/launch",
             post(launch_cs336_a1_demo_run),
@@ -7600,48 +8019,1098 @@ async fn get_training_run_detail(
 }
 
 #[derive(Debug, Clone)]
-struct Cs336A1DemoLaunchResult {
+struct HomeworkLaunchPrepared {
     training_run_id: String,
+    network_id: String,
+    current_window_id: String,
     launch_state: String,
+    run_status: String,
+    launch_receipt_id: Option<String>,
     lane_contract: PsionicTrainLaneContract,
+    matched_pylons: Vec<HomeworkLaunchPylonMatch>,
+    assigned_pylons: Vec<HomeworkLaunchAssignedPylon>,
+    artifact_bucket_uri: String,
+    artifact_prefix: String,
+    course_id: String,
+    homework_id: String,
+    assignment_family: String,
+    run_kind: String,
+    needs_window_materialization: bool,
     receipt_event: Option<ReceiptProjectionEvent>,
     snapshot_event: Option<SnapshotProjectionEvent>,
 }
 
-async fn launch_cs336_a1_demo_run(
+fn current_homework_launch_pylon_version() -> Version {
+    Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0))
+}
+
+fn current_homework_launch_pylon_release_id() -> String {
+    format!("openagents.pylon@{}", env!("CARGO_PKG_VERSION"))
+}
+
+fn homework_launch_node_version(node: &AdmittedTrainingNodeView) -> Option<Version> {
+    node.build_version
+        .as_deref()
+        .or(Some(node.release_id.as_str()))
+        .and_then(|value| parse_pylon_client_version(value).ok())
+}
+
+fn homework_launch_node_is_current(node: &AdmittedTrainingNodeView) -> bool {
+    homework_launch_node_version(node)
+        .is_some_and(|version| version == current_homework_launch_pylon_version())
+        || node.release_id == current_homework_launch_pylon_release_id()
+}
+
+fn homework_launch_tags_match(
+    node: &AdmittedTrainingNodeView,
+    target: &HomeworkLaunchTargetRequest,
+) -> bool {
+    (target.tags_any.is_empty()
+        || target.tags_any.iter().any(|tag| {
+            node.active_reputation_labels
+                .iter()
+                .any(|label| label == tag)
+        }))
+        && target.tags_all.iter().all(|tag| {
+            node.active_reputation_labels
+                .iter()
+                .any(|label| label == tag)
+        })
+}
+
+fn homework_launch_node_target_matches(
+    node: &AdmittedTrainingNodeView,
+    target: &HomeworkLaunchTargetRequest,
+    payout: &HomeworkLaunchPayoutRequest,
+    minimum_version: Option<&Version>,
+) -> bool {
+    if target.only_online && !node.online {
+        return false;
+    }
+    if !node.eligible
+        || matches!(
+            node.last_desired_state,
+            Some(
+                kernel::TrainingNodeDesiredState::Draining
+                    | kernel::TrainingNodeDesiredState::Stopped
+            )
+        )
+        || matches!(
+            node.last_process_state,
+            Some(
+                kernel::TrainingNodeProcessState::Draining
+                    | kernel::TrainingNodeProcessState::Stopped
+                    | kernel::TrainingNodeProcessState::Failed
+            )
+        )
+    {
+        return false;
+    }
+    if payout.enabled && node.settlement_destination.is_none() {
+        return false;
+    }
+    if target.require_updated_build && !homework_launch_node_is_current(node) {
+        return false;
+    }
+    if let Some(minimum_version) = minimum_version {
+        if homework_launch_node_version(node).is_none_or(|version| version < *minimum_version) {
+            return false;
+        }
+    }
+    homework_launch_tags_match(node, target)
+}
+
+fn homework_launch_pylon_match(node: &AdmittedTrainingNodeView) -> HomeworkLaunchPylonMatch {
+    HomeworkLaunchPylonMatch {
+        node_pubkey_hex: node.node_pubkey_hex.clone(),
+        node_label: node.node_label.clone(),
+        release_id: node.release_id.clone(),
+        build_version: node.build_version.clone(),
+        build_digest: node.build_digest.clone(),
+        online: node.online,
+        eligible: node.eligible,
+        settlement_destination: node.settlement_destination.clone(),
+    }
+}
+
+fn homework_launch_assigned_pylons(
+    scheduled_run: &ScheduledTrainingRun,
+    nodes_by_pubkey: &HashMap<String, AdmittedTrainingNodeView>,
+) -> Vec<HomeworkLaunchAssignedPylon> {
+    training_window_active_worker_assignments(scheduled_run)
+        .into_iter()
+        .map(|assignment| {
+            let node = assignment
+                .node_pubkey_hex
+                .as_deref()
+                .and_then(|node_pubkey_hex| nodes_by_pubkey.get(node_pubkey_hex))
+                .map(homework_launch_pylon_match)
+                .unwrap_or_else(|| HomeworkLaunchPylonMatch {
+                    node_pubkey_hex: assignment.node_pubkey_hex.clone().unwrap_or_default(),
+                    node_label: None,
+                    release_id: String::new(),
+                    build_version: None,
+                    build_digest: String::new(),
+                    online: false,
+                    eligible: false,
+                    settlement_destination: None,
+                });
+            HomeworkLaunchAssignedPylon {
+                node,
+                assignment_id: assignment.assignment_id,
+                lease_id: assignment.lease_id.unwrap_or_default(),
+                assignment_state: assignment.state.label().to_string(),
+            }
+        })
+        .collect()
+}
+
+fn build_homework_training_run_id(
+    now_unix_ms: u64,
+    course_id: &str,
+    homework_id: &str,
+    run_slug: &str,
+) -> String {
+    let timestamp = Utc
+        .timestamp_millis_opt(now_unix_ms as i64)
+        .single()
+        .map(|value| value.format("%Y%m%d%H%M%S").to_string())
+        .unwrap_or_else(|| now_unix_ms.to_string());
+    let suffix = random_token().chars().take(8).collect::<String>();
+    format!(
+        "run.{}.{}.{}.{}.{}",
+        sanitize_identifier(course_id),
+        sanitize_identifier(homework_id),
+        sanitize_identifier(run_slug),
+        timestamp,
+        suffix
+    )
+}
+
+fn build_homework_default_display_name(
+    course_id: &str,
+    homework_id: &str,
+    run_slug: &str,
+) -> String {
+    format!("{course_id} {homework_id} {run_slug}")
+}
+
+fn build_homework_default_network_id(course_id: &str, homework_id: &str, run_slug: &str) -> String {
+    format!(
+        "trainnet.{}.{}.{}",
+        sanitize_identifier(course_id),
+        sanitize_identifier(homework_id),
+        sanitize_identifier(run_slug)
+    )
+}
+
+fn homework_initial_window_id(training_run_id: &str) -> String {
+    if let Some(suffix) = training_run_id.strip_prefix("run.") {
+        return format!("window.{suffix}.0001");
+    }
+    format!("window.{}.0001", sanitize_identifier(training_run_id))
+}
+
+fn homework_artifact_prefix(
+    artifact_bucket_uri: &str,
+    network_id: &str,
+    training_run_id: &str,
+) -> String {
+    format!(
+        "{}/networks/{network_id}/runs/{training_run_id}",
+        artifact_bucket_uri.trim_end_matches('/')
+    )
+}
+
+fn homework_launch_artifact_bucket_uri_and_prefix(
+    config: &ServiceConfig,
+    requested_artifact_prefix: Option<&str>,
+    network_id: &str,
+    training_run_id: &str,
+) -> Result<(String, String), ApiError> {
+    let expected_suffix = format!("networks/{network_id}/runs/{training_run_id}");
+    let default_bucket_uri = cs336_a1_demo_artifact_bucket_uri(config);
+    let default_prefix =
+        homework_artifact_prefix(default_bucket_uri.as_str(), network_id, training_run_id);
+    let Some(requested_artifact_prefix) = requested_artifact_prefix
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok((default_bucket_uri, default_prefix));
+    };
+
+    let normalized = requested_artifact_prefix.trim_end_matches('/');
+    let Some(bucket_and_path) = normalized.strip_prefix("gs://") else {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "homework_launch_artifact_prefix_invalid".to_string(),
+        });
+    };
+    let Some((bucket_name, object_path)) = bucket_and_path.split_once('/') else {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "homework_launch_artifact_prefix_invalid".to_string(),
+        });
+    };
+    if bucket_name.trim().is_empty() || object_path.trim().is_empty() {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "homework_launch_artifact_prefix_invalid".to_string(),
+        });
+    }
+    if object_path.trim_matches('/') != expected_suffix {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "homework_launch_artifact_prefix_mismatch".to_string(),
+        });
+    }
+    let artifact_bucket_uri = format!("gs://{bucket_name}");
+    Ok((
+        artifact_bucket_uri.clone(),
+        homework_artifact_prefix(artifact_bucket_uri.as_str(), network_id, training_run_id),
+    ))
+}
+
+fn homework_launch_effective_payout_amount_sats(
+    config: &ServiceConfig,
+    payout: &HomeworkLaunchPayoutRequest,
+) -> u64 {
+    if !payout.enabled {
+        return 0;
+    }
+    payout
+        .amount_sats
+        .unwrap_or(config.treasury.payout_sats_per_window)
+}
+
+fn training_run_homework_launch_metadata(training_run: &ComputeTrainingRun) -> Option<&Value> {
+    training_run.metadata.get("homework_launch")
+}
+
+fn training_run_homework_window_duration_seconds(training_run: &ComputeTrainingRun) -> u64 {
+    training_run_homework_launch_metadata(training_run)
+        .and_then(|value| value.get("assignment"))
+        .and_then(|value| value.get("window_duration_seconds"))
+        .and_then(Value::as_u64)
+        .filter(|value| *value > 0)
+        .unwrap_or(PYLON_TRAINING_WINDOW_MAX_DURATION_MS / 1_000)
+}
+
+fn training_run_homework_payout_amount_sats(
+    training_run: &ComputeTrainingRun,
+    default_amount_sats: u64,
+) -> u64 {
+    let Some(payout_policy) =
+        training_run_homework_launch_metadata(training_run).and_then(|value| value.get("payout"))
+    else {
+        return default_amount_sats;
+    };
+    if payout_policy.get("enabled").and_then(Value::as_bool) == Some(false) {
+        return 0;
+    }
+    payout_policy
+        .get("amount_sats")
+        .and_then(Value::as_u64)
+        .unwrap_or(default_amount_sats)
+}
+
+fn homework_scheduler_metadata(
+    artifact_bucket_uri: &str,
+    initial_window_id: &str,
+    network_id: &str,
+    worker_count: u32,
+) -> Result<Value, String> {
+    serde_json::to_value(TrainingSchedulerRunMetadata {
+        network_id: network_id.to_string(),
+        artifact_bucket_uri: artifact_bucket_uri.to_string(),
+        worker_count: worker_count.max(1),
+        validator_count: 0,
+        recovery_source_count: 0,
+        initial_window_id: Some(initial_window_id.to_string()),
+        checkpoint_ref: Some(EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string()),
+    })
+    .map_err(|error| format!("homework_scheduler_metadata_invalid:{error}"))
+}
+
+fn homework_training_run_request(
+    lane_contract: &PsionicTrainLaneContract,
+    config: &ServiceConfig,
+    now_unix_ms: u64,
+    training_run_id: &str,
+    display_name: &str,
+    network_id: &str,
+    course_id: &str,
+    homework_id: &str,
+    run_slug: &str,
+    run_kind: &str,
+    assignment_family: &str,
+    artifact_bucket_uri: &str,
+    artifact_prefix: &str,
+    target: &HomeworkLaunchTargetRequest,
+    assignment: &HomeworkLaunchAssignmentRequest,
+    payout: &HomeworkLaunchPayoutRequest,
+    worker_target_count: u32,
+) -> Result<CreateComputeTrainingRunRequest, String> {
+    let initial_window_id = homework_initial_window_id(training_run_id);
+    let scheduler_metadata = homework_scheduler_metadata(
+        artifact_bucket_uri,
+        initial_window_id.as_str(),
+        network_id,
+        worker_target_count,
+    )?;
+    let payout_amount_sats = homework_launch_effective_payout_amount_sats(config, payout);
+    Ok(CreateComputeTrainingRunRequest {
+        idempotency_key: format!(
+            "idemp.admin.homework.launch.{}",
+            sanitize_identifier(training_run_id)
+        ),
+        trace: TraceContext::default(),
+        policy: PolicyContext::default(),
+        training_run: ComputeTrainingRun {
+            training_run_id: training_run_id.to_string(),
+            training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
+            environment_binding: ComputeEnvironmentBinding {
+                environment_ref: lane_contract.environment_ref.clone(),
+                environment_version: None,
+                dataset_ref: None,
+                rubric_ref: None,
+                evaluator_policy_ref: None,
+            },
+            checkpoint_binding: ComputeCheckpointBinding {
+                checkpoint_family: EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY.to_string(),
+                latest_checkpoint_ref: Some(
+                    EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string(),
+                ),
+                recovery_posture: Some("warm-resume".to_string()),
+            },
+            validator_policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
+            work_class: ComputeTrainingWorkClass::SmallModelLocalTraining,
+            replica_type: ComputeTrainingReplicaType::SingleNode,
+            benchmark_package_refs: Vec::new(),
+            product_id: Some("psionic.training.homework".to_string()),
+            capacity_lot_id: None,
+            instrument_id: None,
+            delivery_proof_id: None,
+            model_ref: Some("model://psion/cs336-assignment1-demo".to_string()),
+            source_ref: Some(EPISODE_224_CS336_A1_DEMO_DATASET_REF.to_string()),
+            rollout_verification_eval_run_ids: Vec::new(),
+            created_at_ms: now_unix_ms as i64,
+            started_at_ms: Some(now_unix_ms as i64),
+            finalized_at_ms: None,
+            expected_step_count: Some(64),
+            completed_step_count: None,
+            status: ComputeTrainingRunStatus::Running,
+            final_checkpoint_ref: None,
+            promotion_checkpoint_ref: None,
+            summary: None,
+            metadata: json!({
+                "display_name": display_name,
+                "course_id": course_id,
+                "homework_id": homework_id,
+                "run_slug": run_slug,
+                "run_kind": run_kind,
+                "assignment_family": assignment_family,
+                "artifact_prefix": artifact_prefix,
+                "lane_id": lane_contract.lane_id,
+                "release_id": lane_contract.release_id,
+                "backend_family": lane_contract.backend_family,
+                "topology_class": lane_contract.topology_class,
+                "minimum_machine_class": lane_contract.minimum_machine_class.label(),
+                "pylon_training_scheduler": scheduler_metadata,
+                "homework_launch": {
+                    "artifact_prefix": artifact_prefix,
+                    "assignment": {
+                        "mode": assignment.mode,
+                        "max_contributors": assignment.max_contributors,
+                        "window_duration_seconds": assignment.window_duration_seconds,
+                    },
+                    "payout": {
+                        "enabled": payout.enabled,
+                        "rail": payout.rail.clone(),
+                        "amount_sats": payout_amount_sats,
+                        "pay_only_on_accept": payout.pay_only_on_accept,
+                    },
+                    "target": {
+                        "only_online": target.only_online,
+                        "min_pylon_version": target.min_pylon_version.clone(),
+                        "require_updated_build": target.require_updated_build,
+                        "tags_any": target.tags_any.clone(),
+                        "tags_all": target.tags_all.clone(),
+                    }
+                },
+            }),
+        },
+        evidence: Vec::new(),
+        hints: ReceiptHints::default(),
+    })
+}
+
+fn homework_window_plan_request(
+    training_run: &ComputeTrainingRun,
+    scheduled_run: &ScheduledTrainingRun,
+    course_id: &str,
+    homework_id: &str,
+    assignment_family: &str,
+    run_kind: &str,
+    recorded_at_ms: i64,
+) -> Result<PlanTrainingWindowRequest, String> {
+    let checkpoint_ref = training_run
+        .checkpoint_binding
+        .latest_checkpoint_ref
+        .clone()
+        .unwrap_or_else(|| EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string());
+    let dataset_id = training_run
+        .source_ref
+        .clone()
+        .unwrap_or_else(|| EPISODE_224_CS336_A1_DEMO_DATASET_REF.to_string());
+    let dataset_slices = training_window_active_worker_assignments(scheduled_run)
+        .into_iter()
+        .map(|assignment| ComputeAdapterDatasetSlice {
+            dataset_id: dataset_id.clone(),
+            split_name: "train".to_string(),
+            slice_id: format!(
+                "{}.worker.{:04}",
+                sanitize_identifier(scheduled_run.training_run_id.as_str()),
+                assignment.slot_ordinal
+            ),
+            slice_digest: sha256_prefixed_bytes(
+                format!(
+                    "{}:{}:{}:{}",
+                    scheduled_run.training_run_id,
+                    scheduled_run.current_window_id,
+                    assignment.assignment_id,
+                    assignment.slot_ordinal
+                )
+                .as_bytes(),
+            ),
+        })
+        .collect::<Vec<_>>();
+    Ok(PlanTrainingWindowRequest {
+        idempotency_key: format!(
+            "idemp.admin.homework.window.plan.{}",
+            sanitize_identifier(training_run.training_run_id.as_str())
+        ),
+        recorded_at_ms,
+        training_run_id: training_run.training_run_id.clone(),
+        stage_id: format!(
+            "stage.{}.{}.{}",
+            sanitize_identifier(course_id),
+            sanitize_identifier(homework_id),
+            sanitize_identifier(run_kind)
+        ),
+        round_index: Some(1),
+        base_checkpoint_ref: checkpoint_ref.clone(),
+        planned_local_step_count: training_run.expected_step_count,
+        aggregation_rule: None,
+        aggregation_weight_basis: None,
+        adapter_target_id: String::new(),
+        adapter_family: String::new(),
+        base_model_ref: training_run
+            .model_ref
+            .clone()
+            .unwrap_or_else(|| "model://psion/cs336-assignment1-demo".to_string()),
+        adapter_format: String::new(),
+        source_policy_revision: ComputeAdapterPolicyRevision {
+            policy_family: format!(
+                "policy.family.{}.{}",
+                sanitize_identifier(course_id),
+                sanitize_identifier(assignment_family)
+            ),
+            revision_id: format!(
+                "policy.rev.{}.{}.{}",
+                sanitize_identifier(course_id),
+                sanitize_identifier(homework_id),
+                sanitize_identifier(training_run.training_run_id.as_str())
+            ),
+            revision_number: Some(1),
+            policy_digest: sha256_prefixed_bytes(
+                format!(
+                    "{}:{}:{}:{}",
+                    course_id, homework_id, assignment_family, training_run.training_run_id
+                )
+                .as_bytes(),
+            ),
+            parent_revision_id: None,
+            produced_at_ms: recorded_at_ms,
+        },
+        source_checkpoint_pointer: ComputeAdapterCheckpointPointer {
+            scope_kind: "training_run".to_string(),
+            scope_id: training_run.training_run_id.clone(),
+            checkpoint_family: training_run.checkpoint_binding.checkpoint_family.clone(),
+            checkpoint_ref: checkpoint_ref.clone(),
+            manifest_digest: sha256_prefixed_bytes(checkpoint_ref.as_bytes()),
+            updated_at_ms: recorded_at_ms,
+            pointer_digest: sha256_prefixed_bytes(
+                format!("{}:{checkpoint_ref}:source", training_run.training_run_id).as_bytes(),
+            ),
+        },
+        dataset_slices,
+    })
+}
+
+fn persist_active_homework_window(
+    store: &mut ControlStore,
+    training_run_id: &str,
+    course_id: &str,
+    homework_id: &str,
+    assignment_family: &str,
+    run_kind: &str,
+    recorded_at_ms: i64,
+) -> Result<(), String> {
+    let training_run = store
+        .kernel
+        .get_compute_training_run(training_run_id)
+        .ok_or_else(|| "compute_training_run_not_found".to_string())?;
+    let scheduled_run = store
+        .training_scheduler
+        .runs_by_training_run_id
+        .get(training_run_id)
+        .cloned()
+        .ok_or_else(|| "training_window_scheduler_run_not_found".to_string())?;
+    let planned_request = homework_window_plan_request(
+        &training_run,
+        &scheduled_run,
+        course_id,
+        homework_id,
+        assignment_family,
+        run_kind,
+        recorded_at_ms,
+    )?;
+    let assignment_plans = training_window_assignment_plans(
+        &scheduled_run,
+        planned_request.dataset_slices.as_slice(),
+        pylon_training_membership_revision_label(scheduled_run.membership_revision).as_str(),
+    )?;
+    let metadata = TrainingWindowMetadata {
+        network_id: scheduled_run.network_id.clone(),
+        artifact_bucket_uri: scheduled_run.artifact_bucket_uri.clone(),
+        environment_ref: training_run.environment_binding.environment_ref.clone(),
+        backend_family: training_backend_family_for_environment_ref(
+            training_run.environment_binding.environment_ref.as_str(),
+        )
+        .unwrap_or_default()
+        .to_string(),
+        membership_revision: pylon_training_membership_revision_label(
+            scheduled_run.membership_revision,
+        ),
+        assignment_plans,
+        validation: None,
+        planned_at_ms: recorded_at_ms,
+        activated_at_ms: Some(recorded_at_ms),
+        sealed_at_ms: None,
+        reconciled_at_ms: None,
+        defensibility: None,
+        seal_deadline_ms: recorded_at_ms.saturating_add(
+            i64::try_from(
+                training_run_homework_window_duration_seconds(&training_run)
+                    .saturating_mul(1_000)
+                    .saturating_add(PYLON_TRAINING_SEAL_GRACE_PERIOD_MS),
+            )
+            .unwrap_or(i64::MAX),
+        ),
+    };
+    let window = training_window_base_record(
+        &training_run,
+        &scheduled_run,
+        &planned_request,
+        metadata,
+        ComputeAdapterWindowStatus::Active,
+        recorded_at_ms,
+    )?;
+    let caller_id = format!("admin:homework_launch:{training_run_id}");
+    store.kernel.record_compute_adapter_window(
+        &training_kernel_mutation_context(caller_id.as_str(), recorded_at_ms as u64),
+        training_window_record_request(planned_request.idempotency_key, window, Vec::new()),
+    )?;
+    if let Some(scheduled_run) = store
+        .training_scheduler
+        .runs_by_training_run_id
+        .get_mut(training_run_id)
+    {
+        scheduled_run.window_state = TrainingSchedulerWindowState::Active;
+        scheduled_run.updated_at_ms = recorded_at_ms;
+    }
+    store.persist_training_scheduler_state()?;
+    Ok(())
+}
+
+fn mark_homework_launch_failed(
+    store: &mut ControlStore,
+    training_run_id: &str,
+    finalized_at_ms: i64,
+    reason: &str,
+) {
+    store
+        .training_scheduler
+        .runs_by_training_run_id
+        .remove(training_run_id);
+    let _ = store.persist_training_scheduler_state();
+    if store
+        .kernel
+        .get_compute_training_run(training_run_id)
+        .is_some()
+    {
+        let _ = store.kernel.finalize_compute_training_run(
+            &training_kernel_mutation_context(
+                "admin:homework_launch_failure",
+                finalized_at_ms as u64,
+            ),
+            FinalizeComputeTrainingRunRequest {
+                idempotency_key: format!(
+                    "idemp.admin.homework.launch.fail.{}",
+                    sanitize_identifier(training_run_id)
+                ),
+                trace: TraceContext::default(),
+                policy: PolicyContext::default(),
+                training_run_id: training_run_id.to_string(),
+                status: ComputeTrainingRunStatus::Failed,
+                finalized_at_ms,
+                final_checkpoint_ref: None,
+                promotion_checkpoint_ref: None,
+                summary: None,
+                metadata: json!({
+                    "homework_launch_failure": reason,
+                }),
+                evidence: Vec::new(),
+                hints: ReceiptHints::default(),
+            },
+        );
+    }
+}
+
+fn prepare_homework_launch(
+    config: &ServiceConfig,
+    store: &mut ControlStore,
+    now_unix_ms: u64,
+    mut request: LaunchHomeworkRunRequest,
+) -> Result<HomeworkLaunchPrepared, ApiError> {
+    let course_id = normalize_required_field(request.course_id.as_str(), "course_id_missing")?;
+    let homework_id =
+        normalize_required_field(request.homework_id.as_str(), "homework_id_missing")?;
+    let run_slug = normalize_required_field(request.run_slug.as_str(), "run_slug_missing")?;
+    request.network_id = request
+        .network_id
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    request.training_run_id = request
+        .training_run_id
+        .take()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    request.target.tags_any = normalize_string_vec(request.target.tags_any);
+    request.target.tags_all = normalize_string_vec(request.target.tags_all);
+    let assignment_family = request
+        .assignment_family
+        .take()
+        .unwrap_or_else(|| format!("{course_id}.{homework_id}"));
+    if request.assignment.window_duration_seconds == 0 {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "homework_launch_window_duration_invalid".to_string(),
+        });
+    }
+    if request.payout.enabled
+        && request
+            .payout
+            .rail
+            .as_deref()
+            .is_some_and(|rail| rail != "bitcoin_lightning")
+    {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "homework_launch_payout_rail_unsupported".to_string(),
+        });
+    }
+    if request.payout.enabled && !request.payout.pay_only_on_accept {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "homework_launch_pay_only_on_accept_required".to_string(),
+        });
+    }
+    let run_kind = request
+        .run_kind
+        .take()
+        .unwrap_or_else(|| "homework".to_string());
+    let network_id = request
+        .network_id
+        .clone()
+        .unwrap_or_else(|| build_homework_default_network_id(&course_id, &homework_id, &run_slug));
+    let display_name = request.display_name.take().unwrap_or_else(|| {
+        build_homework_default_display_name(&course_id, &homework_id, &run_slug)
+    });
+    let lane_contract = PsionicTrainLaneContract::for_lane(PSION_CS336_A1_DEMO_LANE_ID)
+        .map_err(|error| kernel_api_error(format!("homework_lane_contract_invalid:{error}")))?;
+    ensure_cs336_a1_demo_registry_contracts(store, now_unix_ms, &lane_contract)
+        .map_err(kernel_api_error)?;
+
+    let minimum_version = request
+        .target
+        .min_pylon_version
+        .as_deref()
+        .map(|value| {
+            Version::parse(value).map_err(|error| ApiError {
+                status: StatusCode::BAD_REQUEST,
+                error: "invalid_request",
+                reason: format!("homework_launch_min_pylon_version_invalid:{error}"),
+            })
+        })
+        .transpose()?;
+
+    let preview_training_run_id = request.training_run_id.clone().unwrap_or_else(|| {
+        build_homework_training_run_id(now_unix_ms, &course_id, &homework_id, &run_slug)
+    });
+    let (artifact_bucket_uri, artifact_prefix) = homework_launch_artifact_bucket_uri_and_prefix(
+        config,
+        request.artifact_prefix.as_deref(),
+        network_id.as_str(),
+        preview_training_run_id.as_str(),
+    )?;
+    let preview_request = homework_training_run_request(
+        &lane_contract,
+        config,
+        now_unix_ms,
+        preview_training_run_id.as_str(),
+        display_name.as_str(),
+        network_id.as_str(),
+        course_id.as_str(),
+        homework_id.as_str(),
+        run_slug.as_str(),
+        run_kind.as_str(),
+        assignment_family.as_str(),
+        artifact_bucket_uri.as_str(),
+        artifact_prefix.as_str(),
+        &request.target,
+        &request.assignment,
+        &request.payout,
+        1,
+    )
+    .map_err(kernel_api_error)?;
+    let preview_run = preview_request.training_run.clone();
+    let run_definition =
+        training_scheduler_run_definition(&store.kernel, &preview_run).map_err(kernel_api_error)?;
+    let preview_metadata =
+        training_scheduler_metadata_from_run(&preview_run).map_err(kernel_api_error)?;
+    let admitted_nodes = store.kernel.list_admitted_training_nodes(
+        &TrainingNodeQuery {
+            network_id: None,
+            role: Some(TrainingNodeRoleClaim::Worker),
+            online_only: false,
+            eligible_only: false,
+        },
+        now_unix_ms as i64,
+    );
+    let matched_nodes = admitted_nodes
+        .into_iter()
+        .filter(|node| {
+            homework_launch_node_target_matches(
+                node,
+                &request.target,
+                &request.payout,
+                minimum_version.as_ref(),
+            ) && training_node_scheduler_run_mismatch_reason_with_definition(
+                store.training_scheduler.rollout_policy(),
+                node,
+                &preview_run,
+                &preview_metadata,
+                TrainingNodeRoleClaim::Worker,
+                &run_definition,
+            )
+            .is_none()
+        })
+        .collect::<Vec<_>>();
+    if matched_nodes.is_empty() {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "homework_launch_no_eligible_pylons".to_string(),
+        });
+    }
+    let matched_pylons = matched_nodes
+        .iter()
+        .map(homework_launch_pylon_match)
+        .collect::<Vec<_>>();
+    let assigned_nodes = request.assignment.max_contributors.map_or_else(
+        || matched_nodes.clone(),
+        |limit| {
+            matched_nodes
+                .iter()
+                .take(usize::try_from(limit).unwrap_or(usize::MAX))
+                .cloned()
+                .collect::<Vec<_>>()
+        },
+    );
+    if assigned_nodes.is_empty() {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "homework_launch_no_assigned_pylons".to_string(),
+        });
+    }
+    if store
+        .kernel
+        .get_compute_training_run(preview_training_run_id.as_str())
+        .is_some()
+    {
+        let existing_run = store
+            .kernel
+            .get_compute_training_run(preview_training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("compute_training_run_not_found".to_string()))?;
+        if !training_run_schedulable(&existing_run) {
+            return Err(ApiError {
+                status: StatusCode::CONFLICT,
+                error: "conflict",
+                reason: "homework_launch_training_run_id_conflict".to_string(),
+            });
+        }
+    }
+    if request.reuse_existing_run {
+        if let Some(existing_run) = store
+            .kernel
+            .list_compute_training_runs(None, None, None)
+            .into_iter()
+            .rev()
+            .find(|run| {
+                training_run_schedulable(run)
+                    && run.metadata.get("course_id").and_then(Value::as_str)
+                        == Some(course_id.as_str())
+                    && run.metadata.get("homework_id").and_then(Value::as_str)
+                        == Some(homework_id.as_str())
+                    && run.metadata.get("run_slug").and_then(Value::as_str)
+                        == Some(run_slug.as_str())
+            })
+        {
+            store
+                .training_scheduler
+                .recover_from_kernel(&store.kernel, now_unix_ms as i64);
+            if let Some(scheduled_run) = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(existing_run.training_run_id.as_str())
+            {
+                let node_lookup = store
+                    .kernel
+                    .list_admitted_training_nodes(
+                        &TrainingNodeQuery {
+                            network_id: None,
+                            role: None,
+                            online_only: false,
+                            eligible_only: false,
+                        },
+                        now_unix_ms as i64,
+                    )
+                    .into_iter()
+                    .map(|node| (node.node_pubkey_hex.clone(), node))
+                    .collect::<HashMap<_, _>>();
+                return Ok(HomeworkLaunchPrepared {
+                    training_run_id: existing_run.training_run_id.clone(),
+                    network_id: scheduled_run.network_id.clone(),
+                    current_window_id: scheduled_run.current_window_id.clone(),
+                    launch_state: "reused_active_run".to_string(),
+                    run_status: existing_run.status.label().to_string(),
+                    launch_receipt_id: None,
+                    lane_contract,
+                    matched_pylons,
+                    artifact_bucket_uri: scheduled_run.artifact_bucket_uri.clone(),
+                    assigned_pylons: homework_launch_assigned_pylons(scheduled_run, &node_lookup),
+                    artifact_prefix: homework_artifact_prefix(
+                        scheduled_run.artifact_bucket_uri.as_str(),
+                        scheduled_run.network_id.as_str(),
+                        existing_run.training_run_id.as_str(),
+                    ),
+                    course_id,
+                    homework_id,
+                    assignment_family,
+                    run_kind,
+                    needs_window_materialization: false,
+                    receipt_event: None,
+                    snapshot_event: None,
+                });
+            }
+        }
+    }
+
+    let training_run_id = preview_training_run_id;
+    let create_request = homework_training_run_request(
+        &lane_contract,
+        config,
+        now_unix_ms,
+        training_run_id.as_str(),
+        display_name.as_str(),
+        network_id.as_str(),
+        course_id.as_str(),
+        homework_id.as_str(),
+        run_slug.as_str(),
+        run_kind.as_str(),
+        assignment_family.as_str(),
+        artifact_bucket_uri.as_str(),
+        artifact_prefix.as_str(),
+        &request.target,
+        &request.assignment,
+        &request.payout,
+        u32::try_from(assigned_nodes.len()).unwrap_or(u32::MAX),
+    )
+    .map_err(kernel_api_error)?;
+    let create_result = store
+        .kernel
+        .create_compute_training_run(
+            &training_kernel_mutation_context("admin:homework_launch", now_unix_ms),
+            create_request,
+        )
+        .map_err(kernel_api_error)?;
+    store
+        .training_scheduler
+        .recover_from_kernel(&store.kernel, now_unix_ms as i64);
+    let scheduled_run = store
+        .training_scheduler
+        .runs_by_training_run_id
+        .get_mut(training_run_id.as_str())
+        .ok_or_else(|| kernel_api_error("training_scheduler_run_not_found".to_string()))?;
+    let bound_assignments = scheduled_run
+        .bind_launch_worker_assignments(assigned_nodes.as_slice(), now_unix_ms as i64)
+        .map_err(kernel_api_error)?;
+    let current_window_id = scheduled_run.current_window_id.clone();
+    let _ = scheduled_run;
+    store
+        .persist_training_scheduler_state()
+        .map_err(kernel_api_error)?;
+    let assigned_pylons = assigned_nodes
+        .iter()
+        .zip(bound_assignments.iter())
+        .map(|(node, assignment)| HomeworkLaunchAssignedPylon {
+            node: homework_launch_pylon_match(node),
+            assignment_id: assignment.assignment_id.clone(),
+            lease_id: assignment.lease_id.clone().unwrap_or_default(),
+            assignment_state: assignment.state.label().to_string(),
+        })
+        .collect::<Vec<_>>();
+    Ok(HomeworkLaunchPrepared {
+        training_run_id: training_run_id.clone(),
+        network_id,
+        current_window_id,
+        launch_state: "created".to_string(),
+        run_status: create_result
+            .response
+            .training_run
+            .status
+            .label()
+            .to_string(),
+        launch_receipt_id: Some(create_result.response.receipt.receipt_id.clone()),
+        lane_contract,
+        matched_pylons,
+        assigned_pylons,
+        artifact_bucket_uri,
+        artifact_prefix,
+        course_id,
+        homework_id,
+        assignment_family,
+        run_kind,
+        needs_window_materialization: true,
+        receipt_event: create_result.receipt_event,
+        snapshot_event: create_result.snapshot_event,
+    })
+}
+
+async fn launch_homework_run(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<LaunchCs336A1DemoRunRequest>,
-) -> Result<Json<LaunchCs336A1DemoRunResponse>, ApiError> {
+    Json(request): Json<LaunchHomeworkRunRequest>,
+) -> Result<Json<LaunchHomeworkRunResponse>, ApiError> {
     authenticate_admin_bearer_token(&state, &headers)?;
+    Ok(Json(execute_homework_launch(&state, request).await?))
+}
+
+async fn execute_homework_launch(
+    state: &AppState,
+    request: LaunchHomeworkRunRequest,
+) -> Result<LaunchHomeworkRunResponse, ApiError> {
     let now = now_unix_ms();
-    let launch_result = {
+    let prepared = {
         let mut store = state.store.write().map_err(|_| ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
-        launch_or_reuse_cs336_a1_demo_run(&state.config, &mut store, now, request)?
+        prepare_homework_launch(&state.config, &mut store, now, request)?
     };
-    if let Some(receipt_event) = launch_result.receipt_event.clone() {
+    if let Some(receipt_event) = prepared.receipt_event.clone() {
         let _ = state.kernel_receipt_tx.send(receipt_event);
     }
-    if let Some(snapshot_event) = launch_result.snapshot_event.clone() {
+    if let Some(snapshot_event) = prepared.snapshot_event.clone() {
         let _ = state.kernel_snapshot_tx.send(snapshot_event);
     }
-    if launch_result.launch_state == "created"
-        && state.config.training_artifact_signed_url.is_some()
-    {
+    if prepared.needs_window_materialization {
+        let signed_url_config = state
+            .config
+            .training_artifact_signed_url
+            .as_ref()
+            .ok_or_else(|| ApiError {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                error: "service_unavailable",
+                reason: "homework_launch_artifact_upload_unconfigured".to_string(),
+            })?;
         publish_cs336_a1_demo_bootstrap_artifacts(
-            &launch_result.lane_contract,
+            &prepared.lane_contract,
             &state.config,
+            prepared.artifact_bucket_uri.as_str(),
+            prepared.network_id.as_str(),
+            prepared.current_window_id.as_str(),
             now,
-            launch_result.training_run_id.as_str(),
+            prepared.training_run_id.as_str(),
         )
         .await
-        .map_err(kernel_api_error)?;
+        .map_err(|error| {
+            let mut store = state.store.write().ok();
+            if let Some(store) = store.as_mut() {
+                mark_homework_launch_failed(
+                    store,
+                    prepared.training_run_id.as_str(),
+                    now as i64,
+                    error.as_str(),
+                );
+            }
+            ApiError {
+                status: StatusCode::BAD_GATEWAY,
+                error: "bad_gateway",
+                reason: format!(
+                    "homework_launch_artifact_publish_failed:{}:{}",
+                    signed_url_config.bucket_uri, error
+                ),
+            }
+        })?;
+        {
+            let mut store = state.store.write().map_err(|_| ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error: "internal_error",
+                reason: "session_store_poisoned".to_string(),
+            })?;
+            persist_active_homework_window(
+                &mut store,
+                prepared.training_run_id.as_str(),
+                prepared.course_id.as_str(),
+                prepared.homework_id.as_str(),
+                prepared.assignment_family.as_str(),
+                prepared.run_kind.as_str(),
+                now as i64,
+            )
+            .map_err(|error| {
+                mark_homework_launch_failed(
+                    &mut store,
+                    prepared.training_run_id.as_str(),
+                    now as i64,
+                    error.as_str(),
+                );
+                kernel_api_error(error)
+            })?;
+        }
     }
-
     let run_detail = {
         let store = state.store.read().map_err(|_| ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -7660,22 +9129,68 @@ async fn launch_cs336_a1_demo_run(
             &visualization,
             &detail_context,
             now,
-            launch_result.training_run_id.as_str(),
+            prepared.training_run_id.as_str(),
         )
         .map_err(kernel_api_error)?
     };
     replace_training_run_detail_cache(&state, run_detail.clone());
-
-    Ok(Json(LaunchCs336A1DemoRunResponse {
+    Ok(LaunchHomeworkRunResponse {
         launched_at_unix_ms: now,
-        launch_state: launch_result.launch_state,
-        training_run_id: launch_result.training_run_id,
-        lane_id: launch_result.lane_contract.lane_id,
-        training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
-        environment_ref: launch_result.lane_contract.environment_ref,
-        network_id: EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string(),
-        worker_target_count: EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT,
+        launch_state: prepared.launch_state,
+        training_run_id: prepared.training_run_id,
+        run_status: prepared.run_status,
+        current_window_id: prepared.current_window_id,
+        matched_pylons: prepared.matched_pylons,
+        assigned_pylons: prepared.assigned_pylons,
+        artifact_prefix: prepared.artifact_prefix,
+        launch_receipt_id: prepared.launch_receipt_id,
         run_detail,
+    })
+}
+
+async fn launch_cs336_a1_demo_run(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<LaunchCs336A1DemoRunRequest>,
+) -> Result<Json<LaunchCs336A1DemoRunResponse>, ApiError> {
+    authenticate_admin_bearer_token(&state, &headers)?;
+    let response = execute_homework_launch(
+        &state,
+        LaunchHomeworkRunRequest {
+            course_id: "cs336".to_string(),
+            homework_id: "a1".to_string(),
+            run_slug: "demo".to_string(),
+            training_run_id: request.training_run_id,
+            display_name: request.display_name,
+            reuse_existing_run: request.reuse_existing_run,
+            network_id: Some(EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string()),
+            run_kind: Some("demo".to_string()),
+            assignment_family: Some("cs336.assignment1".to_string()),
+            artifact_prefix: None,
+            target: HomeworkLaunchTargetRequest::default(),
+            assignment: HomeworkLaunchAssignmentRequest {
+                max_contributors: Some(EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT),
+                ..HomeworkLaunchAssignmentRequest::default()
+            },
+            payout: HomeworkLaunchPayoutRequest {
+                enabled: true,
+                rail: Some("bitcoin_lightning".to_string()),
+                amount_sats: Some(state.config.treasury.payout_sats_per_window),
+                pay_only_on_accept: true,
+            },
+        },
+    )
+    .await?;
+    Ok(Json(LaunchCs336A1DemoRunResponse {
+        launched_at_unix_ms: response.launched_at_unix_ms,
+        launch_state: response.launch_state,
+        training_run_id: response.training_run_id,
+        lane_id: PSION_CS336_A1_DEMO_LANE_ID.to_string(),
+        training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
+        environment_ref: PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
+        network_id: EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string(),
+        worker_target_count: u32::try_from(response.assigned_pylons.len()).unwrap_or(u32::MAX),
+        run_detail: response.run_detail,
     }))
 }
 
@@ -7718,114 +9233,6 @@ fn authenticate_admin_bearer_token(state: &AppState, headers: &HeaderMap) -> Res
     Ok(())
 }
 
-fn launch_or_reuse_cs336_a1_demo_run(
-    config: &ServiceConfig,
-    store: &mut ControlStore,
-    now_unix_ms: u64,
-    request: LaunchCs336A1DemoRunRequest,
-) -> Result<Cs336A1DemoLaunchResult, ApiError> {
-    let lane_contract =
-        PsionicTrainLaneContract::for_lane(PSION_CS336_A1_DEMO_LANE_ID).map_err(|error| {
-            kernel_api_error(format!("cs336_a1_demo_lane_contract_invalid:{error}"))
-        })?;
-    ensure_cs336_a1_demo_registry_contracts(store, now_unix_ms, &lane_contract)
-        .map_err(kernel_api_error)?;
-
-    let requested_training_run_id = request
-        .training_run_id
-        .as_deref()
-        .map(|value| normalize_required_training_string(value, "training_run_id_missing"))
-        .transpose()
-        .map_err(kernel_api_error)?;
-
-    if let Some(training_run_id) = requested_training_run_id.as_deref() {
-        if let Some(existing_run) = store.kernel.get_compute_training_run(training_run_id) {
-            if training_run_schedulable(&existing_run) {
-                return Ok(Cs336A1DemoLaunchResult {
-                    training_run_id: training_run_id.to_string(),
-                    launch_state: "reused_requested_run".to_string(),
-                    lane_contract,
-                    receipt_event: None,
-                    snapshot_event: None,
-                });
-            }
-            return Err(ApiError {
-                status: StatusCode::CONFLICT,
-                error: "conflict",
-                reason: "cs336_a1_demo_training_run_id_conflict".to_string(),
-            });
-        }
-    } else if request.reuse_existing_run {
-        if let Some(active_run_id) = latest_active_cs336_a1_demo_run_id(store) {
-            return Ok(Cs336A1DemoLaunchResult {
-                training_run_id: active_run_id,
-                launch_state: "reused_active_run".to_string(),
-                lane_contract,
-                receipt_event: None,
-                snapshot_event: None,
-            });
-        }
-    }
-
-    let training_run_id = requested_training_run_id
-        .unwrap_or_else(|| build_cs336_a1_demo_training_run_id(now_unix_ms));
-    let display_name = normalize_optional_field(request.display_name.as_deref())
-        .unwrap_or_else(|| EPISODE_224_CS336_A1_DEMO_DISPLAY_NAME.to_string());
-    let create_result = store
-        .kernel
-        .create_compute_training_run(
-            &training_kernel_mutation_context("admin:episode_224_demo", now_unix_ms),
-            cs336_a1_demo_training_run_request(
-                &lane_contract,
-                config,
-                now_unix_ms,
-                training_run_id.as_str(),
-                display_name.as_str(),
-            )
-            .map_err(kernel_api_error)?,
-        )
-        .map_err(kernel_api_error)?;
-
-    Ok(Cs336A1DemoLaunchResult {
-        training_run_id,
-        launch_state: "created".to_string(),
-        lane_contract,
-        receipt_event: create_result.receipt_event,
-        snapshot_event: create_result.snapshot_event,
-    })
-}
-
-fn latest_active_cs336_a1_demo_run_id(store: &ControlStore) -> Option<String> {
-    store
-        .kernel
-        .list_compute_training_runs(
-            Some(EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF),
-            None,
-            None,
-        )
-        .into_iter()
-        .rev()
-        .find(training_run_schedulable)
-        .map(|run| run.training_run_id)
-}
-
-fn build_cs336_a1_demo_training_run_id(now_unix_ms: u64) -> String {
-    let timestamp = Utc
-        .timestamp_millis_opt(now_unix_ms as i64)
-        .single()
-        .map(|value| value.format("%Y%m%d%H%M%S").to_string())
-        .unwrap_or_else(|| now_unix_ms.to_string());
-    let suffix = random_token().chars().take(8).collect::<String>();
-    format!("run.cs336.a1.demo.{timestamp}.{suffix}")
-}
-
-fn cs336_a1_demo_initial_window_id(training_run_id: &str) -> String {
-    if let Some(suffix) = training_run_id.strip_prefix("run.") {
-        return format!("window.{suffix}.0001");
-    }
-    format!("window.{}.0001", sanitize_identifier(training_run_id))
-}
-
 fn cs336_a1_demo_artifact_bucket_uri(config: &ServiceConfig) -> String {
     config
         .training_artifact_signed_url
@@ -7856,92 +9263,6 @@ fn cs336_a1_demo_training_policy_metadata() -> Result<Value, String> {
     serde_json::to_value(metadata)
         .map(|value| json!({"run_definition": value}))
         .map_err(|error| format!("cs336_a1_demo_training_policy_metadata_invalid:{error}"))
-}
-
-fn cs336_a1_demo_scheduler_metadata(
-    config: &ServiceConfig,
-    initial_window_id: &str,
-) -> Result<Value, String> {
-    serde_json::to_value(TrainingSchedulerRunMetadata {
-        network_id: EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string(),
-        artifact_bucket_uri: cs336_a1_demo_artifact_bucket_uri(config),
-        worker_count: EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT,
-        validator_count: 0,
-        recovery_source_count: 0,
-        initial_window_id: Some(initial_window_id.to_string()),
-        checkpoint_ref: Some(EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string()),
-    })
-    .map_err(|error| format!("cs336_a1_demo_scheduler_metadata_invalid:{error}"))
-}
-
-fn cs336_a1_demo_training_run_request(
-    lane_contract: &PsionicTrainLaneContract,
-    config: &ServiceConfig,
-    now_unix_ms: u64,
-    training_run_id: &str,
-    display_name: &str,
-) -> Result<CreateComputeTrainingRunRequest, String> {
-    let initial_window_id = cs336_a1_demo_initial_window_id(training_run_id);
-    let scheduler_metadata = cs336_a1_demo_scheduler_metadata(config, initial_window_id.as_str())?;
-    Ok(CreateComputeTrainingRunRequest {
-        idempotency_key: format!(
-            "idemp.admin.episode224.cs336.run.{}",
-            sanitize_identifier(training_run_id)
-        ),
-        trace: TraceContext::default(),
-        policy: PolicyContext::default(),
-        training_run: ComputeTrainingRun {
-            training_run_id: training_run_id.to_string(),
-            training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
-            environment_binding: ComputeEnvironmentBinding {
-                environment_ref: lane_contract.environment_ref.clone(),
-                environment_version: None,
-                dataset_ref: None,
-                rubric_ref: None,
-                evaluator_policy_ref: None,
-            },
-            checkpoint_binding: ComputeCheckpointBinding {
-                checkpoint_family: EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY.to_string(),
-                latest_checkpoint_ref: Some(
-                    EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string(),
-                ),
-                recovery_posture: Some("warm-resume".to_string()),
-            },
-            validator_policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
-            work_class: ComputeTrainingWorkClass::SmallModelLocalTraining,
-            replica_type: ComputeTrainingReplicaType::SingleNode,
-            benchmark_package_refs: Vec::new(),
-            product_id: Some("psionic.training.cs336_a1_demo".to_string()),
-            capacity_lot_id: None,
-            instrument_id: None,
-            delivery_proof_id: None,
-            model_ref: Some("model://psion/cs336-assignment1-demo".to_string()),
-            source_ref: Some(EPISODE_224_CS336_A1_DEMO_DATASET_REF.to_string()),
-            rollout_verification_eval_run_ids: Vec::new(),
-            created_at_ms: now_unix_ms as i64,
-            started_at_ms: Some(now_unix_ms as i64),
-            finalized_at_ms: None,
-            expected_step_count: Some(64),
-            completed_step_count: None,
-            status: ComputeTrainingRunStatus::Running,
-            final_checkpoint_ref: None,
-            promotion_checkpoint_ref: None,
-            summary: None,
-            metadata: json!({
-                "display_name": display_name,
-                "episode_id": "episode_224",
-                "story_id": "distributed_training_101_demo",
-                "lane_id": lane_contract.lane_id,
-                "release_id": lane_contract.release_id,
-                "backend_family": lane_contract.backend_family,
-                "topology_class": lane_contract.topology_class,
-                "minimum_machine_class": lane_contract.minimum_machine_class.label(),
-                "pylon_training_scheduler": scheduler_metadata,
-            }),
-        },
-        evidence: Vec::new(),
-        hints: ReceiptHints::default(),
-    })
 }
 
 #[derive(Debug, Clone)]
@@ -7988,31 +9309,30 @@ fn cs336_a1_demo_bootstrap_artifact(
 
 fn build_cs336_a1_demo_bootstrap_artifacts(
     lane_contract: &PsionicTrainLaneContract,
+    artifact_bucket_uri: &str,
     config: &ServiceConfig,
+    network_id: &str,
+    window_id: &str,
     now_unix_ms: u64,
     training_run_id: &str,
 ) -> Result<Vec<Cs336A1DemoBootstrapArtifact>, String> {
-    let artifact_bucket_uri = cs336_a1_demo_artifact_bucket_uri(config);
-    let network_id = EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string();
-    let window_id = cs336_a1_demo_initial_window_id(training_run_id);
     let checkpoint_ref = EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string();
-    let assignment_id =
-        pylon_training_assignment_id(training_run_id, window_id.as_str(), "worker", 1, 1);
+    let assignment_id = pylon_training_assignment_id(training_run_id, window_id, "worker", 1, 1);
     let membership_revision = 1_u64;
     let membership_revision_label = pylon_training_membership_revision_label(membership_revision);
     let lease_id = pylon_training_lease_id(
         training_run_id,
-        window_id.as_str(),
+        window_id,
         "worker",
         1,
         1,
         membership_revision,
     );
     let latest_pointer_artifact = cs336_a1_demo_bootstrap_artifact(
-        artifact_bucket_uri.as_str(),
+        artifact_bucket_uri,
         PylonTrainingArtifactKind::LatestCheckpointPointer,
         PylonTrainingArtifactScope {
-            network_id: network_id.clone(),
+            network_id: network_id.to_string(),
             run_id: training_run_id.to_string(),
             window_id: None,
             assignment_id: None,
@@ -8034,10 +9354,10 @@ fn build_cs336_a1_demo_bootstrap_artifacts(
     .map_err(|error| format!("cs336_a1_demo_checkpoint_manifest_encode_failed:{error}"))?;
     let checkpoint_manifest_digest = sha256_prefixed_bytes(checkpoint_manifest_payload.as_slice());
     let checkpoint_manifest_artifact = cs336_a1_demo_bootstrap_artifact(
-        artifact_bucket_uri.as_str(),
+        artifact_bucket_uri,
         PylonTrainingArtifactKind::CheckpointManifest,
         PylonTrainingArtifactScope {
-            network_id: network_id.clone(),
+            network_id: network_id.to_string(),
             run_id: training_run_id.to_string(),
             window_id: None,
             assignment_id: None,
@@ -8063,9 +9383,9 @@ fn build_cs336_a1_demo_bootstrap_artifacts(
             manifest_id: format!("manifest.{training_run_id}.bootstrap"),
             issued_at_ms: now_unix_ms,
             expires_at_ms: now_unix_ms.saturating_add(86_400_000),
-            network_id: network_id.clone(),
+            network_id: network_id.to_string(),
             run_id: training_run_id.to_string(),
-            window_id: window_id.clone(),
+            window_id: window_id.to_string(),
             assignment_id: assignment_id.clone(),
             lease_id,
             lease_sequence: 1,
@@ -8093,7 +9413,7 @@ fn build_cs336_a1_demo_bootstrap_artifacts(
             latest_pointer_ref: latest_pointer_artifact.object_uri.clone(),
         },
         PylonTrainingArtifacts {
-            bucket_uri: artifact_bucket_uri.clone(),
+            bucket_uri: artifact_bucket_uri.to_string(),
             run_prefix: format!("networks/{network_id}/runs/{training_run_id}"),
             window_prefix: format!(
                 "networks/{network_id}/runs/{training_run_id}/windows/{window_id}"
@@ -8102,10 +9422,7 @@ fn build_cs336_a1_demo_bootstrap_artifacts(
             credential_source: PYLON_TRAINING_GCS_CREDENTIAL_SOURCE.to_string(),
         },
         PylonTrainingTrn {
-            network_coordinate: format!(
-                "39500:{coordinator_pubkey}:{}",
-                EPISODE_224_CS336_A1_DEMO_NETWORK_ID
-            ),
+            network_coordinate: format!("39500:{coordinator_pubkey}:{network_id}"),
             window_coordinate: format!("39510:{coordinator_pubkey}:{window_id}"),
             relay_urls: if config.training_trn_relay_urls.is_empty() {
                 vec![DEFAULT_HOSTED_NEXUS_RELAY_URL.to_string()]
@@ -8120,7 +9437,7 @@ fn build_cs336_a1_demo_bootstrap_artifacts(
         slice_digest: dataset_slice.slice_digest.clone(),
         assignment_seed: pylon_training_assignment_seed(
             training_run_id,
-            window_id.as_str(),
+            window_id,
             membership_revision_label.as_str(),
             assignment_id.as_str(),
             placeholder_node_pubkey.as_str(),
@@ -8130,10 +9447,10 @@ fn build_cs336_a1_demo_bootstrap_artifacts(
     .build()
     .map_err(|error| format!("cs336_a1_demo_bootstrap_manifest_invalid:{error}"))?;
     let run_manifest_artifact = cs336_a1_demo_bootstrap_artifact(
-        artifact_bucket_uri.as_str(),
+        artifact_bucket_uri,
         PylonTrainingArtifactKind::RunManifest,
         PylonTrainingArtifactScope {
-            network_id,
+            network_id: network_id.to_string(),
             run_id: training_run_id.to_string(),
             window_id: None,
             assignment_id: None,
@@ -8193,6 +9510,9 @@ async fn upload_training_artifact_via_signed_url(
 async fn publish_cs336_a1_demo_bootstrap_artifacts(
     lane_contract: &PsionicTrainLaneContract,
     config: &ServiceConfig,
+    artifact_bucket_uri: &str,
+    network_id: &str,
+    window_id: &str,
     now_unix_ms: u64,
     training_run_id: &str,
 ) -> Result<(), String> {
@@ -8200,9 +9520,14 @@ async fn publish_cs336_a1_demo_bootstrap_artifacts(
         .training_artifact_signed_url
         .as_ref()
         .ok_or_else(|| "cs336_a1_demo_bootstrap_artifact_upload_unconfigured".to_string())?;
+    let mut signed_url_config = signed_url_config.clone();
+    signed_url_config.bucket_uri = artifact_bucket_uri.to_string();
     let artifacts = build_cs336_a1_demo_bootstrap_artifacts(
         lane_contract,
+        artifact_bucket_uri,
         config,
+        network_id,
+        window_id,
         now_unix_ms,
         training_run_id,
     )?;
@@ -8211,7 +9536,7 @@ async fn publish_cs336_a1_demo_bootstrap_artifacts(
         .build()
         .map_err(|error| format!("cs336_a1_demo_bootstrap_http_client_invalid:{error}"))?;
     for artifact in &artifacts {
-        upload_training_artifact_via_signed_url(signed_url_config, &client, artifact).await?;
+        upload_training_artifact_via_signed_url(&signed_url_config, &client, artifact).await?;
     }
     Ok(())
 }
@@ -8397,49 +9722,49 @@ fn ensure_cs336_a1_demo_registry_contracts(
         }
     }
 
-    match store
+    let validator_policy_needs_update = store
         .kernel
         .get_compute_validator_policy(EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF, None)
-    {
-        Some(policy) => {
-            if policy.status != ComputeRegistryStatus::Active {
-                return Err("cs336_a1_demo_validator_policy_inactive".to_string());
-            }
-        }
-        None => {
-            store
-                .kernel
-                .register_compute_validator_policy(
-                    &training_kernel_mutation_context("admin:episode_224_demo", now_unix_ms),
-                    RegisterComputeValidatorPolicyRequest {
-                        idempotency_key: "idemp.admin.episode224.cs336.validator".to_string(),
-                        trace: TraceContext::default(),
-                        policy: PolicyContext::default(),
-                        policy_record: ComputeValidatorPolicy {
-                            policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
-                            version: EPISODE_224_CS336_A1_DEMO_POLICY_VERSION.to_string(),
-                            owner_id: EPISODE_224_CS336_A1_DEMO_OWNER_ID.to_string(),
-                            created_at_ms: now_unix_ms as i64,
-                            updated_at_ms: now_unix_ms as i64 + 100,
-                            status: ComputeRegistryStatus::Active,
-                            validator_pool_ref: "validator-pool.training.mvp".to_string(),
-                            minimum_validator_count: Some(1),
-                            challenge_window_ms: Some(60_000),
-                            required_proof_posture: Some(ComputeProofPosture::ChallengeEligible),
-                            benchmark_package_refs: Vec::new(),
-                            metadata: json!({
-                                "lane_id": lane_contract.lane_id,
-                                "episode_id": "episode_224",
-                            }),
-                        },
-                        evidence: Vec::new(),
-                        hints: ReceiptHints::default(),
+        .is_none_or(|policy| {
+            policy.status != ComputeRegistryStatus::Active
+                || policy.validator_pool_ref != "validator-pool.training.mvp"
+                || policy.minimum_validator_count != Some(1)
+                || policy.challenge_window_ms != Some(0)
+                || policy.required_proof_posture != Some(ComputeProofPosture::ChallengeEligible)
+        });
+    if validator_policy_needs_update {
+        store
+            .kernel
+            .register_compute_validator_policy(
+                &training_kernel_mutation_context("admin:episode_224_demo", now_unix_ms),
+                RegisterComputeValidatorPolicyRequest {
+                    idempotency_key: "idemp.admin.episode224.cs336.validator.pay_on_accept"
+                        .to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    policy_record: ComputeValidatorPolicy {
+                        policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
+                        version: EPISODE_224_CS336_A1_DEMO_POLICY_VERSION.to_string(),
+                        owner_id: EPISODE_224_CS336_A1_DEMO_OWNER_ID.to_string(),
+                        created_at_ms: now_unix_ms as i64,
+                        updated_at_ms: now_unix_ms as i64 + 100,
+                        status: ComputeRegistryStatus::Active,
+                        validator_pool_ref: "validator-pool.training.mvp".to_string(),
+                        minimum_validator_count: Some(1),
+                        challenge_window_ms: Some(0),
+                        required_proof_posture: Some(ComputeProofPosture::ChallengeEligible),
+                        benchmark_package_refs: Vec::new(),
+                        metadata: json!({
+                            "lane_id": lane_contract.lane_id,
+                            "episode_id": "episode_224",
+                            "pay_on_accept": true,
+                        }),
                     },
-                )
-                .map_err(|error| {
-                    format!("cs336_a1_demo_validator_policy_register_failed:{error}")
-                })?;
-        }
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .map_err(|error| format!("cs336_a1_demo_validator_policy_register_failed:{error}"))?;
     }
 
     match store
@@ -8729,19 +10054,60 @@ async fn record_training_node_heartbeat(
 ) -> Result<Json<RecordTrainingNodeHeartbeatResponse>, ApiError> {
     let now = now_unix_ms();
     let caller_id = training_node_caller_id(request.node_pubkey_hex.as_str());
+    let training_run_id = request.training_run_id.clone();
+    let assignment_id = request.assignment_id.clone();
+    let lease_id = request.lease_id.clone();
+    let node_pubkey_hex = request.node_pubkey_hex.clone();
+    let desired_state = request.desired_state;
+    let process_state = request.process_state;
+    let recorded_at_ms = request.recorded_at_ms;
+    let last_exit_code = request.last_exit_code;
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
-        store
+        let result = store
             .kernel
             .record_training_node_heartbeat(
                 &training_kernel_mutation_context(&caller_id, now),
                 request,
             )
-            .map_err(kernel_api_error)?
+            .map_err(kernel_api_error)?;
+        if let Some(scheduled_run) = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get_mut(training_run_id.as_str())
+        {
+            if let Some(assignment_state) = scheduled_run
+                .assignment_for_binding_mut(
+                    assignment_id.as_str(),
+                    lease_id.as_str(),
+                    node_pubkey_hex.as_str(),
+                )
+                .map(|assignment| {
+                    assignment.state = training_assignment_state_from_heartbeat(
+                        desired_state,
+                        process_state,
+                        last_exit_code,
+                    );
+                    assignment.expires_at_ms = Some(
+                        recorded_at_ms.saturating_add(PYLON_TRAINING_LEASE_DURATION_MS as i64),
+                    );
+                    assignment.state
+                })
+            {
+                scheduled_run.updated_at_ms = recorded_at_ms;
+                if matches!(assignment_state, TrainingAssignmentState::Active) {
+                    scheduled_run.window_state = TrainingSchedulerWindowState::Active;
+                }
+                store
+                    .persist_training_scheduler_state()
+                    .map_err(kernel_api_error)?;
+            }
+        }
+        result
     };
     record_training_coordination_observability(
         &state,
@@ -8752,6 +10118,479 @@ async fn record_training_node_heartbeat(
         result.snapshot_event.clone(),
     );
     Ok(Json(result.response))
+}
+
+async fn record_training_assignment_ack(
+    State(state): State<AppState>,
+    Json(mut request): Json<RecordTrainingAssignmentAckRequest>,
+) -> Result<Json<RecordTrainingAssignmentAckResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_assignment_ack_idempotency_key_missing",
+    )?;
+    request.node_pubkey_hex = normalize_required_field(
+        request.node_pubkey_hex.as_str(),
+        "training_node_pubkey_missing",
+    )?;
+    request.training_run_id = normalize_required_field(
+        request.training_run_id.as_str(),
+        "compute_training_run_id_missing",
+    )?;
+    request.window_id = normalize_required_field(
+        request.window_id.as_str(),
+        "compute_adapter_window_id_missing",
+    )?;
+    request.assignment_id = normalize_required_field(
+        request.assignment_id.as_str(),
+        "compute_adapter_assignment_id_missing",
+    )?;
+    request.lease_id = normalize_required_field(
+        request.lease_id.as_str(),
+        "training_scheduler_lease_id_missing",
+    )?;
+    request.acked_at_ms = if request.acked_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.acked_at_ms
+    };
+    let response = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get_mut(request.training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_scheduler_run_not_found".to_string()))?;
+        let (accepted, lease_state) = {
+            let assignment = scheduled_run
+                .assignment_for_binding_mut(
+                    request.assignment_id.as_str(),
+                    request.lease_id.as_str(),
+                    request.node_pubkey_hex.as_str(),
+                )
+                .ok_or_else(|| {
+                    kernel_api_error("training_scheduler_assignment_not_found".to_string())
+                })?;
+            if request
+                .manifest_digest
+                .as_deref()
+                .is_some_and(|digest| assignment.manifest_digest.as_deref() != Some(digest))
+            {
+                return Err(kernel_api_error(
+                    "training_assignment_manifest_digest_mismatch".to_string(),
+                ));
+            }
+            let accepted = !matches!(
+                assignment.state,
+                TrainingAssignmentState::Failed
+                    | TrainingAssignmentState::Drained
+                    | TrainingAssignmentState::Expired
+            );
+            if accepted && assignment.state == TrainingAssignmentState::Leased {
+                assignment.state = TrainingAssignmentState::Acked;
+            }
+            assignment.expires_at_ms = Some(
+                request
+                    .acked_at_ms
+                    .saturating_add(PYLON_TRAINING_LEASE_DURATION_MS as i64),
+            );
+            (accepted, assignment.state.label().to_string())
+        };
+        scheduled_run.updated_at_ms = request.acked_at_ms;
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
+        RecordTrainingAssignmentAckResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: request.idempotency_key,
+                recorded_at_ms: request.acked_at_ms,
+                authority_state: "assignment_acked".to_string(),
+            },
+            accepted,
+            lease_state: Some(lease_state),
+        }
+    };
+    Ok(Json(response))
+}
+
+async fn record_training_drain_notice(
+    State(state): State<AppState>,
+    Json(mut request): Json<RecordTrainingDrainNoticeRequest>,
+) -> Result<Json<RecordTrainingDrainNoticeResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_drain_notice_idempotency_key_missing",
+    )?;
+    request.node_pubkey_hex = normalize_required_field(
+        request.node_pubkey_hex.as_str(),
+        "training_node_pubkey_missing",
+    )?;
+    request.training_run_id = normalize_required_field(
+        request.training_run_id.as_str(),
+        "compute_training_run_id_missing",
+    )?;
+    request.window_id = normalize_required_field(
+        request.window_id.as_str(),
+        "compute_adapter_window_id_missing",
+    )?;
+    request.assignment_id = normalize_required_field(
+        request.assignment_id.as_str(),
+        "compute_adapter_assignment_id_missing",
+    )?;
+    request.lease_id = normalize_required_field(
+        request.lease_id.as_str(),
+        "training_scheduler_lease_id_missing",
+    )?;
+    request.reported_at_ms = if request.reported_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.reported_at_ms
+    };
+    let response = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get_mut(request.training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_scheduler_run_not_found".to_string()))?;
+        let assignment = scheduled_run
+            .assignment_for_binding_mut(
+                request.assignment_id.as_str(),
+                request.lease_id.as_str(),
+                request.node_pubkey_hex.as_str(),
+            )
+            .ok_or_else(|| {
+                kernel_api_error("training_scheduler_assignment_not_found".to_string())
+            })?;
+        assignment.state = TrainingAssignmentState::Drained;
+        scheduled_run.updated_at_ms = request.reported_at_ms;
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
+        RecordTrainingDrainNoticeResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: request.idempotency_key,
+                recorded_at_ms: request.reported_at_ms,
+                authority_state: "drain_recorded".to_string(),
+            },
+            drain_state: "draining".to_string(),
+        }
+    };
+    Ok(Json(response))
+}
+
+async fn record_training_failure_notice(
+    State(state): State<AppState>,
+    Json(mut request): Json<RecordTrainingFailureNoticeRequest>,
+) -> Result<Json<RecordTrainingFailureNoticeResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_failure_notice_idempotency_key_missing",
+    )?;
+    request.node_pubkey_hex = normalize_required_field(
+        request.node_pubkey_hex.as_str(),
+        "training_node_pubkey_missing",
+    )?;
+    request.training_run_id = normalize_required_field(
+        request.training_run_id.as_str(),
+        "compute_training_run_id_missing",
+    )?;
+    request.window_id = normalize_required_field(
+        request.window_id.as_str(),
+        "compute_adapter_window_id_missing",
+    )?;
+    request.assignment_id = normalize_required_field(
+        request.assignment_id.as_str(),
+        "compute_adapter_assignment_id_missing",
+    )?;
+    request.lease_id = normalize_required_field(
+        request.lease_id.as_str(),
+        "training_scheduler_lease_id_missing",
+    )?;
+    request.failure_reason = normalize_required_field(
+        request.failure_reason.as_str(),
+        "training_failure_reason_missing",
+    )?;
+    request.reported_at_ms = if request.reported_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.reported_at_ms
+    };
+    let response = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get_mut(request.training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_scheduler_run_not_found".to_string()))?;
+        let assignment = scheduled_run
+            .assignment_for_binding_mut(
+                request.assignment_id.as_str(),
+                request.lease_id.as_str(),
+                request.node_pubkey_hex.as_str(),
+            )
+            .ok_or_else(|| {
+                kernel_api_error("training_scheduler_assignment_not_found".to_string())
+            })?;
+        assignment.state = TrainingAssignmentState::Failed;
+        scheduled_run.updated_at_ms = request.reported_at_ms;
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
+        RecordTrainingFailureNoticeResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: request.idempotency_key,
+                recorded_at_ms: request.reported_at_ms,
+                authority_state: "failure_recorded".to_string(),
+            },
+            failure_state: "recorded".to_string(),
+        }
+    };
+    Ok(Json(response))
+}
+
+async fn record_training_window_progress(
+    State(state): State<AppState>,
+    Json(mut request): Json<RecordTrainingWindowProgressRequest>,
+) -> Result<Json<RecordTrainingWindowProgressResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_window_progress_idempotency_key_missing",
+    )?;
+    request.node_pubkey_hex = normalize_required_field(
+        request.node_pubkey_hex.as_str(),
+        "training_node_pubkey_missing",
+    )?;
+    request.training_run_id = normalize_required_field(
+        request.training_run_id.as_str(),
+        "compute_training_run_id_missing",
+    )?;
+    request.window_id = normalize_required_field(
+        request.window_id.as_str(),
+        "compute_adapter_window_id_missing",
+    )?;
+    request.window_state = normalize_required_field(
+        request.window_state.as_str(),
+        "training_window_state_missing",
+    )?;
+    request.recorded_at_ms = if request.recorded_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.recorded_at_ms
+    };
+    let response = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let training_run = store
+            .kernel
+            .get_compute_training_run(request.training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("compute_training_run_not_found".to_string()))?;
+        let window = store
+            .kernel
+            .get_compute_adapter_training_window(request.window_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_window_not_found".to_string()))?;
+        let mut updated_window = window.clone();
+        let contribution_outcomes = store.kernel.list_compute_adapter_contribution_outcomes(
+            Some(request.training_run_id.as_str()),
+            Some(request.window_id.as_str()),
+            None,
+        );
+        if let Some(local_checkpoint_ref) = request.local_checkpoint_ref.as_ref() {
+            updated_window.output_checkpoint_pointer = Some(ComputeAdapterCheckpointPointer {
+                scope_kind: "window".to_string(),
+                scope_id: request.window_id.clone(),
+                checkpoint_family: training_run.checkpoint_binding.checkpoint_family.clone(),
+                checkpoint_ref: local_checkpoint_ref.clone(),
+                manifest_digest: sha256_prefixed_bytes(local_checkpoint_ref.as_bytes()),
+                updated_at_ms: request.recorded_at_ms,
+                pointer_digest: sha256_prefixed_bytes(
+                    format!("{}:{local_checkpoint_ref}", request.window_id).as_bytes(),
+                ),
+            });
+        }
+        updated_window.recorded_at_ms = request.recorded_at_ms;
+        store
+            .kernel
+            .record_compute_adapter_window(
+                &training_kernel_mutation_context(
+                    training_window_caller_id(request.window_id.as_str()).as_str(),
+                    request.recorded_at_ms as u64,
+                ),
+                training_window_record_request(
+                    request.idempotency_key.clone(),
+                    updated_window,
+                    contribution_outcomes,
+                ),
+            )
+            .map_err(kernel_api_error)?;
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get_mut(request.training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_scheduler_run_not_found".to_string()))?;
+        if let Some(assignment_id) = request.assignment_id.as_deref() {
+            if let Some(assignment) =
+                scheduled_run.assignment_for_id_mut(assignment_id, request.node_pubkey_hex.as_str())
+            {
+                assignment.state = TrainingAssignmentState::Active;
+                assignment.expires_at_ms = Some(
+                    request
+                        .recorded_at_ms
+                        .saturating_add(PYLON_TRAINING_LEASE_DURATION_MS as i64),
+                );
+            }
+        }
+        if let Some(window_state) =
+            training_scheduler_window_state_from_label(request.window_state.as_str())
+        {
+            scheduled_run.window_state = window_state;
+        }
+        scheduled_run.updated_at_ms = request.recorded_at_ms;
+        let window_state = scheduled_run.window_state.label().to_string();
+        let _ = scheduled_run;
+        store
+            .persist_training_scheduler_state()
+            .map_err(kernel_api_error)?;
+        RecordTrainingWindowProgressResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: request.idempotency_key,
+                recorded_at_ms: request.recorded_at_ms,
+                authority_state: "window_progress_recorded".to_string(),
+            },
+            window_state,
+        }
+    };
+    Ok(Json(response))
+}
+
+async fn publish_training_checkpoint(
+    State(state): State<AppState>,
+    Json(mut request): Json<PublishTrainingCheckpointRequest>,
+) -> Result<Json<PublishTrainingCheckpointResponse>, ApiError> {
+    request.idempotency_key = normalize_required_field(
+        request.idempotency_key.as_str(),
+        "training_checkpoint_publish_idempotency_key_missing",
+    )?;
+    request.node_pubkey_hex = normalize_required_field(
+        request.node_pubkey_hex.as_str(),
+        "training_node_pubkey_missing",
+    )?;
+    request.training_run_id = normalize_required_field(
+        request.training_run_id.as_str(),
+        "compute_training_run_id_missing",
+    )?;
+    request.window_id = normalize_required_field(
+        request.window_id.as_str(),
+        "compute_adapter_window_id_missing",
+    )?;
+    request.checkpoint_ref = normalize_required_field(
+        request.checkpoint_ref.as_str(),
+        "compute_adapter_checkpoint_ref_missing",
+    )?;
+    request.artifact_locator = normalize_required_field(
+        request.artifact_locator.as_str(),
+        "training_checkpoint_artifact_locator_missing",
+    )?;
+    request.artifact_digest = normalize_required_field(
+        request.artifact_digest.as_str(),
+        "training_checkpoint_artifact_digest_missing",
+    )?;
+    request.manifest_digest = normalize_optional_field(request.manifest_digest.as_deref());
+    request.published_at_ms = if request.published_at_ms <= 0 {
+        now_unix_ms() as i64
+    } else {
+        request.published_at_ms
+    };
+    let response = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let training_run = store
+            .kernel
+            .get_compute_training_run(request.training_run_id.as_str())
+            .ok_or_else(|| kernel_api_error("compute_training_run_not_found".to_string()))?;
+        let window = store
+            .kernel
+            .get_compute_adapter_training_window(request.window_id.as_str())
+            .ok_or_else(|| kernel_api_error("training_window_not_found".to_string()))?;
+        let mut updated_window = window.clone();
+        let contribution_outcomes = store.kernel.list_compute_adapter_contribution_outcomes(
+            Some(request.training_run_id.as_str()),
+            Some(request.window_id.as_str()),
+            None,
+        );
+        let manifest_digest = request
+            .manifest_digest
+            .clone()
+            .unwrap_or_else(|| request.artifact_digest.clone());
+        updated_window.output_checkpoint_pointer = Some(ComputeAdapterCheckpointPointer {
+            scope_kind: "window".to_string(),
+            scope_id: request.window_id.clone(),
+            checkpoint_family: training_run.checkpoint_binding.checkpoint_family.clone(),
+            checkpoint_ref: request.checkpoint_ref.clone(),
+            manifest_digest,
+            updated_at_ms: request.published_at_ms,
+            pointer_digest: sha256_prefixed_bytes(
+                format!(
+                    "{}:{}:{}",
+                    request.window_id, request.checkpoint_ref, request.artifact_locator
+                )
+                .as_bytes(),
+            ),
+        });
+        updated_window.recorded_at_ms = request.published_at_ms;
+        store
+            .kernel
+            .record_compute_adapter_window(
+                &training_kernel_mutation_context(
+                    training_window_caller_id(request.window_id.as_str()).as_str(),
+                    request.published_at_ms as u64,
+                ),
+                training_window_record_request(
+                    request.idempotency_key.clone(),
+                    updated_window,
+                    contribution_outcomes,
+                ),
+            )
+            .map_err(kernel_api_error)?;
+        if let Some(scheduled_run) = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get_mut(request.training_run_id.as_str())
+        {
+            scheduled_run.checkpoint_ref = Some(request.checkpoint_ref.clone());
+            scheduled_run.updated_at_ms = request.published_at_ms;
+            store
+                .persist_training_scheduler_state()
+                .map_err(kernel_api_error)?;
+        }
+        PublishTrainingCheckpointResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: request.idempotency_key,
+                recorded_at_ms: request.published_at_ms,
+                authority_state: "checkpoint_published".to_string(),
+            },
+            checkpoint_state: "published".to_string(),
+            artifact_locator: Some(request.artifact_locator),
+        }
+    };
+    Ok(Json(response))
 }
 
 async fn claim_training_run_lease(
@@ -9076,7 +10915,7 @@ async fn activate_training_window(
             .runs_by_training_run_id
             .get_mut(window.training_run_id.as_str())
         {
-            scheduled_run.window_state = TrainingSchedulerWindowState::Validating;
+            scheduled_run.window_state = TrainingSchedulerWindowState::Active;
             scheduled_run.updated_at_ms = request.recorded_at_ms;
         }
         store
@@ -9159,6 +10998,7 @@ async fn seal_training_window(
         let (validation_state, schedule_requests) = training_window_validation_state_for_seal(
             &window,
             request.contribution_outcomes.as_slice(),
+            training_run.product_id.as_deref().unwrap_or_default(),
             validator_policy.validator_pool_ref.as_str(),
             request.recorded_at_ms,
         )
@@ -9433,7 +11273,10 @@ async fn reconcile_training_window(
             request.recorded_at_ms.max(0) as u64,
         );
         let treasury_payout_requests = training_window_closeout_treasury_payout_requests(
-            state.config.treasury.payout_sats_per_window,
+            training_run_homework_payout_amount_sats(
+                &training_run,
+                state.config.treasury.payout_sats_per_window,
+            ),
             &updated_window,
             contribution_outcomes.as_slice(),
             request.recorded_at_ms,
@@ -10026,6 +11869,11 @@ async fn finalize_training_validator_challenge(
                 .iter()
                 .any(|plan| plan.challenge_id == second_challenge_id)
             {
+                let training_product_id = store
+                    .kernel
+                    .get_compute_training_run(managed.window.training_run_id.as_str())
+                    .and_then(|run| run.product_id)
+                    .unwrap_or_default();
                 let first_plan = validation
                     .challenges
                     .iter()
@@ -10048,6 +11896,7 @@ async fn finalize_training_validator_challenge(
                 let schedule_request = training_validation_schedule_request(
                     &managed.window,
                     &second_plan,
+                    training_product_id.as_str(),
                     validation.validator_pool_ref.as_str(),
                     managed.window.window_summary_digest.as_str(),
                     managed.window.window_summary_digest.as_str(),
@@ -21180,7 +23029,7 @@ mod tests {
         training_contributor_tier_projection, training_fleet_abuse_snapshot,
         training_scheduler_metadata_from_run, training_window_closeout_outcome,
         training_window_closeout_status, training_window_closeout_treasury_payout_requests,
-        training_window_metadata_value, validator_service,
+        training_window_metadata_from_value, training_window_metadata_value, validator_service,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -21335,13 +23184,17 @@ mod tests {
         AdmittedTrainingNodeView, AppState, ControlStore, DEFAULT_COMPUTE_POLICY_BUNDLE_ID,
         DEFAULT_COMPUTE_POLICY_VERSION, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
         DesktopSessionCreateRequest, DesktopSessionResponse, FinalizeValidatorChallengeRequest,
-        LaunchCs336A1DemoRunRequest, LaunchCs336A1DemoRunResponse, LeaseValidatorChallengeRequest,
-        LeaseValidatorChallengeResponse, NexusHomepageResponse,
-        PROVIDER_PRESENCE_RETENTION_WINDOW_MS, PYLON_TRAINING_LEASE_DURATION_MS,
+        LaunchCs336A1DemoRunRequest, LaunchCs336A1DemoRunResponse, LaunchHomeworkRunRequest,
+        LaunchHomeworkRunResponse, LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse,
+        NexusHomepageResponse, PROVIDER_PRESENCE_RETENTION_WINDOW_MS,
+        PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
         PlanTrainingWindowRequest, ProviderPresenceHeartbeatRequest,
         ProviderPresenceOfflineRequest, ProviderPresenceResponse, ProviderPresenceState,
-        PublicStatsSnapshot, ReconcileTrainingWindowRequest, RecordTrainingRunLeaseRequest,
-        RecordTrainingRunLeaseResponse, ScheduleValidatorChallengeRequest,
+        PublicStatsSnapshot, PublishTrainingCheckpointRequest, PublishTrainingCheckpointResponse,
+        ReconcileTrainingWindowRequest, RecordTrainingAssignmentAckRequest,
+        RecordTrainingAssignmentAckResponse, RecordTrainingRunLeaseRequest,
+        RecordTrainingRunLeaseResponse, RecordTrainingWindowProgressRequest,
+        RecordTrainingWindowProgressResponse, ScheduleValidatorChallengeRequest,
         ScheduleValidatorChallengeResponse, SealTrainingWindowRequest, ServiceConfig,
         StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
         StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
@@ -21442,6 +23295,136 @@ mod tests {
             },
             dir,
         ))
+    }
+
+    async fn spawn_training_artifact_upload_sink(
+        bucket_uri: &str,
+    ) -> Result<(
+        TrainingArtifactSignedUrlConfig,
+        tempfile::TempDir,
+        Arc<Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    )> {
+        let (mut training_artifact_signed_url, dir) = test_training_artifact_signed_url_config()?;
+        training_artifact_signed_url.bucket_uri = bucket_uri.to_string();
+        let uploads = Arc::new(Mutex::new(Vec::<String>::new()));
+        let uploads_for_server = Arc::clone(&uploads);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let local_addr = listener.local_addr()?;
+        training_artifact_signed_url.endpoint = format!("http://{local_addr}/upload");
+        let server = tokio::spawn(async move {
+            let app = Router::new().route(
+                "/upload/{*path}",
+                axum::routing::put({
+                    let uploads = Arc::clone(&uploads_for_server);
+                    move |uri: axum::http::Uri| {
+                        let uploads = Arc::clone(&uploads);
+                        async move {
+                            uploads
+                                .lock()
+                                .expect("upload paths")
+                                .push(uri.path().to_string());
+                            StatusCode::OK
+                        }
+                    }
+                }),
+            );
+            axum::serve(listener, app)
+                .await
+                .expect("serve artifact upload sink");
+        });
+        Ok((training_artifact_signed_url, dir, uploads, server))
+    }
+
+    fn current_homework_launch_build_version_for_test() -> String {
+        env!("CARGO_PKG_VERSION").to_string()
+    }
+
+    fn current_homework_launch_release_id_for_test() -> String {
+        format!(
+            "openagents.pylon@{}",
+            current_homework_launch_build_version_for_test()
+        )
+    }
+
+    fn seed_homework_launch_node(
+        state: &AppState,
+        recorded_at_ms: u64,
+        node_pubkey_hex: &str,
+        build_digest: &str,
+        network_id: &str,
+        release_id: &str,
+        build_version: &str,
+        role_claims: Vec<TrainingNodeRoleClaim>,
+        settlement_destination: Option<&str>,
+    ) {
+        let mut store = state.store.write().expect("write store");
+        let mut request = training_node_admission_request_with_environment_refs(
+            node_pubkey_hex,
+            build_digest,
+            vec![network_id],
+            Vec::new(),
+            Some(32),
+            vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
+        );
+        request.requested_at_ms = recorded_at_ms as i64;
+        request.release_id = release_id.to_string();
+        request.build_version = Some(build_version.to_string());
+        request.role_claims = role_claims.clone();
+        request.capability_tier =
+            training_capability_tier_profile(role_claims.as_slice(), Some(32));
+        request.capability_tier.backend_families = vec!["cpu".to_string()];
+        request.capability_tier.memory_floor_gb = Some(32);
+        request.contributor_availability.minimum_memory_gb = Some(32);
+        request.settlement_destination = settlement_destination.map(str::to_string);
+        request.capability_envelope_v2 =
+            training_capability_envelope_v2(&request.capability_tier, true, true);
+        store
+            .kernel
+            .record_training_node_admission(
+                &training_kernel_mutation_context(node_pubkey_hex, recorded_at_ms),
+                request,
+            )
+            .expect("record homework launch node admission");
+
+        let mut heartbeat = training_node_heartbeat_request_for_scope(
+            node_pubkey_hex,
+            build_digest,
+            format!("presence.{network_id}").as_str(),
+            "window.presence.0001",
+        );
+        heartbeat.recorded_at_ms = recorded_at_ms as i64 + 10;
+        heartbeat.last_heartbeat_at_ms = Some(recorded_at_ms as i64 + 10);
+        store
+            .kernel
+            .record_training_node_heartbeat(
+                &training_kernel_mutation_context(
+                    format!("{node_pubkey_hex}.heartbeat").as_str(),
+                    recorded_at_ms + 10,
+                ),
+                heartbeat,
+            )
+            .expect("record homework launch node heartbeat");
+    }
+
+    fn seed_training_payout_target(state: &AppState, recorded_at_ms: u64, node_pubkey_hex: &str) {
+        state
+            .store
+            .write()
+            .expect("write store")
+            .treasury
+            .payout_targets_by_identity
+            .insert(
+                node_pubkey_hex.to_string(),
+                RegisteredPayoutTarget {
+                    nostr_pubkey_hex: node_pubkey_hex.to_string(),
+                    source_session_id: format!("session-{node_pubkey_hex}"),
+                    spark_address: format!("spark:{node_pubkey_hex}"),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: recorded_at_ms,
+                    last_verified_at_unix_ms: recorded_at_ms,
+                },
+            );
     }
 
     fn test_config_with_leases(
@@ -34805,7 +36788,7 @@ mod tests {
         assert_eq!(run_summary.training_run_id, training_run_id);
         assert_eq!(run_summary.network_id, "trainnet.alpha");
         assert_eq!(run_summary.run_status, "running");
-        assert_eq!(run_summary.scheduler_window_state, "validating");
+        assert_eq!(run_summary.scheduler_window_state, "active");
         assert_eq!(run_summary.current_window_id, "window.0001");
         assert_eq!(run_summary.participation.admitted_nodes, 2);
         assert_eq!(run_summary.participation.assigned_contributors, 1);
@@ -35521,12 +37504,41 @@ mod tests {
     #[tokio::test]
     async fn admin_cs336_demo_launch_route_registers_contracts_creates_run_and_reuses_active_run()
     -> Result<()> {
+        let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink("gs://launch-training-bucket").await?;
         let mut config = test_config()?;
         config.admin_bearer_token = Some("episode224-admin".to_string());
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
         let state = build_app_state(config);
         let app = build_api_router_with_state(state.clone());
         let training_run_id = "run.cs336.a1.demo.operator";
         let initial_window_id = "window.cs336.a1.demo.operator.0001";
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let seeded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            seeded_at_ms.saturating_sub(200),
+            "node-cs336-alpha",
+            "sha256:build-cs336-alpha",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodecs336alpha"),
+        );
+        seed_homework_launch_node(
+            &state,
+            seeded_at_ms.saturating_sub(100),
+            "node-cs336-beta",
+            "sha256:build-cs336-beta",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodecs336beta"),
+        );
 
         let created_response = app
             .clone()
@@ -35545,8 +37557,16 @@ mod tests {
                     )?))?,
             )
             .await?;
-        assert_eq!(created_response.status(), StatusCode::OK);
-        let created = response_json::<LaunchCs336A1DemoRunResponse>(created_response).await?;
+        let created_status = created_response.status();
+        let created_bytes = to_bytes(created_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            created_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(created_bytes.as_ref())
+        );
+        let created =
+            serde_json::from_slice::<LaunchCs336A1DemoRunResponse>(created_bytes.as_ref())?;
         assert_eq!(created.launch_state, "created");
         assert_eq!(created.training_run_id, training_run_id);
         assert_eq!(
@@ -35573,8 +37593,33 @@ mod tests {
             created.run_detail.featured_window_id.as_deref(),
             Some(initial_window_id)
         );
-        assert!(created.run_detail.featured_window.is_none());
+        assert_eq!(
+            created
+                .run_detail
+                .featured_window
+                .as_ref()
+                .map(|window| window.status.as_str()),
+            Some("active")
+        );
+        assert_eq!(created.run_detail.windows.len(), 1);
         assert_eq!(created.run_detail.contributions.len(), 0);
+        let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
+        assert_eq!(uploaded_paths.len(), 3);
+        assert!(
+            uploaded_paths
+                .iter()
+                .any(|path| path.ends_with("/launch-training-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.demo.operator/manifests/run_manifest.json"))
+        );
+        assert!(
+            uploaded_paths
+                .iter()
+                .any(|path| path.ends_with("/launch-training-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.demo.operator/checkpoints/latest_pointer.json"))
+        );
+        assert!(
+            uploaded_paths
+                .iter()
+                .any(|path| path.ends_with("/launch-training-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.demo.operator/checkpoints/step-0/checkpoint_manifest.json"))
+        );
 
         {
             let store = state.store.read().expect("read store");
@@ -35633,8 +37678,15 @@ mod tests {
                     )?))?,
             )
             .await?;
-        assert_eq!(reused_response.status(), StatusCode::OK);
-        let reused = response_json::<LaunchCs336A1DemoRunResponse>(reused_response).await?;
+        let reused_status = reused_response.status();
+        let reused_bytes = to_bytes(reused_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            reused_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(reused_bytes.as_ref())
+        );
+        let reused = serde_json::from_slice::<LaunchCs336A1DemoRunResponse>(reused_bytes.as_ref())?;
         assert_eq!(reused.launch_state, "reused_active_run");
         assert_eq!(reused.training_run_id, training_run_id);
         assert_eq!(
@@ -35654,6 +37706,663 @@ mod tests {
             Some("Episode 224 Operator Demo")
         );
 
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn launch_homework_on_all_updated_online_pylons_and_pay_on_accept() -> Result<()> {
+        let requested_bucket_uri = "gs://homework-launch-bucket";
+        let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink(requested_bucket_uri).await?;
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = 0;
+        config.treasury.daily_budget_cap_sats = 10_000;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+
+        let training_run_id = "run.cs339.hw1.operator";
+        let network_id = "trainnet.cs339.hw1";
+        let window_id = "window.cs339.hw1.operator.0001";
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let base_time_ms = now_unix_ms();
+        let artifact_prefix =
+            format!("{requested_bucket_uri}/networks/{network_id}/runs/{training_run_id}");
+
+        seed_homework_launch_node(
+            &state,
+            base_time_ms.saturating_sub(400),
+            "node-hw-alpha",
+            "sha256:build-hw-alpha",
+            network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodehwalpha"),
+        );
+        seed_homework_launch_node(
+            &state,
+            base_time_ms.saturating_sub(300),
+            "node-hw-beta",
+            "sha256:build-hw-beta",
+            network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodehwbeta"),
+        );
+        seed_homework_launch_node(
+            &state,
+            base_time_ms.saturating_sub(200),
+            "node-hw-outdated",
+            "sha256:build-hw-outdated",
+            network_id,
+            "openagents.pylon@0.1.0",
+            "0.1.0",
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodehwoutdated"),
+        );
+        seed_homework_launch_node(
+            &state,
+            base_time_ms.saturating_sub(100),
+            "validator-hw",
+            "sha256:validator-hw",
+            network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Validator],
+            None,
+        );
+        seed_training_payout_target(&state, base_time_ms.saturating_sub(50), "node-hw-alpha");
+        seed_training_payout_target(&state, base_time_ms.saturating_sub(40), "node-hw-beta");
+
+        let launch_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/admin/homework/launch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&LaunchHomeworkRunRequest {
+                        course_id: "cs339".to_string(),
+                        homework_id: "hw1".to_string(),
+                        run_slug: "cs339.hw1".to_string(),
+                        training_run_id: Some(training_run_id.to_string()),
+                        display_name: Some("CS339 Homework 1".to_string()),
+                        reuse_existing_run: false,
+                        network_id: Some(network_id.to_string()),
+                        run_kind: Some("homework".to_string()),
+                        assignment_family: Some("cs339.hw1".to_string()),
+                        artifact_prefix: Some(artifact_prefix.clone()),
+                        target: super::HomeworkLaunchTargetRequest {
+                            only_online: true,
+                            min_pylon_version: None,
+                            require_updated_build: true,
+                            tags_any: Vec::new(),
+                            tags_all: Vec::new(),
+                        },
+                        assignment: super::HomeworkLaunchAssignmentRequest {
+                            mode: super::HomeworkAssignmentMode::AllMatchingPylons,
+                            max_contributors: None,
+                            window_duration_seconds: 1_800,
+                        },
+                        payout: super::HomeworkLaunchPayoutRequest {
+                            enabled: true,
+                            rail: Some("bitcoin_lightning".to_string()),
+                            amount_sats: Some(200),
+                            pay_only_on_accept: true,
+                        },
+                    })?))?,
+            )
+            .await?;
+        let launch_status = launch_response.status();
+        let launch_bytes = to_bytes(launch_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            launch_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(launch_bytes.as_ref())
+        );
+        let launched = serde_json::from_slice::<LaunchHomeworkRunResponse>(launch_bytes.as_ref())?;
+        assert_eq!(launched.launch_state, "created");
+        assert_eq!(launched.training_run_id, training_run_id);
+        assert_eq!(launched.current_window_id, window_id);
+        assert_eq!(launched.run_status, "running");
+        assert_eq!(launched.artifact_prefix, artifact_prefix);
+        assert_eq!(launched.matched_pylons.len(), 2);
+        assert_eq!(launched.assigned_pylons.len(), 2);
+        assert!(
+            launched
+                .matched_pylons
+                .iter()
+                .all(|node| node.build_version.as_deref() == Some(current_build_version.as_str()))
+        );
+        assert!(
+            launched
+                .assigned_pylons
+                .iter()
+                .all(|assignment| assignment.assignment_state == "leased")
+        );
+        assert_eq!(
+            launched.run_detail.featured_window_id.as_deref(),
+            Some(window_id)
+        );
+        assert_eq!(
+            launched
+                .run_detail
+                .featured_window
+                .as_ref()
+                .map(|window| window.status.as_str()),
+            Some("active")
+        );
+        let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
+        assert_eq!(uploaded_paths.len(), 3);
+        assert!(
+            uploaded_paths
+                .iter()
+                .any(|path| path.ends_with("/homework-launch-bucket/networks/trainnet.cs339.hw1/runs/run.cs339.hw1.operator/manifests/run_manifest.json"))
+        );
+        assert!(
+            uploaded_paths
+                .iter()
+                .any(|path| path.ends_with("/homework-launch-bucket/networks/trainnet.cs339.hw1/runs/run.cs339.hw1.operator/checkpoints/latest_pointer.json"))
+        );
+        assert!(
+            uploaded_paths
+                .iter()
+                .any(|path| path.ends_with("/homework-launch-bucket/networks/trainnet.cs339.hw1/runs/run.cs339.hw1.operator/checkpoints/step-0/checkpoint_manifest.json"))
+        );
+
+        {
+            let store = state.store.read().expect("read store");
+            let scheduled_run = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled homework run");
+            assert_eq!(scheduled_run.current_window_id, window_id);
+            assert_eq!(
+                scheduled_run.window_state,
+                TrainingSchedulerWindowState::Active
+            );
+            assert!(
+                scheduled_run
+                    .assignments
+                    .iter()
+                    .filter(|assignment| assignment.role == TrainingNodeRoleClaim::Worker)
+                    .all(|assignment| assignment.state == TrainingAssignmentState::Leased)
+            );
+            let window = store
+                .kernel
+                .get_compute_adapter_training_window(window_id)
+                .expect("materialized homework window");
+            let metadata =
+                training_window_metadata_from_value(&window.metadata).expect("window metadata");
+            assert_eq!(
+                metadata.seal_deadline_ms - metadata.planned_at_ms,
+                1_800_000i64 + PYLON_TRAINING_SEAL_GRACE_PERIOD_MS as i64
+            );
+        }
+
+        let assigned_by_node = launched
+            .assigned_pylons
+            .iter()
+            .map(|assignment| (assignment.node.node_pubkey_hex.clone(), assignment.clone()))
+            .collect::<HashMap<_, _>>();
+
+        let claim_alpha_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.homework.alpha",
+                            base_time_ms as i64 + 1_000,
+                            "node-hw-alpha",
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claim_alpha_response.status(), StatusCode::OK);
+        let claim_alpha =
+            response_json::<RecordTrainingRunLeaseResponse>(claim_alpha_response).await?;
+        assert_eq!(
+            claim_alpha.assignment_id,
+            assigned_by_node["node-hw-alpha"].assignment_id
+        );
+        assert_eq!(
+            claim_alpha.lease_id,
+            assigned_by_node["node-hw-alpha"].lease_id
+        );
+
+        let claim_beta_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.homework.beta",
+                            base_time_ms as i64 + 1_010,
+                            "node-hw-beta",
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claim_beta_response.status(), StatusCode::OK);
+        let claim_beta =
+            response_json::<RecordTrainingRunLeaseResponse>(claim_beta_response).await?;
+        assert_eq!(
+            claim_beta.assignment_id,
+            assigned_by_node["node-hw-beta"].assignment_id
+        );
+        assert_eq!(
+            claim_beta.lease_id,
+            assigned_by_node["node-hw-beta"].lease_id
+        );
+
+        let outdated_claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.homework.outdated",
+                            base_time_ms as i64 + 1_020,
+                            "node-hw-outdated",
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(outdated_claim_response.status(), StatusCode::BAD_REQUEST);
+
+        for (node_pubkey_hex, lease, ack_idempotency_key, progress_idempotency_key) in [
+            (
+                "node-hw-alpha",
+                claim_alpha.clone(),
+                "idemp.training.assignment.ack.alpha",
+                "idemp.training.window.progress.alpha",
+            ),
+            (
+                "node-hw-beta",
+                claim_beta.clone(),
+                "idemp.training.assignment.ack.beta",
+                "idemp.training.window.progress.beta",
+            ),
+        ] {
+            let ack_response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/training/assignments/ack")
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(
+                            &RecordTrainingAssignmentAckRequest {
+                                idempotency_key: ack_idempotency_key.to_string(),
+                                acked_at_ms: base_time_ms as i64 + 1_100,
+                                node_pubkey_hex: node_pubkey_hex.to_string(),
+                                training_run_id: training_run_id.to_string(),
+                                window_id: window_id.to_string(),
+                                assignment_id: lease.assignment_id.clone(),
+                                lease_id: lease.lease_id.clone(),
+                                manifest_digest: lease.manifest_digest.clone(),
+                                manifest_path: None,
+                            },
+                        )?))?,
+                )
+                .await?;
+            assert_eq!(ack_response.status(), StatusCode::OK);
+            let ack = response_json::<RecordTrainingAssignmentAckResponse>(ack_response).await?;
+            assert!(ack.accepted);
+            assert_eq!(ack.lease_state.as_deref(), Some("acked"));
+
+            let progress_response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/training/windows/progress")
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(
+                            &RecordTrainingWindowProgressRequest {
+                                idempotency_key: progress_idempotency_key.to_string(),
+                                recorded_at_ms: base_time_ms as i64 + 1_200,
+                                node_pubkey_hex: node_pubkey_hex.to_string(),
+                                training_run_id: training_run_id.to_string(),
+                                window_id: window_id.to_string(),
+                                assignment_id: Some(lease.assignment_id.clone()),
+                                window_state: "active".to_string(),
+                                completed_step_count: Some(32),
+                                local_checkpoint_ref: None,
+                            },
+                        )?))?,
+                )
+                .await?;
+            let progress_status = progress_response.status();
+            let progress_bytes = to_bytes(progress_response.into_body(), usize::MAX).await?;
+            assert_eq!(
+                progress_status,
+                StatusCode::OK,
+                "{}",
+                String::from_utf8_lossy(progress_bytes.as_ref())
+            );
+            let progress = serde_json::from_slice::<RecordTrainingWindowProgressResponse>(
+                progress_bytes.as_ref(),
+            )?;
+            assert_eq!(progress.window_state, "active");
+        }
+
+        let publish_checkpoint_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/checkpoints/publish")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &PublishTrainingCheckpointRequest {
+                            idempotency_key: "idemp.training.checkpoint.publish.alpha".to_string(),
+                            published_at_ms: base_time_ms as i64 + 1_300,
+                            node_pubkey_hex: "node-hw-alpha".to_string(),
+                            training_run_id: training_run_id.to_string(),
+                            window_id: window_id.to_string(),
+                            checkpoint_ref: "checkpoint://cs339/hw1/final".to_string(),
+                            artifact_locator: format!(
+                                "{artifact_prefix}/checkpoints/step-64/model.safetensors"
+                            ),
+                            artifact_digest: "sha256:checkpoint-cs339-hw1".to_string(),
+                            manifest_digest: Some(
+                                "sha256:checkpoint-manifest-cs339-hw1".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(publish_checkpoint_response.status(), StatusCode::OK);
+        let published =
+            response_json::<PublishTrainingCheckpointResponse>(publish_checkpoint_response).await?;
+        assert_eq!(published.checkpoint_state, "published");
+
+        let sealed_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/seal"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.homework".to_string(),
+                            recorded_at_ms: base_time_ms as i64 + 1_400,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.homework.alpha",
+                                    &claim_alpha,
+                                    "sha256:validator-pending-homework-alpha",
+                                    None,
+                                ),
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.homework.beta",
+                                    &claim_beta,
+                                    "sha256:validator-pending-homework-beta",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        let sealed_status = sealed_response.status();
+        let sealed_bytes = to_bytes(sealed_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            sealed_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(sealed_bytes.as_ref())
+        );
+
+        let challenge_count = {
+            state
+                .store
+                .read()
+                .expect("read store")
+                .kernel
+                .list_validator_challenges(None)
+                .len()
+        };
+        assert!(challenge_count >= 2);
+        for ordinal in 0..challenge_count {
+            let claim_response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/training/validator-challenges/claim")
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(
+                            &training_validator_claim_request_for_scope(
+                                format!("idemp.training.validator.claim.homework.{ordinal}")
+                                    .as_str(),
+                                base_time_ms as i64 + 1_500 + ordinal as i64,
+                                "validator-hw",
+                                Some(network_id),
+                                Some(training_run_id),
+                            ),
+                        )?))?,
+                )
+                .await?;
+            assert_eq!(claim_response.status(), StatusCode::OK);
+            let claimed =
+                response_json::<TrainingValidatorChallengeCoordinatorResponse>(claim_response)
+                    .await?;
+            let finalize_response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!(
+                            "/api/training/validator-challenges/{}/finalize",
+                            claimed.challenge_id
+                        ))
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(
+                            &training_validator_finalize_request(
+                                format!("idemp.training.validator.finalize.homework.{ordinal}")
+                                    .as_str(),
+                                base_time_ms as i64 + 1_700 + ordinal as i64,
+                                "validator-hw",
+                                claimed.lease.clone().expect("validator lease"),
+                                claimed
+                                    .challenge
+                                    .request
+                                    .context
+                                    .proof_bundle_digest
+                                    .as_str(),
+                                claimed.challenge_id.as_str(),
+                                ComputeValidatorChallengeStatus::Verified,
+                                ComputeValidatorChallengeVerdict::Verified,
+                                format!("sha256:validator-homework-result-{ordinal}").as_str(),
+                                Some(ComputeAdapterContributionDisposition::Accepted),
+                            ),
+                        )?))?,
+                )
+                .await?;
+            assert_eq!(finalize_response.status(), StatusCode::OK);
+        }
+
+        let reconciled_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/reconcile"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.homework".to_string(),
+                            recorded_at_ms: base_time_ms as i64 + 2_000,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.homework.alpha",
+                                    &claim_alpha,
+                                    "sha256:validator-final-homework-alpha",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.homework.beta",
+                                    &claim_beta,
+                                    "sha256:validator-final-homework-beta",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_450),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some("sha256:aggregate-homework".to_string()),
+                            accepted_aggregate_id: Some("aggregate.homework".to_string()),
+                            promoted_checkpoint_ref: Some(
+                                "checkpoint://cs339/hw1/final".to_string(),
+                            ),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled_response.status(), StatusCode::OK);
+        let reconciled =
+            response_json::<TrainingWindowCoordinatorResponse>(reconciled_response).await?;
+        assert_eq!(
+            reconciled.window.status,
+            ComputeAdapterWindowStatus::Reconciled
+        );
+        assert_eq!(reconciled.window.accepted_contributions, 2);
+        let expected_split_payout_sats = 100u64;
+
+        {
+            let store = state.store.read().expect("read store");
+            let accepted_outcome = reconciled
+                .window
+                .accepted_outcome_id
+                .as_deref()
+                .and_then(|outcome_id| store.kernel.get_compute_accepted_outcome(outcome_id));
+            let payout_records = store
+                .treasury
+                .payout_records_by_key
+                .values()
+                .filter(|record| {
+                    record.classification.training_run_id.as_deref() == Some(training_run_id)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            assert_eq!(
+                payout_records.len(),
+                2,
+                "accepted_outcome_metadata={:?}",
+                accepted_outcome.as_ref().map(|outcome| &outcome.metadata)
+            );
+            assert!(
+                payout_records
+                    .iter()
+                    .all(|record| record.amount_sats == expected_split_payout_sats)
+            );
+            assert!(
+                payout_records
+                    .iter()
+                    .all(|record| record.status == "queued")
+            );
+            assert!(payout_records.iter().all(|record| {
+                record.classification.accepted_outcome_id.as_deref()
+                    == Some("accepted.training_window.window.cs339.hw1.operator.0001")
+            }));
+            assert!(
+                payout_records
+                    .iter()
+                    .all(|record| record.nostr_pubkey_hex != "node-hw-outdated")
+            );
+        }
+
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let payouts_seen = Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
+        let payouts_seen_for_hook = Arc::clone(&payouts_seen);
+        set_test_wallet_send_hook(Some(Arc::new(move |target, amount_sats| {
+            payouts_seen_for_hook
+                .lock()
+                .expect("payout sends")
+                .push((target.to_string(), amount_sats));
+            Ok(format!("payment-send-homework-{}", amount_sats))
+        })));
+        run_treasury_dispatch_cycle(&state).await;
+        run_treasury_dispatch_cycle(&state).await;
+        let mut payout_sends = payouts_seen.lock().expect("payout sends").clone();
+        payout_sends.sort();
+        assert_eq!(
+            payout_sends,
+            vec![
+                (
+                    "spark:node-hw-alpha".to_string(),
+                    expected_split_payout_sats,
+                ),
+                ("spark:node-hw-beta".to_string(), expected_split_payout_sats,),
+            ]
+        );
+        {
+            let store = state.store.read().expect("read store");
+            let payout_records = store
+                .treasury
+                .payout_records_by_key
+                .values()
+                .filter(|record| {
+                    record.classification.training_run_id.as_deref() == Some(training_run_id)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(payout_records.len(), 2);
+            assert!(
+                payout_records
+                    .iter()
+                    .all(|record| record.status == "dispatched")
+            );
+        }
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.training_assigned_contributors, 2);
+        assert_eq!(stats.training_accepted_contributors, 2);
+        assert_eq!(stats.nexus_accepted_work_payout_sats_paid_total, 200);
+
+        set_test_wallet_send_hook(None);
+        upload_server.abort();
         Ok(())
     }
 
