@@ -3,6 +3,7 @@
 FROM rust:1.88-bookworm AS build-base
 
 ARG SCCACHE_VERSION=0.8.2
+ARG SCCACHE_GCS_BUCKET=""
 
 WORKDIR /work
 
@@ -13,6 +14,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
+    if [ -z "${SCCACHE_GCS_BUCKET}" ]; then exit 0; fi; \
     arch="$(dpkg --print-architecture)"; \
     case "${arch}" in \
       amd64) sccache_arch="x86_64-unknown-linux-musl" ;; \
@@ -23,7 +25,34 @@ RUN set -eux; \
       | tar -xz --strip-components=1 -C /usr/local/bin "sccache-v${SCCACHE_VERSION}-${sccache_arch}/sccache"; \
     chmod 755 /usr/local/bin/sccache
 
-FROM build-base AS builder
+FROM build-base AS deps
+
+ARG BUILD_PROFILE=fast-release
+ARG SCCACHE_GCS_BUCKET=""
+ARG SCCACHE_GCS_KEY_PREFIX="nexus-relay"
+
+ENV SCCACHE_DIR=/var/cache/sccache \
+    SCCACHE_NO_DAEMON=1 \
+    SCCACHE_GCS_BUCKET=${SCCACHE_GCS_BUCKET} \
+    SCCACHE_GCS_KEY_PREFIX=${SCCACHE_GCS_KEY_PREFIX}
+
+COPY .nexus-build-plan/ .
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/var/cache/sccache \
+    set -eux; \
+    cargo fetch --locked
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/var/cache/sccache \
+    set -eux; \
+    if [ -n "${SCCACHE_GCS_BUCKET}" ]; then export RUSTC_WRAPPER=/usr/local/bin/sccache; fi; \
+    cargo build --locked --profile "${BUILD_PROFILE}" -p nexus-relay; \
+    if [ -n "${SCCACHE_GCS_BUCKET}" ]; then sccache --show-stats || true; fi
+
+FROM deps AS builder
 
 ARG BUILD_PROFILE=fast-release
 ARG SCCACHE_GCS_BUCKET=""
@@ -35,12 +64,6 @@ ENV SCCACHE_DIR=/var/cache/sccache \
     SCCACHE_GCS_KEY_PREFIX=${SCCACHE_GCS_KEY_PREFIX}
 
 COPY . .
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/var/cache/sccache \
-    set -eux; \
-    cargo fetch --locked
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
