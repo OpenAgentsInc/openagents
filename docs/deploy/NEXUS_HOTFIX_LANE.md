@@ -147,6 +147,10 @@ The medium-term architecture rule is:
 
 - routine relay hotfixes must not require rebuilding `psionic-train`
 
+The retained boundary decision for that rule now lives in:
+
+- `docs/adr/ADR-0004-nexus-relay-core-vs-training-demo-control-boundary.md`
+
 This contract does not require the deploy-unit split to land before the binary
 lane.
 
