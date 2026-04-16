@@ -31,6 +31,22 @@ Current deployment decision:
 
 This runbook does **not** claim that public DNS/TLS cutover is complete. That is handled in later staging/cutover work. The purpose here is to make the deployed runtime itself stateful and durable.
 
+## 1.5) Hotfix lane decision
+
+The current production hotfix decision is frozen in:
+
+- `docs/deploy/NEXUS_HOTFIX_LANE.md`
+
+The short version is:
+
+- primary target hotfix path: warm Linux builder plus binary-first deploys
+- fallback path: image-first deploys, including Cloud Build
+
+This runbook still documents the current image-first path because that path
+exists and remains the fallback until the binary lane is fully implemented and
+proven. Future Nexus deploy work should not assume Cloud Build is still the
+default hotfix unblock path.
+
 ## 2) Baseline assumptions
 
 - project: `openagentsgemini`
@@ -43,7 +59,7 @@ This runbook does **not** claim that public DNS/TLS cutover is complete. That is
 
 The scripts are parameterized through env vars in `scripts/deploy/nexus/common.sh`.
 
-## 3) Scripted deployment flow
+## 3) Current image-first fallback flow
 
 All scripts are in `scripts/deploy/nexus/`.
 
@@ -62,8 +78,8 @@ The Nexus image build is now an explicit hotfix lane:
   optional GCS-backed `sccache`
 - the default build profile is now `fast-release`
 
-`sccache` remains optional. The default hotfix lane leaves it off until the
-Cloud Build path is proven stable with it enabled:
+`sccache` remains optional. The current fallback path leaves it off until the
+Cloud Build image lane is proven stable with it enabled:
 
 ```bash
 NEXUS_BUILD_SCCACHE_ENABLED=true scripts/deploy/nexus/01-build-and-push-image.sh
@@ -171,6 +187,26 @@ Before crowd expansion, treat
 sheet for those gates and
 `docs/plans/transcript-222-training-incident-taxonomy.md` as the containment
 taxonomy when one of them breaks.
+
+## 3.5) Target binary-first primary flow
+
+The target primary Nexus hotfix path is not the image flow above.
+
+The target primary path is:
+
+1. build a versioned Linux `nexus-relay` binary on a warm Linux builder
+2. upload that versioned release to the Nexus VM
+3. activate the release through `/opt/nexus-relay/current`
+4. restart `systemd`
+5. run local and public verification gates
+6. keep the previous release ready for immediate rollback
+
+The frozen operator contract for that path lives in:
+
+- `docs/deploy/NEXUS_HOTFIX_LANE.md`
+
+Until the binary lane is implemented and proven, the image-first flow in this
+runbook remains the active fallback operator path.
 
 ## 4) Runtime model
 
