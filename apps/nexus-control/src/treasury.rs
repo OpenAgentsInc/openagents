@@ -3328,10 +3328,7 @@ impl TreasuryState {
         self.trim_retention();
         let mut receipt_events = self.expire_stale_dispatches(config, now_unix_ms);
         let policy = self.active_policy(config);
-        if !policy.treasury_enabled
-            || policy.payout_sats_per_window == 0
-            || policy.payout_interval_seconds == 0
-        {
+        if !policy.treasury_enabled || policy.payout_interval_seconds == 0 {
             self.refresh_public_snapshot(config, now_unix_ms);
             return TreasuryPayoutPreparation {
                 dispatch_plans: Vec::new(),
@@ -3344,6 +3341,14 @@ impl TreasuryState {
         let mut dispatch_plans =
             self.claim_queued_payouts_for_dispatch(&policy, now_unix_ms, &mut reserved_budget_sats);
         if online_identities.is_empty() {
+            self.refresh_public_snapshot(config, now_unix_ms);
+            return TreasuryPayoutPreparation {
+                dispatch_plans,
+                receipt_events,
+                reconciliation_degraded_reason: None,
+            };
+        }
+        if policy.payout_sats_per_window == 0 {
             self.refresh_public_snapshot(config, now_unix_ms);
             return TreasuryPayoutPreparation {
                 dispatch_plans,
@@ -6206,13 +6211,15 @@ fn read_path_env(name: &str, default: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(default))
 }
 
-fn parse_pylon_client_version(raw: &str) -> Result<Version, String> {
+pub(crate) fn parse_pylon_client_version(raw: &str) -> Result<Version, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err("empty version".to_string());
     }
     let lowered = trimmed.to_ascii_lowercase();
-    let normalized = if lowered.starts_with("pylon-v") {
+    let normalized = if let Some((_, suffix)) = trimmed.rsplit_once('@') {
+        suffix
+    } else if lowered.starts_with("pylon-v") {
         &trimmed["pylon-v".len()..]
     } else if lowered.starts_with("pylon/") {
         &trimmed["pylon/".len()..]
@@ -7511,6 +7518,69 @@ mod tests {
                 .get("payout_class")
                 .map(String::as_str),
             Some("accepted_work")
+        );
+    }
+
+    #[test]
+    fn queued_accepted_work_payouts_dispatch_when_placeholder_budget_is_zero() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.enabled = true;
+        config.payout_sats_per_window = 0;
+        let now_unix_ms = super::now_unix_ms();
+
+        state.payout_targets_by_identity.insert(
+            "pubkey-homework".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-homework".to_string(),
+                source_session_id: "session-homework".to_string(),
+                spark_address: "spark:homework".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: now_unix_ms.saturating_sub(10),
+                last_verified_at_unix_ms: now_unix_ms.saturating_sub(10),
+            },
+        );
+        state.queue_payout_requests(
+            &config,
+            &[TreasuryQueuedPayoutRequest {
+                payout_key: "accepted_work:closeout-002:contrib-002:pubkey-homework".to_string(),
+                nostr_pubkey_hex: "pubkey-homework".to_string(),
+                amount_sats: 55,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("aggregation_weight".to_string()),
+                    work_class: Some("small_model_local_training".to_string()),
+                    progress_class: Some("model_update".to_string()),
+                    accepted_outcome_id: Some(
+                        "accepted.training_window.window.homework.0001".to_string(),
+                    ),
+                    training_run_id: Some("run.homework".to_string()),
+                    window_id: Some("window.homework.0001".to_string()),
+                    contribution_id: Some("contrib-002".to_string()),
+                    assignment_id: Some("assign-002".to_string()),
+                    share_bps: Some(10_000),
+                    weight_basis: Some("tokens".to_string()),
+                    weight_value: Some(131_072),
+                    weak_device_bearing: false,
+                    progress_bearing: true,
+                },
+                queue_block_reason: None,
+            }],
+            now_unix_ms,
+        );
+
+        let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms.saturating_add(1));
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:homework");
+        assert_eq!(prepared.dispatch_plans[0].amount_sats, 55);
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get("accepted_work:closeout-002:contrib-002:pubkey-homework")
+                .map(|record| record.status.as_str()),
+            Some("dispatching")
         );
     }
 

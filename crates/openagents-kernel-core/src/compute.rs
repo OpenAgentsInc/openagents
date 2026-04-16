@@ -3142,12 +3142,10 @@ pub fn validate_compute_adapter_training_window(
     {
         return Err("compute_accepted_outcome_id_missing".to_string());
     }
-    if window.output_policy_revision.is_some() != window.output_checkpoint_pointer.is_some() {
-        return Err("compute_adapter_window_promotion_checkpoint_missing".to_string());
-    }
     match window.promotion_disposition {
         Some(ComputeAdapterPromotionDisposition::Promoted) => {
-            if window.output_policy_revision.is_none() {
+            if window.output_policy_revision.is_none() || window.output_checkpoint_pointer.is_none()
+            {
                 return Err("compute_adapter_window_promotion_checkpoint_missing".to_string());
             }
             if !window.hold_reason_codes.is_empty() {
@@ -3178,10 +3176,12 @@ pub fn validate_compute_adapter_training_window(
     }
     if let Some(output_checkpoint_pointer) = window.output_checkpoint_pointer.as_ref() {
         validate_compute_adapter_checkpoint_pointer(output_checkpoint_pointer)?;
+    }
+    if let Some(promoted_checkpoint_ref) = window.promoted_checkpoint_ref.as_deref() {
         if window
-            .promoted_checkpoint_ref
-            .as_deref()
-            .is_none_or(|value| value != output_checkpoint_pointer.checkpoint_ref)
+            .output_checkpoint_pointer
+            .as_ref()
+            .is_some_and(|pointer| pointer.checkpoint_ref != promoted_checkpoint_ref)
         {
             return Err("compute_adapter_promoted_checkpoint_ref_missing".to_string());
         }
@@ -5609,6 +5609,82 @@ mod tests {
         };
         validate_compute_adapter_training_window(&window)
             .expect("non-adapter window should validate");
+    }
+
+    #[test]
+    fn training_window_allows_output_checkpoint_pointer_before_promotion() {
+        let source_policy_revision = ComputeAdapterPolicyRevision {
+            policy_family: "policy://training/math/basic".to_string(),
+            revision_id: "policy-rev-42".to_string(),
+            revision_number: Some(42),
+            policy_digest: "sha256:policy-rev-42".to_string(),
+            parent_revision_id: Some("policy-rev-41".to_string()),
+            produced_at_ms: 1_762_000_700_000,
+        };
+        let source_checkpoint_pointer = ComputeAdapterCheckpointPointer {
+            scope_kind: "training_run".to_string(),
+            scope_id: "train.math.basic.alpha".to_string(),
+            checkpoint_family: "decoder".to_string(),
+            checkpoint_ref: "checkpoint://decoder/base".to_string(),
+            manifest_digest: "sha256:checkpoint-base".to_string(),
+            updated_at_ms: 1_762_000_700_100,
+            pointer_digest: "sha256:pointer-base".to_string(),
+        };
+        let output_checkpoint_pointer = ComputeAdapterCheckpointPointer {
+            scope_kind: "window".to_string(),
+            scope_id: "window.alpha.0042".to_string(),
+            checkpoint_family: "decoder".to_string(),
+            checkpoint_ref: "checkpoint://decoder/train.math.basic.alpha/window.0042".to_string(),
+            manifest_digest: "sha256:checkpoint-manifest".to_string(),
+            updated_at_ms: 1_762_000_700_200,
+            pointer_digest: "sha256:pointer-window".to_string(),
+        };
+        let window = ComputeAdapterTrainingWindow {
+            window_id: "window.alpha.0042".to_string(),
+            training_run_id: "train.math.basic.alpha".to_string(),
+            stage_id: "dense.pretrain".to_string(),
+            contributor_set_revision_id: "contributors.rev42".to_string(),
+            validator_policy_ref: "policy://validator/training".to_string(),
+            work_class: ComputeTrainingWorkClass::FullIslandLocalUpdateTraining,
+            replica_type: ComputeTrainingReplicaType::Island,
+            round_index: Some(42),
+            base_checkpoint_ref: source_checkpoint_pointer.checkpoint_ref.clone(),
+            planned_local_step_count: Some(500),
+            aggregation_rule: Some("weighted_avg".to_string()),
+            aggregation_weight_basis: Some("tokens".to_string()),
+            adapter_target_id: String::new(),
+            adapter_family: String::new(),
+            base_model_ref: "model://gpt-oss-20b".to_string(),
+            adapter_format: String::new(),
+            source_policy_revision,
+            source_checkpoint_pointer,
+            status: ComputeAdapterWindowStatus::Active,
+            total_contributions: 0,
+            admitted_contributions: 0,
+            accepted_contributions: 0,
+            quarantined_contributions: 0,
+            rejected_contributions: 0,
+            replay_required_contributions: 0,
+            replay_checked_contributions: 0,
+            held_out_average_score_bps: None,
+            benchmark_pass_rate_bps: None,
+            runtime_smoke_passed: None,
+            promotion_ready: false,
+            gate_reason_codes: Vec::new(),
+            window_summary_digest: "sha256:window-summary".to_string(),
+            promotion_disposition: None,
+            hold_reason_codes: Vec::new(),
+            aggregated_delta_digest: None,
+            accepted_aggregate_id: None,
+            output_policy_revision: None,
+            output_checkpoint_pointer: Some(output_checkpoint_pointer),
+            promoted_checkpoint_ref: None,
+            accepted_outcome_id: None,
+            recorded_at_ms: 1_762_000_700_200,
+            metadata: json!({"network_id": "trainnet.alpha"}),
+        };
+        validate_compute_adapter_training_window(&window)
+            .expect("window checkpoint publication should not require promotion metadata");
     }
 
     #[test]
