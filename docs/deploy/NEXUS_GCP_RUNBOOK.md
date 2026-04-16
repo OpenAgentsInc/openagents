@@ -205,8 +205,44 @@ The frozen operator contract for that path lives in:
 
 - `docs/deploy/NEXUS_HOTFIX_LANE.md`
 
-Until the binary lane is implemented and proven, the image-first flow in this
-runbook remains the active fallback operator path.
+The builder host and builder-side binary artifact production for that path now
+land through:
+
+- `scripts/deploy/nexus/11-provision-warm-builder.sh`
+- `scripts/deploy/nexus/12-build-nexus-binary.sh`
+
+Detailed builder guidance lives in:
+
+- `docs/deploy/NEXUS_WARM_BUILDER.md`
+
+Until the release upload, activation, rollback, and verification scripts are
+implemented and proven, the image-first flow in this runbook remains the active
+fallback operator path for the live VM.
+
+## 3.6) Warm builder bootstrap and binary artifact production
+
+Bring up or refresh the dedicated warm builder:
+
+```bash
+scripts/deploy/nexus/11-provision-warm-builder.sh
+```
+
+Build a versioned Linux `nexus-relay` binary on that builder:
+
+```bash
+scripts/deploy/nexus/12-build-nexus-binary.sh
+```
+
+Force a cold-cache timing run:
+
+```bash
+NEXUS_BUILDER_CLEAR_CACHES=true scripts/deploy/nexus/12-build-nexus-binary.sh
+```
+
+The builder path intentionally stops at artifact production for now. It gives
+operators a reusable binary artifact and retained timing receipt without
+requiring Cloud Build, but it does not yet switch the live VM. That activation
+work is the next step in the binary-first lane.
 
 ## 4) Runtime model
 
