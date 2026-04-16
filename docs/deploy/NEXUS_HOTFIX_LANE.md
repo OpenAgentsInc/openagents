@@ -121,6 +121,13 @@ The minimum contract is:
 
 The binary lane is not accepted if it weakens verification.
 
+For bounded internal proof lanes that do not front the public hostname, the
+public gates may be skipped only when:
+
+- `VERIFY_PUBLIC_CHECKS_ENABLED=false` is set explicitly
+- the deploy receipt records those public gates as skipped
+- the local proof still pins `VERIFY_EXPECTED_RELEASE_GIT_SHA`
+
 ## Script Responsibilities
 
 The implementation may choose exact filenames, but the responsibilities are
@@ -155,7 +162,8 @@ From this point forward:
 
 - operators and future agents should treat the binary-first lane as the target
   primary path
-- Cloud Build plus image-first deploys should be treated as fallback until the
-  binary lane is fully implemented and proven
+- Cloud Build plus image-first deploys should be treated as fallback
+- the first retained proof bundle for the implemented binary lane is
+  `docs/reports/nexus/2026-04-16-binary-hotfix-lane-proof.md`
 - implementation work should not reopen the image-first versus binary-first
   question without new contradictory evidence

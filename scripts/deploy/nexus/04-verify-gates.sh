@@ -30,6 +30,9 @@ VERIFY_TREASURY_SNAPSHOT_MAX_AGE_MS="${VERIFY_TREASURY_SNAPSHOT_MAX_AGE_MS:-1500
 VERIFY_TREASURY_WALLET_SYNC_MAX_LAG_MS="${VERIFY_TREASURY_WALLET_SYNC_MAX_LAG_MS:-15000}"
 VERIFY_PUBLIC_STATS_LATENCY_MAX_MS="${VERIFY_PUBLIC_STATS_LATENCY_MAX_MS:-2000}"
 VERIFY_PUBLIC_PROVIDER_PRESENCE_LATENCY_MAX_MS="${VERIFY_PUBLIC_PROVIDER_PRESENCE_LATENCY_MAX_MS:-2000}"
+VERIFY_PUBLIC_CHECKS_ENABLED="${VERIFY_PUBLIC_CHECKS_ENABLED:-true}"
+VERIFY_EXPECTED_RELEASE_GIT_SHA="${VERIFY_EXPECTED_RELEASE_GIT_SHA:-}"
+VERIFY_STARTED_UNIX_MS="$(timestamp_unix_ms)"
 
 mkdir -p "$REPORT_DIR"
 
@@ -66,6 +69,51 @@ print(json.dumps({
     "body": json.loads(body),
     "latency_ms": int((time.time() - started) * 1000),
 }))
+PY
+EOF
+)"
+}
+
+fetch_active_service_info() {
+  ssh_vm "$(cat <<EOF
+python3 - <<'PY'
+import json
+from pathlib import Path
+import subprocess
+
+unit_path = Path("${NEXUS_SYSTEMD_UNIT_PATH}")
+current_link = Path("${NEXUS_CURRENT_LINK}")
+payload = {
+    "deploy_mode": "unknown",
+    "image": None,
+    "release_path": None,
+    "release_metadata": None,
+}
+
+try:
+    unit_text = subprocess.check_output(
+        ["sudo", "systemctl", "cat", "nexus-relay.service"],
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+except subprocess.CalledProcessError:
+    unit_text = unit_path.read_text() if unit_path.exists() else ""
+
+for raw_line in unit_text.splitlines():
+    line = raw_line.strip()
+    if line.startswith("ExecStart=/usr/bin/docker run "):
+        payload["deploy_mode"] = "image"
+        payload["image"] = line.split()[-1]
+    elif line.startswith(f"ExecStart={current_link}/nexus-relay"):
+        payload["deploy_mode"] = "binary"
+
+if current_link.is_symlink():
+    payload["release_path"] = str(current_link.resolve())
+    metadata_path = current_link / "build-metadata.json"
+    if metadata_path.exists():
+        payload["release_metadata"] = json.loads(metadata_path.read_text())
+
+print(json.dumps(payload))
 PY
 EOF
 )"
@@ -290,12 +338,17 @@ PROVIDER_PRESENCE_SERIES_RESULT="$(fetch_json_probe_series \
   "POST" \
   "$PROVIDER_PRESENCE_DRY_RUN_REQUEST"
 )"
-PUBLIC_STATS_RESULT="$(fetch_public_json_probe "${NEXUS_PUBLIC_URL%/}/api/stats")"
-PUBLIC_PROVIDER_PRESENCE_RESULT="$(fetch_public_json_probe \
-  "${NEXUS_PUBLIC_URL%/}/api/provider-presence/heartbeat?dry_run=true" \
-  "POST" \
-  "$PROVIDER_PRESENCE_DRY_RUN_REQUEST"
-)"
+if [[ "$VERIFY_PUBLIC_CHECKS_ENABLED" == "true" ]]; then
+  PUBLIC_STATS_RESULT="$(fetch_public_json_probe "${NEXUS_PUBLIC_URL%/}/api/stats")"
+  PUBLIC_PROVIDER_PRESENCE_RESULT="$(fetch_public_json_probe \
+    "${NEXUS_PUBLIC_URL%/}/api/provider-presence/heartbeat?dry_run=true" \
+    "POST" \
+    "$PROVIDER_PRESENCE_DRY_RUN_REQUEST"
+  )"
+else
+  PUBLIC_STATS_RESULT='{"body":null,"latency_ms":0}'
+  PUBLIC_PROVIDER_PRESENCE_RESULT='{"body":null,"latency_ms":0}'
+fi
 
 if [[ "${NEXUS_CONTROL_TREASURY_ENABLED}" == "true" ]]; then
   TREASURY_RESULT="$(fetch_json_probe "http://127.0.0.1:8080/v1/treasury/status")"
@@ -307,14 +360,26 @@ fi
 
 SERVICE_STATUS_RAW="$(ssh_vm "systemctl is-active nexus-relay")"
 DATA_DIR_STATUS_RAW="$(ssh_vm "mount | grep '${NEXUS_DATA_DIR}' || true")"
+ACTIVE_SERVICE_INFO="$(fetch_active_service_info)"
+
+if [[ "$VERIFY_PUBLIC_CHECKS_ENABLED" == "true" ]]; then
+  VERIFY_PUBLIC_CHECKS_ENABLED_JSON="true"
+else
+  VERIFY_PUBLIC_CHECKS_ENABLED_JSON="false"
+fi
+VERIFY_EXPECTED_RELEASE_GIT_SHA_JSON="null"
+if [[ -n "$VERIFY_EXPECTED_RELEASE_GIT_SHA" ]]; then
+  VERIFY_EXPECTED_RELEASE_GIT_SHA_JSON="$(jq -Rn --arg value "$VERIFY_EXPECTED_RELEASE_GIT_SHA" '$value')"
+fi
+VERIFY_FINISHED_UNIX_MS="$(timestamp_unix_ms)"
 
 jq -n \
   --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg vm "$NEXUS_VM" \
   --arg instance_status "$INSTANCE_STATUS" \
   --arg service_status "${SERVICE_STATUS_RAW//$'\n'/}" \
-  --arg image "$DEPLOY_IMAGE" \
   --arg data_mount "$DATA_DIR_STATUS_RAW" \
+  --argjson active_service_info "$ACTIVE_SERVICE_INFO" \
   --argjson health_result "$HEALTH_RESULT" \
   --argjson stats_result "$STATS_RESULT" \
   --argjson training_rollout_result "$TRAINING_ROLLOUT_RESULT" \
@@ -340,6 +405,10 @@ jq -n \
   --argjson verify_treasury_wallet_sync_max_lag_ms "$VERIFY_TREASURY_WALLET_SYNC_MAX_LAG_MS" \
   --argjson verify_public_stats_latency_max_ms "$VERIFY_PUBLIC_STATS_LATENCY_MAX_MS" \
   --argjson verify_public_provider_presence_latency_max_ms "$VERIFY_PUBLIC_PROVIDER_PRESENCE_LATENCY_MAX_MS" \
+  --argjson verify_public_checks_enabled "$VERIFY_PUBLIC_CHECKS_ENABLED_JSON" \
+  --argjson verify_expected_release_git_sha "$VERIFY_EXPECTED_RELEASE_GIT_SHA_JSON" \
+  --argjson verify_started_unix_ms "$VERIFY_STARTED_UNIX_MS" \
+  --argjson verify_finished_unix_ms "$VERIFY_FINISHED_UNIX_MS" \
   '
   def gate($id; $passed; $reason; $observed):
     {
@@ -424,6 +493,50 @@ jq -n \
         ($service_status == "active");
         (if $service_status == "active" then null else "systemd_service_inactive" end);
         {service_status: $service_status}
+      ),
+      gate(
+        "binary_release_metadata";
+        (
+          if $active_service_info.deploy_mode == "binary"
+          then ($active_service_info.release_metadata != null)
+          else true
+          end
+        );
+        (
+          if $active_service_info.deploy_mode == "binary" and $active_service_info.release_metadata == null
+          then "missing_release_metadata"
+          else null
+          end
+        );
+        {
+          deploy_mode: $active_service_info.deploy_mode,
+          release_path: ($active_service_info.release_path // null),
+          git_sha: ($active_service_info.release_metadata.git_sha // null)
+        }
+      ),
+      gate(
+        "expected_release_git_sha";
+        (
+          if $verify_expected_release_git_sha == null then true
+          elif $active_service_info.deploy_mode == "binary"
+          then (($active_service_info.release_metadata.git_sha // null) == $verify_expected_release_git_sha)
+          else (($active_service_info.image // "") | contains($verify_expected_release_git_sha[0:12]))
+          end
+        );
+        (
+          if $verify_expected_release_git_sha == null then null
+          elif $active_service_info.deploy_mode == "binary" and (($active_service_info.release_metadata.git_sha // null) != $verify_expected_release_git_sha)
+          then "binary_release_git_sha_mismatch"
+          elif $active_service_info.deploy_mode != "binary" and ((($active_service_info.image // "") | contains($verify_expected_release_git_sha[0:12])) | not)
+          then "image_tag_git_sha_mismatch"
+          else null
+          end
+        );
+        {
+          expected_git_sha: $verify_expected_release_git_sha,
+          observed_git_sha: ($active_service_info.release_metadata.git_sha // null),
+          observed_image: ($active_service_info.image // null)
+        }
       ),
       gate(
         "health_endpoint";
@@ -518,38 +631,47 @@ jq -n \
           max_p95_latency_ms: $verify_provider_presence_latency_p95_max_ms,
           max_p99_latency_ms: $verify_provider_presence_latency_p99_max_ms
         }
-      ),
-      gate(
-        "public_stats_endpoint";
-        ($public_stats_result.latency_ms <= $verify_public_stats_latency_max_ms);
-        (
-          if $public_stats_result.latency_ms > $verify_public_stats_latency_max_ms
-          then "public_stats_latency_exceeded"
-          else null
-          end
-        );
-        {
-          latency_ms: $public_stats_result.latency_ms,
-          max_latency_ms: $verify_public_stats_latency_max_ms
-        }
-      ),
-      gate(
-        "public_provider_presence_heartbeat";
-        (
-          (($public_provider_presence_result.body.status // "") == "online") and
-          ($public_provider_presence_result.latency_ms <= $verify_public_provider_presence_latency_max_ms)
-        );
-        (
-          if (($public_provider_presence_result.body.status // "") != "online") then "public_provider_presence_heartbeat_failed"
-          elif $public_provider_presence_result.latency_ms > $verify_public_provider_presence_latency_max_ms then "public_provider_presence_latency_exceeded"
-          else null end
-        );
-        {
-          latency_ms: $public_provider_presence_result.latency_ms,
-          max_latency_ms: $verify_public_provider_presence_latency_max_ms
-        }
       )
     ]
+    +
+    (
+      if $verify_public_checks_enabled then [
+        gate(
+          "public_stats_endpoint";
+          ($public_stats_result.latency_ms <= $verify_public_stats_latency_max_ms);
+          (
+            if $public_stats_result.latency_ms > $verify_public_stats_latency_max_ms
+            then "public_stats_latency_exceeded"
+            else null
+            end
+          );
+          {
+            latency_ms: $public_stats_result.latency_ms,
+            max_latency_ms: $verify_public_stats_latency_max_ms
+          }
+        ),
+        gate(
+          "public_provider_presence_heartbeat";
+          (
+            (($public_provider_presence_result.body.status // "") == "online") and
+            ($public_provider_presence_result.latency_ms <= $verify_public_provider_presence_latency_max_ms)
+          );
+          (
+            if (($public_provider_presence_result.body.status // "") != "online") then "public_provider_presence_heartbeat_failed"
+            elif $public_provider_presence_result.latency_ms > $verify_public_provider_presence_latency_max_ms then "public_provider_presence_latency_exceeded"
+            else null end
+          );
+          {
+            latency_ms: $public_provider_presence_result.latency_ms,
+            max_latency_ms: $verify_public_provider_presence_latency_max_ms
+          }
+        )
+      ] else [
+        gate("public_stats_endpoint"; true; null; {skipped: true}),
+        gate("public_provider_presence_heartbeat"; true; null; {skipped: true})
+      ]
+      end
+    )
     +
     (if $treasury_result.body == null then [
       gate("treasury_status"; true; null; {skipped: true})
@@ -609,13 +731,23 @@ jq -n \
     vm: $vm,
     instance_status: $instance_status,
     service_status: $service_status,
-    image: $image,
+    deploy_mode: $active_service_info.deploy_mode,
+    image: ($active_service_info.image // null),
+    release_path: ($active_service_info.release_path // null),
+    release_metadata: ($active_service_info.release_metadata // null),
+    public_checks_enabled: $verify_public_checks_enabled,
+    expected_release_git_sha: $verify_expected_release_git_sha,
     health: $health_result.body,
     stats: $stats_result.body,
     training_rollout: $training_rollout_result.body,
     public_stats: $public_stats_result.body,
     public_provider_presence: $public_provider_presence_result.body,
     treasury: $treasury_result.body,
+    verify_timing: {
+      started_unix_ms: $verify_started_unix_ms,
+      finished_unix_ms: $verify_finished_unix_ms,
+      total_duration_ms: ($verify_finished_unix_ms - $verify_started_unix_ms)
+    },
     endpoint_latency_ms: {
       healthz: $health_result.latency_ms,
       stats: $stats_result.latency_ms,

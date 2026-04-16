@@ -13,9 +13,9 @@ The goal is narrow:
 - produce versioned Linux `nexus-relay` binaries from one warm persistent
   builder host
 
-This document covers builder bootstrap and binary artifact production only.
-Release upload, activation, rollback, and deploy verification live in the
- broader Nexus deploy runbook and later issue work.
+This document covers builder bootstrap and binary artifact production for the
+primary Nexus hotfix lane. Release upload, activation, rollback, and deploy
+verification live in the broader Nexus deploy runbook.
 
 ## Canonical Builder Defaults
 
@@ -111,16 +111,32 @@ The first retained cold versus warm timing baseline is:
 
 - `docs/reports/nexus/2026-04-16-warm-builder-baseline.md`
 
-## Scope Boundary
+The first retained end-to-end binary deploy proof is:
 
-This builder lane intentionally does not modify the live Nexus VM by itself.
+- `docs/reports/nexus/2026-04-16-binary-hotfix-lane-proof.md`
 
-The next steps are:
+## Handoff To The VM Release Lane
 
-1. upload the built release to `/opt/nexus-relay/releases/<git_sha>`
-2. activate `/opt/nexus-relay/current`
-3. restart `systemd`
-4. verify and retain a deploy receipt
+After artifact production, the primary operator path continues with:
 
-Those steps are separate because the point of the builder lane is to decouple
-artifact production from VM activation first.
+1. `scripts/deploy/nexus/13-upload-binary-release.sh`
+2. `scripts/deploy/nexus/14-activate-binary-release.sh`
+3. `scripts/deploy/nexus/04-verify-gates.sh`
+4. `scripts/deploy/nexus/15-rollback-binary-release.sh` if a gate fails
+
+The builder and VM steps are still intentionally separate so operators can
+retain receipts for build, upload, activation, verification, and rollback as
+independent phases.
+
+## Known Limitation
+
+Same-SHA warm repeats are already fast, but cross-SHA warm builds still pay too
+much compile time because the staged source root is keyed by git SHA. The first
+proof run showed:
+
+- same-SHA warm repeat: `30.158 s`
+- next-SHA warm build: `140.291 s`
+
+That is still materially better than the Cloud Build fallback, but it is not
+the end state. The next builder improvement is to keep a stable source path so
+Cargo can reuse more work across revisions.
