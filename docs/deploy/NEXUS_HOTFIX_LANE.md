@@ -150,6 +150,7 @@ The medium-term architecture rule is:
 The retained boundary decision for that rule now lives in:
 
 - `docs/adr/ADR-0004-nexus-relay-core-vs-training-demo-control-boundary.md`
+- `docs/reports/nexus/2026-04-16-relay-build-graph-reduction.md`
 
 This contract does not require the deploy-unit split to land before the binary
 lane.

@@ -116,7 +116,7 @@ use openagents_provider_substrate::{
 };
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
-use psionic_train::{
+use psionic_train_contract::{
     PSION_ACTUAL_PRETRAINING_LANE_ID, PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
     PSION_CS336_A1_DEMO_LANE_ID, PsionicTrainLaneContract,
 };
