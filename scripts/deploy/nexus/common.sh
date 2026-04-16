@@ -36,6 +36,21 @@ export NEXUS_BUILDER_RUST_TOOLCHAIN="${NEXUS_BUILDER_RUST_TOOLCHAIN:-1.88.0}"
 export NEXUS_BUILDER_SCCACHE_VERSION="${NEXUS_BUILDER_SCCACHE_VERSION:-0.8.2}"
 export NEXUS_BUILDER_BUILD_PROFILE="${NEXUS_BUILDER_BUILD_PROFILE:-fast-release}"
 
+export NEXUS_RELEASE_ROOT="${NEXUS_RELEASE_ROOT:-/opt/nexus-relay}"
+export NEXUS_RELEASES_DIR="${NEXUS_RELEASES_DIR:-${NEXUS_RELEASE_ROOT}/releases}"
+export NEXUS_CURRENT_LINK="${NEXUS_CURRENT_LINK:-${NEXUS_RELEASE_ROOT}/current}"
+export NEXUS_PREVIOUS_LINK="${NEXUS_PREVIOUS_LINK:-${NEXUS_RELEASE_ROOT}/previous}"
+export NEXUS_SHARED_DIR="${NEXUS_SHARED_DIR:-${NEXUS_RELEASE_ROOT}/shared}"
+export NEXUS_SERVICE_USER="${NEXUS_SERVICE_USER:-nexus}"
+export NEXUS_SERVICE_GROUP="${NEXUS_SERVICE_GROUP:-${NEXUS_SERVICE_USER}}"
+export NEXUS_SERVICE_UID="${NEXUS_SERVICE_UID:-60000}"
+export NEXUS_RUNTIME_CONFIG_DIR="${NEXUS_RUNTIME_CONFIG_DIR:-/etc/nexus-relay}"
+export NEXUS_RUNTIME_ENV_PATH="${NEXUS_RUNTIME_ENV_PATH:-${NEXUS_RUNTIME_CONFIG_DIR}/nexus-relay.env}"
+export NEXUS_UPSTREAM_CONFIG_PATH="${NEXUS_UPSTREAM_CONFIG_PATH:-${NEXUS_RUNTIME_CONFIG_DIR}/upstream-config.toml}"
+export NEXUS_SYSTEMD_UNIT_PATH="${NEXUS_SYSTEMD_UNIT_PATH:-/etc/systemd/system/nexus-relay.service}"
+export NEXUS_IMAGE_UNIT_BACKUP_PATH="${NEXUS_IMAGE_UNIT_BACKUP_PATH:-${NEXUS_SYSTEMD_UNIT_PATH}.image-backup}"
+export VERIFY_PUBLIC_CHECKS_ENABLED="${VERIFY_PUBLIC_CHECKS_ENABLED:-true}"
+
 export NEXUS_DATA_DISK="${NEXUS_DATA_DISK:-nexus-relay-data-mainnet}"
 export NEXUS_DATA_DISK_DEVICE_NAME="${NEXUS_DATA_DISK_DEVICE_NAME:-nexus-relay-data}"
 export NEXUS_DATA_DISK_SIZE_GB="${NEXUS_DATA_DISK_SIZE_GB:-200}"
@@ -109,6 +124,13 @@ require_cmd() {
   if ! command -v "$cmd" >/dev/null 2>&1; then
     die "Missing required command: ${cmd}"
   fi
+}
+
+timestamp_unix_ms() {
+  python3 - <<'PY'
+import time
+print(int(time.time() * 1000))
+PY
 }
 
 ensure_gcloud_context() {

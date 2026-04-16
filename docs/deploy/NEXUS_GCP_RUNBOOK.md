@@ -39,13 +39,16 @@ The current production hotfix decision is frozen in:
 
 The short version is:
 
-- primary target hotfix path: warm Linux builder plus binary-first deploys
+- primary hotfix path: warm Linux builder plus binary-first deploys
 - fallback path: image-first deploys, including Cloud Build
 
-This runbook still documents the current image-first path because that path
-exists and remains the fallback until the binary lane is fully implemented and
-proven. Future Nexus deploy work should not assume Cloud Build is still the
-default hotfix unblock path.
+The binary lane is now implemented and has one retained bounded proof deploy in:
+
+- `docs/reports/nexus/2026-04-16-binary-hotfix-lane-proof.md`
+
+This runbook still documents the image-first path because it remains the
+fallback and validation lane. Future Nexus deploy work should not assume Cloud
+Build is still the default hotfix unblock path.
 
 ## 2) Baseline assumptions
 
@@ -188,11 +191,9 @@ sheet for those gates and
 `docs/plans/transcript-222-training-incident-taxonomy.md` as the containment
 taxonomy when one of them breaks.
 
-## 3.5) Target binary-first primary flow
+## 3.5) Primary binary-first hotfix flow
 
-The target primary Nexus hotfix path is not the image flow above.
-
-The target primary path is:
+The primary Nexus hotfix path is:
 
 1. build a versioned Linux `nexus-relay` binary on a warm Linux builder
 2. upload that versioned release to the Nexus VM
@@ -205,21 +206,91 @@ The frozen operator contract for that path lives in:
 
 - `docs/deploy/NEXUS_HOTFIX_LANE.md`
 
-The builder host and builder-side binary artifact production for that path now
-land through:
+The canonical scripted operator path is:
 
 - `scripts/deploy/nexus/11-provision-warm-builder.sh`
 - `scripts/deploy/nexus/12-build-nexus-binary.sh`
+- `scripts/deploy/nexus/13-upload-binary-release.sh`
+- `scripts/deploy/nexus/14-activate-binary-release.sh`
+- `scripts/deploy/nexus/04-verify-gates.sh`
+- `scripts/deploy/nexus/15-rollback-binary-release.sh`
 
 Detailed builder guidance lives in:
 
 - `docs/deploy/NEXUS_WARM_BUILDER.md`
 
-Until the release upload, activation, rollback, and verification scripts are
-implemented and proven, the image-first flow in this runbook remains the active
-fallback operator path for the live VM.
+The first retained proof for this path lives in:
 
-## 3.6) Warm builder bootstrap and binary artifact production
+- `docs/reports/nexus/2026-04-16-binary-hotfix-lane-proof.md`
+
+## 3.6) Primary binary deploy commands
+
+Bring up or refresh the dedicated warm builder:
+
+```bash
+scripts/deploy/nexus/11-provision-warm-builder.sh
+```
+
+Build a versioned Linux `nexus-relay` binary on that builder:
+
+```bash
+scripts/deploy/nexus/12-build-nexus-binary.sh
+```
+
+Upload the built release onto the Nexus VM under
+`/opt/nexus-relay/releases/<git_sha>`:
+
+```bash
+scripts/deploy/nexus/13-upload-binary-release.sh
+```
+
+Activate the uploaded release through `/opt/nexus-relay/current`:
+
+```bash
+scripts/deploy/nexus/14-activate-binary-release.sh
+```
+
+Verify the exact activated release:
+
+```bash
+VERIFY_EXPECTED_RELEASE_GIT_SHA="$(git rev-parse HEAD)" \
+scripts/deploy/nexus/04-verify-gates.sh
+```
+
+Roll back to the previous binary release when a gate fails:
+
+```bash
+scripts/deploy/nexus/15-rollback-binary-release.sh
+```
+
+Roll back to a specific retained release explicitly:
+
+```bash
+NEXUS_RELEASE_GIT_SHA=<previous_git_sha> \
+scripts/deploy/nexus/15-rollback-binary-release.sh
+```
+
+For bounded internal proof lanes that do not front the public hostname, disable
+the public checks explicitly and point the provider-presence probe at the
+bounded lane websocket URL:
+
+```bash
+NEXUS_VM=nexus-hotfix-lane-1 \
+NEXUS_PUBLIC_WS_URL=wss://nexus-hotfix-lane.internal/ \
+VERIFY_PUBLIC_CHECKS_ENABLED=false \
+VERIFY_EXPECTED_RELEASE_GIT_SHA=<git_sha> \
+scripts/deploy/nexus/04-verify-gates.sh
+```
+
+The binary lane retains local receipts for:
+
+- warm-builder build timing
+- binary release upload timing
+- binary release activation timing
+- binary rollback timing
+- deploy verification timing and endpoint latencies
+
+## 3.7) Warm builder bootstrap and binary artifact production
 
 Bring up or refresh the dedicated warm builder:
 
@@ -239,14 +310,22 @@ Force a cold-cache timing run:
 NEXUS_BUILDER_CLEAR_CACHES=true scripts/deploy/nexus/12-build-nexus-binary.sh
 ```
 
-The builder path intentionally stops at artifact production for now. It gives
-operators a reusable binary artifact and retained timing receipt without
-requiring Cloud Build, but it does not yet switch the live VM. That activation
-work is the next step in the binary-first lane.
+The warm builder is now the primary binary production path. The first proof
+deploy showed:
+
+- same-SHA warm repeat build: `30.158 s`
+- next-SHA warm build: `140.291 s`
+
+The next builder improvement is to keep a stable source path so cross-SHA warm
+builds reuse more cached work.
 
 ## 4) Runtime model
 
-The deployed service is the `nexus-relay` container built from `apps/nexus-relay/Dockerfile`.
+The deployed service is always `nexus-relay`, but the deploy unit can now be
+activated in two ways:
+
+- primary hotfix path: `/opt/nexus-relay/current/nexus-relay`
+- fallback path: the `apps/nexus-relay/Dockerfile` container image
 
 It runs:
 

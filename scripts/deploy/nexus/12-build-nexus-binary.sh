@@ -31,12 +31,16 @@ LOCAL_RECEIPT_PATH="${REPORT_DIR}/${STAMP}-warm-builder-build-${GIT_SHORT_SHA}.j
 
 TMP_CONTEXT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/openagents-nexus-build-context.XXXXXX")"
 TMP_CONTEXT_TARBALL="$(mktemp "${TMPDIR:-/tmp}/openagents-nexus-build-context.XXXXXX.tar.gz")"
-TMP_REMOTE_BUILD_HELPER="$(mktemp "${TMPDIR:-/tmp}/remote-build-nexus-binary.XXXXXX.sh")"
+TMP_REMOTE_BUILD_HELPER="$(mktemp "${TMPDIR:-/tmp}/remote-build-nexus-binary.XXXXXX")"
 trap 'rm -rf "$TMP_CONTEXT_DIR" "$TMP_CONTEXT_TARBALL" "$TMP_REMOTE_BUILD_HELPER"' EXIT
 
 bash "$BUILD_CONTEXT_SCRIPT" "$TMP_CONTEXT_DIR" >/dev/null
 cp "$REMOTE_BUILD_HELPER" "$TMP_REMOTE_BUILD_HELPER"
 chmod 755 "$TMP_REMOTE_BUILD_HELPER"
+
+if command -v xattr >/dev/null 2>&1; then
+  xattr -rc "$TMP_CONTEXT_DIR" 2>/dev/null || true
+fi
 
 TAR_ARGS=(-C "$TMP_CONTEXT_DIR" -czf "$TMP_CONTEXT_TARBALL")
 if tar --help 2>/dev/null | grep -q -- '--no-mac-metadata'; then
