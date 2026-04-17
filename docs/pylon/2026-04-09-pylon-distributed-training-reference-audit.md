@@ -119,7 +119,11 @@ The missing part is that current `Pylon` runtime detection still reports:
 
 - `adapter_training_contributor: ProviderAdapterTrainingContributorAvailability::default()`
 
-and inventory controls still default the training contributor lane off.
+At the time of this 2026-04-09 audit, inventory controls still defaulted the
+training contributor lane off. Fresh `Pylon` defaults were corrected in the
+issue-4368 hardening path on 2026-04-16, but the broader conclusion here was
+still accurate: capability detection and the live operator path were not yet
+finished.
 
 So today the training contributor product is mostly a declared capability
 surface, not a live distributed training operator.

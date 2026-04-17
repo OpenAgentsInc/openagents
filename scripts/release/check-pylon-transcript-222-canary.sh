@@ -102,7 +102,8 @@ Transcript 222 can claim a small-cohort canary:
 - weak-device validator replay emits the accepted weak-device proof bundle
 - `Pylon` automatically claims, acknowledges, materializes, and launches one
   retained assignment
-- `Pylon` automatically uploads terminal receipts and checkpoint publication
+- `Pylon` automatically turns retained worker output into seal, validator
+  finalize, reconcile, and payout observation
 - `Nexus` closes one weak-device accepted-work payout and one strong-lane
   accepted-work payout
 - `/api/stats`, `/api/training/summary`, and `/api/homepage` project the same
@@ -112,13 +113,13 @@ Transcript 222 can claim a small-cohort canary:
 
 | Gate | Covered by |
 | --- | --- |
-| Strong-node accepted lane | `psionic_actual_lane`, `pylon_assignment_intake`, `pylon_runtime_launch`, `pylon_terminal_sync`, `nexus_strong_lane_payout` |
+| Strong-node accepted lane | `psionic_actual_lane`, `pylon_assignment_intake`, `pylon_runtime_launch`, `pylon_autonomous_closeout`, `nexus_strong_lane_payout` |
 | Weak-device accepted lane | `psionic_weak_device_proof`, `nexus_weak_lane_payout` |
 | Zero-touch assignment intake | `pylon_assignment_intake` |
 | Zero-touch artifact fetch and runtime launch | `pylon_assignment_intake`, `pylon_runtime_launch` |
-| Automatic runtime receipt upload | `pylon_terminal_sync` |
+| Automatic post-worker closeout | `pylon_autonomous_closeout` |
 | Public stats truth | `nexus_public_stats_projection`, `nexus_homepage_projection` |
-| Payout-linked accepted closeout | `nexus_weak_lane_payout`, `nexus_strong_lane_payout` |
+| Payout-linked accepted closeout | `pylon_autonomous_closeout`, `nexus_weak_lane_payout`, `nexus_strong_lane_payout` |
 
 EOF
 
@@ -193,9 +194,9 @@ run_step \
   "cargo test -p pylon --manifest-path '$ROOT_DIR/Cargo.toml' --lib auto_launch_starts_supervisor_from_retained_assignment_and_preserves_packets -- --nocapture"
 
 run_step \
-  "pylon_terminal_sync" \
-  "Pylon terminal sync uploads retained artifacts and reports success to Nexus without duplicate publication" \
-  "cargo test -p pylon --manifest-path '$ROOT_DIR/Cargo.toml' --lib training_terminal_sync_uploads_artifacts_and_reports_success_to_nexus -- --nocapture"
+  "pylon_autonomous_closeout" \
+  "Pylon uses retained worker and validator state to seal, finalize, reconcile, and observe payout without manual closeout calls" \
+  "cargo test -p pylon --manifest-path '$ROOT_DIR/Cargo.toml' --lib pylon_autonomously_closes_homework_assignment_from_worker_completion_to_paid_receipt -- --nocapture"
 
 run_step \
   "nexus_public_stats_projection" \
