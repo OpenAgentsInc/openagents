@@ -32935,6 +32935,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fresh_training_node_admission_counts_as_online_before_first_heartbeat() -> Result<()> {
+        let app = build_router(test_config()?);
+
+        let admitted_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_node_admission_request(
+                            "node-fresh",
+                            "sha256:build-fresh",
+                            vec!["trainnet.alpha"],
+                            Vec::new(),
+                            Some(256),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(admitted_response.status(), StatusCode::OK);
+        let admitted =
+            response_json::<RecordTrainingNodeAdmissionResponse>(admitted_response).await?;
+        assert!(admitted.admitted);
+
+        let node_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-fresh")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(node_response.status(), StatusCode::OK);
+        let node = response_json::<AdmittedTrainingNodeView>(node_response).await?;
+        assert!(node.online);
+        assert!(node.last_heartbeat_at_ms.is_none());
+        assert_eq!(node.updated_at_ms, node.admitted_at_ms);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn training_node_admission_rejects_missing_build_digest() -> Result<()> {
         let app = build_router(test_config()?);
         let mut request = training_node_admission_request(

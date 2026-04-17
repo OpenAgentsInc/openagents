@@ -14630,10 +14630,12 @@ fn training_node_available_disk_gb(node: &AdmittedTrainingNode) -> Option<u64> {
 }
 
 fn training_node_is_online(node: &AdmittedTrainingNode, now_unix_ms: i64) -> bool {
-    let Some(last_heartbeat_at_ms) = node.last_heartbeat_at_ms else {
-        return false;
-    };
-    if now_unix_ms.saturating_sub(last_heartbeat_at_ms) > TRAINING_NODE_HEARTBEAT_STALE_AFTER_MS {
+    let liveness_at_ms = node
+        .last_heartbeat_at_ms
+        .map_or(node.updated_at_ms, |heartbeat_at_ms| {
+            heartbeat_at_ms.max(node.updated_at_ms)
+        });
+    if now_unix_ms.saturating_sub(liveness_at_ms) > TRAINING_NODE_HEARTBEAT_STALE_AFTER_MS {
         return false;
     }
     !matches!(
