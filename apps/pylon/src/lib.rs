@@ -8113,14 +8113,19 @@ fn load_or_create_training_runtime_state(
     let artifact_path = training_artifact_cache_state_path(config);
     let authority_sync_path = training_authority_sync_cache_state_path(config);
     if path.exists() {
-        let state = load_training_runtime_state(path.as_path())?;
-        if !execution_path.exists() || !artifact_path.exists() || !authority_sync_path.exists() {
+        let mut state = load_training_runtime_state_raw(path.as_path())?;
+        let normalized = normalize_training_runtime_state(&mut state);
+        if normalized
+            || !execution_path.exists()
+            || !artifact_path.exists()
+            || !authority_sync_path.exists()
+        {
             save_training_runtime_state(config, &state)?;
         }
         return Ok(state);
     }
     if execution_path.exists() || artifact_path.exists() || authority_sync_path.exists() {
-        let state = training_runtime_state_from_layers(
+        let mut state = training_runtime_state_from_layers(
             load_training_retained_state_file(
                 execution_path.as_path(),
                 "training execution state",
@@ -8131,6 +8136,7 @@ fn load_or_create_training_runtime_state(
                 "training authority sync state",
             )?,
         );
+        normalize_training_runtime_state(&mut state);
         save_training_runtime_state(config, &state)?;
         return Ok(state);
     }
@@ -8140,7 +8146,85 @@ fn load_or_create_training_runtime_state(
 }
 
 fn load_training_runtime_state(path: &Path) -> Result<PylonTrainingRuntimeState> {
+    let mut state = load_training_runtime_state_raw(path)?;
+    normalize_training_runtime_state(&mut state);
+    Ok(state)
+}
+
+fn load_training_runtime_state_raw(path: &Path) -> Result<PylonTrainingRuntimeState> {
     load_training_retained_state_file(path, "training runtime state")
+}
+
+fn normalize_training_runtime_state(state: &mut PylonTrainingRuntimeState) -> bool {
+    normalize_training_closeout_progress_from_journal(state)
+}
+
+fn normalize_training_closeout_progress_from_journal(
+    state: &mut PylonTrainingRuntimeState,
+) -> bool {
+    let mut projected = BTreeMap::new();
+    let mut journal_entries = state.closeout_journal.iter().collect::<Vec<_>>();
+    journal_entries.sort_by(|left, right| {
+        left.sequence
+            .cmp(&right.sequence)
+            .then_with(|| left.observed_at_ms.cmp(&right.observed_at_ms))
+    });
+    for entry in journal_entries {
+        let key = training_closeout_progress_key(
+            entry.assignment_id.as_str(),
+            entry.challenge_id.as_deref(),
+        );
+        let projected_entry = training_closeout_progress_from_journal_entry(entry);
+        projected
+            .entry(key)
+            .and_modify(|current: &mut PylonTrainingCloseoutProgressEntry| {
+                if projected_entry.stage.ordinal() > current.stage.ordinal()
+                    || projected_entry.stage == current.stage
+                {
+                    *current = projected_entry.clone();
+                }
+            })
+            .or_insert(projected_entry);
+    }
+
+    let mut changed = false;
+    for (key, projected_entry) in projected {
+        let should_replace = state
+            .closeout_progress
+            .get(key.as_str())
+            .map(|existing| {
+                projected_entry.stage.ordinal() > existing.stage.ordinal()
+                    || (projected_entry.stage == existing.stage && projected_entry != *existing)
+            })
+            .unwrap_or(true);
+        if should_replace {
+            state.closeout_progress.insert(key, projected_entry);
+            changed = true;
+        }
+    }
+    changed
+}
+
+fn training_closeout_progress_from_journal_entry(
+    entry: &PylonTrainingCloseoutJournalEntry,
+) -> PylonTrainingCloseoutProgressEntry {
+    PylonTrainingCloseoutProgressEntry {
+        assignment_id: entry.assignment_id.clone(),
+        training_run_id: entry.training_run_id.clone(),
+        window_id: entry.window_id.clone(),
+        role: entry.role,
+        stage: entry.stage,
+        challenge_id: entry.challenge_id.clone(),
+        contribution_id: entry.contribution_id.clone(),
+        checkpoint_ref: entry.checkpoint_ref.clone(),
+        authority_assignment_state: entry.authority_assignment_state.clone(),
+        authority_window_state: entry.authority_window_state.clone(),
+        acceptance_state: entry.acceptance_state.clone(),
+        payout_state: entry.payout_state.clone(),
+        payout_receipt_id: entry.payout_receipt_id.clone(),
+        last_error: entry.blocking_reason.clone(),
+        updated_at_ms: entry.observed_at_ms,
+    }
 }
 
 fn load_training_retained_state_file<T>(path: &Path, label: &str) -> Result<T>
@@ -25577,6 +25661,16 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 blocking_reason: Some("waiting_for_validator_claim".to_string()),
                 observed_at_ms: 1_762_491_200_060,
             });
+        let projected_closeout_progress = super::training_closeout_progress_from_journal_entry(
+            state
+                .closeout_journal
+                .last()
+                .expect("closeout journal entry"),
+        );
+        state.closeout_progress.insert(
+            "assign.node01.window0001::challenge.alpha".to_string(),
+            projected_closeout_progress,
+        );
 
         save_training_runtime_state(&config, &state)?;
 
@@ -25591,6 +25685,188 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             runtime_state_path.exists(),
             "reloading from layer files should backfill the combined runtime-state.json compatibility blob",
+        )
+    }
+
+    #[test]
+    fn training_runtime_state_load_repairs_closeout_progress_from_journal_when_journal_is_ahead()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.closeout_progress.insert(
+            "assign.alpha".to_string(),
+            super::PylonTrainingCloseoutProgressEntry {
+                assignment_id: "assign.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                stage: super::PylonTrainingCloseoutStage::CheckpointPublished,
+                challenge_id: None,
+                contribution_id: None,
+                checkpoint_ref: Some("checkpoint://run.alpha/0042".to_string()),
+                authority_assignment_state: None,
+                authority_window_state: None,
+                acceptance_state: None,
+                payout_state: None,
+                payout_receipt_id: None,
+                last_error: None,
+                updated_at_ms: 1_762_500_000_000,
+            },
+        );
+        state
+            .closeout_journal
+            .push(super::PylonTrainingCloseoutJournalEntry {
+                sequence: 1,
+                assignment_id: "assign.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                stage: super::PylonTrainingCloseoutStage::WindowSealed,
+                challenge_id: None,
+                contribution_id: Some("contrib.alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0042".to_string()),
+                authority_assignment_state: Some("sealed".to_string()),
+                authority_window_state: Some("sealed".to_string()),
+                acceptance_state: Some("pending".to_string()),
+                payout_state: Some("pending".to_string()),
+                payout_receipt_id: None,
+                transition_reason: "stage_transition".to_string(),
+                blocking_reason: Some("waiting_for_validator_claim".to_string()),
+                observed_at_ms: 1_762_500_000_100,
+            });
+        save_training_runtime_state(&config, &state)?;
+
+        let repaired_state = load_or_create_training_runtime_state(&config)?;
+        let repaired = repaired_state
+            .closeout_progress
+            .get("assign.alpha")
+            .expect("repaired closeout progress entry");
+        ensure(
+            repaired.stage == super::PylonTrainingCloseoutStage::WindowSealed
+                && repaired.contribution_id.as_deref() == Some("contrib.alpha")
+                && repaired.last_error.as_deref() == Some("waiting_for_validator_claim"),
+            "loading retained state should repair closeout progress from the journal when the journal is ahead",
+        )?;
+
+        let authority_sync_state = super::load_training_retained_state_file::<
+            super::PylonTrainingAuthoritySyncCacheState,
+        >(
+            super::training_authority_sync_cache_state_path(&config).as_path(),
+            "training authority sync state",
+        )?;
+        ensure(
+            authority_sync_state
+                .closeout_progress
+                .get("assign.alpha")
+                .is_some_and(|entry| {
+                    entry.stage == super::PylonTrainingCloseoutStage::WindowSealed
+                }),
+            "load-time repair should persist the repaired closeout progress back to retained state",
+        )
+    }
+
+    #[test]
+    fn training_runtime_state_load_backfills_missing_closeout_progress_from_journal()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state
+            .closeout_journal
+            .push(super::PylonTrainingCloseoutJournalEntry {
+                sequence: 1,
+                assignment_id: "assign.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                role: PylonTrainingRoleClaim::Validator,
+                stage: super::PylonTrainingCloseoutStage::ValidatorClaimed,
+                challenge_id: Some("challenge.alpha".to_string()),
+                contribution_id: Some("contrib.alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0042".to_string()),
+                authority_assignment_state: Some("accepted".to_string()),
+                authority_window_state: Some("sealed".to_string()),
+                acceptance_state: Some("pending".to_string()),
+                payout_state: Some("pending".to_string()),
+                payout_receipt_id: None,
+                transition_reason: "stage_transition".to_string(),
+                blocking_reason: None,
+                observed_at_ms: 1_762_500_000_100,
+            });
+        save_training_runtime_state(&config, &state)?;
+
+        let repaired_state = load_or_create_training_runtime_state(&config)?;
+        let repaired = repaired_state
+            .closeout_progress
+            .get("assign.alpha::challenge.alpha")
+            .expect("backfilled validator closeout progress entry");
+        ensure(
+            repaired.role == PylonTrainingRoleClaim::Validator
+                && repaired.stage == super::PylonTrainingCloseoutStage::ValidatorClaimed
+                && repaired.challenge_id.as_deref() == Some("challenge.alpha"),
+            "loading retained state should backfill missing closeout progress entries from the closeout journal",
+        )
+    }
+
+    #[test]
+    fn training_runtime_state_load_does_not_regress_newer_closeout_progress_when_journal_lags()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.closeout_progress.insert(
+            "assign.alpha".to_string(),
+            super::PylonTrainingCloseoutProgressEntry {
+                assignment_id: "assign.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                stage: super::PylonTrainingCloseoutStage::Accepted,
+                challenge_id: None,
+                contribution_id: Some("contrib.alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0042".to_string()),
+                authority_assignment_state: Some("accepted".to_string()),
+                authority_window_state: Some("reconciled".to_string()),
+                acceptance_state: Some("accepted".to_string()),
+                payout_state: Some("pending".to_string()),
+                payout_receipt_id: None,
+                last_error: None,
+                updated_at_ms: 1_762_500_000_200,
+            },
+        );
+        state
+            .closeout_journal
+            .push(super::PylonTrainingCloseoutJournalEntry {
+                sequence: 1,
+                assignment_id: "assign.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                stage: super::PylonTrainingCloseoutStage::CheckpointPublished,
+                challenge_id: None,
+                contribution_id: Some("contrib.alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0042".to_string()),
+                authority_assignment_state: Some("accepted".to_string()),
+                authority_window_state: Some("sealed".to_string()),
+                acceptance_state: Some("pending".to_string()),
+                payout_state: Some("pending".to_string()),
+                payout_receipt_id: None,
+                transition_reason: "stage_transition".to_string(),
+                blocking_reason: None,
+                observed_at_ms: 1_762_500_000_100,
+            });
+        save_training_runtime_state(&config, &state)?;
+
+        let repaired_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            repaired_state
+                .closeout_progress
+                .get("assign.alpha")
+                .is_some_and(|entry| entry.stage == super::PylonTrainingCloseoutStage::Accepted),
+            "load-time repair should not regress newer closeout progress when retained journal history is older",
         )
     }
 
