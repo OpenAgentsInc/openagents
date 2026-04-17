@@ -78,7 +78,7 @@ FROM debian:bookworm-slim
 ARG BUILD_PROFILE=fast-release
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --home-dir /nonexistent --shell /usr/sbin/nologin --uid 60000 nexus
 
