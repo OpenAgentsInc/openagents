@@ -11144,6 +11144,7 @@ fn resolve_training_recent_issues(
     contexts: &[TrainingManifestInspectionContext],
 ) -> Result<Vec<TrainingOperatorIssueStatus>> {
     let mut issues = Vec::new();
+    let now_ms = now_epoch_ms();
     for record in state
         .publication_records
         .values()
@@ -11214,15 +11215,8 @@ fn resolve_training_recent_issues(
         });
     }
     for entry in state.closeout_progress.values() {
-        if let Some(last_error) = entry.last_error.as_ref() {
-            issues.push(TrainingOperatorIssueStatus {
-                kind: "closeout_progress_error".to_string(),
-                subject_id: entry.assignment_id.clone(),
-                reason: last_error.clone(),
-                observed_at_ms: entry.updated_at_ms,
-                owner: "pylon".to_string(),
-                retryable: !entry.stage.terminal(),
-            });
+        if let Some(issue) = training_closeout_progress_issue(entry, now_ms) {
+            issues.push(issue);
         }
     }
     if let Some(active_runtime) = state.active_runtime.as_ref() {
@@ -11271,6 +11265,56 @@ fn resolve_training_recent_issues(
         }
     }
     Ok(issues)
+}
+
+const TRAINING_CLOSEOUT_STALL_INTERVAL_MS: i64 = 60_000;
+
+fn training_closeout_progress_issue(
+    entry: &PylonTrainingCloseoutProgressEntry,
+    now_ms: i64,
+) -> Option<TrainingOperatorIssueStatus> {
+    let subject_id =
+        training_closeout_progress_key(entry.assignment_id.as_str(), entry.challenge_id.as_deref());
+    let next_action = training_closeout_next_action(entry)
+        .map(|action| action.label().to_string())
+        .unwrap_or_else(|| "none".to_string());
+
+    if let Some(last_error) = entry.last_error.as_ref() {
+        return Some(TrainingOperatorIssueStatus {
+            kind: "closeout_progress_error".to_string(),
+            subject_id,
+            reason: format!(
+                "{} (stage={} next_action={})",
+                last_error,
+                entry.stage.label(),
+                next_action
+            ),
+            observed_at_ms: entry.updated_at_ms,
+            owner: "pylon".to_string(),
+            retryable: !entry.stage.terminal(),
+        });
+    }
+
+    if entry.stage.terminal() {
+        return None;
+    }
+
+    if now_ms.saturating_sub(entry.updated_at_ms) < TRAINING_CLOSEOUT_STALL_INTERVAL_MS {
+        return None;
+    }
+
+    Some(TrainingOperatorIssueStatus {
+        kind: "closeout_progress_stalled".to_string(),
+        subject_id,
+        reason: format!(
+            "stalled at {} waiting for {}",
+            entry.stage.label(),
+            next_action
+        ),
+        observed_at_ms: entry.updated_at_ms,
+        owner: "pylon".to_string(),
+        retryable: true,
+    })
 }
 
 fn training_issue_path_timestamp_ms(
@@ -31332,6 +31376,71 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 ))
                 .is_none(),
             "closeout next-action derivation should stay aligned to the effective monotonic stage",
+        )
+    }
+
+    #[test]
+    fn training_closeout_progress_issue_reports_error_with_next_action()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let entry = super::PylonTrainingCloseoutProgressEntry {
+            assignment_id: "assign.alpha".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            role: PylonTrainingRoleClaim::Worker,
+            stage: super::PylonTrainingCloseoutStage::CheckpointPublished,
+            challenge_id: None,
+            contribution_id: None,
+            checkpoint_ref: None,
+            authority_assignment_state: None,
+            authority_window_state: None,
+            acceptance_state: None,
+            payout_state: None,
+            payout_receipt_id: None,
+            last_error: Some("seal request failed".to_string()),
+            updated_at_ms: 1_762_500_000_000,
+        };
+        let issue = super::training_closeout_progress_issue(&entry, 1_762_500_030_000)
+            .expect("closeout progress issue");
+        ensure(
+            issue.kind == "closeout_progress_error"
+                && issue.subject_id == "assign.alpha"
+                && issue
+                    .reason
+                    .contains("stage=checkpoint_published next_action=seal_window"),
+            "closeout progress errors should include the effective stage and next action",
+        )
+    }
+
+    #[test]
+    fn training_closeout_progress_issue_marks_stalled_non_terminal_stage()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let entry = super::PylonTrainingCloseoutProgressEntry {
+            assignment_id: "assign.alpha".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            role: PylonTrainingRoleClaim::Worker,
+            stage: super::PylonTrainingCloseoutStage::WindowSealed,
+            challenge_id: Some("challenge.alpha".to_string()),
+            contribution_id: None,
+            checkpoint_ref: None,
+            authority_assignment_state: None,
+            authority_window_state: None,
+            acceptance_state: None,
+            payout_state: None,
+            payout_receipt_id: None,
+            last_error: None,
+            updated_at_ms: 1_762_500_000_000,
+        };
+        let issue = super::training_closeout_progress_issue(
+            &entry,
+            1_762_500_000_000 + super::TRAINING_CLOSEOUT_STALL_INTERVAL_MS + 1,
+        )
+        .expect("stalled closeout issue");
+        ensure(
+            issue.kind == "closeout_progress_stalled"
+                && issue.subject_id == "assign.alpha::challenge.alpha"
+                && issue.reason == "stalled at window_sealed waiting for await_validator_claim",
+            "non-terminal closeout stages should surface as stalled issues once they age past the stall interval",
         )
     }
 
