@@ -9531,14 +9531,41 @@ async fn publish_cs336_a1_demo_bootstrap_artifacts(
         now_unix_ms,
         training_run_id,
     )?;
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|error| format!("cs336_a1_demo_bootstrap_http_client_invalid:{error}"))?;
+    let client = build_training_artifact_upload_client(&signed_url_config).await?;
     for artifact in &artifacts {
         upload_training_artifact_via_signed_url(&signed_url_config, &client, artifact).await?;
     }
     Ok(())
+}
+
+async fn build_training_artifact_upload_client(
+    config: &TrainingArtifactSignedUrlConfig,
+) -> Result<reqwest::Client, String> {
+    let endpoint = Url::parse(config.endpoint.as_str())
+        .map_err(|error| format!("cs336_a1_demo_bootstrap_endpoint_invalid:{error}"))?;
+    let host = endpoint
+        .host_str()
+        .ok_or_else(|| "cs336_a1_demo_bootstrap_endpoint_host_missing".to_string())?;
+    let port = endpoint
+        .port_or_known_default()
+        .ok_or_else(|| "cs336_a1_demo_bootstrap_endpoint_port_missing".to_string())?;
+    let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(30));
+
+    // Production GCS publishes AAAA records, but the Nexus host currently has no
+    // default IPv6 route. Prefer IPv4 addresses when they exist so bootstrap
+    // uploads do not fail on an unroutable family.
+    if let Ok(resolved_addrs) = tokio::net::lookup_host((host, port)).await {
+        let ipv4_addrs = resolved_addrs
+            .filter(SocketAddr::is_ipv4)
+            .collect::<Vec<_>>();
+        if !ipv4_addrs.is_empty() {
+            builder = builder.resolve_to_addrs(host, &ipv4_addrs);
+        }
+    }
+
+    builder
+        .build()
+        .map_err(|error| format!("cs336_a1_demo_bootstrap_http_client_invalid:{error}"))
 }
 
 fn ensure_cs336_a1_demo_registry_contracts(
