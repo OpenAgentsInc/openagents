@@ -10694,7 +10694,8 @@ async fn publish_training_trn_state(
                 .context("failed to resolve current directory for --manifest")?
                 .join(manifest_path)
         };
-        contexts.retain(|context| context.manifest_path == selected_manifest_path);
+        let selected_manifest_paths = training_manifest_lookup_paths(selected_manifest_path.as_path());
+        contexts.retain(|context| selected_manifest_paths.contains(&context.manifest_path));
         if contexts.is_empty() {
             bail!(
                 "training publish could not find manifest {}",
@@ -11318,9 +11319,27 @@ fn training_manifest_context_for_path(
     state: &PylonTrainingRuntimeState,
     manifest_path: &Path,
 ) -> Result<Option<TrainingManifestInspectionContext>> {
+    let candidate_paths = training_manifest_lookup_paths(manifest_path);
     Ok(load_training_manifest_inspection_contexts(config, state)?
         .into_iter()
-        .find(|context| context.manifest_path == manifest_path))
+        .find(|context| candidate_paths.contains(&context.manifest_path)))
+}
+
+fn training_manifest_lookup_paths(manifest_path: &Path) -> Vec<PathBuf> {
+    let mut candidate_paths = vec![manifest_path.to_path_buf()];
+    if manifest_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name != "run_manifest.json")
+    {
+        if let Some(parent) = manifest_path.parent() {
+            let canonical_run_manifest_path = parent.join("run_manifest.json");
+            if !candidate_paths.contains(&canonical_run_manifest_path) {
+                candidate_paths.push(canonical_run_manifest_path);
+            }
+        }
+    }
+    candidate_paths
 }
 
 fn training_context_has_pending_publication(
@@ -26606,6 +26625,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         manifest.manifest_digest = manifest.canonical_digest()?;
         let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
         std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
+        let invocation_manifest_path = local_run_root
+            .join("manifests")
+            .join("invocation_manifest.json");
+        std::fs::write(
+            invocation_manifest_path.as_path(),
+            "{\"schema_version\":\"psionic.train.invocation_manifest.v1\"}\n",
+        )?;
         write_training_terminal_status_packets(
             local_run_root.as_path(),
             "succeeded",
@@ -26617,7 +26643,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
 
         let mut state = load_or_create_training_runtime_state(&config)?;
         let mut active_runtime = training_active_runtime_fixture();
-        active_runtime.manifest_path = manifest_path.display().to_string();
+        active_runtime.manifest_path = invocation_manifest_path.display().to_string();
         active_runtime.run_root = local_run_root.display().to_string();
         active_runtime.process_state = PylonTrainingSupervisorProcessState::Stopped;
         active_runtime.desired_state = PylonTrainingSupervisorDesiredState::Running;
@@ -26646,7 +26672,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 validator_target_contribution_artifact_manifest_path: None,
                 validator_target_work_class: None,
                 grouped_stage_input_transport_path: None,
-                runtime_manifest_path: Some(manifest_path.display().to_string()),
+                runtime_manifest_path: Some(invocation_manifest_path.display().to_string()),
                 runtime_manifest_digest: Some(manifest.manifest_digest.clone()),
                 runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
                 runtime_operation: Some("start".to_string()),
@@ -27206,6 +27232,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         manifest.manifest_digest = manifest.canonical_digest()?;
         let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
         std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
+        let invocation_manifest_path = local_run_root
+            .join("manifests")
+            .join("invocation_manifest.json");
+        std::fs::write(
+            invocation_manifest_path.as_path(),
+            "{\"schema_version\":\"psionic.train.invocation_manifest.v1\"}\n",
+        )?;
         write_training_terminal_status_packets(
             local_run_root.as_path(),
             "succeeded",
@@ -27217,7 +27250,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
 
         let mut state = load_or_create_training_runtime_state(&config)?;
         let mut worker_runtime = training_active_runtime_fixture();
-        worker_runtime.manifest_path = manifest_path.display().to_string();
+        worker_runtime.manifest_path = invocation_manifest_path.display().to_string();
         worker_runtime.run_root = local_run_root.display().to_string();
         worker_runtime.process_state = PylonTrainingSupervisorProcessState::Stopped;
         worker_runtime.desired_state = PylonTrainingSupervisorDesiredState::Running;
@@ -27246,7 +27279,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 validator_target_contribution_artifact_manifest_path: None,
                 validator_target_work_class: None,
                 grouped_stage_input_transport_path: None,
-                runtime_manifest_path: Some(manifest_path.display().to_string()),
+                runtime_manifest_path: Some(invocation_manifest_path.display().to_string()),
                 runtime_manifest_digest: Some(manifest.manifest_digest.clone()),
                 runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
                 runtime_operation: Some("start".to_string()),
@@ -27364,7 +27397,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             lease_id: "lease.validator.window0001".to_string(),
             membership_revision: "members.rev1".to_string(),
             role: PylonTrainingRoleClaim::Validator,
-            manifest_path: manifest_path.display().to_string(),
+            manifest_path: invocation_manifest_path.display().to_string(),
             run_root: local_run_root.display().to_string(),
             desired_state: PylonTrainingSupervisorDesiredState::Running,
             process_state: PylonTrainingSupervisorProcessState::Stopped,
@@ -27420,7 +27453,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     ComputeTrainingWorkClass::SmallModelLocalTraining,
                 ),
                 grouped_stage_input_transport_path: None,
-                runtime_manifest_path: Some(manifest_path.display().to_string()),
+                runtime_manifest_path: Some(invocation_manifest_path.display().to_string()),
                 runtime_manifest_digest: Some(manifest.manifest_digest.clone()),
                 runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
                 runtime_operation: Some("validate_contribution".to_string()),
