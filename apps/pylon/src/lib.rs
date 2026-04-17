@@ -398,6 +398,8 @@ pub struct PylonTrainingRuntimeState {
     pub closeout_cache: BTreeMap<String, PylonTrainingCloseoutCacheEntry>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub closeout_progress: BTreeMap<String, PylonTrainingCloseoutProgressEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub closeout_journal: Vec<PylonTrainingCloseoutJournalEntry>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reputation_labels: BTreeMap<String, PylonTrainingReputationLabelCacheEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -418,9 +420,154 @@ impl Default for PylonTrainingRuntimeState {
             contribution_outcomes: BTreeMap::new(),
             closeout_cache: BTreeMap::new(),
             closeout_progress: BTreeMap::new(),
+            closeout_journal: Vec::new(),
             reputation_labels: BTreeMap::new(),
             last_authority_sync_at_ms: None,
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingExecutionCacheState {
+    #[serde(default = "default_training_runtime_state_schema_version")]
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_runtime: Option<PylonTrainingActiveRuntimeState>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub manifest_cache: BTreeMap<String, PylonTrainingManifestCacheEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lease_cache: BTreeMap<String, PylonTrainingLeaseCacheEntry>,
+}
+
+impl Default for PylonTrainingExecutionCacheState {
+    fn default() -> Self {
+        Self {
+            schema_version: default_training_runtime_state_schema_version(),
+            active_runtime: None,
+            manifest_cache: BTreeMap::new(),
+            lease_cache: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingArtifactCacheState {
+    #[serde(default = "default_training_runtime_state_schema_version")]
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub publication_pointers: BTreeMap<String, PylonTrainingPublicationPointer>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub publication_records: BTreeMap<String, PylonTrainingPublicationRecord>,
+}
+
+impl Default for PylonTrainingArtifactCacheState {
+    fn default() -> Self {
+        Self {
+            schema_version: default_training_runtime_state_schema_version(),
+            publication_pointers: BTreeMap::new(),
+            publication_records: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingAuthoritySyncCacheState {
+    #[serde(default = "default_training_runtime_state_schema_version")]
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub window_cache: BTreeMap<String, PylonTrainingWindowCacheEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub authority_receipt_records: BTreeMap<String, PylonTrainingAuthorityReceiptRecord>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub contribution_outcomes: BTreeMap<String, PylonTrainingContributionOutcomeCacheEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub closeout_cache: BTreeMap<String, PylonTrainingCloseoutCacheEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub closeout_progress: BTreeMap<String, PylonTrainingCloseoutProgressEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub closeout_journal: Vec<PylonTrainingCloseoutJournalEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub reputation_labels: BTreeMap<String, PylonTrainingReputationLabelCacheEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_authority_sync_at_ms: Option<i64>,
+}
+
+impl Default for PylonTrainingAuthoritySyncCacheState {
+    fn default() -> Self {
+        Self {
+            schema_version: default_training_runtime_state_schema_version(),
+            window_cache: BTreeMap::new(),
+            authority_receipt_records: BTreeMap::new(),
+            contribution_outcomes: BTreeMap::new(),
+            closeout_cache: BTreeMap::new(),
+            closeout_progress: BTreeMap::new(),
+            closeout_journal: Vec::new(),
+            reputation_labels: BTreeMap::new(),
+            last_authority_sync_at_ms: None,
+        }
+    }
+}
+
+impl From<&PylonTrainingRuntimeState> for PylonTrainingExecutionCacheState {
+    fn from(value: &PylonTrainingRuntimeState) -> Self {
+        Self {
+            schema_version: value.schema_version,
+            active_runtime: value.active_runtime.clone(),
+            manifest_cache: value.manifest_cache.clone(),
+            lease_cache: value.lease_cache.clone(),
+        }
+    }
+}
+
+impl From<&PylonTrainingRuntimeState> for PylonTrainingArtifactCacheState {
+    fn from(value: &PylonTrainingRuntimeState) -> Self {
+        Self {
+            schema_version: value.schema_version,
+            publication_pointers: value.publication_pointers.clone(),
+            publication_records: value.publication_records.clone(),
+        }
+    }
+}
+
+impl From<&PylonTrainingRuntimeState> for PylonTrainingAuthoritySyncCacheState {
+    fn from(value: &PylonTrainingRuntimeState) -> Self {
+        Self {
+            schema_version: value.schema_version,
+            window_cache: value.window_cache.clone(),
+            authority_receipt_records: value.authority_receipt_records.clone(),
+            contribution_outcomes: value.contribution_outcomes.clone(),
+            closeout_cache: value.closeout_cache.clone(),
+            closeout_progress: value.closeout_progress.clone(),
+            closeout_journal: value.closeout_journal.clone(),
+            reputation_labels: value.reputation_labels.clone(),
+            last_authority_sync_at_ms: value.last_authority_sync_at_ms,
+        }
+    }
+}
+
+fn training_runtime_state_from_layers(
+    execution: PylonTrainingExecutionCacheState,
+    artifact: PylonTrainingArtifactCacheState,
+    authority_sync: PylonTrainingAuthoritySyncCacheState,
+) -> PylonTrainingRuntimeState {
+    PylonTrainingRuntimeState {
+        schema_version: execution
+            .schema_version
+            .max(artifact.schema_version)
+            .max(authority_sync.schema_version),
+        active_runtime: execution.active_runtime,
+        manifest_cache: execution.manifest_cache,
+        lease_cache: execution.lease_cache,
+        window_cache: authority_sync.window_cache,
+        authority_receipt_records: authority_sync.authority_receipt_records,
+        publication_pointers: artifact.publication_pointers,
+        publication_records: artifact.publication_records,
+        contribution_outcomes: authority_sync.contribution_outcomes,
+        closeout_cache: authority_sync.closeout_cache,
+        closeout_progress: authority_sync.closeout_progress,
+        closeout_journal: authority_sync.closeout_journal,
+        reputation_labels: authority_sync.reputation_labels,
+        last_authority_sync_at_ms: authority_sync.last_authority_sync_at_ms,
     }
 }
 
@@ -822,6 +969,37 @@ pub struct PylonTrainingCloseoutProgressEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
     pub updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingCloseoutJournalEntry {
+    pub sequence: u64,
+    pub assignment_id: String,
+    pub training_run_id: String,
+    pub window_id: String,
+    #[serde(default = "default_training_role_claim")]
+    pub role: PylonTrainingRoleClaim,
+    pub stage: PylonTrainingCloseoutStage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub challenge_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_assignment_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authority_window_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acceptance_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_receipt_id: Option<String>,
+    pub transition_reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocking_reason: Option<String>,
+    pub observed_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1398,6 +1576,8 @@ pub struct TrainingOperatorStatusReport {
     recent_closeouts: Vec<TrainingOperatorCloseoutStatus>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     recent_closeout_progress: Vec<TrainingOperatorCloseoutProgressStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    recent_closeout_journal: Vec<TrainingOperatorCloseoutJournalStatus>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1534,6 +1714,28 @@ pub struct TrainingOperatorCloseoutProgressStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     last_error: Option<String>,
     updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorCloseoutJournalStatus {
+    sequence: u64,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    role: String,
+    stage: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    challenge_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    contribution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    acceptance_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    payout_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    blocking_reason: Option<String>,
+    transition_reason: String,
+    observed_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -7849,20 +8051,54 @@ fn validate_nonempty_string_list(
     Ok(())
 }
 
+fn training_state_dir(config: &PylonConfig) -> PathBuf {
+    config.training.run_root.join("state")
+}
+
 fn training_runtime_state_path(config: &PylonConfig) -> PathBuf {
-    config
-        .training
-        .run_root
-        .join("state")
-        .join("runtime-state.json")
+    training_state_dir(config).join("runtime-state.json")
+}
+
+fn training_execution_cache_state_path(config: &PylonConfig) -> PathBuf {
+    training_state_dir(config).join("execution-state.json")
+}
+
+fn training_artifact_cache_state_path(config: &PylonConfig) -> PathBuf {
+    training_state_dir(config).join("artifact-state.json")
+}
+
+fn training_authority_sync_cache_state_path(config: &PylonConfig) -> PathBuf {
+    training_state_dir(config).join("authority-sync-state.json")
 }
 
 fn load_or_create_training_runtime_state(
     config: &PylonConfig,
 ) -> Result<PylonTrainingRuntimeState> {
     let path = training_runtime_state_path(config);
+    let execution_path = training_execution_cache_state_path(config);
+    let artifact_path = training_artifact_cache_state_path(config);
+    let authority_sync_path = training_authority_sync_cache_state_path(config);
     if path.exists() {
-        return load_training_runtime_state(path.as_path());
+        let state = load_training_runtime_state(path.as_path())?;
+        if !execution_path.exists() || !artifact_path.exists() || !authority_sync_path.exists() {
+            save_training_runtime_state(config, &state)?;
+        }
+        return Ok(state);
+    }
+    if execution_path.exists() || artifact_path.exists() || authority_sync_path.exists() {
+        let state = training_runtime_state_from_layers(
+            load_training_retained_state_file(
+                execution_path.as_path(),
+                "training execution state",
+            )?,
+            load_training_retained_state_file(artifact_path.as_path(), "training artifact state")?,
+            load_training_retained_state_file(
+                authority_sync_path.as_path(),
+                "training authority sync state",
+            )?,
+        );
+        save_training_runtime_state(config, &state)?;
+        return Ok(state);
     }
     let state = PylonTrainingRuntimeState::default();
     save_training_runtime_state(config, &state)?;
@@ -7870,47 +8106,74 @@ fn load_or_create_training_runtime_state(
 }
 
 fn load_training_runtime_state(path: &Path) -> Result<PylonTrainingRuntimeState> {
+    load_training_retained_state_file(path, "training runtime state")
+}
+
+fn load_training_retained_state_file<T>(path: &Path, label: &str) -> Result<T>
+where
+    T: Default + Serialize + DeserializeOwned,
+{
+    if !path.exists() {
+        return Ok(T::default());
+    }
     let payload = std::fs::read_to_string(path)
-        .with_context(|| format!("failed to read training runtime state {}", path.display()))?;
-    let mut merged = serde_json::to_value(PylonTrainingRuntimeState::default())
-        .context("failed to serialize default training runtime state")?;
+        .with_context(|| format!("failed to read {label} {}", path.display()))?;
+    let mut merged = serde_json::to_value(T::default())
+        .with_context(|| format!("failed to serialize default {label}"))?;
     let parsed = serde_json::from_str::<Value>(payload.as_str())
-        .with_context(|| format!("failed to parse training runtime state {}", path.display()))?;
+        .with_context(|| format!("failed to parse {label} {}", path.display()))?;
     merge_json_value(&mut merged, &parsed);
-    serde_json::from_value(merged).with_context(|| {
+    serde_json::from_value(merged)
+        .with_context(|| format!("failed to hydrate {label} {}", path.display()))
+}
+
+fn save_training_retained_state_file<T>(path: &Path, value: &T, label: &str) -> Result<()>
+where
+    T: Serialize,
+{
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {label} dir {}", parent.display()))?;
+    }
+    let retained_value = serde_json::to_value(value)
+        .with_context(|| format!("failed to encode retained {label}"))?;
+    validate_redacted_retained_state(&retained_value).map_err(anyhow::Error::msg)?;
+    std::fs::write(
+        path,
         format!(
-            "failed to hydrate training runtime state {}",
-            path.display()
-        )
-    })
+            "{}\n",
+            serde_json::to_string_pretty(value)
+                .with_context(|| format!("failed to serialize {label}"))?
+        ),
+    )
+    .with_context(|| format!("failed to write {label} {}", path.display()))?;
+    Ok(())
 }
 
 fn save_training_runtime_state(
     config: &PylonConfig,
     state: &PylonTrainingRuntimeState,
 ) -> Result<()> {
-    let path = training_runtime_state_path(config);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "failed to create training runtime state dir {}",
-                parent.display()
-            )
-        })?;
-    }
-    let retained_value =
-        serde_json::to_value(state).context("failed to encode retained training runtime state")?;
-    validate_redacted_retained_state(&retained_value).map_err(anyhow::Error::msg)?;
-    std::fs::write(
-        path.as_path(),
-        format!(
-            "{}\n",
-            serde_json::to_string_pretty(state)
-                .context("failed to serialize training runtime state")?
-        ),
+    save_training_retained_state_file(
+        training_runtime_state_path(config).as_path(),
+        state,
+        "training runtime state",
+    )?;
+    save_training_retained_state_file(
+        training_execution_cache_state_path(config).as_path(),
+        &PylonTrainingExecutionCacheState::from(state),
+        "training execution state",
+    )?;
+    save_training_retained_state_file(
+        training_artifact_cache_state_path(config).as_path(),
+        &PylonTrainingArtifactCacheState::from(state),
+        "training artifact state",
+    )?;
+    save_training_retained_state_file(
+        training_authority_sync_cache_state_path(config).as_path(),
+        &PylonTrainingAuthoritySyncCacheState::from(state),
+        "training authority sync state",
     )
-    .with_context(|| format!("failed to write training runtime state {}", path.display()))?;
-    Ok(())
 }
 
 impl PylonTrainingCoordinatorClient {
@@ -10515,6 +10778,33 @@ fn load_training_status_report_with_config(
     });
     recent_closeout_progress.truncate(8);
 
+    let mut recent_closeout_journal = state
+        .closeout_journal
+        .iter()
+        .map(|entry| TrainingOperatorCloseoutJournalStatus {
+            sequence: entry.sequence,
+            training_run_id: entry.training_run_id.clone(),
+            window_id: entry.window_id.clone(),
+            assignment_id: entry.assignment_id.clone(),
+            role: entry.role.label().to_string(),
+            stage: entry.stage.label().to_string(),
+            challenge_id: entry.challenge_id.clone(),
+            contribution_id: entry.contribution_id.clone(),
+            acceptance_state: entry.acceptance_state.clone(),
+            payout_state: entry.payout_state.clone(),
+            blocking_reason: entry.blocking_reason.clone(),
+            transition_reason: entry.transition_reason.clone(),
+            observed_at_ms: entry.observed_at_ms,
+        })
+        .collect::<Vec<_>>();
+    recent_closeout_journal.sort_by(|left, right| {
+        right
+            .sequence
+            .cmp(&left.sequence)
+            .then_with(|| right.observed_at_ms.cmp(&left.observed_at_ms))
+    });
+    recent_closeout_journal.truncate(8);
+
     let mut recent_issues = resolve_training_recent_issues(config, &state, contexts.as_slice())?;
     recent_issues.sort_by(|left, right| {
         right
@@ -10561,6 +10851,7 @@ fn load_training_status_report_with_config(
         recent_issues,
         recent_closeouts,
         recent_closeout_progress,
+        recent_closeout_journal,
     })
 }
 
@@ -13159,6 +13450,7 @@ fn update_training_closeout_progress_observation(
     authority_window_state: Option<String>,
 ) -> bool {
     let key = training_closeout_progress_key(assignment_id, challenge_id);
+    let mut journal_entry = None;
     let Some(entry) = state.closeout_progress.get_mut(key.as_str()) else {
         return false;
     };
@@ -13179,6 +13471,10 @@ fn update_training_closeout_progress_observation(
     }
     if changed {
         entry.updated_at_ms = now_epoch_ms();
+        journal_entry = Some(entry.clone());
+    }
+    if let Some(entry) = journal_entry {
+        append_training_closeout_journal_entry(state, &entry, "observation_refresh");
     }
     changed
 }
@@ -14553,6 +14849,43 @@ fn training_closeout_progress_key(assignment_id: &str, challenge_id: Option<&str
         .unwrap_or_else(|| assignment_id.to_string())
 }
 
+fn next_training_closeout_journal_sequence(state: &PylonTrainingRuntimeState) -> u64 {
+    state
+        .closeout_journal
+        .last()
+        .map(|entry| entry.sequence.saturating_add(1))
+        .unwrap_or(1)
+}
+
+fn append_training_closeout_journal_entry(
+    state: &mut PylonTrainingRuntimeState,
+    entry: &PylonTrainingCloseoutProgressEntry,
+    transition_reason: &str,
+) {
+    let sequence = next_training_closeout_journal_sequence(state);
+    state
+        .closeout_journal
+        .push(PylonTrainingCloseoutJournalEntry {
+            sequence,
+            assignment_id: entry.assignment_id.clone(),
+            training_run_id: entry.training_run_id.clone(),
+            window_id: entry.window_id.clone(),
+            role: entry.role,
+            stage: entry.stage,
+            challenge_id: entry.challenge_id.clone(),
+            contribution_id: entry.contribution_id.clone(),
+            checkpoint_ref: entry.checkpoint_ref.clone(),
+            authority_assignment_state: entry.authority_assignment_state.clone(),
+            authority_window_state: entry.authority_window_state.clone(),
+            acceptance_state: entry.acceptance_state.clone(),
+            payout_state: entry.payout_state.clone(),
+            payout_receipt_id: entry.payout_receipt_id.clone(),
+            transition_reason: transition_reason.to_string(),
+            blocking_reason: entry.last_error.clone(),
+            observed_at_ms: entry.updated_at_ms,
+        });
+}
+
 const TRAINING_CLOSEOUT_AUTHORITY_POLL_INTERVAL_MS: i64 = 5_000;
 
 fn training_closeout_authority_poll_due(
@@ -14642,7 +14975,18 @@ fn record_training_closeout_progress_stage(
     let changed = previous.as_ref() != Some(&entry);
     if changed {
         entry.updated_at_ms = updated_at_ms;
-        state.closeout_progress.insert(key, entry);
+        let transition_reason = previous
+            .as_ref()
+            .map(|existing| {
+                if existing.stage != entry.stage {
+                    "stage_transition"
+                } else {
+                    "stage_metadata_refresh"
+                }
+            })
+            .unwrap_or("stage_transition");
+        state.closeout_progress.insert(key, entry.clone());
+        append_training_closeout_journal_entry(state, &entry, transition_reason);
     }
     changed
 }
@@ -24273,11 +24617,20 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let config_path = temp_dir.path().join("config.json");
         let config = load_or_create_config(config_path.as_path())?;
         let state_path = training_runtime_state_path(&config);
+        let execution_state_path = super::training_execution_cache_state_path(&config);
+        let artifact_state_path = super::training_artifact_cache_state_path(&config);
+        let authority_sync_state_path = super::training_authority_sync_cache_state_path(&config);
         let state = load_or_create_training_runtime_state(&config)?;
 
         ensure(
             state_path.exists(),
             "loading the config should also create the separate training runtime state store",
+        )?;
+        ensure(
+            execution_state_path.exists()
+                && artifact_state_path.exists()
+                && authority_sync_state_path.exists(),
+            "loading the config should also create the layered training runtime state stores",
         )?;
         ensure(
             state == PylonTrainingRuntimeState::default(),
@@ -24863,6 +25216,222 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             reloaded_state == state,
             "the retained training runtime state should survive restart and preserve manifests, leases, windows, and TRN publication pointers",
+        )
+    }
+
+    #[test]
+    fn training_runtime_state_save_persists_layer_files() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.active_runtime = Some(training_active_runtime_fixture());
+        state.manifest_cache.insert(
+            "manifest.run.alpha.worker".to_string(),
+            PylonTrainingManifestCacheEntry {
+                manifest_id: "manifest.run.alpha.worker".to_string(),
+                manifest_digest: "sha256:manifest-alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                lease_id: "lease.node01.window0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                cached_at_ms: 1_762_491_200_010,
+            },
+        );
+        state.publication_pointers.insert(
+            "assignment_ack::lease.node01.window0001".to_string(),
+            PylonTrainingPublicationPointer {
+                subject_kind: "assignment_ack".to_string(),
+                subject_id: "lease.node01.window0001".to_string(),
+                event_kind: TRN_TRAINING_RECEIPT_KIND,
+                event_id: "event-001".to_string(),
+                a_ref: Some("39511:coordinator:lease.node01.window0001".to_string()),
+                fingerprint: "sha256:assignment-ack".to_string(),
+                attempt_count: 1,
+                relay_outcomes: Vec::new(),
+                published_at_ms: 1_762_491_200_040,
+            },
+        );
+        state.closeout_progress.insert(
+            "assignment::assign.node01.window0001".to_string(),
+            super::PylonTrainingCloseoutProgressEntry {
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                stage: super::PylonTrainingCloseoutStage::CheckpointPublished,
+                challenge_id: None,
+                contribution_id: Some("contrib.alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                authority_assignment_state: Some("accepted".to_string()),
+                authority_window_state: Some("sealed".to_string()),
+                acceptance_state: Some("accepted".to_string()),
+                payout_state: Some("pending".to_string()),
+                payout_receipt_id: None,
+                last_error: None,
+                updated_at_ms: 1_762_491_200_050,
+            },
+        );
+        state
+            .closeout_journal
+            .push(super::PylonTrainingCloseoutJournalEntry {
+                sequence: 1,
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                stage: super::PylonTrainingCloseoutStage::CheckpointPublished,
+                challenge_id: None,
+                contribution_id: Some("contrib.alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                authority_assignment_state: Some("accepted".to_string()),
+                authority_window_state: Some("sealed".to_string()),
+                acceptance_state: Some("accepted".to_string()),
+                payout_state: Some("pending".to_string()),
+                payout_receipt_id: None,
+                transition_reason: "stage_transition".to_string(),
+                blocking_reason: None,
+                observed_at_ms: 1_762_491_200_050,
+            });
+
+        save_training_runtime_state(&config, &state)?;
+
+        let execution_state =
+            super::load_training_retained_state_file::<super::PylonTrainingExecutionCacheState>(
+                super::training_execution_cache_state_path(&config).as_path(),
+                "training execution state",
+            )?;
+        let artifact_state =
+            super::load_training_retained_state_file::<super::PylonTrainingArtifactCacheState>(
+                super::training_artifact_cache_state_path(&config).as_path(),
+                "training artifact state",
+            )?;
+        let authority_sync_state = super::load_training_retained_state_file::<
+            super::PylonTrainingAuthoritySyncCacheState,
+        >(
+            super::training_authority_sync_cache_state_path(&config).as_path(),
+            "training authority sync state",
+        )?;
+
+        ensure(
+            execution_state.active_runtime == state.active_runtime
+                && execution_state.manifest_cache == state.manifest_cache,
+            "execution-state.json should retain the execution slice of the training runtime state",
+        )?;
+        ensure(
+            artifact_state.publication_pointers == state.publication_pointers,
+            "artifact-state.json should retain the artifact publication slice of the training runtime state",
+        )?;
+        ensure(
+            authority_sync_state.closeout_progress == state.closeout_progress
+                && authority_sync_state.closeout_journal == state.closeout_journal,
+            "authority-sync-state.json should retain the closeout and authority-sync slice of the training runtime state",
+        )
+    }
+
+    #[test]
+    fn training_runtime_state_loads_from_layer_files_without_combined_blob()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.active_runtime = Some(training_active_runtime_fixture());
+        state.manifest_cache.insert(
+            "manifest.run.alpha.worker".to_string(),
+            PylonTrainingManifestCacheEntry {
+                manifest_id: "manifest.run.alpha.worker".to_string(),
+                manifest_digest: "sha256:manifest-alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                lease_id: "lease.node01.window0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                cached_at_ms: 1_762_491_200_010,
+            },
+        );
+        state.lease_cache.insert(
+            "lease.node01.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.node01.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_260_020),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(
+                    "/tmp/run.alpha/manifests/invocation_manifest.json".to_string(),
+                ),
+                runtime_manifest_digest: Some("sha256:runtime-manifest-alpha".to_string()),
+                runtime_lane_id: Some(PSION_ACTUAL_PRETRAINING_LANE_ID.to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("full_island_local_update_training".to_string()),
+                updated_at_ms: 1_762_491_200_020,
+            },
+        );
+        state.publication_pointers.insert(
+            "assignment_ack::lease.node01.window0001".to_string(),
+            PylonTrainingPublicationPointer {
+                subject_kind: "assignment_ack".to_string(),
+                subject_id: "lease.node01.window0001".to_string(),
+                event_kind: TRN_TRAINING_RECEIPT_KIND,
+                event_id: "event-001".to_string(),
+                a_ref: Some("39511:coordinator:lease.node01.window0001".to_string()),
+                fingerprint: "sha256:assignment-ack".to_string(),
+                attempt_count: 1,
+                relay_outcomes: Vec::new(),
+                published_at_ms: 1_762_491_200_040,
+            },
+        );
+        state
+            .closeout_journal
+            .push(super::PylonTrainingCloseoutJournalEntry {
+                sequence: 1,
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                stage: super::PylonTrainingCloseoutStage::WindowSealed,
+                challenge_id: Some("challenge.alpha".to_string()),
+                contribution_id: Some("contrib.alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                authority_assignment_state: Some("sealed".to_string()),
+                authority_window_state: Some("sealed".to_string()),
+                acceptance_state: Some("pending".to_string()),
+                payout_state: Some("pending".to_string()),
+                payout_receipt_id: None,
+                transition_reason: "stage_transition".to_string(),
+                blocking_reason: Some("waiting_for_validator_claim".to_string()),
+                observed_at_ms: 1_762_491_200_060,
+            });
+
+        save_training_runtime_state(&config, &state)?;
+
+        let runtime_state_path = training_runtime_state_path(&config);
+        std::fs::remove_file(runtime_state_path.as_path())?;
+
+        let recovered_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            recovered_state == state,
+            "layered training state files should fully reconstruct the retained runtime state when the combined blob is missing",
+        )?;
+        ensure(
+            runtime_state_path.exists(),
+            "reloading from layer files should backfill the combined runtime-state.json compatibility blob",
         )
     }
 
@@ -30480,6 +31049,120 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             counts_after_third == counts,
             "recorded refusal receipts should dedupe across later serve loops",
+        )
+    }
+
+    #[test]
+    fn training_closeout_progress_appends_monotonic_journal_entries()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = PylonTrainingRuntimeState::default();
+
+        ensure(
+            super::record_training_closeout_progress_stage(
+                &mut state,
+                "assign.alpha",
+                "run.alpha",
+                "window.0001",
+                PylonTrainingRoleClaim::Worker,
+                super::PylonTrainingCloseoutStage::WorkerExitedSuccess,
+                None,
+                Some("checkpoint://run.alpha/0042".to_string()),
+                None,
+                None,
+                None,
+                None,
+            ) && super::record_training_closeout_progress_stage(
+                &mut state,
+                "assign.alpha",
+                "run.alpha",
+                "window.0001",
+                PylonTrainingRoleClaim::Worker,
+                super::PylonTrainingCloseoutStage::CheckpointPublished,
+                None,
+                Some("checkpoint://run.alpha/0042".to_string()),
+                None,
+                None,
+                None,
+                None,
+            ) && !super::record_training_closeout_progress_stage(
+                &mut state,
+                "assign.alpha",
+                "run.alpha",
+                "window.0001",
+                PylonTrainingRoleClaim::Worker,
+                super::PylonTrainingCloseoutStage::CheckpointPublished,
+                None,
+                Some("checkpoint://run.alpha/0042".to_string()),
+                None,
+                None,
+                None,
+                None,
+            ),
+            "closeout stage recording should append journal entries on real transitions and stay quiet on exact no-op repeats",
+        )?;
+
+        let progress = state
+            .closeout_progress
+            .get("assign.alpha")
+            .expect("closeout progress entry");
+        ensure(
+            progress.stage == super::PylonTrainingCloseoutStage::CheckpointPublished
+                && state.closeout_journal.len() == 2
+                && state.closeout_journal[0].sequence == 1
+                && state.closeout_journal[0].transition_reason == "stage_transition"
+                && state.closeout_journal[1].sequence == 2
+                && state.closeout_journal[1].stage
+                    == super::PylonTrainingCloseoutStage::CheckpointPublished,
+            "closeout journal should remain append-only and preserve the latest monotonic stage",
+        )
+    }
+
+    #[test]
+    fn training_closeout_observation_appends_journal_without_stage_regression()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = PylonTrainingRuntimeState::default();
+        ensure(
+            super::record_training_closeout_progress_stage(
+                &mut state,
+                "assign.alpha",
+                "run.alpha",
+                "window.0001",
+                PylonTrainingRoleClaim::Worker,
+                super::PylonTrainingCloseoutStage::WindowSealed,
+                None,
+                Some("checkpoint://run.alpha/0042".to_string()),
+                None,
+                None,
+                None,
+                None,
+            ) && super::update_training_closeout_progress_observation(
+                &mut state,
+                "assign.alpha",
+                None,
+                Some("contrib.alpha".to_string()),
+                Some("accepted".to_string()),
+                Some("sealed".to_string()),
+            ),
+            "closeout observation refreshes should extend journal history after a stage has been recorded",
+        )?;
+
+        let progress = state
+            .closeout_progress
+            .get("assign.alpha")
+            .expect("closeout progress entry");
+        let journal_entry = state
+            .closeout_journal
+            .last()
+            .expect("closeout journal entry");
+        ensure(
+            progress.stage == super::PylonTrainingCloseoutStage::WindowSealed
+                && progress.contribution_id.as_deref() == Some("contrib.alpha")
+                && progress.authority_assignment_state.as_deref() == Some("accepted")
+                && progress.authority_window_state.as_deref() == Some("sealed")
+                && state.closeout_journal.len() == 2
+                && journal_entry.transition_reason == "observation_refresh"
+                && journal_entry.stage == super::PylonTrainingCloseoutStage::WindowSealed,
+            "observation refreshes should append journal entries without regressing the effective closeout stage",
         )
     }
 
