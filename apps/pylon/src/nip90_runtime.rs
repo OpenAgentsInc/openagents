@@ -531,7 +531,8 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
         .into_iter()
         .map(|job| (job.id.clone(), job))
         .collect::<BTreeMap<_, _>>();
-    let processed_request_store = crate::ledger::load_processed_provider_request_store(config_path)?;
+    let processed_request_store =
+        crate::ledger::load_processed_provider_request_store(config_path)?;
     let mut wallet_payments: Option<Vec<PylonWalletPaymentRecord>> = None;
     let mut report_entries = Vec::new();
     let mut accepted_count = 0usize;
@@ -2569,15 +2570,15 @@ fn reconcile_processed_provider_requests(config_path: &Path) -> Result<()> {
     crate::ledger::mutate_processed_provider_request_store(
         config_path,
         |store: &mut crate::ledger::PylonProcessedProviderRequestStore| {
-        for job in &ledger.jobs {
-            if job.direction == "provider"
-                && provider_job_is_terminal_for_reintake_store(job.status.as_str())
-            {
-                store.remember(job.id.clone(), job.status.clone());
+            for job in &ledger.jobs {
+                if job.direction == "provider"
+                    && provider_job_is_terminal_for_reintake_store(job.status.as_str())
+                {
+                    store.remember(job.id.clone(), job.status.clone());
+                }
             }
-        }
-        Ok(())
-    },
+            Ok(())
+        },
     )?;
     Ok(())
 }
@@ -2864,7 +2865,11 @@ fn record_provider_settlement_outcome(
         Ok(())
     })?;
     if status.eq_ignore_ascii_case("settled") {
-        remember_processed_provider_request(config_path, entry.request_event_id.as_str(), "settled")?;
+        remember_processed_provider_request(
+            config_path,
+            entry.request_event_id.as_str(),
+            "settled",
+        )?;
     }
     Ok(settlement_id)
 }

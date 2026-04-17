@@ -934,8 +934,9 @@ fn compute_wallet_credit_summary(
         if !wallet_payment_counts_as_credit(payment) {
             continue;
         }
-        credits.credited_lifetime_sats =
-            credits.credited_lifetime_sats.saturating_add(payment.amount_sats);
+        credits.credited_lifetime_sats = credits
+            .credited_lifetime_sats
+            .saturating_add(payment.amount_sats);
         if payment.created_at_ms / 86_400_000 == current_day {
             credits.credited_today_sats = credits
                 .credited_today_sats
