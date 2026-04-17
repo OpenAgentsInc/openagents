@@ -3401,6 +3401,11 @@ impl TrainingSchedulerState {
             if !training_run_schedulable(&run) {
                 return Err("training_scheduler_run_not_schedulable".to_string());
             }
+            if training_run_requires_scheduler_residency_for_claims(&run)
+                && !self.runs_by_training_run_id.contains_key(training_run_id)
+            {
+                return Err("training_scheduler_run_not_found".to_string());
+            }
             if self
                 .runs_by_training_run_id
                 .get(training_run_id)
@@ -3436,6 +3441,13 @@ impl TrainingSchedulerState {
         let mut best_match: Option<((u8, u8, u8, i64), ComputeTrainingRun)> = None;
         for run in candidate_runs {
             if !training_run_schedulable(&run) {
+                continue;
+            }
+            if training_run_requires_scheduler_residency_for_claims(run)
+                && !self
+                    .runs_by_training_run_id
+                    .contains_key(run.training_run_id.as_str())
+            {
                 continue;
             }
             if self
@@ -8249,6 +8261,7 @@ struct HomeworkLaunchPrepared {
     lane_contract: PsionicTrainLaneContract,
     matched_pylons: Vec<HomeworkLaunchPylonMatch>,
     assigned_pylons: Vec<HomeworkLaunchAssignedPylon>,
+    assigned_nodes: Vec<AdmittedTrainingNodeView>,
     artifact_bucket_uri: String,
     artifact_prefix: String,
     course_id: String,
@@ -8385,6 +8398,49 @@ fn homework_launch_assigned_pylons(
         .collect()
 }
 
+fn materialize_homework_launch_assignments_and_window(
+    store: &mut ControlStore,
+    training_run_id: &str,
+    assigned_nodes: &[AdmittedTrainingNodeView],
+    course_id: &str,
+    homework_id: &str,
+    assignment_family: &str,
+    run_kind: &str,
+    recorded_at_ms: i64,
+) -> Result<Vec<HomeworkLaunchAssignedPylon>, String> {
+    store
+        .training_scheduler
+        .recover_from_kernel(&store.kernel, recorded_at_ms);
+    let bound_assignments = {
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get_mut(training_run_id)
+            .ok_or_else(|| "training_scheduler_run_not_found".to_string())?;
+        scheduled_run.bind_launch_worker_assignments(assigned_nodes, recorded_at_ms)?
+    };
+    let assigned_pylons = assigned_nodes
+        .iter()
+        .zip(bound_assignments.iter())
+        .map(|(node, assignment)| HomeworkLaunchAssignedPylon {
+            node: homework_launch_pylon_match(node),
+            assignment_id: assignment.assignment_id.clone(),
+            lease_id: assignment.lease_id.clone().unwrap_or_default(),
+            assignment_state: assignment.state.label().to_string(),
+        })
+        .collect::<Vec<_>>();
+    persist_active_homework_window(
+        store,
+        training_run_id,
+        course_id,
+        homework_id,
+        assignment_family,
+        run_kind,
+        recorded_at_ms,
+    )?;
+    Ok(assigned_pylons)
+}
+
 fn build_homework_training_run_id(
     now_unix_ms: u64,
     course_id: &str,
@@ -8509,6 +8565,10 @@ fn homework_launch_effective_payout_amount_sats(
 
 fn training_run_homework_launch_metadata(training_run: &ComputeTrainingRun) -> Option<&Value> {
     training_run.metadata.get("homework_launch")
+}
+
+fn training_run_requires_scheduler_residency_for_claims(training_run: &ComputeTrainingRun) -> bool {
+    training_run_homework_launch_metadata(training_run).is_some()
 }
 
 fn training_run_homework_window_duration_seconds(training_run: &ComputeTrainingRun) -> u64 {
@@ -9140,6 +9200,7 @@ fn prepare_homework_launch(
                     matched_pylons,
                     artifact_bucket_uri: scheduled_run.artifact_bucket_uri.clone(),
                     assigned_pylons: homework_launch_assigned_pylons(scheduled_run, &node_lookup),
+                    assigned_nodes: Vec::new(),
                     artifact_prefix: homework_artifact_prefix(
                         scheduled_run.artifact_bucket_uri.as_str(),
                         scheduled_run.network_id.as_str(),
@@ -9185,32 +9246,11 @@ fn prepare_homework_launch(
             create_request,
         )
         .map_err(kernel_api_error)?;
-    store
-        .training_scheduler
-        .recover_from_kernel(&store.kernel, now_unix_ms as i64);
-    let scheduled_run = store
-        .training_scheduler
-        .runs_by_training_run_id
-        .get_mut(training_run_id.as_str())
-        .ok_or_else(|| kernel_api_error("training_scheduler_run_not_found".to_string()))?;
-    let bound_assignments = scheduled_run
-        .bind_launch_worker_assignments(assigned_nodes.as_slice(), now_unix_ms as i64)
-        .map_err(kernel_api_error)?;
-    let current_window_id = scheduled_run.current_window_id.clone();
-    let _ = scheduled_run;
-    store
-        .persist_training_scheduler_state()
-        .map_err(kernel_api_error)?;
-    let assigned_pylons = assigned_nodes
-        .iter()
-        .zip(bound_assignments.iter())
-        .map(|(node, assignment)| HomeworkLaunchAssignedPylon {
-            node: homework_launch_pylon_match(node),
-            assignment_id: assignment.assignment_id.clone(),
-            lease_id: assignment.lease_id.clone().unwrap_or_default(),
-            assignment_state: assignment.state.label().to_string(),
-        })
-        .collect::<Vec<_>>();
+    let current_window_id =
+        training_scheduler_metadata_from_run(&create_result.response.training_run)
+            .map_err(kernel_api_error)?
+            .initial_window_id
+            .unwrap_or_else(|| homework_initial_window_id(training_run_id.as_str()));
     Ok(HomeworkLaunchPrepared {
         training_run_id: training_run_id.clone(),
         network_id,
@@ -9225,7 +9265,8 @@ fn prepare_homework_launch(
         launch_receipt_id: Some(create_result.response.receipt.receipt_id.clone()),
         lane_contract,
         matched_pylons,
-        assigned_pylons,
+        assigned_pylons: Vec::new(),
+        assigned_nodes,
         artifact_bucket_uri,
         artifact_prefix,
         course_id,
@@ -9260,6 +9301,7 @@ async fn execute_homework_launch(
         })?;
         prepare_homework_launch(&state.config, &mut store, now, request)?
     };
+    let mut assigned_pylons = prepared.assigned_pylons.clone();
     if let Some(receipt_event) = prepared.receipt_event.clone() {
         let _ = state.kernel_receipt_tx.send(receipt_event);
     }
@@ -9311,9 +9353,10 @@ async fn execute_homework_launch(
                 error: "internal_error",
                 reason: "session_store_poisoned".to_string(),
             })?;
-            persist_active_homework_window(
+            assigned_pylons = materialize_homework_launch_assignments_and_window(
                 &mut store,
                 prepared.training_run_id.as_str(),
+                prepared.assigned_nodes.as_slice(),
                 prepared.course_id.as_str(),
                 prepared.homework_id.as_str(),
                 prepared.assignment_family.as_str(),
@@ -9361,7 +9404,7 @@ async fn execute_homework_launch(
         run_status: prepared.run_status,
         current_window_id: prepared.current_window_id,
         matched_pylons: prepared.matched_pylons,
-        assigned_pylons: prepared.assigned_pylons,
+        assigned_pylons,
         artifact_prefix: prepared.artifact_prefix,
         launch_receipt_id: prepared.launch_receipt_id,
         run_detail,
@@ -38490,6 +38533,122 @@ mod tests {
         );
 
         upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn homework_launch_prepare_keeps_bootstrap_pending_run_out_of_lease_claims() -> Result<()>
+    {
+        let config = test_config()?;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let training_run_id = "run.cs336.a1.bootstrap.pending";
+        let network_id = "trainnet.cs336.a1.bootstrappending";
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-bootstrap-alpha",
+            "sha256:build-bootstrap-alpha",
+            network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            None,
+        );
+
+        let prepared = {
+            let mut store = state.store.write().expect("write store");
+            super::prepare_homework_launch(
+                &state.config,
+                &mut store,
+                recorded_at_ms,
+                LaunchHomeworkRunRequest {
+                    course_id: "cs336".to_string(),
+                    homework_id: "a1".to_string(),
+                    run_slug: "bootstrap-pending".to_string(),
+                    training_run_id: Some(training_run_id.to_string()),
+                    display_name: Some("Bootstrap Pending".to_string()),
+                    reuse_existing_run: false,
+                    network_id: Some(network_id.to_string()),
+                    run_kind: Some("homework".to_string()),
+                    assignment_family: Some("cs336.a1".to_string()),
+                    artifact_prefix: None,
+                    target: super::HomeworkLaunchTargetRequest {
+                        only_online: true,
+                        min_pylon_version: None,
+                        require_updated_build: true,
+                        tags_any: Vec::new(),
+                        tags_all: Vec::new(),
+                    },
+                    assignment: super::HomeworkLaunchAssignmentRequest {
+                        mode: super::HomeworkAssignmentMode::AllMatchingPylons,
+                        max_contributors: Some(1),
+                        window_duration_seconds: 1_800,
+                    },
+                    payout: super::HomeworkLaunchPayoutRequest {
+                        enabled: false,
+                        rail: None,
+                        amount_sats: None,
+                        pay_only_on_accept: true,
+                    },
+                },
+            )
+            .map_err(|error| anyhow::anyhow!(error.reason))?
+        };
+        assert!(prepared.needs_window_materialization);
+        assert_eq!(
+            prepared.current_window_id,
+            "window.cs336.a1.bootstrap.pending.0001"
+        );
+        assert!(prepared.assigned_pylons.is_empty());
+        assert_eq!(prepared.assigned_nodes.len(), 1);
+
+        {
+            let store = state.store.read().expect("read store");
+            assert!(
+                store
+                    .kernel
+                    .get_compute_training_run(training_run_id)
+                    .is_some(),
+                "kernel run should exist before bootstrap publish"
+            );
+            assert!(
+                !store
+                    .training_scheduler
+                    .runs_by_training_run_id
+                    .contains_key(training_run_id),
+                "bootstrap-pending run must stay out of scheduler claims"
+            );
+        }
+
+        let claim_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.bootstrap.pending",
+                            recorded_at_ms as i64 + 1_000,
+                            "node-bootstrap-alpha",
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claim_response.status(), StatusCode::NOT_FOUND);
+        let claim_body = response_json::<serde_json::Value>(claim_response).await?;
+        assert_eq!(
+            claim_body.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_scheduler_run_not_found")
+        );
+
         Ok(())
     }
 

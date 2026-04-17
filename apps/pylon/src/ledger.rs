@@ -527,8 +527,8 @@ pub fn load_processed_provider_request_store(
             path.display()
         )
     })?;
-    let mut store: PylonProcessedProviderRequestStore =
-        serde_json::from_str(payload.as_str()).with_context(|| {
+    let mut store: PylonProcessedProviderRequestStore = serde_json::from_str(payload.as_str())
+        .with_context(|| {
             format!(
                 "failed to parse processed provider request store {}",
                 path.display()
@@ -634,13 +634,8 @@ fn write_atomic_json_file(path: &Path, payload: &[u8], label: &str) -> Result<()
     })?;
     if let Err(error) = std::fs::rename(temp_path.as_path(), path) {
         let _ = std::fs::remove_file(temp_path.as_path());
-        return Err(error).with_context(|| {
-            format!(
-                "failed to replace {} {}",
-                label,
-                path.display()
-            )
-        });
+        return Err(error)
+            .with_context(|| format!("failed to replace {} {}", label, path.display()));
     }
     Ok(())
 }
@@ -648,11 +643,10 @@ fn write_atomic_json_file(path: &Path, payload: &[u8], label: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::{
-        PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity,
-        PylonRelayState, PylonSettlementRecord, PylonWalletInvoiceRecord,
-        PylonWalletPaymentRecord, default_ledger_path,
-        default_processed_provider_requests_path, ensure_local_ledger, load_ledger, load_ledger_summary,
-        load_processed_provider_request_store, mutate_ledger,
+        PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonRelayActivity, PylonRelayState,
+        PylonSettlementRecord, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
+        default_ledger_path, default_processed_provider_requests_path, ensure_local_ledger,
+        load_ledger, load_ledger_summary, load_processed_provider_request_store, mutate_ledger,
         mutate_processed_provider_request_store, save_ledger,
     };
     use tempfile::tempdir;
@@ -809,7 +803,12 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let config_path = dir.path().join("config.json");
         let mut ledger = PylonLedger::default();
-        ledger.upsert_job(PylonLedgerJob::new("job-atomic-001", "provider", 5050, "completed_local"));
+        ledger.upsert_job(PylonLedgerJob::new(
+            "job-atomic-001",
+            "provider",
+            5050,
+            "completed_local",
+        ));
 
         save_ledger(config_path.as_path(), &ledger).expect("save ledger");
 
@@ -817,10 +816,18 @@ mod tests {
         assert!(ledger_path.exists());
         let entries = std::fs::read_dir(dir.path())
             .expect("read dir")
-            .map(|entry| entry.expect("entry").file_name().to_string_lossy().to_string())
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .to_string()
+            })
             .collect::<Vec<_>>();
         assert!(
-            entries.iter().all(|entry| !entry.contains(".ledger.json.tmp-")),
+            entries
+                .iter()
+                .all(|entry| !entry.contains(".ledger.json.tmp-")),
             "atomic save should not leak temporary files"
         );
         assert_eq!(

@@ -130,8 +130,12 @@ mod tests {
     fn explicit_subcommands_stay_on_cli_path() {
         assert!(!should_launch_tui(&["status".into()]).expect("status path"));
         assert!(
-            !should_launch_tui(&["--config-path".into(), "/tmp/pylon.json".into(), "status".into()])
-                .expect("status path with config")
+            !should_launch_tui(&[
+                "--config-path".into(),
+                "/tmp/pylon.json".into(),
+                "status".into()
+            ])
+            .expect("status path with config")
         );
     }
 }
