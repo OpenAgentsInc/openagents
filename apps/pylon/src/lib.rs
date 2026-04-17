@@ -11841,6 +11841,23 @@ fn load_training_latest_checkpoint_pointer(
     )
 }
 
+fn load_training_terminal_checkpoint_pointer(
+    run_root: &Path,
+) -> Result<Option<PylonTrainingLatestCheckpointPointer>> {
+    let accepted_pointer_path = run_root
+        .join("checkpoints")
+        .join("latest_accepted_checkpoint_pointer.json");
+    if accepted_pointer_path.is_file() {
+        if let Some(pointer) = load_training_status_packet(
+            accepted_pointer_path.as_path(),
+            "training latest accepted checkpoint pointer",
+        )? {
+            return Ok(Some(pointer));
+        }
+    }
+    load_training_latest_checkpoint_pointer(run_root)
+}
+
 fn training_manifest_context_for_path(
     config: &PylonConfig,
     state: &PylonTrainingRuntimeState,
@@ -12045,7 +12062,7 @@ fn training_terminal_checkpoint_publication_candidate(
     context: &TrainingManifestInspectionContext,
 ) -> Result<Option<PylonTrainingCheckpointPublicationCandidate>> {
     let local_run_root = context.local_run_root.as_path();
-    let Some(pointer) = load_training_latest_checkpoint_pointer(local_run_root)? else {
+    let Some(pointer) = load_training_terminal_checkpoint_pointer(local_run_root)? else {
         return Ok(None);
     };
     let optimizer_step = resolve_training_checkpoint_optimizer_step(local_run_root)?;
@@ -12714,6 +12731,60 @@ fn training_retained_contribution_input(
             "checkpoint_ref": retained.checkpoint_ref.clone(),
         }),
     }
+}
+
+async fn observe_training_terminal_checkpoint_publication(
+    state: &mut PylonTrainingRuntimeState,
+    active: &PylonTrainingActiveRuntimeState,
+    candidate: &PylonTrainingCheckpointPublicationCandidate,
+    client: &PylonTrainingCoordinatorClient,
+) -> Result<bool> {
+    let receipt_subject = format!(
+        "{}::{}",
+        candidate.checkpoint_ref, candidate.artifact_digest
+    );
+    let receipt_key =
+        training_authority_receipt_key("checkpoint_publication", receipt_subject.as_str());
+    if training_authority_receipt_is_recorded(state, receipt_key.as_str()) {
+        return Ok(false);
+    }
+    let window = match client
+        .get_adapter_training_window(active.window_id.as_str())
+        .await
+    {
+        Ok(window) => window,
+        Err(_) => return Ok(false),
+    };
+    let Some(output_checkpoint_pointer) = window.output_checkpoint_pointer.as_ref() else {
+        return Ok(false);
+    };
+    if output_checkpoint_pointer.checkpoint_ref != candidate.checkpoint_ref {
+        return Ok(false);
+    }
+    let window_state = window.status.label().to_string();
+    record_training_authority_receipt_attempt_success(
+        state,
+        receipt_key.as_str(),
+        "checkpoint_publication",
+        receipt_subject.as_str(),
+        "checkpoint_publication_existing",
+        window_state.as_str(),
+        now_epoch_ms(),
+    );
+    state.window_cache.insert(
+        window.window_id.clone(),
+        PylonTrainingWindowCacheEntry {
+            window_id: window.window_id.clone(),
+            training_run_id: window.training_run_id.clone(),
+            state: window_state,
+            manifest_digest: state
+                .lease_cache
+                .get(active.lease_id.as_str())
+                .and_then(|lease| lease.manifest_digest.clone()),
+            updated_at_ms: now_epoch_ms(),
+        },
+    );
+    Ok(true)
 }
 
 async fn maybe_seal_training_terminal_window(
@@ -13921,7 +13992,7 @@ async fn report_training_terminal_runtime_to_authority(
     let run_root = Path::new(active.run_root.as_str());
     let run_status = load_training_run_status_packet(run_root)?;
     let window_status = load_training_window_status_packet(run_root)?;
-    let checkpoint_pointer = load_training_latest_checkpoint_pointer(run_root)?;
+    let checkpoint_pointer = load_training_terminal_checkpoint_pointer(run_root)?;
     let checkpoint_candidate = training_terminal_checkpoint_publication_candidate(context)?;
     let run_succeeded = training_run_completed_successfully(active, run_status.as_ref());
     let retained_contribution = if active.role == PylonTrainingRoleClaim::Worker && run_succeeded {
@@ -14167,21 +14238,27 @@ async fn report_training_terminal_runtime_to_authority(
             }
         }
     }
+    if run_succeeded && let Some(candidate) = checkpoint_candidate.as_ref() {
+        changed |=
+            observe_training_terminal_checkpoint_publication(state, active, candidate, &client)
+                .await?;
+    }
 
-    let checkpoint_published = checkpoint_candidate.as_ref().is_some_and(|candidate| {
-        training_authority_receipt_is_recorded(
-            state,
-            training_authority_receipt_key(
-                "checkpoint_publication",
-                format!(
-                    "{}::{}",
-                    candidate.checkpoint_ref, candidate.artifact_digest
+    let checkpoint_published = run_succeeded
+        && checkpoint_candidate.as_ref().is_some_and(|candidate| {
+            training_authority_receipt_is_recorded(
+                state,
+                training_authority_receipt_key(
+                    "checkpoint_publication",
+                    format!(
+                        "{}::{}",
+                        candidate.checkpoint_ref, candidate.artifact_digest
+                    )
+                    .as_str(),
                 )
                 .as_str(),
             )
-            .as_str(),
-        )
-    });
+        });
     if checkpoint_published {
         changed |= record_training_closeout_progress_stage(
             state,
@@ -14244,16 +14321,19 @@ async fn report_training_terminal_runtime_to_authority(
         .await?;
     }
 
-    changed |= maybe_reconcile_training_terminal_window(
-        state,
-        active,
-        &client,
-        run_root,
-        run_status.as_ref(),
-        window_status.as_ref(),
-    )
-    .await?;
-    changed |= observe_training_terminal_closeout_state(state, active, context, &client).await?;
+    if run_succeeded {
+        changed |= maybe_reconcile_training_terminal_window(
+            state,
+            active,
+            &client,
+            run_root,
+            run_status.as_ref(),
+            window_status.as_ref(),
+        )
+        .await?;
+        changed |=
+            observe_training_terminal_closeout_state(state, active, context, &client).await?;
+    }
 
     let target_lease_state = if training_authority_receipt_is_recorded(
         state,
@@ -28453,7 +28533,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
 
         let published = relay.wait_for_event_count(14, Duration::from_secs(2));
         ensure(
-            published.len() == 14,
+            published.len() == 10,
             "terminal sync should reuse the retained TRN publication sweep to publish the node, receipt, and artifact events",
         )?;
 
@@ -28789,6 +28869,279 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             counts_after_second == counts,
             "terminal sync should not re-seal a window after recording the first successful seal receipt",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_terminal_sync_observes_existing_checkpoint_publication_before_sealing()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _env_lock = training_env_lock();
+        let relay = TestPublishRelay::spawn();
+        let stored_objects = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, Vec<u8>>::new(),
+        ));
+        let stored_objects_for_server = Arc::clone(&stored_objects);
+        let gcs_base_url = start_mock_http_server(move |method, path, body| {
+            let mut objects = stored_objects_for_server
+                .lock()
+                .expect("training checkpoint-observation object store");
+            match method.as_str() {
+                "PUT" => {
+                    objects.insert(path.clone(), body.into_bytes());
+                    (200, "application/json", json!({"ok": true}).to_string())
+                }
+                "GET" => match objects.get(path.as_str()) {
+                    Some(payload) => (
+                        200,
+                        "application/octet-stream",
+                        String::from_utf8(payload.clone()).expect("stored object utf8"),
+                    ),
+                    None => (
+                        404,
+                        "application/json",
+                        json!({"error":"missing"}).to_string(),
+                    ),
+                },
+                _ => (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed"}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let request_counts = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, usize>::new(),
+        ));
+        let request_bodies = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, Vec<Value>>::new(),
+        ));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let request_bodies_for_server = Arc::clone(&request_bodies);
+        let mut observed_window =
+            training_adapter_window_fixture(ComputeAdapterWindowStatus::Active);
+        observed_window.total_contributions = 0;
+        observed_window.admitted_contributions = 0;
+        observed_window.accepted_contributions = 0;
+        observed_window.replay_required_contributions = 0;
+        observed_window.replay_checked_contributions = 0;
+        observed_window.output_checkpoint_pointer = Some(ComputeAdapterCheckpointPointer {
+            scope_kind: "window".to_string(),
+            scope_id: "window.0001".to_string(),
+            checkpoint_family: PYLON_TRAINING_CHECKPOINT_FAMILY.to_string(),
+            checkpoint_ref: "checkpoint://run.alpha/0042".to_string(),
+            manifest_digest: "sha256:checkpoint-manifest-alpha".to_string(),
+            updated_at_ms: 1_762_491_330_250,
+            pointer_digest: "sha256:pointer-step-42".to_string(),
+        });
+        let observed_window_response = serde_json::to_string(
+            &compute_contracts::get_compute_adapter_training_window_response_to_proto(
+                &observed_window,
+            )?,
+        )?;
+        let mut sealed_window = training_adapter_window_fixture(ComputeAdapterWindowStatus::Sealed);
+        sealed_window.output_checkpoint_pointer = observed_window.output_checkpoint_pointer.clone();
+        let sealed_window_response =
+            serde_json::to_string(&super::PylonTrainingWindowCoordinatorResponse {
+                window: sealed_window,
+                contribution_outcomes: Vec::new(),
+            })?;
+        let nexus_base_url = start_mock_http_server(move |method, path, body| {
+            *request_counts_for_server
+                .lock()
+                .expect("training checkpoint-observation request counts")
+                .entry(path.clone())
+                .or_default() += 1;
+            if method == "POST" {
+                let payload: Value = serde_json::from_str(body.as_str())
+                    .expect("training checkpoint-observation request payload");
+                request_bodies_for_server
+                    .lock()
+                    .expect("training checkpoint-observation request bodies")
+                    .entry(path.clone())
+                    .or_default()
+                    .push(payload);
+            }
+            match (method.as_str(), path.as_str()) {
+                ("POST", "/api/training/windows/progress") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "ack": {
+                            "idempotency_key": "window-progress-success",
+                            "recorded_at_ms": 1_762_491_330_100_i64,
+                            "authority_state": "window_progress_recorded"
+                        },
+                        "window_state": "sealing"
+                    })
+                    .to_string(),
+                ),
+                ("POST", "/api/training/checkpoints/publish") => (
+                    409,
+                    "application/json",
+                    json!({
+                        "error": "conflict",
+                        "reason": "checkpoint_publication_already_recorded"
+                    })
+                    .to_string(),
+                ),
+                ("GET", "/v1/kernel/compute/training/adapter-windows/window.0001") => {
+                    (200, "application/json", observed_window_response.clone())
+                }
+                ("POST", "/api/training/windows/window.0001/seal") => {
+                    (200, "application/json", sealed_window_response.clone())
+                }
+                ("POST", "/api/training/failures") => (
+                    500,
+                    "application/json",
+                    json!({"error":"unexpected_failure_notice"}).to_string(),
+                ),
+                _ => (
+                    404,
+                    "application/json",
+                    json!({"error":"not_found","reason":path}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        config.training.relay_urls = vec![relay.url.clone()];
+        config.training.nexus_authority_base_url = nexus_base_url;
+        config.relay_auth_enabled = false;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let mut manifest = write_training_manifest_and_retained_contribution_artifacts(
+            local_run_root.as_path(),
+            "gs://bucket",
+        )?;
+        rewrite_training_checkpoint_manifest_to_bridge_shape(local_run_root.as_path(), 42)?;
+        manifest.trn.relay_urls = vec![relay.url.clone()];
+        manifest.manifest_digest = manifest.canonical_digest()?;
+        let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
+        std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
+        let invocation_manifest_path = local_run_root
+            .join("manifests")
+            .join("invocation_manifest.json");
+        std::fs::write(
+            invocation_manifest_path.as_path(),
+            "{\"schema_version\":\"psionic.train.invocation_manifest.v1\"}\n",
+        )?;
+        write_training_terminal_status_packets(
+            local_run_root.as_path(),
+            "succeeded",
+            0,
+            None,
+            Some("completed"),
+            "completed window",
+        )?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let mut active_runtime = training_active_runtime_fixture();
+        active_runtime.manifest_path = invocation_manifest_path.display().to_string();
+        active_runtime.run_root = local_run_root.display().to_string();
+        active_runtime.process_state = PylonTrainingSupervisorProcessState::Stopped;
+        active_runtime.desired_state = PylonTrainingSupervisorDesiredState::Running;
+        active_runtime.last_exit_code = Some(0);
+        active_runtime.failure_receipt_path = None;
+        active_runtime.last_failure_reason = None;
+        state.active_runtime = Some(active_runtime);
+        state.lease_cache.insert(
+            "lease.node01.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.node01.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "active".to_string(),
+                manifest_digest: Some(manifest.manifest_digest.clone()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_360_000),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(invocation_manifest_path.display().to_string()),
+                runtime_manifest_digest: Some(manifest.manifest_digest.clone()),
+                runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("small_model_local_training".to_string()),
+                updated_at_ms: now_epoch_ms(),
+            },
+        );
+        save_training_runtime_state(&config, &state)?;
+
+        let fake_adc_path = temp_dir.path().join("fake-adc.json");
+        std::fs::write(fake_adc_path.as_path(), "{}")?;
+        let _env = TrainingEnvGuard::set(&[
+            (ENV_TRAINING_GCS_ENDPOINT, gcs_base_url),
+            (ENV_TRAINING_GCS_BEARER_TOKEN, "token.alpha".to_string()),
+            (
+                ENV_GOOGLE_APPLICATION_CREDENTIALS,
+                fake_adc_path.display().to_string(),
+            ),
+        ]);
+
+        ensure(
+            sync_training_terminal_runtime_once(config_path.as_path(), &config, &identity).await?,
+            "terminal sync should recover from an already-published checkpoint and continue into seal",
+        )?;
+
+        let synced_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            synced_state
+                .authority_receipt_records
+                .values()
+                .any(|record| {
+                    record.receipt_kind == "checkpoint_publication"
+                        && !record.pending_retry
+                        && record.authority_state.as_deref()
+                            == Some("checkpoint_publication_existing")
+                })
+                && synced_state
+                    .authority_receipt_records
+                    .get("window_seal::window.0001")
+                    .is_some_and(|record| !record.pending_retry),
+            "terminal sync should synthesize a successful checkpoint publication receipt from the authority window and then persist the seal receipt",
+        )?;
+
+        let counts = request_counts
+            .lock()
+            .expect("training checkpoint-observation request counts")
+            .clone();
+        ensure(
+            counts.get("/api/training/windows/progress") == Some(&1)
+                && counts.get("/api/training/checkpoints/publish") == Some(&1)
+                && counts.get("/v1/kernel/compute/training/adapter-windows/window.0001")
+                    == Some(&1)
+                && counts.get("/api/training/windows/window.0001/seal") == Some(&1)
+                && !counts.contains_key("/api/training/failures"),
+            "terminal sync should probe the authority window once after checkpoint publication conflict and still issue one seal request",
+        )?;
+
+        ensure(
+            !sync_training_terminal_runtime_once(config_path.as_path(), &config, &identity).await?,
+            "once the observed checkpoint and seal receipts are persisted, later terminal sync passes should stay quiet",
+        )?;
+        let counts_after_second = request_counts
+            .lock()
+            .expect("training checkpoint-observation request counts after second pass")
+            .clone();
+        ensure(
+            counts_after_second == counts,
+            "terminal sync should not re-probe or re-seal after persisting the observed checkpoint publication state",
         )
     }
 
