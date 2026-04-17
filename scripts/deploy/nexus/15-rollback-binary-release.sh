@@ -115,7 +115,7 @@ receipt = {
     "generated_at": "${STAMP}",
     "kind": "nexus_binary_release_rollback",
     "vm": "${NEXUS_VM}",
-    "requested_release_git_sha": ${REQUESTED_RELEASE_JSON},
+    "requested_release_git_sha": json.loads("""${REQUESTED_RELEASE_JSON}"""),
     "rollback_result": json.loads("""${ROLLBACK_RESULT}"""),
     "timing": {
         "started_unix_ms": int("${OVERALL_STARTED_MS}"),

@@ -1,0 +1,23 @@
+{
+  "generated_at": "20260417-171140",
+  "kind": "nexus_binary_release_activate",
+  "vm": "nexus-mainnet-1",
+  "git_sha": "ba645a2abfbbd4a12a1bafb3c9350d82e2fc67ed",
+  "git_short_sha": "ba645a2abfbb",
+  "activation_result": {
+    "activated_release_path": "/opt/nexus-relay/releases/ba645a2abfbbd4a12a1bafb3c9350d82e2fc67ed",
+    "current_link": "/opt/nexus-relay/current",
+    "previous_link": "/opt/nexus-relay/previous",
+    "previous_target": "/opt/nexus-relay/releases/52d133c590719b39eccf3e6b93030fa77b65ecde",
+    "previous_mode": "binary",
+    "image_unit_backup_path": "/etc/systemd/system/nexus-relay.service.image-backup"
+  },
+  "timing": {
+    "started_unix_ms": 1776445900043,
+    "finished_unix_ms": 1776445953213,
+    "total_duration_ms": 53170,
+    "activation_started_unix_ms": 1776445904009,
+    "activation_finished_unix_ms": 1776445953198,
+    "activation_duration_ms": 49189
+  }
+}

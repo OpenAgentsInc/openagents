@@ -8,6 +8,7 @@ require_cmd gcloud
 require_cmd jq
 require_cmd base64
 require_cmd python3
+require_cmd curl
 
 ensure_gcloud_context
 
@@ -57,13 +58,23 @@ fetch_json_probe() {
 python3 - <<'PY'
 import base64
 import json
+import subprocess
 import time
-import urllib.request
 
 url = base64.b64decode("${url_b64}").decode()
 started = time.time()
-with urllib.request.urlopen(url, timeout=20) as response:
-    body = response.read().decode()
+body = subprocess.check_output(
+    [
+        "curl",
+        "-fsS",
+        "--max-time",
+        "20",
+        "-H",
+        "User-Agent: nexus-deploy-verifier",
+        url,
+    ],
+    text=True,
+)
 
 print(json.dumps({
     "body": json.loads(body),
@@ -133,33 +144,39 @@ python3 - <<'PY'
 import base64
 import json
 import math
+import subprocess
 import time
-import urllib.request
 
 url = base64.b64decode("${url_b64}").decode()
 method = base64.b64decode("${method_b64}").decode().upper()
 body = base64.b64decode("${body_b64}").decode()
 sample_count = int(${sample_count})
 
-headers = {}
-request_data = None
-headers["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+base_cmd = [
+    "curl",
+    "-fsS",
+    "--max-time",
+    "20",
+    "-X",
+    method,
+    "-H",
+    "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+]
 if method == "POST":
-    headers["content-type"] = "application/json"
-    request_data = body.encode()
+    base_cmd.extend([
+        "-H",
+        "content-type: application/json",
+        "--data-binary",
+        body,
+    ])
+base_cmd.append(url)
 
 latencies = []
 last_body = None
 for _ in range(sample_count):
-    request = urllib.request.Request(
-        url,
-        data=request_data,
-        headers=headers,
-        method=method,
-    )
     started = time.time()
-    with urllib.request.urlopen(request, timeout=20) as response:
-        last_body = json.loads(response.read().decode())
+    response_body = subprocess.check_output(base_cmd, text=True)
+    last_body = json.loads(response_body)
     latencies.append(int((time.time() - started) * 1000))
 
 sorted_latencies = sorted(latencies)
@@ -195,31 +212,36 @@ fetch_public_json_probe() {
   url_b64="$(printf '%s' "$url" | base64 | tr -d '\n')"
   method_b64="$(printf '%s' "$method" | base64 | tr -d '\n')"
   body_b64="$(printf '%s' "$request_body" | base64 | tr -d '\n')"
-  python3 - <<EOF
+python3 - <<EOF
 import base64
 import json
+import subprocess
 import time
-import urllib.request
 
 url = base64.b64decode("${url_b64}").decode()
 method = base64.b64decode("${method_b64}").decode().upper()
 body = base64.b64decode("${body_b64}").decode()
 
-headers = {}
-request_data = None
+command = [
+    "curl",
+    "-fsS",
+    "--max-time",
+    "20",
+    "-X",
+    method,
+    "-H",
+    "User-Agent: nexus-deploy-verifier",
+]
 if method == "POST":
-    headers["content-type"] = "application/json"
-    request_data = body.encode()
-
-request = urllib.request.Request(
-    url,
-    data=request_data,
-    headers=headers,
-    method=method,
-)
+    command.extend([
+        "-H",
+        "content-type: application/json",
+        "--data-binary",
+        body,
+    ])
+command.append(url)
 started = time.time()
-with urllib.request.urlopen(request, timeout=20) as response:
-    body = response.read().decode()
+body = subprocess.check_output(command, text=True)
 
 print(json.dumps({
     "body": json.loads(body),
