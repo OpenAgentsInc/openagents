@@ -53,6 +53,10 @@ require_cmd sudo
 require_cmd curl
 require_cmd dpkg
 
+CARGO_HOME="${CACHE_MOUNT_POINT}/cargo-home"
+RUSTUP_HOME="${CACHE_MOUNT_POINT}/rustup-home"
+BUILDER_CARGO_BIN="${CARGO_HOME}/bin"
+
 log "Installing builder packages"
 sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -y
 sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
@@ -98,7 +102,8 @@ if ! id -u "$BUILDER_USER" >/dev/null 2>&1; then
 fi
 
 sudo install -d -o "$BUILDER_USER" -g "$BUILDER_USER" -m 0755 \
-  "$CACHE_MOUNT_POINT/cargo-home" \
+  "$CARGO_HOME" \
+  "$RUSTUP_HOME" \
   "$CACHE_MOUNT_POINT/target" \
   "$CACHE_MOUNT_POINT/sccache" \
   "$CACHE_MOUNT_POINT/sources" \
@@ -109,14 +114,23 @@ sudo install -d -o "$BUILDER_USER" -g "$BUILDER_USER" -m 0755 \
   "/home/${BUILDER_USER}/.cargo" \
   "/home/${BUILDER_USER}/.config"
 
-if ! sudo -u "$BUILDER_USER" bash -lc 'test -x "$HOME/.cargo/bin/rustc"'; then
+if ! sudo -u "$BUILDER_USER" env \
+  CARGO_HOME="$CARGO_HOME" \
+  RUSTUP_HOME="$RUSTUP_HOME" \
+  bash -lc 'test -x "$CARGO_HOME/bin/rustc"'; then
   log "Installing rustup toolchain ${RUST_TOOLCHAIN} for ${BUILDER_USER}"
-  curl -fsSL https://sh.rustup.rs | sudo -u "$BUILDER_USER" bash -s -- -y --default-toolchain "$RUST_TOOLCHAIN" --profile minimal
+  curl -fsSL https://sh.rustup.rs | sudo -u "$BUILDER_USER" env \
+    CARGO_HOME="$CARGO_HOME" \
+    RUSTUP_HOME="$RUSTUP_HOME" \
+    bash -s -- -y --default-toolchain "$RUST_TOOLCHAIN" --profile minimal
 fi
 
-sudo -u "$BUILDER_USER" bash -lc "
+sudo -u "$BUILDER_USER" env \
+  CARGO_HOME="$CARGO_HOME" \
+  RUSTUP_HOME="$RUSTUP_HOME" \
+  bash -lc "
   set -euo pipefail
-  export PATH=\"\$HOME/.cargo/bin:\$PATH\"
+  export PATH=\"${BUILDER_CARGO_BIN}:\$PATH\"
   rustup toolchain install '${RUST_TOOLCHAIN}' --profile minimal >/dev/null
   rustup default '${RUST_TOOLCHAIN}' >/dev/null
 "
@@ -127,16 +141,20 @@ install_sccache "$SCCACHE_VERSION"
 sudo tee /etc/profile.d/nexus-builder.sh >/dev/null <<EOF
 export NEXUS_BUILDER_CACHE_MOUNT_POINT=${CACHE_MOUNT_POINT}
 export NEXUS_BUILDER_USER=${BUILDER_USER}
-export CARGO_HOME=${CACHE_MOUNT_POINT}/cargo-home
+export CARGO_HOME=${CARGO_HOME}
+export RUSTUP_HOME=${RUSTUP_HOME}
 export CARGO_TARGET_DIR=${CACHE_MOUNT_POINT}/target
 export SCCACHE_DIR=${CACHE_MOUNT_POINT}/sccache
-export PATH=/home/${BUILDER_USER}/.cargo/bin:\$PATH
+export PATH=${BUILDER_CARGO_BIN}:\$PATH
 EOF
 sudo chmod 0644 /etc/profile.d/nexus-builder.sh
 
-sudo -u "$BUILDER_USER" bash -lc "
+sudo -u "$BUILDER_USER" env \
+  CARGO_HOME="$CARGO_HOME" \
+  RUSTUP_HOME="$RUSTUP_HOME" \
+  bash -lc "
   set -euo pipefail
-  export PATH=\"\$HOME/.cargo/bin:\$PATH\"
+  export PATH=\"${BUILDER_CARGO_BIN}:\$PATH\"
   rustc --version
   cargo --version
 "
