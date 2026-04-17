@@ -1099,6 +1099,9 @@ become the admitted-node supervisor around `Psionic`.
 ### 3.1 Real training capability detection
 
 - Replace the inert training contributor default in `apps/pylon/src/lib.rs`.
+- Fresh `Pylon` defaults now advertise the training contributor inventory by
+  default, and `pylon config set` now exposes
+  `backend.adapter_training_contributor_enabled`.
 - Use a live local probe rather than config-only claims:
   - resolve the sibling `Psionic` machine training surface
   - combine that with host GPU, disk, and network telemetry
@@ -2589,6 +2592,10 @@ detection
 **Summary**
 
 Implement real training capability detection in `Pylon`.
+
+Fresh `Pylon` defaults now advertise the training contributor inventory by
+default, but that only removes the inert-off footgun. This workstream still
+owns the deeper runtime detection and honest refusal path.
 
 **Why**
 

@@ -15758,6 +15758,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
     let mut inventory_controls = ProviderInventoryControls::default();
     inventory_controls.apple_fm_inference_enabled = false;
     inventory_controls.apple_fm_adapter_hosting_enabled = false;
+    inventory_controls.adapter_training_contributor_enabled = true;
     PylonConfig {
         schema_version: 1,
         node_label: "pylon".to_string(),
@@ -21059,6 +21060,9 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
         "backend.sandbox_posix_exec_enabled" => {
             next.inventory_controls.sandbox_posix_exec_enabled = parse_bool(value)?;
         }
+        "backend.adapter_training_contributor_enabled" => {
+            next.inventory_controls.adapter_training_contributor_enabled = parse_bool(value)?;
+        }
         "training.allowed_networks" => {
             next.training.allowed_networks = parse_csv_list(value);
         }
@@ -22921,6 +22925,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
         apply_config_set(
             &mut config,
+            "backend.adapter_training_contributor_enabled",
+            "false",
+        )?;
+        apply_config_set(
+            &mut config,
             "training.allowed_networks",
             "trainnet.alpha,trainnet.beta",
         )?;
@@ -22954,6 +22963,12 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         apply_config_set(&mut config, "training.disk_quota_gb", "640")?;
         apply_config_set(&mut config, "training.retention_limit_gb", "320")?;
 
+        ensure(
+            !config
+                .inventory_controls
+                .adapter_training_contributor_enabled,
+            "config set should update backend.adapter_training_contributor_enabled",
+        )?;
         ensure(
             config.training.allowed_networks
                 == vec!["trainnet.alpha".to_string(), "trainnet.beta".to_string()],
@@ -23009,6 +23024,18 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             config.training.retention_limit_gb == 256,
             "invalid training retention edits should leave the prior config intact",
+        )
+    }
+
+    #[test]
+    fn default_config_enables_training_contributor_inventory()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        ensure(
+            config
+                .inventory_controls
+                .adapter_training_contributor_enabled,
+            "default pylon config should advertise the training contributor inventory by default",
         )
     }
 

@@ -9820,6 +9820,84 @@ async fn upload_training_artifact_via_curl_signed_url(
     Err(format!("curl_http_error:{status}:{response_body}"))
 }
 
+async fn verify_training_artifact_via_signed_url(
+    config: &TrainingArtifactSignedUrlConfig,
+    client: &reqwest::Client,
+    artifact: &Cs336A1DemoBootstrapArtifact,
+) -> Result<(), String> {
+    let expected_digest = sha256_prefixed_bytes(artifact.payload.as_slice());
+    let signed_access = issue_training_artifact_signed_access(
+        config,
+        &artifact.resolver,
+        &PylonTrainingArtifactSignedAccessRequest {
+            mode: PylonTrainingArtifactSignedAccessMode::Read,
+            ttl_seconds: Some(config.default_ttl_seconds),
+            digest: Some(expected_digest.clone()),
+            size_bytes: None,
+        },
+        now_unix_ms() / 1_000,
+    )?;
+    let response = client
+        .get(signed_access.signed_url.as_str())
+        .send()
+        .await
+        .map_err(|error| {
+            format!(
+                "cs336_a1_demo_bootstrap_artifact_verify_failed:{}:{error}",
+                artifact.resolver.artifact_id
+            )
+        })?;
+    if !response.status().is_success() {
+        let status = response.status().as_u16();
+        let detail = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "cs336_a1_demo_bootstrap_artifact_verify_failed:{}:{}:{}",
+            artifact.resolver.artifact_id, status, detail
+        ));
+    }
+    let body = response.bytes().await.map_err(|error| {
+        format!(
+            "cs336_a1_demo_bootstrap_artifact_verify_failed:{}:{error}",
+            artifact.resolver.artifact_id
+        )
+    })?;
+    let observed_digest = sha256_prefixed_bytes(body.as_ref());
+    if observed_digest != expected_digest {
+        return Err(format!(
+            "cs336_a1_demo_bootstrap_artifact_verify_digest_mismatch:{}:{}:{}",
+            artifact.resolver.artifact_id, expected_digest, observed_digest
+        ));
+    }
+    Ok(())
+}
+
+async fn upload_and_verify_training_artifact_via_signed_url(
+    config: &TrainingArtifactSignedUrlConfig,
+    client: &reqwest::Client,
+    artifact: &Cs336A1DemoBootstrapArtifact,
+) -> Result<(), String> {
+    let mut last_error = None;
+    for attempt in 0..3_u64 {
+        match upload_training_artifact_via_signed_url(config, client, artifact).await {
+            Ok(()) => match verify_training_artifact_via_signed_url(config, client, artifact).await
+            {
+                Ok(()) => return Ok(()),
+                Err(error) => last_error = Some(error),
+            },
+            Err(error) => last_error = Some(error),
+        }
+        if attempt < 2 {
+            tokio::time::sleep(Duration::from_millis(250 * (attempt + 1))).await;
+        }
+    }
+    Err(last_error.unwrap_or_else(|| {
+        format!(
+            "cs336_a1_demo_bootstrap_artifact_upload_failed:{}:unknown",
+            artifact.resolver.artifact_id
+        )
+    }))
+}
+
 async fn publish_cs336_a1_demo_bootstrap_artifacts(
     lane_contract: &PsionicTrainLaneContract,
     config: &ServiceConfig,
@@ -9846,7 +9924,8 @@ async fn publish_cs336_a1_demo_bootstrap_artifacts(
     )?;
     let client = build_training_artifact_upload_client(&signed_url_config).await?;
     for artifact in &artifacts {
-        upload_training_artifact_via_signed_url(&signed_url_config, &client, artifact).await?;
+        upload_and_verify_training_artifact_via_signed_url(&signed_url_config, &client, artifact)
+            .await?;
     }
     Ok(())
 }
@@ -23685,6 +23764,10 @@ mod tests {
         training_artifact_signed_url.bucket_uri = bucket_uri.to_string();
         let uploads = Arc::new(Mutex::new(Vec::<String>::new()));
         let uploads_for_server = Arc::clone(&uploads);
+        let stored_objects = Arc::new(Mutex::new(
+            std::collections::HashMap::<String, Vec<u8>>::new(),
+        ));
+        let stored_objects_for_server = Arc::clone(&stored_objects);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let local_addr = listener.local_addr()?;
         training_artifact_signed_url.endpoint = format!("http://{local_addr}/upload");
@@ -23693,14 +23776,35 @@ mod tests {
                 "/upload/{*path}",
                 axum::routing::put({
                     let uploads = Arc::clone(&uploads_for_server);
-                    move |uri: axum::http::Uri| {
+                    let stored_objects = Arc::clone(&stored_objects_for_server);
+                    move |uri: axum::http::Uri, body: axum::body::Bytes| {
                         let uploads = Arc::clone(&uploads);
+                        let stored_objects = Arc::clone(&stored_objects);
                         async move {
-                            uploads
+                            let path = uri.path().to_string();
+                            uploads.lock().expect("upload paths").push(path.clone());
+                            stored_objects
                                 .lock()
-                                .expect("upload paths")
-                                .push(uri.path().to_string());
+                                .expect("stored training artifacts")
+                                .insert(path, body.to_vec());
                             StatusCode::OK
+                        }
+                    }
+                })
+                .get({
+                    let stored_objects = Arc::clone(&stored_objects_for_server);
+                    move |uri: axum::http::Uri| {
+                        let stored_objects = Arc::clone(&stored_objects);
+                        async move {
+                            match stored_objects
+                                .lock()
+                                .expect("stored training artifacts")
+                                .get(uri.path())
+                                .cloned()
+                            {
+                                Some(body) => (StatusCode::OK, body),
+                                None => (StatusCode::NOT_FOUND, Vec::new()),
+                            }
                         }
                     }
                 }),
