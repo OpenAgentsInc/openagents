@@ -9863,6 +9863,67 @@ async fn upload_training_artifact_via_curl_signed_url(
     Err(format!("curl_http_error:{status}:{response_body}"))
 }
 
+async fn read_training_artifact_via_curl_signed_url(
+    signed_url: &str,
+) -> Result<Option<Vec<u8>>, String> {
+    let response_body_path = std::env::temp_dir().join(format!(
+        "nexus-training-read-response-{}-{}.tmp",
+        now_unix_ms(),
+        std::process::id()
+    ));
+    let mut command = Command::new("curl");
+    command
+        .arg("-4")
+        .arg("-sS")
+        .arg("--connect-timeout")
+        .arg("10")
+        .arg("--max-time")
+        .arg("30")
+        .arg("-o")
+        .arg(response_body_path.as_os_str())
+        .arg("-w")
+        .arg("%{http_code}")
+        .arg(signed_url)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let output = match command.spawn() {
+        Ok(child) => child
+            .wait_with_output()
+            .await
+            .map_err(|error| format!("curl_wait_failed:{error}"))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("curl_spawn_failed:{error}")),
+    };
+
+    let response_body = tokio::fs::read(response_body_path.as_path())
+        .await
+        .unwrap_or_default();
+    let _ = tokio::fs::remove_file(response_body_path.as_path()).await;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let exit_status = output
+            .status
+            .code()
+            .map_or_else(|| "signal".to_string(), |code| code.to_string());
+        return Err(format!("curl_exit_failed:{exit_status}:{stderr}"));
+    }
+
+    let status_text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let status = status_text
+        .parse::<u16>()
+        .map_err(|error| format!("curl_status_invalid:{status_text}:{error}"))?;
+    if (200..300).contains(&status) {
+        return Ok(Some(response_body));
+    }
+
+    let detail = String::from_utf8_lossy(response_body.as_slice())
+        .trim()
+        .to_string();
+    Err(format!("curl_http_error:{status}:{detail}"))
+}
+
 async fn verify_training_artifact_via_signed_url(
     config: &TrainingArtifactSignedUrlConfig,
     client: &reqwest::Client,
@@ -9880,6 +9941,26 @@ async fn verify_training_artifact_via_signed_url(
         },
         now_unix_ms() / 1_000,
     )?;
+    if let Some(body) =
+        read_training_artifact_via_curl_signed_url(signed_access.signed_url.as_str())
+            .await
+            .map_err(|error| {
+                format!(
+                    "cs336_a1_demo_bootstrap_artifact_verify_failed:{}:{error}",
+                    artifact.resolver.artifact_id
+                )
+            })?
+    {
+        let observed_digest = sha256_prefixed_bytes(body.as_slice());
+        if observed_digest != expected_digest {
+            return Err(format!(
+                "cs336_a1_demo_bootstrap_artifact_verify_digest_mismatch:{}:{}:{}",
+                artifact.resolver.artifact_id, expected_digest, observed_digest
+            ));
+        }
+        return Ok(());
+    }
+
     let response = client
         .get(signed_access.signed_url.as_str())
         .send()
