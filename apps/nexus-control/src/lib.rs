@@ -127,6 +127,8 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
@@ -9485,6 +9487,25 @@ async fn upload_training_artifact_via_signed_url(
         },
         now_unix_ms() / 1_000,
     )?;
+
+    // The production Nexus image still sees reqwest transport failures for GCS
+    // signed PUTs even after forcing IPv4 resolver hints. Prefer curl -4 when
+    // it is available in the runtime image, and only fall back to reqwest when
+    // curl is not present.
+    if let Some(()) = upload_training_artifact_via_curl_signed_url(
+        signed_access.signed_url.as_str(),
+        artifact.payload.as_slice(),
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "cs336_a1_demo_bootstrap_artifact_upload_failed:{}:{error}",
+            artifact.resolver.artifact_id
+        )
+    })? {
+        return Ok(());
+    }
+
     let response = client
         .put(signed_access.signed_url.as_str())
         .body(artifact.payload.clone())
@@ -9505,6 +9526,80 @@ async fn upload_training_artifact_via_signed_url(
         "cs336_a1_demo_bootstrap_artifact_upload_failed:{}:{}:{}",
         artifact.resolver.artifact_id, status, detail
     ))
+}
+
+async fn upload_training_artifact_via_curl_signed_url(
+    signed_url: &str,
+    payload: &[u8],
+) -> Result<Option<()>, String> {
+    let response_body_path = std::env::temp_dir().join(format!(
+        "nexus-training-upload-response-{}-{}.tmp",
+        now_unix_ms(),
+        std::process::id()
+    ));
+    let mut command = Command::new("curl");
+    command
+        .arg("-4")
+        .arg("-sS")
+        .arg("-X")
+        .arg("PUT")
+        .arg("--connect-timeout")
+        .arg("10")
+        .arg("--max-time")
+        .arg("30")
+        .arg("--data-binary")
+        .arg("@-")
+        .arg("-o")
+        .arg(response_body_path.as_os_str())
+        .arg("-w")
+        .arg("%{http_code}")
+        .arg(signed_url)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("curl_spawn_failed:{error}")),
+    };
+
+    let Some(mut stdin) = child.stdin.take() else {
+        return Err("curl_stdin_unavailable".to_string());
+    };
+    stdin
+        .write_all(payload)
+        .await
+        .map_err(|error| format!("curl_stdin_write_failed:{error}"))?;
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|error| format!("curl_wait_failed:{error}"))?;
+    let response_body = tokio::fs::read_to_string(response_body_path.as_path())
+        .await
+        .unwrap_or_default();
+    let _ = tokio::fs::remove_file(response_body_path.as_path()).await;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let exit_status = output
+            .status
+            .code()
+            .map_or_else(|| "signal".to_string(), |code| code.to_string());
+        return Err(format!("curl_exit_failed:{exit_status}:{stderr}"));
+    }
+
+    let status_text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let status = status_text
+        .parse::<u16>()
+        .map_err(|error| format!("curl_status_invalid:{status_text}:{error}"))?;
+    if (200..300).contains(&status) {
+        return Ok(Some(()));
+    }
+
+    Err(format!("curl_http_error:{status}:{response_body}"))
 }
 
 async fn publish_cs336_a1_demo_bootstrap_artifacts(
