@@ -3265,6 +3265,15 @@ impl TrainingSchedulerState {
             let Ok(metadata) = training_scheduler_metadata_from_run(&run) else {
                 continue;
             };
+            if training_run_requires_scheduler_residency_for_claims(&run)
+                && !training_run_has_materialized_scheduler_window(
+                    kernel,
+                    run.training_run_id.as_str(),
+                    metadata.initial_window_id.as_deref(),
+                )
+            {
+                continue;
+            }
             let mut scheduled_run = self
                 .runs_by_training_run_id
                 .remove(run.training_run_id.as_str())
@@ -8408,9 +8417,7 @@ fn materialize_homework_launch_assignments_and_window(
     run_kind: &str,
     recorded_at_ms: i64,
 ) -> Result<Vec<HomeworkLaunchAssignedPylon>, String> {
-    store
-        .training_scheduler
-        .recover_from_kernel(&store.kernel, recorded_at_ms);
+    ensure_homework_launch_scheduler_run(store, training_run_id, recorded_at_ms)?;
     let bound_assignments = {
         let scheduled_run = store
             .training_scheduler
@@ -8439,6 +8446,35 @@ fn materialize_homework_launch_assignments_and_window(
         recorded_at_ms,
     )?;
     Ok(assigned_pylons)
+}
+
+fn ensure_homework_launch_scheduler_run(
+    store: &mut ControlStore,
+    training_run_id: &str,
+    recorded_at_ms: i64,
+) -> Result<(), String> {
+    if store
+        .training_scheduler
+        .runs_by_training_run_id
+        .contains_key(training_run_id)
+    {
+        return Ok(());
+    }
+    let training_run = store
+        .kernel
+        .get_compute_training_run(training_run_id)
+        .ok_or_else(|| "training_scheduler_run_not_found".to_string())?;
+    if !training_run_schedulable(&training_run) {
+        return Err("training_scheduler_run_not_schedulable".to_string());
+    }
+    let metadata = training_scheduler_metadata_from_run(&training_run)?;
+    let scheduled_run =
+        ScheduledTrainingRun::from_kernel_run(&training_run, &metadata, recorded_at_ms);
+    store
+        .training_scheduler
+        .runs_by_training_run_id
+        .insert(training_run_id.to_string(), scheduled_run);
+    Ok(())
 }
 
 fn build_homework_training_run_id(
@@ -8578,6 +8614,20 @@ fn training_run_homework_window_duration_seconds(training_run: &ComputeTrainingR
         .and_then(Value::as_u64)
         .filter(|value| *value > 0)
         .unwrap_or(PYLON_TRAINING_WINDOW_MAX_DURATION_MS / 1_000)
+}
+
+fn training_run_has_materialized_scheduler_window(
+    kernel: &KernelState,
+    training_run_id: &str,
+    expected_window_id: Option<&str>,
+) -> bool {
+    let windows = kernel.list_compute_adapter_training_windows(Some(training_run_id), None);
+    if let Some(expected_window_id) = expected_window_id {
+        return windows
+            .iter()
+            .any(|window| window.window_id == expected_window_id);
+    }
+    !windows.is_empty()
 }
 
 fn training_run_homework_payout_amount_sats(
@@ -38703,6 +38753,20 @@ mod tests {
                     .runs_by_training_run_id
                     .contains_key(training_run_id),
                 "bootstrap-pending run must stay out of scheduler claims"
+            );
+        }
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut training_scheduler = std::mem::take(&mut store.training_scheduler);
+            training_scheduler.recover_from_kernel(&store.kernel, recorded_at_ms as i64 + 500);
+            let recovered_contains_run = training_scheduler
+                .runs_by_training_run_id
+                .contains_key(training_run_id);
+            store.training_scheduler = training_scheduler;
+            assert!(
+                !recovered_contains_run,
+                "bootstrap-pending homework runs must stay out of scheduler residency even after lazy recovery from kernel state",
             );
         }
 
