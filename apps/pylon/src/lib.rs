@@ -8115,7 +8115,9 @@ fn load_or_create_training_runtime_state(
     if path.exists() {
         let mut state = load_training_runtime_state_raw(path.as_path())?;
         let normalized = normalize_training_runtime_state(&mut state);
+        let reconciled = reconcile_training_runtime_state_for_config(config, &mut state);
         if normalized
+            || reconciled
             || !execution_path.exists()
             || !artifact_path.exists()
             || !authority_sync_path.exists()
@@ -8137,6 +8139,7 @@ fn load_or_create_training_runtime_state(
             )?,
         );
         normalize_training_runtime_state(&mut state);
+        reconcile_training_runtime_state_for_config(config, &mut state);
         save_training_runtime_state(config, &state)?;
         return Ok(state);
     }
@@ -8157,6 +8160,58 @@ fn load_training_runtime_state_raw(path: &Path) -> Result<PylonTrainingRuntimeSt
 
 fn normalize_training_runtime_state(state: &mut PylonTrainingRuntimeState) -> bool {
     normalize_training_closeout_progress_from_journal(state)
+}
+
+fn reconcile_training_runtime_state_for_config(
+    config: &PylonConfig,
+    state: &mut PylonTrainingRuntimeState,
+) -> bool {
+    prune_unrequested_pending_training_leases(config, state)
+}
+
+fn prune_unrequested_pending_training_leases(
+    config: &PylonConfig,
+    state: &mut PylonTrainingRuntimeState,
+) -> bool {
+    let mut removed = Vec::new();
+    state.lease_cache.retain(|lease_id, lease| {
+        if training_lease_state_is_terminal(lease.state.as_str())
+            || training_cached_lease_matches_allowed_networks(config, lease)
+        {
+            return true;
+        }
+        removed.push((
+            lease_id.clone(),
+            lease.network_id.clone(),
+            lease.state.clone(),
+        ));
+        false
+    });
+    for (lease_id, network_id, lease_state) in &removed {
+        training_trace(&format!(
+            "dropping retained lease {} state={} network={} because it is outside the allowed training networks",
+            lease_id,
+            lease_state,
+            network_id.as_deref().unwrap_or("missing"),
+        ));
+    }
+    !removed.is_empty()
+}
+
+fn training_cached_lease_matches_allowed_networks(
+    config: &PylonConfig,
+    lease: &PylonTrainingLeaseCacheEntry,
+) -> bool {
+    if config.training.allowed_networks.is_empty() {
+        return true;
+    }
+    lease.network_id.as_ref().is_some_and(|network_id| {
+        config
+            .training
+            .allowed_networks
+            .iter()
+            .any(|allowed| allowed == network_id)
+    })
 }
 
 fn normalize_training_closeout_progress_from_journal(
@@ -9216,6 +9271,10 @@ async fn run_training_assignment_intake_once_with_context(
 
     if supported_roles.is_empty() {
         return Ok(());
+    }
+
+    if prune_unrequested_pending_training_leases(config, state) {
+        save_training_runtime_state(config, state)?;
     }
 
     if let Some(existing_lease) = newest_pending_training_lease_cache_entry(state) {
@@ -25867,6 +25926,154 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 .get("assign.alpha")
                 .is_some_and(|entry| entry.stage == super::PylonTrainingCloseoutStage::Accepted),
             "load-time repair should not regress newer closeout progress when retained journal history is older",
+        )
+    }
+
+    #[test]
+    fn training_runtime_state_load_prunes_cached_leases_outside_allowed_networks()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.allowed_networks = vec!["trainnet.expected".to_string()];
+        save_config(config_path.as_path(), &config)?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.lease_cache.insert(
+            "lease.expected".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.expected".to_string(),
+                assignment_id: "assign.expected".to_string(),
+                training_run_id: "run.expected".to_string(),
+                window_id: "window.expected".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-expected".to_string()),
+                checkpoint_ref: None,
+                expires_at_ms: Some(1_762_500_000_100),
+                network_id: Some("trainnet.expected".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: None,
+                runtime_manifest_digest: None,
+                runtime_lane_id: None,
+                runtime_operation: None,
+                runtime_work_class: None,
+                updated_at_ms: 1_762_500_000_100,
+            },
+        );
+        state.lease_cache.insert(
+            "lease.other".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.other".to_string(),
+                assignment_id: "assign.other".to_string(),
+                training_run_id: "run.other".to_string(),
+                window_id: "window.other".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-other".to_string()),
+                checkpoint_ref: None,
+                expires_at_ms: Some(1_762_500_000_200),
+                network_id: Some("trainnet.other".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: None,
+                runtime_manifest_digest: None,
+                runtime_lane_id: None,
+                runtime_operation: None,
+                runtime_work_class: None,
+                updated_at_ms: 1_762_500_000_200,
+            },
+        );
+        state.lease_cache.insert(
+            "lease.missing".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.missing".to_string(),
+                assignment_id: "assign.missing".to_string(),
+                training_run_id: "run.missing".to_string(),
+                window_id: "window.missing".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "leased".to_string(),
+                manifest_digest: Some("sha256:manifest-missing".to_string()),
+                checkpoint_ref: None,
+                expires_at_ms: Some(1_762_500_000_300),
+                network_id: None,
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: None,
+                runtime_manifest_digest: None,
+                runtime_lane_id: None,
+                runtime_operation: None,
+                runtime_work_class: None,
+                updated_at_ms: 1_762_500_000_300,
+            },
+        );
+        state.lease_cache.insert(
+            "lease.terminal".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.terminal".to_string(),
+                assignment_id: "assign.terminal".to_string(),
+                training_run_id: "run.terminal".to_string(),
+                window_id: "window.terminal".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "expired".to_string(),
+                manifest_digest: Some("sha256:manifest-terminal".to_string()),
+                checkpoint_ref: None,
+                expires_at_ms: Some(1_762_500_000_400),
+                network_id: Some("trainnet.other".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: None,
+                runtime_manifest_digest: None,
+                runtime_lane_id: None,
+                runtime_operation: None,
+                runtime_work_class: None,
+                updated_at_ms: 1_762_500_000_400,
+            },
+        );
+        save_training_runtime_state(&config, &state)?;
+
+        let repaired_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            repaired_state.lease_cache.contains_key("lease.expected")
+                && !repaired_state.lease_cache.contains_key("lease.other")
+                && !repaired_state.lease_cache.contains_key("lease.missing")
+                && repaired_state.lease_cache.contains_key("lease.terminal"),
+            "load-time retained-state reconciliation should prune only nonterminal cached leases that cannot prove an allowed network scope",
+        )?;
+
+        let execution_state =
+            super::load_training_retained_state_file::<super::PylonTrainingExecutionCacheState>(
+                super::training_execution_cache_state_path(&config).as_path(),
+                "training execution state",
+            )?;
+        ensure(
+            execution_state.lease_cache == repaired_state.lease_cache,
+            "network-scope cache repair should persist the pruned lease cache back to retained execution state",
         )
     }
 
