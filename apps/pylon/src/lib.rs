@@ -1099,6 +1099,7 @@ struct PylonTrainingSupervisorProcess {
 
 pub struct PylonTrainingCoordinatorClient {
     client: reqwest::Client,
+    heartbeat_client: reqwest::Client,
     kernel_authority: HttpKernelAuthorityClient,
     base_url: String,
     bearer_auth: Option<String>,
@@ -8364,6 +8365,13 @@ impl PylonTrainingCoordinatorClient {
             .timeout(Duration::from_secs(nexus_remote_timeout_seconds()))
             .build()
             .context("failed to build pylon training coordinator client")?;
+        let heartbeat_client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(
+                training_heartbeat_connect_timeout_seconds(),
+            ))
+            .timeout(Duration::from_secs(training_heartbeat_timeout_seconds()))
+            .build()
+            .context("failed to build pylon training heartbeat client")?;
         let kernel_authority = HttpKernelAuthorityClient::with_client(
             client.clone(),
             base_url.clone(),
@@ -8371,6 +8379,7 @@ impl PylonTrainingCoordinatorClient {
         );
         Ok(Self {
             client,
+            heartbeat_client,
             kernel_authority,
             base_url,
             bearer_auth,
@@ -8580,7 +8589,8 @@ impl PylonTrainingCoordinatorClient {
         &self,
         request: &PylonTrainingHeartbeatRequest,
     ) -> Result<PylonTrainingHeartbeatResponse> {
-        self.post_training_coordination_json_with_retry(
+        self.post_training_coordination_json_with_retry_with_client(
+            &self.heartbeat_client,
             "/api/training/heartbeats",
             request,
             "heartbeat",
@@ -8783,10 +8793,31 @@ impl PylonTrainingCoordinatorClient {
         T: Serialize + ?Sized,
         R: DeserializeOwned,
     {
+        self.post_training_coordination_json_with_retry_with_client(
+            &self.client,
+            path,
+            payload,
+            action,
+            idempotency_key,
+        )
+        .await
+    }
+
+    async fn post_training_coordination_json_with_retry_with_client<T, R>(
+        &self,
+        client: &reqwest::Client,
+        path: &str,
+        payload: &T,
+        action: &str,
+        idempotency_key: &str,
+    ) -> Result<R>
+    where
+        T: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
         let url = self.training_authority_url(path);
         for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
-            let mut request = self
-                .client
+            let mut request = client
                 .post(url.as_str())
                 .header("x-openagents-idempotency-key", idempotency_key)
                 .json(payload);
@@ -21673,6 +21704,18 @@ fn provider_presence_timeout_seconds() -> u64 {
     parse_positive_env_u64("PYLON_NEXUS_PROVIDER_TIMEOUT_SECONDS")
         .or_else(|| parse_positive_env_u64("PYLON_NEXUS_TIMEOUT_SECONDS"))
         .unwrap_or(20)
+}
+
+fn training_heartbeat_connect_timeout_seconds() -> u64 {
+    parse_positive_env_u64("PYLON_TRAINING_HEARTBEAT_CONNECT_TIMEOUT_SECONDS")
+        .or_else(|| parse_positive_env_u64("PYLON_NEXUS_CONNECT_TIMEOUT_SECONDS"))
+        .unwrap_or(10)
+}
+
+fn training_heartbeat_timeout_seconds() -> u64 {
+    parse_positive_env_u64("PYLON_TRAINING_HEARTBEAT_TIMEOUT_SECONDS")
+        .or_else(|| parse_positive_env_u64("PYLON_NEXUS_TIMEOUT_SECONDS"))
+        .unwrap_or(15)
 }
 
 fn provider_presence_client() -> Result<reqwest::Client> {
