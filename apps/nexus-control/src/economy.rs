@@ -477,6 +477,34 @@ pub struct PublicTrainingRunTreasuryStatus {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingLaunchState {
+    #[serde(default)]
+    pub launch_id: String,
+    #[serde(default)]
+    pub phase: String,
+    #[serde(default)]
+    pub training_run_id: String,
+    #[serde(default)]
+    pub current_window_id: String,
+    #[serde(default)]
+    pub requested_at_ms: i64,
+    #[serde(default)]
+    pub updated_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap_uploaded_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bootstrap_verified_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduler_materialized_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leaseable_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PublicTrainingRunDetailSnapshot {
     #[serde(default)]
     pub generated_at_unix_ms: u64,
@@ -494,6 +522,8 @@ pub struct PublicTrainingRunDetailSnapshot {
     pub launch_health: PublicTrainingLaunchHealthSnapshot,
     #[serde(default)]
     pub treasury: PublicTrainingRunTreasuryStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch: Option<PublicTrainingLaunchState>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub windows: Vec<PublicTrainingWindowState>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

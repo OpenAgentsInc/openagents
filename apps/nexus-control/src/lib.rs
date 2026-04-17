@@ -136,10 +136,10 @@ use tokio_stream::wrappers::BroadcastStream;
 use crate::economy::{
     AuthorityReceiptContext, PublicRecentPylon, PublicRecentPylonDiagnostic, PublicRuntimeSnapshot,
     PublicStatsSnapshot, PublicTrainingLaunchAlert, PublicTrainingLaunchHealthSnapshot,
-    PublicTrainingQueuePressure, PublicTrainingRunCaveat, PublicTrainingRunContributionRow,
-    PublicTrainingRunDetailSnapshot, PublicTrainingRunNodeRow, PublicTrainingRunState,
-    PublicTrainingRunTreasuryStatus, PublicTrainingStatsSnapshot, PublicTrainingWindowState,
-    PublicTrainingWorkClassState, ReceiptLedger,
+    PublicTrainingLaunchState, PublicTrainingQueuePressure, PublicTrainingRunCaveat,
+    PublicTrainingRunContributionRow, PublicTrainingRunDetailSnapshot, PublicTrainingRunNodeRow,
+    PublicTrainingRunState, PublicTrainingRunTreasuryStatus, PublicTrainingStatsSnapshot,
+    PublicTrainingWindowState, PublicTrainingWorkClassState, ReceiptLedger,
 };
 use crate::kernel::{
     AdmittedTrainingNodeView, ComputeAcceptedOutcomePublicationSource,
@@ -1121,6 +1121,8 @@ pub struct LaunchHomeworkRunRequest {
 pub struct LaunchHomeworkRunResponse {
     pub launched_at_unix_ms: u64,
     pub launch_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_phase: Option<String>,
     pub training_run_id: String,
     pub run_status: String,
     pub current_window_id: String,
@@ -1148,6 +1150,8 @@ pub struct LaunchCs336A1DemoRunRequest {
 pub struct LaunchCs336A1DemoRunResponse {
     pub launched_at_unix_ms: u64,
     pub launch_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_phase: Option<String>,
     pub training_run_id: String,
     pub lane_id: String,
     pub training_policy_ref: String,
@@ -1315,6 +1319,7 @@ struct StarterDemandState {
 #[derive(Debug, Default)]
 struct TrainingSchedulerState {
     runs_by_training_run_id: HashMap<String, ScheduledTrainingRun>,
+    launch_coordinators_by_training_run_id: HashMap<String, TrainingLaunchCoordinatorRecord>,
     lease_idempotency: HashMap<String, TrainingLeaseIdempotentRecord>,
     rollout_policy: TrainingRolloutPolicy,
 }
@@ -1625,9 +1630,150 @@ struct PersistedTrainingSchedulerState {
     #[serde(default)]
     runs_by_training_run_id: HashMap<String, ScheduledTrainingRun>,
     #[serde(default)]
+    launch_coordinators_by_training_run_id: HashMap<String, TrainingLaunchCoordinatorRecord>,
+    #[serde(default)]
     lease_idempotency: HashMap<String, TrainingLeaseIdempotentRecord>,
     #[serde(default)]
     rollout_policy: TrainingRolloutPolicy,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum TrainingLaunchPhase {
+    LaunchRequested,
+    BootstrapPreparing,
+    BootstrapUploaded,
+    BootstrapVerified,
+    SchedulerMaterialized,
+    Leaseable,
+    Failed,
+}
+
+impl TrainingLaunchPhase {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::LaunchRequested => "launch_requested",
+            Self::BootstrapPreparing => "bootstrap_preparing",
+            Self::BootstrapUploaded => "bootstrap_uploaded",
+            Self::BootstrapVerified => "bootstrap_verified",
+            Self::SchedulerMaterialized => "scheduler_materialized",
+            Self::Leaseable => "leaseable",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingLaunchCoordinatorRecord {
+    launch_id: String,
+    training_run_id: String,
+    network_id: String,
+    course_id: String,
+    homework_id: String,
+    current_window_id: String,
+    artifact_prefix: String,
+    phase: TrainingLaunchPhase,
+    requested_at_ms: i64,
+    updated_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    launch_receipt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bootstrap_uploaded_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bootstrap_verified_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scheduler_materialized_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    leaseable_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    failure_reason: Option<String>,
+}
+
+impl TrainingLaunchCoordinatorRecord {
+    fn new_homework(
+        training_run_id: &str,
+        network_id: &str,
+        course_id: &str,
+        homework_id: &str,
+        current_window_id: &str,
+        artifact_prefix: &str,
+        launch_receipt_id: Option<String>,
+        recorded_at_ms: i64,
+    ) -> Self {
+        Self {
+            launch_id: default_training_launch_id(training_run_id),
+            training_run_id: training_run_id.to_string(),
+            network_id: network_id.to_string(),
+            course_id: course_id.to_string(),
+            homework_id: homework_id.to_string(),
+            current_window_id: current_window_id.to_string(),
+            artifact_prefix: artifact_prefix.to_string(),
+            phase: TrainingLaunchPhase::LaunchRequested,
+            requested_at_ms: recorded_at_ms,
+            updated_at_ms: recorded_at_ms,
+            launch_receipt_id,
+            bootstrap_uploaded_at_ms: None,
+            bootstrap_verified_at_ms: None,
+            scheduler_materialized_at_ms: None,
+            leaseable_at_ms: None,
+            failure_reason: None,
+        }
+    }
+
+    fn transition(&mut self, phase: TrainingLaunchPhase, recorded_at_ms: i64) {
+        if self.phase == TrainingLaunchPhase::Failed || phase < self.phase {
+            return;
+        }
+        self.phase = phase;
+        self.updated_at_ms = recorded_at_ms;
+        self.failure_reason = None;
+        match phase {
+            TrainingLaunchPhase::BootstrapUploaded => {
+                self.bootstrap_uploaded_at_ms.get_or_insert(recorded_at_ms);
+            }
+            TrainingLaunchPhase::BootstrapVerified => {
+                self.bootstrap_uploaded_at_ms.get_or_insert(recorded_at_ms);
+                self.bootstrap_verified_at_ms.get_or_insert(recorded_at_ms);
+            }
+            TrainingLaunchPhase::SchedulerMaterialized => {
+                self.scheduler_materialized_at_ms
+                    .get_or_insert(recorded_at_ms);
+            }
+            TrainingLaunchPhase::Leaseable => {
+                self.scheduler_materialized_at_ms
+                    .get_or_insert(recorded_at_ms);
+                self.leaseable_at_ms.get_or_insert(recorded_at_ms);
+            }
+            TrainingLaunchPhase::LaunchRequested
+            | TrainingLaunchPhase::BootstrapPreparing
+            | TrainingLaunchPhase::Failed => {}
+        }
+    }
+
+    fn mark_failed(&mut self, recorded_at_ms: i64, reason: &str) {
+        self.phase = TrainingLaunchPhase::Failed;
+        self.updated_at_ms = recorded_at_ms;
+        self.failure_reason = normalize_optional_field(Some(reason))
+            .or_else(|| Some(reason.trim().to_string()))
+            .filter(|value| !value.is_empty());
+    }
+
+    fn public_state(&self) -> PublicTrainingLaunchState {
+        PublicTrainingLaunchState {
+            launch_id: self.launch_id.clone(),
+            phase: self.phase.label().to_string(),
+            training_run_id: self.training_run_id.clone(),
+            current_window_id: self.current_window_id.clone(),
+            requested_at_ms: self.requested_at_ms,
+            updated_at_ms: self.updated_at_ms,
+            launch_receipt_id: self.launch_receipt_id.clone(),
+            bootstrap_uploaded_at_ms: self.bootstrap_uploaded_at_ms,
+            bootstrap_verified_at_ms: self.bootstrap_verified_at_ms,
+            scheduler_materialized_at_ms: self.scheduler_materialized_at_ms,
+            leaseable_at_ms: self.leaseable_at_ms,
+            failure_reason: self.failure_reason.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -3097,6 +3243,9 @@ impl TrainingSchedulerState {
         PersistedTrainingSchedulerState {
             schema_version: TRAINING_SCHEDULER_STATE_SCHEMA_VERSION,
             runs_by_training_run_id: self.runs_by_training_run_id.clone(),
+            launch_coordinators_by_training_run_id: self
+                .launch_coordinators_by_training_run_id
+                .clone(),
             lease_idempotency: self.lease_idempotency.clone(),
             rollout_policy: self.rollout_policy.clone(),
         }
@@ -3105,8 +3254,43 @@ impl TrainingSchedulerState {
     fn from_persisted(persisted: PersistedTrainingSchedulerState) -> Self {
         Self {
             runs_by_training_run_id: persisted.runs_by_training_run_id,
+            launch_coordinators_by_training_run_id: persisted
+                .launch_coordinators_by_training_run_id,
             lease_idempotency: persisted.lease_idempotency,
             rollout_policy: persisted.rollout_policy,
+        }
+    }
+
+    fn upsert_launch_coordinator(&mut self, record: TrainingLaunchCoordinatorRecord) {
+        self.launch_coordinators_by_training_run_id
+            .insert(record.training_run_id.clone(), record);
+    }
+
+    fn transition_launch_coordinator(
+        &mut self,
+        training_run_id: &str,
+        phase: TrainingLaunchPhase,
+        recorded_at_ms: i64,
+    ) {
+        if let Some(record) = self
+            .launch_coordinators_by_training_run_id
+            .get_mut(training_run_id)
+        {
+            record.transition(phase, recorded_at_ms);
+        }
+    }
+
+    fn fail_launch_coordinator(
+        &mut self,
+        training_run_id: &str,
+        recorded_at_ms: i64,
+        reason: &str,
+    ) {
+        if let Some(record) = self
+            .launch_coordinators_by_training_run_id
+            .get_mut(training_run_id)
+        {
+            record.mark_failed(recorded_at_ms, reason);
         }
     }
 
@@ -3288,6 +3472,32 @@ impl TrainingSchedulerState {
             self.runs_by_training_run_id
                 .contains_key(record.response.training_run_id.as_str())
         });
+        let active_run_ids = self
+            .runs_by_training_run_id
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
+        self.launch_coordinators_by_training_run_id
+            .retain(|training_run_id, _| {
+                kernel
+                    .get_compute_training_run(training_run_id.as_str())
+                    .is_some()
+            });
+        for (training_run_id, record) in self.launch_coordinators_by_training_run_id.iter_mut() {
+            if record.phase == TrainingLaunchPhase::Failed {
+                continue;
+            }
+            if training_run_has_materialized_scheduler_window(
+                kernel,
+                training_run_id.as_str(),
+                Some(record.current_window_id.as_str()),
+            ) {
+                record.transition(TrainingLaunchPhase::SchedulerMaterialized, now_unix_ms);
+                if active_run_ids.contains(training_run_id.as_str()) {
+                    record.transition(TrainingLaunchPhase::Leaseable, now_unix_ms);
+                }
+            }
+        }
     }
 
     fn active_assignment_response_for_node(
@@ -8477,6 +8687,10 @@ fn ensure_homework_launch_scheduler_run(
     Ok(())
 }
 
+fn default_training_launch_id(training_run_id: &str) -> String {
+    format!("launch.{training_run_id}")
+}
+
 fn build_homework_training_run_id(
     now_unix_ms: u64,
     course_id: &str,
@@ -8628,6 +8842,128 @@ fn training_run_has_materialized_scheduler_window(
             .any(|window| window.window_id == expected_window_id);
     }
     !windows.is_empty()
+}
+
+fn record_homework_launch_requested(
+    store: &mut ControlStore,
+    training_run_id: &str,
+    network_id: &str,
+    course_id: &str,
+    homework_id: &str,
+    current_window_id: &str,
+    artifact_prefix: &str,
+    launch_receipt_id: Option<String>,
+    recorded_at_ms: i64,
+) -> Result<(), String> {
+    let record = TrainingLaunchCoordinatorRecord::new_homework(
+        training_run_id,
+        network_id,
+        course_id,
+        homework_id,
+        current_window_id,
+        artifact_prefix,
+        launch_receipt_id,
+        recorded_at_ms,
+    );
+    store.training_scheduler.upsert_launch_coordinator(record);
+    store.training_scheduler.transition_launch_coordinator(
+        training_run_id,
+        TrainingLaunchPhase::BootstrapPreparing,
+        recorded_at_ms,
+    );
+    store.persist_training_scheduler_state()
+}
+
+fn transition_homework_launch_phase(
+    store: &mut ControlStore,
+    training_run_id: &str,
+    phase: TrainingLaunchPhase,
+    recorded_at_ms: i64,
+) -> Result<(), String> {
+    store
+        .training_scheduler
+        .transition_launch_coordinator(training_run_id, phase, recorded_at_ms);
+    store.persist_training_scheduler_state()
+}
+
+fn training_run_supports_launch_coordinator_state(training_run: &ComputeTrainingRun) -> bool {
+    training_run_homework_launch_metadata(training_run).is_some()
+}
+
+fn inferred_training_launch_public_state(
+    store: &ControlStore,
+    training_run: &ComputeTrainingRun,
+) -> Option<PublicTrainingLaunchState> {
+    if !training_run_supports_launch_coordinator_state(training_run) {
+        return None;
+    }
+    let metadata = training_scheduler_metadata_from_run(training_run).ok();
+    let current_window_id = metadata
+        .as_ref()
+        .and_then(|value| value.initial_window_id.clone())
+        .or_else(|| {
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run.training_run_id.as_str())
+                .map(|run| run.current_window_id.clone())
+        })
+        .unwrap_or_else(|| homework_initial_window_id(training_run.training_run_id.as_str()));
+    let phase = if training_run.status == ComputeTrainingRunStatus::Failed {
+        TrainingLaunchPhase::Failed
+    } else if store
+        .training_scheduler
+        .runs_by_training_run_id
+        .contains_key(training_run.training_run_id.as_str())
+    {
+        TrainingLaunchPhase::Leaseable
+    } else if training_run_has_materialized_scheduler_window(
+        &store.kernel,
+        training_run.training_run_id.as_str(),
+        metadata
+            .as_ref()
+            .and_then(|value| value.initial_window_id.as_deref()),
+    ) {
+        TrainingLaunchPhase::SchedulerMaterialized
+    } else {
+        TrainingLaunchPhase::LaunchRequested
+    };
+    Some(PublicTrainingLaunchState {
+        launch_id: default_training_launch_id(training_run.training_run_id.as_str()),
+        phase: phase.label().to_string(),
+        training_run_id: training_run.training_run_id.clone(),
+        current_window_id,
+        requested_at_ms: training_run.created_at_ms,
+        updated_at_ms: training_run
+            .finalized_at_ms
+            .or(training_run.started_at_ms)
+            .unwrap_or(training_run.created_at_ms),
+        launch_receipt_id: None,
+        bootstrap_uploaded_at_ms: None,
+        bootstrap_verified_at_ms: None,
+        scheduler_materialized_at_ms: None,
+        leaseable_at_ms: None,
+        failure_reason: training_run
+            .metadata
+            .get("homework_launch_failure")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
+fn training_launch_public_state(
+    store: &ControlStore,
+    training_run_id: &str,
+) -> Option<PublicTrainingLaunchState> {
+    if let Some(record) = store
+        .training_scheduler
+        .launch_coordinators_by_training_run_id
+        .get(training_run_id)
+    {
+        return Some(record.public_state());
+    }
+    let training_run = store.kernel.get_compute_training_run(training_run_id)?;
+    inferred_training_launch_public_state(store, &training_run)
 }
 
 fn training_run_homework_payout_amount_sats(
@@ -8976,6 +9312,9 @@ fn mark_homework_launch_failed(
 ) {
     store
         .training_scheduler
+        .fail_launch_coordinator(training_run_id, finalized_at_ms, reason);
+    store
+        .training_scheduler
         .runs_by_training_run_id
         .remove(training_run_id);
     let _ = store.persist_training_scheduler_state();
@@ -9301,6 +9640,18 @@ fn prepare_homework_launch(
             .map_err(kernel_api_error)?
             .initial_window_id
             .unwrap_or_else(|| homework_initial_window_id(training_run_id.as_str()));
+    record_homework_launch_requested(
+        store,
+        training_run_id.as_str(),
+        network_id.as_str(),
+        course_id.as_str(),
+        homework_id.as_str(),
+        current_window_id.as_str(),
+        artifact_prefix.as_str(),
+        Some(create_result.response.receipt.receipt_id.clone()),
+        now_unix_ms as i64,
+    )
+    .map_err(kernel_api_error)?;
     Ok(HomeworkLaunchPrepared {
         training_run_id: training_run_id.clone(),
         network_id,
@@ -9403,6 +9754,22 @@ async fn execute_homework_launch(
                 error: "internal_error",
                 reason: "session_store_poisoned".to_string(),
             })?;
+            if let Err(error) = transition_homework_launch_phase(
+                &mut store,
+                prepared.training_run_id.as_str(),
+                TrainingLaunchPhase::BootstrapUploaded,
+                now as i64,
+            ) {
+                tracing::error!("training launch bootstrap_uploaded persist failed: {error}");
+            }
+            if let Err(error) = transition_homework_launch_phase(
+                &mut store,
+                prepared.training_run_id.as_str(),
+                TrainingLaunchPhase::BootstrapVerified,
+                now as i64,
+            ) {
+                tracing::error!("training launch bootstrap_verified persist failed: {error}");
+            }
             assigned_pylons = materialize_homework_launch_assignments_and_window(
                 &mut store,
                 prepared.training_run_id.as_str(),
@@ -9422,6 +9789,22 @@ async fn execute_homework_launch(
                 );
                 kernel_api_error(error)
             })?;
+            if let Err(error) = transition_homework_launch_phase(
+                &mut store,
+                prepared.training_run_id.as_str(),
+                TrainingLaunchPhase::SchedulerMaterialized,
+                now as i64,
+            ) {
+                tracing::error!("training launch scheduler_materialized persist failed: {error}");
+            }
+            if let Err(error) = transition_homework_launch_phase(
+                &mut store,
+                prepared.training_run_id.as_str(),
+                TrainingLaunchPhase::Leaseable,
+                now as i64,
+            ) {
+                tracing::error!("training launch leaseable persist failed: {error}");
+            }
         }
     }
     let run_detail = {
@@ -9447,9 +9830,14 @@ async fn execute_homework_launch(
         .map_err(kernel_api_error)?
     };
     replace_training_run_detail_cache(&state, run_detail.clone());
+    let launch_phase = run_detail
+        .launch
+        .as_ref()
+        .map(|launch| launch.phase.clone());
     Ok(LaunchHomeworkRunResponse {
         launched_at_unix_ms: now,
         launch_state: prepared.launch_state,
+        launch_phase,
         training_run_id: prepared.training_run_id,
         run_status: prepared.run_status,
         current_window_id: prepared.current_window_id,
@@ -9497,6 +9885,7 @@ async fn launch_cs336_a1_demo_run(
     Ok(Json(LaunchCs336A1DemoRunResponse {
         launched_at_unix_ms: response.launched_at_unix_ms,
         launch_state: response.launch_state,
+        launch_phase: response.launch_phase,
         training_run_id: response.training_run_id,
         lane_id: PSION_CS336_A1_DEMO_LANE_ID.to_string(),
         training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
@@ -21751,6 +22140,7 @@ fn training_run_detail_snapshot(
         .map(training_run_detail_node_row)
         .collect::<Vec<_>>();
     let caveats = training_run_detail_caveats(context, featured_window.as_ref());
+    let launch = training_launch_public_state(store, training_run_id.as_str());
 
     Ok(PublicTrainingRunDetailSnapshot {
         generated_at_unix_ms: now_unix_ms,
@@ -21761,6 +22151,7 @@ fn training_run_detail_snapshot(
         queue_pressure: context.queue_pressure.clone(),
         launch_health: context.launch_health.clone(),
         treasury: context.treasury.clone(),
+        launch,
         windows,
         contributions,
         nodes,
@@ -38525,6 +38916,7 @@ mod tests {
         let created =
             serde_json::from_slice::<LaunchCs336A1DemoRunResponse>(created_bytes.as_ref())?;
         assert_eq!(created.launch_state, "created");
+        assert_eq!(created.launch_phase.as_deref(), Some("leaseable"));
         assert_eq!(created.training_run_id, training_run_id);
         assert_eq!(
             created.training_policy_ref,
@@ -38549,6 +38941,14 @@ mod tests {
         assert_eq!(
             created.run_detail.featured_window_id.as_deref(),
             Some(initial_window_id)
+        );
+        assert_eq!(
+            created
+                .run_detail
+                .launch
+                .as_ref()
+                .map(|launch| launch.phase.as_str()),
+            Some("leaseable")
         );
         assert_eq!(
             created
@@ -38645,6 +39045,7 @@ mod tests {
         );
         let reused = serde_json::from_slice::<LaunchCs336A1DemoRunResponse>(reused_bytes.as_ref())?;
         assert_eq!(reused.launch_state, "reused_active_run");
+        assert_eq!(reused.launch_phase.as_deref(), Some("leaseable"));
         assert_eq!(reused.training_run_id, training_run_id);
         assert_eq!(
             reused.run_detail.featured_window_id.as_deref(),
@@ -38754,6 +39155,14 @@ mod tests {
                     .contains_key(training_run_id),
                 "bootstrap-pending run must stay out of scheduler claims"
             );
+            assert_eq!(
+                store
+                    .training_scheduler
+                    .launch_coordinators_by_training_run_id
+                    .get(training_run_id)
+                    .map(|record| record.phase.label()),
+                Some("bootstrap_preparing"),
+            );
         }
 
         {
@@ -38767,6 +39176,14 @@ mod tests {
             assert!(
                 !recovered_contains_run,
                 "bootstrap-pending homework runs must stay out of scheduler residency even after lazy recovery from kernel state",
+            );
+            assert_eq!(
+                store
+                    .training_scheduler
+                    .launch_coordinators_by_training_run_id
+                    .get(training_run_id)
+                    .map(|record| record.phase.label()),
+                Some("bootstrap_preparing"),
             );
         }
 
@@ -38917,6 +39334,7 @@ mod tests {
         );
         let launched = serde_json::from_slice::<LaunchHomeworkRunResponse>(launch_bytes.as_ref())?;
         assert_eq!(launched.launch_state, "created");
+        assert_eq!(launched.launch_phase.as_deref(), Some("leaseable"));
         assert_eq!(launched.training_run_id, training_run_id);
         assert_eq!(launched.current_window_id, window_id);
         assert_eq!(launched.run_status, "running");
@@ -38938,6 +39356,14 @@ mod tests {
         assert_eq!(
             launched.run_detail.featured_window_id.as_deref(),
             Some(window_id)
+        );
+        assert_eq!(
+            launched
+                .run_detail
+                .launch
+                .as_ref()
+                .map(|launch| launch.phase.as_str()),
+            Some("leaseable")
         );
         assert_eq!(
             launched
@@ -38976,6 +39402,16 @@ mod tests {
             assert_eq!(
                 scheduled_run.window_state,
                 TrainingSchedulerWindowState::Active
+            );
+            let launch = store
+                .training_scheduler
+                .launch_coordinators_by_training_run_id
+                .get(training_run_id)
+                .expect("launch coordinator");
+            assert_eq!(launch.phase.label(), "leaseable");
+            assert_eq!(
+                launch.current_window_id, window_id,
+                "coordinator should track the materialized scheduler window"
             );
             assert!(
                 scheduled_run
