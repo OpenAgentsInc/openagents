@@ -357,11 +357,16 @@ Behavior:
   - `run_manifest.json`
   - `latest_pointer.json`
   - `checkpoint_manifest.json`
-- exposes pylon-facing authority seams for the checked-in intake loop:
+- exposes pylon-facing authority seams for the checked-in worker and closeout
+  loop:
   - assignment ack
   - drain/failure notice
   - window progress
   - checkpoint publication
+  - window seal from retained worker artifacts
+  - validator-finalize from retained validator replay state
+  - window reconcile
+  - accepted-outcome and payout observation
 - returns the run id plus the full public run-detail snapshot so the caller can
   redirect immediately into the proof page
 
@@ -383,9 +388,13 @@ Current homework payout truth:
 
 Truth boundary:
 
-- this launch path does not claim treasury reconciliation is healthy
-- it does not bypass validator backlog or closeout state
+- this launch path now includes a checked-in autonomous post-worker closeout
+  path in `apps/pylon`
+- it still does not claim treasury reconciliation is healthy across production
+  by default
 - the returned run-detail snapshot still carries treasury and validation caveats
+- the operator must still verify accepted outcome and payout state on the live
+  run before calling it paid
 - website/UI consumers must keep those caveats visible rather than implying
   fully settled payout state
 
@@ -401,10 +410,16 @@ Operator smoke checklist:
 6. Confirm at least one assigned pylon claims its lease and sends assignment
    ack.
 7. Confirm the pylon publishes progress and a checkpoint for the active window.
-8. Confirm reconcile records accepted contributions and queues accepted-work
-   payout records exactly once.
-9. Confirm a retry of the dispatch cycle does not create duplicate payout
-   sends.
+8. Confirm retained closeout artifacts exist for the completed worker
+   assignment.
+9. Confirm the window is sealed without operator intervention once those
+   retained artifacts are present.
+10. Confirm validator work is claimed or retried, finalized, and pushed into
+    reconcile without a manual authority call.
+11. Confirm accepted contributions appear on the run and payout state advances
+    exactly once to queued, dispatched, or confirmed.
+12. Confirm a retry of the dispatch cycle or Pylon restart does not create
+    duplicate finalize, reconcile, or payout sends.
 
 ## Work-Class Settlement Projection
 

@@ -120,6 +120,7 @@ did the run.
 | Pylon claims and acknowledges the assignment | `pylon_assignment_intake` |
 | Pylon launches the retained runtime | `pylon_runtime_launch` |
 | Pylon syncs terminal artifacts back to Nexus | `pylon_terminal_sync` |
+| Pylon autonomously closes retained worker output into accepted payout observation | `pylon_autonomous_closeout` |
 
 EOF
 
@@ -212,6 +213,11 @@ run_step \
   "pylon_terminal_sync" \
   "Pylon uploads retained artifacts and reports success back to Nexus without duplicate publication" \
   "cargo test -p pylon --manifest-path '$ROOT_DIR/Cargo.toml' --lib training_terminal_sync_uploads_artifacts_and_reports_success_to_nexus -- --nocapture"
+
+run_step \
+  "pylon_autonomous_closeout" \
+  "Pylon seals retained worker output, finalizes validator replay, reconciles the window, and observes the payout receipt without manual closeout calls" \
+  "cargo test -p pylon --manifest-path '$ROOT_DIR/Cargo.toml' --lib pylon_autonomously_closes_homework_assignment_from_worker_completion_to_paid_receipt -- --nocapture"
 
 printf '## Result\n\n' >>"$SUMMARY_MD"
 if ((failed == 0)); then

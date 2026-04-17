@@ -113,6 +113,43 @@ That local pass matters because it moves the blocker fully out of the code
 contract lane. The remaining blocker for Episode 223 is now live release and
 live fleet proof, not whether the Mac/Linux A1 path exists in the code at all.
 
+## 2026-04-16 Post-Worker Closeout Update
+
+The remaining blocker is no longer assignment launch or bounded worker
+execution. The checked-in runtime now closes the specific post-worker gap that
+was still making the public claim too wide.
+
+What changed:
+
+- `Pylon` now persists retained closeout progress and validator claim state
+  instead of treating seal, finalize, and reconcile as transient supervisor
+  behavior
+- successful retained worker artifacts can now trigger autonomous window seal
+  during terminal sync
+- retained validator replay state can now finalize the challenge, request
+  reconcile, and observe accepted and payout state without a manual authority
+  call
+- the Transcript 222 and Episode 223 release scripts now include the new
+  autonomous truth test instead of treating artifact upload alone as the final
+  release gate
+
+What this closes:
+
+- the checked-in truth is no longer just "Pylon ran the worker and uploaded
+  files"
+- the bounded CS336 A1 lane now has a retained codepath from worker completion
+  to accepted closeout and payout observation
+- restart safety now covers the post-worker authority chain rather than only
+  the worker runtime
+
+What still remains:
+
+- cutting and deploying the current non-RC `Pylon` build line onto the live
+  demo fleet
+- proving one fresh live run reaches accepted outcome and payout receipt on the
+  current updated Pylons
+- wiring the separate website admin trigger/control surface
+
 ## Short Version
 
 The original admitted-node distributed-training MVP is materially complete in
@@ -130,11 +167,12 @@ integration implied by the current public story. The operator can now rehearse:
 - joiner-side resume over Tailnet
 
 That is real distributed-training control-plane and runtime behavior. It is
-not yet the same thing as a zero-touch public training market where any running
-`Pylon` auto-updates, receives the right slice of work, moves all needed
-artifacts automatically, returns accepted output, gets paid for that output,
-and exposes the whole process cleanly on the public `Nexus` surfaces without
-operator assistance.
+still not the same thing as a zero-touch public training market where any
+running `Pylon` auto-updates, receives the right slice of work, moves all
+needed artifacts automatically, returns accepted output, gets paid for that
+output, and exposes the whole process cleanly on the public `Nexus` surfaces
+without operator assistance. The checked-in post-worker authority path now
+exists. The missing proof is a fresh live run on the upgraded release line.
 
 ## What The Roadmap Already Closed
 
