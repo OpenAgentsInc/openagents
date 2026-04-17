@@ -11522,12 +11522,41 @@ fn training_terminal_checkpoint_publication_candidate(
         return Ok(None);
     };
     let optimizer_step = resolve_training_checkpoint_optimizer_step(local_run_root)?;
-    let bundle_kind = optimizer_step
-        .map(|step| PylonTrainingArtifactBundleKind::CheckpointManifest {
-            optimizer_step: step,
+    let mut bundle = optimizer_step
+        .map(|step| {
+            inspect_training_artifact_bundle(
+                context,
+                PylonTrainingArtifactBundleKind::CheckpointManifest {
+                    optimizer_step: step,
+                },
+            )
         })
-        .unwrap_or(PylonTrainingArtifactBundleKind::LatestCheckpointPointer);
-    let bundle = inspect_training_artifact_bundle(context, bundle_kind)?;
+        .transpose()?;
+    if !bundle.as_ref().is_some_and(|bundle| {
+        bundle
+            .objects
+            .iter()
+            .any(|entry| entry.present && entry.digest.is_some())
+    }) {
+        bundle = inspect_manifest_local_artifacts(context)?
+            .into_iter()
+            .filter(|bundle| bundle.bundle_kind == "checkpoint_manifest")
+            .filter(|bundle| {
+                bundle
+                    .objects
+                    .iter()
+                    .any(|entry| entry.present && entry.digest.is_some())
+            })
+            .max_by(|left, right| {
+                training_checkpoint_manifest_bundle_step(left.bundle_id.as_str())
+                    .cmp(&training_checkpoint_manifest_bundle_step(right.bundle_id.as_str()))
+                    .then_with(|| left.bundle_id.cmp(&right.bundle_id))
+            });
+    }
+    let bundle = bundle.unwrap_or(inspect_training_artifact_bundle(
+        context,
+        PylonTrainingArtifactBundleKind::LatestCheckpointPointer,
+    )?);
     let Some(object) = bundle
         .objects
         .into_iter()
@@ -11544,6 +11573,12 @@ fn training_terminal_checkpoint_publication_candidate(
         artifact_locator: object.object_uri,
         artifact_digest,
     }))
+}
+
+fn training_checkpoint_manifest_bundle_step(bundle_id: &str) -> Option<u64> {
+    bundle_id
+        .strip_prefix("checkpoint_manifest:")
+        .and_then(|value| value.parse::<u64>().ok())
 }
 
 fn training_prefixed_sha256_digest(value: &str) -> Option<String> {
@@ -22466,6 +22501,35 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         Ok(manifest)
     }
 
+    fn rewrite_training_checkpoint_manifest_to_bridge_shape(
+        local_run_root: &Path,
+        optimizer_step: u64,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let canonical_manifest_path = local_run_root
+            .join("checkpoints")
+            .join(format!("step-{optimizer_step}"))
+            .join("checkpoint_manifest.json");
+        let manifest_payload = std::fs::read(canonical_manifest_path.as_path())?;
+        std::fs::create_dir_all(local_run_root.join("checkpoints").join("step-0"))?;
+        std::fs::write(
+            local_run_root
+                .join("checkpoints")
+                .join("step-0")
+                .join("checkpoint_manifest.json"),
+            manifest_payload.as_slice(),
+        )?;
+        std::fs::create_dir_all(local_run_root.join("checkpoints").join("manifests"))?;
+        std::fs::write(
+            local_run_root
+                .join("checkpoints")
+                .join("manifests")
+                .join(format!("checkpoint_manifest_step-{optimizer_step:06}.json")),
+            manifest_payload.as_slice(),
+        )?;
+        std::fs::remove_file(canonical_manifest_path)?;
+        Ok(())
+    }
+
     fn write_training_terminal_status_packets(
         local_run_root: &Path,
         outcome: &str,
@@ -26621,6 +26685,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             local_run_root.as_path(),
             "gs://bucket",
         )?;
+        rewrite_training_checkpoint_manifest_to_bridge_shape(local_run_root.as_path(), 42)?;
         manifest.trn.relay_urls = vec![relay.url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
         let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
@@ -27228,6 +27293,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             local_run_root.as_path(),
             "gs://bucket",
         )?;
+        rewrite_training_checkpoint_manifest_to_bridge_shape(local_run_root.as_path(), 42)?;
         manifest.trn.relay_urls = vec![relay.url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
         let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
