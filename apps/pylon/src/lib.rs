@@ -17800,7 +17800,8 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                         .await
                         {
                             eprintln!(
-                                "warning: failed to report pylon provider offline to Nexus: {report_error}"
+                                "warning: failed to report pylon provider offline to Nexus: {}",
+                                format_anyhow_error_chain(&report_error)
                             );
                         }
                     }
@@ -17853,7 +17854,10 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
             )
             .await
             {
-                eprintln!("warning: failed to report pylon provider offline to Nexus: {error}");
+                eprintln!(
+                    "warning: failed to report pylon provider offline to Nexus: {}",
+                    format_anyhow_error_chain(&error)
+                );
             }
             provider_presence_online = false;
             next_provider_presence_heartbeat_at = Instant::now();
@@ -17863,33 +17867,30 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
         }
 
         if needs_sync {
-            let snapshot = match build_snapshot(
-                &config,
-                &identity,
-                desired_mode,
-                previous_snapshot.as_ref(),
-            )
-            .await
-            {
-                Ok(snapshot) => snapshot,
-                Err(error) => {
-                    if provider_presence_online {
-                        if let Err(report_error) = report_provider_presence_offline(
-                            &presence_client,
-                            &config,
-                            &identity,
-                            provider_presence_session_id.as_str(),
-                        )
-                        .await
-                        {
-                            eprintln!(
-                                "warning: failed to report pylon provider offline to Nexus: {report_error}"
-                            );
+            let snapshot =
+                match build_snapshot(&config, &identity, desired_mode, previous_snapshot.as_ref())
+                    .await
+                {
+                    Ok(snapshot) => snapshot,
+                    Err(error) => {
+                        if provider_presence_online {
+                            if let Err(report_error) = report_provider_presence_offline(
+                                &presence_client,
+                                &config,
+                                &identity,
+                                provider_presence_session_id.as_str(),
+                            )
+                            .await
+                            {
+                                eprintln!(
+                                    "warning: failed to report pylon provider offline to Nexus: {}",
+                                    format_anyhow_error_chain(&report_error)
+                                );
+                            }
                         }
+                        return Err(error);
                     }
-                    return Err(error);
-                }
-            };
+                };
             runtime
                 .sync_snapshot(snapshot.clone())
                 .map_err(anyhow::Error::msg)?;
@@ -17957,7 +17958,8 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                 .await
                 {
                     eprintln!(
-                        "warning: failed to report pylon provider heartbeat to Nexus: {error}"
+                        "warning: failed to report pylon provider heartbeat to Nexus: {}",
+                        format_anyhow_error_chain(&error)
                     );
                 } else {
                     provider_presence_online = true;
@@ -17979,7 +17981,8 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                 .await
                 {
                     eprintln!(
-                        "warning: failed to register pylon payout target with Nexus: {error}"
+                        "warning: failed to register pylon payout target with Nexus: {}",
+                        format_anyhow_error_chain(&error)
                     );
                 }
                 next_provider_payout_target_sync_at =
@@ -18005,7 +18008,8 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                     .await
                     {
                         eprintln!(
-                            "warning: failed to report pylon provider offline to Nexus: {error}"
+                            "warning: failed to report pylon provider offline to Nexus: {}",
+                            format_anyhow_error_chain(&error)
                         );
                     }
                 }
@@ -21135,8 +21139,7 @@ async fn report_provider_presence_heartbeat(
         &request,
         "heartbeat",
     )
-    .await?;
-    sync_provider_payout_target(client, config_path, config, identity, session_id).await
+    .await
 }
 
 async fn report_provider_presence_offline(
@@ -21660,10 +21663,26 @@ fn nexus_remote_timeout_seconds() -> u64 {
         .unwrap_or(60)
 }
 
+fn provider_presence_connect_timeout_seconds() -> u64 {
+    parse_positive_env_u64("PYLON_NEXUS_PROVIDER_CONNECT_TIMEOUT_SECONDS")
+        .or_else(|| parse_positive_env_u64("PYLON_NEXUS_CONNECT_TIMEOUT_SECONDS"))
+        .unwrap_or(10)
+}
+
+fn provider_presence_timeout_seconds() -> u64 {
+    parse_positive_env_u64("PYLON_NEXUS_PROVIDER_TIMEOUT_SECONDS")
+        .or_else(|| parse_positive_env_u64("PYLON_NEXUS_TIMEOUT_SECONDS"))
+        .unwrap_or(20)
+}
+
 fn provider_presence_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(nexus_remote_connect_timeout_seconds()))
-        .timeout(Duration::from_secs(nexus_remote_timeout_seconds()))
+        // Keep provider-presence edge calls on a shorter budget so slow ingress does
+        // not starve the single-threaded training heartbeat loop.
+        .connect_timeout(Duration::from_secs(
+            provider_presence_connect_timeout_seconds(),
+        ))
+        .timeout(Duration::from_secs(provider_presence_timeout_seconds()))
         .build()
         .context("failed to build pylon provider-presence client")
 }
@@ -33002,8 +33021,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             .find(|(route, _)| route == "POST /api/provider-presence/offline")
             .ok_or("missing offline request")?;
         ensure(
-            requests.len() == 4,
-            "provider presence should send heartbeat, payout-target sync, and offline reports",
+            requests.len() == 2,
+            "provider presence should send heartbeat and offline reports",
         )?;
         ensure(
             heartbeat_request.1["nostr_pubkey_hex"] == json!(identity.public_key_hex),

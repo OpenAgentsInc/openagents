@@ -8492,6 +8492,8 @@ struct HomeworkLaunchPrepared {
     snapshot_event: Option<SnapshotProjectionEvent>,
 }
 
+const HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+
 fn current_homework_launch_pylon_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0))
 }
@@ -9710,126 +9712,33 @@ async fn execute_homework_launch(
         let _ = state.kernel_snapshot_tx.send(snapshot_event);
     }
     if prepared.needs_window_materialization {
-        let signed_url_config = state
-            .config
-            .training_artifact_signed_url
-            .as_ref()
-            .ok_or_else(|| ApiError {
-                status: StatusCode::SERVICE_UNAVAILABLE,
-                error: "service_unavailable",
-                reason: "homework_launch_artifact_upload_unconfigured".to_string(),
-            })?;
-        publish_cs336_a1_demo_bootstrap_artifacts(
-            &prepared.lane_contract,
-            &state.config,
-            prepared.artifact_bucket_uri.as_str(),
-            prepared.network_id.as_str(),
-            prepared.current_window_id.as_str(),
-            now,
-            prepared.training_run_id.as_str(),
-        )
-        .await
-        .map_err(|error| {
-            let mut store = state.store.write().ok();
-            if let Some(store) = store.as_mut() {
-                mark_homework_launch_failed(
-                    store,
-                    prepared.training_run_id.as_str(),
-                    now as i64,
-                    error.as_str(),
-                );
-            }
-            ApiError {
-                status: StatusCode::BAD_GATEWAY,
-                error: "bad_gateway",
-                reason: format!(
-                    "homework_launch_artifact_publish_failed:{}:{}",
-                    signed_url_config.bucket_uri, error
-                ),
-            }
-        })?;
-        {
-            let mut store = state.store.write().map_err(|_| ApiError {
-                status: StatusCode::INTERNAL_SERVER_ERROR,
-                error: "internal_error",
-                reason: "session_store_poisoned".to_string(),
-            })?;
-            if let Err(error) = transition_homework_launch_phase(
-                &mut store,
-                prepared.training_run_id.as_str(),
-                TrainingLaunchPhase::BootstrapUploaded,
-                now as i64,
-            ) {
-                tracing::error!("training launch bootstrap_uploaded persist failed: {error}");
-            }
-            if let Err(error) = transition_homework_launch_phase(
-                &mut store,
-                prepared.training_run_id.as_str(),
-                TrainingLaunchPhase::BootstrapVerified,
-                now as i64,
-            ) {
-                tracing::error!("training launch bootstrap_verified persist failed: {error}");
-            }
-            assigned_pylons = materialize_homework_launch_assignments_and_window(
-                &mut store,
-                prepared.training_run_id.as_str(),
-                prepared.assigned_nodes.as_slice(),
-                prepared.course_id.as_str(),
-                prepared.homework_id.as_str(),
-                prepared.assignment_family.as_str(),
-                prepared.run_kind.as_str(),
-                now as i64,
+        let state_for_materialization = state.clone();
+        let prepared_for_materialization = prepared.clone();
+        let mut materialization = tokio::spawn(async move {
+            continue_homework_launch_materialization(
+                state_for_materialization,
+                prepared_for_materialization,
             )
-            .map_err(|error| {
-                mark_homework_launch_failed(
-                    &mut store,
-                    prepared.training_run_id.as_str(),
-                    now as i64,
-                    error.as_str(),
-                );
-                kernel_api_error(error)
-            })?;
-            if let Err(error) = transition_homework_launch_phase(
-                &mut store,
-                prepared.training_run_id.as_str(),
-                TrainingLaunchPhase::SchedulerMaterialized,
-                now as i64,
-            ) {
-                tracing::error!("training launch scheduler_materialized persist failed: {error}");
+            .await
+        });
+        match tokio::time::timeout(HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT, &mut materialization).await
+        {
+            Ok(Ok(Ok(updated_assignments))) => {
+                assigned_pylons = updated_assignments;
             }
-            if let Err(error) = transition_homework_launch_phase(
-                &mut store,
-                prepared.training_run_id.as_str(),
-                TrainingLaunchPhase::Leaseable,
-                now as i64,
-            ) {
-                tracing::error!("training launch leaseable persist failed: {error}");
+            Ok(Ok(Err(error))) => return Err(error),
+            Ok(Err(error)) => {
+                return Err(ApiError {
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    error: "internal_error",
+                    reason: format!("homework_launch_materialization_task_failed:{error}"),
+                });
             }
+            Err(_) => {}
         }
     }
-    let run_detail = {
-        let store = state.store.read().map_err(|_| ApiError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            error: "internal_error",
-            reason: "session_store_poisoned".to_string(),
-        })?;
-        let summary = training_operator_summary_snapshot(&store, now);
-        let visualization =
-            training_visualization_snapshot_with_summary(&store, now, summary.clone());
-        let launch_metrics = training_launch_live_metrics_snapshot(&state);
-        let detail_context =
-            training_run_detail_context(&state.config, &store, &summary, &launch_metrics, now);
-        training_run_detail_snapshot(
-            &store,
-            &summary,
-            &visualization,
-            &detail_context,
-            now,
-            prepared.training_run_id.as_str(),
-        )
-        .map_err(kernel_api_error)?
-    };
-    replace_training_run_detail_cache(&state, run_detail.clone());
+    let run_detail =
+        rebuild_training_run_detail_cache(state, prepared.training_run_id.as_str()).await?;
     let launch_phase = run_detail
         .launch
         .as_ref()
@@ -9847,6 +9756,154 @@ async fn execute_homework_launch(
         launch_receipt_id: prepared.launch_receipt_id,
         run_detail,
     })
+}
+
+async fn continue_homework_launch_materialization(
+    state: AppState,
+    prepared: HomeworkLaunchPrepared,
+) -> Result<Vec<HomeworkLaunchAssignedPylon>, ApiError> {
+    let launched_at_ms = now_unix_ms() as i64;
+    let signed_url_config = state
+        .config
+        .training_artifact_signed_url
+        .as_ref()
+        .ok_or_else(|| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: "homework_launch_artifact_upload_unconfigured".to_string(),
+        })?;
+    publish_cs336_a1_demo_bootstrap_artifacts(
+        &prepared.lane_contract,
+        &state.config,
+        prepared.artifact_bucket_uri.as_str(),
+        prepared.network_id.as_str(),
+        prepared.current_window_id.as_str(),
+        launched_at_ms as u64,
+        prepared.training_run_id.as_str(),
+    )
+    .await
+    .map_err(|error| {
+        let mut store = state.store.write().ok();
+        if let Some(store) = store.as_mut() {
+            mark_homework_launch_failed(
+                store,
+                prepared.training_run_id.as_str(),
+                launched_at_ms,
+                error.as_str(),
+            );
+        }
+        ApiError {
+            status: StatusCode::BAD_GATEWAY,
+            error: "bad_gateway",
+            reason: format!(
+                "homework_launch_artifact_publish_failed:{}:{}",
+                signed_url_config.bucket_uri, error
+            ),
+        }
+    })?;
+
+    let assigned_pylons = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        if let Err(error) = transition_homework_launch_phase(
+            &mut store,
+            prepared.training_run_id.as_str(),
+            TrainingLaunchPhase::BootstrapUploaded,
+            launched_at_ms,
+        ) {
+            tracing::error!("training launch bootstrap_uploaded persist failed: {error}");
+        }
+        if let Err(error) = transition_homework_launch_phase(
+            &mut store,
+            prepared.training_run_id.as_str(),
+            TrainingLaunchPhase::BootstrapVerified,
+            launched_at_ms,
+        ) {
+            tracing::error!("training launch bootstrap_verified persist failed: {error}");
+        }
+        let assigned_pylons = materialize_homework_launch_assignments_and_window(
+            &mut store,
+            prepared.training_run_id.as_str(),
+            prepared.assigned_nodes.as_slice(),
+            prepared.course_id.as_str(),
+            prepared.homework_id.as_str(),
+            prepared.assignment_family.as_str(),
+            prepared.run_kind.as_str(),
+            launched_at_ms,
+        )
+        .map_err(|error| {
+            mark_homework_launch_failed(
+                &mut store,
+                prepared.training_run_id.as_str(),
+                launched_at_ms,
+                error.as_str(),
+            );
+            kernel_api_error(error)
+        })?;
+        if let Err(error) = transition_homework_launch_phase(
+            &mut store,
+            prepared.training_run_id.as_str(),
+            TrainingLaunchPhase::SchedulerMaterialized,
+            launched_at_ms,
+        ) {
+            tracing::error!("training launch scheduler_materialized persist failed: {error}");
+        }
+        if let Err(error) = transition_homework_launch_phase(
+            &mut store,
+            prepared.training_run_id.as_str(),
+            TrainingLaunchPhase::Leaseable,
+            launched_at_ms,
+        ) {
+            tracing::error!("training launch leaseable persist failed: {error}");
+        }
+        assigned_pylons
+    };
+
+    if let Err(error) =
+        rebuild_training_run_detail_cache(&state, prepared.training_run_id.as_str()).await
+    {
+        tracing::error!(
+            "training launch run detail cache refresh failed for {}: {}",
+            prepared.training_run_id,
+            error.reason
+        );
+    }
+
+    Ok(assigned_pylons)
+}
+
+async fn rebuild_training_run_detail_cache(
+    state: &AppState,
+    training_run_id: &str,
+) -> Result<PublicTrainingRunDetailSnapshot, ApiError> {
+    let now = now_unix_ms();
+    let run_detail = {
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        let summary = training_operator_summary_snapshot(&store, now);
+        let visualization =
+            training_visualization_snapshot_with_summary(&store, now, summary.clone());
+        let launch_metrics = training_launch_live_metrics_snapshot(state);
+        let detail_context =
+            training_run_detail_context(&state.config, &store, &summary, &launch_metrics, now);
+        training_run_detail_snapshot(
+            &store,
+            &summary,
+            &visualization,
+            &detail_context,
+            now,
+            training_run_id,
+        )
+        .map_err(kernel_api_error)?
+    };
+    replace_training_run_detail_cache(state, run_detail.clone());
+    Ok(run_detail)
 }
 
 async fn launch_cs336_a1_demo_run(
