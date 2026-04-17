@@ -15166,6 +15166,106 @@ fn training_supervision_is_active(state: PylonTrainingSupervisorProcessState) ->
 }
 
 #[allow(dead_code)]
+fn training_supervisor_pid_is_running(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        let pid_text = pid.to_string();
+        StdCommand::new("kill")
+            .args(["-0", pid_text.as_str()])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+    #[cfg(windows)]
+    {
+        let filter = format!("PID eq {pid}");
+        StdCommand::new("cmd")
+            .args(["/C", "tasklist", "/FI", filter.as_str(), "/NH"])
+            .output()
+            .map(|output| {
+                output.status.success()
+                    && String::from_utf8_lossy(output.stdout.as_slice())
+                        .contains(pid.to_string().as_str())
+            })
+            .unwrap_or(false)
+    }
+}
+
+#[allow(dead_code)]
+fn training_supervisor_is_orphaned(state: &PylonTrainingRuntimeState) -> bool {
+    state.active_runtime.as_ref().is_some_and(|active| {
+        training_supervision_is_active(active.process_state)
+            && active
+                .pid
+                .is_none_or(|pid| !training_supervisor_pid_is_running(pid))
+    })
+}
+
+#[allow(dead_code)]
+fn reconcile_orphaned_training_supervisor_state(
+    config: &PylonConfig,
+    state: &mut PylonTrainingRuntimeState,
+) -> Result<bool> {
+    let Some(active) = state.active_runtime.as_ref().cloned() else {
+        return Ok(false);
+    };
+    if !training_supervision_is_active(active.process_state) {
+        return Ok(false);
+    }
+    if active.pid.is_some_and(training_supervisor_pid_is_running) {
+        let previous_heartbeat = state
+            .active_runtime
+            .as_ref()
+            .and_then(|runtime| runtime.last_heartbeat_at_ms);
+        refresh_training_supervisor_heartbeat(state);
+        let changed = state
+            .active_runtime
+            .as_ref()
+            .and_then(|runtime| runtime.last_heartbeat_at_ms)
+            != previous_heartbeat;
+        if changed {
+            save_training_runtime_state(config, state)?;
+        }
+        return Ok(changed);
+    }
+
+    let run_root = Path::new(active.run_root.as_str());
+    let run_status = load_training_run_status_packet(run_root)?;
+    let failure_reason = build_training_failure_reason(&active, run_status.as_ref())?;
+    let run_completed_successfully =
+        training_run_completed_successfully(&active, run_status.as_ref());
+
+    let updated_at_ms = now_epoch_ms();
+    let recovered = state
+        .active_runtime
+        .as_mut()
+        .expect("active runtime should still exist while recovering");
+    recovered.pid = None;
+    recovered.updated_at_ms = updated_at_ms;
+    if let Some(failure_reason) = failure_reason {
+        recovered.process_state = PylonTrainingSupervisorProcessState::Failed;
+        recovered.last_failure_reason = Some(failure_reason);
+    } else if run_completed_successfully
+        || matches!(
+            recovered.desired_state,
+            PylonTrainingSupervisorDesiredState::Draining
+                | PylonTrainingSupervisorDesiredState::Stopped
+        )
+    {
+        recovered.process_state = PylonTrainingSupervisorProcessState::Stopped;
+        recovered.last_failure_reason = None;
+        if recovered.last_exit_code.is_none() && run_completed_successfully {
+            recovered.last_exit_code = Some(0);
+        }
+    } else {
+        return Ok(false);
+    }
+
+    save_training_runtime_state(config, state)?;
+    Ok(true)
+}
+
+#[allow(dead_code)]
 fn ensure_no_conflicting_training_assignment(
     state: &PylonTrainingRuntimeState,
     request: &PylonTrainingSupervisorStartRequest,
@@ -15301,6 +15401,17 @@ async fn drive_training_supervisor_once(
     command_override: Option<&PylonTrainingSupervisorCommand>,
 ) -> Result<bool> {
     let mut changed = false;
+    if process_slot.is_none() && reconcile_orphaned_training_supervisor_state(config, state)? {
+        changed = true;
+    }
+    if process_slot.is_none()
+        && desired_mode == ProviderDesiredMode::Online
+        && training_supervisor_is_orphaned(state)
+    {
+        let process = restart_training_supervisor(config, state, None, command_override).await?;
+        *process_slot = Some(process);
+        return Ok(true);
+    }
     if let Some(process) = process_slot.as_mut() {
         if desired_mode != ProviderDesiredMode::Online
             && state.active_runtime.as_ref().is_some_and(|active| {
@@ -21204,7 +21315,7 @@ mod tests {
         derive_adapter_training_contributor_availability, derive_training_capability_tier_profile,
         detect_availability, download_gemma_model_from_base_url,
         download_gemma_model_from_base_url_with_transport, drain_training_supervisor,
-        ensure_identity, ensure_no_conflicting_training_assignment,
+        drive_training_supervisor_once, ensure_identity, ensure_no_conflicting_training_assignment,
         garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
         gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
         inspect_psionic_train_runtime_surface_from_candidates, inventory_rows, load_backend_report,
@@ -23276,6 +23387,185 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             .await?
                 && process.is_none(),
             "auto launch should not immediately relaunch the same failed assignment without a new retained lease",
+        )
+    }
+
+    fn finished_supervisor_pid_fixture() -> Result<u32, Box<dyn std::error::Error>> {
+        #[cfg(unix)]
+        let mut child = StdCommand::new("sh").args(["-c", "exit 0"]).spawn()?;
+        #[cfg(windows)]
+        let mut child = StdCommand::new("cmd").args(["/C", "exit 0"]).spawn()?;
+        let pid = child.id();
+        let _ = child.wait()?;
+        Ok(pid)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn restart_recovery_marks_orphaned_completed_runtime_terminal()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp_dir, config, mut state, request) = training_supervisor_fixture()?;
+        std::fs::create_dir_all(request.run_root.join("status"))?;
+        write_training_terminal_status_packets(
+            request.run_root.as_path(),
+            "succeeded",
+            0,
+            None,
+            Some("completed"),
+            "completed window",
+        )?;
+        let finished_pid = finished_supervisor_pid_fixture()?;
+        state.active_runtime = Some(PylonTrainingActiveRuntimeState {
+            training_run_id: request.training_run_id.clone(),
+            window_id: request.window_id.clone(),
+            assignment_id: request.assignment_id.clone(),
+            lease_id: request.lease_id.clone(),
+            membership_revision: request.membership_revision.clone(),
+            role: request.role,
+            manifest_path: request.manifest_path.display().to_string(),
+            run_root: request.run_root.display().to_string(),
+            desired_state: PylonTrainingSupervisorDesiredState::Running,
+            process_state: PylonTrainingSupervisorProcessState::Running,
+            pid: Some(finished_pid),
+            stdout_log_path: request
+                .run_root
+                .join("supervisor/attempt-1/stdout.log")
+                .display()
+                .to_string(),
+            stderr_log_path: request
+                .run_root
+                .join("supervisor/attempt-1/stderr.log")
+                .display()
+                .to_string(),
+            failure_receipt_path: Some(
+                request
+                    .run_root
+                    .join("supervisor/attempt-1/failure_receipt.json")
+                    .display()
+                    .to_string(),
+            ),
+            last_exit_code: None,
+            last_heartbeat_at_ms: None,
+            last_failure_reason: None,
+            launch_count: 1,
+            restart_count: 0,
+            updated_at_ms: 1_762_491_200_000,
+        });
+
+        let mut process = None::<super::PylonTrainingSupervisorProcess>;
+        ensure(
+            drive_training_supervisor_once(
+                &config,
+                ProviderDesiredMode::Online,
+                &mut state,
+                &mut process,
+                None,
+            )
+            .await?
+                && process.is_none()
+                && state.active_runtime.as_ref().is_some_and(|active| {
+                    active.process_state == PylonTrainingSupervisorProcessState::Stopped
+                        && active.pid.is_none()
+                        && active.last_exit_code == Some(0)
+                        && active.last_failure_reason.is_none()
+                }),
+            "restart recovery should demote an orphaned completed runtime to a terminal stopped state instead of leaving a dead running pid behind",
+        )?;
+
+        let persisted = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            persisted.active_runtime.as_ref().is_some_and(|active| {
+                active.process_state == PylonTrainingSupervisorProcessState::Stopped
+                    && active.pid.is_none()
+                    && active.last_exit_code == Some(0)
+            }),
+            "the recovered terminal supervisor state should persist to disk for later closeout sync",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn restart_recovery_relaunches_orphaned_inflight_runtime()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp_dir, config, mut state, request) = training_supervisor_fixture()?;
+        let finished_pid = finished_supervisor_pid_fixture()?;
+        state.active_runtime = Some(PylonTrainingActiveRuntimeState {
+            training_run_id: request.training_run_id.clone(),
+            window_id: request.window_id.clone(),
+            assignment_id: request.assignment_id.clone(),
+            lease_id: request.lease_id.clone(),
+            membership_revision: request.membership_revision.clone(),
+            role: request.role,
+            manifest_path: request.manifest_path.display().to_string(),
+            run_root: request.run_root.display().to_string(),
+            desired_state: PylonTrainingSupervisorDesiredState::Running,
+            process_state: PylonTrainingSupervisorProcessState::Running,
+            pid: Some(finished_pid),
+            stdout_log_path: request
+                .run_root
+                .join("supervisor/attempt-1/stdout.log")
+                .display()
+                .to_string(),
+            stderr_log_path: request
+                .run_root
+                .join("supervisor/attempt-1/stderr.log")
+                .display()
+                .to_string(),
+            failure_receipt_path: Some(
+                request
+                    .run_root
+                    .join("supervisor/attempt-1/failure_receipt.json")
+                    .display()
+                    .to_string(),
+            ),
+            last_exit_code: None,
+            last_heartbeat_at_ms: None,
+            last_failure_reason: None,
+            launch_count: 1,
+            restart_count: 0,
+            updated_at_ms: 1_762_491_200_000,
+        });
+        let script_path = config
+            .training
+            .run_root
+            .join("supervisor_restart_recovery.sh");
+        std::fs::write(
+            script_path.as_path(),
+            format!(
+                "#!/bin/sh\nset -eu\nrun_root='{}'\nmkdir -p \"$run_root/status\"\necho '{{\"membership_revision\":\"members.rev1\"}}' > \"$run_root/status/psionic_train_run_status_packet.json\"\nsleep 0.05\nexit 0\n",
+                request.run_root.display()
+            ),
+        )?;
+        let command = supervisor_shell_command(script_path.as_path());
+
+        let mut process = None::<super::PylonTrainingSupervisorProcess>;
+        ensure(
+            drive_training_supervisor_once(
+                &config,
+                ProviderDesiredMode::Online,
+                &mut state,
+                &mut process,
+                Some(&command),
+            )
+            .await?
+                && process.is_some()
+                && state.active_runtime.as_ref().is_some_and(|active| {
+                    active.process_state == PylonTrainingSupervisorProcessState::Running
+                        && active.restart_count == 1
+                        && active.launch_count == 2
+                        && active.pid.is_some_and(|pid| pid != finished_pid)
+                }),
+            "restart recovery should relaunch an orphaned in-flight runtime when there is no retained terminal outcome to consume",
+        )?;
+
+        let mut process = process.ok_or("missing restarted process after recovery")?;
+        poll_training_supervisor_until_exit(&config, &mut state, &mut process).await?;
+        ensure(
+            state.active_runtime.as_ref().is_some_and(|active| {
+                active.process_state == PylonTrainingSupervisorProcessState::Stopped
+                    && active.restart_count == 1
+                    && active.launch_count == 2
+                    && active.last_exit_code == Some(0)
+            }),
+            "the relaunched recovered supervisor should still finish and persist a clean retained terminal state",
         )
     }
 
