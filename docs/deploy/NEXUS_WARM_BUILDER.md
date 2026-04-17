@@ -79,6 +79,7 @@ to hand-copy build contexts or re-bootstrap the toolchain manually.
 The builder keeps all reusable state on the persistent cache disk:
 
 - `${NEXUS_BUILDER_CACHE_MOUNT_POINT}/cargo-home`
+- `${NEXUS_BUILDER_CACHE_MOUNT_POINT}/rustup-home`
 - `${NEXUS_BUILDER_CACHE_MOUNT_POINT}/target`
 - `${NEXUS_BUILDER_CACHE_MOUNT_POINT}/sccache`
 - `${NEXUS_BUILDER_CACHE_MOUNT_POINT}/sources/<git_sha>`

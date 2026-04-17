@@ -12,6 +12,7 @@ CACHE_MOUNT_POINT="${NEXUS_BUILDER_CACHE_MOUNT_POINT:-/mnt/disks/nexus-builder-c
 BUILDER_USER="${NEXUS_BUILDER_USER:-nexus-builder}"
 BUILDER_HOME="/home/${BUILDER_USER}"
 CARGO_HOME="${CACHE_MOUNT_POINT}/cargo-home"
+RUSTUP_HOME="${CACHE_MOUNT_POINT}/rustup-home"
 CARGO_TARGET_DIR="${CACHE_MOUNT_POINT}/target"
 SCCACHE_DIR="${CACHE_MOUNT_POINT}/sccache"
 SOURCE_ROOT="${CACHE_MOUNT_POINT}/sources/${GIT_SHA}"
@@ -45,6 +46,7 @@ require_cmd tar
 
 sudo install -d -o "$BUILDER_USER" -g "$BUILDER_USER" -m 0755 \
   "$CARGO_HOME" \
+  "$RUSTUP_HOME" \
   "$CARGO_TARGET_DIR" \
   "$SCCACHE_DIR" \
   "$TIMINGS_DIR"
@@ -66,8 +68,9 @@ BUILD_STARTED_UNIX_MS="$(date +%s%3N)"
 sudo -u "$BUILDER_USER" bash -lc "
   set -euo pipefail
   export HOME='${BUILDER_HOME}'
-  export PATH=\"\$HOME/.cargo/bin:\$PATH\"
+  export PATH='${CARGO_HOME}/bin':\$PATH
   export CARGO_HOME='${CARGO_HOME}'
+  export RUSTUP_HOME='${RUSTUP_HOME}'
   export CARGO_TARGET_DIR='${CARGO_TARGET_DIR}'
   export SCCACHE_DIR='${SCCACHE_DIR}'
   export RUSTC_WRAPPER='/usr/local/bin/sccache'
@@ -141,6 +144,7 @@ payload = {
     },
     "cache_layout": {
         "cargo_home": "${CARGO_HOME}",
+        "rustup_home": "${RUSTUP_HOME}",
         "cargo_target_dir": "${CARGO_TARGET_DIR}",
         "sccache_dir": "${SCCACHE_DIR}",
     },
