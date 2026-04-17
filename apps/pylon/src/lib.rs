@@ -8151,10 +8151,47 @@ fn supported_training_role_claims(
         .collect()
 }
 
+fn training_heartbeat_error_requires_readmission(error: &str) -> bool {
+    error.contains("training_node_not_found")
+}
+
 fn training_lease_claim_error_is_nonfatal(error: &str) -> bool {
     error.contains("training_scheduler_assignment_unavailable")
         || error.contains("training_node_not_eligible")
         || error.contains("training_scheduler_role_overlap_forbidden")
+}
+
+fn build_training_node_admission_request(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    state: &PylonTrainingRuntimeState,
+    host: &ProviderHostTelemetrySnapshot,
+    contributor_availability: &ProviderAdapterTrainingContributorAvailability,
+    capability_tier: &ProviderTrainingCapabilityTierProfile,
+    capability_envelope_v2: &ProviderTrainingCapabilityEnvelopeV2,
+    supported_roles: &[PylonTrainingRoleClaim],
+) -> PylonTrainingNodeAdmissionRequest {
+    PylonTrainingNodeAdmissionRequest {
+        idempotency_key: format!(
+            "training-admission:{}:{}",
+            identity.public_key_hex,
+            now_epoch_ms()
+        ),
+        requested_at_ms: now_epoch_ms(),
+        node_pubkey_hex: identity.public_key_hex.clone(),
+        release_id: local_training_release_id(),
+        node_label: Some(config.node_label.clone()),
+        role_claims: supported_roles.to_vec(),
+        allowed_networks: config.training.allowed_networks.clone(),
+        build_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        build_digest: Some(local_training_build_digest()),
+        contributor_availability: contributor_availability.clone(),
+        capability_tier: capability_tier.clone(),
+        capability_envelope_v2: capability_envelope_v2.clone(),
+        host_telemetry: Some(host.clone()),
+        active_reputation_labels: training_runtime_blocked_label_keys(state),
+        settlement_destination: training_settlement_destination(config),
+    }
 }
 
 fn training_node_presence_heartbeat_request(
@@ -8239,6 +8276,78 @@ fn training_lease_presence_heartbeat_request(
         Some(recorded_at_ms),
         None,
     )
+}
+
+async fn admit_training_node_with_context(
+    client: &PylonTrainingCoordinatorClient,
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    state: &PylonTrainingRuntimeState,
+    host: &ProviderHostTelemetrySnapshot,
+    contributor_availability: &ProviderAdapterTrainingContributorAvailability,
+    capability_tier: &ProviderTrainingCapabilityTierProfile,
+    capability_envelope_v2: &ProviderTrainingCapabilityEnvelopeV2,
+    supported_roles: &[PylonTrainingRoleClaim],
+) -> Result<PylonTrainingNodeAdmissionResponse> {
+    if supported_roles.is_empty() {
+        bail!(
+            "training node re-admission required but no supported training roles are currently available"
+        );
+    }
+    let admission_request = build_training_node_admission_request(
+        config,
+        identity,
+        state,
+        host,
+        contributor_availability,
+        capability_tier,
+        capability_envelope_v2,
+        supported_roles,
+    );
+    let admission = client.admit_node(&admission_request).await?;
+    if !admission.admitted {
+        bail!(
+            "training node admission rejected: {}",
+            admission
+                .reason
+                .clone()
+                .unwrap_or_else(|| "training_node_not_admitted".to_string())
+        );
+    }
+    Ok(admission)
+}
+
+async fn report_training_heartbeat_with_readmission(
+    client: &PylonTrainingCoordinatorClient,
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    state: &PylonTrainingRuntimeState,
+    host: &ProviderHostTelemetrySnapshot,
+    contributor_availability: &ProviderAdapterTrainingContributorAvailability,
+    capability_tier: &ProviderTrainingCapabilityTierProfile,
+    capability_envelope_v2: &ProviderTrainingCapabilityEnvelopeV2,
+    supported_roles: &[PylonTrainingRoleClaim],
+    request: &PylonTrainingHeartbeatRequest,
+) -> Result<PylonTrainingHeartbeatResponse> {
+    match client.report_heartbeat(request).await {
+        Ok(response) => Ok(response),
+        Err(error) if training_heartbeat_error_requires_readmission(error.to_string().as_str()) => {
+            admit_training_node_with_context(
+                client,
+                config,
+                identity,
+                state,
+                host,
+                contributor_availability,
+                capability_tier,
+                capability_envelope_v2,
+                supported_roles,
+            )
+            .await?;
+            client.report_heartbeat(request).await
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn cache_training_run_lease(
@@ -8326,26 +8435,6 @@ async fn run_training_assignment_intake_once_with_context(
     runtime_surface: Option<&PsionicTrainRuntimeSurface>,
 ) -> Result<()> {
     let client = PylonTrainingCoordinatorClient::new(config)?;
-    if state
-        .active_runtime
-        .as_ref()
-        .is_some_and(|runtime| training_supervision_is_active(runtime.process_state))
-    {
-        if let Some(runtime) = state.active_runtime.as_ref() {
-            client
-                .report_heartbeat(&training_runtime_presence_heartbeat_request(
-                    identity,
-                    now_epoch_ms(),
-                    runtime,
-                ))
-                .await?;
-        }
-        return Ok(());
-    }
-    if !training_runtime_blocked_label_keys(state).is_empty() {
-        return Ok(());
-    }
-
     let contributor_availability =
         derive_adapter_training_contributor_availability(host, runtime_surface);
     let capability_tier =
@@ -8357,18 +8446,50 @@ async fn run_training_assignment_intake_once_with_context(
     );
     let supported_roles =
         supported_training_role_claims(config, &contributor_availability, &capability_tier);
+    if state
+        .active_runtime
+        .as_ref()
+        .is_some_and(|runtime| training_supervision_is_active(runtime.process_state))
+    {
+        if let Some(runtime) = state.active_runtime.as_ref() {
+            report_training_heartbeat_with_readmission(
+                &client,
+                config,
+                identity,
+                state,
+                host,
+                &contributor_availability,
+                &capability_tier,
+                &capability_envelope_v2,
+                &supported_roles,
+                &training_runtime_presence_heartbeat_request(identity, now_epoch_ms(), runtime),
+            )
+            .await?;
+        }
+        return Ok(());
+    }
+    if !training_runtime_blocked_label_keys(state).is_empty() {
+        return Ok(());
+    }
+
     if supported_roles.is_empty() {
         return Ok(());
     }
 
     if let Some(existing_lease) = newest_pending_training_lease_cache_entry(state) {
-        client
-            .report_heartbeat(&training_lease_presence_heartbeat_request(
-                identity,
-                now_epoch_ms(),
-                &existing_lease,
-            ))
-            .await?;
+        report_training_heartbeat_with_readmission(
+            &client,
+            config,
+            identity,
+            state,
+            host,
+            &contributor_availability,
+            &capability_tier,
+            &capability_envelope_v2,
+            &supported_roles,
+            &training_lease_presence_heartbeat_request(identity, now_epoch_ms(), &existing_lease),
+        )
+        .await?;
         let runtime_surface = runtime_surface.ok_or_else(|| {
             anyhow!("psionic-train runtime surface is required to materialize a leased assignment")
         })?;
@@ -8412,44 +8533,33 @@ async fn run_training_assignment_intake_once_with_context(
         return Ok(());
     }
 
-    let admission_request = PylonTrainingNodeAdmissionRequest {
-        idempotency_key: format!(
-            "training-admission:{}:{}",
-            identity.public_key_hex,
-            now_epoch_ms()
-        ),
-        requested_at_ms: now_epoch_ms(),
-        node_pubkey_hex: identity.public_key_hex.clone(),
-        release_id: local_training_release_id(),
-        node_label: Some(config.node_label.clone()),
-        role_claims: supported_roles.clone(),
-        allowed_networks: config.training.allowed_networks.clone(),
-        build_version: Some(env!("CARGO_PKG_VERSION").to_string()),
-        build_digest: Some(local_training_build_digest()),
-        contributor_availability,
-        capability_tier,
-        capability_envelope_v2,
-        host_telemetry: Some(host.clone()),
-        active_reputation_labels: training_runtime_blocked_label_keys(state),
-        settlement_destination: training_settlement_destination(config),
-    };
-    let admission = client.admit_node(&admission_request).await?;
-    if !admission.admitted {
-        bail!(
-            "training node admission rejected: {}",
-            admission
-                .reason
-                .unwrap_or_else(|| "training_node_not_admitted".to_string())
-        );
-    }
-    client
-        .report_heartbeat(&training_idle_presence_heartbeat_request(
-            identity,
-            now_epoch_ms(),
-        ))
-        .await?;
+    admit_training_node_with_context(
+        &client,
+        config,
+        identity,
+        state,
+        host,
+        &contributor_availability,
+        &capability_tier,
+        &capability_envelope_v2,
+        &supported_roles,
+    )
+    .await?;
+    report_training_heartbeat_with_readmission(
+        &client,
+        config,
+        identity,
+        state,
+        host,
+        &contributor_availability,
+        &capability_tier,
+        &capability_envelope_v2,
+        &supported_roles,
+        &training_idle_presence_heartbeat_request(identity, now_epoch_ms()),
+    )
+    .await?;
 
-    for role in supported_roles {
+    for role in supported_roles.clone() {
         let membership_revision = training_cached_membership_revision_for_role(state, role);
         for requested_network_id in training_requested_networks(config) {
             let requested_at_ms = now_epoch_ms();
@@ -8472,16 +8582,26 @@ async fn run_training_assignment_intake_once_with_context(
             {
                 Ok(lease) => {
                     cache_training_run_lease(state, &lease, requested_at_ms);
-                    client
-                        .report_heartbeat(&training_lease_presence_heartbeat_request(
+                    report_training_heartbeat_with_readmission(
+                        &client,
+                        config,
+                        identity,
+                        state,
+                        host,
+                        &contributor_availability,
+                        &capability_tier,
+                        &capability_envelope_v2,
+                        &supported_roles,
+                        &training_lease_presence_heartbeat_request(
                             identity,
                             now_epoch_ms(),
                             state
                                 .lease_cache
                                 .get(lease.lease_id.as_str())
                                 .expect("cached lease after successful lease response"),
-                        ))
-                        .await?;
+                        ),
+                    )
+                    .await?;
                     let runtime_surface = runtime_surface.ok_or_else(|| {
                         anyhow!(
                             "psionic-train runtime surface is required to materialize a leased assignment"
@@ -15172,6 +15292,8 @@ fn training_supervisor_pid_is_running(pid: u32) -> bool {
         let pid_text = pid.to_string();
         StdCommand::new("kill")
             .args(["-0", pid_text.as_str()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
             .map(|status| status.success())
             .unwrap_or(false)
@@ -24724,6 +24846,16 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             let count = counts.entry(path.clone()).or_insert(0);
             *count += 1;
             let response = match path.as_str() {
+                "/api/training/heartbeats" => json!({
+                    "ack": {
+                        "idempotency_key": "idemp.training.assignment_retry.heartbeat",
+                        "recorded_at_ms": 1_762_491_210_675_i64,
+                        "authority_state": "heartbeat_recorded"
+                    },
+                    "next_heartbeat_due_at_ms": 1_762_491_215_675_i64,
+                    "lease_state": "leased",
+                    "node_status": "online"
+                }),
                 "/api/training/assignments/ack" => json!({
                     "ack": {
                         "idempotency_key": "idemp.training.assignment_retry.ack",
@@ -24800,7 +24932,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             .expect("training assignment ack retry request counts")
             .clone();
         ensure(
-            counts.get("/api/training/assignments/ack") == Some(&1)
+            counts.get("/api/training/heartbeats") == Some(&1)
+                && counts.get("/api/training/assignments/ack") == Some(&1)
                 && !counts.contains_key("/api/training/nodes/admission")
                 && !counts.contains_key("/api/training/leases/claim")
                 && !counts.contains_key(
@@ -24811,6 +24944,284 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     .as_str(),
                 ),
             "cached leased assignments should retry only the missing assignment ack on restart",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_assignment_intake_readmits_node_when_cached_lease_heartbeat_is_evicted()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let training_run = training_run_fixture();
+        let training_run_for_server = training_run.clone();
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let run_root = training_run_root_for_id(&config, "run.alpha");
+        let run_manifest_payload =
+            training_manifest_fixture(run_root.as_path(), "gs://bucket")?.canonical_json_bytes()?;
+        let latest_pointer_payload = json!({
+            "schema_version":"openagents.pylon_training.latest_pointer.v1",
+            "checkpoint_ref":"checkpoint://run.alpha/0042",
+            "checkpoint_label":"checkpoint-0042",
+            "optimizer_step":42
+        })
+        .to_string()
+        .into_bytes();
+        let checkpoint_manifest_payload = json!({
+            "schema_version":"openagents.pylon_training.checkpoint_manifest.v1",
+            "checkpoint_ref":"checkpoint://run.alpha/0042",
+            "checkpoint_label":"checkpoint-0042",
+            "optimizer_step":42
+        })
+        .to_string()
+        .into_bytes();
+        std::fs::create_dir_all(run_root.join("manifests"))?;
+        std::fs::create_dir_all(run_root.join("checkpoints").join("step-42"))?;
+        std::fs::write(
+            run_root.join("manifests").join("run_manifest.json"),
+            run_manifest_payload.as_slice(),
+        )?;
+        std::fs::write(
+            run_root.join("checkpoints").join("latest_pointer.json"),
+            latest_pointer_payload.as_slice(),
+        )?;
+        std::fs::write(
+            run_root
+                .join("checkpoints")
+                .join("step-42")
+                .join("checkpoint_manifest.json"),
+            checkpoint_manifest_payload.as_slice(),
+        )?;
+        let base_scope = PylonTrainingArtifactScope {
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: None,
+        };
+        let mut run_manifest_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::RunManifest,
+            base_scope.clone(),
+        )
+        .expect("run manifest resolver");
+        run_manifest_resolver.digest = Some(training_artifact_digest_from_locator_payload(
+            run_manifest_resolver.relative_object_path.as_str(),
+            run_manifest_payload.as_slice(),
+        )?);
+        run_manifest_resolver.size_bytes =
+            Some(u64::try_from(run_manifest_payload.len()).unwrap_or(u64::MAX));
+        let mut latest_pointer_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::LatestCheckpointPointer,
+            base_scope.clone(),
+        )
+        .expect("latest pointer resolver");
+        latest_pointer_resolver.digest = Some(training_artifact_digest_from_locator_payload(
+            latest_pointer_resolver.relative_object_path.as_str(),
+            latest_pointer_payload.as_slice(),
+        )?);
+        latest_pointer_resolver.size_bytes =
+            Some(u64::try_from(latest_pointer_payload.len()).unwrap_or(u64::MAX));
+        let mut checkpoint_manifest_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::CheckpointManifest,
+            PylonTrainingArtifactScope {
+                optimizer_step: Some(42),
+                ..base_scope.clone()
+            },
+        )
+        .expect("checkpoint manifest resolver");
+        checkpoint_manifest_resolver.digest = Some(training_artifact_digest_from_locator_payload(
+            checkpoint_manifest_resolver.relative_object_path.as_str(),
+            checkpoint_manifest_payload.as_slice(),
+        )?);
+        checkpoint_manifest_resolver.size_bytes =
+            Some(u64::try_from(checkpoint_manifest_payload.len()).unwrap_or(u64::MAX));
+        let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let run_manifest_resolver_for_server = run_manifest_resolver.clone();
+        let latest_pointer_resolver_for_server = latest_pointer_resolver.clone();
+        let checkpoint_manifest_resolver_for_server = checkpoint_manifest_resolver.clone();
+        let base_url = start_mock_http_server(move |method, path, _body| {
+            if method == "GET" && path == "/v1/kernel/compute/training/runs/run.alpha" {
+                let response = compute_contracts::get_compute_training_run_response_to_proto(
+                    &training_run_for_server,
+                )
+                .expect("training run proto response");
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&response).expect("training run json"),
+                );
+            }
+            if method == "GET"
+                && path
+                    == format!(
+                        "/v1/kernel/compute/training/artifacts/{}",
+                        run_manifest_resolver_for_server.artifact_id
+                    )
+            {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&run_manifest_resolver_for_server)
+                        .expect("run manifest resolver json"),
+                );
+            }
+            if method == "GET"
+                && path
+                    == format!(
+                        "/v1/kernel/compute/training/artifacts/{}",
+                        latest_pointer_resolver_for_server.artifact_id
+                    )
+            {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&latest_pointer_resolver_for_server)
+                        .expect("latest pointer resolver json"),
+                );
+            }
+            if method == "GET"
+                && path
+                    == format!(
+                        "/v1/kernel/compute/training/artifacts/{}",
+                        checkpoint_manifest_resolver_for_server.artifact_id
+                    )
+            {
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&checkpoint_manifest_resolver_for_server)
+                        .expect("checkpoint manifest resolver json"),
+                );
+            }
+            if method != "POST" {
+                return (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed","reason":method}).to_string(),
+                );
+            }
+            let mut counts = request_counts_for_server
+                .lock()
+                .expect("training node eviction retry request counts");
+            let count = counts.entry(path.clone()).or_insert(0);
+            *count += 1;
+            let response = match path.as_str() {
+                "/api/training/nodes/admission" => (
+                    200,
+                    json!({
+                        "ack": {
+                            "idempotency_key": "idemp.training.assignment_retry.admission",
+                            "recorded_at_ms": 1_762_491_210_650_i64,
+                            "authority_state": "admitted"
+                        },
+                        "admission_id": "admission.retry",
+                        "admitted": true,
+                        "reason": null
+                    }),
+                ),
+                "/api/training/heartbeats" if *count == 1 => (
+                    404,
+                    json!({"error":"kernel_error","reason":"training_node_not_found"}),
+                ),
+                "/api/training/heartbeats" => (
+                    200,
+                    json!({
+                        "ack": {
+                            "idempotency_key": "idemp.training.assignment_retry.heartbeat",
+                            "recorded_at_ms": 1_762_491_210_675_i64,
+                            "authority_state": "heartbeat_recorded"
+                        },
+                        "next_heartbeat_due_at_ms": 1_762_491_215_675_i64,
+                        "lease_state": "leased",
+                        "node_status": "online"
+                    }),
+                ),
+                "/api/training/assignments/ack" => (
+                    200,
+                    json!({
+                        "ack": {
+                            "idempotency_key": "idemp.training.assignment_retry.ack",
+                            "recorded_at_ms": 1_762_491_210_700_i64,
+                            "authority_state": "assignment_acked"
+                        },
+                        "accepted": true,
+                        "lease_state": "acked"
+                    }),
+                ),
+                _ => (200, json!({"error":"unexpected_path","reason":path})),
+            };
+            (response.0, "application/json", response.1.to_string())
+        })
+        .await?;
+        config.training.nexus_authority_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.lease_cache.insert(
+            "lease.node01.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.node01.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev2".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "leased".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_260_600),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: None,
+                runtime_manifest_digest: None,
+                runtime_lane_id: None,
+                runtime_operation: None,
+                runtime_work_class: None,
+                updated_at_ms: 1_762_491_210_600,
+            },
+        );
+
+        let host = training_host_snapshot(Some("NVIDIA H100 SXM5 80GB"), Some(80), Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        run_training_assignment_intake_once_with_context(
+            &config,
+            &identity,
+            &mut state,
+            &host,
+            Some(&runtime_surface),
+        )
+        .await?;
+
+        ensure(
+            state
+                .lease_cache
+                .get("lease.node01.window0001")
+                .is_some_and(|lease| {
+                    lease.state == "acked"
+                        && lease.runtime_manifest_path.is_some()
+                        && lease.runtime_lane_id.as_deref()
+                            == Some(PSION_ACTUAL_PRETRAINING_LANE_ID)
+                }),
+            "cached leased assignments should re-admit the node and continue acknowledgement when authority evicts the node record",
+        )?;
+
+        let counts = request_counts
+            .lock()
+            .expect("training node eviction retry request counts")
+            .clone();
+        ensure(
+            counts.get("/api/training/heartbeats") == Some(&2)
+                && counts.get("/api/training/nodes/admission") == Some(&1)
+                && counts.get("/api/training/assignments/ack") == Some(&1)
+                && !counts.contains_key("/api/training/leases/claim"),
+            "cached leased assignments should re-admit once after a training_node_not_found heartbeat and then finish the retained ack flow without claiming a new lease",
         )
     }
 
