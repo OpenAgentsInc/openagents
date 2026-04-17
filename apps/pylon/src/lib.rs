@@ -942,6 +942,38 @@ impl PylonTrainingCloseoutStage {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PylonTrainingCloseoutNextAction {
+    AwaitWorkerExit,
+    VerifyLocalArtifacts,
+    PublishCheckpoint,
+    SealWindow,
+    AwaitValidatorClaim,
+    RunValidatorReplay,
+    FinalizeValidator,
+    RequestReconcile,
+    PollReconcile,
+    ObservePayout,
+}
+
+impl PylonTrainingCloseoutNextAction {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::AwaitWorkerExit => "await_worker_exit",
+            Self::VerifyLocalArtifacts => "verify_local_artifacts",
+            Self::PublishCheckpoint => "publish_checkpoint",
+            Self::SealWindow => "seal_window",
+            Self::AwaitValidatorClaim => "await_validator_claim",
+            Self::RunValidatorReplay => "run_validator_replay",
+            Self::FinalizeValidator => "finalize_validator",
+            Self::RequestReconcile => "request_reconcile",
+            Self::PollReconcile => "poll_reconcile",
+            Self::ObservePayout => "observe_payout",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonTrainingCloseoutProgressEntry {
     pub assignment_id: String,
@@ -1703,6 +1735,8 @@ pub struct TrainingOperatorCloseoutProgressStatus {
     assignment_id: String,
     role: String,
     stage: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    next_action: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     challenge_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -10762,6 +10796,8 @@ fn load_training_status_report_with_config(
             assignment_id: entry.assignment_id.clone(),
             role: entry.role.label().to_string(),
             stage: entry.stage.label().to_string(),
+            next_action: training_closeout_next_action(entry)
+                .map(|action| action.label().to_string()),
             challenge_id: entry.challenge_id.clone(),
             acceptance_state: entry.acceptance_state.clone(),
             payout_state: entry.payout_state.clone(),
@@ -14849,6 +14885,50 @@ fn training_closeout_progress_key(assignment_id: &str, challenge_id: Option<&str
         .unwrap_or_else(|| assignment_id.to_string())
 }
 
+fn training_closeout_next_action(
+    entry: &PylonTrainingCloseoutProgressEntry,
+) -> Option<PylonTrainingCloseoutNextAction> {
+    match entry.stage {
+        PylonTrainingCloseoutStage::WorkerRunning => {
+            Some(PylonTrainingCloseoutNextAction::AwaitWorkerExit)
+        }
+        PylonTrainingCloseoutStage::WorkerExitedSuccess => {
+            Some(PylonTrainingCloseoutNextAction::VerifyLocalArtifacts)
+        }
+        PylonTrainingCloseoutStage::ArtifactsVerifiedLocal => {
+            Some(PylonTrainingCloseoutNextAction::PublishCheckpoint)
+        }
+        PylonTrainingCloseoutStage::CheckpointPublished
+        | PylonTrainingCloseoutStage::WindowReadyToSeal => {
+            Some(PylonTrainingCloseoutNextAction::SealWindow)
+        }
+        PylonTrainingCloseoutStage::WindowSealed => {
+            Some(PylonTrainingCloseoutNextAction::AwaitValidatorClaim)
+        }
+        PylonTrainingCloseoutStage::ValidatorClaimed => {
+            Some(PylonTrainingCloseoutNextAction::RunValidatorReplay)
+        }
+        PylonTrainingCloseoutStage::ValidatorReplayComplete => {
+            Some(PylonTrainingCloseoutNextAction::FinalizeValidator)
+        }
+        PylonTrainingCloseoutStage::ValidatorFinalized => {
+            Some(PylonTrainingCloseoutNextAction::RequestReconcile)
+        }
+        PylonTrainingCloseoutStage::ReconcileRequested
+        | PylonTrainingCloseoutStage::ReconcileObserved => {
+            Some(PylonTrainingCloseoutNextAction::PollReconcile)
+        }
+        PylonTrainingCloseoutStage::Accepted => {
+            if entry.payout_receipt_id.is_some() || entry.payout_state.as_deref() == Some("paid") {
+                None
+            } else {
+                Some(PylonTrainingCloseoutNextAction::ObservePayout)
+            }
+        }
+        PylonTrainingCloseoutStage::Paid | PylonTrainingCloseoutStage::TerminalFailed => None,
+    }
+}
+
 fn next_training_closeout_journal_sequence(state: &PylonTrainingRuntimeState) -> u64 {
     state
         .closeout_journal
@@ -16280,6 +16360,9 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
             "- {} {} {} {} {}",
             entry.training_run_id, entry.window_id, entry.assignment_id, entry.role, entry.stage
         ));
+        if let Some(next_action) = entry.next_action.as_deref() {
+            lines.push(format!("  next action: {next_action}"));
+        }
         if let Some(challenge_id) = entry.challenge_id.as_deref() {
             lines.push(format!("  challenge: {challenge_id}"));
         }
@@ -16294,6 +16377,38 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
         }
         if let Some(last_error) = entry.last_error.as_deref() {
             lines.push(format!("  last error: {last_error}"));
+        }
+    }
+    lines.push(String::new());
+    lines.push(format!(
+        "closeout journal: {}",
+        report.recent_closeout_journal.len()
+    ));
+    for entry in &report.recent_closeout_journal {
+        lines.push(format!(
+            "- #{} {} {} {} {} {}",
+            entry.sequence,
+            entry.training_run_id,
+            entry.window_id,
+            entry.assignment_id,
+            entry.role,
+            entry.stage
+        ));
+        lines.push(format!("  reason: {}", entry.transition_reason));
+        if let Some(challenge_id) = entry.challenge_id.as_deref() {
+            lines.push(format!("  challenge: {challenge_id}"));
+        }
+        if let Some(contribution_id) = entry.contribution_id.as_deref() {
+            lines.push(format!("  contribution: {contribution_id}"));
+        }
+        if let Some(acceptance_state) = entry.acceptance_state.as_deref() {
+            lines.push(format!("  acceptance: {acceptance_state}"));
+        }
+        if let Some(payout_state) = entry.payout_state.as_deref() {
+            lines.push(format!("  payout: {payout_state}"));
+        }
+        if let Some(blocking_reason) = entry.blocking_reason.as_deref() {
+            lines.push(format!("  blocking: {blocking_reason}"));
         }
     }
     lines.join("\n")
@@ -31163,6 +31278,60 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && journal_entry.transition_reason == "observation_refresh"
                 && journal_entry.stage == super::PylonTrainingCloseoutStage::WindowSealed,
             "observation refreshes should append journal entries without regressing the effective closeout stage",
+        )
+    }
+
+    #[test]
+    fn training_closeout_next_action_tracks_effective_stage()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let make_entry = |stage, payout_state: Option<&str>, payout_receipt_id: Option<&str>| {
+            super::PylonTrainingCloseoutProgressEntry {
+                assignment_id: "assign.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                stage,
+                challenge_id: None,
+                contribution_id: None,
+                checkpoint_ref: None,
+                authority_assignment_state: None,
+                authority_window_state: None,
+                acceptance_state: None,
+                payout_state: payout_state.map(ToOwned::to_owned),
+                payout_receipt_id: payout_receipt_id.map(ToOwned::to_owned),
+                last_error: None,
+                updated_at_ms: 1_762_500_000_000,
+            }
+        };
+
+        ensure(
+            super::training_closeout_next_action(&make_entry(
+                super::PylonTrainingCloseoutStage::WorkerExitedSuccess,
+                None,
+                None,
+            )) == Some(super::PylonTrainingCloseoutNextAction::VerifyLocalArtifacts)
+                && super::training_closeout_next_action(&make_entry(
+                    super::PylonTrainingCloseoutStage::CheckpointPublished,
+                    None,
+                    None,
+                )) == Some(super::PylonTrainingCloseoutNextAction::SealWindow)
+                && super::training_closeout_next_action(&make_entry(
+                    super::PylonTrainingCloseoutStage::ValidatorClaimed,
+                    None,
+                    None,
+                )) == Some(super::PylonTrainingCloseoutNextAction::RunValidatorReplay)
+                && super::training_closeout_next_action(&make_entry(
+                    super::PylonTrainingCloseoutStage::Accepted,
+                    Some("pending"),
+                    None,
+                )) == Some(super::PylonTrainingCloseoutNextAction::ObservePayout)
+                && super::training_closeout_next_action(&make_entry(
+                    super::PylonTrainingCloseoutStage::Paid,
+                    Some("paid"),
+                    Some("receipt.alpha"),
+                ))
+                .is_none(),
+            "closeout next-action derivation should stay aligned to the effective monotonic stage",
         )
     }
 
