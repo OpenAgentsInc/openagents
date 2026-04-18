@@ -623,6 +623,10 @@ that cached total until a connected live balance replaces it.
 The `Lifetime earned` and stacker-rank counters stay keyed to retained provider
 settlement history rather than the current wallet balance, so withdrawing sats
 does not reduce the amount the node has already earned.
+When `cargo pylon-headless serve` cannot keep its Nexus heartbeat or payout-
+target sync healthy, the retained runtime snapshot now drops out of `online`
+truth and surfaces that control-plane error instead of continuing to claim a
+healthy online state.
 
 The retained provider payout controls now also exist in both places:
 - TUI: `/payout`, `/payout history [--limit <n>]`, `/payout withdraw <bolt11> [--amount-sats <n>]`
