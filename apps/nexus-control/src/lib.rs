@@ -8345,15 +8345,6 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
-    if let Ok(store) = state.store.try_read() {
-        let launch_metrics = training_launch_live_metrics_snapshot(&state);
-        let mut stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
-        apply_public_stats_cache_context(&mut stats, now, "live");
-        replace_public_stats_cache(&state, stats.clone());
-
-        return Ok(Json(stats));
-    }
-
     if let Some(mut stats) = cached_public_stats_snapshot(&state) {
         apply_public_stats_cache_context(&mut stats, now, "cached");
         return Ok(Json(stats));
@@ -30187,6 +30178,41 @@ mod tests {
         );
 
         set_test_wallet_snapshot_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_prefers_cached_snapshot_even_when_store_is_readable() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+
+        let mut cached =
+            super::cached_public_stats_snapshot(&state).expect("initial cached stats");
+        cached.nexus_wallet_balance_sats = 777;
+        cached.nexus_wallet_runtime_status = Some("cached".to_string());
+        super::replace_public_stats_cache(&state, cached);
+
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_wallet_balance_sats, 777);
+        assert_eq!(
+            stats.nexus_wallet_runtime_status.as_deref(),
+            Some("cached")
+        );
+        assert_eq!(
+            stats.training_public_state.launch_health.public_snapshot_source,
+            "cached"
+        );
+
         Ok(())
     }
 
