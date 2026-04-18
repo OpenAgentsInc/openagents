@@ -88,10 +88,10 @@ use psionic_train::{
     PSION_ACTUAL_PRETRAINING_LANE_ID, PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
     PSION_CS336_A1_DEMO_LANE_ID, PSIONIC_TRAIN_ACTUAL_PRETRAINING_ENVIRONMENT_REF,
     PSIONIC_TRAIN_INVOCATION_MANIFEST_SCHEMA_VERSION, PSIONIC_TRAIN_RUNTIME_SURFACE_ID,
-    PsionicTrainAdmissionIdentity, PsionicTrainArtifactBinding, PsionicTrainCoordinationContext,
-    PsionicTrainInvocationManifest, PsionicTrainLaneContract, PsionicTrainMinimumMachineClass,
-    PsionicTrainOperation, PsionicTrainRole, PsionicTrainWorkClass,
-    admitted_environment_ref_for_lane, admitted_release_id_for_lane,
+    PsionicTrainAdmissionIdentity, PsionicTrainArtifactBinding, PsionicTrainArtifactRef,
+    PsionicTrainCoordinationContext, PsionicTrainInvocationManifest, PsionicTrainLaneContract,
+    PsionicTrainMinimumMachineClass, PsionicTrainOperation, PsionicTrainRole,
+    PsionicTrainWorkClass, admitted_environment_ref_for_lane, admitted_release_id_for_lane,
     build_psionic_train_artifact_binding_from_path, runtime_build_digest,
 };
 use serde::de::DeserializeOwned;
@@ -4753,6 +4753,65 @@ fn training_checkpoint_manifest_step(payload: &[u8], source_path: &Path) -> Resu
     Ok(decoded.get("optimizer_step").and_then(Value::as_u64))
 }
 
+fn training_artifact_manifest_materialized_path(
+    artifact_manifest: &Value,
+    artifact_kind: &str,
+) -> Option<PathBuf> {
+    artifact_manifest
+        .get("artifacts")
+        .and_then(Value::as_array)
+        .and_then(|artifacts| {
+            artifacts.iter().find_map(|artifact| {
+                (artifact.get("artifact_kind").and_then(Value::as_str) == Some(artifact_kind))
+                    .then(|| {
+                        artifact
+                            .get("binding")
+                            .and_then(|value| value.get("materialized_path"))
+                            .and_then(Value::as_str)
+                            .filter(|value| !value.trim().is_empty())
+                            .map(PathBuf::from)
+                    })
+                    .flatten()
+            })
+        })
+}
+
+fn training_validator_checkpoint_manifest_destination(
+    run_root: &Path,
+    latest_accepted_checkpoint_pointer: Option<&Value>,
+    checkpoint_manifest: &Value,
+) -> PathBuf {
+    latest_accepted_checkpoint_pointer
+        .and_then(|value| value.get("checkpoint_manifest_relative_path"))
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(|relative| run_root.join(relative))
+        .or_else(|| {
+            checkpoint_manifest
+                .get("relative_manifest_path")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(|relative| run_root.join(relative))
+        })
+        .or_else(|| {
+            checkpoint_manifest
+                .get("optimizer_step")
+                .and_then(Value::as_u64)
+                .map(|optimizer_step| {
+                    run_root
+                        .join("checkpoints")
+                        .join(format!("step-{optimizer_step}"))
+                        .join("checkpoint_manifest.json")
+                })
+        })
+        .unwrap_or_else(|| {
+            run_root
+                .join("checkpoints")
+                .join("step-0")
+                .join("checkpoint_manifest.json")
+        })
+}
+
 fn write_training_artifact_destination(path: &Path, payload: &[u8]) -> Result<()> {
     let parent = path.parent().ok_or_else(|| {
         anyhow!(
@@ -5446,6 +5505,10 @@ async fn ensure_training_validator_challenge_materialized(
         .and_then(|value| value.get("artifact_manifest"))
         .cloned()
         .ok_or_else(|| anyhow!("validator bridge bundle missing artifact manifest"))?;
+    let latest_accepted_checkpoint_pointer = proof_bundle
+        .get("source")
+        .and_then(|value| value.get("latest_accepted_checkpoint_pointer"))
+        .cloned();
     let contribution_receipt_path = contribution_root.join("contribution_receipt.json");
     let artifact_manifest_path = contribution_root.join("artifact_manifest.json");
     write_training_json_value(
@@ -5498,10 +5561,7 @@ async fn ensure_training_validator_challenge_materialized(
             "validator checkpoint surface",
         )?;
     }
-    if let Some(latest_accepted_checkpoint_pointer) = proof_bundle
-        .get("source")
-        .and_then(|value| value.get("latest_accepted_checkpoint_pointer"))
-    {
+    if let Some(latest_accepted_checkpoint_pointer) = latest_accepted_checkpoint_pointer.as_ref() {
         write_training_json_value(
             run_root
                 .join("checkpoints")
@@ -5509,6 +5569,21 @@ async fn ensure_training_validator_challenge_materialized(
                 .as_path(),
             latest_accepted_checkpoint_pointer,
             "validator latest accepted checkpoint pointer",
+        )?;
+    }
+    if let Some(checkpoint_manifest) = proof_bundle
+        .get("source")
+        .and_then(|value| value.get("checkpoint_manifest"))
+    {
+        let checkpoint_manifest_path = training_validator_checkpoint_manifest_destination(
+            run_root,
+            latest_accepted_checkpoint_pointer.as_ref(),
+            checkpoint_manifest,
+        );
+        write_training_json_value(
+            checkpoint_manifest_path.as_path(),
+            checkpoint_manifest,
+            "validator checkpoint manifest",
         )?;
     }
 
@@ -5813,6 +5888,51 @@ fn psionic_train_materialized_artifact_binding(
         .map_err(anyhow::Error::msg)
 }
 
+fn psionic_train_validator_target_artifact_binding(
+    run_root: &Path,
+    lease: &PylonTrainingLeaseCacheEntry,
+    validator_target_artifact_role: &str,
+    fallback_artifact_role: &str,
+    path: &str,
+) -> Result<PsionicTrainArtifactBinding> {
+    let fallback =
+        build_psionic_train_artifact_binding_from_path(fallback_artifact_role, Path::new(path))
+            .map_err(anyhow::Error::msg)?;
+    let Some(challenge_id) = lease.challenge_id.as_deref() else {
+        return Ok(fallback);
+    };
+    let Some(claim_record) =
+        load_training_validator_claim_record(run_root, lease.window_id.as_str(), challenge_id)?
+    else {
+        return Ok(fallback);
+    };
+    let Some(target) = claim_record
+        .target_bindings
+        .iter()
+        .find(|binding| binding.assignment_id == lease.assignment_id)
+        .or_else(|| claim_record.target_bindings.first())
+    else {
+        return Ok(fallback);
+    };
+    let Some(target_artifact) =
+        training_validator_target_artifact(target, validator_target_artifact_role)
+    else {
+        return Ok(fallback);
+    };
+    let artifact_id = target_artifact
+        .artifact_id
+        .clone()
+        .unwrap_or_else(|| fallback.artifact_ref.artifact_id.clone());
+    Ok(PsionicTrainArtifactBinding {
+        artifact_ref: PsionicTrainArtifactRef {
+            artifact_id,
+            artifact_digest: fallback.artifact_ref.artifact_digest,
+            artifact_bytes: fallback.artifact_ref.artifact_bytes,
+        },
+        materialized_path: fallback.materialized_path,
+    })
+}
+
 fn build_psionic_train_invocation_manifest(
     config: &PylonConfig,
     runtime_surface: &PsionicTrainRuntimeSurface,
@@ -5900,7 +6020,10 @@ fn build_psionic_train_invocation_manifest(
             .validator_target_contribution_receipt_path
             .as_deref()
             .map(|path| {
-                psionic_train_materialized_artifact_binding(
+                psionic_train_validator_target_artifact_binding(
+                    run_root.as_path(),
+                    lease,
+                    "contribution_receipt",
                     "validator_target_contribution_receipt",
                     path,
                 )
@@ -5910,7 +6033,10 @@ fn build_psionic_train_invocation_manifest(
             .validator_target_contribution_artifact_manifest_path
             .as_deref()
             .map(|path| {
-                psionic_train_materialized_artifact_binding(
+                psionic_train_validator_target_artifact_binding(
+                    run_root.as_path(),
+                    lease,
+                    "contribution_artifact_manifest",
                     "validator_target_contribution_artifact_manifest",
                     path,
                 )
@@ -8326,7 +8452,11 @@ fn normalize_training_closeout_progress_from_journal(
         projected
             .entry(key)
             .and_modify(|current: &mut PylonTrainingCloseoutProgressEntry| {
-                if projected_entry.stage.ordinal() > current.stage.ordinal()
+                let terminal_recovery = current.stage == PylonTrainingCloseoutStage::TerminalFailed
+                    && projected_entry.stage != PylonTrainingCloseoutStage::TerminalFailed
+                    && entry.transition_reason == "terminal_recovery";
+                if terminal_recovery
+                    || projected_entry.stage.ordinal() > current.stage.ordinal()
                     || projected_entry.stage == current.stage
                 {
                     *current = projected_entry.clone();
@@ -8341,7 +8471,9 @@ fn normalize_training_closeout_progress_from_journal(
             .closeout_progress
             .get(key.as_str())
             .map(|existing| {
-                projected_entry.stage.ordinal() > existing.stage.ordinal()
+                (existing.stage == PylonTrainingCloseoutStage::TerminalFailed
+                    && projected_entry.stage != PylonTrainingCloseoutStage::TerminalFailed)
+                    || projected_entry.stage.ordinal() > existing.stage.ordinal()
                     || (projected_entry.stage == existing.stage && projected_entry != *existing)
             })
             .unwrap_or(true);
@@ -9941,6 +10073,22 @@ fn ensure_training_contribution_bridge_bundles(
                 )
             })
             .transpose()?;
+        let checkpoint_manifest_path =
+            training_artifact_manifest_materialized_path(&artifact_manifest, "checkpoint_manifest");
+        let checkpoint_manifest = checkpoint_manifest_path
+            .as_ref()
+            .map(|path: &PathBuf| {
+                load_training_json_artifact_value(path.as_path(), "training checkpoint manifest")
+            })
+            .transpose()?
+            .flatten();
+        let checkpoint_manifest_digest = checkpoint_manifest
+            .as_ref()
+            .zip(checkpoint_manifest_path.as_ref())
+            .map(|(value, path): (&Value, &PathBuf)| {
+                training_json_artifact_digest(value, "training checkpoint manifest", path.as_path())
+            })
+            .transpose()?;
         let proof_bridge = json!({
             "schema_version": PYLON_TRAINING_PROOF_BUNDLE_BRIDGE_SCHEMA_VERSION,
             "bridge_family": "retained_contribution_proof",
@@ -9966,10 +10114,13 @@ fn ensure_training_contribution_bridge_bundles(
                 "latest_accepted_checkpoint_pointer_path": latest_accepted_checkpoint_pointer_path.display().to_string(),
                 "latest_accepted_checkpoint_pointer_digest": latest_accepted_checkpoint_pointer_digest,
                 "latest_accepted_checkpoint_pointer": latest_accepted_checkpoint_pointer,
+                "checkpoint_manifest_path": checkpoint_manifest_path.as_ref().map(|path: &PathBuf| path.display().to_string()),
+                "checkpoint_manifest_digest": checkpoint_manifest_digest,
+                "checkpoint_manifest": checkpoint_manifest,
                 "contribution_receipt_path": contribution_receipt_path.display().to_string(),
                 "contribution_receipt_digest": contribution_receipt_digest,
             },
-            "detail": "Bridge bundle preserves the retained artifact manifest, sealed-window bundle, closeout bundle, and accepted-checkpoint lineage under the legacy proof contribution contract until Nexus consumes the retained proof family directly."
+            "detail": "Bridge bundle preserves the retained artifact manifest, sealed-window bundle, closeout bundle, checkpoint manifest, and accepted-checkpoint lineage under the legacy proof contribution contract until Nexus consumes the retained proof family directly."
         });
         persist_training_bridge_bundle(
             proof_bundle_path.as_path(),
@@ -12736,25 +12887,68 @@ fn training_run_completed_successfully(
         )
 }
 
+fn reconcile_training_terminal_runtime_state_from_status_packets(
+    config: &PylonConfig,
+    state: &mut PylonTrainingRuntimeState,
+) -> Result<bool> {
+    let Some(active) = state.active_runtime.as_ref().cloned() else {
+        return Ok(false);
+    };
+    if !training_supervision_is_terminal(active.process_state) {
+        return Ok(false);
+    }
+
+    let run_status = load_training_run_status_packet(Path::new(active.run_root.as_str()))?;
+    if !training_run_completed_successfully(&active, run_status.as_ref()) {
+        return Ok(false);
+    }
+
+    let runtime = state
+        .active_runtime
+        .as_mut()
+        .expect("active runtime should still exist while reconciling terminal status");
+    let changed = runtime.process_state != PylonTrainingSupervisorProcessState::Stopped
+        || runtime.last_exit_code != Some(0)
+        || runtime.last_failure_reason.is_some()
+        || runtime.failure_receipt_path.is_some();
+    if !changed {
+        return Ok(false);
+    }
+
+    runtime.process_state = PylonTrainingSupervisorProcessState::Stopped;
+    runtime.last_exit_code = Some(0);
+    runtime.last_failure_reason = None;
+    runtime.failure_receipt_path = None;
+    runtime.updated_at_ms = now_epoch_ms();
+    save_training_runtime_state(config, state)?;
+    Ok(true)
+}
+
 fn build_training_failure_reason(
     active: &PylonTrainingActiveRuntimeState,
     run_status: Option<&PylonTrainingRunStatusPacket>,
 ) -> Result<Option<String>> {
     if let Some(packet) = run_status {
-        if packet.outcome.trim() == "refused" {
-            let refusal_class = packet
-                .refusal_class
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty());
-            let detail = packet.detail.trim();
-            let reason = match (refusal_class, detail.is_empty()) {
-                (Some(class), false) if detail != class => format!("{class}: {detail}"),
-                (Some(class), _) => class.to_string(),
-                (None, false) => detail.to_string(),
-                (None, true) => "refused".to_string(),
-            };
-            return Ok(Some(reason));
+        match packet.outcome.trim() {
+            // Status packets are emitted by the runtime after execution. If a later packet
+            // reports success, stale local failure receipts must stop driving terminal sync.
+            "succeeded" => return Ok(None),
+            "refused" => {
+                let refusal_class = packet
+                    .refusal_class
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty());
+                let detail = packet.detail.trim();
+                let reason = match (refusal_class, detail.is_empty()) {
+                    (Some(class), false) if detail != class => format!("{class}: {detail}"),
+                    (Some(class), _) => class.to_string(),
+                    (None, false) => detail.to_string(),
+                    (None, true) => "refused".to_string(),
+                };
+                return Ok(Some(reason));
+            }
+            _ => {}
         }
     }
 
@@ -12777,6 +12971,9 @@ fn resolve_training_failure_exit_code(
     run_status: Option<&PylonTrainingRunStatusPacket>,
 ) -> Result<Option<i32>> {
     if let Some(packet) = run_status {
+        if packet.outcome.trim() == "succeeded" {
+            return Ok(None);
+        }
         return Ok(Some(i32::from(packet.exit_code)));
     }
     if let Some(exit_code) = active.last_exit_code {
@@ -13125,6 +13322,7 @@ fn stabilize_training_retained_psionic_worker_contract(
                     "checkpoint_pointer",
                     "latest_accepted_checkpoint_pointer_path",
                 ),
+                ("checkpoint_manifest", "checkpoint_manifest_path"),
                 ("checkpoint_surface", "checkpoint_surface_path"),
                 ("final_closeout_bundle", "closeout_bundle_path"),
             ] {
@@ -15147,21 +15345,22 @@ async fn sync_training_terminal_runtime_once(
     config: &PylonConfig,
     identity: &NostrIdentity,
 ) -> Result<bool> {
-    let state = load_or_create_training_runtime_state(config)?;
+    let mut state = load_or_create_training_runtime_state(config)?;
+    let mut changed =
+        reconcile_training_terminal_runtime_state_from_status_packets(config, &mut state)?;
     let Some(active) = state.active_runtime.as_ref().cloned() else {
-        return Ok(false);
+        return Ok(changed);
     };
     if !training_supervision_is_terminal(active.process_state) {
-        return Ok(false);
+        return Ok(changed);
     }
     let manifest_path = PathBuf::from(active.manifest_path.clone());
     let Some(context) =
         training_manifest_context_for_path(config, &state, manifest_path.as_path())?
     else {
-        return Ok(false);
+        return Ok(changed);
     };
 
-    let mut changed = false;
     if training_context_has_pending_publication(&state, &context)? {
         let report = publish_training_trn_state(config_path, Some(manifest_path.as_path())).await?;
         if training_publication_report_has_updates(&report) {
@@ -15403,6 +15602,11 @@ fn record_training_closeout_progress_stage(
     let key = training_closeout_progress_key(assignment_id, challenge_id);
     let updated_at_ms = now_epoch_ms();
     let previous = state.closeout_progress.get(key.as_str()).cloned();
+    let recovering_from_terminal_failed = previous.as_ref().is_some_and(|existing| {
+        existing.stage == PylonTrainingCloseoutStage::TerminalFailed
+            && stage != PylonTrainingCloseoutStage::TerminalFailed
+            && last_error.is_none()
+    });
     let mut entry = previous
         .clone()
         .unwrap_or_else(|| PylonTrainingCloseoutProgressEntry {
@@ -15422,16 +15626,16 @@ fn record_training_closeout_progress_stage(
             last_error: last_error.clone(),
             updated_at_ms,
         });
-    let lower_stage_than_existing = previous
-        .as_ref()
-        .is_some_and(|existing| existing.stage.ordinal() > stage.ordinal());
+    let lower_stage_than_existing = previous.as_ref().is_some_and(|existing| {
+        existing.stage.ordinal() > stage.ordinal() && !recovering_from_terminal_failed
+    });
     entry.training_run_id = training_run_id.to_string();
     entry.window_id = window_id.to_string();
     entry.role = role;
     entry.stage = previous
         .as_ref()
         .map(|existing| {
-            if existing.stage.ordinal() > stage.ordinal() {
+            if existing.stage.ordinal() > stage.ordinal() && !recovering_from_terminal_failed {
                 existing.stage
             } else {
                 stage
@@ -15461,16 +15665,20 @@ fn record_training_closeout_progress_stage(
     let changed = previous.as_ref() != Some(&entry);
     if changed {
         entry.updated_at_ms = updated_at_ms;
-        let transition_reason = previous
-            .as_ref()
-            .map(|existing| {
-                if existing.stage != entry.stage {
-                    "stage_transition"
-                } else {
-                    "stage_metadata_refresh"
-                }
-            })
-            .unwrap_or("stage_transition");
+        let transition_reason = if recovering_from_terminal_failed {
+            "terminal_recovery"
+        } else {
+            previous
+                .as_ref()
+                .map(|existing| {
+                    if existing.stage != entry.stage {
+                        "stage_transition"
+                    } else {
+                        "stage_metadata_refresh"
+                    }
+                })
+                .unwrap_or("stage_transition")
+        };
         state.closeout_progress.insert(key, entry.clone());
         append_training_closeout_journal_entry(state, &entry, transition_reason);
     }
@@ -27905,6 +28113,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 .join("step-0")
                 .join("checkpoint_manifest.json"),
         )?;
+        let checkpoint_manifest: Value =
+            serde_json::from_slice(checkpoint_manifest_payload.as_slice())?;
         let local_update_bridge_payload = serde_json::to_vec(&json!({
             "schema_version":"openagents.pylon_training.adapter_delta_bridge_bundle.v1",
             "source":{
@@ -27918,9 +28128,14 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 "sealed_window_bundle": sealed_window_bundle,
                 "closeout_bundle": closeout_bundle,
                 "checkpoint_surface": checkpoint_surface,
-                "latest_accepted_checkpoint_pointer": latest_accepted_checkpoint_pointer
+                "latest_accepted_checkpoint_pointer": latest_accepted_checkpoint_pointer,
+                "checkpoint_manifest": checkpoint_manifest
             }
         }))?;
+        std::fs::remove_dir_all(run_root.join("windows"))?;
+        std::fs::remove_dir_all(run_root.join("status"))?;
+        std::fs::remove_dir_all(run_root.join("closeout"))?;
+        std::fs::remove_dir_all(run_root.join("checkpoints"))?;
 
         let base_scope = PylonTrainingArtifactScope {
             network_id: "trainnet.alpha".to_string(),
@@ -28384,7 +28599,23 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     .validator_target_contribution_artifact_manifest_path
                     .as_deref()
                     .is_some_and(|path| Path::new(path).is_file()),
-            "validator fallback intake should cache a launchable validator lease with retained target artifacts",
+            "validator fallback intake should cache a launchable validator lease with retained target artifacts and rebuild the retained checkpoint inputs locally",
+        )?;
+        ensure(
+            run_root
+                .join("checkpoints")
+                .join("step-42")
+                .join("checkpoint_manifest.json")
+                .is_file()
+                && run_root
+                    .join("checkpoints")
+                    .join("latest_accepted_checkpoint_pointer.json")
+                    .is_file()
+                && run_root
+                    .join("status")
+                    .join("checkpoint_surface.json")
+                    .is_file(),
+            "validator fallback intake should materialize the retained checkpoint lineage under the validator run root before psionic-train replay starts",
         )?;
         let manifest_path = PathBuf::from(
             lease
@@ -28511,7 +28742,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         )?;
         let peer_handoff_path_string = peer_handoff_path.display().to_string();
         let validator_receipt_path_string = validator_receipt_path.display().to_string();
+        let validator_manifest_path_string = validator_manifest_path.display().to_string();
         let validator_receipt_digest = format!("{:x}", Sha256::digest(validator_receipt_payload));
+        let validator_manifest_digest = format!("{:x}", Sha256::digest(validator_manifest_payload));
+        let canonical_validator_manifest_artifact_id = format!(
+            "psionic.train.artifact.contribution_artifact_manifest.{validator_manifest_digest}"
+        );
+        let pylon_run_root = training_run_root_for_id(&config, "run.alpha");
 
         let mut lease = PylonTrainingLeaseCacheEntry {
             lease_id: "lease.node01.window0001".to_string(),
@@ -28568,8 +28805,101 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         lease.validator_target_contribution_receipt_path =
             Some(validator_receipt_path_string.clone());
         lease.validator_target_contribution_artifact_manifest_path =
-            Some(validator_manifest_path.display().to_string());
+            Some(validator_manifest_path_string.clone());
         lease.validator_target_work_class = Some(ComputeTrainingWorkClass::AdapterTraining);
+        super::persist_training_validator_claim_record(
+            pylon_run_root.as_path(),
+            &super::PylonTrainingValidatorChallengeCoordinatorResponse {
+                ack: super::PylonTrainingCoordinatorAck {
+                    idempotency_key: "validator-claim-alpha".to_string(),
+                    recorded_at_ms: 1_762_491_210_700,
+                    authority_state: "leased".to_string(),
+                },
+                network_id: "trainnet.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                challenge_id: "challenge.alpha".to_string(),
+                challenge_kind: "contribution_sample".to_string(),
+                target_assignment_ids: vec!["assign.node01.window0001".to_string()],
+                expected_manifest_digests: vec!["sha256:manifest-alpha".to_string()],
+                challenge: openagents_kernel_core::compute::ComputeValidatorChallengeSnapshot {
+                    request: openagents_kernel_core::compute::ComputeValidatorChallengeRequest {
+                        context: openagents_kernel_core::compute::ComputeValidatorChallengeContext {
+                            challenge_id: "challenge.alpha".to_string(),
+                            proof_bundle_digest: "sha256:proof-bundle-alpha".to_string(),
+                            request_digest: "sha256:challenge-request-alpha".to_string(),
+                            delivery_proof_id: None,
+                            product_id: "psionic.training.homework".to_string(),
+                            runtime_backend: "psionic_train".to_string(),
+                            model_id: Some("model://psion/demo".to_string()),
+                            validator_pool_ref: Some("validator-pool.training.mvp".to_string()),
+                            created_at_ms: 1_762_491_210_700,
+                            max_attempts: 2,
+                            lease_timeout_ms: 600_000,
+                        },
+                        protocol: openagents_kernel_core::compute::ComputeValidatorChallengeProtocolKind::GpuFreivaldsMerkleV1,
+                    },
+                    status:
+                        openagents_kernel_core::compute::ComputeValidatorChallengeStatus::Leased,
+                    attempts_used: 0,
+                    active_lease: Some(openagents_kernel_core::compute::ComputeValidatorChallengeLease {
+                        challenge_id: "challenge.alpha".to_string(),
+                        attempt: 1,
+                        validator_id: "11".repeat(32),
+                        leased_at_ms: 1_762_491_210_700,
+                        expires_at_ms: 1_762_491_270_700,
+                    }),
+                    final_result: None,
+                },
+                lease: Some(openagents_kernel_core::compute::ComputeValidatorChallengeLease {
+                    challenge_id: "challenge.alpha".to_string(),
+                    attempt: 1,
+                    validator_id: "11".repeat(32),
+                    leased_at_ms: 1_762_491_210_700,
+                    expires_at_ms: 1_762_491_270_700,
+                }),
+                result: None,
+                window: None,
+                contribution_outcomes: Vec::new(),
+                target_bindings: vec![super::PylonTrainingValidatorTargetAssignmentBinding {
+                    assignment_id: "assign.node01.window0001".to_string(),
+                    training_run_id: "run.alpha".to_string(),
+                    window_id: "window.0001".to_string(),
+                    contributor_pylon_id: "node.alpha".to_string(),
+                    contribution_id: "contrib.node01.window0001".to_string(),
+                    work_class: "adapter_training".to_string(),
+                    challenge_kind: "contribution_sample".to_string(),
+                    claim_id: "challenge.alpha".to_string(),
+                    submission_receipt_digest: "sha256:receipt-alpha".to_string(),
+                    manifest_digest: "sha256:manifest-alpha".to_string(),
+                    object_digest: "sha256:contribution-alpha".to_string(),
+                    lane_type: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                    lease_expires_at_ms: Some(1_762_491_270_700),
+                    artifacts: vec![
+                        super::PylonTrainingValidatorTargetArtifactBinding {
+                            artifact_role: "contribution_receipt".to_string(),
+                            artifact_id: None,
+                            digest: Some(format!("sha256:{validator_receipt_digest}")),
+                            object_uri: None,
+                            local_path: Some(validator_receipt_path_string.clone()),
+                            signed_read_url: None,
+                            resolver: None,
+                            metadata: Value::Null,
+                        },
+                        super::PylonTrainingValidatorTargetArtifactBinding {
+                            artifact_role: "contribution_artifact_manifest".to_string(),
+                            artifact_id: Some(canonical_validator_manifest_artifact_id.clone()),
+                            digest: Some(format!("sha256:{validator_manifest_digest}")),
+                            object_uri: None,
+                            local_path: Some(validator_manifest_path_string.clone()),
+                            signed_read_url: None,
+                            resolver: None,
+                            metadata: Value::Null,
+                        },
+                    ],
+                }],
+            },
+        )?;
         let (validator_manifest, _) = build_psionic_train_invocation_manifest(
             &config,
             &runtime_surface,
@@ -28598,9 +28928,17 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     .as_ref()
                     .and_then(|binding| binding.artifact_ref.artifact_digest.as_deref())
                     == Some(validator_receipt_digest.as_str())
+                && validator_manifest
+                    .validator_target_contribution_artifact_manifest
+                    .as_ref()
+                    .is_some_and(|binding| {
+                        binding.artifact_ref.artifact_id == canonical_validator_manifest_artifact_id
+                            && binding.artifact_ref.artifact_digest.as_deref()
+                                == Some(validator_manifest_digest.as_str())
+                    })
                 && validator_manifest.validator_target_work_class
                     == Some(PsionicTrainWorkClass::AdapterTraining),
-            "validator leases should map replay target inputs into the psionic-train machine manifest",
+            "validator leases should preserve canonical replay target artifact identity from the retained claim record",
         )
     }
 
@@ -29145,7 +29483,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let contribution_bundle = report
             .bundles
             .iter()
-            .find(|entry| entry.bundle_id == "contribution:contrib.node01.window0001")
+            .find(|entry| entry.bundle_id == "contribution:assign.node01.window0001")
             .ok_or_else(|| {
                 std::io::Error::other("expected retained contribution bundle in inspection report")
             })?;
@@ -29178,8 +29516,12 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && proof_bundle.get("schema_version")
                     == Some(&json!(
                         super::PYLON_TRAINING_PROOF_BUNDLE_BRIDGE_SCHEMA_VERSION
-                    )),
-            "bridge materialization should write explicit bridge-schema bundles for retained contribution outputs",
+                    ))
+                && proof_bundle
+                    .get("source")
+                    .and_then(|value| value.get("checkpoint_manifest"))
+                    .is_some(),
+            "bridge materialization should write explicit bridge-schema bundles with the retained checkpoint manifest for validator replay",
         )
     }
 
@@ -29284,8 +29626,12 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && proof_bundle.get("schema_version")
                     == Some(&json!(
                         super::PYLON_TRAINING_PROOF_BUNDLE_BRIDGE_SCHEMA_VERSION
-                    )),
-            "uploaded retained contribution bundles should carry explicit bridge schemas instead of pretending the old adapter/proof payloads still exist",
+                    ))
+                && proof_bundle
+                    .get("source")
+                    .and_then(|value| value.get("checkpoint_manifest"))
+                    .is_some(),
+            "uploaded retained contribution bundles should carry the retained checkpoint manifest instead of dropping validator replay state from the proof bridge",
         )
     }
 
@@ -30077,6 +30423,239 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             counts_after_second == counts,
             "terminal sync should dedupe successful Nexus receipt publication across later serve loops",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_terminal_sync_recovers_stale_failed_runtime_after_success_packet()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _env_lock = training_env_lock();
+        let relay = TestPublishRelay::spawn();
+        let stored_objects = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, Vec<u8>>::new(),
+        ));
+        let stored_objects_for_server = Arc::clone(&stored_objects);
+        let gcs_base_url = start_mock_http_server(move |method, path, body| {
+            let mut objects = stored_objects_for_server
+                .lock()
+                .expect("training recovery object store");
+            match method.as_str() {
+                "PUT" => {
+                    objects.insert(path.clone(), body.into_bytes());
+                    (200, "application/json", json!({"ok": true}).to_string())
+                }
+                "GET" => match objects.get(path.as_str()) {
+                    Some(payload) => (
+                        200,
+                        "application/octet-stream",
+                        String::from_utf8(payload.clone()).expect("stored object utf8"),
+                    ),
+                    None => (
+                        404,
+                        "application/json",
+                        json!({"error":"missing"}).to_string(),
+                    ),
+                },
+                _ => (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed"}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let request_counts = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, usize>::new(),
+        ));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let nexus_base_url = start_mock_http_server(move |_method, path, _body| {
+            *request_counts_for_server
+                .lock()
+                .expect("training recovery request counts")
+                .entry(path.clone())
+                .or_default() += 1;
+            match path.as_str() {
+                "/api/training/windows/progress" => (
+                    200,
+                    "application/json",
+                    json!({
+                        "ack": {
+                            "idempotency_key": "window-progress-success",
+                            "recorded_at_ms": 1_762_491_330_100_i64,
+                            "authority_state": "window_progress_recorded"
+                        },
+                        "window_state": "sealing"
+                    })
+                    .to_string(),
+                ),
+                "/api/training/checkpoints/publish" => (
+                    200,
+                    "application/json",
+                    json!({
+                        "ack": {
+                            "idempotency_key": "checkpoint-publication-success",
+                            "recorded_at_ms": 1_762_491_330_200_i64,
+                            "authority_state": "checkpoint_published"
+                        },
+                        "checkpoint_state": "published",
+                        "artifact_locator": "gs://bucket/networks/trainnet.alpha/runs/run.alpha/checkpoints/step-42/checkpoint_manifest.json"
+                    })
+                    .to_string(),
+                ),
+                "/api/training/failures" => (
+                    500,
+                    "application/json",
+                    json!({"error":"unexpected_failure_notice"}).to_string(),
+                ),
+                _ => (
+                    404,
+                    "application/json",
+                    json!({"error":"not_found","reason":path}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        config.training.relay_urls = vec![relay.url.clone()];
+        config.training.nexus_authority_base_url = nexus_base_url;
+        config.relay_auth_enabled = false;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let mut manifest =
+            write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
+        manifest.trn.relay_urls = vec![relay.url.clone()];
+        manifest.manifest_digest = manifest.canonical_digest()?;
+        let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
+        std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
+        write_training_terminal_status_packets(
+            local_run_root.as_path(),
+            "succeeded",
+            0,
+            None,
+            Some("sealing"),
+            "completed window",
+        )?;
+        let failure_receipt_path =
+            write_training_failure_receipt_file(local_run_root.as_path(), "stale_failure", 70)?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let mut active_runtime = training_active_runtime_fixture();
+        active_runtime.manifest_path = manifest_path.display().to_string();
+        active_runtime.run_root = local_run_root.display().to_string();
+        active_runtime.process_state = PylonTrainingSupervisorProcessState::Failed;
+        active_runtime.desired_state = PylonTrainingSupervisorDesiredState::Running;
+        active_runtime.last_exit_code = Some(70);
+        active_runtime.failure_receipt_path = Some(failure_receipt_path.display().to_string());
+        active_runtime.last_failure_reason = Some("stale_failure".to_string());
+        state.active_runtime = Some(active_runtime);
+        state.lease_cache.insert(
+            "lease.node01.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.node01.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "acked".to_string(),
+                manifest_digest: Some(manifest.manifest_digest.clone()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_360_000),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(manifest_path.display().to_string()),
+                runtime_manifest_digest: Some(manifest.manifest_digest.clone()),
+                runtime_lane_id: Some("psion.actual_pretraining".to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("full_island_local_update_training".to_string()),
+                updated_at_ms: now_epoch_ms(),
+            },
+        );
+        let _ = super::record_training_closeout_progress_stage(
+            &mut state,
+            "assign.node01.window0001",
+            "run.alpha",
+            "window.0001",
+            PylonTrainingRoleClaim::Worker,
+            super::PylonTrainingCloseoutStage::TerminalFailed,
+            None,
+            Some("checkpoint://run.alpha/0001".to_string()),
+            None,
+            None,
+            None,
+            Some("stale_failure".to_string()),
+        );
+        save_training_runtime_state(&config, &state)?;
+
+        let fake_adc_path = temp_dir.path().join("fake-adc.json");
+        std::fs::write(fake_adc_path.as_path(), "{}")?;
+        let _env = TrainingEnvGuard::set(&[
+            (ENV_TRAINING_GCS_ENDPOINT, gcs_base_url),
+            (ENV_TRAINING_GCS_BEARER_TOKEN, "token.alpha".to_string()),
+            (
+                ENV_GOOGLE_APPLICATION_CREDENTIALS,
+                fake_adc_path.display().to_string(),
+            ),
+        ]);
+
+        ensure(
+            sync_training_terminal_runtime_once(config_path.as_path(), &config, &identity).await?,
+            "a success status packet should recover a stale failed runtime and drive terminal sync without reposting failure",
+        )?;
+
+        let synced_state = load_or_create_training_runtime_state(&config)?;
+        let active_runtime = synced_state
+            .active_runtime
+            .as_ref()
+            .expect("recovered active runtime");
+        ensure(
+            active_runtime.process_state == PylonTrainingSupervisorProcessState::Stopped
+                && active_runtime.last_exit_code == Some(0)
+                && active_runtime.last_failure_reason.is_none()
+                && active_runtime.failure_receipt_path.is_none(),
+            "terminal sync should normalize the retained runtime state back to a successful stopped process when the status packet proves success",
+        )?;
+        ensure(
+            synced_state
+                .closeout_progress
+                .get("assign.node01.window0001")
+                .is_some_and(|entry| {
+                    entry.stage == super::PylonTrainingCloseoutStage::CheckpointPublished
+                        && entry.last_error.is_none()
+                }),
+            "a recovered successful sync should replace the stale terminal_failed progress entry with the current success stage",
+        )?;
+
+        let counts = request_counts
+            .lock()
+            .expect("training recovery request counts")
+            .clone();
+        ensure(
+            counts.get("/api/training/windows/progress") == Some(&1)
+                && counts.get("/api/training/checkpoints/publish") == Some(&1)
+                && !counts.contains_key("/api/training/failures"),
+            "recovered success sync should publish progress and checkpoint receipts without sending a failure notice",
+        )?;
+
+        ensure(
+            !stored_objects
+                .lock()
+                .expect("training recovery stored objects")
+                .is_empty(),
+            "recovered terminal sync should still upload the retained artifacts",
         )
     }
 
