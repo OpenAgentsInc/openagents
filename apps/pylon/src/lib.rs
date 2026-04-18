@@ -17636,13 +17636,31 @@ fn training_supervisor_pid_is_running(pid: u32) -> bool {
     #[cfg(unix)]
     {
         let pid_text = pid.to_string();
-        StdCommand::new("kill")
+        let kill_reports_running = StdCommand::new("kill")
             .args(["-0", pid_text.as_str()])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .map(|status| status.success())
-            .unwrap_or(false)
+            .unwrap_or(false);
+        if !kill_reports_running {
+            return false;
+        }
+
+        // `kill -0` still succeeds for a zombie child that has exited but has
+        // not been reaped yet, so confirm the process state through `ps`.
+        match StdCommand::new("ps")
+            .args(["-o", "stat=", "-p", pid_text.as_str()])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                let stat = String::from_utf8_lossy(output.stdout.as_slice());
+                !stat.trim().starts_with('Z')
+            }
+            _ => kill_reports_running,
+        }
     }
     #[cfg(windows)]
     {
@@ -23857,6 +23875,7 @@ mod tests {
         sync_training_authority_state, sync_training_terminal_runtime_once,
         training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
         training_download_cache_root, training_raw_sha256_hex, training_run_root_for_id,
+        training_supervisor_pid_is_running,
         training_runtime_state_path, training_settlement_destination, watch_buyer_jobs,
         write_training_json_value,
     };
@@ -26092,6 +26111,37 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         Ok(pid)
     }
 
+    #[cfg(unix)]
+    fn zombie_supervisor_pid_fixture() -> Result<(u32, std::process::Child), Box<dyn std::error::Error>> {
+        let mut child = StdCommand::new("sh").args(["-c", "exit 0"]).spawn()?;
+        let pid = child.id();
+        for _ in 0..20 {
+            let output = StdCommand::new("ps")
+                .args(["-o", "stat=", "-p", pid.to_string().as_str()])
+                .output()?;
+            let stat = String::from_utf8_lossy(output.stdout.as_slice());
+            if output.status.success() && stat.trim().starts_with('Z') {
+                return Ok((pid, child));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let _ = child.wait();
+        Err("failed to observe zombie supervisor pid fixture".into())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn training_supervisor_pid_liveness_rejects_zombies() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let (pid, mut child) = zombie_supervisor_pid_fixture()?;
+        ensure(
+            !training_supervisor_pid_is_running(pid),
+            "zombie supervisor children should be treated as exited so retained runtime recovery can advance closeout",
+        )?;
+        let _ = child.wait();
+        Ok(())
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn restart_recovery_marks_orphaned_completed_runtime_terminal()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -26105,6 +26155,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             Some("completed"),
             "completed window",
         )?;
+        #[cfg(unix)]
+        let (finished_pid, mut finished_child) = zombie_supervisor_pid_fixture()?;
+        #[cfg(not(unix))]
         let finished_pid = finished_supervisor_pid_fixture()?;
         state.active_runtime = Some(PylonTrainingActiveRuntimeState {
             training_run_id: request.training_run_id.clone(),
@@ -26162,6 +26215,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 }),
             "restart recovery should demote an orphaned completed runtime to a terminal stopped state instead of leaving a dead running pid behind",
         )?;
+        #[cfg(unix)]
+        let _ = finished_child.wait();
 
         let persisted = load_or_create_training_runtime_state(&config)?;
         ensure(
