@@ -20550,7 +20550,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
             .note_payout_loop_started(cycle_started_at_unix_ms);
         store
             .treasury
-            .refresh_public_snapshot(&state.config.treasury, cycle_started_at_unix_ms);
+            .refresh_public_snapshot_in_memory(&state.config.treasury, cycle_started_at_unix_ms);
         store.provider_presence.prune(cycle_started_at_unix_ms);
         let online_identities = store.provider_presence.online_identities(
             cycle_started_at_unix_ms,
@@ -20584,7 +20584,10 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
                     .note_payout_loop_error(cycle_started_at_unix_ms, reason);
                 store
                     .treasury
-                    .refresh_public_snapshot(&state.config.treasury, cycle_started_at_unix_ms);
+                    .refresh_public_snapshot_in_memory(
+                        &state.config.treasury,
+                        cycle_started_at_unix_ms,
+                    );
             }
             let _ = refresh_public_stats_cache(state, cycle_started_at_unix_ms);
             finish_treasury_dispatch_cycle();
@@ -20612,7 +20615,10 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
             .sync_continuity_alerts(&state.config.treasury, cycle_completed_at_unix_ms);
         store
             .treasury
-            .refresh_public_snapshot(&state.config.treasury, cycle_completed_at_unix_ms);
+            .refresh_public_snapshot_in_memory(
+                &state.config.treasury,
+                cycle_completed_at_unix_ms,
+            );
         record_treasury_receipt_events(&mut store, receipt_events, cycle_completed_at_unix_ms);
     } else {
         tracing::error!("treasury dispatch cycle completion failed: session_store_poisoned");
