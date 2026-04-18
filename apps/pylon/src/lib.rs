@@ -1156,7 +1156,9 @@ pub struct PylonTrainingCoordinatorClient {
     client: reqwest::Client,
     heartbeat_client: reqwest::Client,
     kernel_authority: HttpKernelAuthorityClient,
+    fallback_kernel_authority: Option<HttpKernelAuthorityClient>,
     base_url: String,
+    fallback_base_url: Option<String>,
     bearer_auth: Option<String>,
 }
 
@@ -9005,11 +9007,22 @@ impl PylonTrainingCoordinatorClient {
             base_url.clone(),
             bearer_auth.clone(),
         );
+        let fallback_base_url =
+            training_terminal_authority_fallback_base_url(config, base_url.as_str());
+        let fallback_kernel_authority = fallback_base_url.as_ref().map(|fallback_base_url| {
+            HttpKernelAuthorityClient::with_client(
+                client.clone(),
+                fallback_base_url.clone(),
+                bearer_auth.clone(),
+            )
+        });
         Ok(Self {
             client,
             heartbeat_client,
             kernel_authority,
+            fallback_kernel_authority,
             base_url,
+            fallback_base_url,
             bearer_auth,
         })
     }
@@ -9142,9 +9155,17 @@ impl PylonTrainingCoordinatorClient {
         &self,
         window_id: &str,
     ) -> Result<ComputeAdapterTrainingWindow> {
-        self.kernel_authority
+        match self
+            .kernel_authority
             .get_compute_adapter_training_window(window_id)
             .await
+        {
+            Ok(window) => Ok(window),
+            Err(primary_error) => {
+                self.get_adapter_training_window_from_fallback(window_id, primary_error)
+                    .await
+            }
+        }
     }
 
     pub async fn list_adapter_training_windows(
@@ -9163,9 +9184,22 @@ impl PylonTrainingCoordinatorClient {
         window_id: Option<&str>,
         disposition: Option<ComputeAdapterContributionDisposition>,
     ) -> Result<Vec<ComputeAdapterContributionOutcome>> {
-        self.kernel_authority
+        match self
+            .kernel_authority
             .list_compute_adapter_contribution_outcomes(training_run_id, window_id, disposition)
             .await
+        {
+            Ok(outcomes) => Ok(outcomes),
+            Err(primary_error) => {
+                self.list_adapter_contribution_outcomes_from_fallback(
+                    training_run_id,
+                    window_id,
+                    disposition,
+                    primary_error,
+                )
+                .await
+            }
+        }
     }
 
     pub async fn list_accepted_outcomes(
@@ -9173,9 +9207,21 @@ impl PylonTrainingCoordinatorClient {
         outcome_kind: Option<ComputeAcceptedOutcomeKind>,
         environment_ref: Option<&str>,
     ) -> Result<Vec<ComputeAcceptedOutcome>> {
-        self.kernel_authority
+        match self
+            .kernel_authority
             .list_compute_accepted_outcomes(outcome_kind, environment_ref)
             .await
+        {
+            Ok(outcomes) => Ok(outcomes),
+            Err(primary_error) => {
+                self.list_accepted_outcomes_from_fallback(
+                    outcome_kind,
+                    environment_ref,
+                    primary_error,
+                )
+                .await
+            }
+        }
     }
 
     pub async fn record_adapter_window(
@@ -9257,7 +9303,7 @@ impl PylonTrainingCoordinatorClient {
         &self,
         request: &PylonTrainingFailureNoticeRequest,
     ) -> Result<PylonTrainingFailureNoticeResponse> {
-        self.post_training_coordination_json_with_retry(
+        self.post_training_coordination_json_with_fallback(
             "/api/training/failures",
             request,
             "failure notice",
@@ -9270,7 +9316,7 @@ impl PylonTrainingCoordinatorClient {
         &self,
         request: &PylonTrainingWindowProgressRequest,
     ) -> Result<PylonTrainingWindowProgressResponse> {
-        self.post_training_coordination_json_with_retry(
+        self.post_training_coordination_json_with_fallback(
             "/api/training/windows/progress",
             request,
             "window progress",
@@ -9283,7 +9329,7 @@ impl PylonTrainingCoordinatorClient {
         &self,
         request: &PylonTrainingCheckpointPublicationRequest,
     ) -> Result<PylonTrainingCheckpointPublicationResponse> {
-        self.post_training_coordination_json_with_retry(
+        self.post_training_coordination_json_with_fallback(
             "/api/training/checkpoints/publish",
             request,
             "checkpoint publication",
@@ -9297,7 +9343,7 @@ impl PylonTrainingCoordinatorClient {
         window_id: &str,
         request: &PylonSealTrainingWindowRequest,
     ) -> Result<PylonTrainingWindowCoordinatorResponse> {
-        self.post_training_coordination_json_with_retry(
+        self.post_training_coordination_json_with_fallback(
             format!("/api/training/windows/{window_id}/seal").as_str(),
             request,
             "window seal",
@@ -9324,7 +9370,7 @@ impl PylonTrainingCoordinatorClient {
         challenge_id: &str,
         request: &PylonFinalizeTrainingValidatorChallengeRequest,
     ) -> Result<PylonTrainingValidatorChallengeCoordinatorResponse> {
-        self.post_training_coordination_json_with_retry(
+        self.post_training_coordination_json_with_fallback(
             format!("/api/training/validator-challenges/{challenge_id}/finalize").as_str(),
             request,
             "validator challenge finalize",
@@ -9338,7 +9384,7 @@ impl PylonTrainingCoordinatorClient {
         window_id: &str,
         request: &PylonReconcileTrainingWindowRequest,
     ) -> Result<PylonTrainingWindowCoordinatorResponse> {
-        self.post_training_coordination_json_with_retry(
+        self.post_training_coordination_json_with_fallback(
             format!("/api/training/windows/{window_id}/reconcile").as_str(),
             request,
             "window reconcile",
@@ -9348,7 +9394,7 @@ impl PylonTrainingCoordinatorClient {
     }
 
     async fn get_treasury_status(&self) -> Result<PylonTrainingTreasuryStatusResponse> {
-        self.get_training_coordination_json_with_retry("/v1/treasury/status", "treasury status")
+        self.get_training_coordination_json_with_fallback("/v1/treasury/status", "treasury status")
             .await
     }
 
@@ -9408,6 +9454,36 @@ impl PylonTrainingCoordinatorClient {
             }
         }
         bail!("training authority {action} exhausted retry budget")
+    }
+
+    async fn get_training_coordination_json_with_fallback<R>(
+        &self,
+        path: &str,
+        action: &str,
+    ) -> Result<R>
+    where
+        R: DeserializeOwned,
+    {
+        match self.get_training_coordination_json_with_retry(path, action).await {
+            Ok(response) => Ok(response),
+            Err(primary_error) => {
+                let Some(fallback_base_url) = self.fallback_base_url.as_deref() else {
+                    return Err(primary_error);
+                };
+                self.get_training_coordination_json_with_retry_at_base(
+                    &self.client,
+                    fallback_base_url,
+                    path,
+                    action,
+                )
+                .await
+                .map_err(|fallback_error| {
+                    anyhow!(
+                        "{primary_error}; fallback to {fallback_base_url} also failed: {fallback_error}"
+                    )
+                })
+            }
+        }
     }
 
     async fn post_training_coordination_json_with_retry<T, R>(
@@ -9487,6 +9563,243 @@ impl PylonTrainingCoordinatorClient {
         }
         bail!("training authority {action} exhausted retry budget")
     }
+
+    async fn post_training_coordination_json_with_fallback<T, R>(
+        &self,
+        path: &str,
+        payload: &T,
+        action: &str,
+        idempotency_key: &str,
+    ) -> Result<R>
+    where
+        T: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        match self
+            .post_training_coordination_json_with_retry(path, payload, action, idempotency_key)
+            .await
+        {
+            Ok(response) => Ok(response),
+            Err(primary_error) => {
+                let Some(fallback_base_url) = self.fallback_base_url.as_deref() else {
+                    return Err(primary_error);
+                };
+                self.post_training_coordination_json_with_retry_at_base(
+                    &self.client,
+                    fallback_base_url,
+                    path,
+                    payload,
+                    action,
+                    idempotency_key,
+                )
+                .await
+                .map_err(|fallback_error| {
+                    anyhow!(
+                        "{primary_error}; fallback to {fallback_base_url} also failed: {fallback_error}"
+                    )
+                })
+            }
+        }
+    }
+
+    async fn get_training_coordination_json_with_retry_at_base<R>(
+        &self,
+        client: &reqwest::Client,
+        base_url: &str,
+        path: &str,
+        action: &str,
+    ) -> Result<R>
+    where
+        R: DeserializeOwned,
+    {
+        let url = training_authority_url(base_url, path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let mut request = client.get(url.as_str());
+            if let Some(token) = self.bearer_auth.as_deref() {
+                request = request.bearer_auth(token);
+            }
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.with_context(|| {
+                            format!("failed to decode training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to get training authority {action} from {url}")
+                    });
+                }
+            }
+        }
+        bail!("training authority {action} exhausted retry budget")
+    }
+
+    async fn post_training_coordination_json_with_retry_at_base<T, R>(
+        &self,
+        client: &reqwest::Client,
+        base_url: &str,
+        path: &str,
+        payload: &T,
+        action: &str,
+        idempotency_key: &str,
+    ) -> Result<R>
+    where
+        T: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        let url = training_authority_url(base_url, path);
+        for attempt in 0..DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+            let mut request = client
+                .post(url.as_str())
+                .header("x-openagents-idempotency-key", idempotency_key)
+                .json(payload);
+            if let Some(token) = self.bearer_auth.as_deref() {
+                request = request.bearer_auth(token);
+            }
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        return response.json::<R>().await.with_context(|| {
+                            format!("failed to decode training authority {action} response")
+                        });
+                    }
+                    let status = response.status();
+                    let detail = response.text().await.unwrap_or_else(|_| {
+                        format!("failed to decode training authority {action} error")
+                    });
+                    if training_authority_status_is_retryable(status)
+                        && attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS
+                    {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    bail!(
+                        "training authority {action} failed with status {}: {detail}",
+                        status.as_u16()
+                    );
+                }
+                Err(error) => {
+                    if attempt + 1 < DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS {
+                        tokio::time::sleep(training_coordination_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    return Err(error).with_context(|| {
+                        format!("failed to post training authority {action} to {url}")
+                    });
+                }
+            }
+        }
+        bail!("training authority {action} exhausted retry budget")
+    }
+
+    async fn get_adapter_training_window_from_fallback(
+        &self,
+        window_id: &str,
+        primary_error: anyhow::Error,
+    ) -> Result<ComputeAdapterTrainingWindow> {
+        let Some(fallback_kernel_authority) = self.fallback_kernel_authority.as_ref() else {
+            return Err(primary_error);
+        };
+        let fallback_base_url = self
+            .fallback_base_url
+            .as_deref()
+            .expect("fallback kernel authority should imply fallback base url");
+        fallback_kernel_authority
+            .get_compute_adapter_training_window(window_id)
+            .await
+            .map_err(|fallback_error| {
+                anyhow!(
+                    "{primary_error}; fallback to {fallback_base_url} also failed: {fallback_error}"
+                )
+            })
+    }
+
+    async fn list_adapter_contribution_outcomes_from_fallback(
+        &self,
+        training_run_id: Option<&str>,
+        window_id: Option<&str>,
+        disposition: Option<ComputeAdapterContributionDisposition>,
+        primary_error: anyhow::Error,
+    ) -> Result<Vec<ComputeAdapterContributionOutcome>> {
+        let Some(fallback_kernel_authority) = self.fallback_kernel_authority.as_ref() else {
+            return Err(primary_error);
+        };
+        let fallback_base_url = self
+            .fallback_base_url
+            .as_deref()
+            .expect("fallback kernel authority should imply fallback base url");
+        fallback_kernel_authority
+            .list_compute_adapter_contribution_outcomes(training_run_id, window_id, disposition)
+            .await
+            .map_err(|fallback_error| {
+                anyhow!(
+                    "{primary_error}; fallback to {fallback_base_url} also failed: {fallback_error}"
+                )
+            })
+    }
+
+    async fn list_accepted_outcomes_from_fallback(
+        &self,
+        outcome_kind: Option<ComputeAcceptedOutcomeKind>,
+        environment_ref: Option<&str>,
+        primary_error: anyhow::Error,
+    ) -> Result<Vec<ComputeAcceptedOutcome>> {
+        let Some(fallback_kernel_authority) = self.fallback_kernel_authority.as_ref() else {
+            return Err(primary_error);
+        };
+        let fallback_base_url = self
+            .fallback_base_url
+            .as_deref()
+            .expect("fallback kernel authority should imply fallback base url");
+        fallback_kernel_authority
+            .list_compute_accepted_outcomes(outcome_kind, environment_ref)
+            .await
+            .map_err(|fallback_error| {
+                anyhow!(
+                    "{primary_error}; fallback to {fallback_base_url} also failed: {fallback_error}"
+                )
+            })
+    }
+}
+
+fn training_terminal_authority_fallback_base_url(
+    config: &PylonConfig,
+    base_url: &str,
+) -> Option<String> {
+    let fallback_base_url = config.nexus_control_base_url.trim().trim_end_matches('/');
+    if fallback_base_url.is_empty() || fallback_base_url == base_url.trim_end_matches('/') {
+        None
+    } else {
+        Some(fallback_base_url.to_string())
+    }
+}
+
+fn training_authority_url(base_url: &str, path: &str) -> String {
+    format!(
+        "{}/{}",
+        base_url.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    )
 }
 
 fn training_authority_status_is_retryable(status: reqwest::StatusCode) -> bool {
@@ -36318,6 +36631,228 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     "/v1/kernel/compute/training/adapter-contributions?training_run_id=run.alpha&window_id=window.0001"
                 ) != Some(&1),
             "reconcile should be driven from the finalize response without depending on a successful contribution outcome list read",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_coordinator_window_progress_uses_nexus_control_fallback()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request_counts = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, usize>::new(),
+        ));
+        let request_bodies = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, Vec<Value>>::new(),
+        ));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let request_bodies_for_server = Arc::clone(&request_bodies);
+        let nexus_base_url = start_mock_http_server(move |method, path, body| {
+            *request_counts_for_server
+                .lock()
+                .expect("window progress fallback counts")
+                .entry(path.clone())
+                .or_default() += 1;
+            if method == "POST" {
+                let payload: Value =
+                    serde_json::from_str(body.as_str()).expect("window progress fallback body");
+                request_bodies_for_server
+                    .lock()
+                    .expect("window progress fallback bodies")
+                    .entry(path.clone())
+                    .or_default()
+                    .push(payload);
+            }
+            match (method.as_str(), path.as_str()) {
+                ("POST", "/api/training/windows/progress") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "ack": {
+                            "idempotency_key": "window-progress-fallback",
+                            "recorded_at_ms": 1_762_491_700_100_i64,
+                            "authority_state": "window_progress_recorded"
+                        },
+                        "window_state": "completed"
+                    })
+                    .to_string(),
+                ),
+                _ => (
+                    404,
+                    "application/json",
+                    json!({"error":"not_found","reason":path}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.nexus_authority_base_url = "http://127.0.0.1:9".to_string();
+        config.nexus_control_base_url = nexus_base_url;
+        let client = PylonTrainingCoordinatorClient::new(&config)?;
+
+        let response = client
+            .report_window_progress(&PylonTrainingWindowProgressRequest {
+                idempotency_key: "progress-fallback".to_string(),
+                recorded_at_ms: 1_762_491_700_000,
+                node_pubkey_hex: "npub.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                assignment_id: Some("assign.alpha".to_string()),
+                window_state: "completed".to_string(),
+                completed_step_count: Some(42),
+                local_checkpoint_ref: Some("checkpoint://run.alpha/0042".to_string()),
+            })
+            .await?;
+
+        ensure(
+            response.ack.authority_state == "window_progress_recorded"
+                && response.window_state == "completed",
+            "window progress should succeed through the nexus_control_base_url fallback when the primary training authority is down",
+        )?;
+        let counts = request_counts
+            .lock()
+            .expect("window progress fallback counts")
+            .clone();
+        ensure(
+            counts.get("/api/training/windows/progress") == Some(&1),
+            "fallback server should receive exactly one window progress request",
+        )?;
+        let bodies = request_bodies
+            .lock()
+            .expect("window progress fallback bodies")
+            .clone();
+        ensure(
+            bodies
+                .get("/api/training/windows/progress")
+                .and_then(|entries| entries.first())
+                .is_some_and(|payload| {
+                    payload.get("window_id") == Some(&json!("window.0001"))
+                        && payload.get("completed_step_count") == Some(&json!(42))
+                        && payload.get("local_checkpoint_ref")
+                            == Some(&json!("checkpoint://run.alpha/0042"))
+                }),
+            "fallback window progress should preserve the terminal closeout payload",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_coordinator_kernel_window_get_uses_nexus_control_fallback()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request_counts = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, usize>::new(),
+        ));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let window = training_adapter_window_fixture(ComputeAdapterWindowStatus::Reconciled);
+        let window_response = serde_json::to_string(
+            &compute_contracts::get_compute_adapter_training_window_response_to_proto(&window)?,
+        )?;
+        let nexus_base_url = start_mock_http_server(move |method, path, _body| {
+            *request_counts_for_server
+                .lock()
+                .expect("kernel fallback counts")
+                .entry(path.clone())
+                .or_default() += 1;
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/v1/kernel/compute/training/adapter-windows/window.0001") => {
+                    (200, "application/json", window_response.clone())
+                }
+                _ => (
+                    404,
+                    "application/json",
+                    json!({"error":"not_found","reason":path}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.nexus_authority_base_url = "http://127.0.0.1:9".to_string();
+        config.nexus_control_base_url = nexus_base_url;
+        let client = PylonTrainingCoordinatorClient::new(&config)?;
+
+        let resolved_window = client.get_adapter_training_window("window.0001").await?;
+        ensure(
+            resolved_window.window_id == "window.0001"
+                && resolved_window.status == ComputeAdapterWindowStatus::Reconciled,
+            "kernel window reads should fall back to nexus_control_base_url when the primary training authority is down",
+        )?;
+        let counts = request_counts
+            .lock()
+            .expect("kernel fallback counts")
+            .clone();
+        ensure(
+            counts.get("/v1/kernel/compute/training/adapter-windows/window.0001") == Some(&1),
+            "fallback server should receive exactly one kernel window lookup",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_coordinator_treasury_status_uses_nexus_control_fallback()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request_counts = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, usize>::new(),
+        ));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let nexus_base_url = start_mock_http_server(move |method, path, _body| {
+            *request_counts_for_server
+                .lock()
+                .expect("treasury fallback counts")
+                .entry(path.clone())
+                .or_default() += 1;
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/v1/treasury/status") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "recent_training_payouts": [{
+                            "payout_key": "accepted_work:assign.alpha",
+                            "status": "confirmed",
+                            "reconciliation_status": "clean",
+                            "payment_id": "payment.alpha",
+                            "classification": {
+                                "accepted_outcome_id": "accepted.training_window.window.0001",
+                                "training_run_id": "run.alpha",
+                                "window_id": "window.0001",
+                                "assignment_id": "assign.alpha",
+                                "contribution_id": "contrib.alpha"
+                            }
+                        }]
+                    })
+                    .to_string(),
+                ),
+                _ => (
+                    404,
+                    "application/json",
+                    json!({"error":"not_found","reason":path}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.nexus_authority_base_url = "http://127.0.0.1:9".to_string();
+        config.nexus_control_base_url = nexus_base_url;
+        let client = PylonTrainingCoordinatorClient::new(&config)?;
+
+        let status = client.get_treasury_status().await?;
+        ensure(
+            status.recent_training_payouts.len() == 1
+                && status.recent_training_payouts[0].payment_id.as_deref()
+                    == Some("payment.alpha"),
+            "treasury status reads should fall back to nexus_control_base_url when the primary training authority is down",
+        )?;
+        let counts = request_counts
+            .lock()
+            .expect("treasury fallback counts")
+            .clone();
+        ensure(
+            counts.get("/v1/treasury/status") == Some(&1),
+            "fallback server should receive exactly one treasury status request",
         )
     }
 
