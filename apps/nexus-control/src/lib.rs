@@ -4813,6 +4813,49 @@ fn push_training_defensibility_refusal_code(
     }
 }
 
+fn training_contribution_metadata_digest<'a>(
+    contribution: &'a ComputeAdapterContributionOutcome,
+    field: &str,
+) -> Option<&'a str> {
+    contribution
+        .metadata
+        .get(field)
+        .and_then(|value| value.get("digest"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|digest| !digest.is_empty())
+}
+
+fn training_retained_homework_checkpoint_bridge_satisfies_closeout_proof(
+    contribution_outcomes: &[ComputeAdapterContributionOutcome],
+) -> bool {
+    const REQUIRED_DIGEST_FIELDS: [&str; 4] = [
+        "sealed_window_bundle",
+        "closeout_bundle",
+        "checkpoint_surface",
+        "latest_accepted_checkpoint_pointer",
+    ];
+
+    !contribution_outcomes.is_empty()
+        && contribution_outcomes.iter().all(|contribution| {
+            contribution
+                .metadata
+                .get("normalized_contribution_contract")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value == "retained_homework_lane.v1")
+                && REQUIRED_DIGEST_FIELDS.iter().all(|field| {
+                    training_contribution_metadata_digest(contribution, field)
+                        .is_some_and(is_prefixed_sha256_digest)
+                })
+                && contribution
+                    .metadata
+                    .get("checkpoint_ref")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .is_some_and(|checkpoint_ref| !checkpoint_ref.is_empty())
+        })
+}
+
 fn training_window_metadata_from_value(
     value: &serde_json::Value,
 ) -> Result<TrainingWindowMetadata, String> {
@@ -5578,6 +5621,10 @@ fn training_window_defensibility_audit(
         training_work_progress_class(window.work_class),
         TrainingWorkProgressClass::ModelUpdate
     );
+    let retained_homework_checkpoint_bridge =
+        training_retained_homework_checkpoint_bridge_satisfies_closeout_proof(
+            contribution_outcomes,
+        );
     if requires_aggregated_delta
         && matches!(
             candidate_closeout_status,
@@ -5593,6 +5640,7 @@ fn training_window_defensibility_audit(
                     PylonTrainingRefusalCode::ArtifactDigestMismatch,
                 );
             }
+            None if retained_homework_checkpoint_bridge => {}
             None => {
                 push_training_defensibility_refusal_code(
                     &mut refusal_codes,
@@ -36315,6 +36363,119 @@ mod tests {
                 .expect("scheduled run")
                 .current_window_id,
             "window.0002"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_reconcile_rewards_retained_homework_closeout_without_aggregate_delta_digest()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_500_000u64;
+        let training_run_id = "run.window.homework.closeout.bridge";
+
+        let lease = prepare_reward_candidate_training_window(
+            &app,
+            &state,
+            created_at_ms,
+            training_run_id,
+            "contrib.window.homework.bridge",
+        )
+        .await?;
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.homework.bridge"
+                                .to_string(),
+                            recorded_at_ms: created_at_ms as i64 + 1_400,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_homework_contribution_input_for_lease(
+                                    "contrib.window.homework.bridge",
+                                    &lease,
+                                    "sha256:validator-final-homework-bridge",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: None,
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+        let reconciled_window =
+            response_json::<TrainingWindowCoordinatorResponse>(reconciled).await?;
+        assert_eq!(
+            reconciled_window.window.status,
+            ComputeAdapterWindowStatus::Reconciled
+        );
+        assert_eq!(reconciled_window.window.accepted_contributions, 1);
+        assert_eq!(reconciled_window.window.replay_required_contributions, 0);
+        assert!(reconciled_window.window.gate_reason_codes.is_empty());
+        assert!(reconciled_window.window.promotion_ready);
+
+        let store = state.store.read().expect("read store");
+        let closeout = store
+            .kernel
+            .get_compute_accepted_outcome("accepted.training_window.window.0001")
+            .expect("rewarded closeout");
+        assert_eq!(
+            closeout
+                .metadata
+                .get("closeout_status")
+                .and_then(serde_json::Value::as_str),
+            Some("rewarded")
+        );
+        assert_eq!(
+            closeout
+                .metadata
+                .get("payout_eligible")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            closeout
+                .metadata
+                .get("aggregated_delta_digest")
+                .and_then(serde_json::Value::as_str),
+            None
+        );
+        let defensibility = closeout
+            .metadata
+            .get("defensibility")
+            .expect("defensibility metadata");
+        assert_eq!(
+            defensibility
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("satisfied")
+        );
+        assert_eq!(
+            defensibility
+                .get("refusal_codes")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::len),
+            Some(0)
+        );
+        assert_eq!(
+            closeout
+                .metadata
+                .get("progress_class")
+                .and_then(serde_json::Value::as_str),
+            Some("model_update")
         );
         Ok(())
     }
