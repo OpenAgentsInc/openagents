@@ -1143,6 +1143,8 @@ pub struct LaunchCs336A1DemoRunRequest {
     pub training_run_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_id: Option<String>,
     #[serde(default = "launch_cs336_a1_demo_reuse_existing_default")]
     pub reuse_existing_run: bool,
 }
@@ -9968,6 +9970,8 @@ async fn launch_cs336_a1_demo_run(
     Json(request): Json<LaunchCs336A1DemoRunRequest>,
 ) -> Result<Json<LaunchCs336A1DemoRunResponse>, ApiError> {
     authenticate_admin_bearer_token(&state, &headers)?;
+    let network_id = normalize_optional_field(request.network_id.as_deref())
+        .unwrap_or_else(|| EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string());
     let response = execute_homework_launch(
         &state,
         LaunchHomeworkRunRequest {
@@ -9977,7 +9981,7 @@ async fn launch_cs336_a1_demo_run(
             training_run_id: request.training_run_id,
             display_name: request.display_name,
             reuse_existing_run: request.reuse_existing_run,
-            network_id: Some(EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string()),
+            network_id: Some(network_id.clone()),
             run_kind: Some("demo".to_string()),
             assignment_family: Some("cs336.assignment1".to_string()),
             artifact_prefix: None,
@@ -10003,7 +10007,7 @@ async fn launch_cs336_a1_demo_run(
         lane_id: PSION_CS336_A1_DEMO_LANE_ID.to_string(),
         training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
         environment_ref: PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string(),
-        network_id: EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string(),
+        network_id,
         worker_target_count: u32::try_from(response.assigned_pylons.len()).unwrap_or(u32::MAX),
         run_detail: response.run_detail,
     }))
@@ -39277,6 +39281,7 @@ mod tests {
                         &LaunchCs336A1DemoRunRequest {
                             training_run_id: None,
                             display_name: None,
+                            network_id: None,
                             reuse_existing_run: true,
                         },
                     )?))?,
@@ -39343,6 +39348,7 @@ mod tests {
                         &LaunchCs336A1DemoRunRequest {
                             training_run_id: Some(training_run_id.to_string()),
                             display_name: Some("Episode 224 Operator Demo".to_string()),
+                            network_id: None,
                             reuse_existing_run: true,
                         },
                     )?))?,
@@ -39473,6 +39479,7 @@ mod tests {
                         &LaunchCs336A1DemoRunRequest {
                             training_run_id: None,
                             display_name: None,
+                            network_id: None,
                             reuse_existing_run: true,
                         },
                     )?))?,
@@ -39505,6 +39512,79 @@ mod tests {
         assert_eq!(
             cached_detail.run.display_name.as_deref(),
             Some("Episode 224 Operator Demo")
+        );
+
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_cs336_demo_launch_route_accepts_network_override() -> Result<()> {
+        let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink("gs://launch-training-bucket").await?;
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let training_run_id = "run.cs336.a1.demo.override";
+        let network_id = "trainnet.cs336.a1.override";
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let seeded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            seeded_at_ms.saturating_sub(100),
+            "node-cs336-override",
+            "sha256:build-cs336-override",
+            network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodecs336override"),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/training/demo-runs/cs336-a1/launch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &LaunchCs336A1DemoRunRequest {
+                            training_run_id: Some(training_run_id.to_string()),
+                            display_name: Some("Episode 224 Override".to_string()),
+                            network_id: Some(network_id.to_string()),
+                            reuse_existing_run: false,
+                        },
+                    )?))?,
+            )
+            .await?;
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+        let launched = serde_json::from_slice::<LaunchCs336A1DemoRunResponse>(&bytes)?;
+        assert_eq!(launched.launch_state, "created");
+        assert_eq!(launched.network_id, network_id);
+        assert_eq!(launched.training_run_id, training_run_id);
+        assert_eq!(launched.worker_target_count, 1);
+        assert_eq!(
+            launched
+                .run_detail
+                .run
+                .network_id
+                .as_str(),
+            network_id
+        );
+
+        let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
+        assert!(
+            uploaded_paths.iter().any(|path| path.ends_with(
+                "/launch-training-bucket/networks/trainnet.cs336.a1.override/runs/run.cs336.a1.demo.override/manifests/run_manifest.json"
+            )),
+            "{uploaded_paths:?}"
         );
 
         upload_server.abort();
