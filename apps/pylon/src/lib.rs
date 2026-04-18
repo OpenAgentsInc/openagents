@@ -10990,6 +10990,11 @@ fn inspect_manifest_local_artifacts(
                 continue;
             }
             let challenge_id = entry.file_name().to_string_lossy().to_string();
+            maybe_materialize_training_validator_verdict(
+                context.local_run_root.as_path(),
+                context.manifest.window_id.as_str(),
+                challenge_id.as_str(),
+            )?;
             bundles.push(inspect_training_artifact_bundle(
                 context,
                 PylonTrainingArtifactBundleKind::ValidatorVerdict { challenge_id },
@@ -13878,12 +13883,268 @@ fn training_validator_verdict_path(
     window_id: &str,
     challenge_id: &str,
 ) -> PathBuf {
+    training_validator_challenge_root(run_root, window_id, challenge_id).join("verdict.json")
+}
+
+fn training_validator_challenge_root(
+    run_root: &Path,
+    window_id: &str,
+    challenge_id: &str,
+) -> PathBuf {
     run_root
         .join("windows")
         .join(window_id)
         .join("validators")
         .join(challenge_id)
-        .join("verdict.json")
+}
+
+fn training_validator_score_artifact_path(
+    run_root: &Path,
+    window_id: &str,
+    challenge_id: &str,
+) -> PathBuf {
+    training_validator_challenge_root(run_root, window_id, challenge_id)
+        .join("validator_score_artifact.json")
+}
+
+fn training_validator_score_receipt_path(
+    run_root: &Path,
+    window_id: &str,
+    challenge_id: &str,
+) -> PathBuf {
+    training_validator_challenge_root(run_root, window_id, challenge_id)
+        .join("validator_score_receipt.json")
+}
+
+fn training_validator_terminal_result_labels(
+    disposition: &str,
+) -> Option<(&'static str, &'static str)> {
+    match disposition.trim() {
+        "accepted" => Some(("verified", "verified")),
+        "rejected" | "quarantined" => Some(("rejected", "rejected")),
+        "replay_required" | "retry_required" | "retry_scheduled" => {
+            Some(("rejected", "retry_scheduled"))
+        }
+        "timed_out" => Some(("timed_out", "timed_out")),
+        _ => None,
+    }
+}
+
+fn maybe_materialize_training_validator_verdict(
+    run_root: &Path,
+    window_id: &str,
+    challenge_id: &str,
+) -> Result<bool> {
+    let verdict_path = training_validator_verdict_path(run_root, window_id, challenge_id);
+    if verdict_path.is_file() {
+        return Ok(false);
+    }
+
+    let score_artifact_path =
+        training_validator_score_artifact_path(run_root, window_id, challenge_id);
+    let score_receipt_path =
+        training_validator_score_receipt_path(run_root, window_id, challenge_id);
+    let score_artifact = load_training_json_artifact_value(
+        score_artifact_path.as_path(),
+        "training validator score artifact",
+    )?;
+    let score_receipt = load_training_json_artifact_value(
+        score_receipt_path.as_path(),
+        "training validator score receipt",
+    )?;
+    if score_artifact.is_none() && score_receipt.is_none() {
+        return Ok(false);
+    }
+
+    let source_detail = score_receipt
+        .as_ref()
+        .and_then(|value| value.get("detail"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            score_artifact
+                .as_ref()
+                .and_then(|value| value.get("detail"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or("validator replay complete");
+    let training_disposition = score_receipt
+        .as_ref()
+        .and_then(|value| value.get("disposition"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            score_artifact
+                .as_ref()
+                .and_then(|value| value.get("disposition"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or("accepted");
+    let (validator_status, validator_verdict) =
+        training_validator_terminal_result_labels(training_disposition)
+            .unwrap_or(("verified", "verified"));
+    let result_digest = score_receipt
+        .as_ref()
+        .and_then(|value| value.get("score_receipt_digest"))
+        .and_then(Value::as_str)
+        .and_then(training_prefixed_sha256_digest)
+        .or_else(|| {
+            score_receipt
+                .as_ref()
+                .and_then(|value| value.get("score_artifact_digest"))
+                .and_then(Value::as_str)
+                .and_then(training_prefixed_sha256_digest)
+        })
+        .or_else(|| {
+            score_artifact
+                .as_ref()
+                .and_then(|value| value.get("score_digest"))
+                .and_then(Value::as_str)
+                .and_then(training_prefixed_sha256_digest)
+        })
+        .or_else(|| {
+            score_receipt.as_ref().and_then(|value| {
+                training_json_artifact_digest(
+                    value,
+                    "training validator score receipt",
+                    score_receipt_path.as_path(),
+                )
+                .ok()
+            })
+        })
+        .or_else(|| {
+            score_artifact.as_ref().and_then(|value| {
+                training_json_artifact_digest(
+                    value,
+                    "training validator score artifact",
+                    score_artifact_path.as_path(),
+                )
+                .ok()
+            })
+        })
+        .unwrap_or_else(|| {
+            sha256_prefixed_text(format!("validator_result::{challenge_id}").as_str())
+        });
+
+    let mut verdict = serde_json::Map::new();
+    verdict.insert(
+        "schema_version".to_string(),
+        Value::String("openagents.pylon_training.validator_verdict.v1".to_string()),
+    );
+    verdict.insert(
+        "challenge_id".to_string(),
+        Value::String(challenge_id.to_string()),
+    );
+    verdict.insert(
+        "status".to_string(),
+        Value::String(validator_status.to_string()),
+    );
+    verdict.insert(
+        "validator_status".to_string(),
+        Value::String(validator_status.to_string()),
+    );
+    verdict.insert(
+        "verdict".to_string(),
+        Value::String(validator_verdict.to_string()),
+    );
+    verdict.insert(
+        "validator_verdict".to_string(),
+        Value::String(validator_verdict.to_string()),
+    );
+    verdict.insert(
+        "training_disposition".to_string(),
+        Value::String(training_disposition.to_string()),
+    );
+    verdict.insert(
+        "validator_disposition".to_string(),
+        Value::String(training_disposition.to_string()),
+    );
+    verdict.insert(
+        "detail".to_string(),
+        Value::String(source_detail.to_string()),
+    );
+    verdict.insert(
+        "result_digest".to_string(),
+        Value::String(result_digest.clone()),
+    );
+    verdict.insert(
+        "challenge_result_ref".to_string(),
+        Value::String(format!("validator_challenge_result:{result_digest}")),
+    );
+    verdict.insert(
+        "materialized_from".to_string(),
+        json!({
+            "score_receipt_path": score_receipt_path.display().to_string(),
+            "score_artifact_path": score_artifact_path.display().to_string(),
+        }),
+    );
+    if let Some(reason_codes) = score_receipt
+        .as_ref()
+        .and_then(|value| value.get("reason_codes"))
+        .cloned()
+        .or_else(|| {
+            score_artifact
+                .as_ref()
+                .and_then(|value| value.get("reason_codes"))
+                .cloned()
+        })
+    {
+        verdict.insert("reason_codes".to_string(), reason_codes);
+    }
+    if let Some(score_bps) = score_receipt
+        .as_ref()
+        .and_then(|value| value.get("score_bps"))
+        .cloned()
+        .or_else(|| {
+            score_artifact
+                .as_ref()
+                .and_then(|value| value.get("score_bps"))
+                .cloned()
+        })
+    {
+        verdict.insert("score_bps".to_string(), score_bps);
+    }
+    if let Some(score_receipt_digest) = score_receipt
+        .as_ref()
+        .and_then(|value| value.get("score_receipt_digest"))
+        .and_then(Value::as_str)
+        .and_then(training_prefixed_sha256_digest)
+    {
+        verdict.insert(
+            "score_receipt_digest".to_string(),
+            Value::String(score_receipt_digest),
+        );
+    }
+    if let Some(score_artifact_digest) = score_receipt
+        .as_ref()
+        .and_then(|value| value.get("score_artifact_digest"))
+        .and_then(Value::as_str)
+        .and_then(training_prefixed_sha256_digest)
+        .or_else(|| {
+            score_artifact
+                .as_ref()
+                .and_then(|value| value.get("score_digest"))
+                .and_then(Value::as_str)
+                .and_then(training_prefixed_sha256_digest)
+        })
+    {
+        verdict.insert(
+            "score_artifact_digest".to_string(),
+            Value::String(score_artifact_digest),
+        );
+    }
+    write_training_json_value(
+        verdict_path.as_path(),
+        &Value::Object(verdict),
+        "training validator verdict",
+    )?;
+    Ok(true)
 }
 
 fn training_validator_challenge_status_from_value(
@@ -14359,6 +14620,11 @@ async fn maybe_finalize_training_terminal_validator_challenge(
     let checkpoint_ref = closeout_hints
         .as_ref()
         .and_then(|hints| hints.checkpoint_ref.clone());
+    maybe_materialize_training_validator_verdict(
+        run_root,
+        active.window_id.as_str(),
+        challenge_id.as_str(),
+    )?;
     let verdict_path =
         training_validator_verdict_path(run_root, active.window_id.as_str(), challenge_id.as_str());
     let verdict_value =
@@ -32297,17 +32563,44 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             .join("validators")
             .join("challenge.alpha");
         std::fs::create_dir_all(validator_root.as_path())?;
-        std::fs::write(
-            validator_root.join("verdict.json"),
-            json!({
-                "schema_version":"openagents.pylon_training.validator_verdict.v1",
+        write_training_json_value(
+            validator_root
+                .join("validator_score_artifact.json")
+                .as_path(),
+            &json!({
+                "schema_version":"psionic.train.validator_score_artifact.v1",
                 "challenge_id":"challenge.alpha",
-                "validator_status":"verified",
-                "validator_verdict":"verified",
-                "training_disposition":"accepted",
-                "detail":"validator replay complete"
-            })
-            .to_string(),
+                "assignment_id":"assign.node01.window0001",
+                "contribution_id":"contrib.node01.window0001",
+                "disposition":"accepted",
+                "reason_codes":["primary_checkpoint_accepted"],
+                "score_bps":10000,
+                "detail":"validator replay complete",
+                "score_digest":"validator-artifact-alpha"
+            }),
+            "training validator score artifact",
+        )?;
+        write_training_json_value(
+            validator_root
+                .join("validator_score_receipt.json")
+                .as_path(),
+            &json!({
+                "schema_version":"psionic.train.validator_score_receipt.v1",
+                "challenge_id":"challenge.alpha",
+                "assignment_id":"assign.node01.window0001",
+                "contribution_id":"contrib.node01.window0001",
+                "disposition":"accepted",
+                "reason_codes":["primary_checkpoint_accepted"],
+                "score_bps":10000,
+                "detail":"validator replay complete",
+                "score_artifact_path":validator_root
+                    .join("validator_score_artifact.json")
+                    .display()
+                    .to_string(),
+                "score_artifact_digest":"validator-artifact-alpha",
+                "score_receipt_digest":"validator-receipt-alpha"
+            }),
+            "training validator score receipt",
         )?;
 
         let mut state = load_or_create_training_runtime_state(&config)?;
@@ -32387,6 +32680,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             sync_training_terminal_runtime_once(config_path.as_path(), &config, &identity).await?,
             "validator terminal sync should finalize, reconcile, and observe payout automatically",
+        )?;
+        ensure(
+            validator_root.join("verdict.json").is_file(),
+            "validator terminal sync should materialize verdict.json from retained score artifacts",
         )?;
 
         let synced_state = load_or_create_training_runtime_state(&config)?;
