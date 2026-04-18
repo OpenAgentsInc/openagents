@@ -9926,12 +9926,13 @@ fn ensure_training_contribution_bridge_bundles(
 ) -> Result<()> {
     let adapter_delta_bundle_path = contribution_root.join("adapter_delta_bundle.json");
     let proof_bundle_path = contribution_root.join("proof_bundle.json");
-    if adapter_delta_bundle_path.is_file() && proof_bundle_path.is_file() {
-        return Ok(());
-    }
-
     let contribution_receipt_path = contribution_root.join("contribution_receipt.json");
     let artifact_manifest_path = contribution_root.join("artifact_manifest.json");
+    stabilize_training_retained_psionic_worker_contract(
+        contribution_root,
+        contribution_receipt_path.as_path(),
+        artifact_manifest_path.as_path(),
+    )?;
     let Some(contribution_receipt) = load_training_json_artifact_value(
         contribution_receipt_path.as_path(),
         "training contribution receipt",
@@ -9975,159 +9976,155 @@ fn ensure_training_contribution_bridge_bundles(
         .and_then(Value::as_str)
         .map(ToOwned::to_owned);
 
-    if !adapter_delta_bundle_path.is_file() {
-        let adapter_delta_bridge = json!({
-            "schema_version": PYLON_TRAINING_ADAPTER_DELTA_BRIDGE_SCHEMA_VERSION,
-            "bridge_family": "retained_contribution_receipt",
-            "training_run_id": context.manifest.run_id.clone(),
-            "window_id": context.manifest.window_id.clone(),
-            "contribution_key": contribution_key.clone(),
-            "assignment_id": assignment_id.clone(),
-            "contribution_id": contribution_id.clone(),
-            "node_pubkey": node_pubkey.clone(),
-            "source": {
-                "contribution_receipt_path": contribution_receipt_path.display().to_string(),
-                "contribution_receipt_digest": contribution_receipt_digest.clone(),
-                "contribution_receipt": contribution_receipt,
-            },
-            "detail": "Bridge bundle preserves the retained contribution receipt under the legacy adapter-delta contribution contract until Nexus consumes retained contribution receipts directly."
-        });
-        persist_training_bridge_bundle(
-            adapter_delta_bundle_path.as_path(),
-            &adapter_delta_bridge,
-            "adapter-delta bridge bundle",
-        )?;
-    }
+    let adapter_delta_bridge = json!({
+        "schema_version": PYLON_TRAINING_ADAPTER_DELTA_BRIDGE_SCHEMA_VERSION,
+        "bridge_family": "retained_contribution_receipt",
+        "training_run_id": context.manifest.run_id.clone(),
+        "window_id": context.manifest.window_id.clone(),
+        "contribution_key": contribution_key.clone(),
+        "assignment_id": assignment_id.clone(),
+        "contribution_id": contribution_id.clone(),
+        "node_pubkey": node_pubkey.clone(),
+        "source": {
+            "contribution_receipt_path": contribution_receipt_path.display().to_string(),
+            "contribution_receipt_digest": contribution_receipt_digest.clone(),
+            "contribution_receipt": contribution_receipt,
+        },
+        "detail": "Bridge bundle preserves the retained contribution receipt under the legacy adapter-delta contribution contract until Nexus consumes retained contribution receipts directly."
+    });
+    persist_training_bridge_bundle(
+        adapter_delta_bundle_path.as_path(),
+        &adapter_delta_bridge,
+        "adapter-delta bridge bundle",
+    )?;
 
-    if !proof_bundle_path.is_file() {
-        let window_root = context
-            .local_run_root
-            .join("windows")
-            .join(context.manifest.window_id.as_str());
-        let sealed_window_bundle_path = window_root.join("sealed_window_bundle.json");
-        let sealed_window_bundle = load_training_json_artifact_value(
-            sealed_window_bundle_path.as_path(),
-            "training sealed-window bundle",
-        )?;
-        let sealed_window_bundle_digest = sealed_window_bundle
-            .as_ref()
-            .map(|value| {
-                training_json_artifact_digest(
-                    value,
-                    "training sealed-window bundle",
-                    sealed_window_bundle_path.as_path(),
-                )
-            })
-            .transpose()?;
-        let closeout_bundle_path = context
-            .local_run_root
-            .join("closeout")
-            .join("closeout_bundle.json");
-        let closeout_bundle = load_training_json_artifact_value(
-            closeout_bundle_path.as_path(),
-            "training closeout bundle",
-        )?;
-        let closeout_bundle_digest = closeout_bundle
-            .as_ref()
-            .map(|value| {
-                training_json_artifact_digest(
-                    value,
-                    "training closeout bundle",
-                    closeout_bundle_path.as_path(),
-                )
-            })
-            .transpose()?;
-        let checkpoint_surface_path = context
-            .local_run_root
-            .join("status")
-            .join("checkpoint_surface.json");
-        let checkpoint_surface = load_training_json_artifact_value(
-            checkpoint_surface_path.as_path(),
-            "training checkpoint surface",
-        )?;
-        let checkpoint_surface_digest = checkpoint_surface
-            .as_ref()
-            .map(|value| {
-                training_json_artifact_digest(
-                    value,
-                    "training checkpoint surface",
-                    checkpoint_surface_path.as_path(),
-                )
-            })
-            .transpose()?;
-        let latest_accepted_checkpoint_pointer_path = context
-            .local_run_root
-            .join("checkpoints")
-            .join("latest_accepted_checkpoint_pointer.json");
-        let latest_accepted_checkpoint_pointer = load_training_json_artifact_value(
-            latest_accepted_checkpoint_pointer_path.as_path(),
-            "training latest accepted checkpoint pointer",
-        )?;
-        let latest_accepted_checkpoint_pointer_digest = latest_accepted_checkpoint_pointer
-            .as_ref()
-            .map(|value| {
-                training_json_artifact_digest(
-                    value,
-                    "training latest accepted checkpoint pointer",
-                    latest_accepted_checkpoint_pointer_path.as_path(),
-                )
-            })
-            .transpose()?;
-        let checkpoint_manifest_path =
-            training_artifact_manifest_materialized_path(&artifact_manifest, "checkpoint_manifest");
-        let checkpoint_manifest = checkpoint_manifest_path
-            .as_ref()
-            .map(|path: &PathBuf| {
-                load_training_json_artifact_value(path.as_path(), "training checkpoint manifest")
-            })
-            .transpose()?
-            .flatten();
-        let checkpoint_manifest_digest = checkpoint_manifest
-            .as_ref()
-            .zip(checkpoint_manifest_path.as_ref())
-            .map(|(value, path): (&Value, &PathBuf)| {
-                training_json_artifact_digest(value, "training checkpoint manifest", path.as_path())
-            })
-            .transpose()?;
-        let proof_bridge = json!({
-            "schema_version": PYLON_TRAINING_PROOF_BUNDLE_BRIDGE_SCHEMA_VERSION,
-            "bridge_family": "retained_contribution_proof",
-            "training_run_id": context.manifest.run_id.clone(),
-            "window_id": context.manifest.window_id.clone(),
-            "contribution_key": contribution_key,
-            "assignment_id": assignment_id,
-            "contribution_id": contribution_id,
-            "node_pubkey": node_pubkey,
-            "source": {
-                "artifact_manifest_path": artifact_manifest_path.display().to_string(),
-                "artifact_manifest_digest": artifact_manifest_digest,
-                "artifact_manifest": artifact_manifest,
-                "sealed_window_bundle_path": sealed_window_bundle_path.display().to_string(),
-                "sealed_window_bundle_digest": sealed_window_bundle_digest,
-                "sealed_window_bundle": sealed_window_bundle,
-                "closeout_bundle_path": closeout_bundle_path.display().to_string(),
-                "closeout_bundle_digest": closeout_bundle_digest,
-                "closeout_bundle": closeout_bundle,
-                "checkpoint_surface_path": checkpoint_surface_path.display().to_string(),
-                "checkpoint_surface_digest": checkpoint_surface_digest,
-                "checkpoint_surface": checkpoint_surface,
-                "latest_accepted_checkpoint_pointer_path": latest_accepted_checkpoint_pointer_path.display().to_string(),
-                "latest_accepted_checkpoint_pointer_digest": latest_accepted_checkpoint_pointer_digest,
-                "latest_accepted_checkpoint_pointer": latest_accepted_checkpoint_pointer,
-                "checkpoint_manifest_path": checkpoint_manifest_path.as_ref().map(|path: &PathBuf| path.display().to_string()),
-                "checkpoint_manifest_digest": checkpoint_manifest_digest,
-                "checkpoint_manifest": checkpoint_manifest,
-                "contribution_receipt_path": contribution_receipt_path.display().to_string(),
-                "contribution_receipt_digest": contribution_receipt_digest,
-            },
-            "detail": "Bridge bundle preserves the retained artifact manifest, sealed-window bundle, closeout bundle, checkpoint manifest, and accepted-checkpoint lineage under the legacy proof contribution contract until Nexus consumes the retained proof family directly."
-        });
-        persist_training_bridge_bundle(
-            proof_bundle_path.as_path(),
-            &proof_bridge,
-            "proof bridge bundle",
-        )?;
-    }
+    let window_root = context
+        .local_run_root
+        .join("windows")
+        .join(context.manifest.window_id.as_str());
+    let sealed_window_bundle_path = window_root.join("sealed_window_bundle.json");
+    let sealed_window_bundle = load_training_json_artifact_value(
+        sealed_window_bundle_path.as_path(),
+        "training sealed-window bundle",
+    )?;
+    let sealed_window_bundle_digest = sealed_window_bundle
+        .as_ref()
+        .map(|value| {
+            training_json_artifact_digest(
+                value,
+                "training sealed-window bundle",
+                sealed_window_bundle_path.as_path(),
+            )
+        })
+        .transpose()?;
+    let closeout_bundle_path = context
+        .local_run_root
+        .join("closeout")
+        .join("closeout_bundle.json");
+    let closeout_bundle = load_training_json_artifact_value(
+        closeout_bundle_path.as_path(),
+        "training closeout bundle",
+    )?;
+    let closeout_bundle_digest = closeout_bundle
+        .as_ref()
+        .map(|value| {
+            training_json_artifact_digest(
+                value,
+                "training closeout bundle",
+                closeout_bundle_path.as_path(),
+            )
+        })
+        .transpose()?;
+    let checkpoint_surface_path = context
+        .local_run_root
+        .join("status")
+        .join("checkpoint_surface.json");
+    let checkpoint_surface = load_training_json_artifact_value(
+        checkpoint_surface_path.as_path(),
+        "training checkpoint surface",
+    )?;
+    let checkpoint_surface_digest = checkpoint_surface
+        .as_ref()
+        .map(|value| {
+            training_json_artifact_digest(
+                value,
+                "training checkpoint surface",
+                checkpoint_surface_path.as_path(),
+            )
+        })
+        .transpose()?;
+    let latest_accepted_checkpoint_pointer_path = context
+        .local_run_root
+        .join("checkpoints")
+        .join("latest_accepted_checkpoint_pointer.json");
+    let latest_accepted_checkpoint_pointer = load_training_json_artifact_value(
+        latest_accepted_checkpoint_pointer_path.as_path(),
+        "training latest accepted checkpoint pointer",
+    )?;
+    let latest_accepted_checkpoint_pointer_digest = latest_accepted_checkpoint_pointer
+        .as_ref()
+        .map(|value| {
+            training_json_artifact_digest(
+                value,
+                "training latest accepted checkpoint pointer",
+                latest_accepted_checkpoint_pointer_path.as_path(),
+            )
+        })
+        .transpose()?;
+    let checkpoint_manifest_path =
+        training_artifact_manifest_materialized_path(&artifact_manifest, "checkpoint_manifest");
+    let checkpoint_manifest = checkpoint_manifest_path
+        .as_ref()
+        .map(|path: &PathBuf| {
+            load_training_json_artifact_value(path.as_path(), "training checkpoint manifest")
+        })
+        .transpose()?
+        .flatten();
+    let checkpoint_manifest_digest = checkpoint_manifest
+        .as_ref()
+        .zip(checkpoint_manifest_path.as_ref())
+        .map(|(value, path): (&Value, &PathBuf)| {
+            training_json_artifact_digest(value, "training checkpoint manifest", path.as_path())
+        })
+        .transpose()?;
+    let proof_bridge = json!({
+        "schema_version": PYLON_TRAINING_PROOF_BUNDLE_BRIDGE_SCHEMA_VERSION,
+        "bridge_family": "retained_contribution_proof",
+        "training_run_id": context.manifest.run_id.clone(),
+        "window_id": context.manifest.window_id.clone(),
+        "contribution_key": contribution_key,
+        "assignment_id": assignment_id,
+        "contribution_id": contribution_id,
+        "node_pubkey": node_pubkey,
+        "source": {
+            "artifact_manifest_path": artifact_manifest_path.display().to_string(),
+            "artifact_manifest_digest": artifact_manifest_digest,
+            "artifact_manifest": artifact_manifest,
+            "sealed_window_bundle_path": sealed_window_bundle_path.display().to_string(),
+            "sealed_window_bundle_digest": sealed_window_bundle_digest,
+            "sealed_window_bundle": sealed_window_bundle,
+            "closeout_bundle_path": closeout_bundle_path.display().to_string(),
+            "closeout_bundle_digest": closeout_bundle_digest,
+            "closeout_bundle": closeout_bundle,
+            "checkpoint_surface_path": checkpoint_surface_path.display().to_string(),
+            "checkpoint_surface_digest": checkpoint_surface_digest,
+            "checkpoint_surface": checkpoint_surface,
+            "latest_accepted_checkpoint_pointer_path": latest_accepted_checkpoint_pointer_path.display().to_string(),
+            "latest_accepted_checkpoint_pointer_digest": latest_accepted_checkpoint_pointer_digest,
+            "latest_accepted_checkpoint_pointer": latest_accepted_checkpoint_pointer,
+            "checkpoint_manifest_path": checkpoint_manifest_path.as_ref().map(|path: &PathBuf| path.display().to_string()),
+            "checkpoint_manifest_digest": checkpoint_manifest_digest,
+            "checkpoint_manifest": checkpoint_manifest,
+            "contribution_receipt_path": contribution_receipt_path.display().to_string(),
+            "contribution_receipt_digest": contribution_receipt_digest,
+        },
+        "detail": "Bridge bundle preserves the retained artifact manifest, sealed-window bundle, closeout bundle, checkpoint manifest, and accepted-checkpoint lineage under the legacy proof contribution contract until Nexus consumes the retained proof family directly."
+    });
+    persist_training_bridge_bundle(
+        proof_bundle_path.as_path(),
+        &proof_bridge,
+        "proof bridge bundle",
+    )?;
 
     Ok(())
 }
@@ -23847,6 +23844,7 @@ mod tests {
         detect_availability, download_gemma_model_from_base_url,
         download_gemma_model_from_base_url_with_transport, drain_training_supervisor,
         drive_training_supervisor_once, ensure_identity, ensure_no_conflicting_training_assignment,
+        ensure_training_contribution_bridge_bundles,
         garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
         gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
         inspect_psionic_train_runtime_surface_from_candidates, inventory_rows, load_backend_report,
@@ -23876,6 +23874,7 @@ mod tests {
         training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
         training_download_cache_root, training_raw_sha256_hex, training_run_root_for_id,
         training_supervisor_pid_is_running,
+        TrainingManifestInspectionContext,
         training_runtime_state_path, training_settlement_destination, watch_buyer_jobs,
         write_training_json_value,
     };
@@ -29675,6 +29674,99 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     ["materialized_path"]
                     .as_str() == Some(checkpoint_surface_snapshot.as_str()),
             "stabilized receipt and proof bundle should point at the rewritten contribution-local artifact manifest",
+        )
+    }
+
+    #[test]
+    fn ensure_training_contribution_bridge_bundles_rewrites_stale_mutable_paths()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let run_root = temp_dir.path().join("run.alpha");
+        let manifest = write_training_manifest_and_retained_contribution_artifacts(
+            run_root.as_path(),
+            "gs://bucket",
+        )?;
+        let layout =
+            PylonTrainingArtifactLayout::from_manifest(&manifest).map_err(anyhow::Error::msg)?;
+        let context = TrainingManifestInspectionContext {
+            manifest: manifest.clone(),
+            manifest_path: run_root.join("manifests").join("run_manifest.json"),
+            local_run_root: run_root.clone(),
+            layout,
+        };
+        let contribution_root = run_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("contrib.node01.window0001");
+        let contribution_receipt_path = contribution_root.join("contribution_receipt.json");
+        let artifact_manifest_path = contribution_root.join("artifact_manifest.json");
+        let checkpoint_manifest_path = run_root
+            .join("checkpoints")
+            .join("step-42")
+            .join("checkpoint_manifest.json");
+        let contribution_receipt: Value = serde_json::from_slice(
+            std::fs::read(contribution_receipt_path.as_path())?.as_slice(),
+        )?;
+        let artifact_manifest: Value =
+            serde_json::from_slice(std::fs::read(artifact_manifest_path.as_path())?.as_slice())?;
+        let checkpoint_manifest: Value =
+            serde_json::from_slice(std::fs::read(checkpoint_manifest_path.as_path())?.as_slice())?;
+
+        write_training_json_value(
+            contribution_root.join("adapter_delta_bundle.json").as_path(),
+            &json!({
+                "source": {
+                    "contribution_receipt_path": contribution_receipt_path.display().to_string(),
+                    "contribution_receipt_digest": "sha256:stale-receipt",
+                    "contribution_receipt": contribution_receipt.clone()
+                }
+            }),
+            "training local-update bridge bundle",
+        )?;
+        write_training_json_value(
+            contribution_root.join("proof_bundle.json").as_path(),
+            &json!({
+                "source": {
+                    "artifact_manifest_path": artifact_manifest_path.display().to_string(),
+                    "artifact_manifest_digest": "sha256:stale-manifest",
+                    "artifact_manifest": artifact_manifest,
+                    "checkpoint_manifest_path": checkpoint_manifest_path.display().to_string(),
+                    "checkpoint_manifest_digest": "sha256:stale-checkpoint-manifest",
+                    "checkpoint_manifest": checkpoint_manifest,
+                    "contribution_receipt_path": contribution_receipt_path.display().to_string(),
+                    "contribution_receipt_digest": "sha256:stale-receipt",
+                    "contribution_receipt": contribution_receipt
+                }
+            }),
+            "training proof bridge bundle",
+        )?;
+
+        ensure_training_contribution_bridge_bundles(&context, contribution_root.as_path())?;
+
+        let refreshed_proof_bundle: Value = serde_json::from_slice(
+            std::fs::read(contribution_root.join("proof_bundle.json").as_path())?.as_slice(),
+        )?;
+        let refreshed_adapter_delta: Value = serde_json::from_slice(
+            std::fs::read(contribution_root.join("adapter_delta_bundle.json").as_path())?.as_slice(),
+        )?;
+        let contribution_root_string = contribution_root.display().to_string();
+        let rewritten_manifest_path = refreshed_proof_bundle["source"]["artifact_manifest"]["artifacts"]
+            [0]["binding"]["materialized_path"]
+            .as_str()
+            .ok_or("missing rewritten checkpoint manifest snapshot path")?;
+        let rewritten_checkpoint_manifest_path = refreshed_proof_bundle["source"]
+            ["checkpoint_manifest_path"]
+            .as_str()
+            .ok_or("missing refreshed proof checkpoint manifest path")?;
+
+        ensure(
+            rewritten_manifest_path.starts_with(contribution_root_string.as_str())
+                && rewritten_checkpoint_manifest_path.starts_with(contribution_root_string.as_str())
+                && refreshed_adapter_delta["source"]["contribution_receipt_digest"]
+                    .as_str()
+                    .is_some_and(|value| value != "sha256:stale-receipt"),
+            "bridge bundle refresh should rewrite stale mutable contribution paths under the contribution root before validator replay consumes them",
         )
     }
 
