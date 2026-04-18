@@ -6107,6 +6107,32 @@ async fn ensure_training_assignment_runtime_manifest(
     let Some(initial_lease) = state.lease_cache.get(lease_id).cloned() else {
         bail!("missing cached training lease `{lease_id}`");
     };
+    if let (
+        Some(runtime_manifest_path),
+        Some(runtime_manifest_digest),
+        Some(runtime_lane_id),
+        Some(runtime_operation),
+        Some(runtime_work_class),
+    ) = (
+        initial_lease.runtime_manifest_path.clone(),
+        initial_lease.runtime_manifest_digest.clone(),
+        initial_lease.runtime_lane_id.clone(),
+        initial_lease.runtime_operation.clone(),
+        initial_lease.runtime_work_class.clone(),
+    ) {
+        let manifest_path = PathBuf::from(runtime_manifest_path);
+        if manifest_path.is_file() {
+            // Retained validator replay should not stall on a fresh run read when a valid
+            // invocation manifest is already materialized on disk.
+            return Ok(MaterializedPsionicTrainInvocationManifest {
+                manifest_path,
+                manifest_digest: runtime_manifest_digest,
+                lane_id: runtime_lane_id,
+                operation: runtime_operation,
+                work_class: runtime_work_class,
+            });
+        }
+    }
     let training_run = client
         .get_training_run(initial_lease.training_run_id.as_str())
         .await?;
@@ -6156,30 +6182,6 @@ async fn ensure_training_assignment_runtime_manifest(
     let Some(lease) = state.lease_cache.get(lease_id).cloned() else {
         bail!("missing cached training lease `{lease_id}` after materialization");
     };
-    if let (
-        Some(runtime_manifest_path),
-        Some(runtime_manifest_digest),
-        Some(runtime_lane_id),
-        Some(runtime_operation),
-        Some(runtime_work_class),
-    ) = (
-        lease.runtime_manifest_path.clone(),
-        lease.runtime_manifest_digest.clone(),
-        lease.runtime_lane_id.clone(),
-        lease.runtime_operation.clone(),
-        lease.runtime_work_class.clone(),
-    ) {
-        let manifest_path = PathBuf::from(runtime_manifest_path);
-        if manifest_path.is_file() {
-            return Ok(MaterializedPsionicTrainInvocationManifest {
-                manifest_path,
-                manifest_digest: runtime_manifest_digest,
-                lane_id: runtime_lane_id,
-                operation: runtime_operation,
-                work_class: runtime_work_class,
-            });
-        }
-    }
     let (manifest, run_root) = build_psionic_train_invocation_manifest(
         config,
         runtime_surface,
@@ -9941,6 +9943,18 @@ fn ensure_training_contribution_bridge_bundles(
     context: &TrainingManifestInspectionContext,
     contribution_root: &Path,
 ) -> Result<()> {
+    if !training_manifest_owns_contribution_bundles(context.manifest.role) {
+        // Validator replay consumes an already materialized retained worker contribution contract.
+        // Do not regenerate worker bridge bundles or rewrite retained-artifact bindings under a
+        // validator-local snapshot path.
+        return Ok(());
+    }
+    if training_run_root_has_validator_claims(
+        context.local_run_root.as_path(),
+        context.manifest.window_id.as_str(),
+    )? {
+        return Ok(());
+    }
     let adapter_delta_bundle_path = contribution_root.join("adapter_delta_bundle.json");
     let proof_bundle_path = contribution_root.join("proof_bundle.json");
     let contribution_receipt_path = contribution_root.join("contribution_receipt.json");
@@ -11037,6 +11051,25 @@ fn load_training_manifest_inspection_contexts(
     Ok(contexts)
 }
 
+fn training_run_root_has_validator_claims(run_root: &Path, window_id: &str) -> Result<bool> {
+    let validators_root = run_root.join("windows").join(window_id).join("validators");
+    if !validators_root.is_dir() {
+        return Ok(false);
+    }
+    for entry in std::fs::read_dir(validators_root.as_path())
+        .with_context(|| format!("failed to read validator dir {}", validators_root.display()))?
+    {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        if entry.path().join("claim.json").is_file() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn inspect_manifest_local_artifacts(
     context: &TrainingManifestInspectionContext,
 ) -> Result<Vec<TrainingArtifactBundleInspectionEntry>> {
@@ -11087,7 +11120,12 @@ fn inspect_manifest_local_artifacts(
             }
         }
     }
-    if training_manifest_owns_contribution_bundles(context.manifest.role) {
+    if training_manifest_owns_contribution_bundles(context.manifest.role)
+        && !training_run_root_has_validator_claims(
+            context.local_run_root.as_path(),
+            context.manifest.window_id.as_str(),
+        )?
+    {
         let contributions_root = context
             .local_run_root
             .join("windows")
@@ -13330,6 +13368,35 @@ fn training_raw_sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", digest.finalize())
 }
 
+fn stable_training_json_digest(prefix: &[u8], value: &Value) -> Result<String> {
+    let encoded =
+        serde_json::to_vec(value).context("failed to serialize training JSON digest payload")?;
+    let mut digest = Sha256::new();
+    digest.update(prefix);
+    digest.update(encoded);
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+fn stable_training_contribution_receipt_digest(receipt: &Value) -> Result<String> {
+    let Some(mut digest_basis) = receipt.as_object().cloned() else {
+        bail!("training contribution receipt must be a JSON object");
+    };
+    digest_basis.insert(
+        "contribution_digest".to_string(),
+        Value::String(String::new()),
+    );
+    if let Some(binding) = digest_basis
+        .get_mut("artifact_manifest")
+        .and_then(Value::as_object_mut)
+    {
+        binding.remove("materialized_path");
+    }
+    stable_training_json_digest(
+        b"psionic_train_contribution_receipt|",
+        &Value::Object(digest_basis),
+    )
+}
+
 fn training_snapshot_materialized_artifact_path(
     contribution_root: &Path,
     artifact_kind: &str,
@@ -13504,6 +13571,13 @@ fn stabilize_training_retained_psionic_worker_contract(
         binding.insert(
             "materialized_path".to_string(),
             Value::String(artifact_manifest_path.display().to_string()),
+        );
+    }
+    let contribution_digest = stable_training_contribution_receipt_digest(&contribution_receipt)?;
+    if let Some(receipt_object) = contribution_receipt.as_object_mut() {
+        receipt_object.insert(
+            "contribution_digest".to_string(),
+            Value::String(contribution_digest),
         );
     }
     write_training_json_value(
@@ -24236,13 +24310,14 @@ mod tests {
         run_training_assignment_intake_once_with_context, save_config,
         save_gemma_diagnostic_report, save_training_runtime_state, scan_provider_requests, serve,
         snapshot_training_status_report, stabilize_training_retained_psionic_worker_contract,
-        start_training_checkpoint_server, start_training_supervisor, submit_buyer_job,
-        sync_live_announcement, sync_provider_payout_target_with_report,
-        sync_training_authority_state, sync_training_terminal_runtime_once,
-        training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
-        training_download_cache_root, training_raw_sha256_hex, training_run_root_for_id,
-        training_runtime_state_path, training_settlement_destination,
-        training_supervisor_pid_is_running, watch_buyer_jobs, write_training_json_value,
+        stable_training_contribution_receipt_digest, start_training_checkpoint_server,
+        start_training_supervisor, submit_buyer_job, sync_live_announcement,
+        sync_provider_payout_target_with_report, sync_training_authority_state,
+        sync_training_terminal_runtime_once, training_artifact_digest_from_locator_payload,
+        training_artifact_resolved_cache_key, training_download_cache_root,
+        training_raw_sha256_hex, training_run_root_for_id, training_runtime_state_path,
+        training_settlement_destination, training_supervisor_pid_is_running, watch_buyer_jobs,
+        write_training_json_value,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -29548,6 +29623,107 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         )
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_assignment_runtime_manifest_reuses_cached_validator_manifest_without_kernel_run_read()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.nexus_authority_base_url = "http://127.0.0.1:9".to_string();
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Validator];
+        config.training.validator_enabled = true;
+        save_config(config_path.as_path(), &config)?;
+
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        let run_root = training_run_root_for_id(&config, "run.alpha");
+        let manifests_root = run_root.join("manifests");
+        std::fs::create_dir_all(manifests_root.as_path())?;
+        let invocation_manifest_path = manifests_root.join("invocation_manifest.json");
+        std::fs::write(
+            invocation_manifest_path.as_path(),
+            "{\n  \"schema_version\": \"psionic.train.invocation_manifest.v1\"\n}\n",
+        )?;
+
+        let contribution_root = run_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("contrib.node01.window0001");
+        std::fs::create_dir_all(contribution_root.as_path())?;
+        std::fs::write(
+            contribution_root.join("contribution_receipt.json"),
+            "{\"schema_version\":\"psionic.train.contribution_receipt.v1\"}\n",
+        )?;
+        std::fs::write(
+            contribution_root.join("artifact_manifest.json"),
+            "{\"schema_version\":\"psionic.train.contribution_artifact_manifest.v1\"}\n",
+        )?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.lease_cache.insert(
+            "lease.validator.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.validator.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Validator,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_270_700),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: Some("challenge.alpha".to_string()),
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: Some(
+                    contribution_root
+                        .join("contribution_receipt.json")
+                        .display()
+                        .to_string(),
+                ),
+                validator_target_contribution_artifact_manifest_path: Some(
+                    contribution_root
+                        .join("artifact_manifest.json")
+                        .display()
+                        .to_string(),
+                ),
+                validator_target_work_class: Some(
+                    ComputeTrainingWorkClass::SmallModelLocalTraining,
+                ),
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(invocation_manifest_path.display().to_string()),
+                runtime_manifest_digest: Some("sha256:runtime-alpha".to_string()),
+                runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                runtime_operation: Some("validate_contribution".to_string()),
+                runtime_work_class: Some("validation_replay".to_string()),
+                updated_at_ms: now_epoch_ms(),
+            },
+        );
+
+        let client = PylonTrainingCoordinatorClient::new(&config)?;
+        let materialized = super::ensure_training_assignment_runtime_manifest(
+            &config,
+            &identity,
+            &mut state,
+            &client,
+            &runtime_surface,
+            "lease.validator.window0001",
+        )
+        .await?;
+
+        ensure(
+            materialized.manifest_path == invocation_manifest_path
+                && materialized.manifest_digest == "sha256:runtime-alpha"
+                && materialized.lane_id == PSION_CS336_A1_DEMO_LANE_ID
+                && materialized.operation == "validate_contribution"
+                && materialized.work_class == "validation_replay",
+            "cached validator runtime manifests should be reusable without a fresh kernel run read",
+        )
+    }
+
     #[test]
     fn build_psionic_train_invocation_manifest_supports_resume_and_validator_inputs()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -29939,9 +30115,18 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "work_class": "small_model_local_training",
             "run_id": "run.alpha",
             "window_id": "window.alpha",
+            "window_execution_id": "window-exec.alpha",
             "assignment_id": "assign.alpha",
             "contribution_id": "contrib.alpha",
             "node_pubkey": "11".repeat(32),
+            "grouped_stage_assignment": Value::Null,
+            "role": "worker",
+            "operation": "start",
+            "outcome": "succeeded",
+            "exit_code": 0,
+            "retryable": false,
+            "authority_owner": "pylon",
+            "refusal_class": Value::Null,
             "artifact_manifest": {
                 "artifact_ref": {
                     "artifact_id": "artifact.manifest",
@@ -29951,7 +30136,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 "materialized_path": artifact_manifest_path.display().to_string()
             },
             "artifact_manifest_digest": "stable-artifact-manifest-digest",
-            "artifact_count": 2
+            "artifact_count": 2,
+            "contribution_digest": "stale-contribution-digest",
+            "detail": "worker contribution retained for bridge stabilization coverage"
         });
         write_training_json_value(
             contribution_receipt_path.as_path(),
@@ -30037,10 +30224,14 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && stabilized_receipt["artifact_manifest"]["artifact_ref"]["artifact_digest"]
                     .as_str()
                     == Some(stabilized_manifest_digest.as_str())
+                && stabilized_receipt["contribution_digest"].as_str()
+                    == Some(
+                        stable_training_contribution_receipt_digest(&stabilized_receipt)?.as_str(),
+                    )
                 && stabilized_proof_bundle["source"]["artifact_manifest"]["artifacts"][0]["binding"]
                     ["materialized_path"]
                     .as_str() == Some(checkpoint_surface_snapshot.as_str()),
-            "stabilized receipt and proof bundle should point at the rewritten contribution-local artifact manifest",
+            "stabilized receipt should recompute its canonical contribution digest and the proof bundle should point at the rewritten contribution-local artifact manifest",
         )
     }
 
@@ -30931,6 +31122,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 }],
             },
         )?;
+        let bundles_with_claim_record = super::inspect_manifest_local_artifacts(&worker_context)?;
+        ensure(
+            !bundles_with_claim_record
+                .iter()
+                .any(|entry| entry.bundle_kind == "contribution"),
+            "worker manifests inside a validator-claimed run root should stop inspecting copied worker contributions as owned bundles",
+        )?;
 
         let mut state = load_or_create_training_runtime_state(&config)?;
         let mut active_runtime = training_active_runtime_fixture();
@@ -31020,6 +31218,77 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && std::fs::read(contribution_root.join("proof_bundle.json"))?
                     == proof_bundle_before,
             "validator context promotion should keep copied worker receipts and bridge bundles immutable on disk",
+        )?;
+
+        let mut validator_local_artifact_manifest: Value =
+            serde_json::from_slice(artifact_manifest_before.as_slice())?;
+        for artifact_kind in [
+            "checkpoint_manifest",
+            "checkpoint_pointer",
+            "checkpoint_surface",
+            "final_closeout_bundle",
+        ] {
+            let Some(binding) = validator_local_artifact_manifest
+                .get_mut("artifacts")
+                .and_then(Value::as_array_mut)
+                .and_then(|artifacts| {
+                    artifacts.iter_mut().find_map(|artifact| {
+                        (artifact.get("artifact_kind").and_then(Value::as_str)
+                            == Some(artifact_kind))
+                        .then(|| artifact.get_mut("binding"))
+                        .flatten()
+                    })
+                })
+                .and_then(Value::as_object_mut)
+            else {
+                continue;
+            };
+            let file_name = Path::new(
+                binding
+                    .get("materialized_path")
+                    .and_then(Value::as_str)
+                    .unwrap_or("artifact.bin"),
+            )
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("artifact.bin")
+            .to_string();
+            binding.insert(
+                "materialized_path".to_string(),
+                Value::String(
+                    contribution_root
+                        .join("retained_artifacts")
+                        .join(artifact_kind)
+                        .join(file_name)
+                        .display()
+                        .to_string(),
+                ),
+            );
+        }
+        write_training_json_value(
+            contribution_root.join("artifact_manifest.json").as_path(),
+            &validator_local_artifact_manifest,
+            "validator-local retained artifact manifest fixture",
+        )?;
+        let mut validator_local_proof_bundle: Value =
+            serde_json::from_slice(proof_bundle_before.as_slice())?;
+        validator_local_proof_bundle["source"]["artifact_manifest"] =
+            validator_local_artifact_manifest.clone();
+        write_training_json_value(
+            contribution_root.join("proof_bundle.json").as_path(),
+            &validator_local_proof_bundle,
+            "validator-local proof bundle fixture",
+        )?;
+
+        let report = load_training_status_report_local(config_path.as_path())?;
+        ensure(
+            report.current_run_id.as_deref() == Some("run.alpha")
+                && report.active_window_id.as_deref() == Some("window.0001")
+                && report
+                    .recent_work_offers
+                    .first()
+                    .is_some_and(|offer| offer.challenge_id.as_deref() == Some("challenge.alpha")),
+            "validator status should tolerate retained worker artifact manifests without rerunning worker bridge regeneration",
         )
     }
 
@@ -31130,6 +31399,229 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     .and_then(|value| value.get("checkpoint_manifest"))
                     .is_some(),
             "uploaded retained contribution bundles should carry the retained checkpoint manifest instead of dropping validator replay state from the proof bridge",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_artifact_courier_keeps_worker_bridge_bytes_for_claimed_validator_run_root()
+    -> Result<(), Box<dyn std::error::Error>> {
+        fn copy_dir_recursive(
+            source: &Path,
+            destination: &Path,
+        ) -> Result<(), Box<dyn std::error::Error>> {
+            std::fs::create_dir_all(destination)?;
+            for entry in std::fs::read_dir(source)? {
+                let entry = entry?;
+                let destination_path = destination.join(entry.file_name());
+                if entry.file_type()?.is_dir() {
+                    copy_dir_recursive(entry.path().as_path(), destination_path.as_path())?;
+                } else {
+                    std::fs::copy(entry.path().as_path(), destination_path.as_path())?;
+                }
+            }
+            Ok(())
+        }
+
+        let _env_lock = training_env_lock();
+        let stored_objects = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, Vec<u8>>::new(),
+        ));
+        let stored_objects_for_server = Arc::clone(&stored_objects);
+        let base_url = start_mock_http_server(move |method, path, body| match method.as_str() {
+            "PUT" => {
+                stored_objects_for_server
+                    .lock()
+                    .expect("validator upload object store")
+                    .insert(path.clone(), body.into_bytes());
+                (200, "application/json", "{}".to_string())
+            }
+            "GET" => {
+                let payload = stored_objects_for_server
+                    .lock()
+                    .expect("validator upload object store")
+                    .get(path.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| b"{}".to_vec());
+                (
+                    200,
+                    "application/json",
+                    String::from_utf8(payload).expect("stored validator object should stay utf8"),
+                )
+            }
+            _ => (
+                405,
+                "application/json",
+                json!({"error":"method_not_allowed"}).to_string(),
+            ),
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        save_config(config_path.as_path(), &config)?;
+
+        let worker_run_root = temp_dir.path().join("worker-run");
+        let worker_manifest = write_training_manifest_and_retained_contribution_artifacts(
+            worker_run_root.as_path(),
+            "gs://bucket",
+        )?;
+        let worker_context = TrainingManifestInspectionContext {
+            manifest: worker_manifest.clone(),
+            manifest_path: worker_run_root.join("manifests").join("run_manifest.json"),
+            local_run_root: worker_run_root.clone(),
+            layout: PylonTrainingArtifactLayout::from_manifest(&worker_manifest)
+                .map_err(anyhow::Error::msg)?,
+        };
+        let worker_contribution_root = worker_run_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("contrib.node01.window0001");
+        ensure_training_contribution_bridge_bundles(
+            &worker_context,
+            worker_contribution_root.as_path(),
+        )?;
+
+        let canonical_adapter_delta_bundle =
+            std::fs::read(worker_contribution_root.join("adapter_delta_bundle.json"))?;
+        let canonical_proof_bundle =
+            std::fs::read(worker_contribution_root.join("proof_bundle.json"))?;
+        let canonical_contribution_receipt =
+            std::fs::read(worker_contribution_root.join("contribution_receipt.json"))?;
+        let canonical_artifact_manifest =
+            std::fs::read(worker_contribution_root.join("artifact_manifest.json"))?;
+
+        let validator_run_root = temp_dir.path().join("validator-run");
+        copy_dir_recursive(worker_run_root.as_path(), validator_run_root.as_path())?;
+        super::persist_training_validator_claim_record(
+            validator_run_root.as_path(),
+            &super::PylonTrainingValidatorChallengeCoordinatorResponse {
+                ack: super::PylonTrainingCoordinatorAck {
+                    idempotency_key: "validator-claim-alpha".to_string(),
+                    recorded_at_ms: 1_762_491_330_250,
+                    authority_state: "leased".to_string(),
+                },
+                network_id: "trainnet.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                challenge_id: "challenge.alpha".to_string(),
+                challenge_kind: "aggregate".to_string(),
+                target_assignment_ids: vec!["assign.node01.window0001".to_string()],
+                expected_manifest_digests: vec![worker_manifest.manifest_digest.clone()],
+                challenge: openagents_kernel_core::compute::ComputeValidatorChallengeSnapshot {
+                    request: openagents_kernel_core::compute::ComputeValidatorChallengeRequest {
+                        context: openagents_kernel_core::compute::ComputeValidatorChallengeContext {
+                            challenge_id: "challenge.alpha".to_string(),
+                            proof_bundle_digest: format!("sha256:{}", "3".repeat(64)),
+                            request_digest: format!("sha256:{}", "4".repeat(64)),
+                            delivery_proof_id: None,
+                            product_id: "psionic.training.gradient.elastic".to_string(),
+                            runtime_backend: "metal".to_string(),
+                            model_id: None,
+                            validator_pool_ref: Some("pool.alpha".to_string()),
+                            created_at_ms: 1_762_491_330_250,
+                            max_attempts: 1,
+                            lease_timeout_ms: 60_000,
+                        },
+                        protocol: openagents_kernel_core::compute::ComputeValidatorChallengeProtocolKind::GpuFreivaldsMerkleV1,
+                    },
+                    status: openagents_kernel_core::compute::ComputeValidatorChallengeStatus::Leased,
+                    attempts_used: 0,
+                    active_lease: Some(openagents_kernel_core::compute::ComputeValidatorChallengeLease {
+                        challenge_id: "challenge.alpha".to_string(),
+                        attempt: 1,
+                        validator_id: "22".repeat(32),
+                        leased_at_ms: 1_762_491_330_250,
+                        expires_at_ms: 1_762_491_390_250,
+                    }),
+                    final_result: None,
+                },
+                lease: Some(openagents_kernel_core::compute::ComputeValidatorChallengeLease {
+                    challenge_id: "challenge.alpha".to_string(),
+                    attempt: 1,
+                    validator_id: "22".repeat(32),
+                    leased_at_ms: 1_762_491_330_250,
+                    expires_at_ms: 1_762_491_390_250,
+                }),
+                result: None,
+                window: None,
+                contribution_outcomes: Vec::new(),
+                target_bindings: vec![super::PylonTrainingValidatorTargetAssignmentBinding {
+                    assignment_id: "assign.node01.window0001".to_string(),
+                    training_run_id: "run.alpha".to_string(),
+                    window_id: "window.0001".to_string(),
+                    contributor_pylon_id: "node.alpha".to_string(),
+                    contribution_id: "contrib.node01.window0001".to_string(),
+                    work_class: "small_model_local_training".to_string(),
+                    challenge_kind: "aggregate".to_string(),
+                    claim_id: "challenge.alpha".to_string(),
+                    submission_receipt_digest: "sha256:receipt-alpha".to_string(),
+                    manifest_digest: worker_manifest.manifest_digest.clone(),
+                    object_digest: "sha256:object-alpha".to_string(),
+                    lane_type: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                    lease_expires_at_ms: Some(1_762_491_390_250),
+                    artifacts: Vec::new(),
+                }],
+            },
+        )?;
+
+        let fake_adc_path = temp_dir.path().join("fake-adc.json");
+        std::fs::write(fake_adc_path.as_path(), "{}")?;
+        let _env = TrainingEnvGuard::set(&[
+            (ENV_TRAINING_GCS_ENDPOINT, base_url),
+            (ENV_TRAINING_GCS_BEARER_TOKEN, "token.alpha".to_string()),
+            (
+                ENV_GOOGLE_APPLICATION_CREDENTIALS,
+                fake_adc_path.display().to_string(),
+            ),
+        ]);
+
+        let client = PylonTrainingArtifactStoreClient::new(&config).await?;
+        let mut stale_worker_manifest = worker_manifest.clone();
+        stale_worker_manifest.artifacts.local_run_root = validator_run_root.display().to_string();
+        stale_worker_manifest.manifest_digest = stale_worker_manifest.canonical_digest()?;
+        let contribution_report = client
+            .upload_bundle(
+                &stale_worker_manifest,
+                PylonTrainingArtifactBundleKind::Contribution {
+                    assignment_id: "assign.node01.window0001".to_string(),
+                },
+            )
+            .await?;
+
+        let validator_contribution_root = validator_run_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("contrib.node01.window0001");
+        ensure(
+            contribution_report.state == "uploaded"
+                && contribution_report.objects.len() == 2
+                && std::fs::read(validator_contribution_root.join("adapter_delta_bundle.json"))?
+                    == canonical_adapter_delta_bundle
+                && std::fs::read(validator_contribution_root.join("proof_bundle.json"))?
+                    == canonical_proof_bundle
+                && std::fs::read(validator_contribution_root.join("contribution_receipt.json"))?
+                    == canonical_contribution_receipt
+                && std::fs::read(validator_contribution_root.join("artifact_manifest.json"))?
+                    == canonical_artifact_manifest,
+            "claimed validator run roots should not rewrite retained worker bridge bundles or their canonical receipt/manifest bindings during contribution uploads",
+        )?;
+
+        let stored = stored_objects
+            .lock()
+            .expect("validator upload object store")
+            .clone();
+        ensure(
+            stored
+                .get("/bucket/networks/trainnet.alpha/runs/run.alpha/windows/window.0001/contributions/assign.node01.window0001/adapter_delta_bundle.json")
+                .is_some_and(|payload| payload == &canonical_adapter_delta_bundle)
+                && stored
+                    .get("/bucket/networks/trainnet.alpha/runs/run.alpha/windows/window.0001/contributions/assign.node01.window0001/proof_bundle.json")
+                    .is_some_and(|payload| payload == &canonical_proof_bundle),
+            "claimed validator run roots should only republish the original worker bridge bytes under the worker assignment contract",
         )
     }
 
