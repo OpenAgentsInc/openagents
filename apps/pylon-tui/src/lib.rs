@@ -4547,10 +4547,11 @@ fn compute_operator_panel_stats_at(
         .filter(|settlement| provider_settlement_counted_as_settled(settlement.status.as_str()))
         .map(|settlement| settlement.amount_msats / 1_000)
         .sum::<u64>();
-    let total_earnings_sats = wallet_balance
-        .as_ref()
-        .map(|balance| balance.total_sats)
-        .unwrap_or(settled_sats_lifetime);
+    let snapshot_lifetime_earnings_sats = snapshot
+        .and_then(|value| value.earnings.as_ref())
+        .map(|earnings| earnings.lifetime_sats)
+        .unwrap_or(0);
+    let total_earnings_sats = snapshot_lifetime_earnings_sats.max(settled_sats_lifetime);
     let last_job_result = snapshot
         .and_then(|value| value.earnings.as_ref())
         .map(|earnings| earnings.last_job_result.as_str())
@@ -5720,6 +5721,53 @@ mod tests {
             stats.wallet_balance.as_ref().map(|balance| balance.total_sats),
             Some(377)
         );
+    }
+
+    #[test]
+    fn compute_operator_panel_stats_keeps_lifetime_earned_independent_from_wallet_balance() {
+        let now_ms = 1_762_700_500_000_u64;
+        let mut ledger = pylon::PylonLedger::default();
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "settlement-001".to_string(),
+            job_id: "job-paid".to_string(),
+            direction: "provider".to_string(),
+            status: "settled".to_string(),
+            amount_msats: 55_000,
+            payment_reference: Some("payment-001".to_string()),
+            receipt_detail: Some("provider payout settled".to_string()),
+            created_at_ms: now_ms - 5_000,
+            updated_at_ms: now_ms - 4_000,
+        });
+
+        let wallet_status = pylon::WalletStatusReport {
+            runtime: pylon::WalletRuntimeSurface::default(),
+            runtime_status: "connected".to_string(),
+            runtime_detail: Some("wallet synced after withdrawal".to_string()),
+            balance: pylon::WalletBalanceSnapshot {
+                spark_sats: 8,
+                lightning_sats: 0,
+                onchain_sats: 0,
+                total_sats: 8,
+            },
+            recent_payments: Vec::new(),
+        };
+
+        let stats = compute_operator_panel_stats_at(
+            ProviderDesiredMode::Online,
+            true,
+            Some(&wallet_status),
+            None,
+            &ledger,
+            0,
+            now_ms,
+        );
+
+        assert_eq!(
+            stats.wallet_balance.as_ref().map(|balance| balance.total_sats),
+            Some(8)
+        );
+        assert_eq!(stats.settled_sats_lifetime, 55);
+        assert_eq!(stats.total_earnings_sats, 55);
     }
 
     #[test]
