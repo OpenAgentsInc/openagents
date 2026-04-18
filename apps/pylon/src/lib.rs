@@ -17543,8 +17543,11 @@ async fn maybe_start_training_supervisor_from_retained_assignment(
             )
         })?;
     if state.active_runtime.as_ref().is_some_and(|active| {
-        active.assignment_id == lease.assignment_id
-            || training_supervision_is_active(active.process_state)
+        // Validator challenges can legitimately reuse the same assignment_id
+        // across sequential challenge leases for one contribution attempt. Only
+        // an actively running runtime or the exact same retained lease should
+        // block auto-launch.
+        training_supervision_is_active(active.process_state) || active.lease_id == lease.lease_id
     }) {
         return Ok(false);
     }
@@ -25647,6 +25650,131 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             .await?
                 && process.is_none(),
             "auto launch should not immediately relaunch the same failed assignment without a new retained lease",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn auto_launch_allows_newer_validator_challenge_lease_with_same_assignment_id()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_temp_dir, config, mut state, request) = training_supervisor_fixture()?;
+        let manifest_path = config
+            .training
+            .run_root
+            .join("manifests/run.alpha.validator.sample.json");
+        if let Some(parent) = manifest_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(manifest_path.as_path(), "{\"schema\":\"manifest.v1\"}\n")?;
+        let newer_lease_id =
+            "lease.validator.challenge.training.run.alpha.window.0001.sample.a1.attempt1";
+        state.lease_cache.insert(
+            newer_lease_id.to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: newer_lease_id.to_string(),
+                assignment_id: request.assignment_id.clone(),
+                training_run_id: request.training_run_id.clone(),
+                window_id: request.window_id.clone(),
+                membership_revision: request.membership_revision.clone(),
+                role: PylonTrainingRoleClaim::Validator,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-validator-sample".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0002".to_string()),
+                expires_at_ms: Some(1_762_491_260_900),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: Some(
+                    "challenge.training.run.alpha.window.0001.sample.a1".to_string(),
+                ),
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: Some(
+                    ComputeTrainingWorkClass::SmallModelLocalTraining,
+                ),
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(manifest_path.display().to_string()),
+                runtime_manifest_digest: Some("sha256:manifest-validator-sample".to_string()),
+                runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                runtime_operation: Some("validate_contribution".to_string()),
+                runtime_work_class: Some("validation_replay".to_string()),
+                updated_at_ms: 1_762_491_220_600,
+            },
+        );
+        state.active_runtime = Some(PylonTrainingActiveRuntimeState {
+            training_run_id: request.training_run_id.clone(),
+            window_id: request.window_id.clone(),
+            assignment_id: request.assignment_id.clone(),
+            lease_id: request.lease_id.clone(),
+            membership_revision: request.membership_revision.clone(),
+            role: PylonTrainingRoleClaim::Validator,
+            manifest_path: request.manifest_path.display().to_string(),
+            run_root: request.run_root.display().to_string(),
+            desired_state: PylonTrainingSupervisorDesiredState::Running,
+            process_state: PylonTrainingSupervisorProcessState::Stopped,
+            pid: None,
+            stdout_log_path: request
+                .run_root
+                .join("supervisor/attempt-1/stdout.log")
+                .display()
+                .to_string(),
+            stderr_log_path: request
+                .run_root
+                .join("supervisor/attempt-1/stderr.log")
+                .display()
+                .to_string(),
+            failure_receipt_path: Some(
+                request
+                    .run_root
+                    .join("supervisor/attempt-1/failure_receipt.json")
+                    .display()
+                    .to_string(),
+            ),
+            last_exit_code: Some(0),
+            last_heartbeat_at_ms: Some(1_762_491_220_050),
+            last_failure_reason: None,
+            launch_count: 1,
+            restart_count: 0,
+            updated_at_ms: 1_762_491_220_000,
+        });
+        let script_path = config
+            .training
+            .run_root
+            .join("supervisor_validator_sample_launch.sh");
+        std::fs::write(
+            script_path.as_path(),
+            format!(
+                "#!/bin/sh\nset -eu\nrun_root='{}'\nmkdir -p \"$run_root/status\"\necho 'stdout: validator-sample'\necho '{{\"membership_revision\":\"members.rev1\"}}' > \"$run_root/status/psionic_train_run_status_packet.json\"\nsleep 0.05\nexit 0\n",
+                request.run_root.display()
+            ),
+        )?;
+        let command = supervisor_shell_command(script_path.as_path());
+        let mut process = None::<super::PylonTrainingSupervisorProcess>;
+        ensure(
+            maybe_start_training_supervisor_from_retained_assignment(
+                &config,
+                &mut state,
+                &mut process,
+                Some(&command),
+            )
+            .await?
+                && process.is_some()
+                && state.active_runtime.as_ref().is_some_and(|active| {
+                    active.assignment_id == request.assignment_id
+                        && active.lease_id == newer_lease_id
+                        && active.role == PylonTrainingRoleClaim::Validator
+                        && active.manifest_path == manifest_path.display().to_string()
+                        && active.process_state == PylonTrainingSupervisorProcessState::Running
+                }),
+            "auto launch should replace a terminal validator runtime with the newer challenge lease even when the assignment id is reused",
+        )?;
+        let mut process = process.ok_or("missing launched training supervisor process")?;
+        poll_training_supervisor_until_exit(&config, &mut state, &mut process).await?;
+        ensure(
+            state.active_runtime.as_ref().is_some_and(|active| {
+                active.lease_id == newer_lease_id
+                    && active.process_state == PylonTrainingSupervisorProcessState::Stopped
+            }),
+            "the newer validator challenge lease should remain the retained active runtime after the relaunched process exits",
         )
     }
 
