@@ -233,6 +233,7 @@ const DEFAULT_TRAINING_GCS_SIGNED_URL_TTL_SECONDS: u64 = 900;
 const DEFAULT_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS: u64 = 3_600;
 const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
 const TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS: u64 = 1_000;
+const PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS: u64 = 5_000;
 #[cfg(test)]
 const TREASURY_PUBLIC_STATS_LATENCY_SLO_MS: u64 = 250;
 const PROVIDER_PRESENCE_RETENTION_WINDOW_MS: u64 = 86_400_000;
@@ -23818,6 +23819,13 @@ fn cached_public_stats_snapshot(state: &AppState) -> Option<PublicStatsSnapshot>
 }
 
 fn refresh_public_stats_cache(state: &AppState, now_unix_ms: u64) -> Option<PublicStatsSnapshot> {
+    if let Some(snapshot) = cached_public_stats_snapshot(state) {
+        let age_ms = now_unix_ms.saturating_sub(snapshot.as_of_unix_ms);
+        if age_ms < PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS {
+            return Some(snapshot);
+        }
+    }
+
     let store = state.store.read().ok()?;
     let launch_metrics = training_launch_live_metrics_snapshot(state);
     let mut snapshot =
@@ -30212,6 +30220,32 @@ mod tests {
             stats.training_public_state.launch_health.public_snapshot_source,
             "cached"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn refresh_public_stats_cache_skips_rebuild_while_cache_is_fresh() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let now = now_unix_ms();
+
+        let mut cached =
+            super::cached_public_stats_snapshot(&state).expect("initial cached stats");
+        cached.as_of_unix_ms = now;
+        cached.nexus_wallet_balance_sats = 321;
+        super::replace_public_stats_cache(&state, cached);
+
+        {
+            let mut store = state.store.write().expect("store write lock");
+            store.treasury.wallet_balance_sats = 999;
+        }
+
+        let snapshot = super::refresh_public_stats_cache(
+            &state,
+            now.saturating_add(super::PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS - 1),
+        )
+        .expect("cached refresh");
+        assert_eq!(snapshot.nexus_wallet_balance_sats, 321);
 
         Ok(())
     }
