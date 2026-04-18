@@ -715,6 +715,8 @@ pub struct TrainingNodeQuery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<TrainingNodeRoleClaim>,
     #[serde(default)]
     pub online_only: bool,
@@ -867,6 +869,8 @@ pub struct TrainingNodeClaimabilityProjection {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TrainingNodeReadinessProjection {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_network_id: Option<String>,
     pub identity_status: TrainingNodeReadinessDimension,
     pub admission_status: TrainingNodeReadinessDimension,
     pub presence_status: TrainingNodeReadinessDimension,
@@ -3148,7 +3152,13 @@ impl KernelState {
         let mut items = self
             .admitted_training_nodes
             .values()
-            .map(|record| admitted_training_node_view(&record.node, now_unix_ms))
+            .map(|record| {
+                admitted_training_node_view(
+                    &record.node,
+                    query.requested_network_id.as_deref(),
+                    now_unix_ms,
+                )
+            })
             .filter(|node| {
                 training_node_matches_network(node, query.network_id.as_deref())
                     && query
@@ -3170,6 +3180,7 @@ impl KernelState {
     pub fn get_admitted_training_node(
         &self,
         node_pubkey_hex: &str,
+        requested_network_id: Option<&str>,
         now_unix_ms: i64,
     ) -> Option<AdmittedTrainingNodeView> {
         let node_pubkey_hex =
@@ -3183,7 +3194,9 @@ impl KernelState {
                     .cmp(&rhs.node.updated_at_ms)
                     .then_with(|| lhs.node.build_digest.cmp(&rhs.node.build_digest))
             })
-            .map(|record| admitted_training_node_view(&record.node, now_unix_ms))
+            .map(|record| {
+                admitted_training_node_view(&record.node, requested_network_id, now_unix_ms)
+            })
     }
 
     pub fn record_training_node_admission(
@@ -14661,6 +14674,16 @@ fn training_node_matches_network(
     })
 }
 
+fn training_node_matches_requested_network(
+    node: &AdmittedTrainingNode,
+    requested_network_id: Option<&str>,
+) -> bool {
+    requested_network_id.is_none_or(|expected| {
+        node.allowed_networks.is_empty()
+            || node.allowed_networks.iter().any(|value| value == expected)
+    })
+}
+
 fn training_node_has_hard_gate_label(labels: &[String]) -> bool {
     pylon_training_hard_gate_reason(labels).is_some()
 }
@@ -14751,8 +14774,12 @@ fn training_node_role_readiness(
 fn training_node_claimability_block_reason(
     node: &AdmittedTrainingNode,
     role: TrainingNodeRoleClaim,
+    requested_network_id: Option<&str>,
     now_unix_ms: i64,
 ) -> Option<&'static str> {
+    if !training_node_matches_requested_network(node, requested_network_id) {
+        return Some("training_scheduler_network_not_allowed");
+    }
     if !node.role_claims.contains(&role) {
         return Some("role_not_admitted");
     }
@@ -14769,6 +14796,7 @@ fn training_node_claimability_block_reason(
 
 fn training_node_readiness_projection(
     node: &AdmittedTrainingNode,
+    requested_network_id: Option<&str>,
     now_unix_ms: i64,
 ) -> TrainingNodeReadinessProjection {
     let presence_status = training_node_presence_block_reason(node, now_unix_ms)
@@ -14777,25 +14805,39 @@ fn training_node_readiness_projection(
     let inventory_status = training_node_inventory_block_reason(node)
         .map(TrainingNodeReadinessDimension::blocked)
         .unwrap_or_else(TrainingNodeReadinessDimension::ready);
-    let network_scope_status = if node.allowed_networks.is_empty() {
-        TrainingNodeReadinessDimension {
-            state: "ready".to_string(),
-            ready: true,
-            reason: Some("network_scope_unrestricted".to_string()),
-        }
-    } else {
-        TrainingNodeReadinessDimension {
-            state: "ready".to_string(),
-            ready: true,
-            reason: Some("network_scope_declared".to_string()),
-        }
-    };
-    let claimability_status =
-        |role| match training_node_claimability_block_reason(node, role, now_unix_ms) {
-            Some(reason) => TrainingNodeReadinessDimension::blocked(reason),
-            None => TrainingNodeReadinessDimension::ready(),
+    let network_scope_status =
+        if !training_node_matches_requested_network(node, requested_network_id) {
+            TrainingNodeReadinessDimension::blocked("training_scheduler_network_not_allowed")
+        } else if node.allowed_networks.is_empty() {
+            TrainingNodeReadinessDimension {
+                state: "ready".to_string(),
+                ready: true,
+                reason: Some("network_scope_unrestricted".to_string()),
+            }
+        } else if requested_network_id.is_some() {
+            TrainingNodeReadinessDimension {
+                state: "ready".to_string(),
+                ready: true,
+                reason: Some("requested_network_allowed".to_string()),
+            }
+        } else {
+            TrainingNodeReadinessDimension {
+                state: "ready".to_string(),
+                ready: true,
+                reason: Some("network_scope_declared".to_string()),
+            }
         };
+    let claimability_status = |role| match training_node_claimability_block_reason(
+        node,
+        role,
+        requested_network_id,
+        now_unix_ms,
+    ) {
+        Some(reason) => TrainingNodeReadinessDimension::blocked(reason),
+        None => TrainingNodeReadinessDimension::ready(),
+    };
     TrainingNodeReadinessProjection {
+        requested_network_id: requested_network_id.map(ToOwned::to_owned),
         identity_status: TrainingNodeReadinessDimension::ready(),
         admission_status: TrainingNodeReadinessDimension::ready(),
         presence_status,
@@ -14819,6 +14861,7 @@ fn training_node_readiness_projection(
 
 fn admitted_training_node_view(
     node: &AdmittedTrainingNode,
+    requested_network_id: Option<&str>,
     now_unix_ms: i64,
 ) -> AdmittedTrainingNodeView {
     AdmittedTrainingNodeView {
@@ -14861,7 +14904,7 @@ fn admitted_training_node_view(
         last_successful_window_id: node.last_successful_window_id.clone(),
         online: training_node_is_online(node, now_unix_ms),
         eligible: training_node_is_eligible(node),
-        readiness: training_node_readiness_projection(node, now_unix_ms),
+        readiness: training_node_readiness_projection(node, requested_network_id, now_unix_ms),
     }
 }
 
