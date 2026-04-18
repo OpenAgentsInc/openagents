@@ -5388,7 +5388,7 @@ fn training_window_defensibility_audit(
                 .find(|assignment| assignment.assignment_id == plan.assignment_id)
         });
         let admitted_node =
-            kernel.get_admitted_training_node(plan.node_pubkey_hex.as_str(), recorded_at_ms);
+            kernel.get_admitted_training_node(plan.node_pubkey_hex.as_str(), None, recorded_at_ms);
         let hard_gate_reason = admitted_node.as_ref().and_then(|node| {
             (!node.eligible).then(|| {
                 pylon_training_hard_gate_reason(&node.active_reputation_labels)
@@ -6076,6 +6076,7 @@ fn training_fleet_abuse_snapshot(
     let admitted_nodes = kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
+            requested_network_id: None,
             role: None,
             online_only: false,
             eligible_only: false,
@@ -7104,9 +7105,11 @@ fn training_enrich_contribution_outcomes_with_node_tiers(
     recorded_at_ms: i64,
 ) {
     for contribution in contribution_outcomes {
-        let Some(node) = kernel
-            .get_admitted_training_node(contribution.contributor_node_id.as_str(), recorded_at_ms)
-        else {
+        let Some(node) = kernel.get_admitted_training_node(
+            contribution.contributor_node_id.as_str(),
+            None,
+            recorded_at_ms,
+        ) else {
             continue;
         };
         let mut metadata = contribution.metadata.clone();
@@ -9472,6 +9475,7 @@ fn prepare_homework_launch(
     let admitted_nodes = store.kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
+            requested_network_id: None,
             role: Some(TrainingNodeRoleClaim::Worker),
             online_only: false,
             eligible_only: false,
@@ -9571,6 +9575,7 @@ fn prepare_homework_launch(
                     .list_admitted_training_nodes(
                         &TrainingNodeQuery {
                             network_id: None,
+                            requested_network_id: None,
                             role: None,
                             online_only: false,
                             eligible_only: false,
@@ -11677,7 +11682,11 @@ async fn claim_training_run_lease(
         })?;
         let mut node = store
             .kernel
-            .get_admitted_training_node(request.node_pubkey_hex.as_str(), request.requested_at_ms)
+            .get_admitted_training_node(
+                request.node_pubkey_hex.as_str(),
+                request.requested_network_id.as_deref(),
+                request.requested_at_ms,
+            )
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
         node.active_reputation_labels = training_authority_reputation_labels_for_node(
             &store.kernel,
@@ -12446,7 +12455,11 @@ async fn claim_training_validator_challenge(
         })?;
         let mut node = store
             .kernel
-            .get_admitted_training_node(request.node_pubkey_hex.as_str(), request.requested_at_ms)
+            .get_admitted_training_node(
+                request.node_pubkey_hex.as_str(),
+                request.requested_network_id.as_deref(),
+                request.requested_at_ms,
+            )
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
         node.active_reputation_labels = training_authority_reputation_labels_for_node(
             &store.kernel,
@@ -12678,7 +12691,11 @@ async fn retry_training_validator_challenge(
         })?;
         let node = store
             .kernel
-            .get_admitted_training_node(request.node_pubkey_hex.as_str(), request.recorded_at_ms)
+            .get_admitted_training_node(
+                request.node_pubkey_hex.as_str(),
+                None,
+                request.recorded_at_ms,
+            )
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
         if !node.role_claims.contains(&TrainingNodeRoleClaim::Validator) {
             return Err(kernel_api_error(
@@ -12854,7 +12871,11 @@ async fn finalize_training_validator_challenge(
         })?;
         let node = store
             .kernel
-            .get_admitted_training_node(request.node_pubkey_hex.as_str(), request.recorded_at_ms)
+            .get_admitted_training_node(
+                request.node_pubkey_hex.as_str(),
+                None,
+                request.recorded_at_ms,
+            )
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
         if !node.role_claims.contains(&TrainingNodeRoleClaim::Validator) {
             return Err(kernel_api_error(
@@ -13846,6 +13867,7 @@ fn training_authority_reputation_labels_for_node(
     let admitted_nodes = kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
+            requested_network_id: None,
             role: None,
             online_only: false,
             eligible_only: false,
@@ -14319,6 +14341,7 @@ async fn publish_training_trn_state(
             store.kernel.list_admitted_training_nodes(
                 &TrainingNodeQuery {
                     network_id: None,
+                    requested_network_id: None,
                     role: None,
                     online_only: false,
                     eligible_only: false,
@@ -14972,6 +14995,7 @@ async fn list_training_nodes(
 async fn get_training_node(
     State(state): State<AppState>,
     Path(node_pubkey_hex): Path<String>,
+    Query(query): Query<TrainingNodeQuery>,
 ) -> Result<Json<AdmittedTrainingNodeView>, ApiError> {
     let now = now_unix_ms() as i64;
     let store = state.store.read().map_err(|_| ApiError {
@@ -14981,7 +15005,11 @@ async fn get_training_node(
     })?;
     let node = store
         .kernel
-        .get_admitted_training_node(node_pubkey_hex.as_str(), now)
+        .get_admitted_training_node(
+            node_pubkey_hex.as_str(),
+            query.requested_network_id.as_deref(),
+            now,
+        )
         .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
     Ok(Json(node))
 }
@@ -21070,6 +21098,7 @@ fn training_rollout_policy_snapshot(
     let admitted_nodes = store.kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
+            requested_network_id: None,
             role: None,
             online_only: false,
             eligible_only: false,
@@ -21187,6 +21216,7 @@ fn training_operator_summary_snapshot(
     let admitted_nodes = store.kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
+            requested_network_id: None,
             role: None,
             online_only: false,
             eligible_only: false,
@@ -22130,6 +22160,7 @@ fn training_run_detail_snapshot(
     let mut admitted_nodes = store.kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
+            requested_network_id: None,
             role: None,
             online_only: false,
             eligible_only: false,
@@ -22728,6 +22759,7 @@ fn training_visualization_snapshot_with_summary(
     let admitted_nodes = store.kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
+            requested_network_id: None,
             role: None,
             online_only: false,
             eligible_only: false,
@@ -23456,6 +23488,7 @@ fn build_homepage_snapshot(
     let training_nodes = store.kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
+            requested_network_id: None,
             role: None,
             online_only: false,
             eligible_only: false,
@@ -33115,6 +33148,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn requested_training_network_mismatch_reports_explicit_readiness_blocker() -> Result<()>
+    {
+        let app = build_router(test_config()?);
+
+        let admitted_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_node_admission_request(
+                            "node-networked",
+                            "sha256:build-networked",
+                            vec!["trainnet.alpha"],
+                            Vec::new(),
+                            Some(256),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(admitted_response.status(), StatusCode::OK);
+
+        let node_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-networked?requested_network_id=trainnet.beta")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(node_response.status(), StatusCode::OK);
+        let node = response_json::<AdmittedTrainingNodeView>(node_response).await?;
+        assert_eq!(
+            node.readiness.requested_network_id.as_deref(),
+            Some("trainnet.beta")
+        );
+        assert!(!node.readiness.network_scope_status.ready);
+        assert_eq!(
+            node.readiness.network_scope_status.reason.as_deref(),
+            Some("training_scheduler_network_not_allowed")
+        );
+        assert!(!node.readiness.claimability_status.worker_assignment.ready);
+        assert_eq!(
+            node.readiness
+                .claimability_status
+                .worker_assignment
+                .reason
+                .as_deref(),
+            Some("training_scheduler_network_not_allowed")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn training_node_admission_rejects_missing_build_digest() -> Result<()> {
         let app = build_router(test_config()?);
         let mut request = training_node_admission_request(
@@ -33635,7 +33725,7 @@ mod tests {
 
             let node = store
                 .kernel
-                .get_admitted_training_node("node-alpha", created_at_ms as i64 + 800)
+                .get_admitted_training_node("node-alpha", None, created_at_ms as i64 + 800)
                 .expect("retained admitted training node");
             assert_eq!(node.release_id, "openagents.pylon@0.1.0");
             assert_eq!(
@@ -33718,7 +33808,7 @@ mod tests {
                 .expect("training run");
             let node = store
                 .kernel
-                .get_admitted_training_node("node-overlap", created_at_ms as i64 + 801)
+                .get_admitted_training_node("node-overlap", None, created_at_ms as i64 + 801)
                 .expect("admitted node");
             (training_run, node)
         };
@@ -41021,7 +41111,7 @@ mod tests {
             let store = state.store.read().expect("read store");
             let validator = store
                 .kernel
-                .get_admitted_training_node("validator-weak", created_at_ms as i64 + 1_300)
+                .get_admitted_training_node("validator-weak", None, created_at_ms as i64 + 1_300)
                 .expect("validator node");
             let window = store
                 .kernel
