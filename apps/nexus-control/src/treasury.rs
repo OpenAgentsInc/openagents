@@ -1707,17 +1707,22 @@ impl TreasuryState {
                 Ok(state) => state,
                 Err(error) => recovered_treasury_state_from_payload(payload.as_str(), &error),
             },
-            Err(_) => Self::default(),
+                Err(_) => Self::default(),
         };
-        loaded.state_path = Some(state_path);
+        let mut changed = false;
         if loaded.next_challenge_nonce == 0 {
             loaded.next_challenge_nonce = 1;
+            changed = true;
         }
-        loaded.backfill_classified_payout_totals();
+        changed |= loaded.backfill_classified_payout_totals();
         loaded.public_snapshot = None;
-        loaded.trim_policy_change_history();
-        loaded.trim_retention();
+        changed |= loaded.trim_policy_change_history();
+        changed |= loaded.trim_retention();
         loaded.rebuild_payment_index();
+        loaded.state_path = Some(state_path);
+        if changed {
+            loaded.persist();
+        }
         loaded
     }
 
@@ -1749,17 +1754,18 @@ impl TreasuryState {
         Some(previous_total)
     }
 
-    fn backfill_classified_payout_totals(&mut self) {
+    fn backfill_classified_payout_totals(&mut self) -> bool {
         if self.payout_sats_paid_total == 0 {
-            return;
+            return false;
         }
         if self.accepted_work_payout_sats_paid_total > 0
             || self.beta_bonus_payout_sats_paid_total > 0
             || self.placeholder_payout_sats_paid_total > 0
         {
-            return;
+            return false;
         }
         self.placeholder_payout_sats_paid_total = self.payout_sats_paid_total;
+        true
     }
 
     fn cumulative_payout_totals(&self) -> TreasuryPayoutTotals {
@@ -2589,8 +2595,16 @@ impl TreasuryState {
         snapshot
     }
 
-    pub fn refresh_public_snapshot(&mut self, config: &TreasuryConfig, now_unix_ms: u64) {
+    pub fn refresh_public_snapshot_in_memory(
+        &mut self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) {
         self.public_snapshot = Some(self.build_public_snapshot(config, now_unix_ms));
+    }
+
+    pub fn refresh_public_snapshot(&mut self, config: &TreasuryConfig, now_unix_ms: u64) {
+        self.refresh_public_snapshot_in_memory(config, now_unix_ms);
         self.persist();
     }
 
@@ -3021,8 +3035,14 @@ impl TreasuryState {
     }
 
     pub fn record_wallet_error(&mut self, detail: impl Into<String>) {
+        let detail = detail.into();
+        if self.wallet_runtime_status.as_deref() == Some("error")
+            && self.wallet_last_error.as_deref() == Some(detail.as_str())
+        {
+            return;
+        }
         self.wallet_runtime_status = Some("error".to_string());
-        self.wallet_last_error = Some(detail.into());
+        self.wallet_last_error = Some(detail);
         self.persist();
     }
 
@@ -3135,14 +3155,12 @@ impl TreasuryState {
             self.payout_loop_runtime_status = Some("idle".to_string());
             self.payout_loop_last_error = None;
         }
-        self.persist();
     }
 
     pub fn note_payout_loop_error(&mut self, now_unix_ms: u64, detail: impl Into<String>) {
         self.payout_loop_runtime_status = Some("error".to_string());
         self.payout_loop_last_error = Some(detail.into());
         self.payout_loop_last_completed_at_unix_ms = Some(now_unix_ms);
-        self.persist();
     }
 
     pub fn issue_registration_challenge(
@@ -3325,11 +3343,13 @@ impl TreasuryState {
         online_identities: &[OnlinePylonIdentity],
         now_unix_ms: u64,
     ) -> TreasuryPayoutPreparation {
-        self.trim_retention();
-        let mut receipt_events = self.expire_stale_dispatches(config, now_unix_ms);
+        let mut changed = self.trim_retention();
+        let (mut receipt_events, stale_changed) =
+            self.expire_stale_dispatches(config, now_unix_ms);
+        changed |= stale_changed;
         let policy = self.active_policy(config);
         if !policy.treasury_enabled || policy.payout_interval_seconds == 0 {
-            self.refresh_public_snapshot(config, now_unix_ms);
+            self.refresh_public_snapshot_in_memory(config, now_unix_ms);
             return TreasuryPayoutPreparation {
                 dispatch_plans: Vec::new(),
                 receipt_events,
@@ -3340,8 +3360,13 @@ impl TreasuryState {
         let mut reserved_budget_sats = self.reserved_budget_last_24h(now_unix_ms);
         let mut dispatch_plans =
             self.claim_queued_payouts_for_dispatch(&policy, now_unix_ms, &mut reserved_budget_sats);
+        changed |= !dispatch_plans.is_empty();
         if online_identities.is_empty() {
-            self.refresh_public_snapshot(config, now_unix_ms);
+            if changed {
+                self.refresh_public_snapshot(config, now_unix_ms);
+            } else {
+                self.refresh_public_snapshot_in_memory(config, now_unix_ms);
+            }
             return TreasuryPayoutPreparation {
                 dispatch_plans,
                 receipt_events,
@@ -3349,7 +3374,11 @@ impl TreasuryState {
             };
         }
         if policy.payout_sats_per_window == 0 {
-            self.refresh_public_snapshot(config, now_unix_ms);
+            if changed {
+                self.refresh_public_snapshot(config, now_unix_ms);
+            } else {
+                self.refresh_public_snapshot_in_memory(config, now_unix_ms);
+            }
             return TreasuryPayoutPreparation {
                 dispatch_plans,
                 receipt_events,
@@ -3413,6 +3442,7 @@ impl TreasuryState {
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
                         receipt_events.push(skipped_payout_receipt(&record));
+                        changed = true;
                         if window_started_at_unix_ms >= current_window_started_at_unix_ms {
                             break;
                         }
@@ -3445,6 +3475,7 @@ impl TreasuryState {
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
                         receipt_events.push(skipped_payout_receipt(&record));
+                        changed = true;
                         if window_started_at_unix_ms >= current_window_started_at_unix_ms {
                             break;
                         }
@@ -3477,6 +3508,7 @@ impl TreasuryState {
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
                         receipt_events.push(skipped_payout_receipt(&record));
+                        changed = true;
                         if window_started_at_unix_ms >= current_window_started_at_unix_ms {
                             break;
                         }
@@ -3513,6 +3545,7 @@ impl TreasuryState {
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
                         receipt_events.push(skipped_payout_receipt(&record));
+                        changed = true;
                         if window_started_at_unix_ms >= current_window_started_at_unix_ms {
                             break;
                         }
@@ -3548,6 +3581,7 @@ impl TreasuryState {
                         self.payout_records_by_key
                             .insert(payout_key, record.clone());
                         receipt_events.push(skipped_payout_receipt(&record));
+                        changed = true;
                         if window_started_at_unix_ms >= current_window_started_at_unix_ms {
                             break;
                         }
@@ -3586,6 +3620,7 @@ impl TreasuryState {
                         payment_request: target.spark_address,
                         amount_sats: policy.payout_sats_per_window,
                     });
+                    changed = true;
                 }
 
                 if window_started_at_unix_ms >= current_window_started_at_unix_ms {
@@ -3596,7 +3631,11 @@ impl TreasuryState {
             }
         }
 
-        self.refresh_public_snapshot(config, now_unix_ms);
+        if changed {
+            self.refresh_public_snapshot(config, now_unix_ms);
+        } else {
+            self.refresh_public_snapshot_in_memory(config, now_unix_ms);
+        }
         TreasuryPayoutPreparation {
             dispatch_plans,
             receipt_events,
@@ -3862,10 +3901,11 @@ impl TreasuryState {
         &mut self,
         config: &TreasuryConfig,
         now_unix_ms: u64,
-    ) -> Vec<TreasuryReceiptEvent> {
+    ) -> (Vec<TreasuryReceiptEvent>, bool) {
         let timeout_ms =
             config.dispatch_result_timeout_ms(self.active_policy(config).payout_interval_ms());
         let mut receipt_events = Vec::new();
+        let mut changed = false;
         for record in self.payout_records_by_key.values_mut() {
             if record.status != "dispatching" || record.payment_id.is_some() {
                 continue;
@@ -3880,8 +3920,9 @@ impl TreasuryState {
                 record.fail_receipt_recorded = true;
                 receipt_events.push(failed_payout_receipt(record));
             }
+            changed = true;
         }
-        receipt_events
+        (receipt_events, changed)
     }
 
     fn payout_reconciliation_started_at(
@@ -3910,28 +3951,33 @@ impl TreasuryState {
         (reconciliation_started_at_unix_ms, None)
     }
 
-    fn trim_policy_change_history(&mut self) {
+    fn trim_policy_change_history(&mut self) -> bool {
         if self.policy_change_history.len() <= TREASURY_POLICY_CHANGE_LIMIT {
-            return;
+            return false;
         }
         let overflow = self
             .policy_change_history
             .len()
             .saturating_sub(TREASURY_POLICY_CHANGE_LIMIT);
         self.policy_change_history.drain(0..overflow);
+        true
     }
 
-    fn prune_challenges(&mut self, now_unix_ms: u64) {
+    fn prune_challenges(&mut self, now_unix_ms: u64) -> bool {
+        let before = self.registration_challenges_by_key.len();
         self.registration_challenges_by_key.retain(|_, challenge| {
             !challenge.consumed && now_unix_ms <= challenge.expires_at_unix_ms
         });
+        self.registration_challenges_by_key.len() != before
     }
 
-    fn trim_retention(&mut self) {
+    fn trim_retention(&mut self) -> bool {
+        let mut changed = false;
         if self.next_challenge_nonce == 0 {
             self.next_challenge_nonce = 1;
+            changed = true;
         }
-        self.trim_policy_change_history();
+        changed |= self.trim_policy_change_history();
         if self.payout_targets_by_identity.len() > TREASURY_TARGET_LIMIT {
             let overflow = self
                 .payout_targets_by_identity
@@ -3946,6 +3992,7 @@ impl TreasuryState {
             for victim in victims {
                 self.payout_targets_by_identity.remove(&victim);
             }
+            changed = true;
         }
         if self.payout_records_by_key.len() > TREASURY_PAYOUT_LIMIT {
             let mut records = self
@@ -3958,6 +4005,7 @@ impl TreasuryState {
             for record in records.into_iter().take(overflow) {
                 self.payout_records_by_key.remove(&record.payout_key);
             }
+            changed = true;
         }
         if self.funding_receives_by_payment_id.len() > TREASURY_RECEIVE_LIMIT {
             let mut receives = self
@@ -3971,15 +4019,21 @@ impl TreasuryState {
                 self.funding_receives_by_payment_id
                     .remove(&receive.payment_id);
             }
+            changed = true;
         }
         let now_unix_ms = now_unix_ms();
         let oldest_allowed = now_unix_ms.saturating_sub(TREASURY_STATE_RETENTION_WINDOW_MS);
+        let payout_records_before = self.payout_records_by_key.len();
         self.payout_records_by_key
             .retain(|_, record| record.updated_at_unix_ms >= oldest_allowed);
+        changed |= self.payout_records_by_key.len() != payout_records_before;
+        let funding_receives_before = self.funding_receives_by_payment_id.len();
         self.funding_receives_by_payment_id
             .retain(|_, receive| receive.updated_at_unix_ms >= oldest_allowed);
-        self.prune_challenges(now_unix_ms);
+        changed |= self.funding_receives_by_payment_id.len() != funding_receives_before;
+        changed |= self.prune_challenges(now_unix_ms);
         self.rebuild_payment_index();
+        changed
     }
 
     fn rebuild_payment_index(&mut self) {
@@ -6720,6 +6774,83 @@ mod tests {
         let prepared_again = state.prepare_due_payouts(&config, &online, now_unix_ms);
         assert!(prepared_again.dispatch_plans.is_empty());
         assert!(prepared_again.receipt_events.is_empty());
+    }
+
+    #[test]
+    fn no_op_payout_preparation_does_not_rewrite_treasury_state() {
+        let path = unique_treasury_state_path("noop-persist");
+        std::fs::write(path.as_path(), "sentinel\n").expect("write sentinel");
+
+        let mut state = TreasuryState::default();
+        state.next_challenge_nonce = 1;
+        state.state_path = Some(path.clone());
+
+        let config = test_treasury_config();
+        let prepared = state.prepare_due_payouts(&config, &[], super::now_unix_ms());
+
+        assert!(prepared.dispatch_plans.is_empty());
+        assert!(prepared.receipt_events.is_empty());
+        assert_eq!(
+            std::fs::read_to_string(path.as_path()).expect("read sentinel"),
+            "sentinel\n"
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn stale_treasury_state_is_pruned_and_rewritten_on_load() {
+        let path = unique_treasury_state_path("load-compact");
+        let mut state = TreasuryState::default();
+        state.next_challenge_nonce = 1;
+        let stale_updated_at_unix_ms =
+            super::now_unix_ms().saturating_sub(super::TREASURY_STATE_RETENTION_WINDOW_MS + 1_000);
+
+        for index in 0..5 {
+            let payout_key = format!("{index:08}:pubkey-{index:08}");
+            state.payout_records_by_key.insert(
+                payout_key.clone(),
+                TreasuryPayoutRecord {
+                    payout_key,
+                    nostr_pubkey_hex: format!("pubkey-{index:08}"),
+                    payout_target: format!("spark:{index:08}"),
+                    amount_sats: 1,
+                    status: "confirmed".to_string(),
+                    reason: None,
+                    payment_id: Some(format!("payment-{index:08}")),
+                    window_started_at_unix_ms: stale_updated_at_unix_ms,
+                    window_ends_at_unix_ms: stale_updated_at_unix_ms + 1,
+                    created_at_unix_ms: stale_updated_at_unix_ms,
+                    updated_at_unix_ms: stale_updated_at_unix_ms,
+                    sellable_at_window_open: true,
+                    dispatch_receipt_recorded: true,
+                    confirm_receipt_recorded: true,
+                    fail_receipt_recorded: false,
+                    skip_receipt_recorded: false,
+                    counted_in_paid_total: true,
+                    classification: TreasuryPayoutClassification::default(),
+                },
+            );
+        }
+
+        std::fs::write(
+            path.as_path(),
+            serde_json::to_string(&state).expect("serialize oversized state"),
+        )
+        .expect("write oversized state");
+
+        let loaded = TreasuryState::new(path.clone());
+        assert!(loaded.payout_records_by_key.is_empty());
+
+        let rewritten: TreasuryState = serde_json::from_str(
+            std::fs::read_to_string(path.as_path())
+                .expect("read compacted state")
+                .as_str(),
+        )
+        .expect("parse compacted state");
+        assert!(rewritten.payout_records_by_key.is_empty());
+
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
