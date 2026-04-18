@@ -14649,13 +14649,17 @@ fn inspect_training_retained_contribution_artifacts(
 fn training_retained_contribution_input(
     active: &PylonTrainingActiveRuntimeState,
     retained: &PylonTrainingRetainedContributionArtifacts,
+    lease_manifest_digest: Option<&str>,
 ) -> PylonTrainingWindowContributionInput {
+    let manifest_digest = lease_manifest_digest
+        .map(str::to_owned)
+        .unwrap_or_else(|| retained.artifact_manifest_digest.clone());
     PylonTrainingWindowContributionInput {
         contribution_id: retained.contribution_id.clone(),
         assignment_id: retained.assignment_id.clone(),
         submission_receipt_digest: retained.contribution_receipt_digest.clone(),
         artifact_id: retained.artifact_id.clone(),
-        manifest_digest: retained.artifact_manifest_digest.clone(),
+        manifest_digest,
         object_digest: retained.object_digest.clone(),
         artifact_receipt_digest: retained.contribution_receipt_digest.clone(),
         provenance_bundle_digest: retained.sealed_window_bundle_digest.clone(),
@@ -14778,6 +14782,10 @@ async fn maybe_seal_training_terminal_window(
     if !training_authority_receipt_needs_attempt(state, receipt_key.as_str()) {
         return Ok(false);
     }
+    let lease_manifest_digest = state
+        .lease_cache
+        .get(active.lease_id.as_str())
+        .and_then(|lease| lease.manifest_digest.as_deref());
     let request = PylonSealTrainingWindowRequest {
         idempotency_key: format!(
             "training.window_seal.{}.{}",
@@ -14785,7 +14793,11 @@ async fn maybe_seal_training_terminal_window(
         ),
         recorded_at_ms: now_epoch_ms(),
         window_id: active.window_id.clone(),
-        contribution_outcomes: vec![training_retained_contribution_input(active, retained)],
+        contribution_outcomes: vec![training_retained_contribution_input(
+            active,
+            retained,
+            lease_manifest_digest,
+        )],
     };
     let receipt_subject = active.window_id.clone();
     match client
@@ -36153,26 +36165,54 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             .lock()
             .expect("training autonomous request bodies")
             .clone();
+        let seal_payload = bodies
+            .get("/api/training/windows/window.0001/seal")
+            .and_then(|entries| entries.first())
+            .cloned();
+        let validator_finalize_payload = bodies
+            .get("/api/training/validator-challenges/challenge.alpha/finalize")
+            .and_then(|entries| entries.first())
+            .cloned();
+        let reconcile_payload = bodies
+            .get("/api/training/windows/window.0001/reconcile")
+            .and_then(|entries| entries.first())
+            .cloned();
         ensure(
-            bodies
-                .get("/api/training/validator-challenges/challenge.alpha/finalize")
-                .and_then(|entries| entries.first())
-                .is_some_and(|payload| {
-                    payload.get("training_disposition") == Some(&json!("accepted"))
-                        && payload
-                            .get("result")
-                            .and_then(|result| result.get("challenge_id"))
-                            == Some(&json!("challenge.alpha"))
-                })
-                && bodies
-                    .get("/api/training/windows/window.0001/reconcile")
+            seal_payload.as_ref().is_some_and(|payload| {
+                payload
+                    .get("contribution_outcomes")
+                    .and_then(Value::as_array)
                     .and_then(|entries| entries.first())
-                    .is_some_and(|payload| {
-                        payload.get("runtime_smoke_passed") == Some(&json!(true))
-                            && payload.get("held_out_average_score_bps") == Some(&json!(10_000))
-                            && payload.get("benchmark_pass_rate_bps") == Some(&json!(10_000))
-                    }),
-            "the validator finalize and reconcile requests should be driven directly from retained runtime state",
+                    .is_some_and(|contribution| {
+                        contribution.get("manifest_digest")
+                            == Some(&json!(manifest.manifest_digest))
+                    })
+            }),
+            &format!(
+                "the retained worker seal should reuse the lease manifest digest: {seal_payload:#?}",
+            ),
+        )?;
+        ensure(
+            validator_finalize_payload.as_ref().is_some_and(|payload| {
+                payload.get("training_disposition") == Some(&json!("accepted"))
+                    && payload
+                        .get("result")
+                        .and_then(|result| result.get("challenge_id"))
+                        == Some(&json!("challenge.alpha"))
+            }),
+            &format!(
+                "validator finalize should be driven directly from retained runtime state: {validator_finalize_payload:#?}",
+            ),
+        )?;
+        ensure(
+            reconcile_payload.as_ref().is_some_and(|payload| {
+                payload.get("runtime_smoke_passed") == Some(&json!(true))
+                    && payload.get("held_out_average_score_bps") == Some(&json!(10_000))
+                    && payload.get("benchmark_pass_rate_bps") == Some(&json!(10_000))
+            }),
+            &format!(
+                "reconcile should be driven directly from retained runtime state: {reconcile_payload:#?}",
+            ),
         )
     }
 
