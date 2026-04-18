@@ -20400,7 +20400,7 @@ async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool
                     .sync_continuity_alerts(&state.config.treasury, now);
                 store
                     .treasury
-                    .refresh_public_snapshot(&state.config.treasury, now);
+                    .refresh_public_snapshot_in_memory(&state.config.treasury, now);
                 record_treasury_receipt_events(&mut store, receipt_events, now);
             }
             return;
@@ -20428,7 +20428,7 @@ async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool
                 );
                 store
                     .treasury
-                    .refresh_public_snapshot(&state.config.treasury, now);
+                    .refresh_public_snapshot_in_memory(&state.config.treasury, now);
                 record_treasury_receipt_events(&mut store, receipt_events, now);
             }
         }
@@ -20440,7 +20440,7 @@ async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool
                     .sync_continuity_alerts(&state.config.treasury, now);
                 store
                     .treasury
-                    .refresh_public_snapshot(&state.config.treasury, now);
+                    .refresh_public_snapshot_in_memory(&state.config.treasury, now);
                 record_treasury_receipt_events(&mut store, receipt_events, now);
             }
         }
@@ -20582,12 +20582,10 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
                 store
                     .treasury
                     .note_payout_loop_error(cycle_started_at_unix_ms, reason);
-                store
-                    .treasury
-                    .refresh_public_snapshot_in_memory(
-                        &state.config.treasury,
-                        cycle_started_at_unix_ms,
-                    );
+                store.treasury.refresh_public_snapshot_in_memory(
+                    &state.config.treasury,
+                    cycle_started_at_unix_ms,
+                );
             }
             let _ = refresh_public_stats_cache(state, cycle_started_at_unix_ms);
             finish_treasury_dispatch_cycle();
@@ -20615,10 +20613,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
             .sync_continuity_alerts(&state.config.treasury, cycle_completed_at_unix_ms);
         store
             .treasury
-            .refresh_public_snapshot_in_memory(
-                &state.config.treasury,
-                cycle_completed_at_unix_ms,
-            );
+            .refresh_public_snapshot_in_memory(&state.config.treasury, cycle_completed_at_unix_ms);
         record_treasury_receipt_events(&mut store, receipt_events, cycle_completed_at_unix_ms);
     } else {
         tracing::error!("treasury dispatch cycle completion failed: session_store_poisoned");
@@ -20638,7 +20633,7 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
                 store.treasury.record_wallet_error(error.reason);
                 store
                     .treasury
-                    .refresh_public_snapshot(&state.config.treasury, now);
+                    .refresh_public_snapshot_in_memory(&state.config.treasury, now);
             }
             let _ = refresh_public_stats_cache(state, now);
             return;
@@ -20675,7 +20670,7 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
             store.treasury.record_wallet_error(timeout_reason);
             store
                 .treasury
-                .refresh_public_snapshot(&state.config.treasury, now_unix_ms());
+                .refresh_public_snapshot_in_memory(&state.config.treasury, now_unix_ms());
         }
     }
     let _ = refresh_public_stats_cache(state, now_unix_ms());
@@ -20702,7 +20697,7 @@ async fn apply_treasury_dispatch_batch(state: &AppState, batch: TreasuryDispatch
         );
         store
             .treasury
-            .refresh_public_snapshot(&state.config.treasury, now);
+            .refresh_public_snapshot_in_memory(&state.config.treasury, now);
         record_treasury_receipt_events(&mut store, receipt_events, now);
     }
 }

@@ -133,6 +133,26 @@ fn default_treasury_public_snapshot_source() -> String {
     TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL.to_string()
 }
 
+fn continuity_alerts_require_persist(
+    previous: &[TreasuryContinuityAlert],
+    next: &[TreasuryContinuityAlert],
+) -> bool {
+    if previous.len() != next.len() {
+        return true;
+    }
+    previous.iter().any(|prior| {
+        let Some(next_alert) = next
+            .iter()
+            .find(|candidate| candidate.alert_id == prior.alert_id)
+        else {
+            return true;
+        };
+        prior.severity != next_alert.severity
+            || prior.reason != next_alert.reason
+            || prior.started_at_unix_ms != next_alert.started_at_unix_ms
+    })
+}
+
 #[derive(Debug, Clone)]
 pub struct TreasuryConfig {
     pub enabled: bool,
@@ -1707,7 +1727,7 @@ impl TreasuryState {
                 Ok(state) => state,
                 Err(error) => recovered_treasury_state_from_payload(payload.as_str(), &error),
             },
-                Err(_) => Self::default(),
+            Err(_) => Self::default(),
         };
         let mut changed = false;
         if loaded.next_challenge_nonce == 0 {
@@ -2261,8 +2281,14 @@ impl TreasuryState {
             receipts.push(treasury_alert_cleared_receipt(&alert, now_unix_ms));
         }
 
+        let persist_needed = continuity_alerts_require_persist(
+            self.active_continuity_alerts.as_slice(),
+            next_alerts.as_slice(),
+        );
         self.active_continuity_alerts = next_alerts;
-        self.persist();
+        if persist_needed {
+            self.persist();
+        }
         receipts
     }
 
@@ -2595,11 +2621,7 @@ impl TreasuryState {
         snapshot
     }
 
-    pub fn refresh_public_snapshot_in_memory(
-        &mut self,
-        config: &TreasuryConfig,
-        now_unix_ms: u64,
-    ) {
+    pub fn refresh_public_snapshot_in_memory(&mut self, config: &TreasuryConfig, now_unix_ms: u64) {
         self.public_snapshot = Some(self.build_public_snapshot(config, now_unix_ms));
     }
 
@@ -3344,8 +3366,7 @@ impl TreasuryState {
         now_unix_ms: u64,
     ) -> TreasuryPayoutPreparation {
         let mut changed = self.trim_retention();
-        let (mut receipt_events, stale_changed) =
-            self.expire_stale_dispatches(config, now_unix_ms);
+        let (mut receipt_events, stale_changed) = self.expire_stale_dispatches(config, now_unix_ms);
         changed |= stale_changed;
         let policy = self.active_policy(config);
         if !policy.treasury_enabled || policy.payout_interval_seconds == 0 {
@@ -3702,30 +3723,46 @@ impl TreasuryState {
         self.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
 
         let mut receipt_events = Vec::new();
+        let mut persist_needed = false;
         let mut last_confirmed_payout_at_unix_ms = self.last_confirmed_payout_at_unix_ms;
         let mut orphan_recovery_payout_keys = self.orphan_payment_recovery_keys();
         let mut payments = snapshot.payments.clone();
         payments.sort_by_key(|payment| payment.timestamp);
         for payment in &payments {
             if payment.direction.eq_ignore_ascii_case("receive") {
-                self.funding_receives_by_payment_id
-                    .entry(payment.id.clone())
-                    .and_modify(|existing| {
+                let payment_updated_at_unix_ms = payment.timestamp.saturating_mul(1_000);
+                if let Some(existing) = self
+                    .funding_receives_by_payment_id
+                    .get_mut(payment.id.as_str())
+                {
+                    if existing.status != payment.status
+                        || existing.amount_sats != payment.amount_sats
+                        || existing.method != payment.method
+                        || existing.description != payment.description
+                        || existing.updated_at_unix_ms != payment_updated_at_unix_ms
+                    {
                         existing.status = payment.status.clone();
                         existing.amount_sats = payment.amount_sats;
                         existing.method = payment.method.clone();
                         existing.description = payment.description.clone();
-                        existing.updated_at_unix_ms = payment.timestamp.saturating_mul(1_000);
-                    })
-                    .or_insert(TreasuryFundingReceive {
-                        payment_id: payment.id.clone(),
-                        status: payment.status.clone(),
-                        amount_sats: payment.amount_sats,
-                        method: payment.method.clone(),
-                        description: payment.description.clone(),
-                        recorded_at_unix_ms: payment.timestamp.saturating_mul(1_000),
-                        updated_at_unix_ms: payment.timestamp.saturating_mul(1_000),
-                    });
+                        existing.updated_at_unix_ms = payment_updated_at_unix_ms;
+                        persist_needed = true;
+                    }
+                } else {
+                    self.funding_receives_by_payment_id.insert(
+                        payment.id.clone(),
+                        TreasuryFundingReceive {
+                            payment_id: payment.id.clone(),
+                            status: payment.status.clone(),
+                            amount_sats: payment.amount_sats,
+                            method: payment.method.clone(),
+                            description: payment.description.clone(),
+                            recorded_at_unix_ms: payment_updated_at_unix_ms,
+                            updated_at_unix_ms: payment_updated_at_unix_ms,
+                        },
+                    );
+                    persist_needed = true;
+                }
             }
 
             if !payment.direction.eq_ignore_ascii_case("send") {
@@ -3740,11 +3777,15 @@ impl TreasuryState {
             };
             let payment_updated_at_unix_ms = payment.timestamp.saturating_mul(1_000);
             if recovered_orphan {
-                self.last_dispatch_at_unix_ms = Some(
+                let next_last_dispatch_at_unix_ms = Some(
                     self.last_dispatch_at_unix_ms
                         .unwrap_or(payment_updated_at_unix_ms)
                         .max(payment_updated_at_unix_ms),
                 );
+                if self.last_dispatch_at_unix_ms != next_last_dispatch_at_unix_ms {
+                    self.last_dispatch_at_unix_ms = next_last_dispatch_at_unix_ms;
+                    persist_needed = true;
+                }
                 tracing::info!(
                     payment_id = payment.id.as_str(),
                     payout_key = payout_key.as_str(),
@@ -3754,29 +3795,51 @@ impl TreasuryState {
                 );
             }
             let Some(record) = self.payout_records_by_key.get_mut(&payout_key) else {
-                self.payout_key_by_payment_id.remove(payment.id.as_str());
+                if self
+                    .payout_key_by_payment_id
+                    .remove(payment.id.as_str())
+                    .is_some()
+                {
+                    persist_needed = true;
+                }
                 continue;
             };
             if recovered_orphan && !record.dispatch_receipt_recorded {
                 record.dispatch_receipt_recorded = true;
+                persist_needed = true;
                 receipt_events.push(dispatched_payout_receipt(record, payment.id.as_str()));
             }
-            record.updated_at_unix_ms = payment_updated_at_unix_ms;
+            if record.updated_at_unix_ms != payment_updated_at_unix_ms {
+                record.updated_at_unix_ms = payment_updated_at_unix_ms;
+                persist_needed = true;
+            }
             if wallet_payment_is_confirmed(payment) {
                 let confirmed_at_unix_ms = payment_updated_at_unix_ms;
-                last_confirmed_payout_at_unix_ms = Some(
+                let next_last_confirmed_payout_at_unix_ms = Some(
                     last_confirmed_payout_at_unix_ms
                         .unwrap_or(confirmed_at_unix_ms)
                         .max(confirmed_at_unix_ms),
                 );
-                record.status = "confirmed".to_string();
-                record.reason = None;
+                if last_confirmed_payout_at_unix_ms != next_last_confirmed_payout_at_unix_ms {
+                    last_confirmed_payout_at_unix_ms = next_last_confirmed_payout_at_unix_ms;
+                    persist_needed = true;
+                }
+                if record.status != "confirmed" {
+                    record.status = "confirmed".to_string();
+                    persist_needed = true;
+                }
+                if record.reason.is_some() {
+                    record.reason = None;
+                    persist_needed = true;
+                }
                 if !record.confirm_receipt_recorded {
                     record.confirm_receipt_recorded = true;
+                    persist_needed = true;
                     receipt_events.push(confirmed_payout_receipt(record, payment.id.as_str()));
                 }
                 if !record.counted_in_paid_total {
                     record.counted_in_paid_total = true;
+                    persist_needed = true;
                     self.payout_sats_paid_total = self
                         .payout_sats_paid_total
                         .saturating_add(record.amount_sats);
@@ -3809,24 +3872,43 @@ impl TreasuryState {
                     }
                 }
             } else if wallet_payment_is_failed(payment) {
-                record.status = "failed".to_string();
-                record.reason = payment
+                let next_reason = payment
                     .status_detail
                     .clone()
                     .or_else(|| Some(payment.status.clone()));
+                if record.status != "failed" {
+                    record.status = "failed".to_string();
+                    persist_needed = true;
+                }
+                if record.reason != next_reason {
+                    record.reason = next_reason;
+                    persist_needed = true;
+                }
                 if !record.fail_receipt_recorded {
                     record.fail_receipt_recorded = true;
+                    persist_needed = true;
                     receipt_events.push(failed_payout_receipt(record));
                 }
             } else {
-                record.status = "dispatched".to_string();
-                record.reason = None;
+                if record.status != "dispatched" {
+                    record.status = "dispatched".to_string();
+                    persist_needed = true;
+                }
+                if record.reason.is_some() {
+                    record.reason = None;
+                    persist_needed = true;
+                }
             }
         }
-        self.last_confirmed_payout_at_unix_ms = last_confirmed_payout_at_unix_ms;
+        if self.last_confirmed_payout_at_unix_ms != last_confirmed_payout_at_unix_ms {
+            self.last_confirmed_payout_at_unix_ms = last_confirmed_payout_at_unix_ms;
+            persist_needed = true;
+        }
 
-        self.trim_retention();
-        self.persist();
+        persist_needed |= self.trim_retention();
+        if persist_needed {
+            self.persist();
+        }
         receipt_events
     }
 
@@ -6799,6 +6881,36 @@ mod tests {
     }
 
     #[test]
+    fn wallet_snapshot_without_ledger_changes_does_not_rewrite_treasury_state() {
+        let path = unique_treasury_state_path("wallet-refresh-noop");
+        let mut state = TreasuryState::default();
+        state.next_challenge_nonce = 1;
+        state.state_path = Some(path.clone());
+        state.persist();
+
+        let before = std::fs::read_to_string(path.as_path()).expect("read persisted state");
+        let receipts = state.apply_wallet_snapshot(
+            &TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                wallet_hydration_mode: Some("sync_wallet_then_cached_balance".to_string()),
+                wallet_payment_scan_mode: Some("recent_only".to_string()),
+                balance_sats: 321,
+                payments: Vec::new(),
+            },
+            1_776_028_000_000u64,
+        );
+
+        assert!(receipts.is_empty());
+        assert_eq!(
+            std::fs::read_to_string(path.as_path()).expect("read persisted state"),
+            before
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn stale_treasury_state_is_pruned_and_rewritten_on_load() {
         let path = unique_treasury_state_path("load-compact");
         let mut state = TreasuryState::default();
@@ -8088,6 +8200,57 @@ mod tests {
                 .all(|event| event.receipt_type == "treasury.alert.cleared")
         );
         assert!(state.active_continuity_alerts.is_empty());
+    }
+
+    #[test]
+    fn continuity_alert_refresh_without_structural_change_does_not_rewrite_state() {
+        let path = unique_treasury_state_path("continuity-noop");
+        let mut state = TreasuryState::default();
+        state.next_challenge_nonce = 1;
+        state.state_path = Some(path.clone());
+        let config = test_treasury_config();
+        let eligible_at_unix_ms = 1_800_000;
+        state.eligible_online_payout_targets = 1;
+        state.sellable_pylons_online_now = 1;
+        state.latest_eligible_window_started_at_unix_ms = Some(eligible_at_unix_ms);
+        state.payout_records_by_key.insert(
+            "pending-a".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "pending-a".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 2,
+                status: "dispatching".to_string(),
+                reason: None,
+                payment_id: None,
+                window_started_at_unix_ms: eligible_at_unix_ms,
+                window_ends_at_unix_ms: eligible_at_unix_ms.saturating_add(20_000),
+                created_at_unix_ms: eligible_at_unix_ms,
+                updated_at_unix_ms: eligible_at_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        let alert_at_unix_ms =
+            eligible_at_unix_ms + super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000;
+        let raised = state.sync_continuity_alerts(&config, alert_at_unix_ms);
+        assert_eq!(raised.len(), 2);
+
+        let before = std::fs::read_to_string(path.as_path()).expect("read persisted state");
+        let refreshed = state.sync_continuity_alerts(&config, alert_at_unix_ms.saturating_add(1));
+        assert!(refreshed.is_empty());
+        assert_eq!(
+            std::fs::read_to_string(path.as_path()).expect("read persisted state"),
+            before
+        );
+
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
