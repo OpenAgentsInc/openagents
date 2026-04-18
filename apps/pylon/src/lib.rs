@@ -13453,11 +13453,16 @@ fn inspect_training_retained_contribution_artifacts(
                 .join("checkpoints")
                 .join("latest_accepted_checkpoint_pointer.json")
         });
-    stabilize_training_retained_psionic_worker_contract(
-        contribution_root.as_path(),
-        contribution_receipt_path.as_path(),
-        artifact_manifest_path.as_path(),
-    )?;
+    if active.role == PylonTrainingRoleClaim::Worker {
+        // Worker closeout snapshots mutable run-root artifacts into the retained contribution
+        // bundle before seal. Validator replay consumes that retained worker contract as input
+        // and must not restabilize it a second time under a validator-local path.
+        stabilize_training_retained_psionic_worker_contract(
+            contribution_root.as_path(),
+            contribution_receipt_path.as_path(),
+            artifact_manifest_path.as_path(),
+        )?;
+    }
 
     let Some(contribution_receipt) = load_training_json_artifact_value(
         contribution_receipt_path.as_path(),
@@ -23846,19 +23851,21 @@ mod tests {
         PylonTrainingWindowProgressRequest, PylonWalletCreditSummary, PylonWalletInvoiceRecord,
         PylonWalletPaymentRecord, ReportContext, TRN_TRAINING_NODE_RECORD_KIND,
         TRN_TRAINING_RECEIPT_KIND, TrainingArtifactsCommand, TrainingCommand,
-        TrainingOperatorStatusReport, TrainingTrnPublicationReport, WalletAddressReport,
-        WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand, add_configured_relay,
-        apply_config_set, apply_control_command, apply_training_reputation_gate_to_availability,
+        TrainingManifestInspectionContext, TrainingOperatorStatusReport,
+        TrainingTrnPublicationReport, WalletAddressReport, WalletInvoiceReport,
+        WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
+        apply_control_command, apply_training_reputation_gate_to_availability,
         build_psionic_train_invocation_manifest, build_pylon_training_admin_router,
         build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
         derive_adapter_training_contributor_availability, derive_training_capability_tier_profile,
         detect_availability, download_gemma_model_from_base_url,
         download_gemma_model_from_base_url_with_transport, drain_training_supervisor,
         drive_training_supervisor_once, ensure_identity, ensure_no_conflicting_training_assignment,
-        ensure_training_contribution_bridge_bundles,
-        garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
-        gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
-        inspect_psionic_train_runtime_surface_from_candidates, inventory_rows, load_backend_report,
+        ensure_training_contribution_bridge_bundles, garbage_collect_training_download_cache,
+        gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
+        inspect_psionic_train_runtime_surface_at,
+        inspect_psionic_train_runtime_surface_from_candidates,
+        inspect_training_retained_contribution_artifacts, inventory_rows, load_backend_report,
         load_earnings_report, load_inventory_report, load_jobs_report,
         load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
@@ -23884,10 +23891,8 @@ mod tests {
         sync_training_authority_state, sync_training_terminal_runtime_once,
         training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
         training_download_cache_root, training_raw_sha256_hex, training_run_root_for_id,
-        training_supervisor_pid_is_running,
-        TrainingManifestInspectionContext,
-        training_runtime_state_path, training_settlement_destination, watch_buyer_jobs,
-        write_training_json_value,
+        training_runtime_state_path, training_settlement_destination,
+        training_supervisor_pid_is_running, watch_buyer_jobs, write_training_json_value,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -23912,7 +23917,7 @@ mod tests {
             PylonTrainingManifestRole, PylonTrainingReputationLabel,
             PylonTrainingReputationNamespace, PylonTrainingReputationRecord,
             PylonTrainingRunManifestCommon, PylonTrainingTopology,
-            PylonTrainingTopologyBackendFamily, PylonTrainingTrn,
+            PylonTrainingTopologyBackendFamily, PylonTrainingTrn, artifact_digest_from_json,
             parse_pylon_training_run_manifest_json,
         },
     };
@@ -26122,7 +26127,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     }
 
     #[cfg(unix)]
-    fn zombie_supervisor_pid_fixture() -> Result<(u32, std::process::Child), Box<dyn std::error::Error>> {
+    fn zombie_supervisor_pid_fixture()
+    -> Result<(u32, std::process::Child), Box<dyn std::error::Error>> {
         let mut child = StdCommand::new("sh").args(["-c", "exit 0"]).spawn()?;
         let pid = child.id();
         for _ in 0..20 {
@@ -29716,16 +29722,17 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             .join("checkpoints")
             .join("step-42")
             .join("checkpoint_manifest.json");
-        let contribution_receipt: Value = serde_json::from_slice(
-            std::fs::read(contribution_receipt_path.as_path())?.as_slice(),
-        )?;
+        let contribution_receipt: Value =
+            serde_json::from_slice(std::fs::read(contribution_receipt_path.as_path())?.as_slice())?;
         let artifact_manifest: Value =
             serde_json::from_slice(std::fs::read(artifact_manifest_path.as_path())?.as_slice())?;
         let checkpoint_manifest: Value =
             serde_json::from_slice(std::fs::read(checkpoint_manifest_path.as_path())?.as_slice())?;
 
         write_training_json_value(
-            contribution_root.join("adapter_delta_bundle.json").as_path(),
+            contribution_root
+                .join("adapter_delta_bundle.json")
+                .as_path(),
             &json!({
                 "source": {
                     "contribution_receipt_path": contribution_receipt_path.display().to_string(),
@@ -29759,25 +29766,263 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             std::fs::read(contribution_root.join("proof_bundle.json").as_path())?.as_slice(),
         )?;
         let refreshed_adapter_delta: Value = serde_json::from_slice(
-            std::fs::read(contribution_root.join("adapter_delta_bundle.json").as_path())?.as_slice(),
+            std::fs::read(
+                contribution_root
+                    .join("adapter_delta_bundle.json")
+                    .as_path(),
+            )?
+            .as_slice(),
         )?;
         let contribution_root_string = contribution_root.display().to_string();
         let rewritten_manifest_path = refreshed_proof_bundle["source"]["artifact_manifest"]["artifacts"]
             [0]["binding"]["materialized_path"]
             .as_str()
             .ok_or("missing rewritten checkpoint manifest snapshot path")?;
-        let rewritten_checkpoint_manifest_path = refreshed_proof_bundle["source"]
-            ["checkpoint_manifest_path"]
-            .as_str()
-            .ok_or("missing refreshed proof checkpoint manifest path")?;
+        let rewritten_checkpoint_manifest_path =
+            refreshed_proof_bundle["source"]["checkpoint_manifest_path"]
+                .as_str()
+                .ok_or("missing refreshed proof checkpoint manifest path")?;
 
         ensure(
             rewritten_manifest_path.starts_with(contribution_root_string.as_str())
-                && rewritten_checkpoint_manifest_path.starts_with(contribution_root_string.as_str())
+                && rewritten_checkpoint_manifest_path
+                    .starts_with(contribution_root_string.as_str())
                 && refreshed_adapter_delta["source"]["contribution_receipt_digest"]
                     .as_str()
                     .is_some_and(|value| value != "sha256:stale-receipt"),
             "bridge bundle refresh should rewrite stale mutable contribution paths under the contribution root before validator replay consumes them",
+        )
+    }
+
+    #[test]
+    fn inspect_training_retained_contribution_artifacts_keeps_validator_inputs_immutable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        fn copy_dir_recursive(
+            source: &Path,
+            target: &Path,
+        ) -> Result<(), Box<dyn std::error::Error>> {
+            std::fs::create_dir_all(target)?;
+            for entry in std::fs::read_dir(source)? {
+                let entry = entry?;
+                let source_path = entry.path();
+                let target_path = target.join(entry.file_name());
+                if entry.file_type()?.is_dir() {
+                    copy_dir_recursive(source_path.as_path(), target_path.as_path())?;
+                } else {
+                    std::fs::copy(source_path.as_path(), target_path.as_path())?;
+                }
+            }
+            Ok(())
+        }
+
+        let temp_dir = tempfile::tempdir()?;
+        let worker_root = temp_dir.path().join("worker");
+        let worker_contribution_root = worker_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("contrib.node01.window0001");
+        let worker_run_root = temp_dir.path().join("worker-run");
+        std::fs::create_dir_all(worker_contribution_root.as_path())?;
+        std::fs::create_dir_all(worker_run_root.join("status").as_path())?;
+        std::fs::create_dir_all(worker_run_root.join("checkpoints").as_path())?;
+        std::fs::create_dir_all(worker_run_root.join("closeout").as_path())?;
+        std::fs::create_dir_all(
+            worker_run_root
+                .join("windows")
+                .join("window.0001")
+                .as_path(),
+        )?;
+
+        let checkpoint_surface_path = worker_run_root
+            .join("status")
+            .join("checkpoint_surface.json");
+        std::fs::write(
+            checkpoint_surface_path.as_path(),
+            br#"{"schema_version":"psionic.train.checkpoint_surface.v1","checkpoint_ref":"checkpoint://alpha"}"#,
+        )?;
+        let latest_pointer_path = worker_run_root
+            .join("checkpoints")
+            .join("latest_accepted_checkpoint_pointer.json");
+        std::fs::write(
+            latest_pointer_path.as_path(),
+            br#"{"schema_version":"openagents.pylon_training.latest_accepted_pointer.v1","checkpoint_ref":"checkpoint://alpha","optimizer_step":42}"#,
+        )?;
+        let closeout_bundle_path = worker_run_root
+            .join("closeout")
+            .join("closeout_bundle.json");
+        std::fs::write(
+            closeout_bundle_path.as_path(),
+            br#"{"schema_version":"psion.cs336_a1_demo_closeout_bundle.v1","run_id":"run.alpha","outcome":"accepted","checkpoint_ref":"checkpoint://alpha","training_step_count":42}"#,
+        )?;
+        let sealed_window_bundle_path = worker_run_root
+            .join("windows")
+            .join("window.0001")
+            .join("sealed_window_bundle.json");
+        std::fs::write(
+            sealed_window_bundle_path.as_path(),
+            br#"{"schema_version":"psionic.train.sealed_window_bundle.v1","run_id":"run.alpha","window_id":"window.0001","contribution_count":1,"artifact_manifest_count":1,"contribution_rollup_digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222","sealed_window_digest":"sha256:3333333333333333333333333333333333333333333333333333333333333333","detail":"retained sealed window"}"#,
+        )?;
+        let checkpoint_surface_bytes = std::fs::read(checkpoint_surface_path.as_path())?;
+        let checkpoint_surface_digest =
+            training_raw_sha256_hex(checkpoint_surface_bytes.as_slice());
+
+        let worker_artifact_manifest_path = worker_contribution_root.join("artifact_manifest.json");
+        let mut worker_artifact_manifest = json!({
+            "schema_version": "psionic.train.contribution_artifact_manifest.v1",
+            "lane_id": "psion_cs336_a1_demo_v1",
+            "work_class": "small_model_local_training",
+            "run_id": "run.alpha",
+            "window_id": "window.0001",
+            "assignment_id": "assign.node01.window0001",
+            "contribution_id": "contrib.node01.window0001",
+            "node_pubkey": "11".repeat(32),
+            "grouped_stage_assignment": null,
+            "artifact_count": 1,
+            "artifacts": [
+                {
+                    "artifact_kind": "checkpoint_surface",
+                    "binding": {
+                        "artifact_ref": {
+                            "artifact_id": "artifact.checkpoint_surface",
+                            "artifact_digest": checkpoint_surface_digest,
+                            "artifact_bytes": checkpoint_surface_bytes.len()
+                        },
+                        "materialized_path": checkpoint_surface_path.display().to_string()
+                    }
+                }
+            ],
+            "artifact_manifest_digest": ""
+        });
+        worker_artifact_manifest["artifact_manifest_digest"] = Value::String(
+            artifact_digest_from_json(&worker_artifact_manifest).map_err(anyhow::Error::msg)?,
+        );
+        write_training_json_value(
+            worker_artifact_manifest_path.as_path(),
+            &worker_artifact_manifest,
+            "training contribution artifact manifest",
+        )?;
+        let worker_artifact_manifest_bytes =
+            std::fs::read(worker_artifact_manifest_path.as_path())?;
+        let worker_artifact_manifest_raw_digest =
+            training_raw_sha256_hex(worker_artifact_manifest_bytes.as_slice());
+        let worker_artifact_manifest_raw_bytes =
+            u64::try_from(worker_artifact_manifest_bytes.len())?;
+
+        let worker_contribution_receipt_path =
+            worker_contribution_root.join("contribution_receipt.json");
+        let worker_contribution_receipt = json!({
+            "schema_version": "psionic.train.contribution_receipt.v1",
+            "lane_id": "psion_cs336_a1_demo_v1",
+            "work_class": "small_model_local_training",
+            "run_id": "run.alpha",
+            "window_id": "window.0001",
+            "window_execution_id": "window-execution-1",
+            "assignment_id": "assign.node01.window0001",
+            "contribution_id": "contrib.node01.window0001",
+            "node_pubkey": "11".repeat(32),
+            "grouped_stage_assignment": null,
+            "role": "worker",
+            "operation": "start",
+            "outcome": "succeeded",
+            "exit_code": 0,
+            "retryable": false,
+            "authority_owner": "pylon",
+            "refusal_class": null,
+            "artifact_manifest": {
+                "artifact_ref": {
+                    "artifact_id": "artifact.manifest",
+                    "artifact_digest": worker_artifact_manifest_raw_digest,
+                    "artifact_bytes": worker_artifact_manifest_raw_bytes
+                },
+                "materialized_path": worker_artifact_manifest_path.display().to_string()
+            },
+            "artifact_manifest_digest": worker_artifact_manifest["artifact_manifest_digest"].clone(),
+            "artifact_count": 1,
+            "contribution_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "detail": "retained contribution"
+        });
+        write_training_json_value(
+            worker_contribution_receipt_path.as_path(),
+            &worker_contribution_receipt,
+            "training contribution receipt",
+        )?;
+
+        stabilize_training_retained_psionic_worker_contract(
+            worker_contribution_root.as_path(),
+            worker_contribution_receipt_path.as_path(),
+            worker_artifact_manifest_path.as_path(),
+        )?;
+
+        let validator_run_root = temp_dir.path().join("validator-run");
+        let validator_contribution_root = validator_run_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("contrib.node01.window0001");
+        copy_dir_recursive(
+            worker_contribution_root.as_path(),
+            validator_contribution_root.as_path(),
+        )?;
+        std::fs::create_dir_all(validator_run_root.join("status").as_path())?;
+        std::fs::create_dir_all(validator_run_root.join("checkpoints").as_path())?;
+        std::fs::create_dir_all(validator_run_root.join("closeout").as_path())?;
+        std::fs::create_dir_all(
+            validator_run_root
+                .join("windows")
+                .join("window.0001")
+                .as_path(),
+        )?;
+        std::fs::copy(
+            checkpoint_surface_path.as_path(),
+            validator_run_root
+                .join("status")
+                .join("checkpoint_surface.json"),
+        )?;
+        std::fs::copy(
+            latest_pointer_path.as_path(),
+            validator_run_root
+                .join("checkpoints")
+                .join("latest_accepted_checkpoint_pointer.json"),
+        )?;
+        std::fs::copy(
+            closeout_bundle_path.as_path(),
+            validator_run_root
+                .join("closeout")
+                .join("closeout_bundle.json"),
+        )?;
+        std::fs::copy(
+            sealed_window_bundle_path.as_path(),
+            validator_run_root
+                .join("windows")
+                .join("window.0001")
+                .join("sealed_window_bundle.json"),
+        )?;
+
+        let validator_contribution_receipt_path =
+            validator_contribution_root.join("contribution_receipt.json");
+        let validator_artifact_manifest_path =
+            validator_contribution_root.join("artifact_manifest.json");
+        let receipt_before = std::fs::read(validator_contribution_receipt_path.as_path())?;
+        let manifest_before = std::fs::read(validator_artifact_manifest_path.as_path())?;
+
+        let mut active_runtime = training_active_runtime_fixture();
+        active_runtime.role = PylonTrainingRoleClaim::Validator;
+        active_runtime.run_root = validator_run_root.display().to_string();
+        let retained = inspect_training_retained_contribution_artifacts(
+            &active_runtime,
+            validator_run_root.as_path(),
+            None,
+            None,
+        )?
+        .ok_or_else(|| std::io::Error::other("expected retained validator inputs"))?;
+
+        ensure(
+            std::fs::read(validator_contribution_receipt_path.as_path())? == receipt_before
+                && std::fs::read(validator_artifact_manifest_path.as_path())? == manifest_before
+                && retained.contribution_receipt_path == validator_contribution_receipt_path
+                && retained.artifact_manifest_path == validator_artifact_manifest_path,
+            "validator retained-artifact inspection should not restabilize copied worker contribution inputs under a validator-local path",
         )
     }
 
@@ -30191,7 +30436,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         validator_manifest.manifest_digest = validator_manifest.canonical_digest()?;
         let validator_context = TrainingManifestInspectionContext {
             manifest: validator_manifest.clone(),
-            manifest_path: validator_run_root.join("manifests").join("run_manifest.json"),
+            manifest_path: validator_run_root
+                .join("manifests")
+                .join("run_manifest.json"),
             local_run_root: validator_run_root.clone(),
             layout: PylonTrainingArtifactLayout::from_manifest(&validator_manifest)
                 .map_err(anyhow::Error::msg)?,
@@ -30200,7 +30447,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let bundles = super::inspect_manifest_local_artifacts(&validator_context)?;
 
         ensure(
-            !bundles.iter().any(|entry| entry.bundle_kind == "contribution"),
+            !bundles
+                .iter()
+                .any(|entry| entry.bundle_kind == "contribution"),
             "validator artifact inspection should not treat copied worker contributions as validator-owned publication bundles",
         )?;
         ensure(
