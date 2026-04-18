@@ -620,6 +620,9 @@ Its refresh path loads network status plus balance first instead of waiting on
 recent payment history, and it renders `pending` when a zero balance is not yet
 authoritative. If a retained balance already exists, the sidebar keeps showing
 that cached total until a connected live balance replaces it.
+The `Lifetime earned` and stacker-rank counters stay keyed to retained provider
+settlement history rather than the current wallet balance, so withdrawing sats
+does not reduce the amount the node has already earned.
 
 The retained provider payout controls now also exist in both places:
 - TUI: `/payout`, `/payout history [--limit <n>]`, `/payout withdraw <bolt11> [--amount-sats <n>]`
