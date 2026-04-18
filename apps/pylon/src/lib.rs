@@ -10945,32 +10945,34 @@ fn inspect_manifest_local_artifacts(
             }
         }
     }
-    let contributions_root = context
-        .local_run_root
-        .join("windows")
-        .join(context.manifest.window_id.as_str())
-        .join("contributions");
-    if contributions_root.is_dir() {
-        for entry in std::fs::read_dir(contributions_root.as_path()).with_context(|| {
-            format!(
-                "failed to read contributions dir {}",
-                contributions_root.display()
-            )
-        })? {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
+    if training_manifest_owns_contribution_bundles(context.manifest.role) {
+        let contributions_root = context
+            .local_run_root
+            .join("windows")
+            .join(context.manifest.window_id.as_str())
+            .join("contributions");
+        if contributions_root.is_dir() {
+            for entry in std::fs::read_dir(contributions_root.as_path()).with_context(|| {
+                format!(
+                    "failed to read contributions dir {}",
+                    contributions_root.display()
+                )
+            })? {
+                let entry = entry?;
+                if !entry.file_type()?.is_dir() {
+                    continue;
+                }
+                ensure_training_contribution_bridge_bundles(context, entry.path().as_path())?;
+                let Some(assignment_id) =
+                    training_retained_contribution_assignment_id(entry.path().as_path())?
+                else {
+                    continue;
+                };
+                bundles.push(inspect_training_artifact_bundle(
+                    context,
+                    PylonTrainingArtifactBundleKind::Contribution { assignment_id },
+                )?);
             }
-            ensure_training_contribution_bridge_bundles(context, entry.path().as_path())?;
-            let Some(assignment_id) =
-                training_retained_contribution_assignment_id(entry.path().as_path())?
-            else {
-                continue;
-            };
-            bundles.push(inspect_training_artifact_bundle(
-                context,
-                PylonTrainingArtifactBundleKind::Contribution { assignment_id },
-            )?);
         }
     }
     let validators_root = context
@@ -16727,6 +16729,15 @@ fn training_expected_artifact_class_for_role(
             PylonTrainingArtifactClass::Checkpoint.label()
         }
     }
+}
+
+fn training_manifest_owns_contribution_bundles(
+    role: openagents_kernel_core::pylon_training::PylonTrainingManifestRole,
+) -> bool {
+    matches!(
+        role,
+        openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Worker
+    )
 }
 
 fn training_node_record_status(
@@ -30101,6 +30112,107 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     .and_then(|value| value.get("checkpoint_manifest"))
                     .is_some(),
             "bridge materialization should write explicit bridge-schema bundles with the retained checkpoint manifest for validator replay",
+        )
+    }
+
+    #[test]
+    fn training_artifact_inspection_skips_validator_contribution_rewrites()
+    -> Result<(), Box<dyn std::error::Error>> {
+        fn copy_dir_recursive(
+            source: &Path,
+            destination: &Path,
+        ) -> Result<(), Box<dyn std::error::Error>> {
+            std::fs::create_dir_all(destination)?;
+            for entry in std::fs::read_dir(source)? {
+                let entry = entry?;
+                let destination_path = destination.join(entry.file_name());
+                if entry.file_type()?.is_dir() {
+                    copy_dir_recursive(entry.path().as_path(), destination_path.as_path())?;
+                } else {
+                    std::fs::copy(entry.path().as_path(), destination_path.as_path())?;
+                }
+            }
+            Ok(())
+        }
+
+        let temp_dir = tempfile::tempdir()?;
+        let worker_run_root = temp_dir.path().join("worker-run");
+        let mut worker_manifest = write_training_manifest_and_retained_contribution_artifacts(
+            worker_run_root.as_path(),
+            "gs://bucket",
+        )?;
+        worker_manifest.manifest_digest = worker_manifest.canonical_digest()?;
+        let worker_context = TrainingManifestInspectionContext {
+            manifest: worker_manifest.clone(),
+            manifest_path: worker_run_root.join("manifests").join("run_manifest.json"),
+            local_run_root: worker_run_root.clone(),
+            layout: PylonTrainingArtifactLayout::from_manifest(&worker_manifest)
+                .map_err(anyhow::Error::msg)?,
+        };
+        let worker_contribution_root = worker_run_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("contrib.node01.window0001");
+        ensure_training_contribution_bridge_bundles(
+            &worker_context,
+            worker_contribution_root.as_path(),
+        )?;
+
+        let validator_run_root = temp_dir.path().join("validator-run");
+        copy_dir_recursive(worker_run_root.as_path(), validator_run_root.as_path())?;
+        let validator_contribution_root = validator_run_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("contrib.node01.window0001");
+        let contribution_receipt_before =
+            std::fs::read(validator_contribution_root.join("contribution_receipt.json"))?;
+        let artifact_manifest_before =
+            std::fs::read(validator_contribution_root.join("artifact_manifest.json"))?;
+        let adapter_delta_before =
+            std::fs::read(validator_contribution_root.join("adapter_delta_bundle.json"))?;
+        let proof_bundle_before =
+            std::fs::read(validator_contribution_root.join("proof_bundle.json"))?;
+
+        let mut validator_manifest = worker_manifest.clone();
+        validator_manifest.role =
+            openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Validator;
+        validator_manifest.artifacts.local_run_root = validator_run_root.display().to_string();
+        validator_manifest.validator = Some(
+            openagents_kernel_core::pylon_training::PylonTrainingValidatorAssignment {
+                challenge_id: "challenge.alpha".to_string(),
+                challenge_kind: "aggregate".to_string(),
+                target_assignment_ids: vec!["assign.node01.window0001".to_string()],
+                expected_manifest_digests: vec!["sha256:manifest-alpha".to_string()],
+                retry_attempt: 1,
+            },
+        );
+        validator_manifest.manifest_digest = validator_manifest.canonical_digest()?;
+        let validator_context = TrainingManifestInspectionContext {
+            manifest: validator_manifest.clone(),
+            manifest_path: validator_run_root.join("manifests").join("run_manifest.json"),
+            local_run_root: validator_run_root.clone(),
+            layout: PylonTrainingArtifactLayout::from_manifest(&validator_manifest)
+                .map_err(anyhow::Error::msg)?,
+        };
+
+        let bundles = super::inspect_manifest_local_artifacts(&validator_context)?;
+
+        ensure(
+            !bundles.iter().any(|entry| entry.bundle_kind == "contribution"),
+            "validator artifact inspection should not treat copied worker contributions as validator-owned publication bundles",
+        )?;
+        ensure(
+            std::fs::read(validator_contribution_root.join("contribution_receipt.json"))?
+                == contribution_receipt_before
+                && std::fs::read(validator_contribution_root.join("artifact_manifest.json"))?
+                    == artifact_manifest_before
+                && std::fs::read(validator_contribution_root.join("adapter_delta_bundle.json"))?
+                    == adapter_delta_before
+                && std::fs::read(validator_contribution_root.join("proof_bundle.json"))?
+                    == proof_bundle_before,
+            "validator artifact inspection should leave copied worker receipts and bridge bundles immutable under the validator run root",
         )
     }
 
