@@ -5417,6 +5417,10 @@ fn training_window_defensibility_audit(
         .iter()
         .map(|outcome| (outcome.assignment_id.as_str(), outcome))
         .collect::<HashMap<_, _>>();
+    let retained_homework_checkpoint_bridge =
+        training_retained_homework_checkpoint_bridge_satisfies_closeout_proof(
+            contribution_outcomes,
+        );
 
     if scheduled_run.is_none() {
         push_training_defensibility_refusal_code(
@@ -5484,6 +5488,8 @@ fn training_window_defensibility_audit(
         }
 
         let mut assignment_refusal_code = None;
+        let allow_retained_terminal_replay_after_expiry =
+            retained_homework_checkpoint_bridge && contribution.is_some();
         match scheduled_assignment {
             Some(assignment) => {
                 if matches!(assignment.state, TrainingAssignmentState::Expired)
@@ -5491,12 +5497,14 @@ fn training_window_defensibility_audit(
                         .expires_at_ms
                         .is_some_and(|expires_at_ms| expires_at_ms < recorded_at_ms)
                 {
-                    push_training_defensibility_refusal_code(
-                        &mut refusal_codes,
-                        PylonTrainingRefusalCode::LeaseExpired,
-                    );
-                    assignment_refusal_code =
-                        Some(PylonTrainingRefusalCode::LeaseExpired.label().to_string());
+                    if !allow_retained_terminal_replay_after_expiry {
+                        push_training_defensibility_refusal_code(
+                            &mut refusal_codes,
+                            PylonTrainingRefusalCode::LeaseExpired,
+                        );
+                        assignment_refusal_code =
+                            Some(PylonTrainingRefusalCode::LeaseExpired.label().to_string());
+                    }
                 } else if matches!(
                     assignment.state,
                     TrainingAssignmentState::Drained | TrainingAssignmentState::Failed
@@ -5621,10 +5629,6 @@ fn training_window_defensibility_audit(
         training_work_progress_class(window.work_class),
         TrainingWorkProgressClass::ModelUpdate
     );
-    let retained_homework_checkpoint_bridge =
-        training_retained_homework_checkpoint_bridge_satisfies_closeout_proof(
-            contribution_outcomes,
-        );
     if requires_aggregated_delta
         && matches!(
             candidate_closeout_status,
@@ -36477,6 +36481,101 @@ mod tests {
                 .and_then(serde_json::Value::as_str),
             Some("model_update")
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_reconcile_rewards_retained_homework_closeout_after_lease_expiry()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_510_000u64;
+        let training_run_id = "run.window.homework.closeout.expired";
+
+        let lease = prepare_reward_candidate_training_window(
+            &app,
+            &state,
+            created_at_ms,
+            training_run_id,
+            "contrib.window.homework.expired",
+        )
+        .await?;
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.reconcile.homework.expired"
+                                .to_string(),
+                            recorded_at_ms: lease.expires_at_ms.saturating_add(5_000),
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_homework_contribution_input_for_lease(
+                                    "contrib.window.homework.expired",
+                                    &lease,
+                                    "sha256:validator-final-homework-expired",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: None,
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+        let reconciled_window =
+            response_json::<TrainingWindowCoordinatorResponse>(reconciled).await?;
+        assert_eq!(
+            reconciled_window.window.status,
+            ComputeAdapterWindowStatus::Reconciled
+        );
+        assert_eq!(reconciled_window.window.accepted_contributions, 1);
+        assert!(reconciled_window.window.promotion_ready);
+
+        let store = state.store.read().expect("read store");
+        let closeout = store
+            .kernel
+            .get_compute_accepted_outcome("accepted.training_window.window.0001")
+            .expect("rewarded closeout");
+        assert_eq!(
+            closeout
+                .metadata
+                .get("closeout_status")
+                .and_then(serde_json::Value::as_str),
+            Some("rewarded")
+        );
+        assert_eq!(
+            closeout
+                .metadata
+                .get("payout_eligible")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        let defensibility = closeout
+            .metadata
+            .get("defensibility")
+            .expect("defensibility metadata");
+        assert_eq!(
+            defensibility
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("satisfied")
+        );
+        let refusal_codes = defensibility
+            .get("refusal_codes")
+            .and_then(serde_json::Value::as_array)
+            .expect("refusal code list");
+        assert!(refusal_codes.is_empty());
         Ok(())
     }
 
