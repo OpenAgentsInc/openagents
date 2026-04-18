@@ -10843,6 +10843,116 @@ fn load_training_artifact_inspection_report(
     })
 }
 
+fn training_validator_assignment_for_manifest_context(
+    state: &PylonTrainingRuntimeState,
+    run_root: &Path,
+    manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+) -> Result<Option<openagents_kernel_core::pylon_training::PylonTrainingValidatorAssignment>> {
+    let active_validator_lease_id = state.active_runtime.as_ref().and_then(|active| {
+        (active.role == PylonTrainingRoleClaim::Validator
+            && Path::new(active.run_root.as_str()) == run_root
+            && active.training_run_id == manifest.run_id
+            && active.window_id == manifest.window_id)
+            .then(|| active.lease_id.as_str())
+    });
+    let mut matching_leases = state
+        .lease_cache
+        .values()
+        .filter(|lease| {
+            lease.role == PylonTrainingRoleClaim::Validator
+                && lease.training_run_id == manifest.run_id
+                && lease.window_id == manifest.window_id
+                && lease
+                    .challenge_id
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty())
+        })
+        .collect::<Vec<_>>();
+    if matching_leases.is_empty() {
+        return Ok(None);
+    }
+    matching_leases.sort_by_key(|lease| {
+        (
+            lease
+                .challenge_id
+                .as_deref()
+                .is_some_and(|_| active_validator_lease_id == Some(lease.lease_id.as_str())),
+            lease.updated_at_ms,
+        )
+    });
+    let Some(lease) = matching_leases.last().copied() else {
+        return Ok(None);
+    };
+    let Some(challenge_id) = lease
+        .challenge_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Ok(None);
+    };
+
+    if let Some(claim) =
+        load_training_validator_claim_record(run_root, manifest.window_id.as_str(), challenge_id)?
+    {
+        let mut target_assignment_ids = if claim.target_assignment_ids.is_empty() {
+            claim.target_bindings
+                .iter()
+                .map(|binding| binding.assignment_id.clone())
+                .filter(|value| !value.trim().is_empty())
+                .collect::<Vec<_>>()
+        } else {
+            claim.target_assignment_ids.clone()
+        };
+        target_assignment_ids.sort();
+        target_assignment_ids.dedup();
+
+        let mut expected_manifest_digests = if claim.expected_manifest_digests.is_empty() {
+            claim.target_bindings
+                .iter()
+                .map(|binding| binding.manifest_digest.clone())
+                .filter(|value| !value.trim().is_empty())
+                .collect::<Vec<_>>()
+        } else {
+            claim.expected_manifest_digests.clone()
+        };
+        expected_manifest_digests.sort();
+        expected_manifest_digests.dedup();
+
+        if !target_assignment_ids.is_empty() && !expected_manifest_digests.is_empty() {
+            return Ok(Some(
+                openagents_kernel_core::pylon_training::PylonTrainingValidatorAssignment {
+                    challenge_id: claim.challenge_id,
+                    challenge_kind: claim.challenge_kind,
+                    target_assignment_ids,
+                    expected_manifest_digests,
+                    retry_attempt: claim.lease.as_ref().map(|lease| lease.attempt).unwrap_or(1),
+                },
+            ));
+        }
+    }
+
+    let mut expected_manifest_digests = lease
+        .manifest_digest
+        .clone()
+        .into_iter()
+        .filter(|value| !value.trim().is_empty())
+        .collect::<Vec<_>>();
+    expected_manifest_digests.sort();
+    expected_manifest_digests.dedup();
+    if expected_manifest_digests.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(
+        openagents_kernel_core::pylon_training::PylonTrainingValidatorAssignment {
+            challenge_id: challenge_id.to_string(),
+            challenge_kind: "aggregate".to_string(),
+            target_assignment_ids: vec![lease.assignment_id.clone()],
+            expected_manifest_digests,
+            retry_attempt: 1,
+        },
+    ))
+}
+
 fn load_training_manifest_inspection_contexts(
     config: &PylonConfig,
     state: &PylonTrainingRuntimeState,
@@ -10890,7 +11000,7 @@ fn load_training_manifest_inspection_contexts(
                 manifest_path.display()
             )
         })?;
-        let manifest = parse_pylon_training_run_manifest_json(payload.as_slice())
+        let mut manifest = parse_pylon_training_run_manifest_json(payload.as_slice())
             .map_err(anyhow::Error::msg)
             .with_context(|| {
                 format!(
@@ -10899,6 +11009,18 @@ fn load_training_manifest_inspection_contexts(
                 )
             })?;
         let local_run_root = PathBuf::from(manifest.artifacts.local_run_root.clone());
+        if manifest.role == openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Worker
+        {
+            if let Some(validator_assignment) = training_validator_assignment_for_manifest_context(
+                state,
+                local_run_root.as_path(),
+                &manifest,
+            )? {
+                manifest.role =
+                    openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Validator;
+                manifest.validator = Some(validator_assignment);
+            }
+        }
         let layout =
             PylonTrainingArtifactLayout::from_manifest(&manifest).map_err(anyhow::Error::msg)?;
         contexts.push(TrainingManifestInspectionContext {
@@ -30617,6 +30739,212 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && std::fs::read(validator_contribution_root.join("proof_bundle.json"))?
                     == proof_bundle_before,
             "validator artifact inspection should leave copied worker receipts and bridge bundles immutable under the validator run root",
+        )
+    }
+
+    #[test]
+    fn training_manifest_context_reclassifies_validator_run_roots_without_rewriting_worker_contract()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        save_config(config_path.as_path(), &config)?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let mut worker_manifest = write_training_manifest_and_retained_contribution_artifacts(
+            local_run_root.as_path(),
+            "gs://bucket",
+        )?;
+        worker_manifest.manifest_digest = worker_manifest.canonical_digest()?;
+        let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
+        std::fs::write(manifest_path.as_path(), worker_manifest.canonical_json_bytes()?)?;
+        let worker_context = TrainingManifestInspectionContext {
+            manifest: worker_manifest.clone(),
+            manifest_path: manifest_path.clone(),
+            local_run_root: local_run_root.clone(),
+            layout: PylonTrainingArtifactLayout::from_manifest(&worker_manifest)
+                .map_err(anyhow::Error::msg)?,
+        };
+        let contribution_root = local_run_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("contrib.node01.window0001");
+        ensure_training_contribution_bridge_bundles(&worker_context, contribution_root.as_path())?;
+
+        let contribution_receipt_before =
+            std::fs::read(contribution_root.join("contribution_receipt.json"))?;
+        let artifact_manifest_before =
+            std::fs::read(contribution_root.join("artifact_manifest.json"))?;
+        let adapter_delta_before =
+            std::fs::read(contribution_root.join("adapter_delta_bundle.json"))?;
+        let proof_bundle_before =
+            std::fs::read(contribution_root.join("proof_bundle.json"))?;
+
+        let invocation_manifest_path = local_run_root
+            .join("manifests")
+            .join("invocation_manifest.json");
+        std::fs::write(
+            invocation_manifest_path.as_path(),
+            "{\"schema_version\":\"psionic.train.invocation_manifest.v1\"}\n",
+        )?;
+
+        let validator_lease = openagents_kernel_core::compute::ComputeValidatorChallengeLease {
+            challenge_id: "challenge.alpha".to_string(),
+            attempt: 1,
+            validator_id: "22".repeat(32),
+            leased_at_ms: 1_762_491_330_250,
+            expires_at_ms: 1_762_491_390_250,
+        };
+        super::persist_training_validator_claim_record(
+            local_run_root.as_path(),
+            &super::PylonTrainingValidatorChallengeCoordinatorResponse {
+                ack: super::PylonTrainingCoordinatorAck {
+                    idempotency_key: "validator-claim-alpha".to_string(),
+                    recorded_at_ms: 1_762_491_330_250,
+                    authority_state: "leased".to_string(),
+                },
+                network_id: "trainnet.alpha".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                challenge_id: "challenge.alpha".to_string(),
+                challenge_kind: "aggregate".to_string(),
+                target_assignment_ids: vec!["assign.node01.window0001".to_string()],
+                expected_manifest_digests: vec![worker_manifest.manifest_digest.clone()],
+                challenge: openagents_kernel_core::compute::ComputeValidatorChallengeSnapshot {
+                    request: openagents_kernel_core::compute::ComputeValidatorChallengeRequest {
+                        context: openagents_kernel_core::compute::ComputeValidatorChallengeContext {
+                            challenge_id: "challenge.alpha".to_string(),
+                            proof_bundle_digest: format!("sha256:{}", "3".repeat(64)),
+                            request_digest: format!("sha256:{}", "4".repeat(64)),
+                            delivery_proof_id: None,
+                            product_id: "psionic.training.gradient.elastic".to_string(),
+                            runtime_backend: "metal".to_string(),
+                            model_id: None,
+                            validator_pool_ref: Some("pool.alpha".to_string()),
+                            created_at_ms: 1_762_491_330_250,
+                            max_attempts: 1,
+                            lease_timeout_ms: 60_000,
+                        },
+                        protocol: openagents_kernel_core::compute::ComputeValidatorChallengeProtocolKind::GpuFreivaldsMerkleV1,
+                    },
+                    status: openagents_kernel_core::compute::ComputeValidatorChallengeStatus::Leased,
+                    attempts_used: 0,
+                    active_lease: Some(validator_lease.clone()),
+                    final_result: None,
+                },
+                lease: Some(validator_lease.clone()),
+                result: None,
+                window: None,
+                contribution_outcomes: Vec::new(),
+                target_bindings: vec![super::PylonTrainingValidatorTargetAssignmentBinding {
+                    assignment_id: "assign.node01.window0001".to_string(),
+                    training_run_id: "run.alpha".to_string(),
+                    window_id: "window.0001".to_string(),
+                    contributor_pylon_id: "node.alpha".to_string(),
+                    contribution_id: "contrib.node01.window0001".to_string(),
+                    work_class: "small_model_local_training".to_string(),
+                    challenge_kind: "aggregate".to_string(),
+                    claim_id: "challenge.alpha".to_string(),
+                    submission_receipt_digest: format!("sha256:{}", "5".repeat(64)),
+                    manifest_digest: worker_manifest.manifest_digest.clone(),
+                    object_digest: format!("sha256:{}", "6".repeat(64)),
+                    lane_type: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                    lease_expires_at_ms: Some(validator_lease.expires_at_ms as i64),
+                    artifacts: Vec::new(),
+                }],
+            },
+        )?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let mut active_runtime = training_active_runtime_fixture();
+        active_runtime.role = PylonTrainingRoleClaim::Validator;
+        active_runtime.lease_id = "lease.validator.window0001".to_string();
+        active_runtime.manifest_path = invocation_manifest_path.display().to_string();
+        active_runtime.run_root = local_run_root.display().to_string();
+        active_runtime.process_state = PylonTrainingSupervisorProcessState::Stopped;
+        active_runtime.pid = None;
+        state.active_runtime = Some(active_runtime);
+        state.lease_cache.insert(
+            "lease.validator.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.validator.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Validator,
+                state: "acked".to_string(),
+                manifest_digest: Some(worker_manifest.manifest_digest.clone()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(validator_lease.expires_at_ms as i64),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: Some("challenge.alpha".to_string()),
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: Some(
+                    contribution_root
+                        .join("contribution_receipt.json")
+                        .display()
+                        .to_string(),
+                ),
+                validator_target_contribution_artifact_manifest_path: Some(
+                    contribution_root
+                        .join("artifact_manifest.json")
+                        .display()
+                        .to_string(),
+                ),
+                validator_target_work_class: Some(
+                    ComputeTrainingWorkClass::SmallModelLocalTraining,
+                ),
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(invocation_manifest_path.display().to_string()),
+                runtime_manifest_digest: Some(worker_manifest.manifest_digest.clone()),
+                runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                runtime_operation: Some("validate_contribution".to_string()),
+                runtime_work_class: Some("validation_replay".to_string()),
+                updated_at_ms: now_epoch_ms(),
+            },
+        );
+        save_training_runtime_state(&config, &state)?;
+
+        let contexts = super::load_training_manifest_inspection_contexts(&config, &state)?;
+        ensure(
+            contexts.len() == 1
+                && contexts[0].manifest.role
+                    == openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Validator
+                && contexts[0]
+                    .manifest
+                    .validator
+                    .as_ref()
+                    .is_some_and(|validator| {
+                        validator.challenge_id == "challenge.alpha"
+                            && validator.target_assignment_ids
+                                == vec!["assign.node01.window0001".to_string()]
+                            && validator.expected_manifest_digests
+                                == vec![worker_manifest.manifest_digest.clone()]
+                    }),
+            "inspection contexts should promote a worker run manifest into validator mode when the local run root has an active validator challenge claim",
+        )?;
+
+        let bundles = super::inspect_manifest_local_artifacts(&contexts[0])?;
+        ensure(
+            !bundles
+                .iter()
+                .any(|entry| entry.bundle_kind == "contribution"),
+            "validator inspection derived from runtime state should not treat copied worker contributions as validator-owned bundles",
+        )?;
+        ensure(
+            std::fs::read(contribution_root.join("contribution_receipt.json"))?
+                == contribution_receipt_before
+                && std::fs::read(contribution_root.join("artifact_manifest.json"))?
+                    == artifact_manifest_before
+                && std::fs::read(contribution_root.join("adapter_delta_bundle.json"))?
+                    == adapter_delta_before
+                && std::fs::read(contribution_root.join("proof_bundle.json"))?
+                    == proof_bundle_before,
+            "validator context promotion should keep copied worker receipts and bridge bundles immutable on disk",
         )
     }
 
