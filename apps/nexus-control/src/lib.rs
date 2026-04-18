@@ -9711,6 +9711,9 @@ async fn execute_homework_launch(
     if let Some(snapshot_event) = prepared.snapshot_event.clone() {
         let _ = state.kernel_snapshot_tx.send(snapshot_event);
     }
+    let initial_run_detail =
+        rebuild_training_run_detail_cache(state, prepared.training_run_id.as_str()).await?;
+    let mut run_detail = initial_run_detail;
     if prepared.needs_window_materialization {
         let state_for_materialization = state.clone();
         let prepared_for_materialization = prepared.clone();
@@ -9725,6 +9728,9 @@ async fn execute_homework_launch(
         {
             Ok(Ok(Ok(updated_assignments))) => {
                 assigned_pylons = updated_assignments;
+                run_detail =
+                    rebuild_training_run_detail_cache(state, prepared.training_run_id.as_str())
+                        .await?;
             }
             Ok(Ok(Err(error))) => return Err(error),
             Ok(Err(error)) => {
@@ -9737,8 +9743,6 @@ async fn execute_homework_launch(
             Err(_) => {}
         }
     }
-    let run_detail =
-        rebuild_training_run_detail_cache(state, prepared.training_run_id.as_str()).await?;
     let launch_phase = run_detail
         .launch
         .as_ref()
@@ -24434,6 +24438,72 @@ mod tests {
             axum::serve(listener, app)
                 .await
                 .expect("serve artifact upload sink");
+        });
+        Ok((training_artifact_signed_url, dir, uploads, server))
+    }
+
+    async fn spawn_training_artifact_upload_sink_with_put_delay(
+        bucket_uri: &str,
+        put_delay: Duration,
+    ) -> Result<(
+        TrainingArtifactSignedUrlConfig,
+        tempfile::TempDir,
+        Arc<Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    )> {
+        let (mut training_artifact_signed_url, dir) = test_training_artifact_signed_url_config()?;
+        training_artifact_signed_url.bucket_uri = bucket_uri.to_string();
+        let uploads = Arc::new(Mutex::new(Vec::<String>::new()));
+        let uploads_for_server = Arc::clone(&uploads);
+        let stored_objects = Arc::new(Mutex::new(
+            std::collections::HashMap::<String, Vec<u8>>::new(),
+        ));
+        let stored_objects_for_server = Arc::clone(&stored_objects);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let local_addr = listener.local_addr()?;
+        training_artifact_signed_url.endpoint = format!("http://{local_addr}/upload");
+        let server = tokio::spawn(async move {
+            let app = Router::new().route(
+                "/upload/{*path}",
+                axum::routing::put({
+                    let uploads = Arc::clone(&uploads_for_server);
+                    let stored_objects = Arc::clone(&stored_objects_for_server);
+                    move |uri: axum::http::Uri, body: axum::body::Bytes| {
+                        let uploads = Arc::clone(&uploads);
+                        let stored_objects = Arc::clone(&stored_objects);
+                        async move {
+                            let path = uri.path().to_string();
+                            uploads.lock().expect("upload paths").push(path.clone());
+                            tokio::time::sleep(put_delay).await;
+                            stored_objects
+                                .lock()
+                                .expect("stored training artifacts")
+                                .insert(path, body.to_vec());
+                            StatusCode::OK
+                        }
+                    }
+                })
+                .get({
+                    let stored_objects = Arc::clone(&stored_objects_for_server);
+                    move |uri: axum::http::Uri| {
+                        let stored_objects = Arc::clone(&stored_objects);
+                        async move {
+                            match stored_objects
+                                .lock()
+                                .expect("stored training artifacts")
+                                .get(uri.path())
+                                .cloned()
+                            {
+                                Some(body) => (StatusCode::OK, body),
+                                None => (StatusCode::NOT_FOUND, Vec::new()),
+                            }
+                        }
+                    }
+                }),
+            );
+            axum::serve(listener, app)
+                .await
+                .expect("serve delayed artifact upload sink");
         });
         Ok((training_artifact_signed_url, dir, uploads, server))
     }
@@ -39987,6 +40057,138 @@ mod tests {
         assert_eq!(stats.nexus_accepted_work_payout_sats_paid_total, 200);
 
         set_test_wallet_send_hook(None);
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn launch_homework_returns_bootstrap_preparing_while_upload_continues_in_background()
+    -> Result<()> {
+        let requested_bucket_uri = "gs://homework-launch-delayed-bucket";
+        let (training_artifact_signed_url, _dir, _upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink_with_put_delay(
+                requested_bucket_uri,
+                super::HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT + Duration::from_secs(2),
+            )
+            .await?;
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+
+        let training_run_id = "run.cs336.a1.delayed-launch";
+        let network_id = "trainnet.cs336.a1.delayed";
+        let window_id = "window.cs336.a1.delayed-launch.0001";
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let base_time_ms = now_unix_ms();
+        let artifact_prefix =
+            format!("{requested_bucket_uri}/networks/{network_id}/runs/{training_run_id}");
+
+        seed_homework_launch_node(
+            &state,
+            base_time_ms.saturating_sub(100),
+            "node-delayed-alpha",
+            "sha256:build-delayed-alpha",
+            network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodedelayedalpha"),
+        );
+
+        let started = Instant::now();
+        let launch_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/admin/homework/launch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&LaunchHomeworkRunRequest {
+                        course_id: "cs336".to_string(),
+                        homework_id: "a1".to_string(),
+                        run_slug: "delayed-launch".to_string(),
+                        training_run_id: Some(training_run_id.to_string()),
+                        display_name: Some("Delayed Launch".to_string()),
+                        reuse_existing_run: false,
+                        network_id: Some(network_id.to_string()),
+                        run_kind: Some("homework".to_string()),
+                        assignment_family: Some("cs336.a1".to_string()),
+                        artifact_prefix: Some(artifact_prefix),
+                        target: super::HomeworkLaunchTargetRequest {
+                            only_online: true,
+                            min_pylon_version: None,
+                            require_updated_build: true,
+                            tags_any: Vec::new(),
+                            tags_all: Vec::new(),
+                        },
+                        assignment: super::HomeworkLaunchAssignmentRequest {
+                            mode: super::HomeworkAssignmentMode::AllMatchingPylons,
+                            max_contributors: Some(1),
+                            window_duration_seconds: 1_800,
+                        },
+                        payout: super::HomeworkLaunchPayoutRequest {
+                            enabled: false,
+                            rail: None,
+                            amount_sats: None,
+                            pay_only_on_accept: true,
+                        },
+                    })?))?,
+            )
+            .await?;
+        let elapsed = started.elapsed();
+        let launch_status = launch_response.status();
+        let launch_bytes = to_bytes(launch_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            launch_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(launch_bytes.as_ref())
+        );
+        assert!(
+            elapsed < super::HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT + Duration::from_secs(1),
+            "launch should return before delayed upload finishes: {elapsed:?}"
+        );
+
+        let launched = serde_json::from_slice::<LaunchHomeworkRunResponse>(launch_bytes.as_ref())?;
+        assert_eq!(launched.launch_state, "created");
+        assert_eq!(
+            launched.launch_phase.as_deref(),
+            Some("bootstrap_preparing")
+        );
+        assert_eq!(launched.training_run_id, training_run_id);
+        assert_eq!(launched.current_window_id, window_id);
+        assert_eq!(launched.assigned_pylons.len(), 0);
+        assert_eq!(
+            launched
+                .run_detail
+                .launch
+                .as_ref()
+                .map(|launch| launch.phase.as_str()),
+            Some("bootstrap_preparing")
+        );
+        assert_eq!(launched.run_detail.run.current_window_id, window_id);
+        assert!(launched.run_detail.featured_window.is_none());
+
+        {
+            let store = state.store.read().expect("read store");
+            let launch = store
+                .training_scheduler
+                .launch_coordinators_by_training_run_id
+                .get(training_run_id)
+                .expect("launch coordinator");
+            assert_eq!(launch.phase.label(), "bootstrap_preparing");
+            assert!(
+                !store
+                    .training_scheduler
+                    .runs_by_training_run_id
+                    .contains_key(training_run_id),
+                "scheduler row must stay absent until bootstrap finishes"
+            );
+        }
+
         upload_server.abort();
         Ok(())
     }
