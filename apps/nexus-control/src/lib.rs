@@ -8510,6 +8510,53 @@ fn homework_launch_node_is_current(node: &AdmittedTrainingNodeView) -> bool {
         || node.release_id == current_homework_launch_pylon_release_id()
 }
 
+fn homework_launch_node_target_mismatch_reason(
+    node: &AdmittedTrainingNodeView,
+    target: &HomeworkLaunchTargetRequest,
+    payout: &HomeworkLaunchPayoutRequest,
+    minimum_version: Option<&Version>,
+) -> Option<&'static str> {
+    if target.only_online && !node.online {
+        return Some("homework_launch_target_offline");
+    }
+    if !node.eligible {
+        return Some("homework_launch_target_node_ineligible");
+    }
+    if matches!(
+        node.last_desired_state,
+        Some(
+            kernel::TrainingNodeDesiredState::Draining | kernel::TrainingNodeDesiredState::Stopped
+        )
+    ) {
+        return Some("homework_launch_target_desired_state_blocked");
+    }
+    if matches!(
+        node.last_process_state,
+        Some(
+            kernel::TrainingNodeProcessState::Draining
+                | kernel::TrainingNodeProcessState::Stopped
+                | kernel::TrainingNodeProcessState::Failed
+        )
+    ) {
+        return Some("homework_launch_target_process_state_blocked");
+    }
+    if payout.enabled && node.settlement_destination.is_none() {
+        return Some("homework_launch_target_missing_settlement_destination");
+    }
+    if target.require_updated_build && !homework_launch_node_is_current(node) {
+        return Some("homework_launch_target_outdated_build");
+    }
+    if let Some(minimum_version) = minimum_version {
+        if homework_launch_node_version(node).is_none_or(|version| version < *minimum_version) {
+            return Some("homework_launch_target_version_too_low");
+        }
+    }
+    if !homework_launch_tags_match(node, target) {
+        return Some("homework_launch_target_tags_mismatch");
+    }
+    None
+}
+
 fn homework_launch_tags_match(
     node: &AdmittedTrainingNodeView,
     target: &HomeworkLaunchTargetRequest,
@@ -8533,40 +8580,7 @@ fn homework_launch_node_target_matches(
     payout: &HomeworkLaunchPayoutRequest,
     minimum_version: Option<&Version>,
 ) -> bool {
-    if target.only_online && !node.online {
-        return false;
-    }
-    if !node.eligible
-        || matches!(
-            node.last_desired_state,
-            Some(
-                kernel::TrainingNodeDesiredState::Draining
-                    | kernel::TrainingNodeDesiredState::Stopped
-            )
-        )
-        || matches!(
-            node.last_process_state,
-            Some(
-                kernel::TrainingNodeProcessState::Draining
-                    | kernel::TrainingNodeProcessState::Stopped
-                    | kernel::TrainingNodeProcessState::Failed
-            )
-        )
-    {
-        return false;
-    }
-    if payout.enabled && node.settlement_destination.is_none() {
-        return false;
-    }
-    if target.require_updated_build && !homework_launch_node_is_current(node) {
-        return false;
-    }
-    if let Some(minimum_version) = minimum_version {
-        if homework_launch_node_version(node).is_none_or(|version| version < *minimum_version) {
-            return false;
-        }
-    }
-    homework_launch_tags_match(node, target)
+    homework_launch_node_target_mismatch_reason(node, target, payout, minimum_version).is_none()
 }
 
 fn homework_launch_pylon_match(node: &AdmittedTrainingNodeView) -> HomeworkLaunchPylonMatch {
@@ -9475,7 +9489,7 @@ fn prepare_homework_launch(
         now_unix_ms as i64,
     );
     let matched_nodes = admitted_nodes
-        .into_iter()
+        .iter()
         .filter(|node| {
             homework_launch_node_target_matches(
                 node,
@@ -9492,8 +9506,49 @@ fn prepare_homework_launch(
             )
             .is_none()
         })
+        .cloned()
         .collect::<Vec<_>>();
     if matched_nodes.is_empty() {
+        let mut rejection_counts = BTreeMap::<String, usize>::new();
+        let mut rejection_samples = Vec::new();
+        for node in &admitted_nodes {
+            let reason = homework_launch_node_target_mismatch_reason(
+                node,
+                &request.target,
+                &request.payout,
+                minimum_version.as_ref(),
+            )
+            .map(str::to_string)
+            .or_else(|| {
+                training_node_scheduler_run_mismatch_reason_with_definition(
+                    store.training_scheduler.rollout_policy(),
+                    node,
+                    &preview_run,
+                    &preview_metadata,
+                    TrainingNodeRoleClaim::Worker,
+                    &run_definition,
+                )
+                .map(str::to_string)
+            })
+            .unwrap_or_else(|| "homework_launch_target_matched".to_string());
+            *rejection_counts.entry(reason.clone()).or_default() += 1;
+            if rejection_samples.len() < 8 {
+                rejection_samples.push(format!(
+                    "{}:{}:{}",
+                    node.node_label.as_deref().unwrap_or("unknown"),
+                    node.node_pubkey_hex,
+                    reason
+                ));
+            }
+        }
+        tracing::warn!(
+            training_run_id = preview_training_run_id.as_str(),
+            network_id = network_id.as_str(),
+            current_window_id = preview_metadata.initial_window_id.as_deref().unwrap_or(""),
+            rejection_counts = ?rejection_counts,
+            rejection_samples = ?rejection_samples,
+            "homework launch matched no eligible pylons"
+        );
         return Err(ApiError {
             status: StatusCode::BAD_REQUEST,
             error: "invalid_request",
