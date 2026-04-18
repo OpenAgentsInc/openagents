@@ -10895,7 +10895,8 @@ fn training_validator_assignment_for_manifest_context(
         load_training_validator_claim_record(run_root, manifest.window_id.as_str(), challenge_id)?
     {
         let mut target_assignment_ids = if claim.target_assignment_ids.is_empty() {
-            claim.target_bindings
+            claim
+                .target_bindings
                 .iter()
                 .map(|binding| binding.assignment_id.clone())
                 .filter(|value| !value.trim().is_empty())
@@ -10907,7 +10908,8 @@ fn training_validator_assignment_for_manifest_context(
         target_assignment_ids.dedup();
 
         let mut expected_manifest_digests = if claim.expected_manifest_digests.is_empty() {
-            claim.target_bindings
+            claim
+                .target_bindings
                 .iter()
                 .map(|binding| binding.manifest_digest.clone())
                 .filter(|value| !value.trim().is_empty())
@@ -11009,7 +11011,8 @@ fn load_training_manifest_inspection_contexts(
                 )
             })?;
         let local_run_root = PathBuf::from(manifest.artifacts.local_run_root.clone());
-        if manifest.role == openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Worker
+        if manifest.role
+            == openagents_kernel_core::pylon_training::PylonTrainingManifestRole::Worker
         {
             if let Some(validator_assignment) = training_validator_assignment_for_manifest_context(
                 state,
@@ -18852,6 +18855,8 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
     let mut next_training_assignment_intake_at = Instant::now();
     let mut next_provider_payout_target_sync_at = Instant::now();
     let mut provider_presence_online = false;
+    let mut provider_presence_error = None::<String>;
+    let mut provider_payout_target_error = None::<String>;
     let mut previous_snapshot = None::<ProviderPersistedSnapshot>;
     let mut training_supervisor_process = None::<PylonTrainingSupervisorProcess>;
     let mut needs_sync = true;
@@ -18937,33 +18942,47 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
             next_provider_auto_run_at = Instant::now();
             next_training_assignment_intake_at = Instant::now();
             next_provider_payout_target_sync_at = Instant::now();
+            if update_provider_control_plane_error(&mut provider_presence_error, None) {
+                needs_sync = true;
+            }
+            if update_provider_control_plane_error(&mut provider_payout_target_error, None) {
+                needs_sync = true;
+            }
         }
 
         if needs_sync {
-            let snapshot =
-                match build_snapshot(&config, &identity, desired_mode, previous_snapshot.as_ref())
-                    .await
-                {
-                    Ok(snapshot) => snapshot,
-                    Err(error) => {
-                        if provider_presence_online {
-                            if let Err(report_error) = report_provider_presence_offline(
-                                &presence_client,
-                                &config,
-                                &identity,
-                                provider_presence_session_id.as_str(),
-                            )
-                            .await
-                            {
-                                eprintln!(
-                                    "warning: failed to report pylon provider offline to Nexus: {}",
-                                    format_anyhow_error_chain(&report_error)
-                                );
-                            }
+            let snapshot = match build_snapshot(
+                &config,
+                &identity,
+                desired_mode,
+                previous_snapshot.as_ref(),
+                provider_control_plane_runtime_error(
+                    provider_presence_error.as_deref(),
+                    provider_payout_target_error.as_deref(),
+                ),
+            )
+            .await
+            {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    if provider_presence_online {
+                        if let Err(report_error) = report_provider_presence_offline(
+                            &presence_client,
+                            &config,
+                            &identity,
+                            provider_presence_session_id.as_str(),
+                        )
+                        .await
+                        {
+                            eprintln!(
+                                "warning: failed to report pylon provider offline to Nexus: {}",
+                                format_anyhow_error_chain(&report_error)
+                            );
                         }
-                        return Err(error);
                     }
-                };
+                    return Err(error);
+                }
+            };
             runtime
                 .sync_snapshot(snapshot.clone())
                 .map_err(anyhow::Error::msg)?;
@@ -19030,12 +19049,22 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                 )
                 .await
                 {
+                    provider_presence_online = false;
+                    if update_provider_control_plane_error(
+                        &mut provider_presence_error,
+                        Some(format_anyhow_error_chain(&error)),
+                    ) {
+                        needs_sync = true;
+                    }
                     eprintln!(
                         "warning: failed to report pylon provider heartbeat to Nexus: {}",
                         format_anyhow_error_chain(&error)
                     );
                 } else {
                     provider_presence_online = true;
+                    if update_provider_control_plane_error(&mut provider_presence_error, None) {
+                        needs_sync = true;
+                    }
                 }
                 next_provider_presence_heartbeat_at =
                     Instant::now() + provider_presence_heartbeat_interval;
@@ -19053,10 +19082,22 @@ async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
                 )
                 .await
                 {
+                    provider_presence_online = false;
+                    if update_provider_control_plane_error(
+                        &mut provider_payout_target_error,
+                        Some(format_anyhow_error_chain(&error)),
+                    ) {
+                        needs_sync = true;
+                    }
                     eprintln!(
                         "warning: failed to register pylon payout target with Nexus: {}",
                         format_anyhow_error_chain(&error)
                     );
+                } else if update_provider_control_plane_error(
+                    &mut provider_payout_target_error,
+                    None,
+                ) {
+                    needs_sync = true;
                 }
                 next_provider_payout_target_sync_at =
                     Instant::now() + provider_payout_target_sync_interval;
@@ -19137,6 +19178,7 @@ async fn build_snapshot(
     identity: &NostrIdentity,
     desired_mode: ProviderDesiredMode,
     previous_snapshot: Option<&ProviderPersistedSnapshot>,
+    runtime_error_override: Option<String>,
 ) -> Result<ProviderPersistedSnapshot> {
     let availability = detect_availability(config).await?;
     Ok(build_snapshot_from_availability(
@@ -19145,8 +19187,35 @@ async fn build_snapshot(
         desired_mode,
         previous_snapshot,
         availability,
-        None,
+        runtime_error_override,
     ))
+}
+
+fn update_provider_control_plane_error(slot: &mut Option<String>, next: Option<String>) -> bool {
+    let normalized = next
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if *slot == normalized {
+        return false;
+    }
+    *slot = normalized;
+    true
+}
+
+fn provider_control_plane_runtime_error(
+    provider_presence_error: Option<&str>,
+    provider_payout_target_error: Option<&str>,
+) -> Option<String> {
+    provider_presence_error
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("nexus provider heartbeat failed: {value}"))
+        .or_else(|| {
+            provider_payout_target_error
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| format!("nexus payout-target sync failed: {value}"))
+        })
 }
 
 fn inventory_rows(
@@ -22627,6 +22696,10 @@ async fn post_nexus_provider_presence<T: Serialize>(
             .unwrap_or_else(|_| "failed to decode nexus provider presence error".to_string());
         bail!("nexus provider presence {action} failed: {detail}");
     }
+    let _ = response
+        .bytes()
+        .await
+        .with_context(|| format!("failed to drain nexus provider presence {action} response"))?;
     Ok(())
 }
 
@@ -24151,11 +24224,11 @@ mod tests {
         local_training_release_id, maybe_start_training_supervisor_from_retained_assignment,
         merge_ledger_earnings, merge_ledger_recent_jobs, mutate_ledger, now_epoch_ms, parse_args,
         planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
-        provider_presence_client, psionic_gemma_benchmark_command_args,
-        psionic_repo_root_candidates_with_inputs, publish_announcement_report,
-        publish_training_trn_state, refresh_relay_report, remove_configured_relay,
-        render_earnings_report, render_human_status, render_jobs_report, render_public_config_json,
-        render_sandbox_report, render_training_status_report,
+        provider_control_plane_runtime_error, provider_presence_client,
+        psionic_gemma_benchmark_command_args, psionic_repo_root_candidates_with_inputs,
+        publish_announcement_report, publish_training_trn_state, refresh_relay_report,
+        remove_configured_relay, render_earnings_report, render_human_status, render_jobs_report,
+        render_public_config_json, render_sandbox_report, render_training_status_report,
         report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
@@ -30758,7 +30831,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         )?;
         worker_manifest.manifest_digest = worker_manifest.canonical_digest()?;
         let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
-        std::fs::write(manifest_path.as_path(), worker_manifest.canonical_json_bytes()?)?;
+        std::fs::write(
+            manifest_path.as_path(),
+            worker_manifest.canonical_json_bytes()?,
+        )?;
         let worker_context = TrainingManifestInspectionContext {
             manifest: worker_manifest.clone(),
             manifest_path: manifest_path.clone(),
@@ -30779,8 +30855,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             std::fs::read(contribution_root.join("artifact_manifest.json"))?;
         let adapter_delta_before =
             std::fs::read(contribution_root.join("adapter_delta_bundle.json"))?;
-        let proof_bundle_before =
-            std::fs::read(contribution_root.join("proof_bundle.json"))?;
+        let proof_bundle_before = std::fs::read(contribution_root.join("proof_bundle.json"))?;
 
         let invocation_manifest_path = local_run_root
             .join("manifests")
@@ -31515,11 +31590,14 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                         && issue.retryable
                         && issue.blocking_class.as_deref() == Some("relay_connectivity")
                 })
-                && status_after_failure.pending_closeout_objects.iter().any(|entry| {
-                    entry.blocker_source == "trn_publication"
-                        && entry.blocking_class == "relay_connectivity"
-                        && entry.pending_retry
-                }),
+                && status_after_failure
+                    .pending_closeout_objects
+                    .iter()
+                    .any(|entry| {
+                        entry.blocker_source == "trn_publication"
+                            && entry.blocking_class == "relay_connectivity"
+                            && entry.pending_retry
+                    }),
             "operator status should surface relay-blocked closeout objects from the persisted TRN publication journal",
         )?;
 
@@ -36006,6 +36084,25 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         )
     }
 
+    #[test]
+    fn provider_control_plane_runtime_error_prefers_heartbeat_and_falls_back_to_payout_target() {
+        assert_eq!(
+            provider_control_plane_runtime_error(
+                Some("failed to post pylon provider presence heartbeat"),
+                Some("failed to post pylon payout-target challenge"),
+            )
+            .as_deref(),
+            Some(
+                "nexus provider heartbeat failed: failed to post pylon provider presence heartbeat"
+            ),
+        );
+        assert_eq!(
+            provider_control_plane_runtime_error(None, Some("challenge timed out")).as_deref(),
+            Some("nexus payout-target sync failed: challenge timed out"),
+        );
+        assert_eq!(provider_control_plane_runtime_error(None, None), None);
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn account_link_command_posts_local_identity_and_snapshot_to_openagents()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -37013,15 +37110,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             let spec = gemma_download_spec(model_id)
                 .ok_or_else(|| std::io::Error::other(format!("missing {model_id} spec")))?;
             let repo_error = format!("unexpected repo id for {model_id}: {}", spec.repo_id);
-            ensure(
-                spec.repo_id == expected_repo_id,
-                repo_error.as_str(),
-            )?;
+            ensure(spec.repo_id == expected_repo_id, repo_error.as_str())?;
             let filename_error = format!("unexpected filename for {model_id}: {}", spec.filename);
-            ensure(
-                spec.filename == expected_filename,
-                filename_error.as_str(),
-            )?;
+            ensure(spec.filename == expected_filename, filename_error.as_str())?;
         }
 
         Ok(())
