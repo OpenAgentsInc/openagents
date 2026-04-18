@@ -4356,6 +4356,7 @@ pub async fn dispatch_live_payouts(
         .into_iter()
         .map(|(_, outcome)| outcome)
         .collect();
+    disconnect_cached_live_wallet(wallet).await;
 
     TreasuryDispatchBatchResult {
         outcomes,
@@ -5945,6 +5946,8 @@ struct LiveWalletCacheEntry {
     wallet: Arc<SparkWallet>,
 }
 
+const LIVE_WALLET_DISCONNECT_TIMEOUT_MS: u64 = 5_000;
+
 fn live_wallet_cache() -> &'static AsyncMutex<Option<LiveWalletCacheEntry>> {
     static CACHE: OnceLock<AsyncMutex<Option<LiveWalletCacheEntry>>> = OnceLock::new();
     CACHE.get_or_init(|| AsyncMutex::new(None))
@@ -5976,7 +5979,9 @@ where
     let operation_lock = live_wallet_operation_lock();
     let _operation_guard = operation_lock.lock().await;
     let wallet = open_wallet(config, create_if_missing).await?;
-    operation(wallet).await
+    let result = operation(wallet.clone()).await;
+    disconnect_cached_live_wallet(wallet).await;
+    result
 }
 
 async fn open_wallet(config: &TreasuryConfig, create_if_missing: bool) -> Result<Arc<SparkWallet>> {
@@ -5994,6 +5999,38 @@ async fn open_wallet(config: &TreasuryConfig, create_if_missing: bool) -> Result
         wallet: wallet.clone(),
     });
     Ok(wallet)
+}
+
+async fn disconnect_cached_live_wallet(wallet: Arc<SparkWallet>) {
+    // The bounded treasury runtime does not need to retain a long-lived Spark
+    // session between refresh/send cycles, and prod showed that keeping the SDK
+    // alive here can accumulate large numbers of localhost wallet RPC sockets.
+    match tokio::time::timeout(
+        Duration::from_millis(LIVE_WALLET_DISCONNECT_TIMEOUT_MS),
+        wallet.disconnect(),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            tracing::warn!("treasury live wallet disconnect failed: {error}");
+        }
+        Err(_) => {
+            tracing::warn!(
+                "treasury live wallet disconnect timed out after {} ms",
+                LIVE_WALLET_DISCONNECT_TIMEOUT_MS
+            );
+        }
+    }
+
+    let cache = live_wallet_cache();
+    let mut cache_guard = cache.lock().await;
+    if cache_guard
+        .as_ref()
+        .is_some_and(|entry| Arc::ptr_eq(&entry.wallet, &wallet))
+    {
+        *cache_guard = None;
+    }
 }
 
 async fn open_wallet_uncached(
