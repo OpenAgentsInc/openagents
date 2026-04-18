@@ -20,7 +20,7 @@ use std::convert::Infallible;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -130,6 +130,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::sync::broadcast;
+use tokio::task::JoinSet;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
@@ -9771,12 +9772,37 @@ async fn execute_homework_launch(
     if prepared.needs_window_materialization {
         let state_for_materialization = state.clone();
         let prepared_for_materialization = prepared.clone();
+        let materialization_run_id = prepared.training_run_id.clone();
+        tracing::info!(
+            training_run_id = %materialization_run_id,
+            timeout_ms = HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT.as_millis() as u64,
+            "homework launch materialization started"
+        );
         let mut materialization = tokio::spawn(async move {
-            continue_homework_launch_materialization(
+            let result = continue_homework_launch_materialization(
                 state_for_materialization,
                 prepared_for_materialization,
             )
-            .await
+            .await;
+            match &result {
+                Ok(assigned_pylons) => {
+                    tracing::info!(
+                        training_run_id = %materialization_run_id,
+                        assigned_pylons = assigned_pylons.len(),
+                        "homework launch materialization finished"
+                    );
+                }
+                Err(error) => {
+                    tracing::error!(
+                        training_run_id = %materialization_run_id,
+                        status = ?error.status,
+                        error = error.error,
+                        reason = %error.reason,
+                        "homework launch materialization failed"
+                    );
+                }
+            }
+            result
         });
         match tokio::time::timeout(HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT, &mut materialization).await
         {
@@ -9794,7 +9820,13 @@ async fn execute_homework_launch(
                     reason: format!("homework_launch_materialization_task_failed:{error}"),
                 });
             }
-            Err(_) => {}
+            Err(_) => {
+                tracing::info!(
+                    training_run_id = %prepared.training_run_id,
+                    timeout_ms = HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT.as_millis() as u64,
+                    "homework launch materialization continuing in background"
+                );
+            }
         }
     }
     let launch_phase = run_detail
@@ -10350,9 +10382,10 @@ async fn upload_training_artifact_via_curl_signed_url(
     payload: &[u8],
 ) -> Result<Option<()>, String> {
     let response_body_path = std::env::temp_dir().join(format!(
-        "nexus-training-upload-response-{}-{}.tmp",
+        "nexus-training-upload-response-{}-{}-{}.tmp",
         now_unix_ms(),
-        std::process::id()
+        std::process::id(),
+        next_training_artifact_temp_suffix()
     ));
     let mut command = Command::new("curl");
     command
@@ -10423,9 +10456,10 @@ async fn read_training_artifact_via_curl_signed_url(
     signed_url: &str,
 ) -> Result<Option<Vec<u8>>, String> {
     let response_body_path = std::env::temp_dir().join(format!(
-        "nexus-training-read-response-{}-{}.tmp",
+        "nexus-training-read-response-{}-{}-{}.tmp",
         now_unix_ms(),
-        std::process::id()
+        std::process::id(),
+        next_training_artifact_temp_suffix()
     ));
     let mut command = Command::new("curl");
     command
@@ -10551,6 +10585,11 @@ async fn verify_training_artifact_via_signed_url(
     Ok(())
 }
 
+fn next_training_artifact_temp_suffix() -> u64 {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    COUNTER.fetch_add(1, AtomicOrdering::Relaxed)
+}
+
 async fn upload_and_verify_training_artifact_via_signed_url(
     config: &TrainingArtifactSignedUrlConfig,
     client: &reqwest::Client,
@@ -10603,9 +10642,65 @@ async fn publish_cs336_a1_demo_bootstrap_artifacts(
         training_run_id,
     )?;
     let client = build_training_artifact_upload_client(&signed_url_config).await?;
-    for artifact in &artifacts {
-        upload_and_verify_training_artifact_via_signed_url(&signed_url_config, &client, artifact)
-            .await?;
+    let mut uploads = JoinSet::new();
+    for artifact in artifacts {
+        let signed_url_config = signed_url_config.clone();
+        let client = client.clone();
+        let training_run_id = training_run_id.to_string();
+        let artifact_id = artifact.resolver.artifact_id.clone();
+        let object_uri = artifact.object_uri.clone();
+        uploads.spawn(async move {
+            let started_at = std::time::Instant::now();
+            tracing::info!(
+                training_run_id = %training_run_id,
+                artifact_id = %artifact_id,
+                object_uri = %object_uri,
+                "homework launch bootstrap artifact publish started"
+            );
+            let result = upload_and_verify_training_artifact_via_signed_url(
+                &signed_url_config,
+                &client,
+                &artifact,
+            )
+            .await;
+            match &result {
+                Ok(()) => {
+                    tracing::info!(
+                        training_run_id = %training_run_id,
+                        artifact_id = %artifact_id,
+                        object_uri = %object_uri,
+                        elapsed_ms = started_at.elapsed().as_millis() as u64,
+                        "homework launch bootstrap artifact publish finished"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        training_run_id = %training_run_id,
+                        artifact_id = %artifact_id,
+                        object_uri = %object_uri,
+                        elapsed_ms = started_at.elapsed().as_millis() as u64,
+                        reason = %error,
+                        "homework launch bootstrap artifact publish failed"
+                    );
+                }
+            }
+            result
+        });
+    }
+    while let Some(result) = uploads.join_next().await {
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                uploads.abort_all();
+                return Err(error);
+            }
+            Err(error) => {
+                uploads.abort_all();
+                return Err(format!(
+                    "cs336_a1_demo_bootstrap_artifact_task_failed:{error}"
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -30253,8 +30348,7 @@ mod tests {
         let state = build_app_state(test_config()?);
         let app = build_router_with_state(state.clone());
 
-        let mut cached =
-            super::cached_public_stats_snapshot(&state).expect("initial cached stats");
+        let mut cached = super::cached_public_stats_snapshot(&state).expect("initial cached stats");
         cached.nexus_wallet_balance_sats = 777;
         cached.nexus_wallet_runtime_status = Some("cached".to_string());
         super::replace_public_stats_cache(&state, cached);
@@ -30271,12 +30365,12 @@ mod tests {
 
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(stats.nexus_wallet_balance_sats, 777);
+        assert_eq!(stats.nexus_wallet_runtime_status.as_deref(), Some("cached"));
         assert_eq!(
-            stats.nexus_wallet_runtime_status.as_deref(),
-            Some("cached")
-        );
-        assert_eq!(
-            stats.training_public_state.launch_health.public_snapshot_source,
+            stats
+                .training_public_state
+                .launch_health
+                .public_snapshot_source,
             "cached"
         );
 
@@ -30288,8 +30382,7 @@ mod tests {
         let state = build_app_state(test_config()?);
         let now = now_unix_ms();
 
-        let mut cached =
-            super::cached_public_stats_snapshot(&state).expect("initial cached stats");
+        let mut cached = super::cached_public_stats_snapshot(&state).expect("initial cached stats");
         cached.as_of_unix_ms = now;
         cached.nexus_wallet_balance_sats = 321;
         super::replace_public_stats_cache(&state, cached);
@@ -39410,21 +39503,25 @@ mod tests {
         assert_eq!(created.run_detail.windows.len(), 1);
         assert_eq!(created.run_detail.contributions.len(), 0);
         let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
-        assert_eq!(uploaded_paths.len(), 3);
+        let unique_uploaded_paths = uploaded_paths
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<String>>();
+        assert_eq!(unique_uploaded_paths.len(), 3, "{uploaded_paths:?}");
         assert!(
-            uploaded_paths
+            unique_uploaded_paths
                 .iter()
-                .any(|path| path.ends_with("/launch-training-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.demo.operator/manifests/run_manifest.json"))
+                .any(|path: &String| path.ends_with("/launch-training-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.demo.operator/manifests/run_manifest.json"))
         );
         assert!(
-            uploaded_paths
+            unique_uploaded_paths
                 .iter()
-                .any(|path| path.ends_with("/launch-training-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.demo.operator/checkpoints/latest_pointer.json"))
+                .any(|path: &String| path.ends_with("/launch-training-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.demo.operator/checkpoints/latest_pointer.json"))
         );
         assert!(
-            uploaded_paths
+            unique_uploaded_paths
                 .iter()
-                .any(|path| path.ends_with("/launch-training-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.demo.operator/checkpoints/step-0/checkpoint_manifest.json"))
+                .any(|path: &String| path.ends_with("/launch-training-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.demo.operator/checkpoints/step-0/checkpoint_manifest.json"))
         );
 
         {
@@ -39564,20 +39661,18 @@ mod tests {
             .await?;
         let status = response.status();
         let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&bytes));
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(&bytes)
+        );
         let launched = serde_json::from_slice::<LaunchCs336A1DemoRunResponse>(&bytes)?;
         assert_eq!(launched.launch_state, "created");
         assert_eq!(launched.network_id, network_id);
         assert_eq!(launched.training_run_id, training_run_id);
         assert_eq!(launched.worker_target_count, 1);
-        assert_eq!(
-            launched
-                .run_detail
-                .run
-                .network_id
-                .as_str(),
-            network_id
-        );
+        assert_eq!(launched.run_detail.run.network_id.as_str(), network_id);
 
         let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
         assert!(
@@ -39897,21 +39992,25 @@ mod tests {
             Some("active")
         );
         let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
-        assert_eq!(uploaded_paths.len(), 3);
+        let unique_uploaded_paths = uploaded_paths
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<String>>();
+        assert_eq!(unique_uploaded_paths.len(), 3, "{uploaded_paths:?}");
         assert!(
-            uploaded_paths
+            unique_uploaded_paths
                 .iter()
-                .any(|path| path.ends_with("/homework-launch-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.operator/manifests/run_manifest.json"))
+                .any(|path: &String| path.ends_with("/homework-launch-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.operator/manifests/run_manifest.json"))
         );
         assert!(
-            uploaded_paths
+            unique_uploaded_paths
                 .iter()
-                .any(|path| path.ends_with("/homework-launch-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.operator/checkpoints/latest_pointer.json"))
+                .any(|path: &String| path.ends_with("/homework-launch-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.operator/checkpoints/latest_pointer.json"))
         );
         assert!(
-            uploaded_paths
+            unique_uploaded_paths
                 .iter()
-                .any(|path| path.ends_with("/homework-launch-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.operator/checkpoints/step-0/checkpoint_manifest.json"))
+                .any(|path: &String| path.ends_with("/homework-launch-bucket/networks/trainnet.cs336.a1.demo/runs/run.cs336.a1.operator/checkpoints/step-0/checkpoint_manifest.json"))
         );
 
         {
@@ -40391,6 +40490,10 @@ mod tests {
                     .all(|record| record.status == "dispatched")
             );
         }
+        let _ = super::refresh_public_stats_cache(
+            &state,
+            now_unix_ms().saturating_add(super::PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS),
+        );
 
         let stats_response = app
             .clone()
@@ -40539,6 +40642,60 @@ mod tests {
                 "scheduler row must stay absent until bootstrap finishes"
             );
         }
+
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn publish_cs336_demo_bootstrap_artifacts_uploads_concurrently() -> Result<()> {
+        let bucket_uri = "gs://homework-launch-concurrent-bucket";
+        let put_delay = Duration::from_millis(1_200);
+        let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink_with_put_delay(bucket_uri, put_delay).await?;
+        let mut config = test_config()?;
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        let lane_contract =
+            super::PsionicTrainLaneContract::for_lane(super::PSION_CS336_A1_DEMO_LANE_ID)
+                .map_err(anyhow::Error::msg)?;
+        let started = Instant::now();
+        super::publish_cs336_a1_demo_bootstrap_artifacts(
+            &lane_contract,
+            &config,
+            bucket_uri,
+            "trainnet.cs336.a1.concurrent",
+            "window.cs336.a1.concurrent.0001",
+            now_unix_ms(),
+            "run.cs336.a1.concurrent",
+        )
+        .await
+        .map_err(anyhow::Error::msg)?;
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < put_delay.saturating_mul(2),
+            "bootstrap artifact publish should overlap uploads instead of serializing them: {elapsed:?}"
+        );
+
+        let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
+        assert_eq!(uploaded_paths.len(), 3);
+        assert!(
+            uploaded_paths.iter().any(|path| path.ends_with(
+                "/homework-launch-concurrent-bucket/networks/trainnet.cs336.a1.concurrent/runs/run.cs336.a1.concurrent/manifests/run_manifest.json"
+            )),
+            "{uploaded_paths:?}"
+        );
+        assert!(
+            uploaded_paths.iter().any(|path| path.ends_with(
+                "/homework-launch-concurrent-bucket/networks/trainnet.cs336.a1.concurrent/runs/run.cs336.a1.concurrent/checkpoints/latest_pointer.json"
+            )),
+            "{uploaded_paths:?}"
+        );
+        assert!(
+            uploaded_paths.iter().any(|path| path.ends_with(
+                "/homework-launch-concurrent-bucket/networks/trainnet.cs336.a1.concurrent/runs/run.cs336.a1.concurrent/checkpoints/step-0/checkpoint_manifest.json"
+            )),
+            "{uploaded_paths:?}"
+        );
 
         upload_server.abort();
         Ok(())
