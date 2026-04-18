@@ -33045,6 +33045,71 @@ mod tests {
         assert!(node.online);
         assert!(node.last_heartbeat_at_ms.is_none());
         assert_eq!(node.updated_at_ms, node.admitted_at_ms);
+        assert!(node.readiness.presence_status.ready);
+        assert!(node.readiness.inventory_status.ready);
+        assert!(node.readiness.role_status.worker.ready);
+        assert!(node.readiness.claimability_status.worker_assignment.ready);
+        assert_eq!(
+            node.readiness
+                .claimability_status
+                .validator_challenge
+                .reason
+                .as_deref(),
+            Some("role_not_admitted")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stale_training_node_readiness_reports_presence_blocker() -> Result<()> {
+        let app = build_router(test_config()?);
+        let mut request = training_node_admission_request(
+            "node-stale",
+            "sha256:build-stale",
+            vec!["trainnet.alpha"],
+            Vec::new(),
+            Some(256),
+        );
+        request.requested_at_ms = now_unix_ms() as i64 - 121_000;
+
+        let admitted_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request)?))?,
+            )
+            .await?;
+        assert_eq!(admitted_response.status(), StatusCode::OK);
+
+        let node_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-stale")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(node_response.status(), StatusCode::OK);
+        let node = response_json::<AdmittedTrainingNodeView>(node_response).await?;
+        assert!(!node.online);
+        assert!(!node.readiness.presence_status.ready);
+        assert_eq!(
+            node.readiness.presence_status.reason.as_deref(),
+            Some("heartbeat_stale")
+        );
+        assert!(!node.readiness.claimability_status.worker_assignment.ready);
+        assert_eq!(
+            node.readiness
+                .claimability_status
+                .worker_assignment
+                .reason
+                .as_deref(),
+            Some("heartbeat_stale")
+        );
 
         Ok(())
     }

@@ -822,6 +822,58 @@ pub struct AdmittedTrainingNodeView {
     pub last_successful_window_id: Option<String>,
     pub online: bool,
     pub eligible: bool,
+    pub readiness: TrainingNodeReadinessProjection,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingNodeReadinessDimension {
+    pub state: String,
+    pub ready: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+impl TrainingNodeReadinessDimension {
+    fn ready() -> Self {
+        Self {
+            state: "ready".to_string(),
+            ready: true,
+            reason: None,
+        }
+    }
+
+    fn blocked(reason: &str) -> Self {
+        Self {
+            state: "blocked".to_string(),
+            ready: false,
+            reason: Some(reason.to_string()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingNodeRoleReadinessProjection {
+    pub worker: TrainingNodeReadinessDimension,
+    pub validator: TrainingNodeReadinessDimension,
+    pub recovery_source: TrainingNodeReadinessDimension,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingNodeClaimabilityProjection {
+    pub worker_assignment: TrainingNodeReadinessDimension,
+    pub validator_challenge: TrainingNodeReadinessDimension,
+    pub recovery_source_assignment: TrainingNodeReadinessDimension,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingNodeReadinessProjection {
+    pub identity_status: TrainingNodeReadinessDimension,
+    pub admission_status: TrainingNodeReadinessDimension,
+    pub presence_status: TrainingNodeReadinessDimension,
+    pub inventory_status: TrainingNodeReadinessDimension,
+    pub network_scope_status: TrainingNodeReadinessDimension,
+    pub role_status: TrainingNodeRoleReadinessProjection,
+    pub claimability_status: TrainingNodeClaimabilityProjection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14647,9 +14699,122 @@ fn training_node_is_online(node: &AdmittedTrainingNode, now_unix_ms: i64) -> boo
     )
 }
 
+fn training_node_presence_block_reason(
+    node: &AdmittedTrainingNode,
+    now_unix_ms: i64,
+) -> Option<&'static str> {
+    let liveness_at_ms = node
+        .last_heartbeat_at_ms
+        .map_or(node.updated_at_ms, |heartbeat_at_ms| {
+            heartbeat_at_ms.max(node.updated_at_ms)
+        });
+    if now_unix_ms.saturating_sub(liveness_at_ms) > TRAINING_NODE_HEARTBEAT_STALE_AFTER_MS {
+        return Some("heartbeat_stale");
+    }
+    match node.last_process_state {
+        Some(TrainingNodeProcessState::Failed) => return Some("process_failed"),
+        Some(TrainingNodeProcessState::Stopped) => return Some("process_stopped"),
+        _ => {}
+    }
+    match node.last_desired_state {
+        Some(TrainingNodeDesiredState::Stopped) => Some("desired_stopped"),
+        _ => None,
+    }
+}
+
 fn training_node_is_eligible(node: &AdmittedTrainingNode) -> bool {
     node.contributor_availability.product_backend_ready()
         && !training_node_has_hard_gate_label(&node.active_reputation_labels)
+}
+
+fn training_node_inventory_block_reason(node: &AdmittedTrainingNode) -> Option<&'static str> {
+    if !node.contributor_availability.has_authoritative_state() {
+        return Some("capability_missing");
+    }
+    if !node.contributor_availability.product_backend_ready() {
+        return Some("backend_not_ready");
+    }
+    None
+}
+
+fn training_node_role_readiness(
+    node: &AdmittedTrainingNode,
+    role: TrainingNodeRoleClaim,
+) -> TrainingNodeReadinessDimension {
+    if node.role_claims.contains(&role) {
+        TrainingNodeReadinessDimension::ready()
+    } else {
+        TrainingNodeReadinessDimension::blocked("role_not_admitted")
+    }
+}
+
+fn training_node_claimability_block_reason(
+    node: &AdmittedTrainingNode,
+    role: TrainingNodeRoleClaim,
+    now_unix_ms: i64,
+) -> Option<&'static str> {
+    if !node.role_claims.contains(&role) {
+        return Some("role_not_admitted");
+    }
+    if let Some(reason) = training_node_presence_block_reason(node, now_unix_ms) {
+        return Some(reason);
+    }
+    if let Some(reason) = training_node_inventory_block_reason(node) {
+        return Some(reason);
+    }
+    pylon_training_hard_gate_reason(&node.active_reputation_labels)
+        .as_deref()
+        .map(|_| "reputation_blocked")
+}
+
+fn training_node_readiness_projection(
+    node: &AdmittedTrainingNode,
+    now_unix_ms: i64,
+) -> TrainingNodeReadinessProjection {
+    let presence_status = training_node_presence_block_reason(node, now_unix_ms)
+        .map(TrainingNodeReadinessDimension::blocked)
+        .unwrap_or_else(TrainingNodeReadinessDimension::ready);
+    let inventory_status = training_node_inventory_block_reason(node)
+        .map(TrainingNodeReadinessDimension::blocked)
+        .unwrap_or_else(TrainingNodeReadinessDimension::ready);
+    let network_scope_status = if node.allowed_networks.is_empty() {
+        TrainingNodeReadinessDimension {
+            state: "ready".to_string(),
+            ready: true,
+            reason: Some("network_scope_unrestricted".to_string()),
+        }
+    } else {
+        TrainingNodeReadinessDimension {
+            state: "ready".to_string(),
+            ready: true,
+            reason: Some("network_scope_declared".to_string()),
+        }
+    };
+    let claimability_status =
+        |role| match training_node_claimability_block_reason(node, role, now_unix_ms) {
+            Some(reason) => TrainingNodeReadinessDimension::blocked(reason),
+            None => TrainingNodeReadinessDimension::ready(),
+        };
+    TrainingNodeReadinessProjection {
+        identity_status: TrainingNodeReadinessDimension::ready(),
+        admission_status: TrainingNodeReadinessDimension::ready(),
+        presence_status,
+        inventory_status,
+        network_scope_status,
+        role_status: TrainingNodeRoleReadinessProjection {
+            worker: training_node_role_readiness(node, TrainingNodeRoleClaim::Worker),
+            validator: training_node_role_readiness(node, TrainingNodeRoleClaim::Validator),
+            recovery_source: training_node_role_readiness(
+                node,
+                TrainingNodeRoleClaim::RecoverySource,
+            ),
+        },
+        claimability_status: TrainingNodeClaimabilityProjection {
+            worker_assignment: claimability_status(TrainingNodeRoleClaim::Worker),
+            validator_challenge: claimability_status(TrainingNodeRoleClaim::Validator),
+            recovery_source_assignment: claimability_status(TrainingNodeRoleClaim::RecoverySource),
+        },
+    }
 }
 
 fn admitted_training_node_view(
@@ -14696,6 +14861,7 @@ fn admitted_training_node_view(
         last_successful_window_id: node.last_successful_window_id.clone(),
         online: training_node_is_online(node, now_unix_ms),
         eligible: training_node_is_eligible(node),
+        readiness: training_node_readiness_projection(node, now_unix_ms),
     }
 }
 
