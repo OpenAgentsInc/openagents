@@ -98,6 +98,45 @@ Keep the product posture explicit:
 
 ## Install Paths
 
+### Windows First: WSL Ubuntu
+
+If the operator is on Windows, prefer WSL Ubuntu as the runtime environment
+for `Pylon`.
+
+Use this flow:
+
+1. Install WSL and Ubuntu.
+2. Open an Ubuntu shell.
+3. Keep the repo, model cache, and build artifacts inside the Linux
+   filesystem.
+4. Install and run Ollama inside Ubuntu.
+5. Verify NVIDIA passthrough inside Ubuntu before claiming GPU readiness.
+
+Preferred bootstrap commands on Windows:
+
+```powershell
+wsl --install -d Ubuntu
+wsl -l -v
+wsl -d Ubuntu
+```
+
+Inside Ubuntu, verify the shell context:
+
+```bash
+uname -sm
+pwd
+echo "$HOME"
+```
+
+Do not default to a checkout under `/mnt/c/...` unless the operator explicitly
+wants that path. Prefer:
+
+```bash
+cd ~
+git clone https://github.com/OpenAgentsInc/openagents.git
+cd openagents
+```
+
 Prefer the npm bootstrap lane when the operator already has `npm` or `bun`:
 
 ```bash
@@ -109,6 +148,9 @@ npx @openagentsinc/pylon --version 0.0.1-rc10
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
+
+On Windows, run the bootstrap command inside the target WSL Ubuntu shell unless
+the operator explicitly wants a separate Windows-native lane.
 
 That launcher checks GitHub for the latest tagged `pylon-v...` release on each default run, or resolves a specific tagged `Pylon` version when `--version` is provided. It then finds the matching release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, runs the `init` / `status --json` / `inventory --json` smoke path, and then drives `pylon gemma diagnose <model>`. It only prefetches the optional Hugging Face GGUF cache when `--download-curated-cache` is set, because the sellable lane still depends on the configured local runtime endpoint rather than the local GGUF cache alone.
 The default no-argument path is the intended onboarding lane: it streams terminal
@@ -159,7 +201,8 @@ Use a direct release asset install only when the operator explicitly does not wa
 ./pylon status --json
 ./pylon inventory --json
 ./pylon config show
-./pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
+./pylon doctor
+./pylon gemma diagnose gemma-4-e2b --max-output-tokens 96 --repeats 3
 ```
 
 Bare `./pylon` now opens the terminal UI. Use `./pylon-tui` only when you want
@@ -411,10 +454,22 @@ Runtime-specific requirements:
 - an Ollama-compatible local runtime endpoint at `local_gemma_base_url`
   (default `http://127.0.0.1:11434`) that answers `GET /api/tags` and
   `POST /api/chat`, with a Gemma 4 model loaded
+- on Windows, prefer that runtime inside WSL Ubuntu rather than a separate
+  Windows host install
 - on macOS, the shortest supported runtime path today is:
   - `brew install ollama`
   - `brew services start ollama`
-  - `ollama pull gemma4:e4b`
+  - `ollama pull gemma4:e2b`
+- on Ubuntu, Debian, or WSL Ubuntu, install native prerequisites before the
+  runtime or a source build:
+  - `sudo apt-get update`
+  - `sudo apt-get install -y pkg-config libssl-dev curl git zstd`
+- on Ubuntu, Debian, or WSL Ubuntu, the shortest supported runtime path today
+  is:
+  - `curl -fsSL https://ollama.com/install.sh | sh`
+  - `ollama serve`
+  - `curl http://127.0.0.1:11434/api/tags`
+  - `ollama pull gemma4:e2b`
 - preferred runtime model names are:
   - `gemma4:e2b`
   - `gemma4:e4b`
@@ -440,6 +495,18 @@ and `pylon doctor` now expose the resolved path and source, or the exact
 runtime-detection failure when none of those paths work.
 
 If local Gemma supply is not available, `Pylon` should still install and run, but it should report `degraded` or `offline` truthfully rather than pretending healthy supply exists.
+
+If the Windows machine has an NVIDIA GPU, verify passthrough inside WSL before
+proceeding:
+
+```bash
+nvidia-smi
+ls /usr/lib/wsl/lib
+```
+
+If `nvidia-smi` fails inside WSL, treat that as a machine/runtime setup
+problem first. Once Ollama is running, `ollama ps` plus `nvidia-smi` is the
+normal check that the runtime is actually using the GPU.
 
 ## Quick Start
 
@@ -477,7 +544,7 @@ Headless Gemma operator commands now exist too:
 
 - `cargo pylon-headless gemma`
 - `cargo pylon-headless gemma download remaining --transport curl`
-- `cargo pylon-headless gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3`
+- `cargo pylon-headless gemma diagnose gemma-4-e2b --max-output-tokens 96 --repeats 3`
 - `cargo pylon-headless gemma benchmark all --download-missing --mode matrix`
 
 Use the first, third, and fourth commands for normal onboarding. They inspect the optional curated cache, confirm a loaded runtime model is actually answering `/api/chat`, and persist a local first-run diagnostic report without requiring a sibling `psionic` checkout. Use `gemma download ...` only when you intentionally want the local GGUF cache too.
@@ -614,11 +681,11 @@ cargo pylon-headless announce
 cargo pylon-headless announce publish
 cargo pylon-headless provider scan --seconds 5
 cargo pylon-headless provider run --seconds 5
-cargo pylon-headless job submit --model gemma4:e4b --bid-msats 21000 "write a haiku about bitcoin"
+cargo pylon-headless job submit --model gemma4:e2b --bid-msats 21000 "write a haiku about bitcoin"
 cargo pylon-headless job watch --seconds 30
 cargo pylon-headless gemma
 cargo pylon-headless gemma download remaining --transport curl
-cargo pylon-headless gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
+cargo pylon-headless gemma diagnose gemma-4-e2b --max-output-tokens 96 --repeats 3
 ```
 
 Run the retained Psionic benchmark lane only when the operator explicitly needs it:

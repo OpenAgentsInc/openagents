@@ -232,9 +232,15 @@ If you are using a terminal coding agent, you can paste this prompt:
 ```text
 Clone https://github.com/OpenAgentsInc/openagents.git. Ensure the Rust toolchain is installed so `cargo` and `rustc` are available.
 
+If you are on Windows, do the repo, model, and runtime work inside WSL Ubuntu, not PowerShell or `cmd`, unless the user explicitly wants a Windows-native path. Install and enter Ubuntu first with `wsl --install -d Ubuntu`, `wsl -l -v`, and `wsl -d Ubuntu`. Keep the checkout under the Linux filesystem such as `~/openagents`, not under `/mnt/c/...`.
+
+If you are on Debian, Ubuntu, or WSL Ubuntu, install the native build prerequisites before building: `sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev curl git zstd`.
+
 If you are on macOS and using the Apple FM release path, test the bridge first. From the repo root: (1) build the bridge: `cd swift/foundation-bridge && ./build.sh` (requires Swift: Xcode or `xcode-select --install`). (2) Run it: `./bin/foundation-bridge` (default port 11435). (3) Verify: `curl -s http://127.0.0.1:11435/health` — confirm a JSON response. (4) Then start the desktop app: `cargo install --path .` and `cargo autopilot`. If the alias is unavailable, run `cargo run -p autopilot-desktop --bin autopilot-desktop --` instead.
 
 If you are on a supported Linux NVIDIA host and using GPT-OSS, set `OPENAGENTS_GPT_OSS_BACKEND=cuda` and `OPENAGENTS_GPT_OSS_MODEL_PATH=/path/to/gpt-oss-20b-mxfp4.gguf`, then start the app. Mission Control now auto-warms the configured GPT-OSS model on startup. Verify with `autopilotctl local-runtime status` and `autopilotctl wait local-runtime-ready`.
+
+If you are bringing up standalone `Pylon`, install Ollama in the same runtime environment where `pylon` will run, verify `curl http://127.0.0.1:11434/api/tags`, and pull `gemma4:e2b` first. On Windows, do that inside WSL Ubuntu. If the machine has an NVIDIA GPU, verify passthrough with `nvidia-smi` inside WSL before claiming GPU readiness.
 
 See AGENTS.md for the Apple bridge rule and [docs/headless-compute.md](docs/headless-compute.md) for the current local-runtime runbooks.
 ```
@@ -249,7 +255,8 @@ machine-local Protocol Buffers compiler just to build `openagents`.
 
 **Install build prerequisites on Debian/Ubuntu:**
 ```bash
-sudo apt-get install -y pkg-config libssl-dev
+sudo apt-get update
+sudo apt-get install -y pkg-config libssl-dev curl git zstd
 ```
 
 **Run:**
