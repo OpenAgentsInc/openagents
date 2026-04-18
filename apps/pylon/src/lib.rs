@@ -756,6 +756,61 @@ pub struct PylonTrainingLeaseCacheEntry {
     pub updated_at_ms: i64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PylonTrainingWorkOfferKind {
+    WorkerAssignment,
+    ValidatorChallenge,
+}
+
+impl PylonTrainingWorkOfferKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::WorkerAssignment => "worker_assignment",
+            Self::ValidatorChallenge => "validator_challenge",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PylonTrainingWorkOfferSource {
+    Scheduled,
+    DirectClaim,
+}
+
+impl PylonTrainingWorkOfferSource {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Scheduled => "scheduled",
+            Self::DirectClaim => "direct_claim",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PylonTrainingWorkOffer {
+    offer_id: String,
+    work_type: PylonTrainingWorkOfferKind,
+    acquisition_source: PylonTrainingWorkOfferSource,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    membership_revision: String,
+    role: PylonTrainingRoleClaim,
+    state: String,
+    manifest_digest: Option<String>,
+    checkpoint_ref: Option<String>,
+    expires_at_ms: Option<i64>,
+    network_id: Option<String>,
+    challenge_id: Option<String>,
+    runtime_manifest_path: Option<String>,
+    runtime_manifest_digest: Option<String>,
+    runtime_lane_id: Option<String>,
+    runtime_operation: Option<String>,
+    runtime_work_class: Option<String>,
+    updated_at_ms: i64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonTrainingWindowCacheEntry {
     pub window_id: String,
@@ -1595,6 +1650,8 @@ pub struct TrainingOperatorStatusReport {
     active_runtime: Option<TrainingOperatorActiveRuntimeStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     leased_assignment: Option<TrainingOperatorLeasedAssignmentStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    recent_work_offers: Vec<TrainingOperatorWorkOfferStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     current_window: Option<TrainingOperatorWindowStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1655,6 +1712,41 @@ pub struct TrainingOperatorLeasedAssignmentStatus {
     expires_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_manifest_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_lane_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_operation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_work_class: Option<String>,
+    updated_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorWorkOfferStatus {
+    offer_id: String,
+    work_type: String,
+    acquisition_source: String,
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    lease_id: String,
+    membership_revision: String,
+    role: String,
+    state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    manifest_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    expires_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    challenge_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     runtime_manifest_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -8902,9 +8994,53 @@ fn newest_training_lease_cache_entry(
         .cloned()
 }
 
-fn newest_pending_training_lease_cache_entry(
+fn training_work_offer_from_lease_cache_entry(
+    lease: &PylonTrainingLeaseCacheEntry,
+) -> PylonTrainingWorkOffer {
+    let work_type = if lease.challenge_id.is_some() {
+        PylonTrainingWorkOfferKind::ValidatorChallenge
+    } else {
+        PylonTrainingWorkOfferKind::WorkerAssignment
+    };
+    let acquisition_source = if lease.challenge_id.is_some() {
+        PylonTrainingWorkOfferSource::DirectClaim
+    } else {
+        PylonTrainingWorkOfferSource::Scheduled
+    };
+    PylonTrainingWorkOffer {
+        offer_id: lease.lease_id.clone(),
+        work_type,
+        acquisition_source,
+        training_run_id: lease.training_run_id.clone(),
+        window_id: lease.window_id.clone(),
+        assignment_id: lease.assignment_id.clone(),
+        lease_id: lease.lease_id.clone(),
+        membership_revision: lease.membership_revision.clone(),
+        role: lease.role,
+        state: lease.state.clone(),
+        manifest_digest: lease.manifest_digest.clone(),
+        checkpoint_ref: lease.checkpoint_ref.clone(),
+        expires_at_ms: lease.expires_at_ms,
+        network_id: lease.network_id.clone(),
+        challenge_id: lease.challenge_id.clone(),
+        runtime_manifest_path: lease.runtime_manifest_path.clone(),
+        runtime_manifest_digest: lease.runtime_manifest_digest.clone(),
+        runtime_lane_id: lease.runtime_lane_id.clone(),
+        runtime_operation: lease.runtime_operation.clone(),
+        runtime_work_class: lease.runtime_work_class.clone(),
+        updated_at_ms: lease.updated_at_ms,
+    }
+}
+
+fn newest_training_work_offer(state: &PylonTrainingRuntimeState) -> Option<PylonTrainingWorkOffer> {
+    newest_training_lease_cache_entry(state)
+        .as_ref()
+        .map(training_work_offer_from_lease_cache_entry)
+}
+
+fn newest_pending_training_work_offer(
     state: &PylonTrainingRuntimeState,
-) -> Option<PylonTrainingLeaseCacheEntry> {
+) -> Option<PylonTrainingWorkOffer> {
     state
         .lease_cache
         .values()
@@ -8914,7 +9050,7 @@ fn newest_pending_training_lease_cache_entry(
                 .cmp(&right.updated_at_ms)
                 .then_with(|| left.lease_id.cmp(&right.lease_id))
         })
-        .cloned()
+        .map(training_work_offer_from_lease_cache_entry)
 }
 
 fn training_cached_membership_revision_for_role(
@@ -9308,7 +9444,17 @@ async fn run_training_assignment_intake_once_with_context(
         save_training_runtime_state(config, state)?;
     }
 
-    if let Some(existing_lease) = newest_pending_training_lease_cache_entry(state) {
+    if let Some(existing_offer) = newest_pending_training_work_offer(state) {
+        let existing_lease = state
+            .lease_cache
+            .get(existing_offer.offer_id.as_str())
+            .cloned()
+            .ok_or_else(|| {
+                anyhow!(
+                    "cached training work offer `{}` is missing its retained lease entry",
+                    existing_offer.offer_id
+                )
+            })?;
         training_trace(&format!(
             "reusing cached lease {} assignment={} state={}",
             existing_lease.lease_id, existing_lease.assignment_id, existing_lease.state
@@ -10903,17 +11049,30 @@ fn load_training_status_report_with_config(
         .as_ref()
         .map(training_operator_active_runtime_status);
     let leased_assignment =
-        newest_training_lease_cache_entry(&state).map(training_operator_leased_assignment_status);
+        newest_training_work_offer(&state).map(training_operator_leased_assignment_status);
+    let mut recent_work_offers = state
+        .lease_cache
+        .values()
+        .map(training_work_offer_from_lease_cache_entry)
+        .map(training_operator_work_offer_status)
+        .collect::<Vec<_>>();
+    recent_work_offers.sort_by(|left, right| {
+        right
+            .updated_at_ms
+            .cmp(&left.updated_at_ms)
+            .then_with(|| left.offer_id.cmp(&right.offer_id))
+    });
+    recent_work_offers.truncate(8);
     let current_run_id = active_runtime
         .as_ref()
         .map(|runtime| runtime.training_run_id.clone())
         .or_else(|| newest_training_manifest_cache_entry(&state).map(|entry| entry.training_run_id))
-        .or_else(|| newest_training_lease_cache_entry(&state).map(|entry| entry.training_run_id));
+        .or_else(|| newest_training_work_offer(&state).map(|entry| entry.training_run_id));
     let active_window_id = active_runtime
         .as_ref()
         .map(|runtime| runtime.window_id.clone())
         .or_else(|| newest_training_manifest_cache_entry(&state).map(|entry| entry.window_id))
-        .or_else(|| newest_training_lease_cache_entry(&state).map(|entry| entry.window_id));
+        .or_else(|| newest_training_work_offer(&state).map(|entry| entry.window_id));
     let current_window = resolve_training_current_window_status(&state, contexts.as_slice());
     let last_checkpoint = resolve_training_last_checkpoint_status(
         contexts.as_slice(),
@@ -11054,6 +11213,7 @@ fn load_training_status_report_with_config(
         blocked_label_keys,
         active_runtime,
         leased_assignment,
+        recent_work_offers,
         current_window,
         last_checkpoint,
         validator_queue,
@@ -11104,26 +11264,54 @@ fn training_operator_active_runtime_status(
 }
 
 fn training_operator_leased_assignment_status(
-    lease: PylonTrainingLeaseCacheEntry,
+    offer: PylonTrainingWorkOffer,
 ) -> TrainingOperatorLeasedAssignmentStatus {
     TrainingOperatorLeasedAssignmentStatus {
-        training_run_id: lease.training_run_id,
-        window_id: lease.window_id,
-        assignment_id: lease.assignment_id,
-        lease_id: lease.lease_id,
-        membership_revision: lease.membership_revision,
-        role: lease.role.label().to_string(),
-        state: lease.state,
-        manifest_digest: lease.manifest_digest,
-        checkpoint_ref: lease.checkpoint_ref,
-        expires_at_ms: lease.expires_at_ms,
-        network_id: lease.network_id,
-        runtime_manifest_path: lease.runtime_manifest_path,
-        runtime_manifest_digest: lease.runtime_manifest_digest,
-        runtime_lane_id: lease.runtime_lane_id,
-        runtime_operation: lease.runtime_operation,
-        runtime_work_class: lease.runtime_work_class,
-        updated_at_ms: lease.updated_at_ms,
+        training_run_id: offer.training_run_id,
+        window_id: offer.window_id,
+        assignment_id: offer.assignment_id,
+        lease_id: offer.lease_id,
+        membership_revision: offer.membership_revision,
+        role: offer.role.label().to_string(),
+        state: offer.state,
+        manifest_digest: offer.manifest_digest,
+        checkpoint_ref: offer.checkpoint_ref,
+        expires_at_ms: offer.expires_at_ms,
+        network_id: offer.network_id,
+        runtime_manifest_path: offer.runtime_manifest_path,
+        runtime_manifest_digest: offer.runtime_manifest_digest,
+        runtime_lane_id: offer.runtime_lane_id,
+        runtime_operation: offer.runtime_operation,
+        runtime_work_class: offer.runtime_work_class,
+        updated_at_ms: offer.updated_at_ms,
+    }
+}
+
+fn training_operator_work_offer_status(
+    offer: PylonTrainingWorkOffer,
+) -> TrainingOperatorWorkOfferStatus {
+    TrainingOperatorWorkOfferStatus {
+        offer_id: offer.offer_id,
+        work_type: offer.work_type.label().to_string(),
+        acquisition_source: offer.acquisition_source.label().to_string(),
+        training_run_id: offer.training_run_id,
+        window_id: offer.window_id,
+        assignment_id: offer.assignment_id,
+        lease_id: offer.lease_id,
+        membership_revision: offer.membership_revision,
+        role: offer.role.label().to_string(),
+        state: offer.state,
+        manifest_digest: offer.manifest_digest,
+        checkpoint_ref: offer.checkpoint_ref,
+        expires_at_ms: offer.expires_at_ms,
+        network_id: offer.network_id,
+        challenge_id: offer.challenge_id,
+        runtime_manifest_path: offer.runtime_manifest_path,
+        runtime_manifest_digest: offer.runtime_manifest_digest,
+        runtime_lane_id: offer.runtime_lane_id,
+        runtime_operation: offer.runtime_operation,
+        runtime_work_class: offer.runtime_work_class,
+        updated_at_ms: offer.updated_at_ms,
     }
 }
 
@@ -16523,6 +16711,27 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
             ));
         }
     }
+    if !report.recent_work_offers.is_empty() {
+        lines.push(String::new());
+        lines.push("work offers:".to_string());
+        for offer in &report.recent_work_offers {
+            lines.push(format!(
+                "- {} {} {} {} {}",
+                offer.training_run_id,
+                offer.window_id,
+                offer.work_type,
+                offer.acquisition_source,
+                offer.state
+            ));
+            lines.push(format!("- assignment: {}", offer.assignment_id));
+            if let Some(challenge_id) = offer.challenge_id.as_deref() {
+                lines.push(format!("- challenge: {challenge_id}"));
+            }
+            if let Some(network_id) = offer.network_id.as_deref() {
+                lines.push(format!("- network: {network_id}"));
+            }
+        }
+    }
     if let Some(current_window) = report.current_window.as_ref() {
         lines.push(String::new());
         lines.push(format!(
@@ -17051,9 +17260,9 @@ fn training_start_request_from_active_runtime(
 }
 
 #[allow(dead_code)]
-fn newest_launchable_training_lease_cache_entry(
+fn newest_launchable_training_work_offer(
     state: &PylonTrainingRuntimeState,
-) -> Option<PylonTrainingLeaseCacheEntry> {
+) -> Option<PylonTrainingWorkOffer> {
     state
         .lease_cache
         .values()
@@ -17069,7 +17278,7 @@ fn newest_launchable_training_lease_cache_entry(
                 .cmp(&right.updated_at_ms)
                 .then_with(|| left.lease_id.cmp(&right.lease_id))
         })
-        .cloned()
+        .map(training_work_offer_from_lease_cache_entry)
 }
 
 #[allow(dead_code)]
@@ -17112,9 +17321,19 @@ async fn maybe_start_training_supervisor_from_retained_assignment(
     if process_slot.is_some() {
         return Ok(false);
     }
-    let Some(lease) = newest_launchable_training_lease_cache_entry(state) else {
+    let Some(offer) = newest_launchable_training_work_offer(state) else {
         return Ok(false);
     };
+    let lease = state
+        .lease_cache
+        .get(offer.offer_id.as_str())
+        .cloned()
+        .ok_or_else(|| {
+            anyhow!(
+                "launchable training work offer `{}` is missing its retained lease entry",
+                offer.offer_id
+            )
+        })?;
     if state.active_runtime.as_ref().is_some_and(|active| {
         active.assignment_id == lease.assignment_id
             || training_supervision_is_active(active.process_state)
@@ -26920,12 +27139,21 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     assignment.assignment_id == "assign.node01.window0001"
                         && assignment.lease_id == "lease.node01.window0001"
                         && assignment.state == "acked"
+                })
+                && report.recent_work_offers.first().is_some_and(|offer| {
+                    offer.offer_id == "lease.node01.window0001"
+                        && offer.work_type == "worker_assignment"
+                        && offer.acquisition_source == "scheduled"
+                        && offer.state == "acked"
                 }),
             "training status should surface the leased assignment before the runtime launches",
         )?;
         ensure(
             render_training_status_report(&report).contains("leased assignment:")
                 && render_training_status_report(&report).contains("training state: leased")
+                && render_training_status_report(&report).contains("work offers:")
+                && render_training_status_report(&report)
+                    .contains("worker_assignment scheduled acked")
                 && render_training_status_report(&report).contains("runtime manifest:")
                 && render_training_status_report(&report)
                     .contains("runtime lane/op/work: psion_actual_pretraining_v1 start full_island_local_update_training"),
@@ -28125,6 +28353,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             Some(&runtime_surface),
         )
         .await?;
+        save_training_runtime_state(&config, &state)?;
 
         let lease_id = super::training_validator_synthetic_lease_id(
             "challenge.alpha",
@@ -28193,6 +28422,33 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     })
             }),
             "validator fallback intake should persist a synthesized challenge record with bridge bindings for later finalize/reconcile",
+        )?;
+        let report =
+            load_training_status_report_local(temp_dir.path().join("config.json").as_path())?;
+        ensure(
+            report.current_run_id.as_deref() == Some("run.alpha")
+                && report.active_window_id.as_deref() == Some("window.0001")
+                && report.leased_assignment.as_ref().is_some_and(|assignment| {
+                    assignment.assignment_id == lease.assignment_id
+                        && assignment.lease_id == lease.lease_id
+                        && assignment.state == "acked"
+                })
+                && report.recent_work_offers.first().is_some_and(|offer| {
+                    offer.offer_id == lease.lease_id
+                        && offer.work_type == "validator_challenge"
+                        && offer.acquisition_source == "direct_claim"
+                        && offer.challenge_id.as_deref() == Some("challenge.alpha")
+                        && offer.state == "acked"
+                }),
+            "training status should surface the direct validator challenge as the current retained work offer",
+        )?;
+        ensure(
+            render_training_status_report(&report).contains("leased assignment:")
+                && render_training_status_report(&report).contains("work offers:")
+                && render_training_status_report(&report)
+                    .contains("validator_challenge direct_claim acked")
+                && render_training_status_report(&report).contains("challenge: challenge.alpha"),
+            "the human training status renderer should surface the retained direct validator challenge work offer",
         )?;
         let counts = request_counts
             .lock()
