@@ -2932,7 +2932,7 @@ const GEMMA_DOWNLOAD_SPECS: [GemmaDownloadSpec; 4] = [
         quantization: "Q8_0",
         psionic_model_id: "gemma4:e2b",
         repo_id: "ggml-org/gemma-4-E2B-it-GGUF",
-        filename: "gemma-4-e2b-it-Q8_0.gguf",
+        filename: "gemma-4-E2B-it-Q8_0.gguf",
         runtime_shape: GemmaRuntimeShape::Dense,
     },
     GemmaDownloadSpec {
@@ -2941,7 +2941,7 @@ const GEMMA_DOWNLOAD_SPECS: [GemmaDownloadSpec; 4] = [
         quantization: "Q4_K_M",
         psionic_model_id: "gemma4:e4b",
         repo_id: "ggml-org/gemma-4-E4B-it-GGUF",
-        filename: "gemma-4-e4b-it-Q4_K_M.gguf",
+        filename: "gemma-4-E4B-it-Q4_K_M.gguf",
         runtime_shape: GemmaRuntimeShape::Dense,
     },
     GemmaDownloadSpec {
@@ -36981,6 +36981,50 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 ],
             "matrix planning should keep the dense split row explicit when the peer is missing",
         )
+    }
+
+    #[test]
+    fn gemma_download_specs_match_current_hugging_face_paths()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let specs = [
+            (
+                "gemma-4-e2b",
+                "ggml-org/gemma-4-E2B-it-GGUF",
+                "gemma-4-E2B-it-Q8_0.gguf",
+            ),
+            (
+                "gemma-4-e4b",
+                "ggml-org/gemma-4-E4B-it-GGUF",
+                "gemma-4-E4B-it-Q4_K_M.gguf",
+            ),
+            (
+                "gemma-4-26b-a4b",
+                "ggml-org/gemma-4-26B-A4B-it-GGUF",
+                "gemma-4-26B-A4B-it-Q4_K_M.gguf",
+            ),
+            (
+                "gemma-4-31b",
+                "ggml-org/gemma-4-31B-it-GGUF",
+                "gemma-4-31B-it-Q4_K_M.gguf",
+            ),
+        ];
+
+        for (model_id, expected_repo_id, expected_filename) in specs {
+            let spec = gemma_download_spec(model_id)
+                .ok_or_else(|| std::io::Error::other(format!("missing {model_id} spec")))?;
+            let repo_error = format!("unexpected repo id for {model_id}: {}", spec.repo_id);
+            ensure(
+                spec.repo_id == expected_repo_id,
+                repo_error.as_str(),
+            )?;
+            let filename_error = format!("unexpected filename for {model_id}: {}", spec.filename);
+            ensure(
+                spec.filename == expected_filename,
+                filename_error.as_str(),
+            )?;
+        }
+
+        Ok(())
     }
 
     #[test]
