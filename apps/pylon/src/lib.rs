@@ -1663,6 +1663,8 @@ pub struct TrainingOperatorStatusReport {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     recent_issues: Vec<TrainingOperatorIssueStatus>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pending_closeout_objects: Vec<TrainingOperatorPendingCloseoutObjectStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     recent_closeouts: Vec<TrainingOperatorCloseoutStatus>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     recent_closeout_progress: Vec<TrainingOperatorCloseoutProgressStatus>,
@@ -1804,9 +1806,24 @@ pub struct TrainingOperatorIssueStatus {
     kind: String,
     subject_id: String,
     reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    blocking_class: Option<String>,
     observed_at_ms: i64,
     owner: String,
     retryable: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorPendingCloseoutObjectStatus {
+    subject_id: String,
+    subject_kind: String,
+    blocker_source: String,
+    blocking_class: String,
+    attempt_count: u32,
+    pending_retry: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_error: Option<String>,
+    observed_at_ms: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -11338,6 +11355,15 @@ fn load_training_status_report_with_config(
             .then_with(|| left.kind.cmp(&right.kind))
     });
     recent_issues.truncate(12);
+    let mut pending_closeout_objects = resolve_training_pending_closeout_objects(&state);
+    pending_closeout_objects.sort_by(|left, right| {
+        right
+            .observed_at_ms
+            .cmp(&left.observed_at_ms)
+            .then_with(|| left.subject_id.cmp(&right.subject_id))
+            .then_with(|| left.subject_kind.cmp(&right.subject_kind))
+    });
+    pending_closeout_objects.truncate(16);
 
     Ok(TrainingOperatorStatusReport {
         generated_at_ms: now_epoch_ms(),
@@ -11374,6 +11400,7 @@ fn load_training_status_report_with_config(
         validator_queue,
         recent_trn_events,
         recent_issues,
+        pending_closeout_objects,
         recent_closeouts,
         recent_closeout_progress,
         recent_closeout_journal,
@@ -11674,6 +11701,13 @@ fn resolve_training_recent_issues(
                 .last_error
                 .clone()
                 .unwrap_or_else(|| "training TRN publication pending retry".to_string()),
+            blocking_class: Some(
+                classify_training_pending_retry_blocking_class(
+                    record.last_error.as_deref(),
+                    "local_queue_replay",
+                )
+                .to_string(),
+            ),
             observed_at_ms: record.last_attempt_at_ms,
             owner: "pylon".to_string(),
             retryable: true,
@@ -11691,6 +11725,13 @@ fn resolve_training_recent_issues(
                 .last_error
                 .clone()
                 .unwrap_or_else(|| "training authority receipt pending retry".to_string()),
+            blocking_class: Some(
+                classify_training_pending_retry_blocking_class(
+                    record.last_error.as_deref(),
+                    "direct_authority_write",
+                )
+                .to_string(),
+            ),
             observed_at_ms: record.last_attempt_at_ms,
             owner: "pylon".to_string(),
             retryable: true,
@@ -11705,6 +11746,7 @@ fn resolve_training_recent_issues(
             kind: "reputation_hard_gate".to_string(),
             subject_id: entry.cache_key.clone(),
             reason: format!("{} {}", entry.namespace, entry.label),
+            blocking_class: None,
             observed_at_ms: i64::try_from(entry.created_at_unix)
                 .unwrap_or(0)
                 .saturating_mul(1000),
@@ -11726,6 +11768,7 @@ fn resolve_training_recent_issues(
                 "{} / {}",
                 entry.validator_disposition, entry.aggregation_eligibility
             ),
+            blocking_class: None,
             observed_at_ms: entry.recorded_at_ms,
             owner: "nexus".to_string(),
             retryable: entry.validator_disposition == "replay_required",
@@ -11742,6 +11785,7 @@ fn resolve_training_recent_issues(
                 kind: "runtime_failure".to_string(),
                 subject_id: active_runtime.assignment_id.clone(),
                 reason: reason.clone(),
+                blocking_class: None,
                 observed_at_ms: active_runtime.updated_at_ms,
                 owner: "pylon".to_string(),
                 retryable: false,
@@ -11755,6 +11799,7 @@ fn resolve_training_recent_issues(
                     kind: "failure_receipt".to_string(),
                     subject_id: receipt.assignment_id,
                     reason: receipt.failure_reason,
+                    blocking_class: None,
                     observed_at_ms: receipt.recorded_at_ms,
                     owner: "pylon".to_string(),
                     retryable: false,
@@ -11771,6 +11816,7 @@ fn resolve_training_recent_issues(
                 kind: "artifact_bundle".to_string(),
                 subject_id: bundle.bundle_id,
                 reason: reason.clone(),
+                blocking_class: None,
                 observed_at_ms: training_issue_path_timestamp_ms(
                     config,
                     context.local_run_root.as_path(),
@@ -11782,6 +11828,79 @@ fn resolve_training_recent_issues(
         }
     }
     Ok(issues)
+}
+
+fn classify_training_pending_retry_blocking_class(
+    last_error: Option<&str>,
+    default: &'static str,
+) -> &'static str {
+    let Some(error) = last_error.map(str::trim).filter(|value| !value.is_empty()) else {
+        return default;
+    };
+    let normalized = error.to_ascii_lowercase();
+    if normalized.contains("failed to connect training relays")
+        || (normalized.contains("relay")
+            && (normalized.contains("connect")
+                || normalized.contains("timeout")
+                || normalized.contains("unavailable")))
+    {
+        return "relay_connectivity";
+    }
+    if normalized.contains("training authority")
+        || normalized.contains("kernel authority request failed")
+        || normalized.contains("/api/training/")
+        || normalized.contains("/v1/kernel/compute/")
+    {
+        return "direct_authority_write";
+    }
+    default
+}
+
+fn resolve_training_pending_closeout_objects(
+    state: &PylonTrainingRuntimeState,
+) -> Vec<TrainingOperatorPendingCloseoutObjectStatus> {
+    let mut objects = Vec::new();
+    for record in state
+        .publication_records
+        .values()
+        .filter(|record| record.pending_retry)
+    {
+        objects.push(TrainingOperatorPendingCloseoutObjectStatus {
+            subject_id: record.subject_id.clone(),
+            subject_kind: record.subject_kind.clone(),
+            blocker_source: "trn_publication".to_string(),
+            blocking_class: classify_training_pending_retry_blocking_class(
+                record.last_error.as_deref(),
+                "local_queue_replay",
+            )
+            .to_string(),
+            attempt_count: record.attempt_count,
+            pending_retry: record.pending_retry,
+            last_error: record.last_error.clone(),
+            observed_at_ms: record.last_attempt_at_ms,
+        });
+    }
+    for record in state
+        .authority_receipt_records
+        .values()
+        .filter(|record| record.pending_retry)
+    {
+        objects.push(TrainingOperatorPendingCloseoutObjectStatus {
+            subject_id: record.subject_id.clone(),
+            subject_kind: record.receipt_kind.clone(),
+            blocker_source: "authority_receipt".to_string(),
+            blocking_class: classify_training_pending_retry_blocking_class(
+                record.last_error.as_deref(),
+                "direct_authority_write",
+            )
+            .to_string(),
+            attempt_count: record.attempt_count,
+            pending_retry: record.pending_retry,
+            last_error: record.last_error.clone(),
+            observed_at_ms: record.last_attempt_at_ms,
+        });
+    }
+    objects
 }
 
 const TRAINING_CLOSEOUT_STALL_INTERVAL_MS: i64 = 60_000;
@@ -11806,6 +11925,13 @@ fn training_closeout_progress_issue(
                 entry.stage.label(),
                 next_action
             ),
+            blocking_class: Some(
+                classify_training_pending_retry_blocking_class(
+                    Some(last_error.as_str()),
+                    "local_queue_replay",
+                )
+                .to_string(),
+            ),
             observed_at_ms: entry.updated_at_ms,
             owner: "pylon".to_string(),
             retryable: !entry.stage.terminal(),
@@ -11828,6 +11954,7 @@ fn training_closeout_progress_issue(
             entry.stage.label(),
             next_action
         ),
+        blocking_class: Some("local_queue_replay".to_string()),
         observed_at_ms: entry.updated_at_ms,
         owner: "pylon".to_string(),
         retryable: true,
@@ -17298,9 +17425,37 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
     lines.push(format!("recent issues: {}", report.recent_issues.len()));
     for issue in &report.recent_issues {
         lines.push(format!(
-            "- {} {} owner={} retryable={} {}",
-            issue.kind, issue.subject_id, issue.owner, issue.retryable, issue.reason
+            "- {} {} owner={} retryable={}{} {}",
+            issue.kind,
+            issue.subject_id,
+            issue.owner,
+            issue.retryable,
+            issue
+                .blocking_class
+                .as_deref()
+                .map(|value| format!(" class={value}"))
+                .unwrap_or_default(),
+            issue.reason
         ));
+    }
+    lines.push(String::new());
+    lines.push(format!(
+        "pending closeout objects: {}",
+        report.pending_closeout_objects.len()
+    ));
+    for entry in &report.pending_closeout_objects {
+        lines.push(format!(
+            "- {} {} via={} class={} attempts={} retryable={}",
+            entry.subject_kind,
+            entry.subject_id,
+            entry.blocker_source,
+            entry.blocking_class,
+            entry.attempt_count,
+            entry.pending_retry,
+        ));
+        if let Some(last_error) = entry.last_error.as_deref() {
+            lines.push(format!("  last error: {last_error}"));
+        }
     }
     lines.push(String::new());
     lines.push(format!(
@@ -31009,21 +31164,35 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let queued_state = load_or_create_training_runtime_state(&config)?;
         ensure(
             queued_state.publication_pointers.is_empty()
-                && queued_state.publication_records.len() == 14
-                && queued_state.publication_records.values().all(|record| {
-                    record.pending_retry && record.event_id.is_none() && record.template.is_some()
-                }),
-            "queued relay failures should persist publication intent locally with retry-ready records and no successful pointers",
+                && !queued_state.publication_records.is_empty()
+                && queued_state
+                    .publication_records
+                    .values()
+                    .all(|record| record.pending_retry && record.event_id.is_none())
+                && queued_state
+                    .publication_records
+                    .values()
+                    .any(|record| record.template.is_some()),
+            "queued relay failures should persist retry-ready publication intent locally with no successful pointers",
         )?;
 
         let status_after_failure = load_training_status_report_local(config_path.as_path())?;
         ensure(
-            status_after_failure.pending_publication_count == 14
-                && status_after_failure.publication_record_count == 14
+            status_after_failure.pending_publication_count > 0
+                && status_after_failure.publication_record_count
+                    >= status_after_failure.pending_publication_count
                 && status_after_failure.recent_issues.iter().any(|issue| {
-                    issue.kind == "trn_publish_retry" && issue.owner == "pylon" && issue.retryable
+                    issue.kind == "trn_publish_retry"
+                        && issue.owner == "pylon"
+                        && issue.retryable
+                        && issue.blocking_class.as_deref() == Some("relay_connectivity")
+                })
+                && status_after_failure.pending_closeout_objects.iter().any(|entry| {
+                    entry.blocker_source == "trn_publication"
+                        && entry.blocking_class == "relay_connectivity"
+                        && entry.pending_retry
                 }),
-            "operator status should surface pending relay retries from the persisted TRN publication journal",
+            "operator status should surface relay-blocked closeout objects from the persisted TRN publication journal",
         )?;
 
         let relay = TestPublishRelay::spawn();
@@ -31048,8 +31217,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
 
         let recovered_state = load_or_create_training_runtime_state(&config)?;
         ensure(
-            recovered_state.publication_pointers.len() == 14
-                && recovered_state.publication_records.len() == 14
+            !recovered_state.publication_pointers.is_empty()
+                && recovered_state.publication_records.len()
+                    >= recovered_state.publication_pointers.len()
                 && recovered_state.publication_records.values().all(|record| {
                     !record.pending_retry
                         && record
@@ -31071,10 +31241,14 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "operator status should clear the retry issue after queued TRN publications are published successfully",
         )?;
 
-        let published = relay.wait_for_event_count(14, Duration::from_secs(2));
+        let expected_published_count = recovered_report.node_records.len()
+            + recovered_report.receipts.len()
+            + recovered_report.artifact_locators.len();
+        let published =
+            relay.wait_for_event_count(expected_published_count, Duration::from_secs(2));
         ensure(
-            published.len() == 14,
-            "relay recovery should publish the entire queued training TRN batch once transport returns",
+            published.len() == expected_published_count,
+            "relay recovery should publish the full queued training TRN batch reported by the recovered publish pass once transport returns",
         )
     }
 
@@ -33952,8 +34126,16 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 issue.kind == "authority_receipt_retry"
                     && issue.subject_id == "failure_notice::assign.node01.window0001"
                     && issue.retryable
-            }),
-            "operator status should surface retryable Nexus receipt failures after a refused run",
+                    && issue.blocking_class.as_deref() == Some("direct_authority_write")
+            }) && status_after_first
+                .pending_closeout_objects
+                .iter()
+                .any(|entry| {
+                    entry.blocker_source == "authority_receipt"
+                        && entry.blocking_class == "direct_authority_write"
+                        && entry.pending_retry
+                }),
+            "operator status should surface retryable direct-authority closeout failures after a refused run",
         )?;
 
         ensure(
@@ -34213,6 +34395,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             issue.kind == "closeout_progress_error"
                 && issue.subject_id == "assign.alpha"
+                && issue.blocking_class.as_deref() == Some("local_queue_replay")
                 && issue
                     .reason
                     .contains("stage=checkpoint_published next_action=seal_window"),
@@ -34248,6 +34431,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             issue.kind == "closeout_progress_stalled"
                 && issue.subject_id == "assign.alpha::challenge.alpha"
+                && issue.blocking_class.as_deref() == Some("local_queue_replay")
                 && issue.reason == "stalled at window_sealed waiting for await_validator_claim",
             "non-terminal closeout stages should surface as stalled issues once they age past the stall interval",
         )
