@@ -177,6 +177,13 @@ cargo run -p pylon --bin oa -- proof run cs336-a1-replacement-attempt \
   --json
 ```
 
+On the integrated `#4368` proof branch, that lane now also admits a synthetic
+validator, finalizes the scheduled aggregate/sample challenges, and pushes the
+replacement contribution all the way through local reconcile. The retained
+kernel state for the run now includes the accepted outcome and payout
+projection, so the first remaining blocker shows up as a treasury caveat
+instead of a seal/validation failure.
+
 `proof run` now writes the first concrete blocker it can observe into
 `run-report.json`. In the current local proof world that commonly means a
 critical authority caveat or a node-local training issue instead of a generic

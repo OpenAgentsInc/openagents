@@ -2064,6 +2064,7 @@ async fn run_manual_replacement_attempt_proof_lane(
         "proof-replacement-worker-a",
         lane_network_id.as_str(),
         "lnbc1proofreplacementa",
+        ProofFleetNodeRole::Worker,
     );
     let _: super::PylonTrainingNodeAdmissionResponse = proof_post_authority_json(
         authority_state.urls.authority_base_url.as_str(),
@@ -2151,6 +2152,7 @@ async fn run_manual_replacement_attempt_proof_lane(
         "proof-replacement-worker-b",
         lane_network_id.as_str(),
         "lnbc1proofreplacementb",
+        ProofFleetNodeRole::Worker,
     );
     let _: super::PylonTrainingNodeAdmissionResponse = proof_post_authority_json(
         authority_state.urls.authority_base_url.as_str(),
@@ -2256,6 +2258,88 @@ async fn run_manual_replacement_attempt_proof_lane(
         persist_proof_run_outputs(config_path, &report).await?;
         return Ok(report);
     }
+    let validator = replacement_attempt_node_admission_request(
+        "proof-replacement-validator-a",
+        lane_network_id.as_str(),
+        "lnbc1proofreplacementvalidatora",
+        ProofFleetNodeRole::Validator,
+    );
+    let _: super::PylonTrainingNodeAdmissionResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/nodes/admission",
+        &validator,
+        &mut first_failed_authority_write,
+        "replacement_validator_admission",
+    )
+    .await?;
+    let _: super::PylonTrainingHeartbeatResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/heartbeats",
+        &replacement_attempt_idle_heartbeat(
+            validator.node_pubkey_hex.as_str(),
+            super::now_epoch_ms(),
+        ),
+        &mut first_failed_authority_write,
+        "replacement_validator_heartbeat",
+    )
+    .await?;
+    loop {
+        let prior_failed_authority_write = first_failed_authority_write.clone();
+        let claim = match proof_post_authority_json::<
+            _,
+            super::PylonTrainingValidatorChallengeCoordinatorResponse,
+        >(
+            authority_state.urls.authority_base_url.as_str(),
+            authority_state.admin_bearer_token.as_str(),
+            "/api/training/validator-challenges/claim",
+            &replacement_attempt_validator_claim_request(
+                validator.node_pubkey_hex.as_str(),
+                training_run_id.as_str(),
+                lane_network_id.as_str(),
+            ),
+            &mut first_failed_authority_write,
+            "replacement_validator_claim",
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(error)
+                if error
+                    .to_string()
+                    .contains("training_validator_challenge_unavailable") =>
+            {
+                first_failed_authority_write = prior_failed_authority_write;
+                break;
+            }
+            Err(error) => return Err(error),
+        };
+        let lease = claim.lease.clone().ok_or_else(|| {
+            anyhow!(
+                "validator claim {} missing lease for proof replacement lane",
+                claim.challenge_id
+            )
+        })?;
+        let _: super::PylonTrainingValidatorChallengeCoordinatorResponse = proof_post_authority_json(
+            authority_state.urls.authority_base_url.as_str(),
+            authority_state.admin_bearer_token.as_str(),
+            format!(
+                "/api/training/validator-challenges/{}/finalize",
+                claim.challenge_id
+            )
+            .as_str(),
+            &replacement_attempt_validator_finalize_request(
+                namespace.as_str(),
+                validator.node_pubkey_hex.as_str(),
+                &claim,
+                lease,
+            ),
+            &mut first_failed_authority_write,
+            "replacement_validator_finalize",
+        )
+        .await?;
+    }
     if let Err(error) =
         proof_post_authority_json::<_, super::PylonTrainingWindowCoordinatorResponse>(
             authority_state.urls.authority_base_url.as_str(),
@@ -2356,6 +2440,7 @@ fn replacement_attempt_node_admission_request(
     node_pubkey_hex: &str,
     network_id: &str,
     settlement_destination: &str,
+    role: ProofFleetNodeRole,
 ) -> super::PylonTrainingNodeAdmissionRequest {
     let contributor_availability = super::ProviderAdapterTrainingContributorAvailability {
         contributor_supported: true,
@@ -2375,16 +2460,31 @@ fn replacement_attempt_node_admission_request(
             super::ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow,
         ),
     };
-    let capability_tier = super::ProviderTrainingCapabilityTierProfile {
-        tier: super::ProviderTrainingCapabilityTier::Tier2Trainer,
-        backend_families: vec!["cpu".to_string()],
-        accelerator_inventory: Vec::new(),
-        memory_floor_gb: Some(16),
-        available_memory_gb: Some(16),
-        throughput_band: super::ProviderTrainingThroughputBand::Medium,
-        lease_reliability: super::ProviderTrainingLeaseReliabilityClass::Steady,
-        replay_capability: super::ProviderTrainingReplayCapability::ShortWindow,
-        artifact_upload_latency_class: super::ProviderTrainingArtifactUploadLatencyClass::Moderate,
+    let capability_tier = match role {
+        ProofFleetNodeRole::Worker => super::ProviderTrainingCapabilityTierProfile {
+            tier: super::ProviderTrainingCapabilityTier::Tier2Trainer,
+            backend_families: vec!["cpu".to_string()],
+            accelerator_inventory: Vec::new(),
+            memory_floor_gb: Some(16),
+            available_memory_gb: Some(16),
+            throughput_band: super::ProviderTrainingThroughputBand::Medium,
+            lease_reliability: super::ProviderTrainingLeaseReliabilityClass::Steady,
+            replay_capability: super::ProviderTrainingReplayCapability::ShortWindow,
+            artifact_upload_latency_class:
+                super::ProviderTrainingArtifactUploadLatencyClass::Moderate,
+        },
+        ProofFleetNodeRole::Validator => super::ProviderTrainingCapabilityTierProfile {
+            tier: super::ProviderTrainingCapabilityTier::Tier1Validation,
+            backend_families: vec!["cpu".to_string()],
+            accelerator_inventory: Vec::new(),
+            memory_floor_gb: None,
+            available_memory_gb: Some(16),
+            throughput_band: super::ProviderTrainingThroughputBand::Medium,
+            lease_reliability: super::ProviderTrainingLeaseReliabilityClass::Steady,
+            replay_capability: super::ProviderTrainingReplayCapability::FullWindow,
+            artifact_upload_latency_class:
+                super::ProviderTrainingArtifactUploadLatencyClass::Moderate,
+        },
     };
     super::PylonTrainingNodeAdmissionRequest {
         idempotency_key: format!(
@@ -2396,7 +2496,7 @@ fn replacement_attempt_node_admission_request(
         node_pubkey_hex: node_pubkey_hex.to_string(),
         release_id: super::local_training_release_id(),
         node_label: Some(format!("proof-{node_pubkey_hex}")),
-        role_claims: vec![super::PylonTrainingRoleClaim::Worker],
+        role_claims: vec![role.role_claim()],
         allowed_networks: vec![network_id.to_string()],
         build_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         build_digest: Some(super::local_training_build_digest()),
@@ -2410,6 +2510,65 @@ fn replacement_attempt_node_admission_request(
         host_telemetry: None,
         active_reputation_labels: Vec::new(),
         settlement_destination: Some(settlement_destination.to_string()),
+    }
+}
+
+fn replacement_attempt_validator_claim_request(
+    node_pubkey_hex: &str,
+    training_run_id: &str,
+    network_id: &str,
+) -> super::PylonClaimTrainingValidatorChallengeRequest {
+    super::PylonClaimTrainingValidatorChallengeRequest {
+        idempotency_key: format!(
+            "proof.replacement.validator.claim.{node_pubkey_hex}.{}",
+            super::now_epoch_ms()
+        ),
+        requested_at_ms: super::now_epoch_ms(),
+        node_pubkey_hex: node_pubkey_hex.to_string(),
+        requested_network_id: Some(network_id.to_string()),
+        requested_training_run_id: Some(training_run_id.to_string()),
+    }
+}
+
+fn replacement_attempt_validator_finalize_request(
+    namespace: &str,
+    node_pubkey_hex: &str,
+    claim: &super::PylonTrainingValidatorChallengeCoordinatorResponse,
+    lease: super::ComputeValidatorChallengeLease,
+) -> super::PylonFinalizeTrainingValidatorChallengeRequest {
+    let finalized_at_ms = super::now_epoch_ms();
+    let challenge_id = claim.challenge_id.clone();
+    super::PylonFinalizeTrainingValidatorChallengeRequest {
+        idempotency_key: format!(
+            "proof.replacement.validator.finalize.{}.{}",
+            namespace_slug(namespace),
+            challenge_id
+        ),
+        recorded_at_ms: finalized_at_ms,
+        node_pubkey_hex: node_pubkey_hex.to_string(),
+        lease: lease.clone(),
+        result: super::ComputeValidatorChallengeResult {
+            challenge_id: challenge_id.clone(),
+            proof_bundle_digest: claim.challenge.request.context.proof_bundle_digest.clone(),
+            protocol_id: claim.challenge.request.protocol.label().to_string(),
+            attempt: lease.attempt,
+            status: super::ComputeValidatorChallengeStatus::Verified,
+            verdict: openagents_kernel_core::compute::ComputeValidatorChallengeVerdict::Verified,
+            reason_code: None,
+            detail: format!("proof replacement lane verified {challenge_id}"),
+            created_at_ms: claim.challenge.request.context.created_at_ms,
+            finalized_at_ms: finalized_at_ms.max(0) as u64,
+            challenge_seed_digest: None,
+            verified_row_count: Some(1),
+            result_digest: sha256_prefixed_bytes(
+                format!("proof.replacement.validator.result.{challenge_id}").as_bytes(),
+            ),
+            challenge_result_ref: format!(
+                "validator_challenge_result:{challenge_id}:{}",
+                lease.attempt
+            ),
+        },
+        training_disposition: Some(super::ComputeAdapterContributionDisposition::Accepted),
     }
 }
 
@@ -5241,10 +5400,12 @@ fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
 #[cfg(test)]
 mod tests {
     use super::{
-        PROOF_ARTIFACT_UPLOAD_PREFIX, ProofLane, ProofNodeRuntimeFixture, detect_proof_run_blocker,
-        load_proof_node_runtime_fixture, load_proof_replacement_contribution_template,
-        parse_proof_command, parse_proof_lane, parse_status_body_from_reason,
-        proof_namespace_ports, render_proof_status_report, run_artifact_store_server,
+        PROOF_ARTIFACT_UPLOAD_PREFIX, ProofFleetNodeRole, ProofLane, ProofNodeRuntimeFixture,
+        detect_proof_run_blocker, load_proof_node_runtime_fixture,
+        load_proof_replacement_contribution_template, parse_proof_command, parse_proof_lane,
+        parse_status_body_from_reason, proof_namespace_ports,
+        render_proof_status_report, replacement_attempt_node_admission_request,
+        replacement_attempt_validator_finalize_request, run_artifact_store_server,
     };
 
     use anyhow::{Result, anyhow};
@@ -5548,5 +5709,106 @@ mod tests {
         assert_eq!(template.benchmark_pass_rate_bps, Some(9700));
         assert_eq!(template.runtime_smoke_passed, Some(true));
         Ok(())
+    }
+
+    #[test]
+    fn replacement_attempt_validator_admission_uses_validation_tier() {
+        let request = replacement_attempt_node_admission_request(
+            "proof-validator",
+            "trainnet.proof.validator",
+            "lnbc1proofvalidator",
+            ProofFleetNodeRole::Validator,
+        );
+        assert_eq!(
+            request.role_claims,
+            vec![super::super::PylonTrainingRoleClaim::Validator]
+        );
+        assert_eq!(
+            request.capability_tier.tier,
+            super::super::ProviderTrainingCapabilityTier::Tier1Validation
+        );
+        assert_eq!(
+            request.capability_tier.replay_capability,
+            super::super::ProviderTrainingReplayCapability::FullWindow
+        );
+    }
+
+    #[test]
+    fn replacement_attempt_validator_finalize_request_marks_verified_acceptance() {
+        let lease = openagents_kernel_core::compute::ComputeValidatorChallengeLease {
+            challenge_id: "challenge.training.run.alpha.aggregate.a1".to_string(),
+            attempt: 1,
+            validator_id: "proof-validator".to_string(),
+            leased_at_ms: 1_776_638_353_700,
+            expires_at_ms: 1_776_638_413_700,
+        };
+        let claim = super::super::PylonTrainingValidatorChallengeCoordinatorResponse {
+            ack: super::super::PylonTrainingCoordinatorAck {
+                idempotency_key: "idemp.challenge.claim".to_string(),
+                recorded_at_ms: 1_776_638_353_701,
+                authority_state: "leased".to_string(),
+            },
+            network_id: "trainnet.proof.alpha".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.alpha.0001".to_string(),
+            challenge_id: lease.challenge_id.clone(),
+            challenge_kind: "aggregate".to_string(),
+            target_assignment_ids: vec!["assign.alpha".to_string()],
+            expected_manifest_digests: vec!["sha256:manifest".to_string()],
+            challenge: openagents_kernel_core::compute::ComputeValidatorChallengeSnapshot {
+                request: openagents_kernel_core::compute::ComputeValidatorChallengeRequest {
+                    context: openagents_kernel_core::compute::ComputeValidatorChallengeContext {
+                        challenge_id: lease.challenge_id.clone(),
+                        proof_bundle_digest: "sha256:proof-bundle".to_string(),
+                        request_digest: "sha256:request".to_string(),
+                        delivery_proof_id: None,
+                        product_id: "product.alpha".to_string(),
+                        runtime_backend: "cpu".to_string(),
+                        model_id: Some("model.alpha".to_string()),
+                        validator_pool_ref: Some("validator-pool.training.mvp".to_string()),
+                        created_at_ms: lease.leased_at_ms,
+                        max_attempts: 1,
+                        lease_timeout_ms: 60_000,
+                    },
+                    protocol: openagents_kernel_core::compute::ComputeValidatorChallengeProtocolKind::GpuFreivaldsMerkleV1,
+                },
+                status: openagents_kernel_core::compute::ComputeValidatorChallengeStatus::Leased,
+                attempts_used: 1,
+                active_lease: Some(lease.clone()),
+                final_result: None,
+            },
+            lease: Some(lease.clone()),
+            result: None,
+            window: None,
+            contribution_outcomes: Vec::new(),
+            target_bindings: Vec::new(),
+        };
+        let request = replacement_attempt_validator_finalize_request(
+            "proof.alpha",
+            "proof-validator",
+            &claim,
+            lease.clone(),
+        );
+        assert_eq!(request.node_pubkey_hex, "proof-validator");
+        assert_eq!(request.lease, lease);
+        assert_eq!(
+            request.result.status,
+            super::super::ComputeValidatorChallengeStatus::Verified
+        );
+        assert_eq!(
+            request.result.verdict,
+            openagents_kernel_core::compute::ComputeValidatorChallengeVerdict::Verified
+        );
+        assert_eq!(
+            request.training_disposition,
+            Some(super::super::ComputeAdapterContributionDisposition::Accepted)
+        );
+        assert_eq!(request.result.proof_bundle_digest, "sha256:proof-bundle");
+        assert!(
+            request
+                .result
+                .challenge_result_ref
+                .contains("validator_challenge_result:challenge.training.run.alpha.aggregate.a1")
+        );
     }
 }
