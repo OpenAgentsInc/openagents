@@ -1,5 +1,6 @@
 mod ledger;
 mod nip90_runtime;
+mod proof;
 mod training_trn_mapping;
 mod wallet_runtime;
 
@@ -2079,6 +2080,9 @@ struct GoogleOAuthTokenResponse {
 pub enum Command {
     Init,
     Doctor,
+    Proof {
+        command: proof::ProofCommand,
+    },
     Serve,
     Account {
         command: AccountCommand,
@@ -7063,6 +7067,7 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 nexus_treasury,
             })?))
         }
+        Command::Proof { command } => proof::run_proof_command(cli.config_path.as_path(), command).await,
         Command::Serve => {
             let config = load_or_create_config(cli.config_path.as_path())?;
             serve(cli.config_path.as_path(), config).await?;
@@ -7452,12 +7457,16 @@ pub fn usage() -> &'static str {
     "Standalone Pylon CLI.\n\
 Bare `pylon` launches the terminal UI.\n\
 Use the commands below for headless provider control.\n\
-From this repo, run them with `cargo pylon-headless <command>` or invoke the `pylon` binary directly.\n\
+From this repo, run them with `cargo pylon-headless <command>`, the `pylon` binary directly, or the `oa` binary for proof-runtime commands.\n\
 \n\
-Usage: pylon [--config-path <path>] <command>\n\
+Usage: pylon|oa [--config-path <path>] <command>\n\
 Commands:\n\
   init\n\
   doctor\n\
+  proof authority up [--mode prod-shaped|debug-authority] [--json]\n\
+  proof authority status [--json]\n\
+  proof authority down [--json]\n\
+  proof authority reset [--json]\n\
   serve\n\
   account link --base-url <url> --token <one_time_token> [--json]\n\
   status [--json]\n\
@@ -7527,6 +7536,9 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             }
             Ok(Command::Doctor)
         }
+        "proof" => Ok(Command::Proof {
+            command: proof::parse_proof_command(args, start_index + 1)?,
+        }),
         "serve" => {
             if start_index + 1 != args.len() {
                 bail!("serve does not accept positional arguments");
