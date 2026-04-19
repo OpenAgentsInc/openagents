@@ -12399,10 +12399,12 @@ async fn reconcile_training_window(
             .kernel
             .get_compute_adapter_training_window(request.window_id.as_str())
             .ok_or_else(|| kernel_api_error("training_window_not_found".to_string()))?;
+        let replaying_reconciled_closeout =
+            training_window_closeout_reconcile_replay_allowed(&store.kernel, &window);
         if !matches!(
             window.status,
             ComputeAdapterWindowStatus::Sealed | ComputeAdapterWindowStatus::Scored
-        ) && !training_window_closeout_reconcile_replay_allowed(&store.kernel, &window)
+        ) && !replaying_reconciled_closeout
         {
             return Err(kernel_api_error(
                 "training_window_status_invalid".to_string(),
@@ -12571,31 +12573,66 @@ async fn reconcile_training_window(
             &abuse_snapshot,
         );
         updated_window.accepted_outcome_id = Some(closeout_outcome.outcome_id.clone());
-        let accepted_outcome_result = store
-            .kernel
-            .accept_compute_outcome(
+        let accepted_outcome_request = AcceptComputeOutcomeRequest {
+            idempotency_key: format!("{}.closeout", request.idempotency_key),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            outcome: closeout_outcome,
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let window_record_request = training_window_record_request(
+            request.idempotency_key.clone(),
+            updated_window.clone(),
+            contribution_outcomes,
+        );
+        let accepted_outcome_result = if replaying_reconciled_closeout {
+            store.kernel.accept_compute_outcome_deferred_projection(
                 &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
-                AcceptComputeOutcomeRequest {
-                    idempotency_key: format!("{}.closeout", request.idempotency_key),
-                    trace: TraceContext::default(),
-                    policy: PolicyContext::default(),
-                    outcome: closeout_outcome,
-                    evidence: Vec::new(),
-                    hints: ReceiptHints::default(),
-                },
+                accepted_outcome_request,
             )
-            .map_err(kernel_api_error)?;
-        let result = store
-            .kernel
-            .record_compute_adapter_window(
+        } else {
+            store.kernel.accept_compute_outcome(
                 &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
-                training_window_record_request(
-                    request.idempotency_key.clone(),
-                    updated_window.clone(),
-                    contribution_outcomes,
-                ),
+                accepted_outcome_request,
             )
-            .map_err(kernel_api_error)?;
+        }
+        .map_err(kernel_api_error)?;
+        let result = if replaying_reconciled_closeout {
+            store
+                .kernel
+                .record_compute_adapter_window_deferred_projection(
+                    &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
+                    window_record_request,
+                )
+        } else {
+            store.kernel.record_compute_adapter_window(
+                &training_kernel_mutation_context(&caller_id, request.recorded_at_ms as u64),
+                window_record_request,
+            )
+        }
+        .map_err(kernel_api_error)?;
+        let deferred_snapshot_event = if replaying_reconciled_closeout
+            && (accepted_outcome_result.receipt_event.is_some() || result.receipt_event.is_some())
+        {
+            Some(
+                store
+                    .kernel
+                    .flush_deferred_projection_for(request.recorded_at_ms)
+                    .map_err(kernel_api_error)?,
+            )
+        } else {
+            None
+        };
+        let (outcome_snapshot_event, window_snapshot_event) =
+            if let Some(snapshot_event) = deferred_snapshot_event {
+                (None, Some(snapshot_event))
+            } else {
+                (
+                    accepted_outcome_result.snapshot_event,
+                    result.snapshot_event,
+                )
+            };
         if let Some(scheduled_run) = store
             .training_scheduler
             .runs_by_training_run_id
@@ -12628,9 +12665,9 @@ async fn reconcile_training_window(
         (
             training_window_response(result.response, assignment_plans),
             accepted_outcome_result.receipt_event,
-            accepted_outcome_result.snapshot_event,
+            outcome_snapshot_event,
             result.receipt_event,
-            result.snapshot_event,
+            window_snapshot_event,
         )
     };
     record_training_coordination_observability(
@@ -24890,6 +24927,25 @@ mod tests {
     async fn response_json<T: serde::de::DeserializeOwned>(response: Response) -> Result<T> {
         let bytes = to_bytes(response.into_body(), usize::MAX).await?;
         Ok(serde_json::from_slice(bytes.as_ref())?)
+    }
+
+    fn drain_broadcast_events<T: Clone>(
+        receiver: &mut tokio::sync::broadcast::Receiver<T>,
+    ) -> Vec<T> {
+        let mut events = Vec::new();
+        loop {
+            match receiver.try_recv() {
+                Ok(event) => events.push(event),
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(skipped)) => {
+                    panic!("broadcast receiver lagged while draining {skipped} events")
+                }
+                Err(tokio::sync::broadcast::error::TryRecvError::Closed) => {
+                    panic!("broadcast receiver closed while draining events")
+                }
+            }
+        }
+        events
     }
 
     async fn spawn_training_trn_capture_relay() -> Result<(
@@ -37172,6 +37228,8 @@ mod tests {
     -> Result<()> {
         let state = build_app_state(test_config()?);
         let app = build_api_router_with_state(state.clone());
+        let mut receipt_rx = state.kernel_receipt_tx.subscribe();
+        let mut snapshot_rx = state.kernel_snapshot_tx.subscribe();
         let created_at_ms = 1_762_491_561_000u64;
         let training_run_id = "run.window.defense.replay.repaired";
         let contribution_id = "contrib.window.defense.replay.repaired";
@@ -37228,6 +37286,8 @@ mod tests {
             ComputeAdapterWindowStatus::Reconciled
         );
         assert!(!refused_window.window.promotion_ready);
+        drain_broadcast_events(&mut receipt_rx);
+        drain_broadcast_events(&mut snapshot_rx);
 
         let second_reconcile_at_ms = lease.expires_at_ms.saturating_add(10_000);
         let rewarded = app
@@ -37275,6 +37335,18 @@ mod tests {
         assert_eq!(
             rewarded_window.window.accepted_outcome_id.as_deref(),
             Some("accepted.training_window.window.0001")
+        );
+        let receipt_events = drain_broadcast_events(&mut receipt_rx);
+        let snapshot_events = drain_broadcast_events(&mut snapshot_rx);
+        assert_eq!(
+            receipt_events.len(),
+            2,
+            "replayed closeout should still emit both receipt events",
+        );
+        assert_eq!(
+            snapshot_events.len(),
+            1,
+            "replayed closeout should batch authority persistence to one snapshot event",
         );
 
         let store = state.store.read().expect("read store");
