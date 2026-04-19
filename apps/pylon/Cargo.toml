@@ -16,6 +16,7 @@ axum = "0.8"
 bip39 = "2.2.0"
 hex = { workspace = true }
 jsonwebtoken = "9"
+libc = "0.2"
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
 openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }

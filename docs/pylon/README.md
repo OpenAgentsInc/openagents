@@ -44,6 +44,57 @@ cargo pylon-headless <command>
 
 It is still a narrow supply connector. It is not a buyer shell, not a labor runtime, and not a raw accelerator exchange.
 
+## Local Proof Authority Runtime
+
+The local proof-runtime foundation now has a dedicated authority lane for
+running prod-shaped `Nexus` proof work without touching shared environments.
+
+From a source checkout, use the `oa` binary:
+
+```bash
+cargo run -p pylon --bin oa -- proof authority up --json
+cargo run -p pylon --bin oa -- proof authority status --json
+cargo run -p pylon --bin oa -- proof authority down --json
+cargo run -p pylon --bin oa -- proof authority reset --json
+```
+
+Use the launch modes deliberately:
+
+- `prod-shaped` is the default and boots local `nexus-relay` with embedded
+  `nexus-control`
+- `debug-authority` boots `nexus-control` directly when you want a narrower
+  authority-only debug path
+
+```bash
+cargo run -p pylon --bin oa -- proof authority up --mode debug-authority --json
+```
+
+The default proof namespace is `authority`. Its state persists under:
+
+```text
+~/.openagents/pylon/proof/namespaces/authority
+```
+
+That namespace root keeps the prod-shaped authority world together:
+
+- authority env manifest and logs
+- relay data and persistent runtime state
+- treasury state, wallet material, and receipt log
+- local artifact-store objects plus canonical object-path trace output
+
+The artifact adapter intentionally records canonical publication paths in:
+
+```text
+~/.openagents/pylon/proof/namespaces/authority/artifacts/object-trace.jsonl
+```
+
+That makes proof runs validate the same object naming path the production
+authority expects while still writing to local backing storage.
+
+`proof authority status` probes the local authority health/admin/training
+surfaces plus the local artifact-store health route so the operator can see
+whether the proof world is actually intact before running a lane.
+
 Optional account visibility now also has an explicit headless lane:
 
 ```bash
