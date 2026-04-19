@@ -6180,6 +6180,47 @@ impl KernelState {
         Ok(())
     }
 
+    fn training_closeout_metadata_str<'a>(
+        outcome: &'a ComputeAcceptedOutcome,
+        key: &str,
+    ) -> Option<&'a str> {
+        outcome
+            .metadata
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+
+    fn accepted_training_closeout_replay_allowed(
+        existing: &ComputeAcceptedOutcome,
+        candidate: &ComputeAcceptedOutcome,
+    ) -> bool {
+        if existing.outcome_kind != ComputeAcceptedOutcomeKind::TrainingRun
+            || candidate.outcome_kind != ComputeAcceptedOutcomeKind::TrainingRun
+            || existing.source_run_id != candidate.source_run_id
+        {
+            return false;
+        }
+        let Some(candidate_window_id) =
+            Self::training_closeout_metadata_str(candidate, "window_id")
+        else {
+            return false;
+        };
+        if Self::training_closeout_metadata_str(candidate, "closeout_status").is_none() {
+            return false;
+        }
+        if Self::training_closeout_metadata_str(existing, "closeout_status").is_none() {
+            return false;
+        }
+        if Self::training_closeout_metadata_str(existing, "window_id") != Some(candidate_window_id)
+        {
+            return false;
+        }
+        candidate.outcome_id == existing.outcome_id
+            && candidate.outcome_id == format!("accepted.training_window.{candidate_window_id}")
+    }
+
     pub fn accept_compute_outcome(
         &mut self,
         context: &KernelMutationContext,
@@ -6189,13 +6230,16 @@ impl KernelState {
             req.outcome.outcome_id.as_str(),
             "compute_accepted_outcome_id_missing",
         )?;
-        if self
+        let existing_outcome = self
             .compute_accepted_outcomes
-            .contains_key(outcome_id.as_str())
-        {
-            return Err("compute_accepted_outcome_id_conflict".to_string());
-        }
+            .get(outcome_id.as_str())
+            .map(|record| record.outcome.clone());
         req.outcome.outcome_id.clone_from(&outcome_id);
+        if let Some(existing_outcome) = existing_outcome.as_ref() {
+            if !Self::accepted_training_closeout_replay_allowed(existing_outcome, &req.outcome) {
+                return Err("compute_accepted_outcome_id_conflict".to_string());
+            }
+        }
         req.outcome.accepted_at_ms =
             normalize_created_at_ms(req.outcome.accepted_at_ms, context.now_unix_ms);
         let closeout_window_id = req
@@ -18108,6 +18152,149 @@ mod tests {
                 .get("window_id")
                 .and_then(Value::as_str),
             Some("adapter.window.alpha")
+        );
+    }
+
+    #[test]
+    fn replaces_existing_training_window_closeout_for_same_window() {
+        let created_at_ms = 1_762_000_324_650u64;
+        let mut kernel = KernelState::default();
+
+        kernel
+            .register_compute_environment_package(
+                &fixture_context(created_at_ms),
+                environment_package_request(
+                    "env.openagents.math.basic",
+                    "2026.03.13",
+                    created_at_ms as i64,
+                ),
+            )
+            .expect("register environment package");
+        kernel
+            .register_compute_checkpoint_family_policy(
+                &fixture_context(created_at_ms + 100),
+                checkpoint_family_policy_request(created_at_ms as i64 + 100),
+            )
+            .expect("register checkpoint policy");
+        kernel
+            .register_compute_validator_policy(
+                &fixture_context(created_at_ms + 200),
+                validator_policy_request(created_at_ms as i64 + 200),
+            )
+            .expect("register validator policy");
+        kernel
+            .register_compute_benchmark_package(
+                &fixture_context(created_at_ms + 300),
+                benchmark_package_request(created_at_ms as i64 + 300),
+            )
+            .expect("register benchmark package");
+        kernel
+            .register_compute_training_policy(
+                &fixture_context(created_at_ms + 400),
+                training_policy_request(created_at_ms as i64 + 400),
+            )
+            .expect("register training policy");
+        kernel
+            .create_compute_training_run(
+                &fixture_context(created_at_ms + 500),
+                training_run_request(created_at_ms as i64 + 500),
+            )
+            .expect("create training run");
+        kernel
+            .record_compute_adapter_window(
+                &fixture_context(created_at_ms + 600),
+                adapter_window_request(created_at_ms as i64 + 600),
+            )
+            .expect("record adapter window");
+
+        let mut initial_closeout =
+            accept_training_window_closeout_request(created_at_ms as i64 + 700, "refused", false);
+        initial_closeout.outcome.outcome_id =
+            "accepted.training_window.adapter.window.alpha".to_string();
+        kernel
+            .accept_compute_outcome(&fixture_context(created_at_ms + 700), initial_closeout)
+            .expect("accept refused training window closeout");
+
+        let mut replayed_closeout =
+            accept_training_window_closeout_request(created_at_ms as i64 + 710, "rewarded", true);
+        replayed_closeout.idempotency_key =
+            "idemp.compute.outcome.accept.training_window.alpha.replay".to_string();
+        replayed_closeout.outcome.outcome_id =
+            "accepted.training_window.adapter.window.alpha".to_string();
+        replayed_closeout.outcome.training_summary = Some(ComputeTrainingSummary {
+            completed_step_count: Some(48),
+            processed_token_count: Some(96_000),
+            average_loss: Some(0.31),
+            best_eval_score_bps: Some(9_850),
+            accepted_checkpoint_ref: Some(
+                "checkpoint://decoder/train.math.basic.alpha/promotion".to_string(),
+            ),
+            aggregate_metrics: vec![ComputeEvaluationMetric {
+                metric_id: "held_out_average_score_bps".to_string(),
+                metric_value: 9_850.0,
+                unit: Some("bps".to_string()),
+                metadata: json!({"window_id": "adapter.window.alpha"}),
+            }],
+            artifacts: vec![ComputeEvaluationArtifact {
+                artifact_kind: "aggregated_delta".to_string(),
+                artifact_ref: "artifact://training/windows/adapter.window.alpha/aggregated_delta"
+                    .to_string(),
+                digest: Some("sha256:adapter-aggregate-alpha-updated".to_string()),
+                metadata: json!({"window_id": "adapter.window.alpha"}),
+            }],
+        });
+        let replayed = kernel
+            .accept_compute_outcome(&fixture_context(created_at_ms + 710), replayed_closeout)
+            .expect("replace training window closeout");
+        assert_eq!(
+            replayed
+                .response
+                .outcome
+                .metadata
+                .get("closeout_status")
+                .and_then(Value::as_str),
+            Some("rewarded")
+        );
+        assert_eq!(
+            replayed
+                .response
+                .outcome
+                .metadata
+                .get("payout_eligible")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+
+        let stored = kernel
+            .get_compute_accepted_outcome("accepted.training_window.adapter.window.alpha")
+            .expect("stored closeout");
+        assert_eq!(stored.accepted_at_ms, created_at_ms as i64 + 710);
+        assert_eq!(
+            stored
+                .metadata
+                .get("closeout_status")
+                .and_then(Value::as_str),
+            Some("rewarded")
+        );
+        assert_eq!(
+            stored
+                .training_summary
+                .as_ref()
+                .and_then(|summary| summary.accepted_checkpoint_ref.as_deref()),
+            Some("checkpoint://decoder/train.math.basic.alpha/promotion")
+        );
+        assert_eq!(
+            kernel
+                .list_compute_accepted_outcomes(
+                    Some(ComputeAcceptedOutcomeKind::TrainingRun),
+                    Some("env.openagents.math.basic"),
+                )
+                .into_iter()
+                .filter(|outcome| {
+                    outcome.outcome_id == "accepted.training_window.adapter.window.alpha"
+                })
+                .count(),
+            1
         );
     }
 
