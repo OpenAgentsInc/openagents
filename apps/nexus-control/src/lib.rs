@@ -9568,21 +9568,23 @@ fn prepare_homework_launch(
         training_scheduler_run_definition(&store.kernel, &preview_run).map_err(kernel_api_error)?;
     let preview_metadata =
         training_scheduler_metadata_from_run(&preview_run).map_err(kernel_api_error)?;
-    let admitted_nodes = training_authority_refresh_node_views(
-        &store.kernel,
-        store.kernel.list_admitted_training_nodes(
-            &TrainingNodeQuery {
-                network_id: None,
-                requested_network_id: None,
-                role: Some(TrainingNodeRoleClaim::Worker),
-                online_only: false,
-                eligible_only: false,
-            },
+    let admitted_nodes = training_authority_freshest_node_views_by_pubkey(
+        training_authority_refresh_node_views(
+            &store.kernel,
+            store.kernel.list_admitted_training_nodes(
+                &TrainingNodeQuery {
+                    network_id: None,
+                    requested_network_id: None,
+                    role: Some(TrainingNodeRoleClaim::Worker),
+                    online_only: false,
+                    eligible_only: false,
+                },
+                now_unix_ms as i64,
+            ),
             now_unix_ms as i64,
-        ),
-        now_unix_ms as i64,
-    )
-    .map_err(kernel_api_error)?;
+        )
+        .map_err(kernel_api_error)?,
+    );
     let matched_nodes = admitted_nodes
         .iter()
         .filter(|node| {
@@ -9712,21 +9714,23 @@ fn prepare_homework_launch(
                 .runs_by_training_run_id
                 .get(existing_run.training_run_id.as_str())
             {
-                let node_lookup = store
-                    .kernel
-                    .list_admitted_training_nodes(
-                        &TrainingNodeQuery {
-                            network_id: None,
-                            requested_network_id: None,
-                            role: None,
-                            online_only: false,
-                            eligible_only: false,
-                        },
+                let node_lookup = training_authority_freshest_node_view_lookup(
+                    training_authority_refresh_node_views(
+                        &store.kernel,
+                        store.kernel.list_admitted_training_nodes(
+                            &TrainingNodeQuery {
+                                network_id: None,
+                                requested_network_id: None,
+                                role: None,
+                                online_only: false,
+                                eligible_only: false,
+                            },
+                            now_unix_ms as i64,
+                        ),
                         now_unix_ms as i64,
                     )
-                    .into_iter()
-                    .map(|node| (node.node_pubkey_hex.clone(), node))
-                    .collect::<HashMap<_, _>>();
+                    .map_err(kernel_api_error)?,
+                );
                 return Ok(HomeworkLaunchPrepared {
                     training_run_id: existing_run.training_run_id.clone(),
                     network_id: scheduled_run.network_id.clone(),
@@ -14238,6 +14242,25 @@ fn training_authority_refresh_node_views(
     nodes
         .into_iter()
         .map(|node| training_authority_refresh_node_view(kernel, node, now_unix_ms))
+        .collect()
+}
+
+fn training_authority_freshest_node_views_by_pubkey(
+    nodes: Vec<AdmittedTrainingNodeView>,
+) -> Vec<AdmittedTrainingNodeView> {
+    let mut seen = HashSet::new();
+    nodes
+        .into_iter()
+        .filter(|node| seen.insert(node.node_pubkey_hex.clone()))
+        .collect()
+}
+
+fn training_authority_freshest_node_view_lookup(
+    nodes: Vec<AdmittedTrainingNodeView>,
+) -> HashMap<String, AdmittedTrainingNodeView> {
+    training_authority_freshest_node_views_by_pubkey(nodes)
+        .into_iter()
+        .map(|node| (node.node_pubkey_hex.clone(), node))
         .collect()
 }
 
@@ -40501,6 +40524,95 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn prepare_homework_launch_uses_freshest_worker_view_per_pubkey() {
+        let config = test_config().expect("config");
+        let state = build_app_state(config);
+        let network_id = "trainnet.cs336.a1.duplicates";
+        let training_run_id = "run.cs336.a1.duplicates";
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(200),
+            "node-duplicate-alpha",
+            "sha256:build-duplicate-alpha-old",
+            network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodeduplicatealpha"),
+        );
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-duplicate-alpha",
+            "sha256:build-duplicate-alpha-new",
+            network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodeduplicatealpha"),
+        );
+
+        let prepared = {
+            let mut store = state.store.write().expect("write store");
+            super::prepare_homework_launch(
+                &state.config,
+                &mut store,
+                recorded_at_ms,
+                LaunchHomeworkRunRequest {
+                    course_id: "cs336".to_string(),
+                    homework_id: "a1".to_string(),
+                    run_slug: "duplicates".to_string(),
+                    training_run_id: Some(training_run_id.to_string()),
+                    display_name: Some("Duplicate Nodes".to_string()),
+                    reuse_existing_run: false,
+                    network_id: Some(network_id.to_string()),
+                    run_kind: Some("homework".to_string()),
+                    assignment_family: Some("cs336.a1".to_string()),
+                    artifact_prefix: None,
+                    target: super::HomeworkLaunchTargetRequest {
+                        only_online: true,
+                        min_pylon_version: None,
+                        require_updated_build: true,
+                        tags_any: Vec::new(),
+                        tags_all: Vec::new(),
+                    },
+                    assignment: super::HomeworkLaunchAssignmentRequest {
+                        mode: super::HomeworkAssignmentMode::AllMatchingPylons,
+                        max_contributors: None,
+                        window_duration_seconds: 1_800,
+                    },
+                    payout: super::HomeworkLaunchPayoutRequest {
+                        enabled: false,
+                        rail: None,
+                        amount_sats: None,
+                        pay_only_on_accept: true,
+                    },
+                },
+            )
+            .expect("prepare homework launch")
+        };
+
+        assert_eq!(prepared.matched_pylons.len(), 1);
+        assert_eq!(prepared.assigned_nodes.len(), 1);
+        assert_eq!(
+            prepared.matched_pylons[0].node_pubkey_hex,
+            "node-duplicate-alpha"
+        );
+        assert_eq!(
+            prepared.matched_pylons[0].build_digest,
+            "sha256:build-duplicate-alpha-new"
+        );
+        assert_eq!(
+            prepared.assigned_nodes[0].build_digest,
+            "sha256:build-duplicate-alpha-new"
+        );
     }
 
     #[tokio::test]
