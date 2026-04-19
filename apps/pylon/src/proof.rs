@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -6,7 +6,7 @@ use std::process::{Command as StdCommand, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use axum::body::Bytes;
 use axum::extract::{Path as AxumPath, State};
 use axum::http::StatusCode;
@@ -34,24 +34,69 @@ const TEST_GCS_SERVICE_ACCOUNT_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----\
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProofCommand {
     Authority { command: ProofAuthorityCommand },
+    Fleet { command: ProofFleetCommand },
+    Run { command: ProofRunCommand },
     Internal { command: ProofInternalCommand },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProofAuthorityCommand {
     Up {
+        namespace: String,
         mode: ProofAuthorityMode,
         json: bool,
     },
     Status {
+        namespace: String,
         json: bool,
     },
     Down {
+        namespace: String,
         json: bool,
     },
     Reset {
+        namespace: String,
         json: bool,
     },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProofFleetCommand {
+    Up {
+        namespace: String,
+        mode: ProofAuthorityMode,
+        workers: usize,
+        validators: usize,
+        network_id: Option<String>,
+        stale_worker_state: bool,
+        stale_validator_state: bool,
+        json: bool,
+    },
+    Status {
+        namespace: String,
+        json: bool,
+    },
+    Down {
+        namespace: String,
+        json: bool,
+    },
+    Reset {
+        namespace: String,
+        json: bool,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProofRunCommand {
+    lane: ProofLane,
+    namespace: Option<String>,
+    mode: ProofAuthorityMode,
+    workers: usize,
+    validators: usize,
+    timeout_seconds: u64,
+    stale_worker_state: bool,
+    stale_validator_state: bool,
+    json: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -87,6 +132,66 @@ impl ProofAuthorityMode {
 
     fn authority_package(self) -> &'static str {
         self.authority_binary()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProofLane {
+    Cs336A1,
+}
+
+impl ProofLane {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Cs336A1 => "cs336-a1",
+        }
+    }
+
+    fn run_prefix(self) -> &'static str {
+        match self {
+            Self::Cs336A1 => "run.cs336.a1.proof",
+        }
+    }
+
+    fn display_name_prefix(self) -> &'static str {
+        match self {
+            Self::Cs336A1 => "Proof CS336 A1",
+        }
+    }
+
+    const fn default_workers(self) -> usize {
+        match self {
+            Self::Cs336A1 => 2,
+        }
+    }
+
+    const fn default_validators(self) -> usize {
+        match self {
+            Self::Cs336A1 => 1,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ProofFleetNodeRole {
+    Worker,
+    Validator,
+}
+
+impl ProofFleetNodeRole {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Worker => "worker",
+            Self::Validator => "validator",
+        }
+    }
+
+    const fn role_claim(self) -> super::PylonTrainingRoleClaim {
+        match self {
+            Self::Worker => super::PylonTrainingRoleClaim::Worker,
+            Self::Validator => super::PylonTrainingRoleClaim::Validator,
+        }
     }
 }
 
@@ -129,6 +234,12 @@ struct ProofNamespacePorts {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofNodePorts {
+    admin: u16,
+    checkpoint: u16,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 struct ProofArtifactSmokeReport {
     artifact_id: String,
     relative_object_path: String,
@@ -152,6 +263,40 @@ struct ProofAuthorityRuntimeState {
     authority_process: ProofProcessRecord,
     artifact_store_process: ProofProcessRecord,
     last_artifact_smoke: Option<ProofArtifactSmokeReport>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofFleetNodeRuntimeRecord {
+    role: ProofFleetNodeRole,
+    index: usize,
+    node_label: String,
+    payout_destination: String,
+    home_dir: String,
+    config_path: String,
+    run_root: String,
+    admin_url: String,
+    checkpoint_serve_url: String,
+    ports: ProofNodePorts,
+    stale_retained_state_injected: bool,
+    process: ProofProcessRecord,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofFleetRuntimeState {
+    schema_version: u32,
+    namespace: String,
+    mode: ProofAuthorityMode,
+    started_at_ms: i64,
+    authority_started_at_ms: i64,
+    authority_base_url: String,
+    authority_relay_ws_url: Option<String>,
+    network_id: String,
+    run_slug: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    psionic_repo_root: Option<String>,
+    nodes: Vec<ProofFleetNodeRuntimeRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    launched_run: Option<ProofRunLaunchResponse>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -197,6 +342,177 @@ struct ProofAuthorityStatusReport {
     artifact_smoke: Option<ProofArtifactSmokeReport>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofFleetPaths {
+    namespace_root: String,
+    fleet_root: String,
+    fleet_state_path: String,
+    run_report_path: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofFleetNodeTrainingStatus {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    active_window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    active_runtime_process_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_failure_reason: Option<String>,
+    recent_issue_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    first_issue_reason: Option<String>,
+    pending_closeout_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    load_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofFleetNodeStatus {
+    role: ProofFleetNodeRole,
+    index: usize,
+    node_label: String,
+    payout_destination: String,
+    home_dir: String,
+    config_path: String,
+    run_root: String,
+    admin_url: String,
+    checkpoint_serve_url: String,
+    stale_retained_state_injected: bool,
+    process: ProofProcessStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    training: Option<ProofFleetNodeTrainingStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofFleetStatusReport {
+    configured: bool,
+    namespace: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<ProofAuthorityMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    run_slug: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    paths: Option<ProofFleetPaths>,
+    authority: ProofAuthorityStatusReport,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    nodes: Vec<ProofFleetNodeStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    launched_run: Option<ProofRunLaunchResponse>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofStatsSnapshot {
+    #[serde(default)]
+    pylons_online_now: u64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofObservedRunState {
+    #[serde(default)]
+    training_run_id: String,
+    #[serde(default)]
+    run_status: String,
+    #[serde(default)]
+    current_window_id: String,
+    #[serde(default)]
+    active_window_count: u64,
+    #[serde(default)]
+    pending_validation_window_count: u64,
+    #[serde(default)]
+    validator_challenges_open: u64,
+    #[serde(default)]
+    validator_challenges_queued: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_closeout_status: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofObservedWindowState {
+    #[serde(default)]
+    window_id: String,
+    #[serde(default)]
+    status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    closeout_status: Option<String>,
+    #[serde(default)]
+    accepted_contributions: u32,
+    #[serde(default)]
+    validator_challenges_open: u64,
+    #[serde(default)]
+    validator_challenges_queued: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofAuthorityTrainingRunDetailResponse {
+    #[serde(default)]
+    training_run_id: String,
+    #[serde(default)]
+    run: ProofObservedRunState,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    windows: Vec<ProofObservedWindowState>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    contributions: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    nodes: Vec<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    caveats: Vec<Value>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofObservedTrainingRunDetail {
+    training_run_id: String,
+    run: ProofObservedRunState,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    windows: Vec<ProofObservedWindowState>,
+    contribution_count: usize,
+    node_count: usize,
+    caveat_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    first_caveat_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    first_caveat_severity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    first_caveat_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    first_caveat_detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofRunLaunchResponse {
+    launched_at_unix_ms: u64,
+    launch_state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    launch_phase: Option<String>,
+    training_run_id: String,
+    lane_id: String,
+    training_policy_ref: String,
+    environment_ref: String,
+    network_id: String,
+    worker_target_count: u32,
+    run_detail: ProofAuthorityTrainingRunDetailResponse,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofRunReport {
+    namespace: String,
+    lane: String,
+    generated_at_ms: i64,
+    timeout_seconds: u64,
+    status: String,
+    detail: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    blocker_id: Option<String>,
+    fleet: ProofFleetStatusReport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    launch: Option<ProofRunLaunchResponse>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    observed_run: Option<ProofObservedTrainingRunDetail>,
+}
+
 #[derive(Clone)]
 struct ArtifactStoreState {
     store_root: PathBuf,
@@ -207,6 +523,7 @@ struct ArtifactStoreState {
 struct ProofLayout {
     namespace_root: PathBuf,
     authority_env_path: PathBuf,
+    fleet_root: PathBuf,
     relay_data_dir: PathBuf,
     receipt_log_path: PathBuf,
     kernel_state_path: PathBuf,
@@ -218,6 +535,8 @@ struct ProofLayout {
     artifact_store_root: PathBuf,
     artifact_trace_path: PathBuf,
     runtime_state_path: PathBuf,
+    fleet_state_path: PathBuf,
+    run_report_path: PathBuf,
     authority_log_path: PathBuf,
     artifact_store_log_path: PathBuf,
 }
@@ -227,6 +546,12 @@ pub fn parse_proof_command(args: &[String], start_index: usize) -> Result<ProofC
         Some("authority") => Ok(ProofCommand::Authority {
             command: parse_proof_authority_command(args, start_index + 1)?,
         }),
+        Some("fleet") => Ok(ProofCommand::Fleet {
+            command: parse_proof_fleet_command(args, start_index + 1)?,
+        }),
+        Some("run") => Ok(ProofCommand::Run {
+            command: parse_proof_run_command(args, start_index + 1)?,
+        }),
         Some("internal") => Ok(ProofCommand::Internal {
             command: parse_proof_internal_command(args, start_index + 1)?,
         }),
@@ -235,34 +560,94 @@ pub fn parse_proof_command(args: &[String], start_index: usize) -> Result<ProofC
     }
 }
 
-pub async fn run_proof_command(config_path: &Path, command: ProofCommand) -> Result<Option<String>> {
+pub async fn run_proof_command(
+    config_path: &Path,
+    command: ProofCommand,
+) -> Result<Option<String>> {
     match command {
         ProofCommand::Authority { command } => {
-            let report = match command {
-                ProofAuthorityCommand::Up { mode, .. } => {
-                    ensure_proof_authority_up(config_path, mode).await?
+            let report = match &command {
+                ProofAuthorityCommand::Up {
+                    namespace, mode, ..
+                } => ensure_proof_authority_up(config_path, namespace.as_str(), *mode).await?,
+                ProofAuthorityCommand::Status { namespace, .. } => {
+                    collect_proof_status(config_path, namespace.as_str()).await?
                 }
-                ProofAuthorityCommand::Status { .. } => collect_proof_status(config_path).await?,
-                ProofAuthorityCommand::Down { .. } => {
-                    let _ = stop_proof_authority(config_path, false).await?;
-                    collect_proof_status(config_path).await?
+                ProofAuthorityCommand::Down { namespace, .. } => {
+                    let _ = stop_proof_authority(config_path, namespace.as_str(), false).await?;
+                    collect_proof_status(config_path, namespace.as_str()).await?
                 }
-                ProofAuthorityCommand::Reset { .. } => {
-                    let _ = stop_proof_authority(config_path, true).await?;
-                    collect_proof_status(config_path).await?
+                ProofAuthorityCommand::Reset { namespace, .. } => {
+                    let _ = stop_proof_authority(config_path, namespace.as_str(), true).await?;
+                    collect_proof_status(config_path, namespace.as_str()).await?
                 }
             };
             let json = matches!(
                 command,
                 ProofAuthorityCommand::Up { json: true, .. }
-                    | ProofAuthorityCommand::Status { json: true }
-                    | ProofAuthorityCommand::Down { json: true }
-                    | ProofAuthorityCommand::Reset { json: true }
+                    | ProofAuthorityCommand::Status { json: true, .. }
+                    | ProofAuthorityCommand::Down { json: true, .. }
+                    | ProofAuthorityCommand::Reset { json: true, .. }
             );
             if json {
                 return Ok(Some(serde_json::to_string_pretty(&report)?));
             }
             Ok(Some(render_proof_status_report(&report)))
+        }
+        ProofCommand::Fleet { command } => {
+            let report = match &command {
+                ProofFleetCommand::Up {
+                    namespace,
+                    mode,
+                    workers,
+                    validators,
+                    network_id,
+                    stale_worker_state,
+                    stale_validator_state,
+                    ..
+                } => {
+                    ensure_proof_fleet_up(
+                        config_path,
+                        namespace.as_str(),
+                        *mode,
+                        *workers,
+                        *validators,
+                        network_id.as_deref(),
+                        *stale_worker_state,
+                        *stale_validator_state,
+                    )
+                    .await?
+                }
+                ProofFleetCommand::Status { namespace, .. } => {
+                    collect_proof_fleet_status(config_path, namespace.as_str()).await?
+                }
+                ProofFleetCommand::Down { namespace, .. } => {
+                    let _ = stop_proof_fleet(config_path, namespace.as_str(), false).await?;
+                    collect_proof_fleet_status(config_path, namespace.as_str()).await?
+                }
+                ProofFleetCommand::Reset { namespace, .. } => {
+                    let _ = stop_proof_fleet(config_path, namespace.as_str(), true).await?;
+                    collect_proof_fleet_status(config_path, namespace.as_str()).await?
+                }
+            };
+            let json = matches!(
+                command,
+                ProofFleetCommand::Up { json: true, .. }
+                    | ProofFleetCommand::Status { json: true, .. }
+                    | ProofFleetCommand::Down { json: true, .. }
+                    | ProofFleetCommand::Reset { json: true, .. }
+            );
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_proof_fleet_status_report(&report)))
+        }
+        ProofCommand::Run { command } => {
+            let report = run_proof_lane(config_path, &command).await?;
+            if command.json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_proof_run_report(&report)))
         }
         ProofCommand::Internal { command } => match command {
             ProofInternalCommand::ArtifactStoreServe {
@@ -283,6 +668,7 @@ fn parse_proof_authority_command(
 ) -> Result<ProofAuthorityCommand> {
     match args.get(start_index).map(String::as_str) {
         Some("up") => {
+            let mut namespace = DEFAULT_PROOF_NAMESPACE.to_string();
             let mut json = false;
             let mut mode = ProofAuthorityMode::ProdShaped;
             let mut index = start_index + 1;
@@ -293,32 +679,247 @@ fn parse_proof_authority_command(
                         index += 1;
                     }
                     "--mode" => {
-                        let value = args
-                            .get(index + 1)
-                            .ok_or_else(|| anyhow!("missing value for proof authority up --mode"))?;
+                        let value = args.get(index + 1).ok_or_else(|| {
+                            anyhow!("missing value for proof authority up --mode")
+                        })?;
                         mode = parse_proof_authority_mode(value.as_str())?;
+                        index += 2;
+                    }
+                    "--namespace" => {
+                        namespace = parse_namespace_value(
+                            args,
+                            index + 1,
+                            "proof authority up --namespace",
+                        )?;
                         index += 2;
                     }
                     other => bail!("unexpected argument for proof authority up: {other}"),
                 }
             }
-            Ok(ProofAuthorityCommand::Up { mode, json })
+            Ok(ProofAuthorityCommand::Up {
+                namespace,
+                mode,
+                json,
+            })
         }
-        Some("status") => Ok(ProofAuthorityCommand::Status {
-            json: parse_json_only(args, start_index + 1, "proof authority status")?,
-        }),
-        Some("down") => Ok(ProofAuthorityCommand::Down {
-            json: parse_json_only(args, start_index + 1, "proof authority down")?,
-        }),
-        Some("reset") => Ok(ProofAuthorityCommand::Reset {
-            json: parse_json_only(args, start_index + 1, "proof authority reset")?,
-        }),
+        Some("status") => {
+            let (namespace, json) = parse_namespace_and_json(
+                args,
+                start_index + 1,
+                "proof authority status",
+                DEFAULT_PROOF_NAMESPACE,
+            )?;
+            Ok(ProofAuthorityCommand::Status { namespace, json })
+        }
+        Some("down") => {
+            let (namespace, json) = parse_namespace_and_json(
+                args,
+                start_index + 1,
+                "proof authority down",
+                DEFAULT_PROOF_NAMESPACE,
+            )?;
+            Ok(ProofAuthorityCommand::Down { namespace, json })
+        }
+        Some("reset") => {
+            let (namespace, json) = parse_namespace_and_json(
+                args,
+                start_index + 1,
+                "proof authority reset",
+                DEFAULT_PROOF_NAMESPACE,
+            )?;
+            Ok(ProofAuthorityCommand::Reset { namespace, json })
+        }
         Some(other) => bail!("unknown proof authority command: {other}"),
         None => bail!("missing proof authority command"),
     }
 }
 
-fn parse_proof_internal_command(args: &[String], start_index: usize) -> Result<ProofInternalCommand> {
+fn parse_proof_fleet_command(args: &[String], start_index: usize) -> Result<ProofFleetCommand> {
+    match args.get(start_index).map(String::as_str) {
+        Some("up") => {
+            let mut namespace = DEFAULT_PROOF_NAMESPACE.to_string();
+            let mut json = false;
+            let mut mode = ProofAuthorityMode::ProdShaped;
+            let mut workers = 1usize;
+            let mut validators = 1usize;
+            let mut network_id = None::<String>;
+            let mut stale_worker_state = false;
+            let mut stale_validator_state = false;
+            let mut index = start_index + 1;
+            while index < args.len() {
+                match args[index].as_str() {
+                    "--json" => {
+                        json = true;
+                        index += 1;
+                    }
+                    "--mode" => {
+                        let value = args
+                            .get(index + 1)
+                            .ok_or_else(|| anyhow!("missing value for proof fleet up --mode"))?;
+                        mode = parse_proof_authority_mode(value.as_str())?;
+                        index += 2;
+                    }
+                    "--namespace" => {
+                        namespace =
+                            parse_namespace_value(args, index + 1, "proof fleet up --namespace")?;
+                        index += 2;
+                    }
+                    "--workers" => {
+                        workers = parse_usize_value(args, index + 1, "proof fleet up --workers")?;
+                        index += 2;
+                    }
+                    "--validators" => {
+                        validators =
+                            parse_usize_value(args, index + 1, "proof fleet up --validators")?;
+                        index += 2;
+                    }
+                    "--network-id" => {
+                        network_id = Some(parse_nonempty_string_value(
+                            args,
+                            index + 1,
+                            "proof fleet up --network-id",
+                        )?);
+                        index += 2;
+                    }
+                    "--stale-worker-state" => {
+                        stale_worker_state = true;
+                        index += 1;
+                    }
+                    "--stale-validator-state" => {
+                        stale_validator_state = true;
+                        index += 1;
+                    }
+                    other => bail!("unexpected argument for proof fleet up: {other}"),
+                }
+            }
+            ensure!(workers > 0, "proof fleet up requires at least one worker");
+            ensure!(
+                validators > 0,
+                "proof fleet up requires at least one validator"
+            );
+            Ok(ProofFleetCommand::Up {
+                namespace,
+                mode,
+                workers,
+                validators,
+                network_id,
+                stale_worker_state,
+                stale_validator_state,
+                json,
+            })
+        }
+        Some("status") => {
+            let (namespace, json) = parse_namespace_and_json(
+                args,
+                start_index + 1,
+                "proof fleet status",
+                DEFAULT_PROOF_NAMESPACE,
+            )?;
+            Ok(ProofFleetCommand::Status { namespace, json })
+        }
+        Some("down") => {
+            let (namespace, json) = parse_namespace_and_json(
+                args,
+                start_index + 1,
+                "proof fleet down",
+                DEFAULT_PROOF_NAMESPACE,
+            )?;
+            Ok(ProofFleetCommand::Down { namespace, json })
+        }
+        Some("reset") => {
+            let (namespace, json) = parse_namespace_and_json(
+                args,
+                start_index + 1,
+                "proof fleet reset",
+                DEFAULT_PROOF_NAMESPACE,
+            )?;
+            Ok(ProofFleetCommand::Reset { namespace, json })
+        }
+        Some(other) => bail!("unknown proof fleet command: {other}"),
+        None => bail!("missing proof fleet command"),
+    }
+}
+
+fn parse_proof_run_command(args: &[String], start_index: usize) -> Result<ProofRunCommand> {
+    let lane = parse_proof_lane(
+        args.get(start_index)
+            .ok_or_else(|| anyhow!("missing proof run lane"))?,
+    )?;
+    let mut namespace = None::<String>;
+    let mut json = false;
+    let mut mode = ProofAuthorityMode::ProdShaped;
+    let mut workers = lane.default_workers();
+    let mut validators = lane.default_validators();
+    let mut timeout_seconds = 45u64;
+    let mut stale_worker_state = false;
+    let mut stale_validator_state = false;
+    let mut index = start_index + 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--mode" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| anyhow!("missing value for proof run --mode"))?;
+                mode = parse_proof_authority_mode(value.as_str())?;
+                index += 2;
+            }
+            "--namespace" => {
+                namespace = Some(parse_namespace_value(
+                    args,
+                    index + 1,
+                    "proof run --namespace",
+                )?);
+                index += 2;
+            }
+            "--workers" => {
+                workers = parse_usize_value(args, index + 1, "proof run --workers")?;
+                index += 2;
+            }
+            "--validators" => {
+                validators = parse_usize_value(args, index + 1, "proof run --validators")?;
+                index += 2;
+            }
+            "--timeout-seconds" => {
+                timeout_seconds = parse_u64_value(args, index + 1, "proof run --timeout-seconds")?;
+                index += 2;
+            }
+            "--stale-worker-state" => {
+                stale_worker_state = true;
+                index += 1;
+            }
+            "--stale-validator-state" => {
+                stale_validator_state = true;
+                index += 1;
+            }
+            other => bail!(
+                "unexpected argument for proof run {}: {other}",
+                lane.label()
+            ),
+        }
+    }
+    ensure!(workers > 0, "proof run requires at least one worker");
+    ensure!(validators > 0, "proof run requires at least one validator");
+    Ok(ProofRunCommand {
+        lane,
+        namespace,
+        mode,
+        workers,
+        validators,
+        timeout_seconds,
+        stale_worker_state,
+        stale_validator_state,
+        json,
+    })
+}
+
+fn parse_proof_internal_command(
+    args: &[String],
+    start_index: usize,
+) -> Result<ProofInternalCommand> {
     match (
         args.get(start_index).map(String::as_str),
         args.get(start_index + 1).map(String::as_str),
@@ -355,16 +956,21 @@ fn parse_proof_internal_command(args: &[String], start_index: usize) -> Result<P
                         trace_path = Some(PathBuf::from(value));
                         index += 2;
                     }
-                    other => bail!("unexpected argument for proof internal artifact-store serve: {other}"),
+                    other => bail!(
+                        "unexpected argument for proof internal artifact-store serve: {other}"
+                    ),
                 }
             }
             Ok(ProofInternalCommand::ArtifactStoreServe {
-                listen_addr: listen_addr
-                    .ok_or_else(|| anyhow!("proof internal artifact-store serve requires --listen-addr"))?,
-                store_root: store_root
-                    .ok_or_else(|| anyhow!("proof internal artifact-store serve requires --store-root"))?,
-                trace_path: trace_path
-                    .ok_or_else(|| anyhow!("proof internal artifact-store serve requires --trace-path"))?,
+                listen_addr: listen_addr.ok_or_else(|| {
+                    anyhow!("proof internal artifact-store serve requires --listen-addr")
+                })?,
+                store_root: store_root.ok_or_else(|| {
+                    anyhow!("proof internal artifact-store serve requires --store-root")
+                })?,
+                trace_path: trace_path.ok_or_else(|| {
+                    anyhow!("proof internal artifact-store serve requires --trace-path")
+                })?,
             })
         }
         (Some(other), _) => bail!("unknown proof internal command: {other}"),
@@ -372,13 +978,66 @@ fn parse_proof_internal_command(args: &[String], start_index: usize) -> Result<P
     }
 }
 
-fn parse_json_only(args: &[String], start_index: usize, context: &str) -> Result<bool> {
-    match args.get(start_index) {
-        None => Ok(false),
-        Some(value) if value == "--json" && start_index + 1 == args.len() => Ok(true),
-        Some(value) if value == "--json" => bail!("{context} --json does not accept additional arguments"),
-        Some(other) => bail!("unexpected argument for {context}: {other}"),
+fn parse_namespace_and_json(
+    args: &[String],
+    mut index: usize,
+    context: &str,
+    default_namespace: &str,
+) -> Result<(String, bool)> {
+    let mut namespace = default_namespace.to_string();
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--namespace" => {
+                namespace = parse_namespace_value(args, index + 1, context)?;
+                index += 2;
+            }
+            other => bail!("unexpected argument for {context}: {other}"),
+        }
     }
+    Ok((namespace, json))
+}
+
+fn parse_namespace_value(args: &[String], value_index: usize, context: &str) -> Result<String> {
+    let value = parse_nonempty_string_value(args, value_index, context)?;
+    Ok(value)
+}
+
+fn parse_nonempty_string_value(
+    args: &[String],
+    value_index: usize,
+    context: &str,
+) -> Result<String> {
+    let value = args
+        .get(value_index)
+        .ok_or_else(|| anyhow!("missing value for {context}"))?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        bail!("{context} must not be empty");
+    }
+    Ok(trimmed.to_string())
+}
+
+fn parse_usize_value(args: &[String], value_index: usize, context: &str) -> Result<usize> {
+    let value = args
+        .get(value_index)
+        .ok_or_else(|| anyhow!("missing value for {context}"))?;
+    value
+        .parse::<usize>()
+        .with_context(|| format!("invalid integer for {context}: {value}"))
+}
+
+fn parse_u64_value(args: &[String], value_index: usize, context: &str) -> Result<u64> {
+    let value = args
+        .get(value_index)
+        .ok_or_else(|| anyhow!("missing value for {context}"))?;
+    value
+        .parse::<u64>()
+        .with_context(|| format!("invalid integer for {context}: {value}"))
 }
 
 fn parse_proof_authority_mode(value: &str) -> Result<ProofAuthorityMode> {
@@ -389,17 +1048,28 @@ fn parse_proof_authority_mode(value: &str) -> Result<ProofAuthorityMode> {
     }
 }
 
+fn parse_proof_lane(value: &str) -> Result<ProofLane> {
+    match value {
+        "cs336-a1" | "cs336_a1" | "cs336/a1" => Ok(ProofLane::Cs336A1),
+        other => bail!("unknown proof lane: {other}"),
+    }
+}
+
 async fn ensure_proof_authority_up(
     config_path: &Path,
+    namespace: &str,
     mode: ProofAuthorityMode,
 ) -> Result<ProofAuthorityStatusReport> {
-    let namespace = DEFAULT_PROOF_NAMESPACE.to_string();
-    let layout = proof_layout(config_path, namespace.as_str());
+    let layout = proof_layout(config_path, namespace);
     if let Some(state) = load_runtime_state(layout.runtime_state_path.as_path())? {
         let authority_running = process_is_running(&state.authority_process);
         let artifact_running = process_is_running(&state.artifact_store_process);
-        if authority_running && artifact_running && state.mode == mode {
-            return collect_proof_status(config_path).await;
+        if authority_running
+            && artifact_running
+            && state.mode == mode
+            && state.namespace == namespace
+        {
+            return collect_proof_status(config_path, namespace).await;
         }
         let _ = stop_runtime_processes(&state).await;
     }
@@ -407,10 +1077,12 @@ async fn ensure_proof_authority_up(
     ensure_layout_dirs(&layout)?;
     write_signer_credentials(layout.signer_credentials_path.as_path())?;
 
-    let ports = proof_namespace_ports(namespace.as_str());
+    let ports = proof_namespace_ports(namespace);
     let admin_bearer_token = format!("proof_admin_{}", super::random_token());
-    let artifact_store_base_url =
-        format!("http://127.0.0.1:{}{}", ports.artifact_store, PROOF_ARTIFACT_UPLOAD_PREFIX);
+    let artifact_store_base_url = format!(
+        "http://127.0.0.1:{}{}",
+        ports.artifact_store, PROOF_ARTIFACT_UPLOAD_PREFIX
+    );
     let authority_base_url = match mode {
         ProofAuthorityMode::ProdShaped => format!("http://127.0.0.1:{}", ports.relay_http),
         ProofAuthorityMode::DebugAuthority => format!("http://127.0.0.1:{}", ports.control_http),
@@ -477,7 +1149,7 @@ async fn ensure_proof_authority_up(
         &[],
         authority_env
             .iter()
-            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .map(|(key, value)| (key.clone(), value.clone()))
             .collect::<Vec<_>>()
             .as_slice(),
         layout.authority_log_path.as_path(),
@@ -490,7 +1162,7 @@ async fn ensure_proof_authority_up(
 
     let mut state = ProofAuthorityRuntimeState {
         schema_version: PROOF_RUNTIME_SCHEMA_VERSION,
-        namespace,
+        namespace: namespace.to_string(),
         mode,
         started_at_ms: super::now_epoch_ms(),
         admin_bearer_token,
@@ -513,15 +1185,18 @@ async fn ensure_proof_authority_up(
     let artifact_smoke = run_artifact_smoke(&state).await?;
     state.last_artifact_smoke = Some(artifact_smoke);
     save_runtime_state(layout.runtime_state_path.as_path(), &state)?;
-    collect_proof_status(config_path).await
+    collect_proof_status(config_path, namespace).await
 }
 
-async fn collect_proof_status(config_path: &Path) -> Result<ProofAuthorityStatusReport> {
-    let layout = proof_layout(config_path, DEFAULT_PROOF_NAMESPACE);
+async fn collect_proof_status(
+    config_path: &Path,
+    namespace: &str,
+) -> Result<ProofAuthorityStatusReport> {
+    let layout = proof_layout(config_path, namespace);
     let Some(state) = load_runtime_state(layout.runtime_state_path.as_path())? else {
         return Ok(ProofAuthorityStatusReport {
             configured: false,
-            namespace: DEFAULT_PROOF_NAMESPACE.to_string(),
+            namespace: namespace.to_string(),
             mode: None,
             started_at_ms: None,
             admin_auth_configured: false,
@@ -567,8 +1242,8 @@ async fn collect_proof_status(config_path: &Path) -> Result<ProofAuthorityStatus
     })
 }
 
-async fn stop_proof_authority(config_path: &Path, reset: bool) -> Result<bool> {
-    let layout = proof_layout(config_path, DEFAULT_PROOF_NAMESPACE);
+async fn stop_proof_authority(config_path: &Path, namespace: &str, reset: bool) -> Result<bool> {
+    let layout = proof_layout(config_path, namespace);
     let Some(state) = load_runtime_state(layout.runtime_state_path.as_path())? else {
         return Ok(false);
     };
@@ -589,6 +1264,914 @@ async fn stop_proof_authority(config_path: &Path, reset: bool) -> Result<bool> {
         save_runtime_state(layout.runtime_state_path.as_path(), &stopped)?;
     }
     Ok(true)
+}
+
+async fn ensure_proof_fleet_up(
+    config_path: &Path,
+    namespace: &str,
+    mode: ProofAuthorityMode,
+    workers: usize,
+    validators: usize,
+    network_id_override: Option<&str>,
+    stale_worker_state: bool,
+    stale_validator_state: bool,
+) -> Result<ProofFleetStatusReport> {
+    let authority = ensure_proof_authority_up(config_path, namespace, mode).await?;
+    let layout = proof_layout(config_path, namespace);
+    let authority_state =
+        load_runtime_state(layout.runtime_state_path.as_path())?.ok_or_else(|| {
+            anyhow!("proof authority runtime state missing for namespace {namespace}")
+        })?;
+    let network_id = network_id_override
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| proof_fleet_network_id(namespace));
+    let run_slug = proof_fleet_run_slug(namespace);
+    if let Some(existing) = load_fleet_state(layout.fleet_state_path.as_path())? {
+        let existing_workers = existing
+            .nodes
+            .iter()
+            .filter(|node| node.role == ProofFleetNodeRole::Worker)
+            .count();
+        let existing_validators = existing
+            .nodes
+            .iter()
+            .filter(|node| node.role == ProofFleetNodeRole::Validator)
+            .count();
+        let all_running = existing
+            .nodes
+            .iter()
+            .all(|node| process_is_running(&node.process));
+        if existing.mode == mode
+            && existing.authority_started_at_ms == authority_state.started_at_ms
+            && existing.network_id == network_id
+            && existing_workers == workers
+            && existing_validators == validators
+            && all_running
+        {
+            return collect_proof_fleet_status(config_path, namespace).await;
+        }
+        let _ = stop_proof_fleet(config_path, namespace, true).await?;
+    }
+
+    ensure_layout_dirs(&layout)?;
+    fs::create_dir_all(layout.fleet_root.as_path()).with_context(|| {
+        format!(
+            "failed to create proof fleet root {}",
+            layout.fleet_root.display()
+        )
+    })?;
+
+    let current_exe = current_executable_path()?;
+    let psionic_repo_root = proof_psionic_repo_root();
+    let mut used_ports = BTreeSet::from([
+        authority_state.ports.relay_http,
+        authority_state.ports.relay_upstream,
+        authority_state.ports.control_http,
+        authority_state.ports.artifact_store,
+    ]);
+    let mut nodes = Vec::new();
+    for index in 1..=workers {
+        nodes.push(
+            spawn_proof_fleet_node(
+                namespace,
+                &layout,
+                &authority_state,
+                ProofFleetNodeRole::Worker,
+                index,
+                network_id.as_str(),
+                stale_worker_state,
+                current_exe.as_path(),
+                psionic_repo_root.as_deref(),
+                &mut used_ports,
+            )
+            .await?,
+        );
+    }
+    for index in 1..=validators {
+        nodes.push(
+            spawn_proof_fleet_node(
+                namespace,
+                &layout,
+                &authority_state,
+                ProofFleetNodeRole::Validator,
+                index,
+                network_id.as_str(),
+                stale_validator_state,
+                current_exe.as_path(),
+                psionic_repo_root.as_deref(),
+                &mut used_ports,
+            )
+            .await?,
+        );
+    }
+    let state = ProofFleetRuntimeState {
+        schema_version: PROOF_RUNTIME_SCHEMA_VERSION,
+        namespace: namespace.to_string(),
+        mode,
+        started_at_ms: super::now_epoch_ms(),
+        authority_started_at_ms: authority_state.started_at_ms,
+        authority_base_url: authority_state.urls.authority_base_url.clone(),
+        authority_relay_ws_url: authority_state.urls.relay_ws_url.clone(),
+        network_id,
+        run_slug,
+        psionic_repo_root: psionic_repo_root.map(|value| value.display().to_string()),
+        nodes,
+        launched_run: None,
+    };
+    save_fleet_state(layout.fleet_state_path.as_path(), &state)?;
+    let expected_nodes = u64::try_from(state.nodes.len()).unwrap_or(u64::MAX);
+    let _ = wait_for_proof_pylons_online(
+        authority
+            .urls
+            .as_ref()
+            .map(|value| value.authority_base_url.as_str())
+            .ok_or_else(|| anyhow!("proof authority URLs missing"))?,
+        expected_nodes,
+    )
+    .await?;
+    collect_proof_fleet_status(config_path, namespace).await
+}
+
+async fn collect_proof_fleet_status(
+    config_path: &Path,
+    namespace: &str,
+) -> Result<ProofFleetStatusReport> {
+    let layout = proof_layout(config_path, namespace);
+    let authority = collect_proof_status(config_path, namespace).await?;
+    let Some(state) = load_fleet_state(layout.fleet_state_path.as_path())? else {
+        return Ok(ProofFleetStatusReport {
+            configured: false,
+            namespace: namespace.to_string(),
+            mode: None,
+            network_id: None,
+            run_slug: None,
+            paths: None,
+            authority,
+            nodes: Vec::new(),
+            launched_run: None,
+        });
+    };
+
+    let mut nodes = Vec::with_capacity(state.nodes.len());
+    for node in &state.nodes {
+        let config_path = PathBuf::from(node.config_path.as_str());
+        let training = load_proof_node_training_status(config_path.as_path()).await;
+        nodes.push(ProofFleetNodeStatus {
+            role: node.role,
+            index: node.index,
+            node_label: node.node_label.clone(),
+            payout_destination: node.payout_destination.clone(),
+            home_dir: node.home_dir.clone(),
+            config_path: node.config_path.clone(),
+            run_root: node.run_root.clone(),
+            admin_url: node.admin_url.clone(),
+            checkpoint_serve_url: node.checkpoint_serve_url.clone(),
+            stale_retained_state_injected: node.stale_retained_state_injected,
+            process: ProofProcessStatus {
+                binary: node.process.binary.clone(),
+                pid: node.process.pid,
+                running: process_is_running(&node.process),
+                log_path: node.process.log_path.clone(),
+            },
+            training,
+        });
+    }
+
+    Ok(ProofFleetStatusReport {
+        configured: true,
+        namespace: state.namespace,
+        mode: Some(state.mode),
+        network_id: Some(state.network_id),
+        run_slug: Some(state.run_slug),
+        paths: Some(ProofFleetPaths {
+            namespace_root: layout.namespace_root.display().to_string(),
+            fleet_root: layout.fleet_root.display().to_string(),
+            fleet_state_path: layout.fleet_state_path.display().to_string(),
+            run_report_path: layout.run_report_path.display().to_string(),
+        }),
+        authority,
+        nodes,
+        launched_run: state.launched_run,
+    })
+}
+
+async fn stop_proof_fleet(config_path: &Path, namespace: &str, reset: bool) -> Result<bool> {
+    let layout = proof_layout(config_path, namespace);
+    let Some(state) = load_fleet_state(layout.fleet_state_path.as_path())? else {
+        if reset && layout.fleet_root.exists() {
+            fs::remove_dir_all(layout.fleet_root.as_path()).with_context(|| {
+                format!(
+                    "failed to remove proof fleet root {}",
+                    layout.fleet_root.display()
+                )
+            })?;
+        }
+        return Ok(false);
+    };
+    for node in &state.nodes {
+        if let Some(pid) = node.process.pid {
+            stop_pid(pid).await?;
+        }
+    }
+    if reset {
+        if layout.fleet_root.exists() {
+            fs::remove_dir_all(layout.fleet_root.as_path()).with_context(|| {
+                format!(
+                    "failed to remove proof fleet root {}",
+                    layout.fleet_root.display()
+                )
+            })?;
+        }
+    } else {
+        let mut stopped = state;
+        for node in &mut stopped.nodes {
+            node.process.pid = None;
+        }
+        save_fleet_state(layout.fleet_state_path.as_path(), &stopped)?;
+    }
+    Ok(true)
+}
+
+async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result<ProofRunReport> {
+    let namespace = command
+        .namespace
+        .clone()
+        .unwrap_or_else(|| generated_proof_namespace(command.lane));
+    let lane_network_id = proof_fleet_network_id(namespace.as_str());
+    let _fleet = ensure_proof_fleet_up(
+        config_path,
+        namespace.as_str(),
+        command.mode,
+        command.workers,
+        command.validators,
+        Some(lane_network_id.as_str()),
+        command.stale_worker_state,
+        command.stale_validator_state,
+    )
+    .await?;
+    let layout = proof_layout(config_path, namespace.as_str());
+    let authority_state =
+        load_runtime_state(layout.runtime_state_path.as_path())?.ok_or_else(|| {
+            anyhow!("proof authority runtime state missing for namespace {namespace}")
+        })?;
+    let training_run_id = proof_lane_training_run_id(command.lane, namespace.as_str());
+    let launch = launch_proof_lane(
+        command.lane,
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        namespace.as_str(),
+        lane_network_id.as_str(),
+        training_run_id.as_str(),
+    )
+    .await?;
+    save_fleet_launch_record(config_path, namespace.as_str(), &launch)?;
+    let mut fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
+    let launch_detail = summarize_training_run_detail_response(&launch.run_detail);
+    if proof_run_status_is_terminal(&launch_detail.run) {
+        let report = ProofRunReport {
+            namespace,
+            lane: command.lane.label().to_string(),
+            generated_at_ms: super::now_epoch_ms(),
+            timeout_seconds: command.timeout_seconds,
+            status: "terminal".to_string(),
+            detail: format!(
+                "run reached terminal status {}",
+                launch_detail.run.run_status
+            ),
+            blocker_id: None,
+            fleet: fleet_status,
+            launch: Some(launch),
+            observed_run: Some(launch_detail),
+        };
+        save_proof_run_report(layout.run_report_path.as_path(), &report)?;
+        return Ok(report);
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(command.timeout_seconds);
+    let mut last_detail = Some(launch_detail);
+    loop {
+        if let Some(detail) = fetch_proof_training_run_detail(
+            authority_state.urls.authority_base_url.as_str(),
+            training_run_id.as_str(),
+        )
+        .await?
+        {
+            if proof_run_status_is_terminal(&detail.run) {
+                let report = ProofRunReport {
+                    namespace,
+                    lane: command.lane.label().to_string(),
+                    generated_at_ms: super::now_epoch_ms(),
+                    timeout_seconds: command.timeout_seconds,
+                    status: "terminal".to_string(),
+                    detail: format!("run reached terminal status {}", detail.run.run_status),
+                    blocker_id: None,
+                    fleet: fleet_status,
+                    launch: Some(launch.clone()),
+                    observed_run: Some(detail),
+                };
+                save_proof_run_report(layout.run_report_path.as_path(), &report)?;
+                return Ok(report);
+            }
+            last_detail = Some(detail);
+        }
+        if let Some((blocker_id, detail)) =
+            detect_proof_run_blocker(&fleet_status, last_detail.as_ref())
+        {
+            let report = ProofRunReport {
+                namespace,
+                lane: command.lane.label().to_string(),
+                generated_at_ms: super::now_epoch_ms(),
+                timeout_seconds: command.timeout_seconds,
+                status: "blocked".to_string(),
+                detail,
+                blocker_id: Some(blocker_id),
+                fleet: fleet_status,
+                launch: Some(launch.clone()),
+                observed_run: last_detail,
+            };
+            save_proof_run_report(layout.run_report_path.as_path(), &report)?;
+            return Ok(report);
+        }
+        if Instant::now() >= deadline {
+            let report = ProofRunReport {
+                namespace,
+                lane: command.lane.label().to_string(),
+                generated_at_ms: super::now_epoch_ms(),
+                timeout_seconds: command.timeout_seconds,
+                status: "blocked".to_string(),
+                detail: format!(
+                    "timed out after {}s waiting for terminal state or first explicit blocker",
+                    command.timeout_seconds
+                ),
+                blocker_id: Some("proof_run_timeout".to_string()),
+                fleet: fleet_status,
+                launch: Some(launch),
+                observed_run: last_detail,
+            };
+            save_proof_run_report(layout.run_report_path.as_path(), &report)?;
+            return Ok(report);
+        }
+        tokio::time::sleep(PROOF_POLL_INTERVAL).await;
+        fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
+    }
+}
+
+async fn spawn_proof_fleet_node(
+    namespace: &str,
+    layout: &ProofLayout,
+    authority: &ProofAuthorityRuntimeState,
+    role: ProofFleetNodeRole,
+    index: usize,
+    network_id: &str,
+    stale_retained_state: bool,
+    current_exe: &Path,
+    psionic_repo_root: Option<&Path>,
+    used_ports: &mut BTreeSet<u16>,
+) -> Result<ProofFleetNodeRuntimeRecord> {
+    let node_root = proof_fleet_node_root(layout, role, index);
+    if node_root.exists() {
+        fs::remove_dir_all(node_root.as_path())
+            .with_context(|| format!("failed to reset proof node root {}", node_root.display()))?;
+    }
+    fs::create_dir_all(node_root.as_path())
+        .with_context(|| format!("failed to create proof node root {}", node_root.display()))?;
+    let ports = allocate_proof_node_ports(namespace, role, index, used_ports)?;
+    let config_path = node_root.join("config.json");
+    let log_path = node_root.join("logs").join("serve.log");
+    let node_label = format!(
+        "proof-{}-{}-{}",
+        namespace_slug(namespace),
+        role.label(),
+        index
+    );
+    let payout_destination = format!("lnbc1proof{}{}", role.label(), index);
+    let mut config = super::default_config(node_root.as_path());
+    config.node_label = node_label.clone();
+    config.payout_destination = Some(payout_destination.clone());
+    config.admin_listen_addr = format!("127.0.0.1:{}", ports.admin);
+    config.nexus_control_base_url = authority.urls.authority_base_url.clone();
+    config.relay_urls = authority
+        .urls
+        .relay_ws_url
+        .clone()
+        .into_iter()
+        .collect::<Vec<_>>();
+    config.relay_auth_enabled = false;
+    config.wallet_network = "regtest".to_string();
+    config.wallet_api_key_env = None;
+    config.training.allowed_networks = vec![network_id.to_string()];
+    config.training.role_claims = vec![role.role_claim()];
+    if !config
+        .training
+        .artifact_credential_source_names
+        .iter()
+        .any(|value| value == super::PYLON_TRAINING_GCS_CREDENTIAL_SOURCE)
+    {
+        config
+            .training
+            .artifact_credential_source_names
+            .push(super::PYLON_TRAINING_GCS_CREDENTIAL_SOURCE.to_string());
+    }
+    config.training.run_root = node_root.join("training");
+    config.training.checkpoint_serve_addr = format!("127.0.0.1:{}", ports.checkpoint);
+    config.training.nexus_authority_base_url = authority.urls.authority_base_url.clone();
+    config.training.relay_urls = config.relay_urls.clone();
+    config.training.validator_enabled = role == ProofFleetNodeRole::Validator;
+    super::save_config(config_path.as_path(), &config)?;
+    let config = super::ensure_local_setup(config_path.as_path())?;
+    if stale_retained_state {
+        inject_stale_training_runtime_state(&config, role, network_id)?;
+    }
+    let _ =
+        super::apply_control_command(config_path.as_path(), super::ProviderControlAction::Online)
+            .await?;
+    let mut envs = vec![
+        (
+            super::ENV_PYLON_HOME.to_string(),
+            node_root.display().to_string(),
+        ),
+        (
+            super::ENV_TRAINING_NEXUS_BEARER_TOKEN.to_string(),
+            authority.admin_bearer_token.clone(),
+        ),
+        (
+            super::ENV_TRAINING_GCS_ENDPOINT.to_string(),
+            authority.urls.artifact_store_base_url.clone(),
+        ),
+        (
+            super::ENV_TRAINING_GCS_BEARER_TOKEN.to_string(),
+            "proof-local-artifact-store-token".to_string(),
+        ),
+    ];
+    if let Some(psionic_repo_root) = psionic_repo_root {
+        envs.push((
+            super::ENV_PSIONIC_REPO.to_string(),
+            psionic_repo_root.display().to_string(),
+        ));
+    }
+    let args = vec![
+        "--config-path".to_string(),
+        config_path.display().to_string(),
+        "serve".to_string(),
+    ];
+    let pid = spawn_logged_process(
+        current_exe,
+        args.as_slice(),
+        envs.as_slice(),
+        log_path.as_path(),
+    )?;
+    Ok(ProofFleetNodeRuntimeRecord {
+        role,
+        index,
+        node_label,
+        payout_destination,
+        home_dir: node_root.display().to_string(),
+        config_path: config_path.display().to_string(),
+        run_root: config.training.run_root.display().to_string(),
+        admin_url: format!("http://127.0.0.1:{}", ports.admin),
+        checkpoint_serve_url: format!("http://127.0.0.1:{}", ports.checkpoint),
+        ports,
+        stale_retained_state_injected: stale_retained_state,
+        process: ProofProcessRecord {
+            binary: current_exe.display().to_string(),
+            pid: Some(pid),
+            log_path: log_path.display().to_string(),
+        },
+    })
+}
+
+async fn load_proof_node_training_status(
+    config_path: &Path,
+) -> Option<ProofFleetNodeTrainingStatus> {
+    match super::load_training_status_report(config_path).await {
+        Ok(report) => Some(ProofFleetNodeTrainingStatus {
+            current_run_id: report.current_run_id,
+            active_window_id: report.active_window_id,
+            active_runtime_process_state: report
+                .active_runtime
+                .as_ref()
+                .map(|runtime| runtime.process_state.clone()),
+            last_failure_reason: report
+                .active_runtime
+                .as_ref()
+                .and_then(|runtime| runtime.last_failure_reason.clone()),
+            recent_issue_count: report.recent_issues.len(),
+            first_issue_reason: report
+                .recent_issues
+                .first()
+                .map(|issue| issue.reason.clone()),
+            pending_closeout_count: report.pending_closeout_objects.len(),
+            load_error: None,
+        }),
+        Err(error) => Some(ProofFleetNodeTrainingStatus {
+            current_run_id: None,
+            active_window_id: None,
+            active_runtime_process_state: None,
+            last_failure_reason: None,
+            recent_issue_count: 0,
+            first_issue_reason: None,
+            pending_closeout_count: 0,
+            load_error: Some(format!("{error:#}")),
+        }),
+    }
+}
+
+fn detect_proof_run_blocker(
+    fleet: &ProofFleetStatusReport,
+    observed_run: Option<&ProofObservedTrainingRunDetail>,
+) -> Option<(String, String)> {
+    if fleet.authority.probes.iter().any(|probe| !probe.ok) {
+        let probe = fleet.authority.probes.iter().find(|probe| !probe.ok)?;
+        return Some((
+            "authority_probe_failed".to_string(),
+            format!(
+                "authority probe {} failed: {}",
+                probe.route_id, probe.detail
+            ),
+        ));
+    }
+    for node in &fleet.nodes {
+        if !node.process.running {
+            return Some((
+                "fleet_node_exited".to_string(),
+                format!(
+                    "{} {} process is not running; inspect {}",
+                    node.role.label(),
+                    node.index,
+                    node.process.log_path
+                ),
+            ));
+        }
+        if let Some(training) = node.training.as_ref() {
+            if let Some(load_error) = training.load_error.as_deref() {
+                return Some((
+                    "fleet_node_status_unavailable".to_string(),
+                    format!(
+                        "{} {} training status failed to load: {}",
+                        node.role.label(),
+                        node.index,
+                        load_error
+                    ),
+                ));
+            }
+            if let Some(reason) = training.last_failure_reason.as_deref() {
+                return Some((
+                    "fleet_node_failure".to_string(),
+                    format!(
+                        "{} {} reported failure: {}",
+                        node.role.label(),
+                        node.index,
+                        reason
+                    ),
+                ));
+            }
+            if let Some(reason) = training.first_issue_reason.as_deref() {
+                return Some((
+                    "fleet_node_issue".to_string(),
+                    format!(
+                        "{} {} surfaced issue: {}",
+                        node.role.label(),
+                        node.index,
+                        reason
+                    ),
+                ));
+            }
+        }
+    }
+    if let Some(observed) = observed_run {
+        if let Some(detail) = critical_run_caveat_detail(observed) {
+            return Some(("authority_run_caveat".to_string(), detail));
+        }
+    }
+    None
+}
+
+fn critical_run_caveat_detail(observed: &ProofObservedTrainingRunDetail) -> Option<String> {
+    let severity = observed
+        .first_caveat_severity
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let normalized = severity.to_ascii_lowercase();
+    if normalized != "critical" && normalized != "error" {
+        return None;
+    }
+    let mut parts = Vec::new();
+    if let Some(title) = observed
+        .first_caveat_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        parts.push(title.to_string());
+    }
+    if let Some(detail) = observed
+        .first_caveat_detail
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        parts.push(detail.to_string());
+    }
+    if parts.is_empty() {
+        parts.push(format!(
+            "run {} reported critical caveat {}",
+            observed.training_run_id,
+            observed
+                .first_caveat_id
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("-")
+        ));
+    }
+    Some(parts.join(": "))
+}
+
+fn proof_run_status_is_terminal(run: &ProofObservedRunState) -> bool {
+    !matches!(
+        run.run_status.as_str(),
+        "queued" | "preparing" | "running" | "finalizing"
+    ) && run.active_window_count == 0
+        && run.pending_validation_window_count == 0
+        && run.validator_challenges_open == 0
+        && run.validator_challenges_queued == 0
+}
+
+fn proof_psionic_repo_root() -> Option<PathBuf> {
+    std::env::var(super::ENV_PSIONIC_REPO)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+        .or_else(|| {
+            let candidate = workspace_root()
+                .parent()
+                .map(Path::to_path_buf)?
+                .join("psionic");
+            candidate.exists().then_some(candidate)
+        })
+}
+
+fn proof_fleet_node_root(layout: &ProofLayout, role: ProofFleetNodeRole, index: usize) -> PathBuf {
+    layout
+        .fleet_root
+        .join(format!("{}-{}", role.label(), index))
+}
+
+fn proof_fleet_network_id(namespace: &str) -> String {
+    format!("trainnet.proof.{}", namespace_slug(namespace))
+}
+
+fn proof_fleet_run_slug(namespace: &str) -> String {
+    format!("proof.{}", namespace_slug(namespace))
+}
+
+fn generated_proof_namespace(lane: ProofLane) -> String {
+    format!("proof.{}.{}", lane.label(), super::now_epoch_ms())
+}
+
+fn proof_lane_training_run_id(lane: ProofLane, namespace: &str) -> String {
+    format!("{}.{}", lane.run_prefix(), namespace_slug(namespace))
+}
+
+fn inject_stale_training_runtime_state(
+    config: &super::PylonConfig,
+    role: ProofFleetNodeRole,
+    network_id: &str,
+) -> Result<()> {
+    let mut state = super::load_or_create_training_runtime_state(config)?;
+    let stale_at = super::now_epoch_ms() - 86_400_000;
+    let role_label = role.label();
+    let training_run_id = format!("run.stale.{role_label}");
+    let window_id = format!("window.stale.{role_label}.0001");
+    let assignment_id = format!("assign.stale.{role_label}.0001");
+    let lease_id = format!("lease.stale.{role_label}.0001");
+    state.lease_cache.insert(
+        lease_id.clone(),
+        super::PylonTrainingLeaseCacheEntry {
+            lease_id,
+            assignment_id,
+            training_run_id: training_run_id.clone(),
+            window_id: window_id.clone(),
+            membership_revision: "members.rev.stale".to_string(),
+            role: role.role_claim(),
+            state: "acked".to_string(),
+            manifest_digest: Some("sha256:proof-stale".to_string()),
+            checkpoint_ref: Some("checkpoint://proof/stale".to_string()),
+            expires_at_ms: Some(stale_at - 1_000),
+            network_id: Some(network_id.to_string()),
+            challenge_id: (role == ProofFleetNodeRole::Validator)
+                .then(|| "challenge.stale.validator.0001".to_string()),
+            peer_node_pubkey: None,
+            peer_checkpoint_handoff_receipt_path: None,
+            validator_target_contribution_receipt_path: None,
+            validator_target_contribution_artifact_manifest_path: None,
+            validator_target_work_class: None,
+            grouped_stage_input_transport_path: None,
+            runtime_manifest_path: None,
+            runtime_manifest_digest: None,
+            runtime_lane_id: None,
+            runtime_operation: None,
+            runtime_work_class: None,
+            updated_at_ms: stale_at,
+        },
+    );
+    state.window_cache.insert(
+        window_id.clone(),
+        super::PylonTrainingWindowCacheEntry {
+            window_id,
+            training_run_id,
+            state: "sealed".to_string(),
+            manifest_digest: Some("sha256:proof-stale".to_string()),
+            updated_at_ms: stale_at,
+        },
+    );
+    state.last_authority_sync_at_ms = Some(stale_at);
+    super::save_training_runtime_state(config, &state)
+}
+
+async fn wait_for_proof_pylons_online(
+    authority_base_url: &str,
+    expected_pylons: u64,
+) -> Result<ProofStatsSnapshot> {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut last_snapshot = None::<ProofStatsSnapshot>;
+    while Instant::now() < deadline {
+        if let Some(snapshot) = fetch_proof_stats(authority_base_url).await? {
+            if snapshot.pylons_online_now >= expected_pylons {
+                return Ok(snapshot);
+            }
+            last_snapshot = Some(snapshot);
+        }
+        tokio::time::sleep(PROOF_POLL_INTERVAL).await;
+    }
+    if let Some(snapshot) = last_snapshot {
+        bail!(
+            "timed out waiting for proof fleet online count {}; last observed {}",
+            expected_pylons,
+            snapshot.pylons_online_now
+        );
+    }
+    bail!("timed out waiting for proof fleet stats route to respond")
+}
+
+async fn fetch_proof_stats(authority_base_url: &str) -> Result<Option<ProofStatsSnapshot>> {
+    let url = format!("{authority_base_url}/api/stats");
+    let response = reqwest::Client::new()
+        .get(url.as_str())
+        .send()
+        .await
+        .with_context(|| format!("failed to fetch proof stats from {url}"))?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let response = response
+        .error_for_status()
+        .with_context(|| format!("proof stats route returned failure status for {}", url))?;
+    Ok(Some(
+        response
+            .json::<ProofStatsSnapshot>()
+            .await
+            .context("failed to decode proof stats snapshot")?,
+    ))
+}
+
+async fn launch_proof_lane(
+    lane: ProofLane,
+    authority_base_url: &str,
+    admin_bearer_token: &str,
+    namespace: &str,
+    network_id: &str,
+    training_run_id: &str,
+) -> Result<ProofRunLaunchResponse> {
+    match lane {
+        ProofLane::Cs336A1 => {
+            let url = format!("{authority_base_url}/v1/admin/training/demo-runs/cs336-a1/launch");
+            let response = reqwest::Client::new()
+                .post(url.as_str())
+                .bearer_auth(admin_bearer_token)
+                .json(&json!({
+                    "training_run_id": training_run_id,
+                    "display_name": format!("{} {}", lane.display_name_prefix(), namespace_slug(namespace)),
+                    "network_id": network_id,
+                    "reuse_existing_run": false,
+                }))
+                .send()
+                .await
+                .with_context(|| format!("failed to launch proof lane via {url}"))?
+                .error_for_status()
+                .with_context(|| format!("proof lane launch failed for namespace {namespace}"))?;
+            response
+                .json::<ProofRunLaunchResponse>()
+                .await
+                .context("failed to decode proof run launch response")
+        }
+    }
+}
+
+async fn fetch_proof_training_run_detail(
+    authority_base_url: &str,
+    training_run_id: &str,
+) -> Result<Option<ProofObservedTrainingRunDetail>> {
+    let url = format!("{authority_base_url}/api/training/runs/{training_run_id}");
+    let response = reqwest::Client::new()
+        .get(url.as_str())
+        .send()
+        .await
+        .with_context(|| format!("failed to fetch proof training run detail from {url}"))?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let response = response.error_for_status().with_context(|| {
+        format!(
+            "proof training run detail route returned failure status for {}",
+            url
+        )
+    })?;
+    let detail = response
+        .json::<ProofAuthorityTrainingRunDetailResponse>()
+        .await
+        .context("failed to decode proof training run detail response")?;
+    Ok(Some(summarize_training_run_detail_response(&detail)))
+}
+
+fn summarize_training_run_detail_response(
+    detail: &ProofAuthorityTrainingRunDetailResponse,
+) -> ProofObservedTrainingRunDetail {
+    let first_caveat = detail.caveats.first();
+    ProofObservedTrainingRunDetail {
+        training_run_id: detail.training_run_id.clone(),
+        run: detail.run.clone(),
+        windows: detail.windows.clone(),
+        contribution_count: detail.contributions.len(),
+        node_count: detail.nodes.len(),
+        caveat_count: detail.caveats.len(),
+        first_caveat_id: extract_caveat_string(first_caveat, "caveat_id"),
+        first_caveat_severity: extract_caveat_string(first_caveat, "severity"),
+        first_caveat_title: extract_caveat_string(first_caveat, "title"),
+        first_caveat_detail: extract_caveat_string(first_caveat, "detail"),
+    }
+}
+
+fn extract_caveat_string(caveat: Option<&Value>, key: &str) -> Option<String> {
+    caveat?
+        .get(key)?
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn save_fleet_launch_record(
+    config_path: &Path,
+    namespace: &str,
+    launch: &ProofRunLaunchResponse,
+) -> Result<()> {
+    let layout = proof_layout(config_path, namespace);
+    let mut state = load_fleet_state(layout.fleet_state_path.as_path())?
+        .ok_or_else(|| anyhow!("proof fleet state missing for namespace {namespace}"))?;
+    state.launched_run = Some(launch.clone());
+    save_fleet_state(layout.fleet_state_path.as_path(), &state)
+}
+
+fn load_fleet_state(path: &Path) -> Result<Option<ProofFleetRuntimeState>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let payload = fs::read_to_string(path)
+        .with_context(|| format!("failed to read proof fleet state {}", path.display()))?;
+    let state = serde_json::from_str::<ProofFleetRuntimeState>(payload.as_str())
+        .with_context(|| format!("failed to parse proof fleet state {}", path.display()))?;
+    Ok(Some(state))
+}
+
+fn save_fleet_state(path: &Path, state: &ProofFleetRuntimeState) -> Result<()> {
+    save_json_file_atomic(path, state, "proof fleet state")
+}
+
+fn save_proof_run_report(path: &Path, report: &ProofRunReport) -> Result<()> {
+    save_json_file_atomic(path, report, "proof run report")
+}
+
+fn save_json_file_atomic<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {} dir {}", label, parent.display()))?;
+    }
+    let temp_path = path.with_extension("tmp");
+    fs::write(
+        temp_path.as_path(),
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(value)
+                .with_context(|| format!("failed to encode {label}"))?
+        ),
+    )
+    .with_context(|| format!("failed to write {label} {}", temp_path.display()))?;
+    fs::rename(temp_path.as_path(), path)
+        .with_context(|| format!("failed to finalize {label} {}", path.display()))?;
+    Ok(())
 }
 
 async fn stop_runtime_processes(state: &ProofAuthorityRuntimeState) -> Result<()> {
@@ -688,7 +2271,7 @@ fn platform_binary_name(binary: &str) -> String {
 fn spawn_logged_process(
     binary: &Path,
     args: &[String],
-    envs: &[(&str, &str)],
+    envs: &[(String, String)],
     log_path: &Path,
 ) -> Result<u32> {
     if let Some(parent) = log_path.parent() {
@@ -770,6 +2353,7 @@ fn terminate_pid(pid: u32, force: bool) -> Result<()> {
 fn ensure_layout_dirs(layout: &ProofLayout) -> Result<()> {
     for path in [
         layout.namespace_root.as_path(),
+        layout.fleet_root.as_path(),
         layout.relay_data_dir.as_path(),
         layout.artifact_store_root.as_path(),
         layout
@@ -781,8 +2365,7 @@ fn ensure_layout_dirs(layout: &ProofLayout) -> Result<()> {
             .parent()
             .ok_or_else(|| anyhow!("kernel state path missing parent"))?,
     ] {
-        fs::create_dir_all(path)
-            .with_context(|| format!("failed to create {}", path.display()))?;
+        fs::create_dir_all(path).with_context(|| format!("failed to create {}", path.display()))?;
     }
     Ok(())
 }
@@ -795,17 +2378,22 @@ fn proof_layout(config_path: &Path, namespace: &str) -> ProofLayout {
     let namespace_root = base_root.join("proof").join("namespaces").join(namespace);
     ProofLayout {
         authority_env_path: namespace_root.join("authority").join("authority.env"),
+        fleet_root: namespace_root.join("fleet"),
         relay_data_dir: namespace_root.join("authority").join("relay-data"),
         receipt_log_path: namespace_root.join("state").join("receipts.jsonl"),
         kernel_state_path: namespace_root.join("state").join("kernel-state.json"),
         treasury_state_path: namespace_root.join("state").join("treasury-state.json"),
         treasury_wallet_dir: namespace_root.join("state").join("treasury-wallet"),
         treasury_wallet_mnemonic_path: namespace_root.join("state").join("treasury.mnemonic"),
-        training_trn_identity_path: namespace_root.join("state").join("training-trn-identity.mnemonic"),
+        training_trn_identity_path: namespace_root
+            .join("state")
+            .join("training-trn-identity.mnemonic"),
         signer_credentials_path: namespace_root.join("artifacts").join("gcs-signer.json"),
         artifact_store_root: namespace_root.join("artifacts").join("store"),
         artifact_trace_path: namespace_root.join("artifacts").join("object-trace.jsonl"),
         runtime_state_path: namespace_root.join("runtime-state.json"),
+        fleet_state_path: namespace_root.join("fleet").join("fleet-state.json"),
+        run_report_path: namespace_root.join("fleet").join("run-report.json"),
         authority_log_path: namespace_root.join("logs").join("authority.log"),
         artifact_store_log_path: namespace_root.join("logs").join("artifact-store.log"),
         namespace_root,
@@ -813,15 +2401,45 @@ fn proof_layout(config_path: &Path, namespace: &str) -> ProofLayout {
 }
 
 fn proof_namespace_ports(namespace: &str) -> ProofNamespacePorts {
-    let digest = Sha256::digest(namespace.as_bytes());
-    let slot = u16::from_be_bytes([digest[0], digest[1]]) % PROOF_PORT_SLOTS;
-    let base = PROOF_PORT_BASE + slot * PROOF_PORT_STRIDE;
+    let slot = proof_hash_slot(namespace);
+    let base = proof_slot_base(slot);
     ProofNamespacePorts {
         relay_http: base,
         relay_upstream: base + 1,
         control_http: base + 2,
         artifact_store: base + 3,
     }
+}
+
+fn proof_hash_slot(value: &str) -> u16 {
+    let digest = Sha256::digest(value.as_bytes());
+    u16::from_be_bytes([digest[0], digest[1]]) % PROOF_PORT_SLOTS
+}
+
+fn proof_slot_base(slot: u16) -> u16 {
+    PROOF_PORT_BASE + slot * PROOF_PORT_STRIDE
+}
+
+fn allocate_proof_node_ports(
+    namespace: &str,
+    role: ProofFleetNodeRole,
+    index: usize,
+    used_ports: &mut BTreeSet<u16>,
+) -> Result<ProofNodePorts> {
+    let key = format!("{namespace}:{}:{index}", role.label());
+    let mut slot = proof_hash_slot(key.as_str());
+    for _ in 0..PROOF_PORT_SLOTS {
+        let base = proof_slot_base(slot);
+        let admin = base;
+        let checkpoint = base + 1;
+        if !used_ports.contains(&admin) && !used_ports.contains(&checkpoint) {
+            used_ports.insert(admin);
+            used_ports.insert(checkpoint);
+            return Ok(ProofNodePorts { admin, checkpoint });
+        }
+        slot = (slot + 1) % PROOF_PORT_SLOTS;
+    }
+    bail!("failed to allocate deterministic proof node ports for {namespace}")
 }
 
 fn write_signer_credentials(path: &Path) -> Result<()> {
@@ -977,14 +2595,14 @@ fn save_runtime_state(path: &Path, state: &ProofAuthorityRuntimeState) -> Result
     }
     let payload = serde_json::to_vec_pretty(state)?;
     let temp_path = path.with_extension("json.partial");
-    fs::write(temp_path.as_path(), payload)
-        .with_context(|| format!("failed to write proof runtime state {}", temp_path.display()))?;
-    fs::rename(temp_path.as_path(), path).with_context(|| {
+    fs::write(temp_path.as_path(), payload).with_context(|| {
         format!(
-            "failed to finalize proof runtime state {}",
-            path.display()
+            "failed to write proof runtime state {}",
+            temp_path.display()
         )
-    })
+    })?;
+    fs::rename(temp_path.as_path(), path)
+        .with_context(|| format!("failed to finalize proof runtime state {}", path.display()))
 }
 
 async fn collect_route_probes(state: &ProofAuthorityRuntimeState) -> Vec<ProofRouteProbe> {
@@ -1001,10 +2619,7 @@ async fn collect_route_probes(state: &ProofAuthorityRuntimeState) -> Vec<ProofRo
             },
             ProofRouteProbe {
                 route_id: "artifact_store_healthz".to_string(),
-                url: format!(
-                    "http://127.0.0.1:{}/healthz",
-                    state.ports.artifact_store
-                ),
+                url: format!("http://127.0.0.1:{}/healthz", state.ports.artifact_store),
                 ok: false,
                 status: None,
                 detail: "artifact store process is not running".to_string(),
@@ -1213,7 +2828,12 @@ async fn run_artifact_smoke(
 
     let trace_entry_count = fs::read_to_string(state.paths.artifact_trace_path.as_str())
         .ok()
-        .map(|contents| contents.lines().filter(|line| !line.trim().is_empty()).count())
+        .map(|contents| {
+            contents
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .count()
+        })
         .unwrap_or(0);
     Ok(ProofArtifactSmokeReport {
         artifact_id,
@@ -1260,10 +2880,7 @@ fn render_proof_status_report(report: &ProofAuthorityStatusReport) -> String {
         report.admin_auth_configured
     ));
     if let Some(urls) = report.urls.as_ref() {
-        lines.push(format!(
-            "authority_url: {}",
-            urls.authority_base_url
-        ));
+        lines.push(format!("authority_url: {}", urls.authority_base_url));
         lines.push(format!(
             "artifact_store_url: {}",
             urls.artifact_store_base_url
@@ -1275,14 +2892,23 @@ fn render_proof_status_report(report: &ProofAuthorityStatusReport) -> String {
     if let Some(paths) = report.paths.as_ref() {
         lines.push(format!("kernel_state_path: {}", paths.kernel_state_path));
         lines.push(format!("receipt_log_path: {}", paths.receipt_log_path));
-        lines.push(format!("treasury_state_path: {}", paths.treasury_state_path));
-        lines.push(format!("artifact_trace_path: {}", paths.artifact_trace_path));
+        lines.push(format!(
+            "treasury_state_path: {}",
+            paths.treasury_state_path
+        ));
+        lines.push(format!(
+            "artifact_trace_path: {}",
+            paths.artifact_trace_path
+        ));
     }
     if let Some(process) = report.authority_process.as_ref() {
         lines.push(format!(
             "authority_process: running={} pid={} log={}",
             process.running,
-            process.pid.map(|pid| pid.to_string()).unwrap_or_else(|| "-".to_string()),
+            process
+                .pid
+                .map(|pid| pid.to_string())
+                .unwrap_or_else(|| "-".to_string()),
             process.log_path
         ));
     }
@@ -1290,7 +2916,10 @@ fn render_proof_status_report(report: &ProofAuthorityStatusReport) -> String {
         lines.push(format!(
             "artifact_store_process: running={} pid={} log={}",
             process.running,
-            process.pid.map(|pid| pid.to_string()).unwrap_or_else(|| "-".to_string()),
+            process
+                .pid
+                .map(|pid| pid.to_string())
+                .unwrap_or_else(|| "-".to_string()),
             process.log_path
         ));
     }
@@ -1318,6 +2947,150 @@ fn render_proof_status_report(report: &ProofAuthorityStatusReport) -> String {
     lines.join("\n")
 }
 
+fn render_proof_fleet_status_report(report: &ProofFleetStatusReport) -> String {
+    if !report.configured {
+        return format!(
+            "proof fleet: configured=false namespace={} detail=run `oa proof fleet up --namespace {}`",
+            report.namespace, report.namespace
+        );
+    }
+
+    let mut lines = Vec::new();
+    lines.push(format!(
+        "proof fleet: configured=true namespace={} mode={} network_id={} run_slug={}",
+        report.namespace,
+        report
+            .mode
+            .map(ProofAuthorityMode::label)
+            .unwrap_or("unknown"),
+        report.network_id.as_deref().unwrap_or("-"),
+        report.run_slug.as_deref().unwrap_or("-")
+    ));
+    if let Some(paths) = report.paths.as_ref() {
+        lines.push(format!("fleet_root: {}", paths.fleet_root));
+        lines.push(format!("fleet_state_path: {}", paths.fleet_state_path));
+        lines.push(format!("run_report_path: {}", paths.run_report_path));
+    }
+    lines.push(format!(
+        "authority: configured={} authority_url={}",
+        report.authority.configured,
+        report
+            .authority
+            .urls
+            .as_ref()
+            .map(|urls| urls.authority_base_url.as_str())
+            .unwrap_or("-")
+    ));
+    for node in &report.nodes {
+        lines.push(format!(
+            "node {} {}: running={} admin_url={} checkpoint_url={} config={} stale_state={}",
+            node.role.label(),
+            node.index,
+            node.process.running,
+            node.admin_url,
+            node.checkpoint_serve_url,
+            node.config_path,
+            node.stale_retained_state_injected
+        ));
+        if let Some(training) = node.training.as_ref() {
+            lines.push(format!(
+                "node {} {} training: current_run={} active_window={} process_state={} issues={} pending_closeouts={}",
+                node.role.label(),
+                node.index,
+                training.current_run_id.as_deref().unwrap_or("-"),
+                training.active_window_id.as_deref().unwrap_or("-"),
+                training
+                    .active_runtime_process_state
+                    .as_deref()
+                    .unwrap_or("-"),
+                training.recent_issue_count,
+                training.pending_closeout_count
+            ));
+            if let Some(reason) = training.last_failure_reason.as_deref() {
+                lines.push(format!(
+                    "node {} {} failure: {}",
+                    node.role.label(),
+                    node.index,
+                    reason
+                ));
+            }
+            if let Some(reason) = training.first_issue_reason.as_deref() {
+                lines.push(format!(
+                    "node {} {} issue: {}",
+                    node.role.label(),
+                    node.index,
+                    reason
+                ));
+            }
+            if let Some(load_error) = training.load_error.as_deref() {
+                lines.push(format!(
+                    "node {} {} load_error: {}",
+                    node.role.label(),
+                    node.index,
+                    load_error
+                ));
+            }
+        }
+    }
+    if let Some(launch) = report.launched_run.as_ref() {
+        lines.push(format!(
+            "launched_run: run_id={} launch_state={} run_status={} network_id={}",
+            launch.training_run_id,
+            launch.launch_state,
+            launch.run_detail.run.run_status,
+            launch.network_id
+        ));
+    }
+    lines.join("\n")
+}
+
+fn render_proof_run_report(report: &ProofRunReport) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!(
+        "proof run: status={} lane={} namespace={} detail={}",
+        report.status, report.lane, report.namespace, report.detail
+    ));
+    if let Some(blocker_id) = report.blocker_id.as_deref() {
+        lines.push(format!("blocker_id: {blocker_id}"));
+    }
+    if let Some(launch) = report.launch.as_ref() {
+        lines.push(format!(
+            "launch: run_id={} launch_state={} launch_phase={} network_id={} worker_target_count={}",
+            launch.training_run_id,
+            launch.launch_state,
+            launch.launch_phase.as_deref().unwrap_or("-"),
+            launch.network_id,
+            launch.worker_target_count
+        ));
+    }
+    if let Some(observed) = report.observed_run.as_ref() {
+        lines.push(format!(
+            "observed_run: status={} current_window={} active_windows={} pending_validation={} validator_open={} validator_queued={} latest_closeout={} windows={} contributions={} nodes={} caveats={}",
+            observed.run.run_status,
+            observed.run.current_window_id,
+            observed.run.active_window_count,
+            observed.run.pending_validation_window_count,
+            observed.run.validator_challenges_open,
+            observed.run.validator_challenges_queued,
+            observed.run.latest_closeout_status.as_deref().unwrap_or("-"),
+            observed.windows.len(),
+            observed.contribution_count,
+            observed.node_count,
+            observed.caveat_count
+        ));
+        if let Some(severity) = observed.first_caveat_severity.as_deref() {
+            lines.push(format!(
+                "observed_run caveat: severity={} title={} detail={}",
+                severity,
+                observed.first_caveat_title.as_deref().unwrap_or("-"),
+                observed.first_caveat_detail.as_deref().unwrap_or("-")
+            ));
+        }
+    }
+    lines.push(render_proof_fleet_status_report(&report.fleet));
+    lines.join("\n")
+}
+
 async fn run_artifact_store_server(
     listen_addr: SocketAddr,
     store_root: PathBuf,
@@ -1331,7 +3104,10 @@ async fn run_artifact_store_server(
     }
     let app = Router::new()
         .route("/healthz", get(artifact_store_healthz))
-        .route("/upload/{bucket}/{*object_path}", put(artifact_store_put).get(artifact_store_get))
+        .route(
+            "/upload/{bucket}/{*object_path}",
+            put(artifact_store_put).get(artifact_store_get),
+        )
         .with_state(Arc::new(ArtifactStoreState {
             store_root,
             trace_path,
@@ -1426,12 +3202,8 @@ fn append_trace(
         .open(trace_path)
         .with_context(|| format!("failed to open artifact trace {}", trace_path.display()))?;
     use std::io::Write as _;
-    writeln!(file, "{line}").with_context(|| {
-        format!(
-            "failed to append artifact trace {}",
-            trace_path.display()
-        )
-    })
+    writeln!(file, "{line}")
+        .with_context(|| format!("failed to append artifact trace {}", trace_path.display()))
 }
 
 fn sha256_prefixed_bytes(bytes: &[u8]) -> String {
@@ -1447,8 +3219,8 @@ fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
 #[cfg(test)]
 mod tests {
     use super::{
-        PROOF_ARTIFACT_UPLOAD_PREFIX, proof_namespace_ports, render_proof_status_report,
-        run_artifact_store_server,
+        PROOF_ARTIFACT_UPLOAD_PREFIX, detect_proof_run_blocker, proof_namespace_ports,
+        render_proof_status_report, run_artifact_store_server,
     };
 
     use anyhow::{Result, anyhow};
@@ -1478,8 +3250,11 @@ mod tests {
             store_root.clone(),
             trace_path.clone(),
         ));
-        super::wait_for_route(format!("http://{local_addr}/healthz").as_str(), &[StatusCode::OK])
-            .await?;
+        super::wait_for_route(
+            format!("http://{local_addr}/healthz").as_str(),
+            &[StatusCode::OK],
+        )
+        .await?;
 
         let client = reqwest::Client::new();
         let upload_url = format!(
@@ -1534,5 +3309,62 @@ mod tests {
             artifact_smoke: None,
         });
         assert!(rendered.contains("configured=false"));
+    }
+
+    #[test]
+    fn detect_proof_run_blocker_surfaces_critical_caveat() {
+        let fleet = super::ProofFleetStatusReport {
+            configured: true,
+            namespace: "proof.caveat".to_string(),
+            mode: Some(super::ProofAuthorityMode::ProdShaped),
+            network_id: Some("trainnet.proof.caveat".to_string()),
+            run_slug: Some("proof.caveat".to_string()),
+            paths: None,
+            authority: super::ProofAuthorityStatusReport {
+                configured: true,
+                namespace: "proof.caveat".to_string(),
+                mode: Some(super::ProofAuthorityMode::ProdShaped),
+                started_at_ms: None,
+                admin_auth_configured: true,
+                treasury_enabled: true,
+                ports: None,
+                paths: None,
+                urls: None,
+                authority_process: None,
+                artifact_store_process: None,
+                probes: Vec::new(),
+                artifact_smoke: None,
+            },
+            nodes: Vec::new(),
+            launched_run: None,
+        };
+        let observed = super::ProofObservedTrainingRunDetail {
+            training_run_id: "run.cs336.a1.proof.caveat".to_string(),
+            run: super::ProofObservedRunState {
+                training_run_id: "run.cs336.a1.proof.caveat".to_string(),
+                run_status: "running".to_string(),
+                current_window_id: "window.cs336.a1.proof.caveat.0001".to_string(),
+                active_window_count: 1,
+                pending_validation_window_count: 0,
+                validator_challenges_open: 0,
+                validator_challenges_queued: 0,
+                latest_closeout_status: None,
+            },
+            windows: Vec::new(),
+            contribution_count: 0,
+            node_count: 0,
+            caveat_count: 1,
+            first_caveat_id: Some("payout_lag".to_string()),
+            first_caveat_severity: Some("critical".to_string()),
+            first_caveat_title: Some("Payout attention required".to_string()),
+            first_caveat_detail: Some(
+                "0 accepted-work payout(s) need attention // failed 24h 0 // skipped 24h 2."
+                    .to_string(),
+            ),
+        };
+        let blocker = detect_proof_run_blocker(&fleet, Some(&observed))
+            .expect("critical caveat should surface as blocker");
+        assert_eq!(blocker.0, "authority_run_caveat");
+        assert!(blocker.1.contains("Payout attention required"));
     }
 }

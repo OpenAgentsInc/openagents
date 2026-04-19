@@ -95,6 +95,75 @@ authority expects while still writing to local backing storage.
 surfaces plus the local artifact-store health route so the operator can see
 whether the proof world is actually intact before running a lane.
 
+## Local Proof Fleet Manager
+
+The next proof layer is the isolated fleet manager. It boots fresh worker and
+validator homes under a named proof namespace so a local run does not reuse the
+shared `authority` state root.
+
+Bring up a smoke fleet explicitly:
+
+```bash
+cargo run -p pylon --bin oa -- proof fleet up \
+  --namespace proof.smoke \
+  --workers 1 \
+  --validators 1 \
+  --json
+
+cargo run -p pylon --bin oa -- proof fleet status --namespace proof.smoke --json
+cargo run -p pylon --bin oa -- proof fleet down --namespace proof.smoke --json
+cargo run -p pylon --bin oa -- proof fleet reset --namespace proof.smoke --json
+```
+
+Drive a real proof lane with a fresh namespace by default:
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1 --workers 1 --validators 1 --json
+```
+
+Pin the namespace only when you want to keep the artifacts and logs under a
+stable root for inspection:
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1 \
+  --namespace proof.cs336-a1.debug \
+  --workers 1 \
+  --validators 1 \
+  --timeout-seconds 60 \
+  --json
+```
+
+Each namespace now keeps its own:
+
+- authority runtime state and logs
+- per-role worker and validator config, log, and training roots
+- deterministic admin/checkpoint ports
+- local artifact-store objects and trace file
+- `fleet-state.json` and `run-report.json` summaries
+
+The worker and validator roots live under:
+
+```text
+~/.openagents/pylon/proof/namespaces/<namespace>/fleet/
+```
+
+Use the stale retained-state toggles when you want replayable prod-class
+retained state without manual filesystem edits:
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1 \
+  --workers 1 \
+  --validators 1 \
+  --stale-worker-state \
+  --stale-validator-state \
+  --json
+```
+
+`proof run` now writes the first concrete blocker it can observe into
+`run-report.json`. In the current local proof world that commonly means a
+critical authority caveat or a node-local training issue instead of a generic
+timeout.
+
 Optional account visibility now also has an explicit headless lane:
 
 ```bash
