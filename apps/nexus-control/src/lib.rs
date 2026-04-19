@@ -14170,6 +14170,17 @@ fn training_authority_reputation_labels_for_node(
     node: &AdmittedTrainingNodeView,
     now_unix_ms: i64,
 ) -> Result<Vec<String>, String> {
+    let labels_by_subject = training_authority_reputation_labels_by_subject(kernel, now_unix_ms)?;
+    Ok(training_authority_merge_node_labels(
+        node.active_reputation_labels.clone(),
+        labels_by_subject.get(node.node_pubkey_hex.as_str()),
+    ))
+}
+
+fn training_authority_reputation_labels_by_subject(
+    kernel: &KernelState,
+    now_unix_ms: i64,
+) -> Result<HashMap<String, Vec<String>>, String> {
     let admitted_nodes = kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
@@ -14198,7 +14209,7 @@ fn training_authority_reputation_labels_for_node(
         })
         .collect::<Vec<_>>();
     let validator_finalizations = kernel.list_training_validator_challenge_finalization_sources();
-    let mut labels = node.active_reputation_labels.clone();
+    let mut labels_by_subject = HashMap::<String, BTreeSet<String>>::new();
     for source in training_authority_reputation_sources(
         admitted_nodes.as_slice(),
         window_sources.as_slice(),
@@ -14210,17 +14221,34 @@ fn training_authority_reputation_labels_for_node(
         if source.scheduler_effect == PylonTrainingSchedulerEffect::Ignored {
             continue;
         }
-        if source.subject_pubkey.as_deref() != Some(node.node_pubkey_hex.as_str()) {
+        let Some(subject_pubkey) = source.subject_pubkey.as_ref() else {
             continue;
-        }
-        let label = training_authority_label_key(&source);
-        if !labels.iter().any(|existing| existing == &label) {
-            labels.push(label);
+        };
+        labels_by_subject
+            .entry(subject_pubkey.clone())
+            .or_default()
+            .insert(training_authority_label_key(&source));
+    }
+    Ok(labels_by_subject
+        .into_iter()
+        .map(|(subject_pubkey, labels)| (subject_pubkey, labels.into_iter().collect::<Vec<_>>()))
+        .collect())
+}
+
+fn training_authority_merge_node_labels(
+    mut labels: Vec<String>,
+    computed_labels: Option<&Vec<String>>,
+) -> Vec<String> {
+    if let Some(computed_labels) = computed_labels {
+        for label in computed_labels {
+            if !labels.iter().any(|existing| existing == label) {
+                labels.push(label.clone());
+            }
         }
     }
     labels.sort();
     labels.dedup();
-    Ok(labels)
+    labels
 }
 
 fn training_authority_refresh_node_view(
@@ -14239,10 +14267,19 @@ fn training_authority_refresh_node_views(
     nodes: Vec<AdmittedTrainingNodeView>,
     now_unix_ms: i64,
 ) -> Result<Vec<AdmittedTrainingNodeView>, String> {
-    nodes
+    let labels_by_subject = training_authority_reputation_labels_by_subject(kernel, now_unix_ms)?;
+    Ok(nodes
         .into_iter()
-        .map(|node| training_authority_refresh_node_view(kernel, node, now_unix_ms))
-        .collect()
+        .map(|mut node| {
+            node.active_reputation_labels = training_authority_merge_node_labels(
+                node.active_reputation_labels,
+                labels_by_subject.get(node.node_pubkey_hex.as_str()),
+            );
+            node.eligible =
+                pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
+            node
+        })
+        .collect())
 }
 
 fn training_authority_freshest_node_views_by_pubkey(
@@ -33604,6 +33641,119 @@ mod tests {
                 .as_deref(),
             Some("heartbeat_stale")
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_node_list_and_single_view_share_authority_refresh_labels() -> Result<()> {
+        let app = build_router(test_config()?);
+
+        let fresh_request = training_node_admission_request(
+            "node-fresh-labels",
+            "sha256:build-fresh-labels",
+            vec!["trainnet.alpha"],
+            Vec::new(),
+            Some(256),
+        );
+        let fresh_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&fresh_request)?))?,
+            )
+            .await?;
+        assert_eq!(fresh_response.status(), StatusCode::OK);
+
+        let mut stale_request = training_node_admission_request(
+            "node-stale-labels",
+            "sha256:build-stale-labels",
+            vec!["trainnet.alpha"],
+            Vec::new(),
+            Some(256),
+        );
+        stale_request.requested_at_ms = now_unix_ms() as i64 - 121_000;
+        let stale_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&stale_request)?))?,
+            )
+            .await?;
+        assert_eq!(stale_response.status(), StatusCode::OK);
+
+        let list_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let listed_nodes = response_json::<Vec<AdmittedTrainingNodeView>>(list_response).await?;
+
+        let listed_fresh = listed_nodes
+            .iter()
+            .find(|node| node.node_pubkey_hex == "node-fresh-labels")
+            .expect("listed fresh node");
+        let listed_stale = listed_nodes
+            .iter()
+            .find(|node| node.node_pubkey_hex == "node-stale-labels")
+            .expect("listed stale node");
+
+        let fresh_single_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-fresh-labels")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fresh_single_response.status(), StatusCode::OK);
+        let fresh_single = response_json::<AdmittedTrainingNodeView>(fresh_single_response).await?;
+
+        let stale_single_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-stale-labels")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stale_single_response.status(), StatusCode::OK);
+        let stale_single = response_json::<AdmittedTrainingNodeView>(stale_single_response).await?;
+
+        assert_eq!(
+            listed_fresh.active_reputation_labels,
+            fresh_single.active_reputation_labels
+        );
+        assert_eq!(
+            listed_stale.active_reputation_labels,
+            stale_single.active_reputation_labels
+        );
+        assert!(
+            listed_fresh
+                .active_reputation_labels
+                .iter()
+                .any(|label| label == "authority::trn/build::admitted")
+        );
+        assert!(
+            listed_stale
+                .active_reputation_labels
+                .iter()
+                .any(|label| label == "authority::trn/build::stale")
+        );
+        assert_eq!(listed_fresh.eligible, fresh_single.eligible);
+        assert_eq!(listed_stale.eligible, stale_single.eligible);
 
         Ok(())
     }
