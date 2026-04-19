@@ -6499,6 +6499,41 @@ fn training_window_closeout_outcome_id(window_id: &str) -> String {
     format!("accepted.training_window.{window_id}")
 }
 
+fn training_window_closeout_reconcile_replay_allowed(
+    kernel: &KernelState,
+    window: &ComputeAdapterTrainingWindow,
+) -> bool {
+    if window.status != ComputeAdapterWindowStatus::Reconciled {
+        return false;
+    }
+    let expected_outcome_id = training_window_closeout_outcome_id(window.window_id.as_str());
+    if window.accepted_outcome_id.as_deref() != Some(expected_outcome_id.as_str()) {
+        return false;
+    }
+    let Some(existing_outcome) = kernel.get_compute_accepted_outcome(expected_outcome_id.as_str())
+    else {
+        return false;
+    };
+    if existing_outcome.outcome_kind != ComputeAcceptedOutcomeKind::TrainingRun
+        || existing_outcome.source_run_id != window.training_run_id
+    {
+        return false;
+    }
+    let existing_window_id = existing_outcome
+        .metadata
+        .get("window_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let existing_closeout_status = existing_outcome
+        .metadata
+        .get("closeout_status")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    existing_window_id == Some(window.window_id.as_str()) && existing_closeout_status.is_some()
+}
+
 fn training_window_closeout_artifacts(
     window: &ComputeAdapterTrainingWindow,
     closeout_status: TrainingWindowCloseoutStatus,
@@ -12367,7 +12402,8 @@ async fn reconcile_training_window(
         if !matches!(
             window.status,
             ComputeAdapterWindowStatus::Sealed | ComputeAdapterWindowStatus::Scored
-        ) {
+        ) && !training_window_closeout_reconcile_replay_allowed(&store.kernel, &window)
+        {
             return Err(kernel_api_error(
                 "training_window_status_invalid".to_string(),
             ));
@@ -37127,6 +37163,185 @@ mod tests {
                 .expect("scheduled run")
                 .window_state,
             TrainingSchedulerWindowState::Refused
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_reconcile_replays_reconciled_refused_closeout_after_artifact_fix()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_561_000u64;
+        let training_run_id = "run.window.defense.replay.repaired";
+        let contribution_id = "contrib.window.defense.replay.repaired";
+
+        let lease = prepare_reward_candidate_training_window(
+            &app,
+            &state,
+            created_at_ms,
+            training_run_id,
+            contribution_id,
+        )
+        .await?;
+        let mut stale_input = training_window_contribution_input_for_lease(
+            contribution_id,
+            &lease,
+            "sha256:validator-final-defense-replay-repaired",
+            Some(ComputeAdapterContributionDisposition::Accepted),
+        );
+        stale_input.manifest_digest = "sha256:manifest:stale-defense-replay-repaired".to_string();
+        stale_input.object_digest = "object-without-sha-prefix".to_string();
+
+        let first_reconcile_at_ms = lease.expires_at_ms.saturating_add(5_000);
+        let refused = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key:
+                                "idemp.training.window.reconcile.defense.replay.repaired.first"
+                                    .to_string(),
+                            recorded_at_ms: first_reconcile_at_ms as i64,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![stale_input],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-defense-replay-repaired".to_string(),
+                            ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(refused.status(), StatusCode::OK);
+        let refused_window = response_json::<TrainingWindowCoordinatorResponse>(refused).await?;
+        assert_eq!(
+            refused_window.window.status,
+            ComputeAdapterWindowStatus::Reconciled
+        );
+        assert!(!refused_window.window.promotion_ready);
+
+        let second_reconcile_at_ms = lease.expires_at_ms.saturating_add(10_000);
+        let rewarded = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/window.0001/reconcile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key:
+                                "idemp.training.window.reconcile.defense.replay.repaired.second"
+                                    .to_string(),
+                            recorded_at_ms: second_reconcile_at_ms as i64,
+                            window_id: "window.0001".to_string(),
+                            contribution_outcomes: vec![
+                                training_window_homework_contribution_input_for_lease(
+                                    contribution_id,
+                                    &lease,
+                                    "sha256:validator-final-defense-replay-repaired-homework",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-defense-replay-repaired".to_string(),
+                            ),
+                            accepted_aggregate_id: None,
+                            promoted_checkpoint_ref: None,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(rewarded.status(), StatusCode::OK);
+        let rewarded_window = response_json::<TrainingWindowCoordinatorResponse>(rewarded).await?;
+        assert_eq!(
+            rewarded_window.window.status,
+            ComputeAdapterWindowStatus::Reconciled
+        );
+        assert_eq!(rewarded_window.window.accepted_contributions, 1);
+        assert!(rewarded_window.window.promotion_ready);
+        assert_eq!(
+            rewarded_window.window.accepted_outcome_id.as_deref(),
+            Some("accepted.training_window.window.0001")
+        );
+
+        let store = state.store.read().expect("read store");
+        let closeout = store
+            .kernel
+            .get_compute_accepted_outcome("accepted.training_window.window.0001")
+            .expect("rewarded closeout");
+        assert_eq!(closeout.accepted_at_ms, second_reconcile_at_ms as i64);
+        assert_eq!(
+            closeout
+                .metadata
+                .get("closeout_status")
+                .and_then(serde_json::Value::as_str),
+            Some("rewarded")
+        );
+        assert_eq!(
+            closeout
+                .metadata
+                .get("payout_eligible")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        let defensibility = closeout
+            .metadata
+            .get("defensibility")
+            .expect("defensibility metadata");
+        assert_eq!(
+            defensibility
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("satisfied")
+        );
+        let refusal_codes = defensibility
+            .get("refusal_codes")
+            .and_then(serde_json::Value::as_array)
+            .expect("refusal code list");
+        assert!(refusal_codes.is_empty());
+        assert_eq!(
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .window_state,
+            TrainingSchedulerWindowState::Accepted
+        );
+        assert_eq!(
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .current_window_id
+                .as_str(),
+            "window.0002"
+        );
+        assert_eq!(
+            store
+                .kernel
+                .list_compute_accepted_outcomes(
+                    Some(ComputeAcceptedOutcomeKind::TrainingRun),
+                    Some(PYLON_TRAINING_CUDA_ENVIRONMENT_REF),
+                )
+                .into_iter()
+                .filter(|outcome| outcome.outcome_id == "accepted.training_window.window.0001")
+                .count(),
+            1
         );
         Ok(())
     }
