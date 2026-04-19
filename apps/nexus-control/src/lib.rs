@@ -13840,14 +13840,36 @@ fn training_closeout_has_checkpoint_warning(context: &TrainingCloseoutReputation
             .unwrap_or(false)
 }
 
-fn training_validator_label_for_closeout_status(
-    status: &str,
+fn training_closeout_has_only_operational_assignment_refusals(
+    context: &TrainingCloseoutReputationContext,
+) -> bool {
+    context
+        .metadata
+        .get("defensibility")
+        .and_then(|value| value.get("refusal_codes"))
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            !values.is_empty()
+                && values.iter().all(|value| {
+                    matches!(
+                        value.as_str(),
+                        Some(code)
+                            if code == PylonTrainingRefusalCode::LeaseExpired.label()
+                                || code == PylonTrainingRefusalCode::StaleAssignment.label()
+                    )
+                })
+        })
+}
+
+fn training_validator_label_for_closeout_context(
+    closeout: &TrainingCloseoutReputationContext,
     verdict: ComputeValidatorChallengeVerdict,
 ) -> Option<PylonTrainingReputationLabel> {
-    match status {
+    match closeout.status.as_str() {
         "rewarded" | "no_reward" => (verdict == ComputeValidatorChallengeVerdict::Verified)
             .then_some(PylonTrainingReputationLabel::Good)
             .or_else(|| Some(PylonTrainingReputationLabel::Inconsistent)),
+        "refused" if training_closeout_has_only_operational_assignment_refusals(closeout) => None,
         "quarantined" | "refused" => (verdict == ComputeValidatorChallengeVerdict::Rejected)
             .then_some(PylonTrainingReputationLabel::Good)
             .or_else(|| Some(PylonTrainingReputationLabel::Inconsistent)),
@@ -14104,10 +14126,7 @@ fn training_authority_reputation_sources(
                 .get(finalization.challenge_id.as_str())
                 .and_then(|binding| closeout_contexts.get(binding.window_id.as_str()))
                 .and_then(|closeout| {
-                    training_validator_label_for_closeout_status(
-                        closeout.status.as_str(),
-                        canonical_verdict,
-                    )
+                    training_validator_label_for_closeout_context(closeout, canonical_verdict)
                 })
         };
         let Some(label) = label else {
@@ -44943,6 +44962,65 @@ mod tests {
         assert_eq!(
             training_window_closeout_status(&refused_summary, &[], 0, 0, 1, 0),
             TrainingWindowCloseoutStatus::Refused
+        );
+    }
+
+    #[test]
+    fn training_validator_reputation_ignores_operational_assignment_refusals() {
+        let operational_refused = super::TrainingCloseoutReputationContext {
+            network_id: "training".to_string(),
+            status: "refused".to_string(),
+            outcome_id: "accepted.training_window.window.operational".to_string(),
+            accepted_at_ms: 1_776_240_000_000,
+            metadata: serde_json::json!({
+                "defensibility": {
+                    "refusal_codes": [
+                        PylonTrainingRefusalCode::LeaseExpired.label(),
+                        PylonTrainingRefusalCode::StaleAssignment.label()
+                    ]
+                }
+            }),
+        };
+        assert_eq!(
+            super::training_validator_label_for_closeout_context(
+                &operational_refused,
+                ComputeValidatorChallengeVerdict::Verified
+            ),
+            None
+        );
+
+        let validator_refused = super::TrainingCloseoutReputationContext {
+            network_id: "training".to_string(),
+            status: "refused".to_string(),
+            outcome_id: "accepted.training_window.window.validator".to_string(),
+            accepted_at_ms: 1_776_240_000_000,
+            metadata: serde_json::json!({
+                "defensibility": {
+                    "refusal_codes": [PylonTrainingRefusalCode::ValidatorDisagreement.label()]
+                }
+            }),
+        };
+        assert_eq!(
+            super::training_validator_label_for_closeout_context(
+                &validator_refused,
+                ComputeValidatorChallengeVerdict::Verified
+            ),
+            Some(super::PylonTrainingReputationLabel::Inconsistent)
+        );
+
+        let rewarded = super::TrainingCloseoutReputationContext {
+            network_id: "training".to_string(),
+            status: "rewarded".to_string(),
+            outcome_id: "accepted.training_window.window.rewarded".to_string(),
+            accepted_at_ms: 1_776_240_000_000,
+            metadata: serde_json::json!({}),
+        };
+        assert_eq!(
+            super::training_validator_label_for_closeout_context(
+                &rewarded,
+                ComputeValidatorChallengeVerdict::Verified
+            ),
+            Some(super::PylonTrainingReputationLabel::Good)
         );
     }
 
