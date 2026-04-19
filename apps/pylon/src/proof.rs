@@ -12,6 +12,7 @@ use axum::extract::{Path as AxumPath, State};
 use axum::http::StatusCode;
 use axum::routing::{get, put};
 use axum::{Json, Router};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -145,36 +146,119 @@ impl ProofAuthorityMode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProofLane {
     Cs336A1,
+    Cs336A1StaleRecovery,
+    Cs336A1ReplacementAttempt,
 }
 
 impl ProofLane {
     fn label(self) -> &'static str {
         match self {
             Self::Cs336A1 => "cs336-a1",
+            Self::Cs336A1StaleRecovery => "cs336-a1-stale-recovery",
+            Self::Cs336A1ReplacementAttempt => "cs336-a1-replacement-attempt",
         }
     }
 
     fn run_prefix(self) -> &'static str {
         match self {
             Self::Cs336A1 => "run.cs336.a1.proof",
+            Self::Cs336A1StaleRecovery => "run.cs336.a1.proof.stale",
+            Self::Cs336A1ReplacementAttempt => "run.cs336.a1.proof.replace",
         }
     }
 
     fn display_name_prefix(self) -> &'static str {
         match self {
             Self::Cs336A1 => "Proof CS336 A1",
+            Self::Cs336A1StaleRecovery => "Proof CS336 A1 Stale Recovery",
+            Self::Cs336A1ReplacementAttempt => "Proof CS336 A1 Replacement Attempt",
         }
     }
 
     const fn default_workers(self) -> usize {
         match self {
             Self::Cs336A1 => 2,
+            Self::Cs336A1StaleRecovery => 1,
+            Self::Cs336A1ReplacementAttempt => 0,
         }
     }
 
     const fn default_validators(self) -> usize {
         match self {
             Self::Cs336A1 => 1,
+            Self::Cs336A1StaleRecovery => 1,
+            Self::Cs336A1ReplacementAttempt => 0,
+        }
+    }
+
+    const fn minimum_workers(self) -> usize {
+        match self {
+            Self::Cs336A1 | Self::Cs336A1StaleRecovery => 1,
+            Self::Cs336A1ReplacementAttempt => 0,
+        }
+    }
+
+    const fn minimum_validators(self) -> usize {
+        match self {
+            Self::Cs336A1 | Self::Cs336A1StaleRecovery => 1,
+            Self::Cs336A1ReplacementAttempt => 0,
+        }
+    }
+
+    const fn worker_fixture(self) -> Option<ProofNodeRuntimeFixture> {
+        match self {
+            Self::Cs336A1 => None,
+            Self::Cs336A1StaleRecovery => Some(ProofNodeRuntimeFixture::StaleWorkerLease),
+            Self::Cs336A1ReplacementAttempt => None,
+        }
+    }
+
+    const fn validator_fixture(self) -> Option<ProofNodeRuntimeFixture> {
+        match self {
+            Self::Cs336A1 => None,
+            Self::Cs336A1StaleRecovery => Some(ProofNodeRuntimeFixture::StaleValidatorLease),
+            Self::Cs336A1ReplacementAttempt => None,
+        }
+    }
+
+    const fn uses_manual_authority_scenario(self) -> bool {
+        matches!(self, Self::Cs336A1ReplacementAttempt)
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProofNodeRuntimeFixture {
+    StaleWorkerLease,
+    StaleValidatorLease,
+    CloseoutObservePayoutWorker,
+    CloseoutObservePayoutValidator,
+}
+
+impl ProofNodeRuntimeFixture {
+    const fn fixture_id(self) -> &'static str {
+        match self {
+            Self::StaleWorkerLease => "cs336_a1_stale_worker_lease_v1",
+            Self::StaleValidatorLease => "cs336_a1_stale_validator_lease_v1",
+            Self::CloseoutObservePayoutWorker => "cs336_a1_closeout_observe_payout_worker_v1",
+            Self::CloseoutObservePayoutValidator => "cs336_a1_closeout_observe_payout_validator_v1",
+        }
+    }
+
+    const fn relative_path(self) -> &'static str {
+        match self {
+            Self::StaleWorkerLease => {
+                "fixtures/proof/4368/stale_worker_runtime_state.template.json"
+            }
+            Self::StaleValidatorLease => {
+                "fixtures/proof/4368/stale_validator_runtime_state.template.json"
+            }
+            Self::CloseoutObservePayoutWorker => {
+                "fixtures/proof/4368/closeout_observe_payout_worker_runtime_state.template.json"
+            }
+            Self::CloseoutObservePayoutValidator => {
+                "fixtures/proof/4368/closeout_observe_payout_validator_runtime_state.template.json"
+            }
         }
     }
 }
@@ -285,6 +369,8 @@ struct ProofFleetNodeRuntimeRecord {
     checkpoint_serve_url: String,
     ports: ProofNodePorts,
     stale_retained_state_injected: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    retained_state_fixture_id: Option<String>,
     process: ProofProcessRecord,
 }
 
@@ -389,9 +475,58 @@ struct ProofFleetNodeStatus {
     admin_url: String,
     checkpoint_serve_url: String,
     stale_retained_state_injected: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    retained_state_fixture_id: Option<String>,
     process: ProofProcessStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     training: Option<ProofFleetNodeTrainingStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofReplacementContributionTemplate {
+    submission_receipt_digest: String,
+    manifest_digest: String,
+    object_digest: String,
+    artifact_receipt_digest: String,
+    provenance_bundle_digest: String,
+    security_receipt_digest: String,
+    validator_receipt_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    replay_receipt_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    validation_reason_codes: Vec<super::ComputeAdapterContributionValidationReasonCode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    validator_disposition: Option<super::ComputeAdapterContributionDisposition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_eligibility: Option<super::ComputeAdapterAggregationEligibility>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_step_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    consumed_token_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    consumed_example_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_weight_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_weight_value: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregation_weight_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    promotion_receipt_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    metadata: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    held_out_average_score_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    benchmark_pass_rate_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_smoke_passed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregated_delta_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accepted_aggregate_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    promoted_checkpoint_ref: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -601,6 +736,8 @@ struct ProofTraceNode {
     index: usize,
     node_label: String,
     payout_destination: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    retained_state_fixture_id: Option<String>,
     eligibility: ProofNodeEligibilitySnapshot,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     training_status: Option<super::TrainingOperatorStatusReport>,
@@ -837,6 +974,8 @@ pub async fn run_proof_command(
                         network_id.as_deref(),
                         *stale_worker_state,
                         *stale_validator_state,
+                        None,
+                        None,
                     )
                     .await?
                 }
@@ -1131,8 +1270,18 @@ fn parse_proof_run_command(args: &[String], start_index: usize) -> Result<ProofR
             ),
         }
     }
-    ensure!(workers > 0, "proof run requires at least one worker");
-    ensure!(validators > 0, "proof run requires at least one validator");
+    ensure!(
+        workers >= lane.minimum_workers(),
+        "proof run {} requires at least {} worker(s)",
+        lane.label(),
+        lane.minimum_workers()
+    );
+    ensure!(
+        validators >= lane.minimum_validators(),
+        "proof run {} requires at least {} validator(s)",
+        lane.label(),
+        lane.minimum_validators()
+    );
     Ok(ProofRunCommand {
         lane,
         namespace,
@@ -1287,6 +1436,12 @@ fn parse_proof_authority_mode(value: &str) -> Result<ProofAuthorityMode> {
 fn parse_proof_lane(value: &str) -> Result<ProofLane> {
     match value {
         "cs336-a1" | "cs336_a1" | "cs336/a1" => Ok(ProofLane::Cs336A1),
+        "cs336-a1-stale-recovery" | "cs336_a1_stale_recovery" | "cs336/a1/stale-recovery" => {
+            Ok(ProofLane::Cs336A1StaleRecovery)
+        }
+        "cs336-a1-replacement-attempt"
+        | "cs336_a1_replacement_attempt"
+        | "cs336/a1/replacement-attempt" => Ok(ProofLane::Cs336A1ReplacementAttempt),
         other => bail!("unknown proof lane: {other}"),
     }
 }
@@ -1511,6 +1666,8 @@ async fn ensure_proof_fleet_up(
     network_id_override: Option<&str>,
     stale_worker_state: bool,
     stale_validator_state: bool,
+    worker_fixture: Option<ProofNodeRuntimeFixture>,
+    validator_fixture: Option<ProofNodeRuntimeFixture>,
 ) -> Result<ProofFleetStatusReport> {
     let authority = ensure_proof_authority_up(config_path, namespace, mode).await?;
     let layout = proof_layout(config_path, namespace);
@@ -1576,6 +1733,7 @@ async fn ensure_proof_fleet_up(
                 index,
                 network_id.as_str(),
                 stale_worker_state,
+                worker_fixture,
                 current_exe.as_path(),
                 psionic_repo_root.as_deref(),
                 &mut used_ports,
@@ -1593,6 +1751,7 @@ async fn ensure_proof_fleet_up(
                 index,
                 network_id.as_str(),
                 stale_validator_state,
+                validator_fixture,
                 current_exe.as_path(),
                 psionic_repo_root.as_deref(),
                 &mut used_ports,
@@ -1663,6 +1822,7 @@ async fn collect_proof_fleet_status(
             admin_url: node.admin_url.clone(),
             checkpoint_serve_url: node.checkpoint_serve_url.clone(),
             stale_retained_state_injected: node.stale_retained_state_injected,
+            retained_state_fixture_id: node.retained_state_fixture_id.clone(),
             process: ProofProcessStatus {
                 binary: node.process.binary.clone(),
                 pid: node.process.pid,
@@ -1735,6 +1895,17 @@ async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result
         .namespace
         .clone()
         .unwrap_or_else(|| generated_proof_namespace(command.lane));
+    if command.lane.uses_manual_authority_scenario() {
+        return run_manual_replacement_attempt_proof_lane(config_path, command, namespace).await;
+    }
+    run_standard_proof_lane(config_path, command, namespace).await
+}
+
+async fn run_standard_proof_lane(
+    config_path: &Path,
+    command: &ProofRunCommand,
+    namespace: String,
+) -> Result<ProofRunReport> {
     let lane_network_id = proof_fleet_network_id(namespace.as_str());
     let _fleet = ensure_proof_fleet_up(
         config_path,
@@ -1745,6 +1916,8 @@ async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result
         Some(lane_network_id.as_str()),
         command.stale_worker_state,
         command.stale_validator_state,
+        command.lane.worker_fixture(),
+        command.lane.validator_fixture(),
     )
     .await?;
     let layout = proof_layout(config_path, namespace.as_str());
@@ -1860,6 +2033,552 @@ async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result
     }
 }
 
+async fn run_manual_replacement_attempt_proof_lane(
+    config_path: &Path,
+    command: &ProofRunCommand,
+    namespace: String,
+) -> Result<ProofRunReport> {
+    let lane_network_id = proof_fleet_network_id(namespace.as_str());
+    let _fleet = ensure_proof_fleet_up(
+        config_path,
+        namespace.as_str(),
+        command.mode,
+        command.workers,
+        command.validators,
+        Some(lane_network_id.as_str()),
+        false,
+        false,
+        None,
+        None,
+    )
+    .await?;
+    let layout = proof_layout(config_path, namespace.as_str());
+    let authority_state =
+        load_runtime_state(layout.runtime_state_path.as_path())?.ok_or_else(|| {
+            anyhow!("proof authority runtime state missing for namespace {namespace}")
+        })?;
+    let training_run_id = proof_lane_training_run_id(command.lane, namespace.as_str());
+    let mut first_failed_authority_write = None;
+
+    let primary_worker = replacement_attempt_node_admission_request(
+        "proof-replacement-worker-a",
+        lane_network_id.as_str(),
+        "lnbc1proofreplacementa",
+    );
+    let _: super::PylonTrainingNodeAdmissionResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/nodes/admission",
+        &primary_worker,
+        &mut first_failed_authority_write,
+        "replacement_worker_a_admission",
+    )
+    .await?;
+    let _: super::PylonTrainingHeartbeatResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/heartbeats",
+        &replacement_attempt_idle_heartbeat(
+            primary_worker.node_pubkey_hex.as_str(),
+            super::now_epoch_ms(),
+        ),
+        &mut first_failed_authority_write,
+        "replacement_worker_a_heartbeat",
+    )
+    .await?;
+
+    let launch = launch_proof_lane(
+        command.lane,
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        namespace.as_str(),
+        lane_network_id.as_str(),
+        training_run_id.as_str(),
+        &mut first_failed_authority_write,
+    )
+    .await?;
+    save_fleet_launch_record(config_path, namespace.as_str(), &launch)?;
+    let observed_launch = summarize_training_run_detail_response(&launch.run_detail);
+    let window_id = observed_launch.run.current_window_id.trim().to_string();
+    ensure!(
+        !window_id.is_empty(),
+        "replacement-attempt proof lane did not materialize a current window"
+    );
+
+    let primary_lease = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/leases/claim",
+        &replacement_attempt_lease_request(
+            primary_worker.node_pubkey_hex.as_str(),
+            training_run_id.as_str(),
+            lane_network_id.as_str(),
+            super::PylonTrainingRoleClaim::Worker,
+            super::now_epoch_ms(),
+        ),
+        &mut first_failed_authority_write,
+        "replacement_worker_a_claim",
+    )
+    .await?;
+    let _: super::PylonTrainingAssignmentAckResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/assignments/ack",
+        &replacement_attempt_assignment_ack(
+            primary_worker.node_pubkey_hex.as_str(),
+            &primary_lease,
+            super::now_epoch_ms(),
+        ),
+        &mut first_failed_authority_write,
+        "replacement_worker_a_ack",
+    )
+    .await?;
+    let _: super::PylonTrainingFailureNoticeResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/failures",
+        &replacement_attempt_failure_notice(
+            primary_worker.node_pubkey_hex.as_str(),
+            &primary_lease,
+            super::now_epoch_ms(),
+        ),
+        &mut first_failed_authority_write,
+        "replacement_worker_a_failure",
+    )
+    .await?;
+
+    let replacement_worker = replacement_attempt_node_admission_request(
+        "proof-replacement-worker-b",
+        lane_network_id.as_str(),
+        "lnbc1proofreplacementb",
+    );
+    let _: super::PylonTrainingNodeAdmissionResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/nodes/admission",
+        &replacement_worker,
+        &mut first_failed_authority_write,
+        "replacement_worker_b_admission",
+    )
+    .await?;
+    let _: super::PylonTrainingHeartbeatResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/heartbeats",
+        &replacement_attempt_idle_heartbeat(
+            replacement_worker.node_pubkey_hex.as_str(),
+            super::now_epoch_ms(),
+        ),
+        &mut first_failed_authority_write,
+        "replacement_worker_b_heartbeat",
+    )
+    .await?;
+
+    let replacement_lease = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/leases/claim",
+        &replacement_attempt_lease_request(
+            replacement_worker.node_pubkey_hex.as_str(),
+            training_run_id.as_str(),
+            lane_network_id.as_str(),
+            super::PylonTrainingRoleClaim::Worker,
+            super::now_epoch_ms(),
+        ),
+        &mut first_failed_authority_write,
+        "replacement_worker_b_claim",
+    )
+    .await?;
+    let _: super::PylonTrainingAssignmentAckResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/assignments/ack",
+        &replacement_attempt_assignment_ack(
+            replacement_worker.node_pubkey_hex.as_str(),
+            &replacement_lease,
+            super::now_epoch_ms(),
+        ),
+        &mut first_failed_authority_write,
+        "replacement_worker_b_ack",
+    )
+    .await?;
+
+    let template = load_proof_replacement_contribution_template()?;
+    let contribution = replacement_attempt_contribution_input(
+        &template,
+        &replacement_lease,
+        lane_network_id.as_str(),
+    );
+    let replacement_assignment_detail = format!(
+        "replacement attempt {} for {}",
+        replacement_lease.assignment_id, window_id
+    );
+    if let Err(error) =
+        proof_post_authority_json::<_, super::PylonTrainingWindowCoordinatorResponse>(
+            authority_state.urls.authority_base_url.as_str(),
+            authority_state.admin_bearer_token.as_str(),
+            format!("/api/training/windows/{window_id}/seal").as_str(),
+            &super::PylonSealTrainingWindowRequest {
+                idempotency_key: format!(
+                    "proof.replacement.seal.{}.{}",
+                    namespace_slug(namespace.as_str()),
+                    replacement_lease.assignment_id
+                ),
+                recorded_at_ms: super::now_epoch_ms(),
+                window_id: window_id.clone(),
+                contribution_outcomes: vec![contribution.clone()],
+            },
+            &mut first_failed_authority_write,
+            "replacement_window_seal",
+        )
+        .await
+    {
+        let fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
+        let observed_run = fetch_proof_training_run_detail(
+            authority_state.urls.authority_base_url.as_str(),
+            training_run_id.as_str(),
+        )
+        .await?
+        .or(Some(observed_launch.clone()));
+        let report = ProofRunReport {
+            namespace,
+            lane: command.lane.label().to_string(),
+            generated_at_ms: super::now_epoch_ms(),
+            timeout_seconds: command.timeout_seconds,
+            status: "blocked".to_string(),
+            detail: format!("{replacement_assignment_detail} blocked at seal: {error:#}"),
+            blocker_id: Some("authority_write_failed".to_string()),
+            fleet: fleet_status,
+            launch: Some(launch),
+            observed_run,
+            first_failed_authority_write,
+        };
+        persist_proof_run_outputs(config_path, &report).await?;
+        return Ok(report);
+    }
+    if let Err(error) =
+        proof_post_authority_json::<_, super::PylonTrainingWindowCoordinatorResponse>(
+            authority_state.urls.authority_base_url.as_str(),
+            authority_state.admin_bearer_token.as_str(),
+            format!("/api/training/windows/{window_id}/reconcile").as_str(),
+            &super::PylonReconcileTrainingWindowRequest {
+                idempotency_key: format!(
+                    "proof.replacement.reconcile.{}.{}",
+                    namespace_slug(namespace.as_str()),
+                    replacement_lease.assignment_id
+                ),
+                recorded_at_ms: super::now_epoch_ms(),
+                window_id: window_id.clone(),
+                contribution_outcomes: vec![contribution],
+                held_out_average_score_bps: template.held_out_average_score_bps,
+                benchmark_pass_rate_bps: template.benchmark_pass_rate_bps,
+                runtime_smoke_passed: template.runtime_smoke_passed,
+                aggregated_delta_digest: template.aggregated_delta_digest.clone(),
+                accepted_aggregate_id: template.accepted_aggregate_id.clone(),
+                promoted_checkpoint_ref: template.promoted_checkpoint_ref.clone(),
+            },
+            &mut first_failed_authority_write,
+            "replacement_window_reconcile",
+        )
+        .await
+    {
+        let fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
+        let observed_run = fetch_proof_training_run_detail(
+            authority_state.urls.authority_base_url.as_str(),
+            training_run_id.as_str(),
+        )
+        .await?
+        .or(Some(observed_launch.clone()));
+        let report = ProofRunReport {
+            namespace,
+            lane: command.lane.label().to_string(),
+            generated_at_ms: super::now_epoch_ms(),
+            timeout_seconds: command.timeout_seconds,
+            status: "blocked".to_string(),
+            detail: format!("{replacement_assignment_detail} blocked at reconcile: {error:#}"),
+            blocker_id: Some("authority_write_failed".to_string()),
+            fleet: fleet_status,
+            launch: Some(launch),
+            observed_run,
+            first_failed_authority_write,
+        };
+        persist_proof_run_outputs(config_path, &report).await?;
+        return Ok(report);
+    }
+
+    let fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
+    let observed_run = fetch_proof_training_run_detail(
+        authority_state.urls.authority_base_url.as_str(),
+        training_run_id.as_str(),
+    )
+    .await?
+    .or(Some(observed_launch));
+    let replacement_detail =
+        format!("{replacement_assignment_detail} sealed and reconciled locally");
+    if let Some((blocker_id, detail)) =
+        detect_proof_run_blocker(&fleet_status, observed_run.as_ref())
+    {
+        let report = ProofRunReport {
+            namespace,
+            lane: command.lane.label().to_string(),
+            generated_at_ms: super::now_epoch_ms(),
+            timeout_seconds: command.timeout_seconds,
+            status: "blocked".to_string(),
+            detail: format!("{replacement_detail}; {detail}"),
+            blocker_id: Some(blocker_id),
+            fleet: fleet_status,
+            launch: Some(launch),
+            observed_run,
+            first_failed_authority_write,
+        };
+        persist_proof_run_outputs(config_path, &report).await?;
+        return Ok(report);
+    }
+
+    let report = ProofRunReport {
+        namespace,
+        lane: command.lane.label().to_string(),
+        generated_at_ms: super::now_epoch_ms(),
+        timeout_seconds: command.timeout_seconds,
+        status: "completed".to_string(),
+        detail: replacement_detail,
+        blocker_id: None,
+        fleet: fleet_status,
+        launch: Some(launch),
+        observed_run,
+        first_failed_authority_write,
+    };
+    persist_proof_run_outputs(config_path, &report).await?;
+    Ok(report)
+}
+
+fn replacement_attempt_node_admission_request(
+    node_pubkey_hex: &str,
+    network_id: &str,
+    settlement_destination: &str,
+) -> super::PylonTrainingNodeAdmissionRequest {
+    let contributor_availability = super::ProviderAdapterTrainingContributorAvailability {
+        contributor_supported: true,
+        coordinator_match_supported: true,
+        authority_receipt_supported: true,
+        execution_backends: vec![
+            super::ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend,
+        ],
+        adapter_families: vec!["openagents.adapter.reference".to_string()],
+        adapter_formats: vec!["openagents.adapter.delta.v1".to_string()],
+        validator_policy_refs: vec!["policy://validator/mvp/v1".to_string()],
+        checkpoint_families: vec!["decoder".to_string()],
+        environment_refs: vec![super::PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()],
+        minimum_memory_gb: Some(16),
+        available_memory_gb: Some(16),
+        settlement_trigger: Some(
+            super::ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow,
+        ),
+    };
+    let capability_tier = super::ProviderTrainingCapabilityTierProfile {
+        tier: super::ProviderTrainingCapabilityTier::Tier2Trainer,
+        backend_families: vec!["cpu".to_string()],
+        accelerator_inventory: Vec::new(),
+        memory_floor_gb: Some(16),
+        available_memory_gb: Some(16),
+        throughput_band: super::ProviderTrainingThroughputBand::Medium,
+        lease_reliability: super::ProviderTrainingLeaseReliabilityClass::Steady,
+        replay_capability: super::ProviderTrainingReplayCapability::ShortWindow,
+        artifact_upload_latency_class: super::ProviderTrainingArtifactUploadLatencyClass::Moderate,
+    };
+    super::PylonTrainingNodeAdmissionRequest {
+        idempotency_key: format!(
+            "proof.replacement.admission.{}.{}",
+            node_pubkey_hex,
+            super::now_epoch_ms()
+        ),
+        requested_at_ms: super::now_epoch_ms(),
+        node_pubkey_hex: node_pubkey_hex.to_string(),
+        release_id: super::local_training_release_id(),
+        node_label: Some(format!("proof-{node_pubkey_hex}")),
+        role_claims: vec![super::PylonTrainingRoleClaim::Worker],
+        allowed_networks: vec![network_id.to_string()],
+        build_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        build_digest: Some(super::local_training_build_digest()),
+        capability_envelope_v2: super::derive_training_capability_envelope_v2(
+            &capability_tier,
+            &contributor_availability,
+            true,
+        ),
+        contributor_availability,
+        capability_tier,
+        host_telemetry: None,
+        active_reputation_labels: Vec::new(),
+        settlement_destination: Some(settlement_destination.to_string()),
+    }
+}
+
+fn replacement_attempt_idle_heartbeat(
+    node_pubkey_hex: &str,
+    recorded_at_ms: i64,
+) -> super::PylonTrainingHeartbeatRequest {
+    super::PylonTrainingHeartbeatRequest {
+        idempotency_key: format!("proof.replacement.heartbeat.{node_pubkey_hex}.{recorded_at_ms}"),
+        recorded_at_ms,
+        node_pubkey_hex: node_pubkey_hex.to_string(),
+        build_digest: super::local_training_build_digest(),
+        training_run_id: "run.idle".to_string(),
+        window_id: "window.idle".to_string(),
+        assignment_id: format!("assignment.idle.{node_pubkey_hex}"),
+        lease_id: format!("lease.idle.{node_pubkey_hex}"),
+        desired_state: super::PylonTrainingSupervisorDesiredState::Running,
+        process_state: super::PylonTrainingSupervisorProcessState::Running,
+        last_heartbeat_at_ms: Some(recorded_at_ms),
+        last_exit_code: None,
+    }
+}
+
+fn replacement_attempt_lease_request(
+    node_pubkey_hex: &str,
+    training_run_id: &str,
+    network_id: &str,
+    role: super::PylonTrainingRoleClaim,
+    requested_at_ms: i64,
+) -> super::PylonTrainingRunLeaseRequest {
+    super::PylonTrainingRunLeaseRequest {
+        idempotency_key: format!("proof.replacement.lease.{node_pubkey_hex}.{requested_at_ms}"),
+        requested_at_ms,
+        node_pubkey_hex: node_pubkey_hex.to_string(),
+        role,
+        requested_network_id: Some(network_id.to_string()),
+        requested_training_run_id: Some(training_run_id.to_string()),
+        membership_revision: None,
+    }
+}
+
+fn replacement_attempt_assignment_ack(
+    node_pubkey_hex: &str,
+    lease: &super::PylonTrainingRunLeaseResponse,
+    acked_at_ms: i64,
+) -> super::PylonTrainingAssignmentAckRequest {
+    super::PylonTrainingAssignmentAckRequest {
+        idempotency_key: format!(
+            "proof.replacement.ack.{}.{}",
+            lease.assignment_id, acked_at_ms
+        ),
+        acked_at_ms,
+        node_pubkey_hex: node_pubkey_hex.to_string(),
+        training_run_id: lease.training_run_id.clone(),
+        window_id: lease.window_id.clone(),
+        assignment_id: lease.assignment_id.clone(),
+        lease_id: lease.lease_id.clone(),
+        manifest_digest: lease.manifest_digest.clone(),
+        manifest_path: None,
+    }
+}
+
+fn replacement_attempt_failure_notice(
+    node_pubkey_hex: &str,
+    lease: &super::PylonTrainingRunLeaseResponse,
+    reported_at_ms: i64,
+) -> super::PylonTrainingFailureNoticeRequest {
+    super::PylonTrainingFailureNoticeRequest {
+        idempotency_key: format!(
+            "proof.replacement.failure.{}.{}",
+            lease.assignment_id, reported_at_ms
+        ),
+        reported_at_ms,
+        node_pubkey_hex: node_pubkey_hex.to_string(),
+        training_run_id: lease.training_run_id.clone(),
+        window_id: lease.window_id.clone(),
+        assignment_id: lease.assignment_id.clone(),
+        lease_id: lease.lease_id.clone(),
+        failure_reason: "proof replacement attempt fixture forced retry".to_string(),
+        exit_code: Some(1),
+        failure_receipt_path: None,
+    }
+}
+
+fn replacement_attempt_contribution_input(
+    template: &ProofReplacementContributionTemplate,
+    lease: &super::PylonTrainingRunLeaseResponse,
+    network_id: &str,
+) -> super::PylonTrainingWindowContributionInput {
+    super::PylonTrainingWindowContributionInput {
+        contribution_id: sha256_prefixed_bytes(
+            format!("proof.replacement.contribution.{}", lease.assignment_id).as_bytes(),
+        ),
+        assignment_id: lease.assignment_id.clone(),
+        submission_receipt_digest: template.submission_receipt_digest.clone(),
+        artifact_id: format!(
+            "oa.train_artifact.v1~kind~local_update~network~{}~run~{}~window~{}~assignment~{}",
+            network_id, lease.training_run_id, lease.window_id, lease.assignment_id
+        ),
+        manifest_digest: template.manifest_digest.clone(),
+        object_digest: template.object_digest.clone(),
+        artifact_receipt_digest: template.artifact_receipt_digest.clone(),
+        provenance_bundle_digest: template.provenance_bundle_digest.clone(),
+        security_receipt_digest: template.security_receipt_digest.clone(),
+        replay_receipt_digest: template.replay_receipt_digest.clone(),
+        validator_receipt_digest: template.validator_receipt_digest.clone(),
+        validation_reason_codes: template.validation_reason_codes.clone(),
+        validator_disposition: template.validator_disposition,
+        aggregation_eligibility: template.aggregation_eligibility,
+        local_step_count: template.local_step_count,
+        consumed_token_count: template.consumed_token_count,
+        consumed_example_count: template.consumed_example_count,
+        aggregation_weight_basis: template.aggregation_weight_basis.clone(),
+        aggregation_weight_value: template.aggregation_weight_value,
+        aggregation_weight_bps: template.aggregation_weight_bps,
+        promotion_receipt_digest: template.promotion_receipt_digest.clone(),
+        metadata: template.metadata.clone(),
+    }
+}
+
+async fn proof_post_authority_json<TReq, TResp>(
+    authority_base_url: &str,
+    admin_bearer_token: &str,
+    path: &str,
+    request: &TReq,
+    first_failed_authority_write: &mut Option<ProofAuthorityWriteFailureCapture>,
+    source: &str,
+) -> Result<TResp>
+where
+    TReq: Serialize,
+    TResp: DeserializeOwned,
+{
+    let url = format!(
+        "{}/{}",
+        authority_base_url.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    );
+    let response = reqwest::Client::new()
+        .post(url.as_str())
+        .bearer_auth(admin_bearer_token)
+        .json(request)
+        .send()
+        .await
+        .with_context(|| format!("failed to post proof authority request to {url}"))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("failed to read proof authority response body")?;
+    if !status.is_success() {
+        first_failed_authority_write.get_or_insert_with(|| ProofAuthorityWriteFailureCapture {
+            source: source.to_string(),
+            observed_at_ms: super::now_epoch_ms(),
+            method: Some("POST".to_string()),
+            url: Some(url.clone()),
+            status: Some(status.as_u16()),
+            response_body: Some(body.clone()),
+            detail: format!("proof authority write failed for {source}"),
+        });
+        bail!(
+            "proof authority write {source} failed with status {}: {}",
+            status.as_u16(),
+            body.trim()
+        );
+    }
+    serde_json::from_str::<TResp>(body.as_str())
+        .with_context(|| format!("failed to decode proof authority response for {source}"))
+}
+
 async fn spawn_proof_fleet_node(
     namespace: &str,
     layout: &ProofLayout,
@@ -1868,6 +2587,7 @@ async fn spawn_proof_fleet_node(
     index: usize,
     network_id: &str,
     stale_retained_state: bool,
+    retained_state_fixture: Option<ProofNodeRuntimeFixture>,
     current_exe: &Path,
     psionic_repo_root: Option<&Path>,
     used_ports: &mut BTreeSet<u16>,
@@ -1923,7 +2643,9 @@ async fn spawn_proof_fleet_node(
     config.training.validator_enabled = role == ProofFleetNodeRole::Validator;
     super::save_config(config_path.as_path(), &config)?;
     let config = super::ensure_local_setup(config_path.as_path())?;
-    if stale_retained_state {
+    if let Some(retained_state_fixture) = retained_state_fixture {
+        apply_proof_node_runtime_fixture(&config, retained_state_fixture, network_id)?;
+    } else if stale_retained_state {
         inject_stale_training_runtime_state(&config, role, network_id)?;
     }
     let _ =
@@ -1976,6 +2698,8 @@ async fn spawn_proof_fleet_node(
         checkpoint_serve_url: format!("http://127.0.0.1:{}", ports.checkpoint),
         ports,
         stale_retained_state_injected: stale_retained_state,
+        retained_state_fixture_id: retained_state_fixture
+            .map(|fixture| fixture.fixture_id().to_string()),
         process: ProofProcessRecord {
             binary: current_exe.display().to_string(),
             pid: Some(pid),
@@ -2179,6 +2903,40 @@ fn proof_lane_training_run_id(lane: ProofLane, namespace: &str) -> String {
     format!("{}.{}", lane.run_prefix(), namespace_slug(namespace))
 }
 
+fn proof_fixture_path(relative_path: &str) -> PathBuf {
+    workspace_root().join(relative_path)
+}
+
+fn load_proof_node_runtime_fixture(
+    fixture: ProofNodeRuntimeFixture,
+    network_id: &str,
+) -> Result<super::PylonTrainingRuntimeState> {
+    let path = proof_fixture_path(fixture.relative_path());
+    let payload = fs::read_to_string(path.as_path())
+        .with_context(|| format!("failed to read proof fixture {}", path.display()))?;
+    let payload = payload.replace("__PROOF_NETWORK_ID__", network_id);
+    serde_json::from_str::<super::PylonTrainingRuntimeState>(payload.as_str())
+        .with_context(|| format!("failed to decode proof fixture {}", path.display()))
+}
+
+fn apply_proof_node_runtime_fixture(
+    config: &super::PylonConfig,
+    fixture: ProofNodeRuntimeFixture,
+    network_id: &str,
+) -> Result<()> {
+    let state = load_proof_node_runtime_fixture(fixture, network_id)?;
+    super::save_training_runtime_state(config, &state)
+}
+
+fn load_proof_replacement_contribution_template() -> Result<ProofReplacementContributionTemplate> {
+    let path =
+        proof_fixture_path("fixtures/proof/4368/replacement_attempt_contribution_template.json");
+    let payload = fs::read_to_string(path.as_path())
+        .with_context(|| format!("failed to read proof fixture {}", path.display()))?;
+    serde_json::from_str::<ProofReplacementContributionTemplate>(payload.as_str())
+        .with_context(|| format!("failed to decode proof fixture {}", path.display()))
+}
+
 fn inject_stale_training_runtime_state(
     config: &super::PylonConfig,
     role: ProofFleetNodeRole,
@@ -2291,7 +3049,9 @@ async fn launch_proof_lane(
     first_failed_authority_write: &mut Option<ProofAuthorityWriteFailureCapture>,
 ) -> Result<ProofRunLaunchResponse> {
     match lane {
-        ProofLane::Cs336A1 => {
+        ProofLane::Cs336A1
+        | ProofLane::Cs336A1StaleRecovery
+        | ProofLane::Cs336A1ReplacementAttempt => {
             let url = format!("{authority_base_url}/v1/admin/training/demo-runs/cs336-a1/launch");
             let response = reqwest::Client::new()
                 .post(url.as_str())
@@ -2488,6 +3248,7 @@ fn collect_proof_trace_nodes(fleet: &ProofFleetStatusReport) -> Result<Vec<Proof
                 index: node.index,
                 node_label: node.node_label.clone(),
                 payout_destination: node.payout_destination.clone(),
+                retained_state_fixture_id: node.retained_state_fixture_id.clone(),
                 eligibility: proof_node_eligibility(&training_status),
                 training_status: Some(training_status),
                 training_status_error: None,
@@ -2497,6 +3258,7 @@ fn collect_proof_trace_nodes(fleet: &ProofFleetStatusReport) -> Result<Vec<Proof
                 index: node.index,
                 node_label: node.node_label.clone(),
                 payout_destination: node.payout_destination.clone(),
+                retained_state_fixture_id: node.retained_state_fixture_id.clone(),
                 eligibility: ProofNodeEligibilitySnapshot {
                     eligibility: "unknown".to_string(),
                     hard_gate_reasons: Vec::new(),
@@ -4109,14 +4871,15 @@ fn render_proof_fleet_status_report(report: &ProofFleetStatusReport) -> String {
     ));
     for node in &report.nodes {
         lines.push(format!(
-            "node {} {}: running={} admin_url={} checkpoint_url={} config={} stale_state={}",
+            "node {} {}: running={} admin_url={} checkpoint_url={} config={} stale_state={} fixture={}",
             node.role.label(),
             node.index,
             node.process.running,
             node.admin_url,
             node.checkpoint_serve_url,
             node.config_path,
-            node.stale_retained_state_injected
+            node.stale_retained_state_injected,
+            node.retained_state_fixture_id.as_deref().unwrap_or("-")
         ));
         if let Some(training) = node.training.as_ref() {
             lines.push(format!(
@@ -4478,9 +5241,10 @@ fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
 #[cfg(test)]
 mod tests {
     use super::{
-        PROOF_ARTIFACT_UPLOAD_PREFIX, detect_proof_run_blocker, parse_proof_command,
-        parse_status_body_from_reason, proof_namespace_ports, render_proof_status_report,
-        run_artifact_store_server,
+        PROOF_ARTIFACT_UPLOAD_PREFIX, ProofLane, ProofNodeRuntimeFixture, detect_proof_run_blocker,
+        load_proof_node_runtime_fixture, load_proof_replacement_contribution_template,
+        parse_proof_command, parse_proof_lane, parse_status_body_from_reason,
+        proof_namespace_ports, render_proof_status_report, run_artifact_store_server,
     };
 
     use anyhow::{Result, anyhow};
@@ -4658,5 +5422,131 @@ mod tests {
         .expect("status/body should parse");
         assert_eq!(parsed.0, 404);
         assert_eq!(parsed.1, "{\"error\":\"kernel_error\"}");
+    }
+
+    #[test]
+    fn parse_proof_lane_supports_fixture_backed_variants() {
+        assert_eq!(
+            parse_proof_lane("cs336-a1-stale-recovery").expect("stale-recovery lane"),
+            ProofLane::Cs336A1StaleRecovery
+        );
+        assert_eq!(
+            parse_proof_lane("cs336/a1/replacement-attempt").expect("replacement-attempt lane"),
+            ProofLane::Cs336A1ReplacementAttempt
+        );
+    }
+
+    #[test]
+    fn parse_proof_run_command_respects_lane_specific_minima() {
+        let replacement_args = vec![
+            "oa".to_string(),
+            "proof".to_string(),
+            "run".to_string(),
+            "cs336-a1-replacement-attempt".to_string(),
+            "--workers".to_string(),
+            "0".to_string(),
+            "--validators".to_string(),
+            "0".to_string(),
+        ];
+        let parsed = parse_proof_command(&replacement_args, 2)
+            .expect("replacement-attempt proof run should parse");
+        match parsed {
+            super::ProofCommand::Run { command } => {
+                assert_eq!(command.lane, ProofLane::Cs336A1ReplacementAttempt);
+                assert_eq!(command.workers, 0);
+                assert_eq!(command.validators, 0);
+            }
+            other => panic!("expected proof run command, got {other:?}"),
+        }
+
+        let stale_args = vec![
+            "oa".to_string(),
+            "proof".to_string(),
+            "run".to_string(),
+            "cs336-a1-stale-recovery".to_string(),
+            "--workers".to_string(),
+            "0".to_string(),
+            "--validators".to_string(),
+            "1".to_string(),
+        ];
+        let error = parse_proof_command(&stale_args, 2)
+            .expect_err("stale-recovery run should reject zero workers");
+        assert!(error.to_string().contains("requires at least 1 worker"));
+    }
+
+    #[test]
+    fn proof_runtime_fixtures_decode_and_substitute_network_ids() -> Result<()> {
+        let network_id = "trainnet.proof.fixture-test";
+        let stale_worker =
+            load_proof_node_runtime_fixture(ProofNodeRuntimeFixture::StaleWorkerLease, network_id)?;
+        let stale_worker_lease = stale_worker
+            .lease_cache
+            .get("lease.stale.worker.0001")
+            .expect("stale worker lease");
+        assert_eq!(stale_worker_lease.network_id.as_deref(), Some(network_id));
+
+        let stale_validator = load_proof_node_runtime_fixture(
+            ProofNodeRuntimeFixture::StaleValidatorLease,
+            network_id,
+        )?;
+        let stale_validator_lease = stale_validator
+            .lease_cache
+            .get("lease.stale.validator.0001")
+            .expect("stale validator lease");
+        assert_eq!(
+            stale_validator_lease.network_id.as_deref(),
+            Some(network_id)
+        );
+        assert_eq!(
+            stale_validator_lease.challenge_id.as_deref(),
+            Some("challenge.stale.validator.0001")
+        );
+
+        let payout_worker = load_proof_node_runtime_fixture(
+            ProofNodeRuntimeFixture::CloseoutObservePayoutWorker,
+            network_id,
+        )?;
+        let payout_worker_progress = payout_worker
+            .closeout_progress
+            .get("assign.fixture.payout.worker.0001")
+            .expect("payout worker progress");
+        assert_eq!(payout_worker_progress.stage.label(), "accepted");
+        assert_eq!(
+            payout_worker_progress.payout_state.as_deref(),
+            Some("failed")
+        );
+
+        let payout_validator = load_proof_node_runtime_fixture(
+            ProofNodeRuntimeFixture::CloseoutObservePayoutValidator,
+            network_id,
+        )?;
+        let payout_validator_progress = payout_validator
+            .closeout_progress
+            .get("assign.fixture.payout.validator.0001")
+            .expect("payout validator progress");
+        assert_eq!(payout_validator_progress.stage.label(), "accepted");
+        assert_eq!(
+            payout_validator_progress.payout_state.as_deref(),
+            Some("failed")
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn replacement_attempt_contribution_fixture_decodes() -> Result<()> {
+        let template = load_proof_replacement_contribution_template()?;
+        assert_eq!(
+            template.validator_disposition,
+            Some(super::super::ComputeAdapterContributionDisposition::Accepted)
+        );
+        assert_eq!(
+            template.aggregation_eligibility,
+            Some(super::super::ComputeAdapterAggregationEligibility::Eligible)
+        );
+        assert_eq!(template.held_out_average_score_bps, Some(9400));
+        assert_eq!(template.benchmark_pass_rate_bps, Some(9700));
+        assert_eq!(template.runtime_smoke_passed, Some(true));
+        Ok(())
     }
 }
