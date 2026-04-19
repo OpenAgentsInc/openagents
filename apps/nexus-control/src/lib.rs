@@ -9568,16 +9568,21 @@ fn prepare_homework_launch(
         training_scheduler_run_definition(&store.kernel, &preview_run).map_err(kernel_api_error)?;
     let preview_metadata =
         training_scheduler_metadata_from_run(&preview_run).map_err(kernel_api_error)?;
-    let admitted_nodes = store.kernel.list_admitted_training_nodes(
-        &TrainingNodeQuery {
-            network_id: None,
-            requested_network_id: None,
-            role: Some(TrainingNodeRoleClaim::Worker),
-            online_only: false,
-            eligible_only: false,
-        },
+    let admitted_nodes = training_authority_refresh_node_views(
+        &store.kernel,
+        store.kernel.list_admitted_training_nodes(
+            &TrainingNodeQuery {
+                network_id: None,
+                requested_network_id: None,
+                role: Some(TrainingNodeRoleClaim::Worker),
+                online_only: false,
+                eligible_only: false,
+            },
+            now_unix_ms as i64,
+        ),
         now_unix_ms as i64,
-    );
+    )
+    .map_err(kernel_api_error)?;
     let matched_nodes = admitted_nodes
         .iter()
         .filter(|node| {
@@ -11913,7 +11918,7 @@ async fn claim_training_run_lease(
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
-        let mut node = store
+        let node = store
             .kernel
             .get_admitted_training_node(
                 request.node_pubkey_hex.as_str(),
@@ -11921,16 +11926,20 @@ async fn claim_training_run_lease(
                 request.requested_at_ms,
             )
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
-        node.active_reputation_labels = training_authority_reputation_labels_for_node(
-            &store.kernel,
-            &node,
-            request.requested_at_ms,
-        )
-        .map_err(kernel_api_error)?;
-        node.eligible = pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
+        let node =
+            training_authority_refresh_node_view(&store.kernel, node, request.requested_at_ms)
+                .map_err(kernel_api_error)?;
         if !node.eligible {
             let reason = pylon_training_hard_gate_reason(&node.active_reputation_labels)
                 .unwrap_or_else(|| "training_node_not_eligible".to_string());
+            tracing::warn!(
+                node_pubkey_hex = request.node_pubkey_hex.as_str(),
+                requested_training_run_id = ?request.requested_training_run_id,
+                requested_network_id = ?request.requested_network_id,
+                active_reputation_labels = ?node.active_reputation_labels,
+                hard_gate_reason = reason.as_str(),
+                "training lease claim hard gated"
+            );
             return Err(kernel_api_error(reason));
         }
         let candidate_runs = store.kernel.list_compute_training_runs(None, None, None);
@@ -12724,7 +12733,7 @@ async fn claim_training_validator_challenge(
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
-        let mut node = store
+        let node = store
             .kernel
             .get_admitted_training_node(
                 request.node_pubkey_hex.as_str(),
@@ -12732,13 +12741,9 @@ async fn claim_training_validator_challenge(
                 request.requested_at_ms,
             )
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
-        node.active_reputation_labels = training_authority_reputation_labels_for_node(
-            &store.kernel,
-            &node,
-            request.requested_at_ms,
-        )
-        .map_err(kernel_api_error)?;
-        node.eligible = pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
+        let node =
+            training_authority_refresh_node_view(&store.kernel, node, request.requested_at_ms)
+                .map_err(kernel_api_error)?;
         if !node.role_claims.contains(&TrainingNodeRoleClaim::Validator) {
             return Err(kernel_api_error(
                 "training_validator_role_not_admitted".to_string(),
@@ -12750,6 +12755,13 @@ async fn claim_training_validator_challenge(
             ));
         }
         if !node.eligible {
+            tracing::warn!(
+                node_pubkey_hex = request.node_pubkey_hex.as_str(),
+                requested_training_run_id = ?request.requested_training_run_id,
+                requested_network_id = ?request.requested_network_id,
+                active_reputation_labels = ?node.active_reputation_labels,
+                "training validator claim rejected because node is ineligible"
+            );
             return Err(kernel_api_error(
                 "training_scheduler_node_ineligible".to_string(),
             ));
@@ -14188,6 +14200,28 @@ fn training_authority_reputation_labels_for_node(
     Ok(labels)
 }
 
+fn training_authority_refresh_node_view(
+    kernel: &KernelState,
+    mut node: AdmittedTrainingNodeView,
+    now_unix_ms: i64,
+) -> Result<AdmittedTrainingNodeView, String> {
+    node.active_reputation_labels =
+        training_authority_reputation_labels_for_node(kernel, &node, now_unix_ms)?;
+    node.eligible = pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
+    Ok(node)
+}
+
+fn training_authority_refresh_node_views(
+    kernel: &KernelState,
+    nodes: Vec<AdmittedTrainingNodeView>,
+    now_unix_ms: i64,
+) -> Result<Vec<AdmittedTrainingNodeView>, String> {
+    nodes
+        .into_iter()
+        .map(|node| training_authority_refresh_node_view(kernel, node, now_unix_ms))
+        .collect()
+}
+
 fn training_trn_network_status(source: &TrainingTrnNetworkContractSource) -> &'static str {
     if source
         .statuses
@@ -15260,7 +15294,13 @@ async fn list_training_nodes(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_admitted_training_nodes(&query, now)))
+    let nodes = training_authority_refresh_node_views(
+        &store.kernel,
+        store.kernel.list_admitted_training_nodes(&query, now),
+        now,
+    )
+    .map_err(kernel_api_error)?;
+    Ok(Json(nodes))
 }
 
 async fn get_training_node(
@@ -15282,6 +15322,8 @@ async fn get_training_node(
             now,
         )
         .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
+    let node =
+        training_authority_refresh_node_view(&store.kernel, node, now).map_err(kernel_api_error)?;
     Ok(Json(node))
 }
 
@@ -23757,16 +23799,36 @@ fn build_homepage_snapshot(
     let training_summary = training_operator_summary_snapshot(store, now_unix_ms);
     let training_visualization =
         training_visualization_snapshot_with_summary(store, now_unix_ms, training_summary.clone());
-    let training_nodes = store.kernel.list_admitted_training_nodes(
-        &TrainingNodeQuery {
-            network_id: None,
-            requested_network_id: None,
-            role: None,
-            online_only: false,
-            eligible_only: false,
-        },
+    let training_nodes = training_authority_refresh_node_views(
+        &store.kernel,
+        store.kernel.list_admitted_training_nodes(
+            &TrainingNodeQuery {
+                network_id: None,
+                requested_network_id: None,
+                role: None,
+                online_only: false,
+                eligible_only: false,
+            },
+            now_unix_ms as i64,
+        ),
         now_unix_ms as i64,
-    );
+    )
+    .unwrap_or_else(|reason| {
+        tracing::warn!(
+            reason = reason.as_str(),
+            "failed to refresh homepage training node reputation"
+        );
+        store.kernel.list_admitted_training_nodes(
+            &TrainingNodeQuery {
+                network_id: None,
+                requested_network_id: None,
+                role: None,
+                online_only: false,
+                eligible_only: false,
+            },
+            now_unix_ms as i64,
+        )
+    });
 
     let default_run = training_default_run(training_summary.runs.as_slice());
     let default_run_id = default_run.map(|run| run.training_run_id.clone());
@@ -38295,6 +38357,49 @@ mod tests {
                 .filter(|entry| !entry.status.starts_with("trn/build="))
                 .all(|entry| entry.publication_state == "published")
         );
+        let worker_node_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-alpha")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(worker_node_response.status(), StatusCode::OK);
+        let worker_node = response_json::<AdmittedTrainingNodeView>(worker_node_response).await?;
+        assert!(
+            worker_node
+                .active_reputation_labels
+                .iter()
+                .any(|label| label == "authority::trn/build::admitted"),
+            "{:?}",
+            worker_node.active_reputation_labels
+        );
+        assert!(worker_node.eligible);
+
+        let validator_node_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/validator-alpha")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(validator_node_response.status(), StatusCode::OK);
+        let validator_node =
+            response_json::<AdmittedTrainingNodeView>(validator_node_response).await?;
+        assert!(
+            validator_node
+                .active_reputation_labels
+                .iter()
+                .any(|label| label == "authority::trn/build::admitted"),
+            "{:?}",
+            validator_node.active_reputation_labels
+        );
+        assert!(validator_node.eligible);
+
         let second_events = collect_training_trn_events(&mut event_rx).await;
         let second_trn_events = parse_training_trn_events(second_events.as_slice())?;
         let second_kinds = second_events
