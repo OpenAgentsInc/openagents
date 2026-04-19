@@ -176,6 +176,12 @@ pub struct MutationResult<T> {
     pub snapshot_event: Option<SnapshotProjectionEvent>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum KernelProjectionMode {
+    Immediate,
+    Deferred,
+}
+
 #[derive(Debug, Clone)]
 pub struct PutReceiptResult {
     pub receipt: Receipt,
@@ -6224,7 +6230,32 @@ impl KernelState {
     pub fn accept_compute_outcome(
         &mut self,
         context: &KernelMutationContext,
+        req: AcceptComputeOutcomeRequest,
+    ) -> Result<MutationResult<AcceptComputeOutcomeResponse>, String> {
+        self.accept_compute_outcome_with_projection_mode(
+            context,
+            req,
+            KernelProjectionMode::Immediate,
+        )
+    }
+
+    pub fn accept_compute_outcome_deferred_projection(
+        &mut self,
+        context: &KernelMutationContext,
+        req: AcceptComputeOutcomeRequest,
+    ) -> Result<MutationResult<AcceptComputeOutcomeResponse>, String> {
+        self.accept_compute_outcome_with_projection_mode(
+            context,
+            req,
+            KernelProjectionMode::Deferred,
+        )
+    }
+
+    fn accept_compute_outcome_with_projection_mode(
+        &mut self,
+        context: &KernelMutationContext,
         mut req: AcceptComputeOutcomeRequest,
+        projection_mode: KernelProjectionMode,
     ) -> Result<MutationResult<AcceptComputeOutcomeResponse>, String> {
         let outcome_id = normalize_required(
             req.outcome.outcome_id.as_str(),
@@ -6376,18 +6407,48 @@ impl KernelState {
             },
         );
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
-        let snapshot_event = self.refresh_snapshot_for(req.outcome.accepted_at_ms)?;
+        let snapshot_event = match projection_mode {
+            KernelProjectionMode::Immediate => {
+                Some(self.refresh_snapshot_for(req.outcome.accepted_at_ms)?)
+            }
+            KernelProjectionMode::Deferred => None,
+        };
         Ok(MutationResult {
             response,
             receipt_event: Some(receipt_event),
-            snapshot_event: Some(snapshot_event),
+            snapshot_event,
         })
     }
 
     pub fn record_compute_adapter_window(
         &mut self,
         context: &KernelMutationContext,
+        req: RecordComputeAdapterWindowRequest,
+    ) -> Result<MutationResult<RecordComputeAdapterWindowResponse>, String> {
+        self.record_compute_adapter_window_with_projection_mode(
+            context,
+            req,
+            KernelProjectionMode::Immediate,
+        )
+    }
+
+    pub fn record_compute_adapter_window_deferred_projection(
+        &mut self,
+        context: &KernelMutationContext,
+        req: RecordComputeAdapterWindowRequest,
+    ) -> Result<MutationResult<RecordComputeAdapterWindowResponse>, String> {
+        self.record_compute_adapter_window_with_projection_mode(
+            context,
+            req,
+            KernelProjectionMode::Deferred,
+        )
+    }
+
+    fn record_compute_adapter_window_with_projection_mode(
+        &mut self,
+        context: &KernelMutationContext,
         mut req: RecordComputeAdapterWindowRequest,
+        projection_mode: KernelProjectionMode,
     ) -> Result<MutationResult<RecordComputeAdapterWindowResponse>, String> {
         let window_id = normalize_required(
             req.window.window_id.as_str(),
@@ -6528,7 +6589,12 @@ impl KernelState {
             );
         }
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
-        let snapshot_event = self.refresh_snapshot_for(req.window.recorded_at_ms)?;
+        let snapshot_event = match projection_mode {
+            KernelProjectionMode::Immediate => {
+                Some(self.refresh_snapshot_for(req.window.recorded_at_ms)?)
+            }
+            KernelProjectionMode::Deferred => None,
+        };
         Ok(MutationResult {
             response: RecordComputeAdapterWindowResponse {
                 window: req.window,
@@ -6536,8 +6602,15 @@ impl KernelState {
                 receipt: put_result.receipt.clone(),
             },
             receipt_event: Some(receipt_event),
-            snapshot_event: Some(snapshot_event),
+            snapshot_event,
         })
+    }
+
+    pub fn flush_deferred_projection_for(
+        &mut self,
+        created_at_ms: i64,
+    ) -> Result<SnapshotProjectionEvent, String> {
+        self.refresh_snapshot_for(created_at_ms)
     }
 
     pub fn create_compute_synthetic_data_job(
