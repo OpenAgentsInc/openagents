@@ -7474,6 +7474,7 @@ Commands:\n\
   proof fleet down --namespace <ns> [--json]\n\
   proof fleet reset --namespace <ns> [--json]\n\
   proof run <lane> [--namespace <ns>] [--workers <n>] [--validators <n>] [--timeout-seconds <n>] [--mode prod-shaped|debug-authority] [--stale-worker-state] [--stale-validator-state] [--json]\n\
+  proof doctor [--namespace <ns>] [--json]\n\
   serve\n\
   account link --base-url <url> --token <one_time_token> [--json]\n\
   status [--json]\n\
