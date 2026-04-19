@@ -157,12 +157,42 @@ cargo run -p pylon --bin oa -- proof run cs336-a1 \
   --stale-worker-state \
   --stale-validator-state \
   --json
+
+cargo run -p pylon --bin oa -- proof run cs336-a1-stale-recovery \
+  --namespace proof.cs336-a1.stale \
+  --workers 1 \
+  --validators 1 \
+  --json
+```
+
+Use the replacement-attempt lane when you want the authority-side
+`lease -> ack -> failure -> replacement claim -> seal -> reconcile` path from
+`#4368` without bringing up worker or validator processes:
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1-replacement-attempt \
+  --namespace proof.cs336-a1.replace \
+  --workers 0 \
+  --validators 0 \
+  --json
 ```
 
 `proof run` now writes the first concrete blocker it can observe into
 `run-report.json`. In the current local proof world that commonly means a
 critical authority caveat or a node-local training issue instead of a generic
 timeout.
+
+The retained-state fixture corpus that seeds those lanes lives under:
+
+```text
+fixtures/proof/4368/
+```
+
+That corpus packages reduced `#4368` regression inputs:
+
+- stale worker and validator retained-state templates
+- accepted-but-payout-open closeout templates
+- replacement-attempt contribution/reconcile digests
 
 Each proof run now also writes:
 

@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "window_cache": {
+    "window.fixture.payout.validator.0001": {
+      "window_id": "window.fixture.payout.validator.0001",
+      "training_run_id": "run.fixture.payout.validator",
+      "state": "reconciled",
+      "manifest_digest": "sha256:fixture-payout-validator-window",
+      "updated_at_ms": 1776635537388
+    }
+  },
+  "authority_receipt_records": {
+    "window_reconcile::window.fixture.payout.validator.0001": {
+      "receipt_key": "window_reconcile::window.fixture.payout.validator.0001",
+      "receipt_kind": "window_reconcile",
+      "subject_id": "window.fixture.payout.validator.0001",
+      "authority_state": "window_reconciled",
+      "acknowledged_state": "reconciled",
+      "recorded_at_ms": 1776635522181,
+      "last_attempt_at_ms": 1776635522183,
+      "attempt_count": 1,
+      "pending_retry": false
+    }
+  },
+  "closeout_progress": {
+    "assign.fixture.payout.validator.0001": {
+      "assignment_id": "assign.fixture.payout.validator.0001",
+      "training_run_id": "run.fixture.payout.validator",
+      "window_id": "window.fixture.payout.validator.0001",
+      "role": "validator",
+      "stage": "accepted",
+      "contribution_id": "sha256:fixture-payout-validator-contribution",
+      "checkpoint_ref": "checkpoint://fixture/payout/validator",
+      "authority_assignment_state": "released",
+      "authority_window_state": "reconciled",
+      "acceptance_state": "rewarded",
+      "payout_state": "failed",
+      "last_error": "wallet operation failed: SparkSdkError: Tree service error: insufficient funds",
+      "updated_at_ms": 1776635537388
+    }
+  },
+  "closeout_journal": [
+    {
+      "sequence": 1,
+      "assignment_id": "assign.fixture.payout.validator.0001",
+      "training_run_id": "run.fixture.payout.validator",
+      "window_id": "window.fixture.payout.validator.0001",
+      "role": "validator",
+      "stage": "validator_finalized",
+      "challenge_id": "challenge.fixture.payout.validator.0001",
+      "checkpoint_ref": "checkpoint://fixture/payout/validator",
+      "acceptance_state": "verified",
+      "transition_reason": "stage_transition",
+      "observed_at_ms": 1776635522181
+    },
+    {
+      "sequence": 2,
+      "assignment_id": "assign.fixture.payout.validator.0001",
+      "training_run_id": "run.fixture.payout.validator",
+      "window_id": "window.fixture.payout.validator.0001",
+      "role": "validator",
+      "stage": "accepted",
+      "contribution_id": "sha256:fixture-payout-validator-contribution",
+      "checkpoint_ref": "checkpoint://fixture/payout/validator",
+      "authority_assignment_state": "released",
+      "authority_window_state": "reconciled",
+      "acceptance_state": "rewarded",
+      "payout_state": "failed",
+      "transition_reason": "stage_metadata_refresh",
+      "blocking_reason": "wallet operation failed: SparkSdkError: Tree service error: insufficient funds",
+      "observed_at_ms": 1776635537388
+    }
+  ]
+}
