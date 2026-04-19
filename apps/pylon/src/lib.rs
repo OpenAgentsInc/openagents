@@ -4786,7 +4786,10 @@ fn training_run_from_local_manifest(
         environment_binding: openagents_kernel_core::compute::ComputeEnvironmentBinding {
             environment_ref: manifest.environment_ref.clone(),
             environment_version: Some(manifest.environment_version.clone()),
-            dataset_ref: manifest.dataset.as_ref().map(|dataset| dataset.dataset_id.clone()),
+            dataset_ref: manifest
+                .dataset
+                .as_ref()
+                .map(|dataset| dataset.dataset_id.clone()),
             rubric_ref: None,
             evaluator_policy_ref: None,
         },
@@ -4854,12 +4857,18 @@ fn training_assignment_runtime_artifacts_materialized(
     training_run: &ComputeTrainingRun,
     run_root: &Path,
 ) -> Result<bool> {
-    if !run_root.join("manifests").join("run_manifest.json").is_file() {
+    if !run_root
+        .join("manifests")
+        .join("run_manifest.json")
+        .is_file()
+    {
         return Ok(false);
     }
-    if training_run.checkpoint_binding.latest_checkpoint_ref.is_none()
-        && training_run.checkpoint_binding.recovery_posture.as_deref()
-            != Some("resume_from_latest")
+    if training_run
+        .checkpoint_binding
+        .latest_checkpoint_ref
+        .is_none()
+        && training_run.checkpoint_binding.recovery_posture.as_deref() != Some("resume_from_latest")
     {
         return Ok(true);
     }
@@ -5390,8 +5399,7 @@ fn training_validator_cached_target_artifacts_are_current(
     else {
         return Ok(false);
     };
-    let Some(receipt_binding) =
-        training_validator_target_artifact(target, "contribution_receipt")
+    let Some(receipt_binding) = training_validator_target_artifact(target, "contribution_receipt")
     else {
         return Ok(false);
     };
@@ -5401,17 +5409,15 @@ fn training_validator_cached_target_artifacts_are_current(
         return Ok(false);
     };
 
-    Ok(
-        training_validator_cached_json_artifact_matches_binding(
-            receipt_binding,
-            receipt_path,
-            "validator contribution receipt",
-        )? && training_validator_cached_json_artifact_matches_binding(
-            manifest_binding,
-            manifest_path,
-            "validator contribution artifact manifest",
-        )?,
-    )
+    Ok(training_validator_cached_json_artifact_matches_binding(
+        receipt_binding,
+        receipt_path,
+        "validator contribution receipt",
+    )? && training_validator_cached_json_artifact_matches_binding(
+        manifest_binding,
+        manifest_path,
+        "validator contribution artifact manifest",
+    )?)
 }
 
 fn training_validator_runtime_inputs_materialized(
@@ -5436,7 +5442,10 @@ fn training_validator_runtime_inputs_materialized(
         return Ok(false);
     }
 
-    let Some(challenge_id) = lease.challenge_id.as_deref().filter(|value| !value.trim().is_empty())
+    let Some(challenge_id) = lease
+        .challenge_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
     else {
         return Ok(true);
     };
@@ -5687,8 +5696,10 @@ async fn materialize_training_validator_target_json_artifact(
     if let Some(source_path) = binding.local_path.as_deref() {
         let source_path = Path::new(source_path);
         if source_path.is_file() {
-            let value = load_training_json_artifact_value(source_path, label)?
-                .ok_or_else(|| anyhow!("validator challenge {label} missing local artifact payload"))?;
+            let value =
+                load_training_json_artifact_value(source_path, label)?.ok_or_else(|| {
+                    anyhow!("validator challenge {label} missing local artifact payload")
+                })?;
             if let Some(expected_digest) = binding.digest.as_deref() {
                 let actual_digest = training_json_artifact_digest(&value, label, source_path)?;
                 if actual_digest != expected_digest {
@@ -6478,8 +6489,7 @@ async fn ensure_training_assignment_runtime_manifest(
         bail!("missing cached training lease `{lease_id}`");
     };
     let run_root = training_run_root_for_id(config, initial_lease.training_run_id.as_str());
-    let validator_inputs_materialized = if initial_lease.role == PylonTrainingRoleClaim::Validator
-    {
+    let validator_inputs_materialized = if initial_lease.role == PylonTrainingRoleClaim::Validator {
         training_validator_runtime_inputs_materialized(run_root.as_path(), &initial_lease)?
     } else {
         true
@@ -9464,7 +9474,10 @@ impl PylonTrainingCoordinatorClient {
     where
         R: DeserializeOwned,
     {
-        match self.get_training_coordination_json_with_retry(path, action).await {
+        match self
+            .get_training_coordination_json_with_retry(path, action)
+            .await
+        {
             Ok(response) => Ok(response),
             Err(primary_error) => {
                 let Some(fallback_base_url) = self.fallback_base_url.as_deref() else {
@@ -15370,6 +15383,71 @@ fn load_training_terminal_closeout_hints(
     }))
 }
 
+fn training_window_reconcile_request_idempotency_key(
+    active: &PylonTrainingActiveRuntimeState,
+    closeout_hints: &PylonTrainingTerminalCloseoutHints,
+    contribution_outcomes: &[ComputeAdapterContributionOutcome],
+) -> Result<String> {
+    let mut contribution_basis = contribution_outcomes
+        .iter()
+        .map(|outcome| {
+            json!({
+                "contribution_id": outcome.contribution_id,
+                "assignment_id": outcome.assignment_id,
+                "manifest_digest": outcome.manifest_digest,
+                "object_digest": outcome.object_digest,
+                "validator_receipt_digest": outcome.validator_receipt_digest,
+                "validator_disposition": outcome.validator_disposition.label(),
+                "aggregation_eligibility": outcome.aggregation_eligibility.label(),
+                "promotion_receipt_digest": outcome.promotion_receipt_digest,
+            })
+        })
+        .collect::<Vec<_>>();
+    contribution_basis.sort_by(|left, right| {
+        left.get("contribution_id")
+            .and_then(Value::as_str)
+            .cmp(&right.get("contribution_id").and_then(Value::as_str))
+            .then_with(|| {
+                left.get("assignment_id")
+                    .and_then(Value::as_str)
+                    .cmp(&right.get("assignment_id").and_then(Value::as_str))
+            })
+    });
+    let digest = stable_training_json_digest(
+        b"pylon_training_window_reconcile|",
+        &json!({
+            "training_run_id": active.training_run_id,
+            "window_id": active.window_id,
+            "checkpoint_ref": closeout_hints.checkpoint_ref,
+            "held_out_average_score_bps": closeout_hints.held_out_average_score_bps,
+            "benchmark_pass_rate_bps": closeout_hints.benchmark_pass_rate_bps,
+            "runtime_smoke_passed": closeout_hints.runtime_smoke_passed,
+            "aggregated_delta_digest": closeout_hints.aggregated_delta_digest,
+            "accepted_aggregate_id": closeout_hints.accepted_aggregate_id,
+            "promoted_checkpoint_ref": closeout_hints.promoted_checkpoint_ref,
+            "contribution_outcomes": contribution_basis,
+        }),
+    )?;
+    Ok(format!(
+        "training.window_reconcile.{}.{}.{}",
+        active.training_run_id, active.window_id, digest
+    ))
+}
+
+fn training_window_reconcile_receipt_subject(window_id: &str, idempotency_key: &str) -> String {
+    format!("{window_id}::{idempotency_key}")
+}
+
+fn training_closeout_replay_allowed_for_window(
+    active: &PylonTrainingActiveRuntimeState,
+    outcome: &ComputeAcceptedOutcome,
+) -> bool {
+    outcome.source_run_id == active.training_run_id
+        && training_closeout_window_id_from_metadata(outcome).as_deref()
+            == Some(active.window_id.as_str())
+        && training_closeout_status_from_metadata(outcome) == "refused"
+}
+
 fn training_window_contribution_input_from_outcome(
     outcome: &ComputeAdapterContributionOutcome,
 ) -> PylonTrainingWindowContributionInput {
@@ -15409,7 +15487,16 @@ async fn maybe_reconcile_training_scored_window(
     if contribution_outcomes.is_empty() {
         return Ok(false);
     }
-    let receipt_key = training_authority_receipt_key("window_reconcile", active.window_id.as_str());
+    let reconcile_idempotency_key = training_window_reconcile_request_idempotency_key(
+        active,
+        closeout_hints,
+        contribution_outcomes.as_slice(),
+    )?;
+    let receipt_subject = training_window_reconcile_receipt_subject(
+        active.window_id.as_str(),
+        reconcile_idempotency_key.as_str(),
+    );
+    let receipt_key = training_authority_receipt_key("window_reconcile", receipt_subject.as_str());
     if !training_authority_receipt_needs_attempt(state, receipt_key.as_str()) {
         return Ok(false);
     }
@@ -15432,10 +15519,7 @@ async fn maybe_reconcile_training_scored_window(
         );
     }
     let request = PylonReconcileTrainingWindowRequest {
-        idempotency_key: format!(
-            "training.window_reconcile.{}.{}",
-            active.training_run_id, active.window_id
-        ),
+        idempotency_key: reconcile_idempotency_key,
         recorded_at_ms: now_epoch_ms(),
         window_id: active.window_id.clone(),
         contribution_outcomes: contribution_outcomes
@@ -15459,7 +15543,7 @@ async fn maybe_reconcile_training_scored_window(
                 state,
                 receipt_key.as_str(),
                 "window_reconcile",
-                active.window_id.as_str(),
+                receipt_subject.as_str(),
                 "window_reconciled",
                 window_state.as_str(),
                 request.recorded_at_ms,
@@ -15521,7 +15605,7 @@ async fn maybe_reconcile_training_scored_window(
                             state,
                             receipt_key.as_str(),
                             "window_reconcile",
-                            active.window_id.as_str(),
+                            receipt_subject.as_str(),
                             "window_reconcile_existing",
                             window_state.as_str(),
                             now_epoch_ms(),
@@ -15571,7 +15655,7 @@ async fn maybe_reconcile_training_scored_window(
                 state,
                 receipt_key.as_str(),
                 "window_reconcile",
-                active.window_id.as_str(),
+                receipt_subject.as_str(),
                 &error,
             );
             for outcome in &contribution_outcomes {
@@ -16021,6 +16105,7 @@ async fn maybe_finalize_training_terminal_validator_challenge(
 async fn maybe_reconcile_training_terminal_window(
     state: &mut PylonTrainingRuntimeState,
     active: &PylonTrainingActiveRuntimeState,
+    context: &TrainingManifestInspectionContext,
     client: &PylonTrainingCoordinatorClient,
     run_root: &Path,
     run_status: Option<&PylonTrainingRunStatusPacket>,
@@ -16082,6 +16167,38 @@ async fn maybe_reconcile_training_terminal_window(
         );
     }
     if window.status == ComputeAdapterWindowStatus::Reconciled {
+        let accepted_outcome =
+            if let Some(accepted_outcome_id) = window.accepted_outcome_id.as_deref() {
+                client
+                    .list_accepted_outcomes(
+                        Some(ComputeAcceptedOutcomeKind::TrainingRun),
+                        Some(context.manifest.environment_ref.as_str()),
+                    )
+                    .await
+                    .ok()
+                    .and_then(|outcomes| {
+                        outcomes
+                            .into_iter()
+                            .find(|outcome| outcome.outcome_id == accepted_outcome_id)
+                    })
+            } else {
+                None
+            };
+        if accepted_outcome
+            .as_ref()
+            .is_some_and(|outcome| training_closeout_replay_allowed_for_window(active, outcome))
+            && let Some(closeout_hints) =
+                load_training_terminal_closeout_hints(run_root, run_status, window_status)?
+        {
+            changed |= maybe_reconcile_training_scored_window(
+                state,
+                active,
+                client,
+                &closeout_hints,
+                contribution_outcomes.clone(),
+            )
+            .await?;
+        }
         for outcome in &contribution_outcomes {
             changed |= record_training_closeout_progress_stage(
                 state,
@@ -16622,6 +16739,7 @@ async fn report_training_terminal_runtime_to_authority(
         changed |= maybe_reconcile_training_terminal_window(
             state,
             active,
+            context,
             &client,
             run_root,
             run_status.as_ref(),
@@ -29844,8 +29962,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         // Live validator target bindings can carry a binding-level digest that does not match
         // the verifier-stable canonical JSON digest of the retained worker artifact itself.
         // The local retained target file must still win over the bridge-inline copy.
-        let validator_target_receipt_digest =
-            "sha256:validator-target-binding-receipt".to_string();
+        let validator_target_receipt_digest = "sha256:validator-target-binding-receipt".to_string();
         let validator_target_manifest_digest =
             "sha256:validator-target-binding-manifest".to_string();
         let sealed_window_bundle: Value = serde_json::from_slice(
@@ -30431,20 +30548,18 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && manifest.coordination.challenge_id.as_deref() == Some("challenge.alpha"),
             "validator fallback intake should materialize a validator psionic-train manifest tied to the claimed challenge",
         )?;
-        let materialized_contribution_receipt: Value = serde_json::from_slice(
-            &std::fs::read(
-                lease.validator_target_contribution_receipt_path
-                    .as_deref()
-                    .ok_or_else(|| std::io::Error::other("missing validator receipt path"))?,
-            )?,
-        )?;
-        let materialized_artifact_manifest: Value = serde_json::from_slice(
-            &std::fs::read(
-                lease.validator_target_contribution_artifact_manifest_path
-                    .as_deref()
-                    .ok_or_else(|| std::io::Error::other("missing validator manifest path"))?,
-            )?,
-        )?;
+        let materialized_contribution_receipt: Value = serde_json::from_slice(&std::fs::read(
+            lease
+                .validator_target_contribution_receipt_path
+                .as_deref()
+                .ok_or_else(|| std::io::Error::other("missing validator receipt path"))?,
+        )?)?;
+        let materialized_artifact_manifest: Value = serde_json::from_slice(&std::fs::read(
+            lease
+                .validator_target_contribution_artifact_manifest_path
+                .as_deref()
+                .ok_or_else(|| std::io::Error::other("missing validator manifest path"))?,
+        )?)?;
         ensure(
             materialized_contribution_receipt == contribution_receipt
                 && materialized_artifact_manifest == artifact_manifest
@@ -30475,12 +30590,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             lease_id.as_str(),
         )
         .await?;
-        let rematerialized_contribution_receipt: Value = serde_json::from_slice(
-            &std::fs::read(validator_receipt_path.as_str())?,
-        )?;
-        let rematerialized_artifact_manifest: Value = serde_json::from_slice(
-            &std::fs::read(validator_manifest_path.as_str())?,
-        )?;
+        let rematerialized_contribution_receipt: Value =
+            serde_json::from_slice(&std::fs::read(validator_receipt_path.as_str())?)?;
+        let rematerialized_artifact_manifest: Value =
+            serde_json::from_slice(&std::fs::read(validator_manifest_path.as_str())?)?;
         ensure(
             rematerialized.manifest_path == manifest_path
                 && rematerialized_contribution_receipt == contribution_receipt
@@ -30740,7 +30853,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             }],
         };
 
-        let bindings = super::resolve_training_validator_target_bindings(&client, &response).await?;
+        let bindings =
+            super::resolve_training_validator_target_bindings(&client, &response).await?;
         assert_eq!(bindings, response.target_bindings);
 
         let counts = request_counts
@@ -30872,8 +30986,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let identity = ensure_identity(config.identity_path.as_path())?;
         let runtime_surface = psionic_train_runtime_surface_fixture();
         let run_root = training_run_root_for_id(&config, "run.alpha");
-        let mut manifest =
-            write_training_manifest_and_retained_contribution_artifacts(run_root.as_path(), "gs://bucket")?;
+        let mut manifest = write_training_manifest_and_retained_contribution_artifacts(
+            run_root.as_path(),
+            "gs://bucket",
+        )?;
         rewrite_training_checkpoint_manifest_to_bridge_shape(run_root.as_path(), 42)?;
         manifest.manifest_digest = manifest.canonical_digest()?;
         std::fs::write(
@@ -30981,7 +31097,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             }),
             "stale validator contribution receipt",
         )?;
-        let local_update_bridge_path = validator_contribution_root.join("adapter_delta_bundle.json");
+        let local_update_bridge_path =
+            validator_contribution_root.join("adapter_delta_bundle.json");
         let proof_bridge_path = validator_contribution_root.join("proof_bundle.json");
         let local_update_bridge_bytes = serde_json::to_vec_pretty(&local_update_bridge)?;
         let proof_bridge_bytes = serde_json::to_vec_pretty(&proof_bridge)?;
@@ -32178,7 +32295,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 "artifact_manifest": worker_manifest.clone()
             }
         });
-        let local_update_bridge_path = validator_contribution_root.join("adapter_delta_bundle.json");
+        let local_update_bridge_path =
+            validator_contribution_root.join("adapter_delta_bundle.json");
         let proof_bridge_path = validator_contribution_root.join("proof_bundle.json");
         let local_update_bridge_bytes = serde_json::to_vec_pretty(&local_update_bridge)?;
         let proof_bridge_bytes = serde_json::to_vec_pretty(&proof_bridge)?;
@@ -32205,8 +32323,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             local_update_resolver.relative_object_path.as_str(),
             local_update_bridge_bytes.as_slice(),
         )?);
-        local_update_resolver.size_bytes =
-            Some(u64::try_from(local_update_bridge_bytes.len())?);
+        local_update_resolver.size_bytes = Some(u64::try_from(local_update_bridge_bytes.len())?);
 
         let mut proof_bridge_resolver = PylonTrainingArtifactResolverResponse::new(
             PylonTrainingArtifactKind::ProofBundle,
@@ -32255,7 +32372,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 validator_target_contribution_artifact_manifest_path: Some(
                     validator_manifest_path.display().to_string(),
                 ),
-                validator_target_work_class: Some(ComputeTrainingWorkClass::SmallModelLocalTraining),
+                validator_target_work_class: Some(
+                    ComputeTrainingWorkClass::SmallModelLocalTraining,
+                ),
                 grouped_stage_input_transport_path: None,
                 runtime_manifest_path: None,
                 runtime_manifest_digest: None,
@@ -32380,10 +32499,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
 
         ensure(
             !super::training_validator_cached_target_artifacts_are_current(
-                state
-                    .lease_cache
-                    .get(lease_id)
-                    .expect("validator lease"),
+                state.lease_cache.get(lease_id).expect("validator lease"),
                 response.target_bindings.first().expect("target binding"),
             )?,
             "stale validator target files should fail the freshness check before rematerialization",
@@ -32399,20 +32515,15 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         )
         .await?;
 
-        let refreshed_receipt: Value = serde_json::from_slice(
-            std::fs::read(validator_receipt_path.as_path())?.as_slice(),
-        )?;
-        let refreshed_manifest: Value = serde_json::from_slice(
-            std::fs::read(validator_manifest_path.as_path())?.as_slice(),
-        )?;
+        let refreshed_receipt: Value =
+            serde_json::from_slice(std::fs::read(validator_receipt_path.as_path())?.as_slice())?;
+        let refreshed_manifest: Value =
+            serde_json::from_slice(std::fs::read(validator_manifest_path.as_path())?.as_slice())?;
         ensure(
             refreshed_receipt == worker_receipt
                 && refreshed_manifest == worker_manifest
                 && super::training_validator_cached_target_artifacts_are_current(
-                    state
-                        .lease_cache
-                        .get(lease_id)
-                        .expect("validator lease"),
+                    state.lease_cache.get(lease_id).expect("validator lease"),
                     response.target_bindings.first().expect("target binding"),
                 )?,
             "rematerializing a validator challenge should replace stale cached target files with the bound worker artifacts",
@@ -36130,8 +36241,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     .is_some_and(|record| !record.pending_retry)
                 && synced_state
                     .authority_receipt_records
-                    .get("window_reconcile::window.0001")
-                    .is_some_and(|record| !record.pending_retry),
+                    .values()
+                    .any(|record| {
+                        record.receipt_kind == "window_reconcile" && !record.pending_retry
+                    }),
             "autonomous closeout should persist successful seal, validator finalize, and reconcile receipts",
         )?;
         ensure(
@@ -36214,6 +36327,484 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 "reconcile should be driven directly from retained runtime state: {reconcile_payload:#?}",
             ),
         )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn terminal_closeout_replays_reconciled_refused_window_with_replay_safe_idempotency()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _env_lock = training_env_lock();
+
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        enum CloseoutPhase {
+            Refused,
+            Rewarded,
+        }
+
+        let phase = Arc::new(Mutex::new(CloseoutPhase::Refused));
+        let request_counts = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, usize>::new(),
+        ));
+        let request_bodies = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, Vec<Value>>::new(),
+        ));
+        let phase_for_server = Arc::clone(&phase);
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let request_bodies_for_server = Arc::clone(&request_bodies);
+        let nexus_base_url = start_mock_http_server(move |method, path, body| {
+            *request_counts_for_server
+                .lock()
+                .expect("reconcile replay request counts")
+                .entry(path.clone())
+                .or_default() += 1;
+            if method == "POST" {
+                let payload: Value =
+                    serde_json::from_str(body.as_str()).expect("reconcile replay payload");
+                request_bodies_for_server
+                    .lock()
+                    .expect("reconcile replay request bodies")
+                    .entry(path.clone())
+                    .or_default()
+                    .push(payload);
+            }
+
+            let make_outcome =
+                |manifest_digest: &str,
+                 object_digest: &str,
+                 validator_receipt_digest: &str,
+                 promotion_receipt_digest: Option<&str>| {
+                    ComputeAdapterContributionOutcome {
+                        contribution_id: "contrib.node01.window0001".to_string(),
+                        training_run_id: "run.alpha".to_string(),
+                        stage_id: "stage.alpha".to_string(),
+                        window_id: "window.0001".to_string(),
+                        contributor_set_revision_id: "contributors.rev1".to_string(),
+                        assignment_id: "assign.node01.window0001".to_string(),
+                        contributor_node_id: "node.alpha".to_string(),
+                        worker_id: "worker.alpha".to_string(),
+                        validator_policy_ref: PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string(),
+                        work_class: ComputeTrainingWorkClass::SmallModelLocalTraining,
+                        replica_type: ComputeTrainingReplicaType::SingleNode,
+                        base_checkpoint_ref: "checkpoint://run.alpha/0001".to_string(),
+                        adapter_target_id: "adapter.target.alpha".to_string(),
+                        adapter_family: PYLON_TRAINING_ADAPTER_FAMILY.to_string(),
+                        base_model_ref: "model://base.alpha".to_string(),
+                        adapter_format: PYLON_TRAINING_ADAPTER_FORMAT.to_string(),
+                        dataset_slice: ComputeAdapterDatasetSlice {
+                            dataset_id: "dataset.alpha".to_string(),
+                            split_name: "train".to_string(),
+                            slice_id: "slice.alpha".to_string(),
+                            slice_digest: "sha256:slice.alpha".to_string(),
+                        },
+                        source_policy_revision: ComputeAdapterPolicyRevision {
+                            policy_family: "policy.family.alpha".to_string(),
+                            revision_id: "policy.rev.alpha".to_string(),
+                            policy_digest: "sha256:policy-rev-alpha".to_string(),
+                            produced_at_ms: 1_762_491_200_000,
+                            ..ComputeAdapterPolicyRevision::default()
+                        },
+                        source_checkpoint_pointer: ComputeAdapterCheckpointPointer {
+                            scope_kind: "run".to_string(),
+                            scope_id: "run.alpha".to_string(),
+                            checkpoint_family: PYLON_TRAINING_CHECKPOINT_FAMILY.to_string(),
+                            checkpoint_ref: "checkpoint://run.alpha/0001".to_string(),
+                            manifest_digest: manifest_digest.to_string(),
+                            updated_at_ms: 1_762_491_200_000,
+                            pointer_digest: "sha256:pointer-alpha".to_string(),
+                        },
+                        submission_receipt_digest: "sha256:receipt:contrib.node01.window0001"
+                            .to_string(),
+                        artifact_id: "artifact.contrib.node01.window0001".to_string(),
+                        manifest_digest: manifest_digest.to_string(),
+                        object_digest: object_digest.to_string(),
+                        artifact_receipt_digest: "sha256:artifact-receipt-alpha".to_string(),
+                        provenance_bundle_digest: "sha256:provenance-alpha".to_string(),
+                        security_receipt_digest: "sha256:closeout-alpha".to_string(),
+                        replay_receipt_digest: Some("sha256:replay-alpha".to_string()),
+                        validator_disposition: ComputeAdapterContributionDisposition::Accepted,
+                        validation_reason_codes: Vec::new(),
+                        validator_receipt_digest: validator_receipt_digest.to_string(),
+                        aggregation_eligibility: ComputeAdapterAggregationEligibility::Eligible,
+                        accepted_for_aggregation: true,
+                        local_step_count: Some(42),
+                        consumed_token_count: Some(131_072),
+                        consumed_example_count: Some(256),
+                        aggregation_weight_basis: Some("tokens".to_string()),
+                        aggregation_weight_value: Some(131_072),
+                        aggregation_weight_bps: Some(10_000),
+                        promotion_receipt_digest: promotion_receipt_digest
+                            .map(ToOwned::to_owned),
+                        recorded_at_ms: 1_762_491_330_000,
+                        metadata: json!({
+                            "normalized_contribution_contract": "retained_homework_lane.v1",
+                            "lane_type": PSION_CS336_A1_DEMO_LANE_ID,
+                            "work_class": "small_model_local_training"
+                        }),
+                    }
+                };
+            let mut accepted_run = training_run_fixture();
+            accepted_run.work_class = ComputeTrainingWorkClass::SmallModelLocalTraining;
+            accepted_run.replica_type = ComputeTrainingReplicaType::SingleNode;
+            accepted_run.summary = Some(ComputeTrainingSummary {
+                completed_step_count: Some(42),
+                processed_token_count: Some(131_072),
+                best_eval_score_bps: Some(10_000),
+                accepted_checkpoint_ref: Some("checkpoint://run.alpha/0042".to_string()),
+                ..ComputeTrainingSummary::default()
+            });
+            let make_window = || {
+                let mut window =
+                    training_adapter_window_fixture(ComputeAdapterWindowStatus::Reconciled);
+                window.work_class = ComputeTrainingWorkClass::SmallModelLocalTraining;
+                window.replica_type = ComputeTrainingReplicaType::SingleNode;
+                window.accepted_contributions = 1;
+                window.accepted_outcome_id =
+                    Some("accepted.training_window.window.0001".to_string());
+                window.promoted_checkpoint_ref =
+                    Some("checkpoint://run.alpha/0042".to_string());
+                window
+            };
+            let make_accepted_outcome = |status: &str, payout_eligible: bool, accepted_at_ms| {
+                ComputeAcceptedOutcome::from_training_run(
+                    "accepted.training_window.window.0001",
+                    accepted_at_ms,
+                    &accepted_run,
+                    json!({
+                        "window_id": "window.0001",
+                        "closeout_status": status,
+                        "payout_eligible": payout_eligible
+                    }),
+                )
+            };
+
+            match (method.as_str(), path.as_str()) {
+                ("POST", "/api/training/windows/window.0001/reconcile") => {
+                    *phase_for_server.lock().expect("reconcile replay phase") =
+                        CloseoutPhase::Rewarded;
+                    (
+                        200,
+                        "application/json",
+                        serde_json::to_string(&super::PylonTrainingWindowCoordinatorResponse {
+                            window: make_window(),
+                            contribution_outcomes: vec![make_outcome(
+                                "sha256:manifest-alpha",
+                                "sha256:contribution-alpha",
+                                "sha256:validator-final-alpha",
+                                Some("sha256:promotion-alpha"),
+                            )],
+                        })
+                        .expect("reconcile replay response"),
+                    )
+                }
+                ("GET", "/v1/kernel/compute/training/adapter-windows/window.0001") => (
+                    200,
+                    "application/json",
+                    serde_json::to_string(
+                        &compute_contracts::get_compute_adapter_training_window_response_to_proto(
+                            &make_window(),
+                        )
+                        .expect("reconciled window proto"),
+                    )
+                    .expect("reconciled window json"),
+                ),
+                (
+                    "GET",
+                    "/v1/kernel/compute/training/adapter-contributions?training_run_id=run.alpha&window_id=window.0001",
+                ) => (
+                    200,
+                    "application/json",
+                    serde_json::to_string(
+                        &compute_contracts::list_compute_adapter_contribution_outcomes_response_to_proto(
+                            &[make_outcome(
+                                "sha256:manifest-alpha",
+                                "sha256:contribution-alpha",
+                                "sha256:validator-final-alpha",
+                                Some("sha256:promotion-alpha"),
+                            )],
+                        )
+                        .expect("reconcile replay contribution proto"),
+                    )
+                    .expect("reconcile replay contribution json"),
+                ),
+                (
+                    "GET",
+                    "/v1/kernel/compute/outcomes?outcome_kind=training_run&environment_ref=env.openagents.cuda.train",
+                ) => {
+                    let outcome = match *phase_for_server.lock().expect("reconcile replay phase") {
+                        CloseoutPhase::Refused => {
+                            make_accepted_outcome("refused", false, 1_762_491_330_800)
+                        }
+                        CloseoutPhase::Rewarded => {
+                            make_accepted_outcome("rewarded", true, 1_762_491_340_800)
+                        }
+                    };
+                    (
+                        200,
+                        "application/json",
+                        serde_json::to_string(
+                            &compute_contracts::list_compute_accepted_outcomes_response_to_proto(
+                                &[outcome],
+                            )
+                            .expect("reconcile replay outcome proto"),
+                        )
+                        .expect("reconcile replay outcome json"),
+                    )
+                }
+                ("GET", "/v1/treasury/status") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "recent_training_payouts": []
+                    })
+                    .to_string(),
+                ),
+                _ => (
+                    404,
+                    "application/json",
+                    json!({"error":"not_found","reason":path}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        config.training.nexus_authority_base_url = nexus_base_url;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let mut manifest = write_training_manifest_and_retained_contribution_artifacts(
+            local_run_root.as_path(),
+            "gs://bucket",
+        )?;
+        rewrite_training_checkpoint_manifest_to_bridge_shape(local_run_root.as_path(), 42)?;
+        manifest.manifest_digest = manifest.canonical_digest()?;
+        let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
+        std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
+        let invocation_manifest_path = local_run_root
+            .join("manifests")
+            .join("invocation_manifest.json");
+        std::fs::write(
+            invocation_manifest_path.as_path(),
+            "{\"schema_version\":\"psionic.train.invocation_manifest.v1\"}\n",
+        )?;
+        write_training_terminal_status_packets(
+            local_run_root.as_path(),
+            "succeeded",
+            0,
+            None,
+            Some("completed"),
+            "completed window",
+        )?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let mut active_runtime = training_active_runtime_fixture();
+        active_runtime.manifest_path = invocation_manifest_path.display().to_string();
+        active_runtime.run_root = local_run_root.display().to_string();
+        active_runtime.process_state = PylonTrainingSupervisorProcessState::Stopped;
+        active_runtime.desired_state = PylonTrainingSupervisorDesiredState::Running;
+        active_runtime.last_exit_code = Some(0);
+        active_runtime.failure_receipt_path = None;
+        active_runtime.last_failure_reason = None;
+        state.active_runtime = Some(active_runtime.clone());
+        state.lease_cache.insert(
+            "lease.node01.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.node01.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "released".to_string(),
+                manifest_digest: Some(manifest.manifest_digest.clone()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_360_000),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(invocation_manifest_path.display().to_string()),
+                runtime_manifest_digest: Some(manifest.manifest_digest.clone()),
+                runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("small_model_local_training".to_string()),
+                updated_at_ms: now_epoch_ms(),
+            },
+        );
+
+        let context = super::training_manifest_context_for_path(
+            &config,
+            &state,
+            invocation_manifest_path.as_path(),
+        )?
+        .ok_or("missing training manifest context")?;
+        let run_status = super::load_training_run_status_packet(local_run_root.as_path())?;
+        let window_status = super::load_training_window_status_packet(local_run_root.as_path())?;
+        let checkpoint_candidate =
+            super::training_terminal_checkpoint_publication_candidate(&context)?
+                .ok_or("missing checkpoint publication candidate")?;
+        let retained = super::inspect_training_retained_contribution_artifacts(
+            &active_runtime,
+            local_run_root.as_path(),
+            run_status.as_ref(),
+            window_status.as_ref(),
+        )?
+        .ok_or("missing retained contribution")?;
+        super::record_training_closeout_progress_stage(
+            &mut state,
+            "assign.node01.window0001",
+            "run.alpha",
+            "window.0001",
+            PylonTrainingRoleClaim::Worker,
+            super::PylonTrainingCloseoutStage::Accepted,
+            None,
+            retained.checkpoint_ref.clone(),
+            Some("refused".to_string()),
+            None,
+            None,
+            None,
+        );
+        super::record_training_authority_receipt_attempt_success(
+            &mut state,
+            super::training_authority_receipt_key("window_progress", "window.0001::completed")
+                .as_str(),
+            "window_progress",
+            "window.0001::completed",
+            "window_progress_recorded",
+            "completed",
+            1_762_491_330_100,
+        );
+        let checkpoint_receipt_subject = format!(
+            "{}::{}",
+            checkpoint_candidate.checkpoint_ref, checkpoint_candidate.artifact_digest
+        );
+        super::record_training_authority_receipt_attempt_success(
+            &mut state,
+            super::training_authority_receipt_key(
+                "checkpoint_publication",
+                checkpoint_receipt_subject.as_str(),
+            )
+            .as_str(),
+            "checkpoint_publication",
+            checkpoint_receipt_subject.as_str(),
+            "checkpoint_published",
+            "published",
+            1_762_491_330_200,
+        );
+        super::record_training_authority_receipt_attempt_success(
+            &mut state,
+            super::training_authority_receipt_key("window_seal", "window.0001").as_str(),
+            "window_seal",
+            "window.0001",
+            "window_seal_existing",
+            "reconciled",
+            1_762_491_330_300,
+        );
+        state.window_cache.insert(
+            "window.0001".to_string(),
+            PylonTrainingWindowCacheEntry {
+                window_id: "window.0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                state: "reconciled".to_string(),
+                manifest_digest: Some(manifest.manifest_digest.clone()),
+                updated_at_ms: now_epoch_ms().saturating_sub(10_000),
+            },
+        );
+
+        let changed = super::report_training_terminal_runtime_to_authority(
+            &config,
+            &identity,
+            &mut state,
+            &active_runtime,
+            &context,
+        )
+        .await?;
+        ensure(
+            changed,
+            "terminal reporting should replay a reconciled refused closeout when retained artifacts are now valid",
+        )?;
+        ensure(
+            state
+                .closeout_progress
+                .get("assign.node01.window0001")
+                .is_some_and(|entry| {
+                    entry.stage == super::PylonTrainingCloseoutStage::Accepted
+                        && entry.acceptance_state.as_deref() == Some("rewarded")
+                }),
+            "replayed closeout should advance the retained worker entry from refused to rewarded",
+        )?;
+        ensure(
+            state.authority_receipt_records.values().any(|record| {
+                record.receipt_kind == "window_reconcile"
+                    && !record.pending_retry
+                    && record
+                        .subject_id
+                        .contains("training.window_reconcile.run.alpha.window.0001.")
+            }),
+            "reconcile replay should persist a successful receipt scoped to the replay-safe idempotency key",
+        )?;
+
+        let _ = super::report_training_terminal_runtime_to_authority(
+            &config,
+            &identity,
+            &mut state,
+            &active_runtime,
+            &context,
+        )
+        .await?;
+
+        let counts = request_counts
+            .lock()
+            .expect("reconcile replay request counts")
+            .clone();
+        ensure(
+            counts.get("/api/training/windows/window.0001/reconcile") == Some(&1)
+                && !counts.contains_key("/api/training/windows/progress")
+                && !counts.contains_key("/api/training/checkpoints/publish")
+                && !counts.contains_key("/api/training/windows/window.0001/seal"),
+            "reconciled refused replay should only issue the replay reconcile write, not re-open earlier terminal steps",
+        )?;
+        let bodies = request_bodies
+            .lock()
+            .expect("reconcile replay request bodies")
+            .clone();
+        let reconcile_payload = bodies
+            .get("/api/training/windows/window.0001/reconcile")
+            .and_then(|entries| entries.first())
+            .cloned();
+        ensure(
+            reconcile_payload.as_ref().is_some_and(|payload| {
+                payload
+                    .get("idempotency_key")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| {
+                        value.starts_with("training.window_reconcile.run.alpha.window.0001.")
+                            && value != "training.window_reconcile.run.alpha.window.0001"
+                    })
+                    && payload
+                        .get("contribution_outcomes")
+                        .and_then(Value::as_array)
+                        .and_then(|entries| entries.first())
+                        .is_some_and(|contribution| {
+                            contribution.get("manifest_digest")
+                                == Some(&json!("sha256:manifest-alpha"))
+                                && contribution.get("object_digest")
+                                    == Some(&json!("sha256:contribution-alpha"))
+                        })
+            }),
+            &format!(
+                "reconcile replay should bind idempotency and payload to the repaired retained artifacts: {reconcile_payload:#?}",
+            ),
+        )?;
+
+        Ok(())
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -36646,10 +37237,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 .authority_receipt_records
                 .get("validator_finalize::challenge.alpha")
                 .is_some_and(|record| !record.pending_retry)
-                && state
-                    .authority_receipt_records
-                    .get("window_reconcile::window.0001")
-                    .is_some_and(|record| !record.pending_retry),
+                && state.authority_receipt_records.values().any(|record| {
+                    record.receipt_kind == "window_reconcile" && !record.pending_retry
+                }),
             "the validator finalize fast path should persist both validator finalize and reconcile receipts",
         )?;
         ensure(
@@ -36882,8 +37472,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let status = client.get_treasury_status().await?;
         ensure(
             status.recent_training_payouts.len() == 1
-                && status.recent_training_payouts[0].payment_id.as_deref()
-                    == Some("payment.alpha"),
+                && status.recent_training_payouts[0].payment_id.as_deref() == Some("payment.alpha"),
             "treasury status reads should fall back to nexus_control_base_url when the primary training authority is down",
         )?;
         let counts = request_counts
