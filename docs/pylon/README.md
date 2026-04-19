@@ -164,6 +164,38 @@ cargo run -p pylon --bin oa -- proof run cs336-a1 \
 critical authority caveat or a node-local training issue instead of a generic
 timeout.
 
+Each proof run now also writes:
+
+- `authority-state-trace.json` for machine-readable authority/node state at the
+  point the run stopped
+- `proof-summary.json` for the closure-oriented first-red-stage summary
+
+Those artifacts sit beside `run-report.json` under:
+
+```text
+~/.openagents/pylon/proof/namespaces/<namespace>/fleet/
+```
+
+Use the dedicated doctor lane when you need transport/provenance attribution
+without manually reading logs:
+
+```bash
+cargo run -p pylon --bin oa -- proof doctor --namespace proof.cs336-a1.debug --json
+```
+
+`proof doctor` reports:
+
+- current `oa` / `nexus-relay` / `nexus-control` binary provenance
+- current workspace Git branch and commit
+- authority env-manifest key presence
+- process-level env drift checks for worker and validator nodes
+- a transport split view across authority front-door, relay, artifact-store,
+  node-admin, and checkpoint surfaces
+
+The intent is narrow: make it obvious whether the first red stage is authority
+state, operator drift, hard-gated retained state, or transport/runtime failure
+before anyone reaches for production.
+
 Optional account visibility now also has an explicit headless lane:
 
 ```bash

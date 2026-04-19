@@ -36,6 +36,7 @@ pub enum ProofCommand {
     Authority { command: ProofAuthorityCommand },
     Fleet { command: ProofFleetCommand },
     Run { command: ProofRunCommand },
+    Doctor { command: ProofDoctorCommand },
     Internal { command: ProofInternalCommand },
 }
 
@@ -96,6 +97,12 @@ pub struct ProofRunCommand {
     timeout_seconds: u64,
     stale_worker_state: bool,
     stale_validator_state: bool,
+    json: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProofDoctorCommand {
+    namespace: String,
     json: bool,
 }
 
@@ -348,6 +355,8 @@ struct ProofFleetPaths {
     fleet_root: String,
     fleet_state_path: String,
     run_report_path: String,
+    trace_path: String,
+    summary_path: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -511,6 +520,214 @@ struct ProofRunReport {
     launch: Option<ProofRunLaunchResponse>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     observed_run: Option<ProofObservedTrainingRunDetail>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    first_failed_authority_write: Option<ProofAuthorityWriteFailureCapture>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofAuthorityWriteFailureCapture {
+    source: String,
+    observed_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    method: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    status: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    response_body: Option<String>,
+    detail: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofArtifactTraceEntry {
+    recorded_at_ms: i64,
+    operation: String,
+    bucket: String,
+    object_path: String,
+    canonical_object_uri: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    payload_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    payload_size_bytes: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofArtifactTraceSnapshot {
+    trace_path: String,
+    entry_count: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    recent_entries: Vec<ProofArtifactTraceEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofRelayTransportView {
+    relay_ws_url: Option<String>,
+    relay_data_dir: Option<String>,
+    authority_running: bool,
+    detail: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofNodeTransportView {
+    role: ProofFleetNodeRole,
+    index: usize,
+    node_label: String,
+    admin: ProofRouteProbe,
+    checkpoint: ProofRouteProbe,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofTransportSplitView {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    authority_front_door: Vec<ProofRouteProbe>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    artifact_store: Vec<ProofRouteProbe>,
+    relay: ProofRelayTransportView,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    node_surfaces: Vec<ProofNodeTransportView>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofNodeEligibilitySnapshot {
+    eligibility: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    hard_gate_reasons: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofTraceNode {
+    role: ProofFleetNodeRole,
+    index: usize,
+    node_label: String,
+    payout_destination: String,
+    eligibility: ProofNodeEligibilitySnapshot,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    training_status: Option<super::TrainingOperatorStatusReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    training_status_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofTraceArtifact {
+    schema_version: String,
+    namespace: String,
+    lane: String,
+    generated_at_ms: i64,
+    status: String,
+    detail: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    blocker_id: Option<String>,
+    fleet: ProofFleetStatusReport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    launch: Option<ProofRunLaunchResponse>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    observed_run: Option<ProofObservedTrainingRunDetail>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    first_failed_authority_write: Option<ProofAuthorityWriteFailureCapture>,
+    artifact_transport: ProofArtifactTraceSnapshot,
+    transport: ProofTransportSplitView,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    node_traces: Vec<ProofTraceNode>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofSummaryArtifact {
+    schema_version: String,
+    namespace: String,
+    lane: String,
+    generated_at_ms: i64,
+    status: String,
+    detail: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    blocker_id: Option<String>,
+    first_red_stage: String,
+    first_red_subject: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lease_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    membership_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    closeout_stage: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    closeout_next_action: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    closeout_last_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    first_failed_authority_write: Option<ProofAuthorityWriteFailureCapture>,
+    trace_path: String,
+    transport: ProofTransportSplitView,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofProcessEnvExpectation {
+    key: String,
+    expected_present: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    process_present: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    matches_expected: Option<bool>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofProcessProvenance {
+    component_id: String,
+    expected_binary_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    expected_binary_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    running_binary_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    running_binary_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    binary_matches_expected: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pid: Option<u32>,
+    running: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    env_expectations: Vec<ProofProcessEnvExpectation>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofAuthorityEnvFileReport {
+    path: String,
+    key_count: usize,
+    keys: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofGitProvenance {
+    workspace_root: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    commit: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct ProofDoctorReport {
+    configured: bool,
+    namespace: String,
+    generated_at_ms: i64,
+    fleet: ProofFleetStatusReport,
+    transport: ProofTransportSplitView,
+    artifact_transport: ProofArtifactTraceSnapshot,
+    git: ProofGitProvenance,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    authority_env_file: Option<ProofAuthorityEnvFileReport>,
+    current_executable: ProofProcessProvenance,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    supporting_binaries: Vec<ProofProcessProvenance>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    process_provenance: Vec<ProofProcessProvenance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_trace_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_summary_path: Option<String>,
 }
 
 #[derive(Clone)]
@@ -537,6 +754,8 @@ struct ProofLayout {
     runtime_state_path: PathBuf,
     fleet_state_path: PathBuf,
     run_report_path: PathBuf,
+    trace_path: PathBuf,
+    summary_path: PathBuf,
     authority_log_path: PathBuf,
     artifact_store_log_path: PathBuf,
 }
@@ -551,6 +770,9 @@ pub fn parse_proof_command(args: &[String], start_index: usize) -> Result<ProofC
         }),
         Some("run") => Ok(ProofCommand::Run {
             command: parse_proof_run_command(args, start_index + 1)?,
+        }),
+        Some("doctor") => Ok(ProofCommand::Doctor {
+            command: parse_proof_doctor_command(args, start_index + 1)?,
         }),
         Some("internal") => Ok(ProofCommand::Internal {
             command: parse_proof_internal_command(args, start_index + 1)?,
@@ -648,6 +870,14 @@ pub async fn run_proof_command(
                 return Ok(Some(serde_json::to_string_pretty(&report)?));
             }
             Ok(Some(render_proof_run_report(&report)))
+        }
+        ProofCommand::Doctor { command } => {
+            let report =
+                collect_proof_doctor_report(config_path, command.namespace.as_str()).await?;
+            if command.json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_proof_doctor_report(&report)))
         }
         ProofCommand::Internal { command } => match command {
             ProofInternalCommand::ArtifactStoreServe {
@@ -914,6 +1144,12 @@ fn parse_proof_run_command(args: &[String], start_index: usize) -> Result<ProofR
         stale_validator_state,
         json,
     })
+}
+
+fn parse_proof_doctor_command(args: &[String], start_index: usize) -> Result<ProofDoctorCommand> {
+    let (namespace, json) =
+        parse_namespace_and_json(args, start_index, "proof doctor", DEFAULT_PROOF_NAMESPACE)?;
+    Ok(ProofDoctorCommand { namespace, json })
 }
 
 fn parse_proof_internal_command(
@@ -1448,6 +1684,8 @@ async fn collect_proof_fleet_status(
             fleet_root: layout.fleet_root.display().to_string(),
             fleet_state_path: layout.fleet_state_path.display().to_string(),
             run_report_path: layout.run_report_path.display().to_string(),
+            trace_path: layout.trace_path.display().to_string(),
+            summary_path: layout.summary_path.display().to_string(),
         }),
         authority,
         nodes,
@@ -1515,6 +1753,7 @@ async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result
             anyhow!("proof authority runtime state missing for namespace {namespace}")
         })?;
     let training_run_id = proof_lane_training_run_id(command.lane, namespace.as_str());
+    let mut first_failed_authority_write = None;
     let launch = launch_proof_lane(
         command.lane,
         authority_state.urls.authority_base_url.as_str(),
@@ -1522,6 +1761,7 @@ async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result
         namespace.as_str(),
         lane_network_id.as_str(),
         training_run_id.as_str(),
+        &mut first_failed_authority_write,
     )
     .await?;
     save_fleet_launch_record(config_path, namespace.as_str(), &launch)?;
@@ -1542,8 +1782,9 @@ async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result
             fleet: fleet_status,
             launch: Some(launch),
             observed_run: Some(launch_detail),
+            first_failed_authority_write,
         };
-        save_proof_run_report(layout.run_report_path.as_path(), &report)?;
+        persist_proof_run_outputs(config_path, &report).await?;
         return Ok(report);
     }
 
@@ -1568,8 +1809,9 @@ async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result
                     fleet: fleet_status,
                     launch: Some(launch.clone()),
                     observed_run: Some(detail),
+                    first_failed_authority_write: first_failed_authority_write.clone(),
                 };
-                save_proof_run_report(layout.run_report_path.as_path(), &report)?;
+                persist_proof_run_outputs(config_path, &report).await?;
                 return Ok(report);
             }
             last_detail = Some(detail);
@@ -1588,8 +1830,9 @@ async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result
                 fleet: fleet_status,
                 launch: Some(launch.clone()),
                 observed_run: last_detail,
+                first_failed_authority_write: first_failed_authority_write.clone(),
             };
-            save_proof_run_report(layout.run_report_path.as_path(), &report)?;
+            persist_proof_run_outputs(config_path, &report).await?;
             return Ok(report);
         }
         if Instant::now() >= deadline {
@@ -1607,8 +1850,9 @@ async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result
                 fleet: fleet_status,
                 launch: Some(launch),
                 observed_run: last_detail,
+                first_failed_authority_write,
             };
-            save_proof_run_report(layout.run_report_path.as_path(), &report)?;
+            persist_proof_run_outputs(config_path, &report).await?;
             return Ok(report);
         }
         tokio::time::sleep(PROOF_POLL_INTERVAL).await;
@@ -2044,6 +2288,7 @@ async fn launch_proof_lane(
     namespace: &str,
     network_id: &str,
     training_run_id: &str,
+    first_failed_authority_write: &mut Option<ProofAuthorityWriteFailureCapture>,
 ) -> Result<ProofRunLaunchResponse> {
     match lane {
         ProofLane::Cs336A1 => {
@@ -2059,12 +2304,31 @@ async fn launch_proof_lane(
                 }))
                 .send()
                 .await
-                .with_context(|| format!("failed to launch proof lane via {url}"))?
-                .error_for_status()
-                .with_context(|| format!("proof lane launch failed for namespace {namespace}"))?;
-            response
-                .json::<ProofRunLaunchResponse>()
+                .with_context(|| format!("failed to launch proof lane via {url}"))?;
+            let status = response.status();
+            let body = response
+                .text()
                 .await
+                .context("failed to read proof run launch response body")?;
+            if !status.is_success() {
+                first_failed_authority_write.get_or_insert_with(|| {
+                    ProofAuthorityWriteFailureCapture {
+                        source: "proof_run_launch".to_string(),
+                        observed_at_ms: super::now_epoch_ms(),
+                        method: Some("POST".to_string()),
+                        url: Some(url.clone()),
+                        status: Some(status.as_u16()),
+                        response_body: Some(body.clone()),
+                        detail: format!("proof lane launch failed for namespace {namespace}"),
+                    }
+                });
+                bail!(
+                    "proof lane launch failed for namespace {namespace} with status {}: {}",
+                    status.as_u16(),
+                    body.trim()
+                );
+            }
+            serde_json::from_str::<ProofRunLaunchResponse>(body.as_str())
                 .context("failed to decode proof run launch response")
         }
     }
@@ -2154,6 +2418,851 @@ fn save_proof_run_report(path: &Path, report: &ProofRunReport) -> Result<()> {
     save_json_file_atomic(path, report, "proof run report")
 }
 
+fn save_proof_trace_artifact(path: &Path, trace: &ProofTraceArtifact) -> Result<()> {
+    save_json_file_atomic(path, trace, "proof trace artifact")
+}
+
+fn save_proof_summary_artifact(path: &Path, summary: &ProofSummaryArtifact) -> Result<()> {
+    save_json_file_atomic(path, summary, "proof summary artifact")
+}
+
+async fn persist_proof_run_outputs(config_path: &Path, report: &ProofRunReport) -> Result<()> {
+    let layout = proof_layout(config_path, report.namespace.as_str());
+    save_proof_run_report(layout.run_report_path.as_path(), report)?;
+    let trace = collect_proof_trace_artifact(config_path, report).await?;
+    save_proof_trace_artifact(layout.trace_path.as_path(), &trace)?;
+    let summary = build_proof_summary_artifact(&trace);
+    save_proof_summary_artifact(layout.summary_path.as_path(), &summary)?;
+    Ok(())
+}
+
+async fn collect_proof_trace_artifact(
+    config_path: &Path,
+    report: &ProofRunReport,
+) -> Result<ProofTraceArtifact> {
+    let layout = proof_layout(config_path, report.namespace.as_str());
+    let node_traces = collect_proof_trace_nodes(&report.fleet)?;
+    let training_run_id = report
+        .observed_run
+        .as_ref()
+        .map(|value| value.training_run_id.as_str())
+        .or_else(|| {
+            report
+                .launch
+                .as_ref()
+                .map(|value| value.training_run_id.as_str())
+        });
+    let transport =
+        collect_proof_transport_split_view(&report.fleet, training_run_id, node_traces.as_slice())
+            .await?;
+    let artifact_transport =
+        load_artifact_trace_snapshot(layout.artifact_trace_path.as_path(), 12)?;
+    Ok(ProofTraceArtifact {
+        schema_version: "openagents.proof.trace.v1".to_string(),
+        namespace: report.namespace.clone(),
+        lane: report.lane.clone(),
+        generated_at_ms: super::now_epoch_ms(),
+        status: report.status.clone(),
+        detail: report.detail.clone(),
+        blocker_id: report.blocker_id.clone(),
+        fleet: report.fleet.clone(),
+        launch: report.launch.clone(),
+        observed_run: report.observed_run.clone(),
+        first_failed_authority_write: report
+            .first_failed_authority_write
+            .clone()
+            .or_else(|| infer_first_authority_write_failure(node_traces.as_slice())),
+        artifact_transport,
+        transport,
+        node_traces,
+    })
+}
+
+fn collect_proof_trace_nodes(fleet: &ProofFleetStatusReport) -> Result<Vec<ProofTraceNode>> {
+    let mut traces = Vec::with_capacity(fleet.nodes.len());
+    for node in &fleet.nodes {
+        let config_path = Path::new(node.config_path.as_str());
+        match super::load_training_status_report_local(config_path) {
+            Ok(training_status) => traces.push(ProofTraceNode {
+                role: node.role,
+                index: node.index,
+                node_label: node.node_label.clone(),
+                payout_destination: node.payout_destination.clone(),
+                eligibility: proof_node_eligibility(&training_status),
+                training_status: Some(training_status),
+                training_status_error: None,
+            }),
+            Err(error) => traces.push(ProofTraceNode {
+                role: node.role,
+                index: node.index,
+                node_label: node.node_label.clone(),
+                payout_destination: node.payout_destination.clone(),
+                eligibility: ProofNodeEligibilitySnapshot {
+                    eligibility: "unknown".to_string(),
+                    hard_gate_reasons: Vec::new(),
+                },
+                training_status: None,
+                training_status_error: Some(format!("{error:#}")),
+            }),
+        }
+    }
+    Ok(traces)
+}
+
+fn proof_node_eligibility(
+    status: &super::TrainingOperatorStatusReport,
+) -> ProofNodeEligibilitySnapshot {
+    let hard_gate_reasons = status.blocked_label_keys.clone();
+    let eligibility = if !hard_gate_reasons.is_empty() {
+        "hard_gated"
+    } else if status.contributor_supported {
+        "eligible"
+    } else {
+        "unsupported"
+    };
+    ProofNodeEligibilitySnapshot {
+        eligibility: eligibility.to_string(),
+        hard_gate_reasons,
+    }
+}
+
+async fn collect_proof_transport_split_view(
+    fleet: &ProofFleetStatusReport,
+    training_run_id: Option<&str>,
+    node_traces: &[ProofTraceNode],
+) -> Result<ProofTransportSplitView> {
+    let client = reqwest::Client::new();
+    let mut authority_front_door = Vec::new();
+    let mut artifact_store = Vec::new();
+    if let Some(urls) = fleet.authority.urls.as_ref() {
+        authority_front_door.push(
+            probe_route(
+                &client,
+                "authority_healthz",
+                format!("{}/healthz", urls.authority_base_url.trim_end_matches('/')),
+                reqwest::Method::GET,
+                &[StatusCode::OK],
+            )
+            .await,
+        );
+        authority_front_door.push(
+            probe_route(
+                &client,
+                "authority_stats",
+                format!(
+                    "{}/api/stats",
+                    urls.authority_base_url.trim_end_matches('/')
+                ),
+                reqwest::Method::GET,
+                &[StatusCode::OK],
+            )
+            .await,
+        );
+        authority_front_door.push(
+            probe_route(
+                &client,
+                "authority_demo_launch_route",
+                format!(
+                    "{}/v1/admin/training/demo-runs/cs336-a1/launch",
+                    urls.authority_base_url.trim_end_matches('/')
+                ),
+                reqwest::Method::GET,
+                &[StatusCode::METHOD_NOT_ALLOWED, StatusCode::UNAUTHORIZED],
+            )
+            .await,
+        );
+        if let Some(training_run_id) = training_run_id {
+            authority_front_door.push(
+                probe_route(
+                    &client,
+                    "authority_training_run_detail",
+                    format!(
+                        "{}/api/training/runs/{training_run_id}",
+                        urls.authority_base_url.trim_end_matches('/')
+                    ),
+                    reqwest::Method::GET,
+                    &[StatusCode::OK, StatusCode::NOT_FOUND],
+                )
+                .await,
+            );
+        }
+        artifact_store.push(
+            probe_route(
+                &client,
+                "artifact_store_healthz",
+                format!(
+                    "{}/healthz",
+                    urls.artifact_store_base_url.trim_end_matches("/upload")
+                ),
+                reqwest::Method::GET,
+                &[StatusCode::OK],
+            )
+            .await,
+        );
+    }
+
+    let relay = ProofRelayTransportView {
+        relay_ws_url: fleet
+            .authority
+            .urls
+            .as_ref()
+            .and_then(|value| value.relay_ws_url.clone()),
+        relay_data_dir: fleet
+            .authority
+            .paths
+            .as_ref()
+            .map(|value| value.relay_data_dir.clone()),
+        authority_running: fleet
+            .authority
+            .authority_process
+            .as_ref()
+            .map(|value| value.running)
+            .unwrap_or(false),
+        detail: if fleet
+            .authority
+            .authority_process
+            .as_ref()
+            .map(|value| value.running)
+            .unwrap_or(false)
+        {
+            "relay-facing authority process is running".to_string()
+        } else {
+            "relay-facing authority process is not running".to_string()
+        },
+    };
+
+    let mut node_surfaces = Vec::with_capacity(fleet.nodes.len());
+    for (node, trace) in fleet.nodes.iter().zip(node_traces.iter()) {
+        let admin = probe_route(
+            &client,
+            format!("{}_{}_admin", node.role.label(), node.index).as_str(),
+            format!(
+                "{}/v1/training/status",
+                node.admin_url.trim_end_matches('/')
+            ),
+            reqwest::Method::GET,
+            &[StatusCode::OK],
+        )
+        .await;
+        let checkpoint = probe_route(
+            &client,
+            format!("{}_{}_checkpoint", node.role.label(), node.index).as_str(),
+            node_checkpoint_probe_url(node, trace.training_status.as_ref(), training_run_id),
+            reqwest::Method::GET,
+            &[StatusCode::OK, StatusCode::NOT_FOUND],
+        )
+        .await;
+        node_surfaces.push(ProofNodeTransportView {
+            role: node.role,
+            index: node.index,
+            node_label: node.node_label.clone(),
+            admin,
+            checkpoint,
+        });
+    }
+
+    Ok(ProofTransportSplitView {
+        authority_front_door,
+        artifact_store,
+        relay,
+        node_surfaces,
+    })
+}
+
+fn node_checkpoint_probe_url(
+    node: &ProofFleetNodeStatus,
+    training_status: Option<&super::TrainingOperatorStatusReport>,
+    fallback_training_run_id: Option<&str>,
+) -> String {
+    if let Some(status) = training_status {
+        if let Some(run_id) = status.current_run_id.as_deref() {
+            return format!(
+                "{}/runs/{run_id}/checkpoints/latest_pointer.json",
+                node.checkpoint_serve_url.trim_end_matches('/')
+            );
+        }
+    }
+    if let Some(run_id) = fallback_training_run_id {
+        return format!(
+            "{}/runs/{run_id}/checkpoints/latest_pointer.json",
+            node.checkpoint_serve_url.trim_end_matches('/')
+        );
+    }
+    format!("{}/", node.checkpoint_serve_url.trim_end_matches('/'))
+}
+
+fn load_artifact_trace_snapshot(
+    path: &Path,
+    recent_limit: usize,
+) -> Result<ProofArtifactTraceSnapshot> {
+    if !path.is_file() {
+        return Ok(ProofArtifactTraceSnapshot {
+            trace_path: path.display().to_string(),
+            entry_count: 0,
+            recent_entries: Vec::new(),
+        });
+    }
+    let payload = fs::read_to_string(path)
+        .with_context(|| format!("failed to read proof artifact trace {}", path.display()))?;
+    let mut entries = Vec::new();
+    for line in payload.lines().filter(|line| !line.trim().is_empty()) {
+        entries.push(
+            serde_json::from_str::<ProofArtifactTraceEntry>(line).with_context(|| {
+                format!(
+                    "failed to decode proof artifact trace line in {}",
+                    path.display()
+                )
+            })?,
+        );
+    }
+    let keep_from = entries.len().saturating_sub(recent_limit);
+    Ok(ProofArtifactTraceSnapshot {
+        trace_path: path.display().to_string(),
+        entry_count: entries.len(),
+        recent_entries: entries.into_iter().skip(keep_from).collect(),
+    })
+}
+
+fn infer_first_authority_write_failure(
+    node_traces: &[ProofTraceNode],
+) -> Option<ProofAuthorityWriteFailureCapture> {
+    for node in node_traces {
+        let Some(status) = node.training_status.as_ref() else {
+            continue;
+        };
+        for issue in &status.recent_issues {
+            if let Some((status_code, response_body)) =
+                parse_status_body_from_reason(issue.reason.as_str())
+            {
+                return Some(ProofAuthorityWriteFailureCapture {
+                    source: format!("{}_{}_issue", node.role.label(), node.index),
+                    observed_at_ms: issue.observed_at_ms,
+                    method: None,
+                    url: None,
+                    status: Some(status_code),
+                    response_body: Some(response_body),
+                    detail: issue.reason.clone(),
+                });
+            }
+        }
+        if let Some(active_runtime) = status.active_runtime.as_ref() {
+            if let Some(reason) = active_runtime.last_failure_reason.as_deref() {
+                if let Some((status_code, response_body)) = parse_status_body_from_reason(reason) {
+                    return Some(ProofAuthorityWriteFailureCapture {
+                        source: format!("{}_{}_runtime", node.role.label(), node.index),
+                        observed_at_ms: active_runtime.updated_at_ms,
+                        method: None,
+                        url: None,
+                        status: Some(status_code),
+                        response_body: Some(response_body),
+                        detail: reason.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    None
+}
+
+fn parse_status_body_from_reason(reason: &str) -> Option<(u16, String)> {
+    let (_, tail) = reason.split_once("failed with status ")?;
+    let (status, body) = tail.split_once(':')?;
+    let status = status.trim().parse::<u16>().ok()?;
+    let body = body.trim();
+    (!body.is_empty()).then(|| (status, body.to_string()))
+}
+
+#[derive(Clone, Debug)]
+struct ProofSummarySignal {
+    first_red_stage: String,
+    first_red_subject: String,
+    window_id: Option<String>,
+    assignment_id: Option<String>,
+    lease_id: Option<String>,
+    membership_revision: Option<String>,
+    closeout_stage: Option<String>,
+    closeout_next_action: Option<String>,
+    closeout_last_error: Option<String>,
+}
+
+fn build_proof_summary_artifact(trace: &ProofTraceArtifact) -> ProofSummaryArtifact {
+    let signal = derive_proof_summary_signal(trace);
+    let trace_path = trace
+        .fleet
+        .paths
+        .as_ref()
+        .map(|value| value.trace_path.clone())
+        .unwrap_or_else(|| "-".to_string());
+    ProofSummaryArtifact {
+        schema_version: "openagents.proof.summary.v1".to_string(),
+        namespace: trace.namespace.clone(),
+        lane: trace.lane.clone(),
+        generated_at_ms: trace.generated_at_ms,
+        status: trace.status.clone(),
+        detail: trace.detail.clone(),
+        blocker_id: trace.blocker_id.clone(),
+        first_red_stage: signal.first_red_stage,
+        first_red_subject: signal.first_red_subject,
+        window_id: signal.window_id,
+        assignment_id: signal.assignment_id,
+        lease_id: signal.lease_id,
+        membership_revision: signal.membership_revision,
+        closeout_stage: signal.closeout_stage,
+        closeout_next_action: signal.closeout_next_action,
+        closeout_last_error: signal.closeout_last_error,
+        first_failed_authority_write: trace.first_failed_authority_write.clone(),
+        trace_path,
+        transport: trace.transport.clone(),
+    }
+}
+
+fn derive_proof_summary_signal(trace: &ProofTraceArtifact) -> ProofSummarySignal {
+    match trace.blocker_id.as_deref() {
+        Some("fleet_node_issue") | Some("fleet_node_failure") => {
+            if let Some(signal) = derive_node_issue_signal(trace.node_traces.as_slice()) {
+                return signal;
+            }
+        }
+        Some("authority_run_caveat") => {
+            return ProofSummarySignal {
+                first_red_stage: "authority_caveat".to_string(),
+                first_red_subject: trace
+                    .observed_run
+                    .as_ref()
+                    .map(|value| value.training_run_id.clone())
+                    .unwrap_or_else(|| trace.namespace.clone()),
+                window_id: trace
+                    .observed_run
+                    .as_ref()
+                    .map(|value| value.run.current_window_id.clone())
+                    .filter(|value| !value.is_empty()),
+                assignment_id: None,
+                lease_id: None,
+                membership_revision: None,
+                closeout_stage: None,
+                closeout_next_action: None,
+                closeout_last_error: trace
+                    .observed_run
+                    .as_ref()
+                    .and_then(|value| value.first_caveat_detail.clone()),
+            };
+        }
+        Some("authority_probe_failed") => {
+            return ProofSummarySignal {
+                first_red_stage: "authority_probe".to_string(),
+                first_red_subject: trace
+                    .transport
+                    .authority_front_door
+                    .iter()
+                    .find(|probe| !probe.ok)
+                    .map(|probe| probe.route_id.clone())
+                    .unwrap_or_else(|| "authority_probe".to_string()),
+                window_id: None,
+                assignment_id: None,
+                lease_id: None,
+                membership_revision: None,
+                closeout_stage: None,
+                closeout_next_action: None,
+                closeout_last_error: None,
+            };
+        }
+        Some("proof_run_timeout") => {
+            return ProofSummarySignal {
+                first_red_stage: "proof_run_timeout".to_string(),
+                first_red_subject: trace.namespace.clone(),
+                window_id: trace
+                    .observed_run
+                    .as_ref()
+                    .map(|value| value.run.current_window_id.clone())
+                    .filter(|value| !value.is_empty()),
+                assignment_id: None,
+                lease_id: None,
+                membership_revision: None,
+                closeout_stage: None,
+                closeout_next_action: None,
+                closeout_last_error: None,
+            };
+        }
+        _ => {}
+    }
+    if trace.status == "terminal" {
+        return ProofSummarySignal {
+            first_red_stage: "terminal".to_string(),
+            first_red_subject: trace
+                .observed_run
+                .as_ref()
+                .map(|value| value.training_run_id.clone())
+                .unwrap_or_else(|| trace.namespace.clone()),
+            window_id: trace
+                .observed_run
+                .as_ref()
+                .map(|value| value.run.current_window_id.clone())
+                .filter(|value| !value.is_empty()),
+            assignment_id: None,
+            lease_id: None,
+            membership_revision: None,
+            closeout_stage: None,
+            closeout_next_action: None,
+            closeout_last_error: None,
+        };
+    }
+    ProofSummarySignal {
+        first_red_stage: trace
+            .blocker_id
+            .clone()
+            .unwrap_or_else(|| trace.status.clone()),
+        first_red_subject: trace.namespace.clone(),
+        window_id: trace
+            .observed_run
+            .as_ref()
+            .map(|value| value.run.current_window_id.clone())
+            .filter(|value| !value.is_empty()),
+        assignment_id: None,
+        lease_id: None,
+        membership_revision: None,
+        closeout_stage: None,
+        closeout_next_action: None,
+        closeout_last_error: None,
+    }
+}
+
+fn derive_node_issue_signal(node_traces: &[ProofTraceNode]) -> Option<ProofSummarySignal> {
+    for node in node_traces {
+        let status = node.training_status.as_ref()?;
+        let active_runtime = status.active_runtime.as_ref();
+        let leased_assignment = status.leased_assignment.as_ref();
+        let current_window = status.current_window.as_ref();
+        if let Some(progress) = status.recent_closeout_progress.first() {
+            return Some(ProofSummarySignal {
+                first_red_stage: format!("{}_closeout_{}", node.role.label(), progress.stage),
+                first_red_subject: node.node_label.clone(),
+                window_id: Some(progress.window_id.clone()),
+                assignment_id: Some(progress.assignment_id.clone()),
+                lease_id: active_runtime.map(|value| value.lease_id.clone()),
+                membership_revision: active_runtime.map(|value| value.membership_revision.clone()),
+                closeout_stage: Some(progress.stage.clone()),
+                closeout_next_action: progress.next_action.clone(),
+                closeout_last_error: progress.last_error.clone(),
+            });
+        }
+        if !status.recent_issues.is_empty()
+            || active_runtime
+                .and_then(|value| value.last_failure_reason.as_ref())
+                .is_some()
+        {
+            return Some(ProofSummarySignal {
+                first_red_stage: format!("{}_issue", node.role.label()),
+                first_red_subject: node.node_label.clone(),
+                window_id: active_runtime
+                    .map(|value| value.window_id.clone())
+                    .or_else(|| current_window.map(|value| value.window_id.clone())),
+                assignment_id: active_runtime
+                    .map(|value| value.assignment_id.clone())
+                    .or_else(|| leased_assignment.map(|value| value.assignment_id.clone())),
+                lease_id: active_runtime
+                    .map(|value| value.lease_id.clone())
+                    .or_else(|| leased_assignment.map(|value| value.lease_id.clone())),
+                membership_revision: active_runtime
+                    .map(|value| value.membership_revision.clone())
+                    .or_else(|| leased_assignment.map(|value| value.membership_revision.clone())),
+                closeout_stage: None,
+                closeout_next_action: None,
+                closeout_last_error: status
+                    .recent_issues
+                    .first()
+                    .map(|value| value.reason.clone())
+                    .or_else(|| active_runtime.and_then(|value| value.last_failure_reason.clone())),
+            });
+        }
+    }
+    None
+}
+
+async fn collect_proof_doctor_report(
+    config_path: &Path,
+    namespace: &str,
+) -> Result<ProofDoctorReport> {
+    let layout = proof_layout(config_path, namespace);
+    let fleet = collect_proof_fleet_status(config_path, namespace).await?;
+    let node_traces = collect_proof_trace_nodes(&fleet)?;
+    let training_run_id = fleet
+        .launched_run
+        .as_ref()
+        .map(|value| value.training_run_id.as_str());
+    let transport =
+        collect_proof_transport_split_view(&fleet, training_run_id, node_traces.as_slice()).await?;
+    let artifact_transport =
+        load_artifact_trace_snapshot(layout.artifact_trace_path.as_path(), 12)?;
+    let git = collect_git_provenance();
+    let current_executable = current_executable_path()?;
+    let current_executable_report = build_process_provenance(
+        "oa_current_executable",
+        current_executable.as_path(),
+        Some(current_executable.as_path()),
+        None,
+        current_executable.is_file(),
+        Vec::new(),
+    )?;
+
+    let mut supporting_binaries = Vec::new();
+    for (binary, _package) in [
+        ("nexus-relay", "nexus-relay"),
+        ("nexus-control", "nexus-control"),
+    ] {
+        let expected_binary =
+            locate_workspace_binary(binary)?.unwrap_or(expected_workspace_binary_path(binary)?);
+        supporting_binaries.push(build_process_provenance(
+            binary,
+            expected_binary.as_path(),
+            None,
+            None,
+            false,
+            Vec::new(),
+        )?);
+    }
+
+    let authority_state = load_runtime_state(layout.runtime_state_path.as_path())?;
+    let authority_env_file = if layout.authority_env_path.is_file() {
+        Some(load_authority_env_file_report(
+            layout.authority_env_path.as_path(),
+        )?)
+    } else {
+        None
+    };
+    let psionic_repo_root = load_fleet_state(layout.fleet_state_path.as_path())?
+        .and_then(|value| value.psionic_repo_root);
+
+    let mut process_provenance = Vec::new();
+    if let Some(process) = fleet.authority.authority_process.as_ref() {
+        let expected_binary = fleet
+            .authority
+            .mode
+            .and_then(|mode| {
+                locate_workspace_binary(mode.authority_binary())
+                    .ok()
+                    .flatten()
+                    .or_else(|| expected_workspace_binary_path(mode.authority_binary()).ok())
+            })
+            .unwrap_or_else(|| PathBuf::from(process.binary.as_str()));
+        process_provenance.push(build_process_provenance(
+            "authority",
+            expected_binary.as_path(),
+            Some(Path::new(process.binary.as_str())),
+            process.pid,
+            process.running,
+            Vec::new(),
+        )?);
+    }
+    if let Some(process) = fleet.authority.artifact_store_process.as_ref() {
+        process_provenance.push(build_process_provenance(
+            "artifact_store",
+            current_executable.as_path(),
+            Some(Path::new(process.binary.as_str())),
+            process.pid,
+            process.running,
+            Vec::new(),
+        )?);
+    }
+    if let Some(authority_state) = authority_state.as_ref() {
+        for node in &fleet.nodes {
+            let env_expectations = expected_node_env_expectations(
+                node,
+                authority_state,
+                fleet
+                    .authority
+                    .urls
+                    .as_ref()
+                    .map(|value| value.artifact_store_base_url.as_str()),
+                psionic_repo_root.as_deref(),
+            );
+            process_provenance.push(build_process_provenance(
+                format!("{}_{}", node.role.label(), node.index).as_str(),
+                current_executable.as_path(),
+                Some(Path::new(node.process.binary.as_str())),
+                node.process.pid,
+                node.process.running,
+                env_expectations,
+            )?);
+        }
+    }
+
+    Ok(ProofDoctorReport {
+        configured: fleet.configured || fleet.authority.configured,
+        namespace: namespace.to_string(),
+        generated_at_ms: super::now_epoch_ms(),
+        fleet,
+        transport,
+        artifact_transport,
+        git,
+        authority_env_file,
+        current_executable: current_executable_report,
+        supporting_binaries,
+        process_provenance,
+        latest_trace_path: layout
+            .trace_path
+            .is_file()
+            .then(|| layout.trace_path.display().to_string()),
+        latest_summary_path: layout
+            .summary_path
+            .is_file()
+            .then(|| layout.summary_path.display().to_string()),
+    })
+}
+
+fn collect_git_provenance() -> ProofGitProvenance {
+    ProofGitProvenance {
+        workspace_root: workspace_root().display().to_string(),
+        branch: run_git_capture(["branch", "--show-current"].as_slice()),
+        commit: run_git_capture(["rev-parse", "HEAD"].as_slice()),
+    }
+}
+
+fn run_git_capture(args: &[&str]) -> Option<String> {
+    let output = StdCommand::new("git")
+        .current_dir(workspace_root())
+        .args(args)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+fn load_authority_env_file_report(path: &Path) -> Result<ProofAuthorityEnvFileReport> {
+    let payload = fs::read_to_string(path)
+        .with_context(|| format!("failed to read authority env file {}", path.display()))?;
+    let mut keys = payload
+        .lines()
+        .filter_map(|line| line.split_once('=').map(|(key, _)| key.trim().to_string()))
+        .filter(|key| !key.is_empty())
+        .collect::<Vec<_>>();
+    keys.sort();
+    Ok(ProofAuthorityEnvFileReport {
+        path: path.display().to_string(),
+        key_count: keys.len(),
+        keys,
+    })
+}
+
+fn build_process_provenance(
+    component_id: &str,
+    expected_binary_path: &Path,
+    running_binary_path: Option<&Path>,
+    pid: Option<u32>,
+    running: bool,
+    env_expectations: Vec<(String, Option<String>)>,
+) -> Result<ProofProcessProvenance> {
+    let command_line = pid.and_then(read_process_command_line);
+    let env_expectations =
+        build_process_env_expectations(command_line.as_deref(), env_expectations);
+    let expected_binary_digest = file_digest(expected_binary_path)?;
+    let running_binary_digest = match running_binary_path {
+        Some(path) => file_digest(path)?,
+        None => None,
+    };
+    Ok(ProofProcessProvenance {
+        component_id: component_id.to_string(),
+        expected_binary_path: expected_binary_path.display().to_string(),
+        expected_binary_digest,
+        running_binary_path: running_binary_path.map(|path| path.display().to_string()),
+        running_binary_digest,
+        binary_matches_expected: running_binary_path.map(|path| path == expected_binary_path),
+        pid,
+        running,
+        env_expectations,
+    })
+}
+
+fn file_digest(path: &Path) -> Result<Option<String>> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let payload =
+        fs::read(path).with_context(|| format!("failed to read binary {}", path.display()))?;
+    Ok(Some(sha256_prefixed_bytes(payload.as_slice())))
+}
+
+fn read_process_command_line(pid: u32) -> Option<String> {
+    if cfg!(windows) {
+        return None;
+    }
+    let pid_string = pid.to_string();
+    let output = StdCommand::new("ps")
+        .args(["eww", "-p", pid_string.as_str()])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .rev()
+        .find(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with("PID") && !trimmed.starts_with("COMMAND")
+        })
+        .map(ToOwned::to_owned)
+}
+
+fn build_process_env_expectations(
+    command_line: Option<&str>,
+    expected: Vec<(String, Option<String>)>,
+) -> Vec<ProofProcessEnvExpectation> {
+    expected
+        .into_iter()
+        .map(|(key, expected_value)| {
+            let process_present =
+                command_line.map(|line| line.contains(format!("{key}=").as_str()));
+            let matches_expected = match (command_line, expected_value) {
+                (Some(line), Some(value)) => Some(line.contains(format!("{key}={value}").as_str())),
+                (Some(line), None) => Some(line.contains(format!("{key}=").as_str())),
+                (None, _) => None,
+            };
+            ProofProcessEnvExpectation {
+                key,
+                expected_present: true,
+                process_present,
+                matches_expected,
+            }
+        })
+        .collect()
+}
+
+fn expected_node_env_expectations(
+    node: &ProofFleetNodeStatus,
+    authority_state: &ProofAuthorityRuntimeState,
+    artifact_store_base_url: Option<&str>,
+    psionic_repo_root: Option<&str>,
+) -> Vec<(String, Option<String>)> {
+    let mut expectations = vec![
+        (
+            super::ENV_PYLON_HOME.to_string(),
+            Some(node.home_dir.clone()),
+        ),
+        (
+            super::ENV_TRAINING_NEXUS_BEARER_TOKEN.to_string(),
+            Some(authority_state.admin_bearer_token.clone()),
+        ),
+        (
+            super::ENV_TRAINING_GCS_ENDPOINT.to_string(),
+            artifact_store_base_url.map(ToOwned::to_owned),
+        ),
+        (
+            super::ENV_TRAINING_GCS_BEARER_TOKEN.to_string(),
+            Some("proof-local-artifact-store-token".to_string()),
+        ),
+    ];
+    if let Some(psionic_repo_root) = psionic_repo_root {
+        expectations.push((
+            super::ENV_PSIONIC_REPO.to_string(),
+            Some(psionic_repo_root.to_string()),
+        ));
+    }
+    expectations
+}
+
 fn save_json_file_atomic<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -2219,22 +3328,7 @@ fn current_executable_path() -> Result<PathBuf> {
 }
 
 fn resolve_workspace_binary(binary: &str, package: &str) -> Result<PathBuf> {
-    let executable = platform_binary_name(binary);
-    let current_exe = current_executable_path()?;
-    let mut candidates = Vec::new();
-    if let Some(parent) = current_exe.parent() {
-        candidates.push(parent.join(executable.as_str()));
-        if let Some(grandparent) = parent.parent() {
-            candidates.push(grandparent.join(executable.as_str()));
-        }
-    }
-    candidates.push(
-        workspace_root()
-            .join("target")
-            .join("debug")
-            .join(executable.as_str()),
-    );
-    if let Some(existing) = candidates.iter().find(|candidate| candidate.is_file()) {
+    if let Some(existing) = locate_workspace_binary(binary)? {
         return Ok(existing.clone());
     }
 
@@ -2246,10 +3340,36 @@ fn resolve_workspace_binary(binary: &str, package: &str) -> Result<PathBuf> {
     if !status.success() {
         bail!("cargo build failed for supporting binary `{binary}`");
     }
-    candidates
-        .into_iter()
-        .find(|candidate| candidate.is_file())
+    locate_workspace_binary(binary)?
         .ok_or_else(|| anyhow!("supporting binary `{binary}` was not produced in target/debug"))
+}
+
+fn locate_workspace_binary(binary: &str) -> Result<Option<PathBuf>> {
+    Ok(workspace_binary_candidates(binary)?
+        .into_iter()
+        .find(|candidate| candidate.is_file()))
+}
+
+fn expected_workspace_binary_path(binary: &str) -> Result<PathBuf> {
+    let executable = platform_binary_name(binary);
+    Ok(workspace_root()
+        .join("target")
+        .join("debug")
+        .join(executable))
+}
+
+fn workspace_binary_candidates(binary: &str) -> Result<Vec<PathBuf>> {
+    let executable = platform_binary_name(binary);
+    let current_exe = current_executable_path()?;
+    let mut candidates = Vec::new();
+    if let Some(parent) = current_exe.parent() {
+        candidates.push(parent.join(executable.as_str()));
+        if let Some(grandparent) = parent.parent() {
+            candidates.push(grandparent.join(executable.as_str()));
+        }
+    }
+    candidates.push(expected_workspace_binary_path(binary)?);
+    Ok(candidates)
 }
 
 fn workspace_root() -> PathBuf {
@@ -2394,6 +3514,10 @@ fn proof_layout(config_path: &Path, namespace: &str) -> ProofLayout {
         runtime_state_path: namespace_root.join("runtime-state.json"),
         fleet_state_path: namespace_root.join("fleet").join("fleet-state.json"),
         run_report_path: namespace_root.join("fleet").join("run-report.json"),
+        trace_path: namespace_root
+            .join("fleet")
+            .join("authority-state-trace.json"),
+        summary_path: namespace_root.join("fleet").join("proof-summary.json"),
         authority_log_path: namespace_root.join("logs").join("authority.log"),
         artifact_store_log_path: namespace_root.join("logs").join("artifact-store.log"),
         namespace_root,
@@ -2970,6 +4094,8 @@ fn render_proof_fleet_status_report(report: &ProofFleetStatusReport) -> String {
         lines.push(format!("fleet_root: {}", paths.fleet_root));
         lines.push(format!("fleet_state_path: {}", paths.fleet_state_path));
         lines.push(format!("run_report_path: {}", paths.run_report_path));
+        lines.push(format!("trace_path: {}", paths.trace_path));
+        lines.push(format!("summary_path: {}", paths.summary_path));
     }
     lines.push(format!(
         "authority: configured={} authority_url={}",
@@ -3053,6 +4179,17 @@ fn render_proof_run_report(report: &ProofRunReport) -> String {
     if let Some(blocker_id) = report.blocker_id.as_deref() {
         lines.push(format!("blocker_id: {blocker_id}"));
     }
+    if let Some(write) = report.first_failed_authority_write.as_ref() {
+        lines.push(format!(
+            "first_failed_authority_write: source={} status={} detail={}",
+            write.source,
+            write
+                .status
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            write.detail
+        ));
+    }
     if let Some(launch) = report.launch.as_ref() {
         lines.push(format!(
             "launch: run_id={} launch_state={} launch_phase={} network_id={} worker_target_count={}",
@@ -3086,6 +4223,128 @@ fn render_proof_run_report(report: &ProofRunReport) -> String {
                 observed.first_caveat_detail.as_deref().unwrap_or("-")
             ));
         }
+    }
+    lines.push(render_proof_fleet_status_report(&report.fleet));
+    lines.join("\n")
+}
+
+fn render_proof_doctor_report(report: &ProofDoctorReport) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!(
+        "proof doctor: configured={} namespace={} branch={} commit={}",
+        report.configured,
+        report.namespace,
+        report.git.branch.as_deref().unwrap_or("-"),
+        report.git.commit.as_deref().unwrap_or("-")
+    ));
+    lines.push(format!(
+        "current_executable: path={} digest={}",
+        report.current_executable.expected_binary_path,
+        report
+            .current_executable
+            .expected_binary_digest
+            .as_deref()
+            .unwrap_or("-")
+    ));
+    if let Some(path) = report.latest_trace_path.as_deref() {
+        lines.push(format!("latest_trace_path: {path}"));
+    }
+    if let Some(path) = report.latest_summary_path.as_deref() {
+        lines.push(format!("latest_summary_path: {path}"));
+    }
+    if let Some(env_file) = report.authority_env_file.as_ref() {
+        lines.push(format!(
+            "authority_env_file: path={} keys={}",
+            env_file.path, env_file.key_count
+        ));
+    }
+    for process in &report.process_provenance {
+        lines.push(format!(
+            "process {}: running={} pid={} matches_expected={} running_binary={}",
+            process.component_id,
+            process.running,
+            process
+                .pid
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            process
+                .binary_matches_expected
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            process.running_binary_path.as_deref().unwrap_or("-")
+        ));
+        for env in &process.env_expectations {
+            lines.push(format!(
+                "process {} env {}: present={} matches_expected={}",
+                process.component_id,
+                env.key,
+                env.process_present
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                env.matches_expected
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string())
+            ));
+        }
+    }
+    for probe in &report.transport.authority_front_door {
+        lines.push(format!(
+            "transport authority {}: ok={} status={} detail={}",
+            probe.route_id,
+            probe.ok,
+            probe
+                .status
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            probe.detail
+        ));
+    }
+    for probe in &report.transport.artifact_store {
+        lines.push(format!(
+            "transport artifact {}: ok={} status={} detail={}",
+            probe.route_id,
+            probe.ok,
+            probe
+                .status
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            probe.detail
+        ));
+    }
+    lines.push(format!(
+        "transport relay: running={} ws_url={} detail={}",
+        report.transport.relay.authority_running,
+        report
+            .transport
+            .relay
+            .relay_ws_url
+            .as_deref()
+            .unwrap_or("-"),
+        report.transport.relay.detail
+    ));
+    for node in &report.transport.node_surfaces {
+        lines.push(format!(
+            "transport node {} {} admin: ok={} status={} detail={}",
+            node.role.label(),
+            node.index,
+            node.admin.ok,
+            node.admin
+                .status
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            node.admin.detail
+        ));
+        lines.push(format!(
+            "transport node {} {} checkpoint: ok={} status={} detail={}",
+            node.role.label(),
+            node.index,
+            node.checkpoint.ok,
+            node.checkpoint
+                .status
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            node.checkpoint.detail
+        ));
     }
     lines.push(render_proof_fleet_status_report(&report.fleet));
     lines.join("\n")
@@ -3219,8 +4478,9 @@ fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
 #[cfg(test)]
 mod tests {
     use super::{
-        PROOF_ARTIFACT_UPLOAD_PREFIX, detect_proof_run_blocker, proof_namespace_ports,
-        render_proof_status_report, run_artifact_store_server,
+        PROOF_ARTIFACT_UPLOAD_PREFIX, detect_proof_run_blocker, parse_proof_command,
+        parse_status_body_from_reason, proof_namespace_ports, render_proof_status_report,
+        run_artifact_store_server,
     };
 
     use anyhow::{Result, anyhow};
@@ -3366,5 +4626,37 @@ mod tests {
             .expect("critical caveat should surface as blocker");
         assert_eq!(blocker.0, "authority_run_caveat");
         assert!(blocker.1.contains("Payout attention required"));
+    }
+
+    #[test]
+    fn parse_proof_command_supports_doctor_namespace_json() {
+        let args = vec![
+            "oa".to_string(),
+            "proof".to_string(),
+            "doctor".to_string(),
+            "--namespace".to_string(),
+            "proof.alpha".to_string(),
+            "--json".to_string(),
+        ];
+        let parsed = parse_proof_command(&args, 2).expect("proof doctor should parse");
+        assert_eq!(
+            parsed,
+            super::ProofCommand::Doctor {
+                command: super::ProofDoctorCommand {
+                    namespace: "proof.alpha".to_string(),
+                    json: true,
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn parse_status_body_from_reason_extracts_status_and_body() {
+        let parsed = parse_status_body_from_reason(
+            "training authority run lease failed with status 404: {\"error\":\"kernel_error\"}",
+        )
+        .expect("status/body should parse");
+        assert_eq!(parsed.0, 404);
+        assert_eq!(parsed.1, "{\"error\":\"kernel_error\"}");
     }
 }
