@@ -5077,6 +5077,57 @@ fn training_window_assignment_plan<'a>(
         .ok_or_else(|| "training_window_assignment_missing".to_string())
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct TrainingWindowResolvedAssignment {
+    contributor_node_id: String,
+    worker_id: String,
+    dataset_slice: ComputeAdapterDatasetSlice,
+}
+
+fn training_window_resolved_assignment(
+    assignment_plans: &[TrainingWindowAssignmentPlan],
+    scheduled_run: Option<&ScheduledTrainingRun>,
+    assignment_id: &str,
+) -> Result<TrainingWindowResolvedAssignment, String> {
+    if let Ok(plan) = training_window_assignment_plan(assignment_plans, assignment_id) {
+        return Ok(TrainingWindowResolvedAssignment {
+            contributor_node_id: plan.contributor_node_id.clone(),
+            worker_id: plan.worker_id.clone(),
+            dataset_slice: plan.dataset_slice.clone(),
+        });
+    }
+
+    let Some(scheduled_run) = scheduled_run else {
+        return Err("training_window_assignment_missing".to_string());
+    };
+    let Some(scheduled_assignment) = scheduled_run.assignments.iter().find(|assignment| {
+        assignment.assignment_id == assignment_id
+            && assignment.role == TrainingNodeRoleClaim::Worker
+    }) else {
+        return Err("training_window_assignment_missing".to_string());
+    };
+    let Some(node_pubkey_hex) = scheduled_assignment
+        .node_pubkey_hex
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Err("training_window_assignment_missing".to_string());
+    };
+    let worker_id = format!("worker.{:04}", scheduled_assignment.slot_ordinal);
+    let Some(template_plan) = assignment_plans
+        .iter()
+        .find(|assignment| assignment.worker_id == worker_id)
+    else {
+        return Err("training_window_assignment_missing".to_string());
+    };
+    Ok(TrainingWindowResolvedAssignment {
+        contributor_node_id: node_pubkey_hex.to_string(),
+        worker_id,
+        dataset_slice: template_plan.dataset_slice.clone(),
+    })
+}
+
 fn training_window_summary_digest(
     window: &ComputeAdapterTrainingWindow,
     contribution_outcomes: &[ComputeAdapterContributionOutcome],
@@ -6999,6 +7050,7 @@ fn training_window_base_record(
 fn training_window_contribution_outcomes_from_inputs(
     window: &ComputeAdapterTrainingWindow,
     assignment_plans: &[TrainingWindowAssignmentPlan],
+    scheduled_run: Option<&ScheduledTrainingRun>,
     contribution_inputs: &[TrainingWindowContributionInput],
     recorded_at_ms: i64,
     sealed_defaults: bool,
@@ -7016,7 +7068,11 @@ fn training_window_contribution_outcomes_from_inputs(
             input.assignment_id.as_str(),
             "compute_adapter_assignment_id_missing",
         )?;
-        let plan = training_window_assignment_plan(assignment_plans, assignment_id.as_str())?;
+        let resolved_assignment = training_window_resolved_assignment(
+            assignment_plans,
+            scheduled_run,
+            assignment_id.as_str(),
+        )?;
         let validator_disposition = if sealed_defaults {
             ComputeAdapterContributionDisposition::ReplayRequired
         } else {
@@ -7051,8 +7107,8 @@ fn training_window_contribution_outcomes_from_inputs(
             window_id: window.window_id.clone(),
             contributor_set_revision_id: window.contributor_set_revision_id.clone(),
             assignment_id,
-            contributor_node_id: plan.contributor_node_id.clone(),
-            worker_id: plan.worker_id.clone(),
+            contributor_node_id: resolved_assignment.contributor_node_id,
+            worker_id: resolved_assignment.worker_id,
             validator_policy_ref: window.validator_policy_ref.clone(),
             work_class: window.work_class,
             replica_type: window.replica_type,
@@ -7061,7 +7117,7 @@ fn training_window_contribution_outcomes_from_inputs(
             adapter_family: window.adapter_family.clone(),
             base_model_ref: window.base_model_ref.clone(),
             adapter_format: window.adapter_format.clone(),
-            dataset_slice: plan.dataset_slice.clone(),
+            dataset_slice: resolved_assignment.dataset_slice,
             source_policy_revision: window.source_policy_revision.clone(),
             source_checkpoint_pointer: window.source_checkpoint_pointer.clone(),
             submission_receipt_digest: normalize_required_training_string(
@@ -12263,9 +12319,15 @@ async fn seal_training_window(
         let mut metadata =
             training_window_metadata_from_value(&window.metadata).map_err(kernel_api_error)?;
         let assignment_plans = metadata.assignment_plans.clone();
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get(window.training_run_id.as_str())
+            .cloned();
         let mut contribution_outcomes = training_window_contribution_outcomes_from_inputs(
             &window,
             assignment_plans.as_slice(),
+            scheduled_run.as_ref(),
             request.contribution_outcomes.as_slice(),
             request.recorded_at_ms,
             true,
@@ -12428,9 +12490,15 @@ async fn reconcile_training_window(
             ));
         }
         let assignment_plans = metadata.assignment_plans.clone();
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get(window.training_run_id.as_str())
+            .cloned();
         let mut contribution_outcomes = training_window_contribution_outcomes_from_inputs(
             &window,
             assignment_plans.as_slice(),
+            scheduled_run.as_ref(),
             request.contribution_outcomes.as_slice(),
             request.recorded_at_ms,
             false,
@@ -36460,6 +36528,226 @@ mod tests {
                 .current_window_id,
             "window.0002"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_seal_accepts_replacement_assignment_attempts() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_500_500u64;
+        let training_run_id = "run.window.replacement";
+        let window_id = "window.0001";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut node_beta = training_node_admission_request(
+                "node-beta",
+                "sha256:build-beta",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_beta.requested_at_ms = created_at_ms as i64 + 800;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 800),
+                    node_beta,
+                )
+                .expect("admit node beta");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.recorded_at_ms = created_at_ms as i64 + 850;
+            heartbeat_beta.last_heartbeat_at_ms = Some(created_at_ms as i64 + 850);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 850),
+                    heartbeat_beta,
+                )
+                .expect("heartbeat node beta");
+        }
+
+        let claim_requested_at_ms = created_at_ms as i64 + 1_000;
+        let first_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.alpha",
+                            claim_requested_at_ms,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_lease_response.status(), StatusCode::OK);
+        let first_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(first_lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.replacement",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://replacement-0001",
+                                "sha256:slice-replacement-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/activate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.replacement",
+                            created_at_ms as i64 + 1_200,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let replacement_requested_at_ms =
+            claim_requested_at_ms + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 1;
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.idempotency_key =
+                "idemp.training.heartbeat.replacement.beta".to_string();
+            heartbeat_beta.recorded_at_ms = replacement_requested_at_ms;
+            heartbeat_beta.last_heartbeat_at_ms = Some(replacement_requested_at_ms);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "node-beta",
+                        replacement_requested_at_ms as u64,
+                    ),
+                    heartbeat_beta,
+                )
+                .expect("refresh heartbeat beta");
+        }
+
+        let replacement_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.beta",
+                            replacement_requested_at_ms,
+                            "node-beta",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(replacement_response.status(), StatusCode::OK);
+        let replacement_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(replacement_response).await?;
+        assert_ne!(replacement_lease.assignment_id, first_lease.assignment_id);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/seal"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.replacement".to_string(),
+                            recorded_at_ms: replacement_requested_at_ms + 100,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.replacement",
+                                    &replacement_lease,
+                                    "sha256:validator-pending-replacement",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        let sealed_status = sealed.status();
+        let sealed_bytes = to_bytes(sealed.into_body(), usize::MAX).await?;
+        assert_eq!(
+            sealed_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(sealed_bytes.as_ref())
+        );
+        let sealed_window =
+            serde_json::from_slice::<TrainingWindowCoordinatorResponse>(sealed_bytes.as_ref())?;
+        assert_eq!(
+            sealed_window.window.status,
+            ComputeAdapterWindowStatus::Sealed
+        );
+        assert_eq!(sealed_window.contribution_outcomes.len(), 1);
+        assert_eq!(
+            sealed_window.contribution_outcomes[0].assignment_id,
+            replacement_lease.assignment_id
+        );
+        assert_eq!(
+            sealed_window.contribution_outcomes[0].contributor_node_id,
+            "node-beta"
+        );
+        assert_eq!(
+            sealed_window.contribution_outcomes[0].worker_id,
+            "worker.0001"
+        );
+        assert_eq!(
+            sealed_window.contribution_outcomes[0]
+                .dataset_slice
+                .slice_id,
+            "slice://replacement-0001"
+        );
+
         Ok(())
     }
 
