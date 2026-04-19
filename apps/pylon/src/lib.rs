@@ -7067,7 +7067,9 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 nexus_treasury,
             })?))
         }
-        Command::Proof { command } => proof::run_proof_command(cli.config_path.as_path(), command).await,
+        Command::Proof { command } => {
+            proof::run_proof_command(cli.config_path.as_path(), command).await
+        }
         Command::Serve => {
             let config = load_or_create_config(cli.config_path.as_path())?;
             serve(cli.config_path.as_path(), config).await?;
@@ -7463,10 +7465,15 @@ Usage: pylon|oa [--config-path <path>] <command>\n\
 Commands:\n\
   init\n\
   doctor\n\
-  proof authority up [--mode prod-shaped|debug-authority] [--json]\n\
-  proof authority status [--json]\n\
-  proof authority down [--json]\n\
-  proof authority reset [--json]\n\
+  proof authority up [--namespace <ns>] [--mode prod-shaped|debug-authority] [--json]\n\
+  proof authority status [--namespace <ns>] [--json]\n\
+  proof authority down [--namespace <ns>] [--json]\n\
+  proof authority reset [--namespace <ns>] [--json]\n\
+  proof fleet up --namespace <ns> --workers <n> --validators <n> [--mode prod-shaped|debug-authority] [--network-id <id>] [--stale-worker-state] [--stale-validator-state] [--json]\n\
+  proof fleet status --namespace <ns> [--json]\n\
+  proof fleet down --namespace <ns> [--json]\n\
+  proof fleet reset --namespace <ns> [--json]\n\
+  proof run <lane> [--namespace <ns>] [--workers <n>] [--validators <n>] [--timeout-seconds <n>] [--mode prod-shaped|debug-authority] [--stale-worker-state] [--stale-validator-state] [--json]\n\
   serve\n\
   account link --base-url <url> --token <one_time_token> [--json]\n\
   status [--json]\n\
