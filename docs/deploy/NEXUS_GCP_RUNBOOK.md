@@ -489,6 +489,8 @@ What the wrapper does:
 - takes a VM-local recovery lock so only one recovery wrapper can run at a time
 - runtime-masks and stops `nexus-relay`, then removes any stale `nexus-relay`
   container before inspecting wallet storage
+- guards cleanup so command-substitution subshells cannot unmask or restart
+  `nexus-relay` while the recovery inspection is still running
 - runs `nexus-control treasury recovery-cutover --report-path ... --json`
   inside the deployed Nexus image against the live data disk, using Docker
   `--entrypoint /usr/local/bin/nexus-control`
