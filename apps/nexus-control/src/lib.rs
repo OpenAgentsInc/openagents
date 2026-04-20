@@ -1221,6 +1221,7 @@ struct AppState {
     config: ServiceConfig,
     store: Arc<RwLock<ControlStore>>,
     public_stats_cache: Arc<RwLock<PublicStatsSnapshot>>,
+    treasury_status_cache: Arc<RwLock<Option<TreasuryStatusResponse>>>,
     training_run_detail_cache: Arc<RwLock<HashMap<String, PublicTrainingRunDetailSnapshot>>>,
     training_launch_metrics: Arc<RwLock<TrainingLaunchLiveMetrics>>,
     kernel_receipt_tx: broadcast::Sender<ReceiptProjectionEvent>,
@@ -8140,11 +8141,13 @@ fn build_app_state(config: ServiceConfig) -> AppState {
     let mut initial_public_stats =
         build_public_stats_snapshot(&config, &store, &launch_metrics, now);
     apply_public_stats_cache_context(&mut initial_public_stats, now, "live");
+    let initial_treasury_status = store.treasury.status_response(&config.treasury, now);
     let (kernel_receipt_tx, _) = broadcast::channel(256);
     let (kernel_snapshot_tx, _) = broadcast::channel(256);
     AppState {
         store: Arc::new(RwLock::new(store)),
         public_stats_cache: Arc::new(RwLock::new(initial_public_stats)),
+        treasury_status_cache: Arc::new(RwLock::new(Some(initial_treasury_status))),
         training_run_detail_cache: Arc::new(RwLock::new(HashMap::new())),
         training_launch_metrics: Arc::new(RwLock::new(TrainingLaunchLiveMetrics::default())),
         config,
@@ -15600,14 +15603,20 @@ async fn treasury_status(
     State(state): State<AppState>,
 ) -> Result<Json<TreasuryStatusResponse>, ApiError> {
     let now = now_unix_ms();
-    let store = state.store.read().map_err(|_| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "session_store_poisoned".to_string(),
-    })?;
-    Ok(Json(
-        store.treasury.status_response(&state.config.treasury, now),
-    ))
+    let cached_status = try_cached_treasury_status_snapshot(&state)?;
+    let store = match try_read_store(&state, "treasury_status_live_store_busy") {
+        Ok(store) => store,
+        Err(error) => {
+            if let Some(status) = cached_status {
+                return Ok(Json(status));
+            }
+            return Err(error);
+        }
+    };
+    let status = store.treasury.status_response(&state.config.treasury, now);
+    drop(store);
+    replace_treasury_status_cache(&state, status.clone());
+    Ok(Json(status))
 }
 
 async fn treasury_integration_export(
@@ -21213,6 +21222,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
                 );
             }
             let _ = force_refresh_public_stats_cache(state, cycle_started_at_unix_ms);
+            let _ = force_refresh_treasury_status_cache(state, cycle_started_at_unix_ms);
             finish_treasury_dispatch_cycle();
             return;
         }
@@ -21244,6 +21254,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
         tracing::error!("treasury dispatch cycle completion failed: session_store_poisoned");
     }
     let _ = force_refresh_public_stats_cache(state, cycle_completed_at_unix_ms);
+    let _ = force_refresh_treasury_status_cache(state, cycle_completed_at_unix_ms);
     finish_treasury_dispatch_cycle();
 }
 
@@ -21261,6 +21272,7 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
                     .refresh_public_snapshot_in_memory(&state.config.treasury, now);
             }
             let _ = force_refresh_public_stats_cache(state, now);
+            let _ = force_refresh_treasury_status_cache(state, now);
             return;
         }
     };
@@ -21301,6 +21313,7 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
         }
     }
     let _ = force_refresh_public_stats_cache(state, now_unix_ms());
+    let _ = force_refresh_treasury_status_cache(state, now_unix_ms());
     finish_treasury_wallet_refresh_cycle();
 }
 
@@ -24214,6 +24227,12 @@ fn replace_public_stats_cache(state: &AppState, snapshot: PublicStatsSnapshot) {
     }
 }
 
+fn replace_treasury_status_cache(state: &AppState, snapshot: TreasuryStatusResponse) {
+    if let Ok(mut cache) = state.treasury_status_cache.try_write() {
+        *cache = Some(snapshot);
+    }
+}
+
 fn invalidate_public_stats_cache(state: &AppState, now_unix_ms: u64) {
     let Ok(mut cache) = state.public_stats_cache.try_write() else {
         return;
@@ -24504,6 +24523,29 @@ fn try_cached_public_stats_snapshot(
     }
 }
 
+#[cfg(test)]
+fn cached_treasury_status_snapshot(state: &AppState) -> Option<TreasuryStatusResponse> {
+    state
+        .treasury_status_cache
+        .read()
+        .ok()
+        .and_then(|snapshot| snapshot.clone())
+}
+
+fn try_cached_treasury_status_snapshot(
+    state: &AppState,
+) -> Result<Option<TreasuryStatusResponse>, ApiError> {
+    match state.treasury_status_cache.try_read() {
+        Ok(snapshot) => Ok(snapshot.clone()),
+        Err(TryLockError::WouldBlock) => Err(store_lock_error("treasury_status_cache_busy")),
+        Err(TryLockError::Poisoned(_)) => Err(ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "treasury_status_cache_poisoned".to_string(),
+        }),
+    }
+}
+
 fn refresh_public_stats_cache(state: &AppState, now_unix_ms: u64) -> Option<PublicStatsSnapshot> {
     if let Some(snapshot) = cached_public_stats_snapshot(state) {
         let age_ms = now_unix_ms.saturating_sub(snapshot.as_of_unix_ms);
@@ -24526,6 +24568,19 @@ fn force_refresh_public_stats_cache(
     drop(store);
     apply_public_stats_cache_context(&mut snapshot, now_unix_ms, "live");
     replace_public_stats_cache(state, snapshot.clone());
+    Some(snapshot)
+}
+
+fn force_refresh_treasury_status_cache(
+    state: &AppState,
+    now_unix_ms: u64,
+) -> Option<TreasuryStatusResponse> {
+    let store = state.store.try_read().ok()?;
+    let snapshot = store
+        .treasury
+        .status_response(&state.config.treasury, now_unix_ms);
+    drop(store);
+    replace_treasury_status_cache(state, snapshot.clone());
     Some(snapshot)
 }
 
@@ -31146,6 +31201,66 @@ mod tests {
         assert_eq!(stats_response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let error: ErrorResponse = response_json(stats_response).await?;
         assert_eq!(error.reason, "public_stats_cache_busy");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_status_returns_cached_snapshot_while_store_writer_is_busy() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+
+        let mut cached =
+            super::cached_treasury_status_snapshot(&state).expect("initial treasury status cache");
+        cached.wallet_balance_sats = 777;
+        cached.wallet_runtime_status = Some("cached".to_string());
+        super::replace_treasury_status_cache(&state, cached);
+
+        let _store_guard = state.store.write().expect("store write lock");
+        let status_response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/status")
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("/v1/treasury/status should return cached data while store is busy")?;
+
+        assert_eq!(status_response.status(), StatusCode::OK);
+        let status: TreasuryStatusResponse = response_json(status_response).await?;
+        assert_eq!(status.wallet_balance_sats, 777);
+        assert_eq!(status.wallet_runtime_status.as_deref(), Some("cached"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_status_fails_fast_when_status_cache_is_busy() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+        let _cache_guard = state
+            .treasury_status_cache
+            .write()
+            .expect("hold treasury status cache write lock");
+
+        let status_response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/status")
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("/v1/treasury/status should fail fast while cache is busy")?;
+
+        assert_eq!(status_response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let error: ErrorResponse = response_json(status_response).await?;
+        assert_eq!(error.reason, "treasury_status_cache_busy");
 
         Ok(())
     }
