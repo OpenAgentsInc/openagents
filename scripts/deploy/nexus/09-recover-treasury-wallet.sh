@@ -73,6 +73,14 @@ gcloud compute ssh "$NEXUS_VM" \
     sudo systemctl start nexus-relay; \
     trap - EXIT; \
     systemctl is-active nexus-relay >/dev/null; \
-    curl -fsS http://127.0.0.1:8080/v1/treasury/status >/dev/null"
+    READY=0; \
+    for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do \
+      if curl -fsS --max-time 5 http://127.0.0.1:8080/v1/treasury/status >/dev/null; then \
+        READY=1; \
+        break; \
+      fi; \
+      sleep 5; \
+    done; \
+    [[ \"\$READY\" == \"1\" ]]"
 
 log "Treasury wallet recovery action ${NEXUS_TREASURY_RECOVERY_ACTION} completed on ${NEXUS_VM}; report=${NEXUS_TREASURY_RECOVERY_REPORT_PATH}"

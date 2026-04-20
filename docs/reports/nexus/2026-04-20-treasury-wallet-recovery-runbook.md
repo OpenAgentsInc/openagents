@@ -56,11 +56,20 @@ The script prints JSON and writes the report under the VM data disk. Review:
 - `comparison.validation_passed`
 - `comparison.wallet_identity_pubkey_match`
 - `comparison.recommended_action`
+- `current_storage.runtime_status`
+- `rebuilt_storage.runtime_status`
 - `current_storage.balance_sats`
 - `rebuilt_storage.balance_sats`
 - `current_storage.payment_totals`
 - `rebuilt_storage.payment_totals`
 - any `error` fields on either storage inspection
+
+The report must not be treated as cutover-safe unless both inspections synced
+the isolated wallet storage and the rebuilt storage is not a balance
+regression. A report that shows `rebuilt_storage.balance_sats` lower than
+`current_storage.balance_sats`, missing rebuilt payment history, or
+`recommended_action: inspect_divergence_before_cutover` is evidence to keep
+debugging, not permission to swap the production wallet directory.
 
 Cut over only after reviewing the report:
 
