@@ -1701,6 +1701,28 @@ fn recovered_treasury_state_from_payload(
 }
 
 impl TreasuryState {
+    fn apply_wallet_snapshot_state(
+        &mut self,
+        snapshot: &TreasuryWalletSnapshot,
+        now_unix_ms: u64,
+        mark_wallet_sync: bool,
+    ) {
+        self.wallet_runtime_status = Some(snapshot.runtime_status.clone());
+        self.wallet_last_error = snapshot.runtime_detail.clone();
+        self.wallet_hydration_mode = snapshot.wallet_hydration_mode.clone();
+        self.wallet_payment_scan_mode = snapshot.wallet_payment_scan_mode.clone();
+        self.wallet_balance_sats = snapshot.balance_sats;
+        self.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        if mark_wallet_sync {
+            self.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        }
+    }
+
+    pub fn apply_wallet_status(&mut self, snapshot: &TreasuryWalletSnapshot, now_unix_ms: u64) {
+        self.apply_wallet_snapshot_state(snapshot, now_unix_ms, false);
+        self.persist();
+    }
+
     pub fn new(state_path: PathBuf) -> Self {
         let mut loaded = match fs::read_to_string(state_path.as_path()) {
             Ok(payload) => match serde_json::from_str::<Self>(payload.as_str()) {
@@ -3026,6 +3048,16 @@ impl TreasuryState {
         self.persist();
     }
 
+    pub fn record_wallet_reconciliation_error(&mut self, detail: impl Into<String>) {
+        let detail = detail.into();
+        if self.wallet_runtime_status.is_none() || self.wallet_balance_updated_at_unix_ms.is_none()
+        {
+            self.wallet_runtime_status = Some("error".to_string());
+        }
+        self.wallet_last_error = Some(detail);
+        self.persist();
+    }
+
     pub fn note_wallet_recovery_report(&mut self, report: &TreasuryWalletRecoveryReport) {
         self.wallet_storage_report_path = Some(report.report_path.clone());
         self.last_wallet_recovery_report = Some(TreasuryWalletRecoveryReportSummary {
@@ -3654,13 +3686,7 @@ impl TreasuryState {
         snapshot: &TreasuryWalletSnapshot,
         now_unix_ms: u64,
     ) -> Vec<TreasuryReceiptEvent> {
-        self.wallet_runtime_status = Some(snapshot.runtime_status.clone());
-        self.wallet_last_error = snapshot.runtime_detail.clone();
-        self.wallet_hydration_mode = snapshot.wallet_hydration_mode.clone();
-        self.wallet_payment_scan_mode = snapshot.wallet_payment_scan_mode.clone();
-        self.wallet_balance_sats = snapshot.balance_sats;
-        self.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
-        self.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        self.apply_wallet_snapshot_state(snapshot, now_unix_ms, true);
 
         let mut receipt_events = Vec::new();
         let mut last_confirmed_payout_at_unix_ms = self.last_confirmed_payout_at_unix_ms;
@@ -4090,7 +4116,7 @@ pub async fn create_live_funding_target(
             Some(_) => bail!("treasury funding amount must be greater than 0"),
             None => None,
         };
-        let wallet_snapshot = wallet_snapshot_from_wallet(wallet.as_ref()).await?;
+        let wallet_snapshot = wallet_status_snapshot_from_wallet(wallet.as_ref()).await?;
         Ok(TreasuryFundingMaterial {
             spark_address,
             bitcoin_address,
@@ -4112,6 +4138,37 @@ pub async fn load_live_wallet_snapshot(
     )
     .await
     .map(|result| result.snapshot)
+}
+
+pub async fn load_live_wallet_status_snapshot(
+    config: &TreasuryConfig,
+    create_if_missing: bool,
+) -> Result<TreasuryWalletSnapshot> {
+    #[cfg(test)]
+    if let Some(hook) = test_wallet_status_hook()
+        .lock()
+        .expect("treasury status hook")
+        .as_ref()
+    {
+        return hook();
+    }
+
+    #[cfg(test)]
+    if let Some(hook) = test_wallet_snapshot_hook()
+        .lock()
+        .expect("treasury snapshot hook")
+        .as_ref()
+    {
+        let mut snapshot = hook()?;
+        snapshot.payments.clear();
+        snapshot.wallet_payment_scan_mode = Some("status_only".to_string());
+        return Ok(snapshot);
+    }
+
+    with_live_wallet(config, create_if_missing, |wallet| async move {
+        wallet_status_snapshot_from_wallet(wallet.as_ref()).await
+    })
+    .await
 }
 
 pub async fn load_live_wallet_refresh_result_with_plan(
@@ -4395,11 +4452,11 @@ pub async fn run_treasury_command(
 ) -> Result<String> {
     match command {
         TreasuryCommand::Status { json } => {
-            let snapshot = load_live_wallet_snapshot(config, true).await?;
+            let snapshot = load_live_wallet_status_snapshot(config, true).await?;
             let mut state = TreasuryState::new(config.state_path.clone());
             let now_unix_ms = now_unix_ms();
             state.initialize_runtime_policy(config, now_unix_ms);
-            state.apply_wallet_snapshot(&snapshot, now_unix_ms);
+            state.apply_wallet_status(&snapshot, now_unix_ms);
             state.sync_continuity_alerts(config, now_unix_ms);
             state.refresh_public_snapshot(config, now_unix_ms);
             let response = state.status_response(config, now_unix_ms);
@@ -6018,6 +6075,27 @@ fn validate_wallet_hydration_balance(
     );
 }
 
+async fn wallet_status_snapshot_from_wallet(
+    wallet: &SparkWallet,
+) -> Result<TreasuryWalletSnapshot> {
+    wallet
+        .sync_wallet_state()
+        .await
+        .context("failed to hydrate treasury Spark wallet with sync_wallet")?;
+    let balance = wallet
+        .get_balance_cached()
+        .await
+        .context("failed to fetch treasury Spark balance")?;
+    Ok(TreasuryWalletSnapshot {
+        runtime_status: "connected".to_string(),
+        runtime_detail: None,
+        wallet_hydration_mode: Some("sync_wallet_then_cached_balance".to_string()),
+        wallet_payment_scan_mode: Some("status_only".to_string()),
+        balance_sats: balance.total_sats(),
+        payments: Vec::new(),
+    })
+}
+
 async fn wallet_snapshot_from_wallet(wallet: &SparkWallet) -> Result<TreasuryWalletSnapshot> {
     wallet_snapshot_from_wallet_with_plan_result(wallet, &TreasuryWalletRefreshPlan::recent_only())
         .await
@@ -6295,6 +6373,9 @@ fn now_unix_ms() -> u64 {
 type TestWalletSnapshotHook =
     std::sync::Arc<dyn Fn() -> Result<TreasuryWalletSnapshot> + Send + Sync>;
 #[cfg(test)]
+type TestWalletStatusHook =
+    std::sync::Arc<dyn Fn() -> Result<TreasuryWalletSnapshot> + Send + Sync>;
+#[cfg(test)]
 type TestWalletFundingHook = std::sync::Arc<
     dyn Fn(TreasuryFundingTargetRequest) -> Result<TreasuryFundingMaterial> + Send + Sync,
 >;
@@ -6304,6 +6385,12 @@ type TestWalletSendHook = std::sync::Arc<dyn Fn(String, u64) -> Result<String> +
 #[cfg(test)]
 fn test_wallet_snapshot_hook() -> &'static Mutex<Option<TestWalletSnapshotHook>> {
     static HOOK: OnceLock<Mutex<Option<TestWalletSnapshotHook>>> = OnceLock::new();
+    HOOK.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(test)]
+fn test_wallet_status_hook() -> &'static Mutex<Option<TestWalletStatusHook>> {
+    static HOOK: OnceLock<Mutex<Option<TestWalletStatusHook>>> = OnceLock::new();
     HOOK.get_or_init(|| Mutex::new(None))
 }
 
@@ -6371,6 +6458,13 @@ pub(crate) fn set_test_wallet_snapshot_hook(hook: Option<TestWalletSnapshotHook>
     *test_wallet_snapshot_hook()
         .lock()
         .expect("treasury snapshot hook") = hook;
+}
+
+#[cfg(test)]
+pub(crate) fn set_test_wallet_status_hook(hook: Option<TestWalletStatusHook>) {
+    *test_wallet_status_hook()
+        .lock()
+        .expect("treasury status hook") = hook;
 }
 
 #[cfg(test)]
