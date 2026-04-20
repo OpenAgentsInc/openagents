@@ -1048,6 +1048,7 @@ struct PersistedComputeAuthorityState {
     training_validator_challenge_receipts:
         BTreeMap<String, TrainingValidatorChallengeReceiptRecord>,
     compute_indices: BTreeMap<String, ComputeIndexRecord>,
+    #[serde(default, skip)]
     snapshots: BTreeMap<i64, EconomySnapshot>,
     next_projection_seq: u64,
 }
@@ -2102,8 +2103,7 @@ impl KernelState {
             persistence_path,
             ..Self::default()
         };
-        let loaded_persisted_state = state.load_persisted_compute_authority_state();
-        if loaded_persisted_state && !state.training_trn_publication_records.is_empty() {
+        if state.load_persisted_compute_authority_state() {
             if let Err(error) = state.persist_compute_authority_state() {
                 tracing::warn!("kernel_state_startup_compaction_failed:{error}");
             }
@@ -17509,6 +17509,13 @@ mod tests {
             assert_eq!(snapshot.compute_delivery_proofs_24h, 1);
             product.response.receipt.receipt_id
         };
+
+        let persisted_payload =
+            std::fs::read_to_string(path.as_path()).expect("read persisted authority state");
+        assert!(
+            !persisted_payload.contains("\"snapshots\""),
+            "cached economy snapshots should be recomputed, not persisted"
+        );
 
         let mut reloaded = KernelState::new_with_persistence(Some(path.clone()));
         assert_eq!(reloaded.list_compute_products(None).len(), 1);
