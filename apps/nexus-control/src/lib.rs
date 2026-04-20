@@ -20989,7 +20989,9 @@ async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool
         }
         Err(error) => {
             if let Ok(mut store) = state.store.write() {
-                store.treasury.record_wallet_error(error.to_string());
+                store
+                    .treasury
+                    .record_wallet_refresh_error(error.to_string(), now);
                 let receipt_events = store
                     .treasury
                     .sync_continuity_alerts(&state.config.treasury, now);
@@ -21023,6 +21025,12 @@ fn treasury_wallet_refresh_state(
         return Ok(TreasuryWalletRefreshState::Fresh);
     }
     if store.treasury.last_wallet_sync_at_unix_ms.is_none() {
+        if !store
+            .treasury
+            .wallet_refresh_due(&state.config.treasury, now_unix_ms)
+        {
+            return Ok(TreasuryWalletRefreshState::Fresh);
+        }
         return Ok(TreasuryWalletRefreshState::Unsynced);
     }
     if store
@@ -21222,7 +21230,9 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
         let timeout_reason = format!("wallet_refresh_timeout:{wallet_refresh_timeout_ms}");
         tracing::error!("treasury wallet refresh timed out: {timeout_reason}");
         if let Ok(mut store) = state.store.write() {
-            store.treasury.record_wallet_error(timeout_reason);
+            store
+                .treasury
+                .record_wallet_refresh_error(timeout_reason, now_unix_ms());
             store
                 .treasury
                 .refresh_public_snapshot_in_memory(&state.config.treasury, now_unix_ms());
@@ -30984,6 +30994,53 @@ mod tests {
             .read()
             .expect("store read after idle refresh skip");
         assert_eq!(store.treasury.wallet_balance_sats, 500);
+
+        set_test_wallet_snapshot_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_wallet_refresh_cycle_backs_off_failed_attempts() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.wallet_status_refresh_seconds = 1;
+        let state = build_app_state(config);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let hook_calls = Arc::new(AtomicUsize::new(0));
+        let hook_calls_clone = hook_calls.clone();
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(move || {
+            hook_calls_clone.fetch_add(1, Ordering::SeqCst);
+            Err(anyhow::anyhow!("spark_unavailable"))
+        })));
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+
+        {
+            let store = state.store.read().expect("store read after failed refresh");
+            assert_eq!(store.treasury.last_wallet_sync_at_unix_ms, None);
+            assert!(
+                store
+                    .treasury
+                    .last_wallet_refresh_attempt_at_unix_ms
+                    .is_some()
+            );
+            assert_eq!(
+                store.treasury.wallet_last_error.as_deref(),
+                Some("spark_unavailable")
+            );
+        }
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+
+        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
 
         set_test_wallet_snapshot_hook(None);
         Ok(())
