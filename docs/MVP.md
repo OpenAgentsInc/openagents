@@ -430,6 +430,10 @@ The implementation remains grounded in the same lanes as the original draft, but
 
 The primary app surface is `apps/autopilot-deprecated`. It owns the moment-to-moment experience: Go Online, job lifecycle visibility, Autopilot chat, wallet tick up.
 
+The next product shell is now scaffolded at `apps/autopilot` as a Tauri app.
+Treat it as the Tauri prototype for the future Autopilot desktop surface, not as
+the current shipped MVP authority surface yet.
+
 The default OpenAgents-hosted server-authority stack is the Nexus role: an open-source, opinionated, self-hostable surface for desktop-facing auth/session flows, sync token issuance (`POST /api/sync/token`), public stats, and the primary Nostr relay/index path the desktop uses by default. Autopilot should connect to the OpenAgents Nexus by default while still allowing users and organizations to point at their own Nexus deployment, including using that Nexus as the primary relay with other relays as backup. A self-hosted Nexus is expected to operate as a public/open relay by default. Private/team-scoped Nexus modes belong on the roadmap, not in the near-term MVP. The starter-job path, however, is initially an OpenAgents-hosted service rather than part of the minimum Nexus contract. The current in-repo backend authority slice is hosted by `apps/nexus-control`, which exposes the retained mutation and projection entry points the desktop can call.
 
 `apps/autopilot-deprecated` currently contains the embedded OpenAgents Runtime for MVP execution boundaries, provider lifecycle, and any sync-facing projection publishing the desktop needs.

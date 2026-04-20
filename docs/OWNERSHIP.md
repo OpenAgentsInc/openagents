@@ -10,6 +10,26 @@ This document defines what each active surface in this pruned repo owns, and wha
 
 ## Active Surfaces
 
+## `apps/autopilot`
+
+Owns:
+
+- Tauri-based Autopilot desktop shell prototype.
+- TypeScript product UI for the next Autopilot shell.
+- Tauri IPC boundary for request/response commands and runtime state streams.
+- Desktop shell composition that projects Rust-owned runtime, wallet, provider,
+  Nexus, Pylon, Probe, and Psionic state.
+
+Must not own:
+
+- Coding-runtime truth that belongs in `probe`.
+- Work lifecycle truth that belongs in `forge`.
+- Execution substrate truth that belongs in `psionic`.
+- Wallet, payout, provider admission, or accepted-outcome authority in
+  TypeScript frontend state.
+- Generic WGPUI rendering primitives or legacy pane behavior from
+  `apps/autopilot-deprecated`.
+
 ## `apps/autopilot-deprecated`
 
 Owns:
