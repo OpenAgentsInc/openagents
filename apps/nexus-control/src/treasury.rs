@@ -111,7 +111,7 @@ const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_EARLY_SLACK_MS: u64 = 5 * 60_000;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_WINDOW_MS: u64 = 30 * 60_000;
 const TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL: &str = "nexus_control";
 const TREASURY_MIN_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 1_000;
-const TREASURY_MAX_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 600_000;
+const TREASURY_MAX_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 1_800_000;
 const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
     &["public_snapshot"],
     &["public_snapshot", "active_continuity_alerts"],
@@ -5177,11 +5177,10 @@ async fn generate_treasury_wallet_recovery_report(
         config,
         mnemonic.as_str(),
         current_storage_backup_dir.as_path(),
-    )
-    .await;
+    );
     let rebuilt_storage =
-        inspect_treasury_wallet_storage(config, mnemonic.as_str(), rebuilt_storage_dir.as_path())
-            .await;
+        inspect_treasury_wallet_storage(config, mnemonic.as_str(), rebuilt_storage_dir.as_path());
+    let (current_storage, rebuilt_storage) = tokio::join!(current_storage, rebuilt_storage);
     let comparison = build_treasury_wallet_recovery_comparison(&current_storage, &rebuilt_storage);
 
     let report = TreasuryWalletRecoveryReport {
