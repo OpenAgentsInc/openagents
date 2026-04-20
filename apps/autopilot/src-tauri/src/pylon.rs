@@ -4,7 +4,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -154,6 +154,23 @@ pub struct ProofRuntimeProjection {
 #[derive(Default)]
 pub struct PylonManager {
     child: Mutex<Option<ManagedPylonChild>>,
+    last_proof: Arc<Mutex<Option<ProofRunProjection>>>,
+}
+
+impl PylonManager {
+    pub fn store_proof(&self, proof: ProofRunProjection) {
+        if let Ok(mut guard) = self.last_proof.lock() {
+            *guard = Some(proof);
+        }
+    }
+
+    pub fn proof_snapshot(&self) -> Option<ProofRunProjection> {
+        self.last_proof.lock().ok().and_then(|guard| guard.clone())
+    }
+
+    fn proof_store(&self) -> Arc<Mutex<Option<ProofRunProjection>>> {
+        Arc::clone(&self.last_proof)
+    }
 }
 
 struct ManagedPylonChild {
@@ -326,6 +343,7 @@ pub fn pylon_open_logs() -> Result<String, String> {
 #[tauri::command]
 pub fn proof_run(
     app: tauri::AppHandle,
+    state: tauri::State<'_, PylonManager>,
     options: ProofRunOptions,
 ) -> Result<ProofRunProjection, String> {
     let lane = normalize_proof_lane(&options.lane)?;
@@ -375,10 +393,12 @@ pub fn proof_run(
     status.detail = Some(format!(
         "started oa proof run {lane} in background namespace {namespace}"
     ));
+    state.store_proof(status.clone());
     emit_status(&app, "proof://status", &status);
     let app_for_thread = app.clone();
     let background_namespace = namespace.clone();
     let background_lane = lane.clone();
+    let proof_store = state.proof_store();
 
     thread::spawn(move || {
         let output = run_command_with_timeout(
@@ -390,18 +410,27 @@ pub fn proof_run(
             Ok(output) if output.status.success() => {
                 let projection =
                     proof_get_projection(&background_namespace, &background_lane, None);
+                if let Ok(mut guard) = proof_store.lock() {
+                    *guard = Some(projection.clone());
+                }
                 emit_status(&app_for_thread, "proof://summary", &projection);
             }
             Ok(output) => {
                 let mut projection =
                     proof_get_projection(&background_namespace, &background_lane, Some("failed"));
                 projection.detail = Some(command_failure("oa proof run", &output));
+                if let Ok(mut guard) = proof_store.lock() {
+                    *guard = Some(projection.clone());
+                }
                 emit_status(&app_for_thread, "proof://error", &projection);
             }
             Err(error) => {
                 let mut projection =
                     proof_get_projection(&background_namespace, &background_lane, Some("failed"));
                 projection.detail = Some(redact_sensitive(&error));
+                if let Ok(mut guard) = proof_store.lock() {
+                    *guard = Some(projection.clone());
+                }
                 emit_status(&app_for_thread, "proof://error", &projection);
             }
         }
@@ -411,12 +440,17 @@ pub fn proof_run(
 }
 
 #[tauri::command]
-pub fn proof_get(namespace: String) -> ProofRunProjection {
-    proof_get_projection(&namespace, "cs336-a1", None)
+pub fn proof_get(state: tauri::State<'_, PylonManager>, namespace: String) -> ProofRunProjection {
+    let projection = proof_get_projection(&namespace, "cs336-a1", None);
+    state.store_proof(projection.clone());
+    projection
 }
 
 #[tauri::command]
-pub fn proof_doctor(namespace: String) -> Result<ProofRunProjection, String> {
+pub fn proof_doctor(
+    state: tauri::State<'_, PylonManager>,
+    namespace: String,
+) -> Result<ProofRunProjection, String> {
     let binary = resolve_binary_path(BinaryKind::Oa)?;
     let args = vec![
         OsString::from("proof"),
@@ -437,6 +471,7 @@ pub fn proof_doctor(namespace: String) -> Result<ProofRunProjection, String> {
             .and_then(Value::as_bool)
             .map(|configured| format!("proof doctor configured={configured}"));
     }
+    state.store_proof(projection.clone());
     Ok(projection)
 }
 
@@ -675,7 +710,8 @@ fn pylon_status_projection_locked(
         .unwrap_or_else(|| "stopped".to_string());
     let binary_path = snapshot
         .as_ref()
-        .map(|value| value.binary_path.display().to_string());
+        .map(|value| value.binary_path.display().to_string())
+        .or_else(|| resolve_binary(BinaryKind::Pylon).binary_path);
     let config_path = snapshot
         .as_ref()
         .map(|value| value.config_path.clone())
@@ -1111,6 +1147,12 @@ fn default_log_dir() -> PathBuf {
 }
 
 fn proof_namespace_root(namespace: &str) -> PathBuf {
+    if let Ok(root) = env::var("OPENAGENTS_AUTOPILOT_PROOF_ROOT") {
+        let trimmed = root.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed).join(namespace);
+        }
+    }
     home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".openagents")

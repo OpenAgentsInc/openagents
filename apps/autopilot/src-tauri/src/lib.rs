@@ -1,3 +1,4 @@
+pub mod control;
 mod pylon;
 
 #[derive(serde::Serialize)]
@@ -24,6 +25,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(pylon::PylonManager::default())
+        .setup(|app| {
+            control::start_control_plane(app.handle().clone()).map_err(|error| error.into())
+        })
         .invoke_handler(tauri::generate_handler![
             autopilot_status,
             pylon::pylon_detect,

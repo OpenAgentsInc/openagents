@@ -10,6 +10,7 @@ Run from the `openagents` repo root unless noted.
 ```bash
 cargo test -p autopilot --lib
 cargo check -p autopilot
+cargo check -p autopilot --bin autopilotctl-tauri
 cd apps/autopilot && bun run build
 ```
 
@@ -19,6 +20,48 @@ Expected result:
 - Provider mode and proof lane validation reject unsupported values.
 - Redaction keeps token-like/key-like values out of projected errors.
 - TypeScript compiles the Pylon and proof command surfaces.
+- The programmatic Tauri control CLI compiles.
+
+## Programmatic Tauri Control
+
+Use the app-owned control plane before relying on manual UI inspection:
+
+```bash
+scripts/autopilot/tauri-control-smoke.sh --status-only
+```
+
+Expected result:
+
+- The script launches `bun run tauri dev`.
+- The default script supplies deterministic fake `pylon` and `oa` binaries so
+  app control flow is not blocked by machine-local provider configuration.
+- The running app writes a Tauri control manifest.
+- `autopilotctl-tauri status` returns the same Pylon/proof projections that
+  React receives through Tauri commands.
+- JSON artifacts are written under `target/autopilot-tauri-control-smoke/`.
+
+Run the full control smoke when Pylon/proof command behavior changes:
+
+```bash
+scripts/autopilot/tauri-control-smoke.sh
+```
+
+Expected result:
+
+- Pylon status, start, mode, and stop commands are driven through the running
+  Tauri app.
+- The local proof replacement-attempt lane starts in the background, is polled
+  through the running Tauri app, and is checked with `proof doctor`.
+- The app is torn down by the script unless `--keep-running` is supplied.
+- If local Pylon/proof prerequisites are missing, the failing projection shows
+  explicit blocker codes or command detail rather than hanging the app when
+  running with `--real-binaries`.
+
+Use the installed local stack explicitly when that is the thing under test:
+
+```bash
+scripts/autopilot/tauri-control-smoke.sh --real-binaries
+```
 
 ## Pylon Status Projection
 
@@ -36,7 +79,8 @@ Expected result:
 
 ## Pylon Process Control
 
-Manual packaged-app or `bun run tauri dev` validation:
+Manual packaged-app or `bun run tauri dev` validation after the programmatic
+smoke:
 
 1. Open Autopilot.
 2. Press `Command-K`.

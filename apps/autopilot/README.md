@@ -35,6 +35,47 @@ Keep privileged state and authority in Rust-backed commands, events, channels,
 or lower-level OpenAgents services. Keep the TypeScript UI as product projection
 and interaction.
 
+## Programmatic Control
+
+The running Tauri app exposes a loopback-only control plane for agents and
+operator scripts. It writes a manifest at:
+
+```text
+~/.openagents/autopilot/tauri-control.json
+```
+
+From the repo root, inspect the live Tauri app with:
+
+```bash
+cargo run -p autopilot --bin autopilotctl-tauri -- --json status
+```
+
+Drive the Pylon and proof controls through the same Rust command path used by
+the React UI:
+
+```bash
+cargo run -p autopilot --bin autopilotctl-tauri -- --json pylon status
+cargo run -p autopilot --bin autopilotctl-tauri -- --json pylon start
+cargo run -p autopilot --bin autopilotctl-tauri -- --json pylon mode offline
+cargo run -p autopilot --bin autopilotctl-tauri -- --json pylon stop
+cargo run -p autopilot --bin autopilotctl-tauri -- --json smoke \
+  --namespace proof.autopilot.ctl.smoke \
+  --timeout-ms 180000
+```
+
+For a one-command launch-and-control smoke from the repo root:
+
+```bash
+scripts/autopilot/tauri-control-smoke.sh
+```
+
+That smoke launches the real Tauri app and uses deterministic fake `pylon` and
+`oa` binaries by default so the control flow is not blocked by local provider
+configuration. Use `--real-binaries` to drive the installed local stack.
+
+The full runbook lives in
+`../../docs/codex/AUTOPILOT_TAURI_CONTROL.md`.
+
 ## Pylon Process Authority
 
 The Rust side owns Pylon process control in `src-tauri/src/pylon.rs`.
@@ -82,6 +123,9 @@ Proof runs start in the background and return an immediate `running`
 projection. Completion or failure is delivered back to React through Tauri
 events, so the command dialog remains usable for stop/reset while the proof
 lane is active.
+
+Set `OPENAGENTS_AUTOPILOT_PROOF_ROOT` to force proof artifact reads under an
+isolated test root. The namespace is appended to that root.
 
 The card reads the same machine artifacts documented in
 `../../docs/pylon/autopilot-proof-contract.md`:
