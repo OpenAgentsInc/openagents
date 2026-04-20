@@ -16065,6 +16065,40 @@ fn update_training_closeout_progress_observation(
     changed
 }
 
+fn maybe_retire_released_terminal_worker_runtime(
+    state: &mut PylonTrainingRuntimeState,
+    active: &PylonTrainingActiveRuntimeState,
+) -> bool {
+    if active.role != PylonTrainingRoleClaim::Worker
+        || !training_supervision_is_terminal(active.process_state)
+    {
+        return false;
+    }
+    let Some(lease) = state.lease_cache.get(active.lease_id.as_str()) else {
+        return false;
+    };
+    if !training_lease_state_is_terminal(lease.state.as_str()) {
+        return false;
+    }
+    let Some(progress) = state.closeout_progress.get(active.assignment_id.as_str()) else {
+        return false;
+    };
+    if progress.stage != PylonTrainingCloseoutStage::TerminalFailed
+        && progress.stage.ordinal() < PylonTrainingCloseoutStage::WindowSealed.ordinal()
+    {
+        return false;
+    }
+    if state
+        .active_runtime
+        .as_ref()
+        .is_some_and(|runtime| runtime.lease_id == active.lease_id)
+    {
+        state.active_runtime = None;
+        return true;
+    }
+    false
+}
+
 async fn maybe_finalize_training_terminal_validator_challenge(
     identity: &NostrIdentity,
     state: &mut PylonTrainingRuntimeState,
@@ -17163,6 +17197,8 @@ async fn report_training_terminal_runtime_to_authority(
             .get(active.window_id.as_str())
             .map(|window| window.state.clone()),
     );
+
+    changed |= maybe_retire_released_terminal_worker_runtime(state, active);
 
     Ok(changed)
 }
@@ -25498,10 +25534,10 @@ mod tests {
         load_or_create_training_runtime_state, load_product_report, load_receipts_report,
         load_relay_report, load_sandbox_report, load_status_or_detect,
         load_training_artifact_inspection_report, load_training_status_report_local,
-        local_training_release_id, maybe_start_training_supervisor_from_retained_assignment,
-        merge_ledger_earnings, merge_ledger_recent_jobs, mutate_ledger,
-        newest_pending_training_work_offer, now_epoch_ms, parse_args,
-        planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
+        local_training_release_id, maybe_retire_released_terminal_worker_runtime,
+        maybe_start_training_supervisor_from_retained_assignment, merge_ledger_earnings,
+        merge_ledger_recent_jobs, mutate_ledger, newest_pending_training_work_offer, now_epoch_ms,
+        parse_args, planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
         provider_control_plane_runtime_error, provider_presence_client,
         psionic_gemma_benchmark_command_args, psionic_repo_root_candidates_with_inputs,
         publish_announcement_report, publish_training_trn_state, refresh_relay_report,
@@ -25976,6 +26012,69 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             restart_count: 0,
             updated_at_ms: 1_762_491_200_000,
         }
+    }
+
+    #[test]
+    fn released_sealed_worker_runtime_retires_for_validator_followup()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut active = training_active_runtime_fixture();
+        active.process_state = PylonTrainingSupervisorProcessState::Stopped;
+        active.last_exit_code = Some(0);
+        active.failure_receipt_path = None;
+
+        let mut state = PylonTrainingRuntimeState {
+            active_runtime: Some(active.clone()),
+            ..PylonTrainingRuntimeState::default()
+        };
+        state.lease_cache.insert(
+            active.lease_id.clone(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: active.lease_id.clone(),
+                assignment_id: active.assignment_id.clone(),
+                training_run_id: active.training_run_id.clone(),
+                window_id: active.window_id.clone(),
+                membership_revision: active.membership_revision.clone(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "released".to_string(),
+                manifest_digest: Some("sha256:manifest".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: None,
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(active.manifest_path.clone()),
+                runtime_manifest_digest: Some("sha256:runtime".to_string()),
+                runtime_lane_id: Some("psion.actual_pretraining".to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("adapter_training".to_string()),
+                updated_at_ms: now_epoch_ms(),
+            },
+        );
+        let _ = super::record_training_closeout_progress_stage(
+            &mut state,
+            active.assignment_id.as_str(),
+            active.training_run_id.as_str(),
+            active.window_id.as_str(),
+            PylonTrainingRoleClaim::Worker,
+            super::PylonTrainingCloseoutStage::WindowSealed,
+            None,
+            Some("checkpoint://run.alpha/0001".to_string()),
+            Some("sealed".to_string()),
+            None,
+            None,
+            None,
+        );
+
+        ensure(
+            maybe_retire_released_terminal_worker_runtime(&mut state, &active)
+                && state.active_runtime.is_none(),
+            "a released terminal worker should clear active_runtime so validator intake can proceed",
+        )
     }
 
     fn training_supervisor_fixture() -> Result<
