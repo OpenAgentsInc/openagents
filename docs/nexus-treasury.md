@@ -464,9 +464,13 @@ The production wrapper also takes a VM-local recovery lock and runtime-masks
 `nexus-relay` while the report or cutover command is inspecting wallet storage.
 Do not run a second recovery wrapper in parallel. If the lock fails, wait for
 the first recovery command to finish or clean up its recovery containers before
-trying again. The wrapper cleanup trap is main-shell guarded so command
-substitutions cannot unmask or restart `nexus-relay` while an inspection is
-still running.
+trying again. The wrapper performs registry login and image pull before
+stopping `nexus-relay`, then avoids command-substitution capture while cleanup
+is armed; recovery JSON is written through a normal temp file so a subshell
+cannot unmask or restart `nexus-relay` while an inspection is still running.
+After shell edits to the wrapper, run
+`bash scripts/deploy/nexus/test-recover-treasury-wallet-shell-guards.sh`
+before touching production.
 
 Each isolated Spark wallet inspection gets up to
 `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS`; the production

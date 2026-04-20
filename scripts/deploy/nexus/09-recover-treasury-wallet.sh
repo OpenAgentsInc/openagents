@@ -51,8 +51,14 @@ gcloud compute ssh "$NEXUS_VM" \
   --command "set -euo pipefail; \
     exec 9>/tmp/openagents-nexus-treasury-wallet-recovery.lock; \
     flock -n 9 || { echo 'another Nexus treasury wallet recovery action is already running on this VM' >&2; exit 75; }; \
+    ACCESS_TOKEN=\$(curl -fsS -H 'Metadata-Flavor: Google' 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | jq -r '.access_token'); \
+    AR_HOST=\$(echo '$DEPLOY_IMAGE' | cut -d'/' -f1); \
+    echo \"\$ACCESS_TOKEN\" | sudo docker login -u oauth2accesstoken --password-stdin \"https://\${AR_HOST}\" >/dev/null; \
+    sudo docker pull '$DEPLOY_IMAGE' >/dev/null; \
+    REPORT_STDOUT_PATH='/tmp/openagents-nexus-treasury-wallet-recovery-${STAMP}.stdout.json'; \
     cleanup_relay_service() { \
       [[ \"\${BASH_SUBSHELL:-0}\" == \"0\" ]] || return 0; \
+      rm -f \"\$REPORT_STDOUT_PATH\" >/dev/null 2>&1 || true; \
       sudo systemctl unmask nexus-relay >/dev/null 2>&1 || true; \
       sudo systemctl start nexus-relay >/dev/null 2>&1 || true; \
     }; \
@@ -69,10 +75,6 @@ gcloud compute ssh "$NEXUS_VM" \
       sleep 1; \
     done; \
     [[ \"\$RELAY_STOPPED\" == \"1\" ]] || { echo 'nexus-relay did not stop before treasury recovery inspection' >&2; exit 1; }; \
-    ACCESS_TOKEN=\$(curl -fsS -H 'Metadata-Flavor: Google' 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | jq -r '.access_token'); \
-    AR_HOST=\$(echo '$DEPLOY_IMAGE' | cut -d'/' -f1); \
-    echo \"\$ACCESS_TOKEN\" | sudo docker login -u oauth2accesstoken --password-stdin \"https://\${AR_HOST}\" >/dev/null; \
-    sudo docker pull '$DEPLOY_IMAGE' >/dev/null; \
     run_nexus_control() { \
       sudo docker run --rm \
         --entrypoint /usr/local/bin/nexus-control \
@@ -90,8 +92,9 @@ gcloud compute ssh "$NEXUS_VM" \
       local max_attempts='${NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS}'; \
       local status=0; \
       while true; do \
-        if REPORT_JSON=\$(run_nexus_control treasury recovery-report --work-dir '${NEXUS_TREASURY_RECOVERY_WORK_DIR:-}' --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json); then \
-          printf '%s\n' \"\$REPORT_JSON\"; \
+        rm -f \"\$REPORT_STDOUT_PATH\"; \
+        if run_nexus_control treasury recovery-report --work-dir '${NEXUS_TREASURY_RECOVERY_WORK_DIR:-}' --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json >\"\$REPORT_STDOUT_PATH\"; then \
+          cat \"\$REPORT_STDOUT_PATH\"; \
           return 0; \
         fi; \
         status=\$?; \
@@ -104,10 +107,9 @@ gcloud compute ssh "$NEXUS_VM" \
       done; \
     }; \
     if [[ '${NEXUS_TREASURY_RECOVERY_ACTION}' == 'report' || '${NEXUS_TREASURY_RECOVERY_ACTION}' == 'report-and-cutover' ]]; then \
-      REPORT_JSON=\$(run_recovery_report); \
-      printf '%s\n' \"\$REPORT_JSON\"; \
+      run_recovery_report; \
       if [[ '${NEXUS_TREASURY_RECOVERY_ACTION}' == 'report-and-cutover' ]]; then \
-        jq -e '.comparison.validation_passed == true and .comparison.recommended_action == \"cutover_rebuilt_storage_after_service_stop\"' <<<\"\$REPORT_JSON\" >/dev/null; \
+        jq -e '.comparison.validation_passed == true and .comparison.recommended_action == \"cutover_rebuilt_storage_after_service_stop\"' \"\$REPORT_STDOUT_PATH\" >/dev/null; \
         run_nexus_control treasury recovery-cutover --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json; \
       fi; \
     else \
