@@ -1,0 +1,153 @@
+# Autopilot Pylon And Proof Test Matrix
+
+This matrix covers the Autopilot Tauri surface that supervises Pylon and
+visualizes local Pylon/Nexus proof flows.
+
+## Static Verification
+
+Run from the `openagents` repo root unless noted.
+
+```bash
+cargo test -p autopilot --lib
+cargo check -p autopilot
+cd apps/autopilot && bun run build
+```
+
+Expected result:
+
+- Rust projections decode the reduced contract fixtures.
+- Provider mode and proof lane validation reject unsupported values.
+- Redaction keeps token-like/key-like values out of projected errors.
+- TypeScript compiles the Pylon and proof command surfaces.
+
+## Pylon Status Projection
+
+```bash
+cargo run -p pylon --bin pylon -- status --json
+```
+
+Expected result:
+
+- `listen_addr`, `desired_mode`, `snapshot.runtime`, `snapshot.availability`,
+  and `snapshot.inventory_rows` are present.
+- Autopilot can project process state separately from provider state.
+- Missing local Gemma or other blockers remain explicit blocker codes, not
+  generic UI failure.
+
+## Pylon Process Control
+
+Manual packaged-app or `bun run tauri dev` validation:
+
+1. Open Autopilot.
+2. Press `Command-K`.
+3. Run `Show Pylon Status`.
+4. Run `Start Pylon Serve`.
+5. Run `Refresh Pylon`.
+6. Run `Set Provider online`.
+7. Run `Set Provider offline`.
+8. Run `Restart Pylon Serve`.
+9. Run `Stop Pylon Serve`.
+10. Run `Open Pylon Logs`.
+
+Expected result:
+
+- Duplicate starts do not spawn a second managed child for the same app-owned
+  process manager.
+- The status card shows process state, provider state, binary path, config
+  path, Pylon home, blocker codes, last action, last error, and exit code.
+- Logs open under `~/.openagents/autopilot/logs`.
+- No user-provided command text is passed through a shell.
+
+## Local Proof Replacement Smoke
+
+Use the replacement-attempt lane for a fast end-to-end proof visualization
+smoke that does not start worker or validator processes.
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1-replacement-attempt \
+  --namespace proof.autopilot.ui.smoke \
+  --workers 0 \
+  --validators 0 \
+  --timeout-seconds 60 \
+  --json
+```
+
+Expected result:
+
+- `status` is `completed`.
+- The run report detail says the replacement attempt was sealed and reconciled
+  locally.
+- The proof namespace writes:
+  - `fleet/run-report.json`
+  - `fleet/authority-state-trace.json`
+  - `fleet/proof-summary.json`
+  - `artifacts/object-trace.jsonl`
+- Autopilot can project authority, relay, artifact-store, node-surface, worker,
+  validator, simulated-treasury, and closeout stages.
+
+Clean up after the smoke:
+
+```bash
+cargo run -p pylon --bin oa -- proof authority down \
+  --namespace proof.autopilot.ui.smoke \
+  --json
+```
+
+The down command may return non-zero when the post-down probes report that the
+authority and artifact-store processes are no longer running. Confirm cleanup
+with:
+
+```bash
+ps -p <authority_pid>,<artifact_store_pid> -o pid=,command=
+```
+
+Expected result:
+
+- No process remains for those PIDs.
+
+## Local Proof Doctor
+
+```bash
+cargo run -p pylon --bin oa -- proof doctor \
+  --namespace proof.autopilot.ui.smoke \
+  --json
+```
+
+Expected result:
+
+- The doctor output separates authority front door, relay, artifact store,
+  node admin/checkpoint surfaces, process provenance, and workspace provenance.
+- The Autopilot proof card can refresh the transport split without reading raw
+  logs.
+
+## UI Inspection
+
+Run:
+
+```bash
+cd apps/autopilot
+bun run tauri dev
+```
+
+Inspect:
+
+- default view is the centered command textarea and submit button
+- `Command-K` opens the command dialog in the active theme
+- no static runtime/evidence placeholder cards are shown
+- Pylon and Proof cards remain inside the fixed viewport
+- card content scrolls internally when dense rows exceed the viewport
+- local proof surfaces are labeled as local simulation/simulated treasury
+
+## Release Packaging
+
+For packaged validation, provide approved `pylon` and `oa` binaries through one
+of the resolver paths documented in:
+
+- `apps/autopilot/src-tauri/binaries/README.md`
+- `docs/pylon/autopilot-proof-contract.md`
+
+Expected result:
+
+- The packaged app resolves a bundled or app-managed binary before falling back
+  to `PATH`.
+- Source-checkout-only workspace paths are not required for the packaged app.

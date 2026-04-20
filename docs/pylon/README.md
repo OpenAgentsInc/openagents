@@ -20,6 +20,7 @@ The Autopilot desktop projection contract for Pylon process status and local
 proof-flow visualization lives in:
 
 - `docs/pylon/autopilot-proof-contract.md`
+- `docs/pylon/autopilot-test-matrix.md`
 
 Use those docs for different questions:
 

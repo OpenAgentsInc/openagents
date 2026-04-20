@@ -89,6 +89,9 @@ The card reads the same machine artifacts documented in
 The UI labels local proof lanes as local simulation and simulated treasury
 unless a future authority projection proves otherwise.
 
+The current verification matrix lives in
+`../../docs/pylon/autopilot-test-matrix.md`.
+
 ## Recommended IDE Setup
 
 - [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
