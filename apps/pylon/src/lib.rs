@@ -5434,8 +5434,21 @@ fn training_validator_target_artifact<'a>(
         .find(|artifact| artifact.artifact_role == artifact_role)
 }
 
+fn training_validator_authoritative_local_path<'a>(
+    binding: &'a PylonTrainingValidatorTargetArtifactBinding,
+    run_root: &Path,
+) -> Option<&'a Path> {
+    let source_path = Path::new(binding.local_path.as_deref()?.trim());
+    if source_path.is_absolute() && source_path.starts_with(run_root) {
+        Some(source_path)
+    } else {
+        None
+    }
+}
+
 fn training_validator_cached_json_artifact_matches_binding(
     binding: &PylonTrainingValidatorTargetArtifactBinding,
+    run_root: &Path,
     cached_path: &Path,
     label: &str,
 ) -> Result<bool> {
@@ -5443,7 +5456,7 @@ fn training_validator_cached_json_artifact_matches_binding(
         return Ok(false);
     };
 
-    if let Some(source_path) = binding.local_path.as_deref().map(Path::new)
+    if let Some(source_path) = training_validator_authoritative_local_path(binding, run_root)
         && source_path.is_file()
     {
         let Some(source_value) = load_training_json_artifact_value(source_path, label)? else {
@@ -5461,6 +5474,7 @@ fn training_validator_cached_json_artifact_matches_binding(
 }
 
 fn training_validator_cached_target_artifacts_are_current(
+    run_root: &Path,
     lease: &PylonTrainingLeaseCacheEntry,
     target: &PylonTrainingValidatorTargetAssignmentBinding,
 ) -> Result<bool> {
@@ -5490,10 +5504,12 @@ fn training_validator_cached_target_artifacts_are_current(
 
     Ok(training_validator_cached_json_artifact_matches_binding(
         receipt_binding,
+        run_root,
         receipt_path,
         "validator contribution receipt",
     )? && training_validator_cached_json_artifact_matches_binding(
         manifest_binding,
+        run_root,
         manifest_path,
         "validator contribution artifact manifest",
     )?)
@@ -5537,7 +5553,7 @@ fn training_validator_runtime_inputs_materialized(
         return Ok(false);
     };
 
-    training_validator_cached_target_artifacts_are_current(lease, target)
+    training_validator_cached_target_artifacts_are_current(run_root, lease, target)
 }
 
 fn training_validator_outcome_metadata_field<'a>(
@@ -5772,8 +5788,7 @@ async fn materialize_training_validator_target_json_artifact(
     local_path: &Path,
     label: &str,
 ) -> Result<Option<Value>> {
-    if let Some(source_path) = binding.local_path.as_deref() {
-        let source_path = Path::new(source_path);
+    if let Some(source_path) = training_validator_authoritative_local_path(binding, run_root) {
         if source_path.is_file() {
             let value =
                 load_training_json_artifact_value(source_path, label)?.ok_or_else(|| {
@@ -5835,7 +5850,7 @@ async fn ensure_training_validator_challenge_materialized(
         .challenge_id
         .as_deref()
         .is_some_and(|value| !value.trim().is_empty())
-        && training_validator_cached_target_artifacts_are_current(&lease, target)?
+        && training_validator_cached_target_artifacts_are_current(run_root, &lease, target)?
     {
         return Ok(());
     }
@@ -33159,6 +33174,33 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             local_update_bridge_bytes.as_slice(),
         )?;
         std::fs::write(proof_bridge_path.as_path(), proof_bridge_bytes.as_slice())?;
+        write_training_json_value(
+            worker_receipt_path.as_path(),
+            &json!({
+                "schema_version": "psionic.train.contribution_receipt.v1",
+                "assignment_id": "assign.alpha",
+                "contribution_id": "contrib.alpha",
+                "contribution_digest": "receipt.mutated-after-bridge",
+                "artifact_manifest": {
+                    "artifact_ref": {
+                        "artifact_id": "artifact.manifest.mutated",
+                        "artifact_digest": "manifest.mutated"
+                    },
+                    "materialized_path": worker_manifest_path.display().to_string()
+                }
+            }),
+            "mutated worker contribution receipt",
+        )?;
+        write_training_json_value(
+            worker_manifest_path.as_path(),
+            &json!({
+                "schema_version": "psionic.train.contribution_artifact_manifest.v1",
+                "assignment_id": "assign.alpha",
+                "artifact_manifest_digest": "manifest.mutated-after-bridge",
+                "artifacts": []
+            }),
+            "mutated worker contribution artifact manifest",
+        )?;
 
         let local_update_resolver_scope = PylonTrainingArtifactScope {
             network_id: "trainnet.alpha".to_string(),
@@ -33353,6 +33395,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
 
         ensure(
             !super::training_validator_cached_target_artifacts_are_current(
+                run_root.as_path(),
                 state.lease_cache.get(lease_id).expect("validator lease"),
                 response.target_bindings.first().expect("target binding"),
             )?,
@@ -33377,10 +33420,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             refreshed_receipt == worker_receipt
                 && refreshed_manifest == worker_manifest
                 && super::training_validator_cached_target_artifacts_are_current(
+                    run_root.as_path(),
                     state.lease_cache.get(lease_id).expect("validator lease"),
                     response.target_bindings.first().expect("target binding"),
                 )?,
-            "rematerializing a validator challenge should replace stale cached target files with the bound worker artifacts",
+            "rematerializing a validator challenge should replace stale cached target files with the immutable bridge snapshots",
         )
     }
 
