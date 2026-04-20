@@ -24378,10 +24378,7 @@ fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSna
         });
     }
 
-    if health.accepted_work_attention_payout_count > 0
-        || health.payouts_failed_24h > 0
-        || health.payouts_skipped_24h > 0
-    {
+    if health.accepted_work_attention_payout_count > 0 || health.payouts_failed_24h > 0 {
         alerts.push(PublicTrainingLaunchAlert {
             alert_id: "payout_lag".to_string(),
             severity: "critical".to_string(),
@@ -31290,6 +31287,25 @@ mod tests {
         assert_eq!(error.reason, "public_stats_cache_busy");
 
         Ok(())
+    }
+
+    #[test]
+    fn launch_health_does_not_raise_payout_lag_for_skipped_only_placeholder_records() {
+        let mut health = crate::economy::PublicTrainingLaunchHealthSnapshot {
+            payouts_skipped_24h: 5,
+            ..crate::economy::PublicTrainingLaunchHealthSnapshot::default()
+        };
+
+        super::sync_training_launch_health_alerts(&mut health);
+
+        assert_eq!(health.overall_status, "good");
+        assert_eq!(health.critical_alert_count, 0);
+        assert!(
+            !health
+                .alerts
+                .iter()
+                .any(|alert| alert.alert_id == "payout_lag")
+        );
     }
 
     #[tokio::test]
