@@ -25162,6 +25162,7 @@ mod tests {
                 wallet_status_refresh_seconds: 30,
                 funding_target_timeout_ms: 10_000,
                 wallet_recovery_inspection_timeout_ms: 120_000,
+                wallet_recovery_parallel_inspections: false,
                 simulated_wallet_enabled: false,
                 simulated_wallet_balance_sats: 1_000_000,
                 max_concurrent_sends: 16,

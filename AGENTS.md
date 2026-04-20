@@ -145,6 +145,9 @@ Default to:
   `NEXUS_TREASURY_RECOVERY_ACTION=cutover NEXUS_TREASURY_RECOVERY_REPORT_PATH=...`.
   Record the report/deploy receipts and keep `#4368` open until a fresh live
   completed payout send and accepted-work receipt are proven.
+- Treasury recovery inspections run serially by default. Do not enable
+  parallel recovery inspections on production unless the local proof path and
+  upstream Spark health justify the additional remote sync load.
 - Do not run two treasury recovery wrappers in parallel. The wrapper takes a
   VM-local lock and runtime-masks `nexus-relay` during wallet inspection; if
   you find overlapping recovery containers, stop the stale recovery containers
