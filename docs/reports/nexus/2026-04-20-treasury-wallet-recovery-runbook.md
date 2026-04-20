@@ -105,3 +105,13 @@ alone. The acceptance gate is still:
 
 If the recovery report does not validate or does not recommend cutover, keep
 `#4368` open and treat the report as the next debugging artifact.
+
+## Funding Target Behavior
+
+The production funding-target path should be able to return receive targets
+even when full wallet sync is slow. The receive operation returns Spark,
+Bitcoin, and optional Bolt11 material first; wallet-history reconciliation is
+owned by the refresh loop and should not block target creation. If the service
+can return funding material but the refresh loop still times out, fund the
+treasury first and keep `#4368` open until a fresh post-restart send is
+confirmed from the integrated image.

@@ -4381,7 +4381,8 @@ pub async fn create_live_funding_target(
             Some(_) => bail!("treasury funding amount must be greater than 0"),
             None => None,
         };
-        let wallet_snapshot = wallet_snapshot_from_wallet(wallet.as_ref()).await?;
+        let wallet_snapshot =
+            wallet_snapshot_from_wallet_for_funding_target(wallet.as_ref()).await?;
         Ok(TreasuryFundingMaterial {
             spark_address,
             bitcoin_address,
@@ -6353,6 +6354,26 @@ async fn wallet_snapshot_from_wallet(wallet: &SparkWallet) -> Result<TreasuryWal
     wallet_snapshot_from_wallet_with_plan_result(wallet, &TreasuryWalletRefreshPlan::recent_only())
         .await
         .map(|result| result.snapshot)
+}
+
+async fn wallet_snapshot_from_wallet_for_funding_target(
+    wallet: &SparkWallet,
+) -> Result<TreasuryWalletSnapshot> {
+    let balance = wallet
+        .get_balance_cached()
+        .await
+        .context("failed to fetch cached treasury Spark balance for funding target")?;
+    Ok(TreasuryWalletSnapshot {
+        runtime_status: "connected".to_string(),
+        runtime_detail: Some(
+            "funding target returned without full wallet sync; refresh loop owns reconciliation"
+                .to_string(),
+        ),
+        wallet_hydration_mode: Some("cached_balance_for_funding_target".to_string()),
+        wallet_payment_scan_mode: Some("skipped_for_funding_target".to_string()),
+        balance_sats: balance.total_sats(),
+        payments: Vec::new(),
+    })
 }
 
 async fn wallet_snapshot_from_wallet_with_plan_result(
