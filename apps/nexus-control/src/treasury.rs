@@ -1427,6 +1427,8 @@ pub struct TreasuryState {
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_wallet_sync_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_wallet_refresh_attempt_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "is_zero_usize")]
     pub wallet_refresh_history_page_offset: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1935,9 +1937,12 @@ impl TreasuryState {
     }
 
     pub fn wallet_refresh_due(&self, config: &TreasuryConfig, now_unix_ms: u64) -> bool {
-        self.last_wallet_sync_at_unix_ms.is_none_or(|last_sync| {
-            now_unix_ms.saturating_sub(last_sync) >= config.wallet_status_refresh_interval_ms()
-        })
+        self.last_wallet_sync_at_unix_ms
+            .max(self.last_wallet_refresh_attempt_at_unix_ms)
+            .is_none_or(|last_refresh| {
+                now_unix_ms.saturating_sub(last_refresh)
+                    >= config.wallet_status_refresh_interval_ms()
+            })
     }
 
     pub fn due_wallet_refresh_requires_reconciliation(&self) -> bool {
@@ -2807,7 +2812,7 @@ impl TreasuryState {
         rows
     }
 
-    fn training_payout_ledger_summary(&self) -> TreasuryTrainingPayoutLedgerSummary {
+    pub(crate) fn training_payout_ledger_summary(&self) -> TreasuryTrainingPayoutLedgerSummary {
         let mut summary = TreasuryTrainingPayoutLedgerSummary::default();
 
         for record in self.payout_records_by_key.values() {
@@ -3066,6 +3071,23 @@ impl TreasuryState {
         self.wallet_runtime_status = Some("error".to_string());
         self.wallet_last_error = Some(detail);
         self.persist();
+    }
+
+    pub fn record_wallet_refresh_error(&mut self, detail: impl Into<String>, now_unix_ms: u64) {
+        let detail = detail.into();
+        let status_changed = self.wallet_runtime_status.as_deref() != Some("error")
+            || self.wallet_last_error.as_deref() != Some(detail.as_str());
+        let had_recorded_attempt = self.last_wallet_refresh_attempt_at_unix_ms.is_some();
+        self.wallet_runtime_status = Some("error".to_string());
+        self.wallet_last_error = Some(detail);
+        self.last_wallet_refresh_attempt_at_unix_ms = Some(
+            self.last_wallet_refresh_attempt_at_unix_ms
+                .unwrap_or(now_unix_ms)
+                .max(now_unix_ms),
+        );
+        if status_changed || !had_recorded_attempt {
+            self.persist();
+        }
     }
 
     pub fn note_wallet_recovery_report(&mut self, report: &TreasuryWalletRecoveryReport) {
@@ -3721,6 +3743,7 @@ impl TreasuryState {
         self.wallet_balance_sats = snapshot.balance_sats;
         self.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
         self.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        self.last_wallet_refresh_attempt_at_unix_ms = Some(now_unix_ms);
 
         let mut receipt_events = Vec::new();
         let mut persist_needed = false;
@@ -7915,6 +7938,56 @@ mod tests {
             warning_stats.degraded_reason.as_deref(),
             Some("wallet_snapshot_stale:60001")
         );
+    }
+
+    #[test]
+    fn wallet_refresh_failed_attempt_backs_off_due_check_without_faking_sync() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.wallet_status_refresh_seconds = 30;
+        let now_unix_ms = 1_000_000;
+
+        assert!(state.wallet_refresh_due(&config, now_unix_ms));
+
+        state.record_wallet_refresh_error("not_enough_funds", now_unix_ms);
+
+        assert_eq!(state.last_wallet_sync_at_unix_ms, None);
+        assert_eq!(
+            state.last_wallet_refresh_attempt_at_unix_ms,
+            Some(now_unix_ms)
+        );
+        assert!(!state.wallet_refresh_due(&config, now_unix_ms + 29_999));
+        assert!(state.wallet_refresh_due(&config, now_unix_ms + 30_000));
+    }
+
+    #[test]
+    fn repeated_wallet_refresh_error_updates_backoff_without_rewriting_state() {
+        let path = unique_treasury_state_path("wallet-refresh-error-noop");
+        let mut state = TreasuryState::default();
+        state.state_path = Some(path.clone());
+
+        state.record_wallet_refresh_error("not_enough_funds", 1_000_000);
+        let persisted_first = std::fs::read_to_string(path.as_path()).expect("read first persist");
+
+        state.record_wallet_refresh_error("not_enough_funds", 1_030_000);
+
+        assert_eq!(
+            state.last_wallet_refresh_attempt_at_unix_ms,
+            Some(1_030_000)
+        );
+        assert_eq!(
+            std::fs::read_to_string(path.as_path()).expect("read repeated failure persist"),
+            persisted_first
+        );
+
+        state.record_wallet_refresh_error("wallet_refresh_timeout:60000", 1_060_000);
+        let persisted_changed =
+            std::fs::read_to_string(path.as_path()).expect("read changed failure persist");
+
+        assert_ne!(persisted_changed, persisted_first);
+        assert!(persisted_changed.contains("wallet_refresh_timeout:60000"));
+
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

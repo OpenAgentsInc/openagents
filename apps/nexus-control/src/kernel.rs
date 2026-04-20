@@ -550,7 +550,7 @@ pub struct TrainingTrnPublicationRecord {
     pub last_error: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relay_outcomes: Vec<TrainingTrnRelayPublicationOutcome>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip)]
     pub template: Option<TrainingTrnPublicationTemplate>,
 }
 
@@ -1048,6 +1048,7 @@ struct PersistedComputeAuthorityState {
     training_validator_challenge_receipts:
         BTreeMap<String, TrainingValidatorChallengeReceiptRecord>,
     compute_indices: BTreeMap<String, ComputeIndexRecord>,
+    #[serde(default, skip)]
     snapshots: BTreeMap<i64, EconomySnapshot>,
     next_projection_seq: u64,
 }
@@ -2102,7 +2103,11 @@ impl KernelState {
             persistence_path,
             ..Self::default()
         };
-        state.load_persisted_compute_authority_state();
+        if state.load_persisted_compute_authority_state() {
+            if let Err(error) = state.persist_compute_authority_state() {
+                tracing::warn!("kernel_state_startup_compaction_failed:{error}");
+            }
+        }
         state
     }
 
@@ -3981,20 +3986,20 @@ impl KernelState {
             .map(|record| record.index.clone())
     }
 
-    fn load_persisted_compute_authority_state(&mut self) {
+    fn load_persisted_compute_authority_state(&mut self) -> bool {
         let Some(path) = self.persistence_path.clone() else {
-            return;
+            return false;
         };
         let contents = match fs::read_to_string(path.as_path()) {
             Ok(contents) => contents,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return false,
             Err(error) => {
                 self.last_persistence_error = Some(format!(
                     "kernel_state_read_failed:{}:{}",
                     path.display(),
                     error
                 ));
-                return;
+                return false;
             }
         };
         let persisted =
@@ -4006,7 +4011,7 @@ impl KernelState {
                         path.display(),
                         error
                     ));
-                    return;
+                    return false;
                 }
             };
         if persisted.schema_version != COMPUTE_AUTHORITY_STATE_SCHEMA_VERSION {
@@ -4015,7 +4020,7 @@ impl KernelState {
                 path.display(),
                 persisted.schema_version
             ));
-            return;
+            return false;
         }
         self.receipt_store = InMemoryReceiptStore::from_persisted(persisted.receipt_store);
         self.compute_products = persisted.compute_products.into_iter().collect();
@@ -4067,6 +4072,7 @@ impl KernelState {
         self.snapshots = persisted.snapshots;
         self.next_projection_seq = persisted.next_projection_seq.max(1);
         self.last_persistence_error = None;
+        true
     }
 
     fn persist_compute_authority_state(&mut self) -> Result<(), String> {
@@ -15674,7 +15680,8 @@ mod tests {
         ComputeBondDraw, ComputeProductRecord, ComputeRiskTrigger,
         FinalizeValidatorChallengeRequest, KernelMutationContext, KernelState,
         LeaseValidatorChallengeRequest, RetryValidatorChallengeRequest,
-        ScheduleValidatorChallengeRequest, compute_index_family_id, compute_index_methodology_id,
+        ScheduleValidatorChallengeRequest, TrainingTrnPublicationRecord,
+        TrainingTrnPublicationTemplate, compute_index_family_id, compute_index_methodology_id,
         compute_index_minimum_proof_posture, decode_metadata_struct, floor_to_minute_utc,
         money_amount_value,
     };
@@ -17503,6 +17510,13 @@ mod tests {
             product.response.receipt.receipt_id
         };
 
+        let persisted_payload =
+            std::fs::read_to_string(path.as_path()).expect("read persisted authority state");
+        assert!(
+            !persisted_payload.contains("\"snapshots\""),
+            "cached economy snapshots should be recomputed, not persisted"
+        );
+
         let mut reloaded = KernelState::new_with_persistence(Some(path.clone()));
         assert_eq!(reloaded.list_compute_products(None).len(), 1);
         assert_eq!(
@@ -17538,6 +17552,56 @@ mod tests {
         assert_eq!(replay.response.receipt.receipt_id, first_product_receipt_id);
         assert!(replay.receipt_event.is_none());
         assert!(replay.snapshot_event.is_none());
+
+        let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn persisted_training_trn_publication_records_omit_retained_templates() {
+        let path = temp_kernel_state_path();
+        let marker = "large-retained-template-marker";
+        let publication_key = "trn.test.publication";
+        let mut kernel = KernelState::new_with_persistence(Some(path.clone()));
+
+        kernel
+            .upsert_training_trn_publication_state(
+                None,
+                TrainingTrnPublicationRecord {
+                    publication_key: publication_key.to_string(),
+                    subject_kind: "run".to_string(),
+                    subject_id: "run.cs336.a1.template.compaction".to_string(),
+                    event_kind: 30_023,
+                    fingerprint: "sha256:template-compaction".to_string(),
+                    relay_urls: vec!["wss://relay.example".to_string()],
+                    a_ref: None,
+                    event_id: None,
+                    published_at_ms: None,
+                    last_attempt_at_ms: 1_776_000_000_000,
+                    attempt_count: 1,
+                    pending_retry: true,
+                    last_error: Some("relay_unavailable".to_string()),
+                    relay_outcomes: Vec::new(),
+                    template: Some(TrainingTrnPublicationTemplate {
+                        event_kind: 30_023,
+                        tags: vec![vec!["t".to_string(), "cs336".to_string()]],
+                        content: format!("{marker}:{}", "x".repeat(4096)),
+                    }),
+                },
+            )
+            .expect("persist publication record");
+
+        let payload = std::fs::read_to_string(path.as_path()).expect("read persisted kernel state");
+        assert!(
+            !payload.contains(marker),
+            "retained TRN template content should stay out of the persisted kernel snapshot"
+        );
+
+        let reloaded = KernelState::new_with_persistence(Some(path.clone()));
+        let record = reloaded
+            .get_training_trn_publication_record(publication_key)
+            .expect("publication record reloaded");
+        assert_eq!(record.fingerprint, "sha256:template-compaction");
+        assert!(record.template.is_none());
 
         let _ = std::fs::remove_file(path.as_path());
     }
