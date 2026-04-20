@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 STAMP="${ISSUE_4368_PROOF_STAMP:-$(date -u +%Y%m%d%H%M%S)}"
 OUT_DIR="${ISSUE_4368_PROOF_OUT_DIR:-var/proof/issue-4368-local-closure-${STAMP}}"
+SMOKE_OUT_DIR="${OUT_DIR}/post-deploy-smoke-simulation"
 REPLACE_NS="proof.4368.local.${STAMP}.replace"
 STALE_NS="proof.4368.local.${STAMP}.stale"
 
@@ -69,6 +70,7 @@ run_logged recovery-cutover cargo test -p nexus-control recovery_cutover -- --no
 run_logged homework-pay cargo test -p nexus-control launch_homework_on_all_updated_online_pylons_and_pay_on_accept -- --nocapture
 run_logged build-oa cargo build -p pylon --bin oa
 run_logged build-nexus-relay cargo build -p nexus-relay --bin nexus-relay
+run_logged post-deploy-smoke-simulation env ISSUE_4368_SMOKE_OUT_DIR="$SMOKE_OUT_DIR" scripts/pylon/issue-4368-post-deploy-smoke-simulation.sh
 
 log "running replacement-attempt proof lane"
 target/debug/oa proof run cs336-a1-replacement-attempt \
@@ -97,6 +99,7 @@ jq -n \
   --arg out_dir "$OUT_DIR" \
   --arg replacement_namespace "$REPLACE_NS" \
   --arg stale_namespace "$STALE_NS" \
+  --slurpfile smoke "$SMOKE_OUT_DIR/post-deploy-smoke-simulation.json" \
   --slurpfile replacement "$OUT_DIR/${REPLACE_NS}/run-report.json" \
   --slurpfile stale "$OUT_DIR/${STALE_NS}/run-report.json" \
   '{
@@ -107,6 +110,12 @@ jq -n \
     replacement_namespace: $replacement_namespace,
     stale_namespace: $stale_namespace,
     status: "completed",
+    post_deploy_smoke_simulation: {
+      decision: $smoke[0].decision,
+      reason: $smoke[0].reason,
+      reproduced_current_failure: $smoke[0].reproduced_current_failure,
+      report: ($out_dir + "/post-deploy-smoke-simulation/post-deploy-smoke-simulation.json")
+    },
     replacement: {
       status: $replacement[0].status,
       closeout: $replacement[0].observed_run.run.latest_closeout_status,

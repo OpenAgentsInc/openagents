@@ -15792,28 +15792,6 @@ async fn create_treasury_funding_target(
         Err(_) => {
             let timeout_reason = format!("treasury_funding_target_timeout:{timeout_ms}");
             tracing::error!("treasury funding target timed out: {timeout_reason}");
-            let now = now_unix_ms();
-            match state.store.try_write() {
-                Ok(mut store) => {
-                    store
-                        .treasury
-                        .record_wallet_refresh_error(timeout_reason.clone(), now);
-                    store
-                        .treasury
-                        .refresh_public_snapshot_in_memory(&state.config.treasury, now);
-                }
-                Err(TryLockError::WouldBlock) => {
-                    tracing::warn!(
-                        "treasury funding target timeout could not record wallet error because store is busy"
-                    );
-                }
-                Err(TryLockError::Poisoned(_)) => {
-                    tracing::error!(
-                        "treasury funding target timeout could not record wallet error because store is poisoned"
-                    );
-                }
-            }
-            let _ = try_force_refresh_public_stats_cache(&state, now);
             return Err(ApiError {
                 status: StatusCode::GATEWAY_TIMEOUT,
                 error: "gateway_timeout",
@@ -30688,7 +30666,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn treasury_funding_target_times_out_and_records_wallet_error() -> Result<()> {
+    async fn treasury_funding_target_times_out_without_poisoning_wallet_status() -> Result<()> {
         let mut config = test_config()?;
         config.treasury.enabled = true;
         config.treasury.funding_target_timeout_ms = 5;
@@ -30696,6 +30674,24 @@ mod tests {
         let _guard = treasury_test_hook_lock()
             .lock()
             .expect("treasury hook guard");
+        {
+            let mut store = state.store.write().expect("seed treasury status");
+            let now = now_unix_ms();
+            store.treasury.apply_wallet_snapshot(
+                &TreasuryWalletSnapshot {
+                    runtime_status: "connected".to_string(),
+                    runtime_detail: None,
+                    wallet_hydration_mode: None,
+                    wallet_payment_scan_mode: None,
+                    balance_sats: 710,
+                    payments: Vec::new(),
+                },
+                now,
+            );
+            store
+                .treasury
+                .refresh_public_snapshot_in_memory(&state.config.treasury, now);
+        }
 
         set_test_wallet_funding_hook(Some(Arc::new(|_request| {
             Box::pin(async move {
@@ -30750,11 +30746,9 @@ mod tests {
             .await?;
         assert_eq!(status_response.status(), StatusCode::OK);
         let status: TreasuryStatusResponse = response_json(status_response).await?;
-        assert_eq!(status.wallet_runtime_status.as_deref(), Some("error"));
-        assert_eq!(
-            status.wallet_last_error.as_deref(),
-            Some("treasury_funding_target_timeout:5")
-        );
+        assert_eq!(status.wallet_runtime_status.as_deref(), Some("connected"));
+        assert_eq!(status.wallet_last_error, None);
+        assert_eq!(status.wallet_balance_sats, 710);
 
         set_test_wallet_funding_hook(None);
         Ok(())
