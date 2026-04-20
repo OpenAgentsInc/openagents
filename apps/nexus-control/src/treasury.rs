@@ -4522,7 +4522,7 @@ pub async fn dispatch_live_payouts(
         .into_iter()
         .map(|(_, outcome)| outcome)
         .collect();
-    disconnect_cached_live_wallet(wallet).await;
+    disconnect_live_wallet(wallet).await;
 
     TreasuryDispatchBatchResult {
         outcomes,
@@ -6098,39 +6098,11 @@ fn truncate_target(value: &str) -> String {
     )
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct LiveWalletCacheKey {
-    wallet_mnemonic_path: PathBuf,
-    wallet_storage_dir: PathBuf,
-    wallet_network: String,
-    wallet_api_key_env: Option<String>,
-}
-
-#[derive(Clone)]
-struct LiveWalletCacheEntry {
-    key: LiveWalletCacheKey,
-    wallet: Arc<SparkWallet>,
-}
-
 const LIVE_WALLET_DISCONNECT_TIMEOUT_MS: u64 = 5_000;
-
-fn live_wallet_cache() -> &'static AsyncMutex<Option<LiveWalletCacheEntry>> {
-    static CACHE: OnceLock<AsyncMutex<Option<LiveWalletCacheEntry>>> = OnceLock::new();
-    CACHE.get_or_init(|| AsyncMutex::new(None))
-}
 
 fn live_wallet_operation_lock() -> &'static AsyncMutex<()> {
     static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| AsyncMutex::new(()))
-}
-
-fn live_wallet_cache_key(config: &TreasuryConfig) -> LiveWalletCacheKey {
-    LiveWalletCacheKey {
-        wallet_mnemonic_path: config.wallet_mnemonic_path.clone(),
-        wallet_storage_dir: config.wallet_storage_dir.clone(),
-        wallet_network: config.wallet_network.clone(),
-        wallet_api_key_env: config.wallet_api_key_env.clone(),
-    }
 }
 
 async fn with_live_wallet<F, Fut, T>(
@@ -6146,31 +6118,22 @@ where
     let _operation_guard = operation_lock.lock().await;
     let wallet = open_wallet(config, create_if_missing).await?;
     let result = operation(wallet.clone()).await;
-    disconnect_cached_live_wallet(wallet).await;
+    disconnect_live_wallet(wallet).await;
     result
 }
 
 async fn open_wallet(config: &TreasuryConfig, create_if_missing: bool) -> Result<Arc<SparkWallet>> {
-    let cache_key = live_wallet_cache_key(config);
-    let cache = live_wallet_cache();
-    let mut cache_guard = cache.lock().await;
-    if let Some(entry) = cache_guard.as_ref()
-        && entry.key == cache_key
-    {
-        return Ok(entry.wallet.clone());
-    }
-    let wallet = Arc::new(open_wallet_uncached(config, create_if_missing).await?);
-    *cache_guard = Some(LiveWalletCacheEntry {
-        key: cache_key,
-        wallet: wallet.clone(),
-    });
-    Ok(wallet)
+    Ok(Arc::new(
+        open_wallet_uncached(config, create_if_missing).await?,
+    ))
 }
 
-async fn disconnect_cached_live_wallet(wallet: Arc<SparkWallet>) {
+async fn disconnect_live_wallet(wallet: Arc<SparkWallet>) {
     // The bounded treasury runtime does not need to retain a long-lived Spark
-    // session between refresh/send cycles, and prod showed that keeping the SDK
-    // alive here can accumulate large numbers of localhost wallet RPC sockets.
+    // session between refresh/send cycles. Avoid a shared wallet cache here:
+    // outer timeout guards can cancel wallet futures before this disconnect
+    // path runs, and a globally cached Arc would let the next operation reuse a
+    // stuck SDK handle.
     match tokio::time::timeout(
         Duration::from_millis(LIVE_WALLET_DISCONNECT_TIMEOUT_MS),
         wallet.disconnect(),
@@ -6187,15 +6150,6 @@ async fn disconnect_cached_live_wallet(wallet: Arc<SparkWallet>) {
                 LIVE_WALLET_DISCONNECT_TIMEOUT_MS
             );
         }
-    }
-
-    let cache = live_wallet_cache();
-    let mut cache_guard = cache.lock().await;
-    if cache_guard
-        .as_ref()
-        .is_some_and(|entry| Arc::ptr_eq(&entry.wallet, &wallet))
-    {
-        *cache_guard = None;
     }
 }
 

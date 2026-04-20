@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-04-20T07:44:42Z",
+  "kind": "nexus_image_deploy_smoke_failed",
+  "git_short_sha": "e18a1dafc4cd",
+  "candidate_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:e18a1dafc4cd",
+  "rollback_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:da7491d28e3e",
+  "build_receipt": "docs/reports/nexus/20260420-072614-cloudbuild-image-e18a1dafc4cd.json",
+  "deploy_started_at": "2026-04-20T07:32:23Z",
+  "rollback_started_at": "2026-04-20T07:39:31Z",
+  "post_deploy_smoke": {
+    "result": "failed",
+    "warmup_grace_seconds": 180,
+    "timeout_seconds": 360,
+    "final_phase": "stalled_candidate",
+    "service_state": "active",
+    "service_uptime_seconds": 365,
+    "recent_completed": 0,
+    "inference_ready": 95,
+    "wallet_runtime_status": "error",
+    "last_dispatch_at_unix_ms": 1776207790501
+  },
+  "observations": [
+    "The candidate service stayed active after restart.",
+    "Inference presence recovered during warmup.",
+    "No fresh completed payout evidence appeared before the smoke timeout.",
+    "The wallet runtime stayed in error state, so the deploy script rolled back to the prior image."
+  ],
+  "conclusion": "This build did not satisfy the live #4368 gate. The remaining blocker is live treasury wallet/funding/payout continuity, not the local homework scheduler proof."
+}
