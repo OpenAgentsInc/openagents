@@ -3,7 +3,9 @@ import * as React from "react";
 import {
   CheckCircle,
   Command as CommandIcon,
+  Moon,
   Pulse,
+  Sun,
 } from "@phosphor-icons/react";
 
 import { Badge } from "@/components/ui/badge";
@@ -27,8 +29,10 @@ import {
 } from "@/components/ui/command";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 type DemoView = "runtime" | "evidence";
+type Theme = "light" | "dark";
 
 const viewLabels: Record<DemoView, string> = {
   runtime: "Runtime",
@@ -38,8 +42,7 @@ const viewLabels: Record<DemoView, string> = {
 function App() {
   const [activeView, setActiveView] = React.useState<DemoView>("runtime");
   const [commandOpen, setCommandOpen] = React.useState(false);
-
-  useDarkThemeClass();
+  const [theme, setTheme] = useTheme();
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -64,18 +67,43 @@ function App() {
         <div className="command-stage__bar">
           <Badge variant="outline">ACTIVE: {viewLabels[activeView]}</Badge>
 
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setCommandOpen(true)}
-          >
-            <CommandIcon aria-hidden="true" data-icon="inline-start" />
-            Command
-            <KbdGroup className="ml-1">
-              <Kbd>⌘</Kbd>
-              <Kbd>K</Kbd>
-            </KbdGroup>
-          </Button>
+          <div className="command-stage__actions">
+            <ToggleGroup
+              aria-label="Theme"
+              value={[theme]}
+              variant="outline"
+              size="sm"
+              onValueChange={(value) => {
+                const nextTheme = value[0];
+
+                if (nextTheme === "light" || nextTheme === "dark") {
+                  setTheme(nextTheme);
+                }
+              }}
+            >
+              <ToggleGroupItem value="dark" aria-label="Use dark theme">
+                <Moon aria-hidden="true" data-icon="inline-start" />
+                Dark
+              </ToggleGroupItem>
+              <ToggleGroupItem value="light" aria-label="Use light theme">
+                <Sun aria-hidden="true" data-icon="inline-start" />
+                Light
+              </ToggleGroupItem>
+            </ToggleGroup>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCommandOpen(true)}
+            >
+              <CommandIcon aria-hidden="true" data-icon="inline-start" />
+              Command
+              <KbdGroup className="ml-1">
+                <Kbd>⌘</Kbd>
+                <Kbd>K</Kbd>
+              </KbdGroup>
+            </Button>
+          </div>
         </div>
 
         <Separator />
@@ -178,12 +206,22 @@ function EvidenceDemoCard() {
   );
 }
 
-function useDarkThemeClass() {
+function useTheme(): [Theme, React.Dispatch<React.SetStateAction<Theme>>] {
+  const [theme, setTheme] = React.useState<Theme>(() => {
+    const storedTheme = window.localStorage.getItem("autopilot.theme");
+
+    return storedTheme === "light" ? "light" : "dark";
+  });
+
   React.useLayoutEffect(() => {
     const root = document.documentElement;
-    root.classList.add("dark");
-    root.style.colorScheme = "dark";
-  }, []);
+    root.classList.toggle("dark", theme === "dark");
+    root.classList.toggle("light", theme === "light");
+    root.style.colorScheme = theme;
+    window.localStorage.setItem("autopilot.theme", theme);
+  }, [theme]);
+
+  return [theme, setTheme];
 }
 
 export default App;

@@ -1,7 +1,7 @@
 :root {
-  --bg-app: #08090a;
+  --bg-app: var(--background);
   background: var(--bg-app);
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 :root.dark {
@@ -50,6 +50,12 @@ body,
   gap: 0.75rem;
   min-width: 0;
   padding: 0.75rem;
+}
+
+.command-stage__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .command-stage__card {
@@ -101,6 +107,11 @@ body,
 
 @media (max-width: 520px) {
   .command-stage__bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .command-stage__actions {
     align-items: stretch;
     flex-direction: column;
   }
