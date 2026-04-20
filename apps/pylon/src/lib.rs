@@ -5298,6 +5298,39 @@ fn write_training_json_value(path: &Path, value: &Value, label: &str) -> Result<
     write_training_artifact_destination(path, payload.as_slice())
 }
 
+fn training_safe_path_segment(raw: &str, fallback_prefix: &str) -> String {
+    let sanitized = raw
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let sanitized = sanitized.trim_matches(['.', '_', '-']).to_string();
+    if !sanitized.is_empty() && sanitized.len() <= 96 {
+        return sanitized;
+    }
+    let digest = training_raw_sha256_hex(raw.as_bytes());
+    let readable = sanitized
+        .chars()
+        .take(48)
+        .collect::<String>()
+        .trim_matches(['.', '_', '-'])
+        .to_string();
+    if readable.is_empty() {
+        format!("{}-{}", fallback_prefix, &digest[..24])
+    } else {
+        format!("{}-{}", readable, &digest[..24])
+    }
+}
+
+fn training_validator_challenge_path_segment(challenge_id: &str) -> String {
+    training_safe_path_segment(challenge_id, "challenge")
+}
+
 fn training_validator_claim_record_path(
     run_root: &Path,
     window_id: &str,
@@ -5307,7 +5340,7 @@ fn training_validator_claim_record_path(
         .join("windows")
         .join(window_id)
         .join("validators")
-        .join(challenge_id)
+        .join(training_validator_challenge_path_segment(challenge_id))
         .join("claim.json")
 }
 
@@ -9995,10 +10028,56 @@ fn training_heartbeat_error_requires_readmission(error: &str) -> bool {
     error.contains("training_node_not_found")
 }
 
+fn training_retained_assignment_authority_error_is_stale(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    let not_found = normalized.contains("status=404")
+        || normalized.contains("status 404")
+        || normalized.contains("failed with status 404")
+        || normalized.contains("error=not_found")
+        || normalized.contains("\"error\":\"not_found\"");
+    let stale_training_record = normalized.contains("kernel_compute_training_run_not_found")
+        || normalized.contains("kernel_compute_training_window_not_found")
+        || normalized.contains("training_run_not_found")
+        || normalized.contains("training_window_not_found")
+        || normalized.contains("training_assignment_not_found")
+        || normalized.contains("training_lease_not_found");
+    not_found && stale_training_record
+}
+
 fn training_lease_claim_error_is_nonfatal(error: &str) -> bool {
     error.contains("training_scheduler_assignment_unavailable")
         || error.contains("training_node_not_eligible")
         || error.contains("training_scheduler_role_overlap_forbidden")
+}
+
+fn retire_stale_retained_training_assignment(
+    state: &mut PylonTrainingRuntimeState,
+    lease_id: &str,
+    window_id: &str,
+    reason: &str,
+) -> bool {
+    let mut changed = false;
+    if state
+        .active_runtime
+        .as_ref()
+        .is_some_and(|active| active.lease_id == lease_id)
+    {
+        state.active_runtime = None;
+        changed = true;
+    }
+    if state.lease_cache.remove(lease_id).is_some() {
+        changed = true;
+    }
+    if state.window_cache.remove(window_id).is_some() {
+        changed = true;
+    }
+    if changed {
+        training_trace(&format!(
+            "retired stale retained training assignment lease={} window={} after authority mismatch: {}",
+            lease_id, window_id, reason
+        ));
+    }
+    changed
 }
 
 fn build_training_node_admission_request(
@@ -10287,32 +10366,48 @@ async fn run_training_assignment_intake_once_with_context(
     );
     let supported_roles =
         supported_training_role_claims(config, &contributor_availability, &capability_tier);
-    if state
+    if let Some(runtime) = state
         .active_runtime
         .as_ref()
-        .is_some_and(|runtime| training_supervision_is_active(runtime.process_state))
+        .filter(|runtime| training_supervision_is_active(runtime.process_state))
+        .cloned()
     {
-        if let Some(runtime) = state.active_runtime.as_ref() {
-            training_trace(&format!(
-                "active runtime present for assignment {} state={}",
-                runtime.assignment_id,
-                training_process_state_label(runtime.process_state)
-            ));
-            report_training_heartbeat_with_readmission(
-                &client,
-                config,
-                identity,
-                state,
-                host,
-                &contributor_availability,
-                &capability_tier,
-                &capability_envelope_v2,
-                &supported_roles,
-                &training_runtime_presence_heartbeat_request(identity, now_epoch_ms(), runtime),
-            )
-            .await?;
+        training_trace(&format!(
+            "active runtime present for assignment {} state={}",
+            runtime.assignment_id,
+            training_process_state_label(runtime.process_state)
+        ));
+        match report_training_heartbeat_with_readmission(
+            &client,
+            config,
+            identity,
+            state,
+            host,
+            &contributor_availability,
+            &capability_tier,
+            &capability_envelope_v2,
+            &supported_roles,
+            &training_runtime_presence_heartbeat_request(identity, now_epoch_ms(), &runtime),
+        )
+        .await
+        {
+            Ok(_) => return Ok(()),
+            Err(error)
+                if training_retained_assignment_authority_error_is_stale(&error.to_string())
+                    && runtime
+                        .pid
+                        .is_none_or(|pid| !training_supervisor_pid_is_running(pid)) =>
+            {
+                let reason = error.to_string();
+                retire_stale_retained_training_assignment(
+                    state,
+                    runtime.lease_id.as_str(),
+                    runtime.window_id.as_str(),
+                    reason.as_str(),
+                );
+            }
+            Err(error) => return Err(error),
         }
-        return Ok(());
     }
     if !training_runtime_blocked_label_keys(state).is_empty() {
         return Ok(());
@@ -10341,7 +10436,8 @@ async fn run_training_assignment_intake_once_with_context(
             "reusing cached lease {} assignment={} state={}",
             existing_lease.lease_id, existing_lease.assignment_id, existing_lease.state
         ));
-        report_training_heartbeat_with_readmission(
+        let mut cached_lease_retired = false;
+        match report_training_heartbeat_with_readmission(
             &client,
             config,
             identity,
@@ -10353,57 +10449,114 @@ async fn run_training_assignment_intake_once_with_context(
             &supported_roles,
             &training_lease_presence_heartbeat_request(identity, now_epoch_ms(), &existing_lease),
         )
-        .await?;
-        let runtime_surface = runtime_surface.ok_or_else(|| {
-            anyhow!("psionic-train runtime surface is required to materialize a leased assignment")
-        })?;
-        training_trace(&format!(
-            "materializing runtime manifest for cached lease {}",
-            existing_lease.lease_id
-        ));
-        let materialized = ensure_training_assignment_runtime_manifest(
-            config,
-            identity,
-            state,
-            &client,
-            runtime_surface,
-            existing_lease.lease_id.as_str(),
-        )
-        .await?;
-        if training_lease_state_is_acknowledged(existing_lease.state.as_str()) {
+        .await
+        {
+            Ok(_) => {}
+            Err(error)
+                if training_retained_assignment_authority_error_is_stale(&error.to_string()) =>
+            {
+                let reason = error.to_string();
+                cached_lease_retired = retire_stale_retained_training_assignment(
+                    state,
+                    existing_lease.lease_id.as_str(),
+                    existing_lease.window_id.as_str(),
+                    reason.as_str(),
+                );
+            }
+            Err(error) => return Err(error),
+        }
+        if !cached_lease_retired {
+            let runtime_surface = runtime_surface.ok_or_else(|| {
+                anyhow!(
+                    "psionic-train runtime surface is required to materialize a leased assignment"
+                )
+            })?;
             training_trace(&format!(
-                "cached lease {} already acknowledged",
+                "materializing runtime manifest for cached lease {}",
                 existing_lease.lease_id
             ));
-            return Ok(());
+            match ensure_training_assignment_runtime_manifest(
+                config,
+                identity,
+                state,
+                &client,
+                runtime_surface,
+                existing_lease.lease_id.as_str(),
+            )
+            .await
+            {
+                Ok(materialized) => {
+                    if training_lease_state_is_acknowledged(existing_lease.state.as_str()) {
+                        training_trace(&format!(
+                            "cached lease {} already acknowledged",
+                            existing_lease.lease_id
+                        ));
+                        return Ok(());
+                    }
+                    let acked_at_ms = now_epoch_ms();
+                    training_trace(&format!("acking cached lease {}", existing_lease.lease_id));
+                    match client
+                        .ack_assignment(&PylonTrainingAssignmentAckRequest {
+                            idempotency_key: format!(
+                                "training-assignment-ack:{}:{}",
+                                existing_lease.lease_id, acked_at_ms
+                            ),
+                            acked_at_ms,
+                            node_pubkey_hex: identity.public_key_hex.clone(),
+                            training_run_id: existing_lease.training_run_id.clone(),
+                            window_id: existing_lease.window_id.clone(),
+                            assignment_id: existing_lease.assignment_id.clone(),
+                            lease_id: existing_lease.lease_id.clone(),
+                            manifest_digest: existing_lease.manifest_digest.clone(),
+                            manifest_path: Some(materialized.manifest_path.display().to_string()),
+                        })
+                        .await
+                    {
+                        Ok(ack) => {
+                            update_cached_training_lease_state(
+                                state,
+                                existing_lease.lease_id.as_str(),
+                                ack.lease_state.as_deref().unwrap_or(if ack.accepted {
+                                    "acked"
+                                } else {
+                                    "rejected"
+                                }),
+                                acked_at_ms,
+                            );
+                            return Ok(());
+                        }
+                        Err(error)
+                            if training_retained_assignment_authority_error_is_stale(
+                                &error.to_string(),
+                            ) =>
+                        {
+                            let reason = error.to_string();
+                            retire_stale_retained_training_assignment(
+                                state,
+                                existing_lease.lease_id.as_str(),
+                                existing_lease.window_id.as_str(),
+                                reason.as_str(),
+                            );
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+                Err(error)
+                    if training_retained_assignment_authority_error_is_stale(
+                        &error.to_string(),
+                    ) =>
+                {
+                    let reason = error.to_string();
+                    retire_stale_retained_training_assignment(
+                        state,
+                        existing_lease.lease_id.as_str(),
+                        existing_lease.window_id.as_str(),
+                        reason.as_str(),
+                    );
+                }
+                Err(error) => return Err(error),
+            }
         }
-        let acked_at_ms = now_epoch_ms();
-        training_trace(&format!("acking cached lease {}", existing_lease.lease_id));
-        let ack = client
-            .ack_assignment(&PylonTrainingAssignmentAckRequest {
-                idempotency_key: format!(
-                    "training-assignment-ack:{}:{}",
-                    existing_lease.lease_id, acked_at_ms
-                ),
-                acked_at_ms,
-                node_pubkey_hex: identity.public_key_hex.clone(),
-                training_run_id: existing_lease.training_run_id.clone(),
-                window_id: existing_lease.window_id.clone(),
-                assignment_id: existing_lease.assignment_id.clone(),
-                lease_id: existing_lease.lease_id.clone(),
-                manifest_digest: existing_lease.manifest_digest.clone(),
-                manifest_path: Some(materialized.manifest_path.display().to_string()),
-            })
-            .await?;
-        update_cached_training_lease_state(
-            state,
-            existing_lease.lease_id.as_str(),
-            ack.lease_state
-                .as_deref()
-                .unwrap_or(if ack.accepted { "acked" } else { "rejected" }),
-            acked_at_ms,
-        );
-        return Ok(());
     }
 
     admit_training_node_with_context(
@@ -10669,7 +10822,7 @@ fn training_json_artifact_digest(value: &Value, label: &str, path: &Path) -> Res
 fn persist_training_bridge_bundle(path: &Path, payload: &Value, label: &str) -> Result<()> {
     let bytes = serde_json::to_vec_pretty(payload)
         .with_context(|| format!("failed to encode {label} {}", path.display()))?;
-    std::fs::write(path, bytes)
+    write_training_artifact_destination(path, bytes.as_slice())
         .with_context(|| format!("failed to write {label} {}", path.display()))
 }
 
@@ -11494,6 +11647,18 @@ fn training_local_artifact_path(
                 return Ok(contribution_root.join(file));
             }
         }
+        [windows, window_id, validators, challenge_id, file]
+            if windows == "windows" && validators == "validators" && file == "verdict.json" =>
+        {
+            let safe_path = training_validator_verdict_path(
+                local_run_root,
+                window_id.as_str(),
+                challenge_id.as_str(),
+            );
+            if safe_path.is_file() {
+                return Ok(safe_path);
+            }
+        }
         _ => {}
     }
     Ok(canonical_path)
@@ -11902,7 +12067,16 @@ fn inspect_manifest_local_artifacts(
             if !entry.file_type()?.is_dir() {
                 continue;
             }
-            let challenge_id = entry.file_name().to_string_lossy().to_string();
+            let challenge_id = load_training_json_artifact_value(
+                entry.path().join("claim.json").as_path(),
+                "training validator claim response",
+            )?
+            .and_then(|value| {
+                serde_json::from_value::<PylonTrainingValidatorChallengeCoordinatorResponse>(value)
+                    .ok()
+            })
+            .map(|claim| claim.challenge_id)
+            .unwrap_or_else(|| entry.file_name().to_string_lossy().to_string());
             maybe_materialize_training_validator_verdict(
                 context.local_run_root.as_path(),
                 context.manifest.window_id.as_str(),
@@ -12555,14 +12729,13 @@ fn resolve_training_validator_queue(
                     challenge_id,
                     state: bundle.state.clone(),
                     manifest_digest: bundle.manifest_digest.clone(),
-                    local_path: context
-                        .local_run_root
-                        .join("windows")
-                        .join(context.manifest.window_id.as_str())
-                        .join("validators")
-                        .join(bundle.bundle_id.trim_start_matches("validator_verdict:"))
-                        .display()
-                        .to_string(),
+                    local_path: training_validator_challenge_root(
+                        context.local_run_root.as_path(),
+                        context.manifest.window_id.as_str(),
+                        bundle.bundle_id.trim_start_matches("validator_verdict:"),
+                    )
+                    .display()
+                    .to_string(),
                 },
             );
         }
@@ -12578,14 +12751,13 @@ fn resolve_training_validator_queue(
                         challenge_id: validator.challenge_id.clone(),
                         state: "queued".to_string(),
                         manifest_digest: Some(context.manifest.manifest_digest.clone()),
-                        local_path: context
-                            .local_run_root
-                            .join("windows")
-                            .join(context.manifest.window_id.as_str())
-                            .join("validators")
-                            .join(validator.challenge_id.as_str())
-                            .display()
-                            .to_string(),
+                        local_path: training_validator_challenge_root(
+                            context.local_run_root.as_path(),
+                            context.manifest.window_id.as_str(),
+                            validator.challenge_id.as_str(),
+                        )
+                        .display()
+                        .to_string(),
                     });
             }
         }
@@ -12686,6 +12858,9 @@ fn resolve_training_recent_issues(
         });
     }
     for entry in state.closeout_progress.values() {
+        if training_closeout_progress_superseded_by_terminal_assignment(state, entry) {
+            continue;
+        }
         if let Some(issue) = training_closeout_progress_issue(entry, now_ms) {
             issues.push(issue);
         }
@@ -12815,6 +12990,26 @@ fn resolve_training_pending_closeout_objects(
 }
 
 const TRAINING_CLOSEOUT_STALL_INTERVAL_MS: i64 = 60_000;
+
+fn training_closeout_progress_superseded_by_terminal_assignment(
+    state: &PylonTrainingRuntimeState,
+    entry: &PylonTrainingCloseoutProgressEntry,
+) -> bool {
+    if entry.stage.terminal() {
+        return false;
+    }
+    state.closeout_progress.values().any(|candidate| {
+        candidate.assignment_id == entry.assignment_id
+            && candidate.training_run_id == entry.training_run_id
+            && candidate.window_id == entry.window_id
+            && candidate.role == entry.role
+            && candidate.challenge_id.is_none()
+            && matches!(
+                candidate.stage,
+                PylonTrainingCloseoutStage::Paid | PylonTrainingCloseoutStage::TerminalFailed
+            )
+    })
+}
 
 fn training_closeout_progress_issue(
     entry: &PylonTrainingCloseoutProgressEntry,
@@ -14985,25 +15180,38 @@ fn training_validator_challenge_root(
         .join("windows")
         .join(window_id)
         .join("validators")
+        .join(training_validator_challenge_path_segment(challenge_id))
+}
+
+fn training_raw_validator_challenge_root(
+    run_root: &Path,
+    window_id: &str,
+    challenge_id: &str,
+) -> PathBuf {
+    run_root
+        .join("windows")
+        .join(window_id)
+        .join("validators")
         .join(challenge_id)
 }
 
-fn training_validator_score_artifact_path(
+fn training_existing_validator_artifact_path(
     run_root: &Path,
     window_id: &str,
     challenge_id: &str,
+    file_name: &str,
 ) -> PathBuf {
-    training_validator_challenge_root(run_root, window_id, challenge_id)
-        .join("validator_score_artifact.json")
-}
-
-fn training_validator_score_receipt_path(
-    run_root: &Path,
-    window_id: &str,
-    challenge_id: &str,
-) -> PathBuf {
-    training_validator_challenge_root(run_root, window_id, challenge_id)
-        .join("validator_score_receipt.json")
+    let safe_path =
+        training_validator_challenge_root(run_root, window_id, challenge_id).join(file_name);
+    if safe_path.is_file() {
+        return safe_path;
+    }
+    let raw_path =
+        training_raw_validator_challenge_root(run_root, window_id, challenge_id).join(file_name);
+    if raw_path.is_file() {
+        return raw_path;
+    }
+    safe_path
 }
 
 fn training_validator_terminal_result_labels(
@@ -15030,10 +15238,18 @@ fn maybe_materialize_training_validator_verdict(
         return Ok(false);
     }
 
-    let score_artifact_path =
-        training_validator_score_artifact_path(run_root, window_id, challenge_id);
-    let score_receipt_path =
-        training_validator_score_receipt_path(run_root, window_id, challenge_id);
+    let score_artifact_path = training_existing_validator_artifact_path(
+        run_root,
+        window_id,
+        challenge_id,
+        "validator_score_artifact.json",
+    );
+    let score_receipt_path = training_existing_validator_artifact_path(
+        run_root,
+        window_id,
+        challenge_id,
+        "validator_score_receipt.json",
+    );
     let score_artifact = load_training_json_artifact_value(
         score_artifact_path.as_path(),
         "training validator score artifact",
@@ -25169,7 +25385,8 @@ mod tests {
         load_relay_report, load_sandbox_report, load_status_or_detect,
         load_training_artifact_inspection_report, load_training_status_report_local,
         local_training_release_id, maybe_start_training_supervisor_from_retained_assignment,
-        merge_ledger_earnings, merge_ledger_recent_jobs, mutate_ledger, now_epoch_ms, parse_args,
+        merge_ledger_earnings, merge_ledger_recent_jobs, mutate_ledger,
+        newest_pending_training_work_offer, now_epoch_ms, parse_args,
         planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
         provider_control_plane_runtime_error, provider_presence_client,
         psionic_gemma_benchmark_command_args, psionic_repo_root_candidates_with_inputs,
@@ -25178,8 +25395,9 @@ mod tests {
         render_public_config_json, render_sandbox_report, render_training_status_report,
         report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
-        restart_training_supervisor, run_cli, run_gemma_diagnostic_command,
-        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
+        restart_training_supervisor, retire_stale_retained_training_assignment, run_cli,
+        run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
+        run_local_gemma_chat_stream, run_provider_requests,
         run_training_assignment_intake_once_with_context, save_config,
         save_gemma_diagnostic_report, save_training_runtime_state, scan_provider_requests, serve,
         snapshot_training_status_report, stabilize_training_retained_psionic_worker_contract,
@@ -25188,9 +25406,10 @@ mod tests {
         sync_provider_payout_target_with_report, sync_training_authority_state,
         sync_training_terminal_runtime_once, training_artifact_digest_from_locator_payload,
         training_artifact_resolved_cache_key, training_download_cache_root,
-        training_raw_sha256_hex, training_run_root_for_id, training_runtime_state_path,
-        training_settlement_destination, training_supervisor_pid_is_running, watch_buyer_jobs,
-        write_training_json_value,
+        training_raw_sha256_hex, training_retained_assignment_authority_error_is_stale,
+        training_run_root_for_id, training_runtime_state_path, training_settlement_destination,
+        training_supervisor_pid_is_running, training_validator_challenge_path_segment,
+        training_validator_challenge_root, watch_buyer_jobs, write_training_json_value,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -27065,6 +27284,193 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             state == PylonTrainingRuntimeState::default(),
             "the initial training runtime state should hydrate from the default schema",
+        )
+    }
+
+    #[test]
+    fn retained_assignment_stale_authority_error_requires_not_found_training_record()
+    -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            training_retained_assignment_authority_error_is_stale(
+                "kernel authority request failed: status=404 error=not_found reason=kernel_compute_training_run_not_found",
+            ),
+            "retained lease recovery should classify missing authority training runs as stale local state",
+        )?;
+        ensure(
+            !training_retained_assignment_authority_error_is_stale(
+                "kernel authority request failed: status=500 reason=kernel_compute_training_run_not_found",
+            ),
+            "retained lease recovery should not hide retryable/server authority failures",
+        )?;
+        ensure(
+            !training_retained_assignment_authority_error_is_stale(
+                "training authority heartbeat failed with status 404: {\"reason\":\"training_node_not_found\"}",
+            ),
+            "retained lease recovery should leave node eviction re-admission on its dedicated path",
+        )
+    }
+
+    #[test]
+    fn stale_retained_training_assignment_retirement_removes_cached_runtime_state()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = PylonTrainingRuntimeState {
+            active_runtime: Some(training_active_runtime_fixture()),
+            ..PylonTrainingRuntimeState::default()
+        };
+        state.lease_cache.insert(
+            "lease.node01.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.node01.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_260_600),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: None,
+                runtime_manifest_digest: None,
+                runtime_lane_id: None,
+                runtime_operation: None,
+                runtime_work_class: None,
+                updated_at_ms: 1_762_491_200_000,
+            },
+        );
+        state.window_cache.insert(
+            "window.0001".to_string(),
+            PylonTrainingWindowCacheEntry {
+                window_id: "window.0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                state: "active".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                updated_at_ms: 1_762_491_200_000,
+            },
+        );
+
+        ensure(
+            retire_stale_retained_training_assignment(
+                &mut state,
+                "lease.node01.window0001",
+                "window.0001",
+                "status=404 error=not_found reason=kernel_compute_training_run_not_found",
+            ),
+            "retiring a stale retained assignment should report a state change",
+        )?;
+        ensure(
+            state.active_runtime.is_none()
+                && !state.lease_cache.contains_key("lease.node01.window0001")
+                && !state.window_cache.contains_key("window.0001")
+                && newest_pending_training_work_offer(&state).is_none(),
+            "stale retained assignment retirement should clear active runtime, cached lease, and cached window so fresh intake can claim new work",
+        )
+    }
+
+    #[test]
+    fn validator_challenge_paths_hash_long_challenge_ids() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let challenge_id = concat!(
+            "challenge.training.run.cs336.a1.proof.stale.proof.consolidate.stale7.",
+            "window.cs336.a1.proof.stale.proof.consolidate.stale7.0001.",
+            "aggregate.a1"
+        )
+        .to_string();
+        ensure(
+            challenge_id.len() > 96 && challenge_id.len() < 160,
+            "fixture should stay long enough for Pylon's safe hashed path but short enough for the runtime's raw local path",
+        )?;
+        let segment = training_validator_challenge_path_segment(challenge_id.as_str());
+        let digest = training_raw_sha256_hex(challenge_id.as_bytes());
+        ensure(
+            segment.len() <= 96
+                && segment != challenge_id
+                && segment.ends_with(&digest[..24])
+                && !segment.contains('/'),
+            "long validator challenge ids should map to stable filesystem-safe path segments",
+        )?;
+        let root = training_validator_challenge_root(
+            Path::new("/tmp/run.alpha"),
+            "window.0001",
+            &challenge_id,
+        );
+        ensure(
+            root.file_name().and_then(|value| value.to_str()) == Some(segment.as_str()),
+            "validator challenge paths should use the stable hashed segment",
+        )
+    }
+
+    #[test]
+    fn validator_verdict_materialization_reads_raw_runtime_score_paths()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let run_root = temp_dir.path().join("run.alpha");
+        let window_id = "window.0001";
+        let challenge_id = concat!(
+            "challenge.training.run.cs336.a1.proof.stale.proof.consolidate.stale7.",
+            "window.cs336.a1.proof.stale.proof.consolidate.stale7.0001.",
+            "aggregate.a1"
+        )
+        .to_string();
+        ensure(
+            challenge_id.len() > 96 && challenge_id.len() < 160,
+            "fixture should stay long enough for Pylon's safe hashed path but short enough for the runtime's raw local path",
+        )?;
+        let raw_root = super::training_raw_validator_challenge_root(
+            run_root.as_path(),
+            window_id,
+            challenge_id.as_str(),
+        );
+        std::fs::create_dir_all(raw_root.as_path()).unwrap_or_else(|error| {
+            panic!(
+                "failed to create raw validator score root {}: {error}",
+                raw_root.display()
+            )
+        });
+        std::fs::write(
+            raw_root.join("validator_score_receipt.json"),
+            serde_json::to_vec_pretty(&json!({
+                "disposition": "accepted",
+                "detail": "validator replay accepted",
+                "score_bps": 10_000,
+                "score_receipt_digest": format!("sha256:{}", "7".repeat(64)),
+                "score_artifact_digest": format!("sha256:{}", "8".repeat(64))
+            }))?,
+        )
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to write raw validator score receipt {}: {error}",
+                raw_root.join("validator_score_receipt.json").display()
+            )
+        });
+
+        ensure(
+            super::maybe_materialize_training_validator_verdict(
+                run_root.as_path(),
+                window_id,
+                challenge_id.as_str(),
+            )?,
+            "score artifacts written by the runtime under the raw challenge directory should materialize a proof-safe validator verdict",
+        )?;
+        let safe_verdict_path = super::training_validator_verdict_path(
+            run_root.as_path(),
+            window_id,
+            challenge_id.as_str(),
+        );
+        let verdict: Value =
+            serde_json::from_slice(std::fs::read(safe_verdict_path.as_path())?.as_slice())?;
+        ensure(
+            verdict.get("challenge_id").and_then(Value::as_str) == Some(challenge_id.as_str())
+                && verdict.get("validator_verdict").and_then(Value::as_str) == Some("verified"),
+            "materialized validator verdict should preserve the original challenge id while living under the safe local path",
         )
     }
 
@@ -38043,6 +38449,61 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && issue.blocking_class.as_deref() == Some("local_queue_replay")
                 && issue.reason == "stalled at window_sealed waiting for await_validator_claim",
             "non-terminal closeout stages should surface as stalled issues once they age past the stall interval",
+        )
+    }
+
+    #[test]
+    fn training_closeout_progress_issue_ignores_challenge_progress_after_paid_terminal_assignment()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = PylonTrainingRuntimeState::default();
+        let challenge_entry = super::PylonTrainingCloseoutProgressEntry {
+            assignment_id: "assign.alpha".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            role: PylonTrainingRoleClaim::Validator,
+            stage: super::PylonTrainingCloseoutStage::ValidatorFinalized,
+            challenge_id: Some("challenge.alpha".to_string()),
+            contribution_id: None,
+            checkpoint_ref: None,
+            authority_assignment_state: None,
+            authority_window_state: None,
+            acceptance_state: Some("verified".to_string()),
+            payout_state: None,
+            payout_receipt_id: None,
+            last_error: None,
+            updated_at_ms: 1_762_500_000_000,
+        };
+        let paid_entry = super::PylonTrainingCloseoutProgressEntry {
+            assignment_id: "assign.alpha".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            role: PylonTrainingRoleClaim::Validator,
+            stage: super::PylonTrainingCloseoutStage::Paid,
+            challenge_id: None,
+            contribution_id: None,
+            checkpoint_ref: None,
+            authority_assignment_state: None,
+            authority_window_state: None,
+            acceptance_state: Some("rewarded".to_string()),
+            payout_state: Some("confirmed".to_string()),
+            payout_receipt_id: Some("simulated:receipt.alpha".to_string()),
+            last_error: None,
+            updated_at_ms: 1_762_500_030_000,
+        };
+        state.closeout_progress.insert(
+            "assign.alpha::challenge.alpha".to_string(),
+            challenge_entry.clone(),
+        );
+        state
+            .closeout_progress
+            .insert("assign.alpha".to_string(), paid_entry);
+
+        ensure(
+            super::training_closeout_progress_superseded_by_terminal_assignment(
+                &state,
+                &challenge_entry,
+            ),
+            "challenge-specific validator progress should not remain a stale issue after the assignment has a paid terminal closeout entry",
         )
     }
 

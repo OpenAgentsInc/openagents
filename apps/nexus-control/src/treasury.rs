@@ -44,6 +44,10 @@ const ENV_TREASURY_WALLET_NETWORK: &str = "NEXUS_CONTROL_TREASURY_WALLET_NETWORK
 const ENV_TREASURY_WALLET_API_KEY_ENV: &str = "NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV";
 const ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS";
+const ENV_TREASURY_SIMULATED_WALLET_ENABLED: &str =
+    "NEXUS_CONTROL_TREASURY_SIMULATED_WALLET_ENABLED";
+const ENV_TREASURY_SIMULATED_WALLET_BALANCE_SATS: &str =
+    "NEXUS_CONTROL_TREASURY_SIMULATED_WALLET_BALANCE_SATS";
 const ENV_TREASURY_MAX_CONCURRENT_SENDS: &str = "NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS";
 const ENV_TREASURY_RECONCILIATION_HORIZON_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS";
@@ -67,6 +71,8 @@ const DEFAULT_TREASURY_WALLET_MNEMONIC_PATH: &str = "var/nexus-control/treasury.
 const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wallet";
 const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
 const DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS: u64 = 3;
+const DEFAULT_TREASURY_SIMULATED_WALLET_ENABLED: bool = false;
+const DEFAULT_TREASURY_SIMULATED_WALLET_BALANCE_SATS: u64 = 1_000_000;
 const DEFAULT_TREASURY_MAX_CONCURRENT_SENDS: usize = 16;
 const DEFAULT_TREASURY_RECONCILIATION_HORIZON_SECONDS: u64 = 86_400;
 const DEFAULT_TREASURY_POLICY_APPLY_ENV: bool = false;
@@ -174,6 +180,8 @@ pub struct TreasuryConfig {
     pub wallet_network: String,
     pub wallet_api_key_env: Option<String>,
     pub wallet_status_refresh_seconds: u64,
+    pub simulated_wallet_enabled: bool,
+    pub simulated_wallet_balance_sats: u64,
     pub max_concurrent_sends: usize,
     pub registration_challenge_ttl_seconds: u64,
     pub integration_token: Option<String>,
@@ -233,6 +241,14 @@ impl TreasuryConfig {
             DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS,
         )?
         .max(1);
+        let simulated_wallet_enabled = parse_bool_env(
+            ENV_TREASURY_SIMULATED_WALLET_ENABLED,
+            DEFAULT_TREASURY_SIMULATED_WALLET_ENABLED,
+        )?;
+        let simulated_wallet_balance_sats = parse_u64_env(
+            ENV_TREASURY_SIMULATED_WALLET_BALANCE_SATS,
+            DEFAULT_TREASURY_SIMULATED_WALLET_BALANCE_SATS,
+        )?;
         let max_concurrent_sends = parse_u64_env(
             ENV_TREASURY_MAX_CONCURRENT_SENDS,
             DEFAULT_TREASURY_MAX_CONCURRENT_SENDS as u64,
@@ -294,6 +310,8 @@ impl TreasuryConfig {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
             wallet_status_refresh_seconds,
+            simulated_wallet_enabled,
+            simulated_wallet_balance_sats,
             max_concurrent_sends,
             registration_challenge_ttl_seconds,
             integration_token: read_env_nonempty(ENV_TREASURY_INTEGRATION_TOKEN),
@@ -4213,10 +4231,89 @@ impl TreasuryState {
     }
 }
 
+fn simulated_wallet_snapshot(
+    config: &TreasuryConfig,
+    payments: Vec<PaymentSummary>,
+) -> TreasuryWalletSnapshot {
+    TreasuryWalletSnapshot {
+        runtime_status: "connected".to_string(),
+        runtime_detail: None,
+        wallet_hydration_mode: Some("simulated_proof_wallet".to_string()),
+        wallet_payment_scan_mode: Some("simulated".to_string()),
+        balance_sats: config.simulated_wallet_balance_sats,
+        payments,
+    }
+}
+
+fn simulated_payment_id(plan: &TreasuryDispatchPlan) -> String {
+    let digest = Sha256::digest(format!(
+        "{}\n{}\n{}",
+        plan.payout_key, plan.payment_request, plan.amount_sats
+    ));
+    format!("simulated:{}", hex::encode(digest))
+}
+
+fn simulated_payment_summary(plan: &TreasuryDispatchPlan, payment_id: &str) -> PaymentSummary {
+    PaymentSummary {
+        id: payment_id.to_string(),
+        direction: "send".to_string(),
+        status: "completed".to_string(),
+        amount_sats: plan.amount_sats,
+        fees_sats: 0,
+        timestamp: now_unix_ms() / 1_000,
+        method: "spark-simulated".to_string(),
+        description: Some(format!("simulated payout for {}", plan.payout_key)),
+        invoice: Some(plan.payment_request.clone()),
+        destination_pubkey: None,
+        payment_hash: None,
+        htlc_status: None,
+        htlc_expiry_epoch_seconds: None,
+        status_detail: None,
+    }
+}
+
+fn simulated_funding_target(
+    config: &TreasuryConfig,
+    request: TreasuryFundingTargetRequest,
+) -> TreasuryFundingMaterial {
+    let amount = request.amount_sats.unwrap_or_default();
+    TreasuryFundingMaterial {
+        spark_address: "spark:simulated-treasury-proof-wallet".to_string(),
+        bitcoin_address: "bcrt1qsimulatedtreasuryproofwallet".to_string(),
+        bolt11_invoice: (amount > 0).then(|| format!("lnbc{amount}simulatedproofwallet")),
+        wallet_snapshot: simulated_wallet_snapshot(config, Vec::new()),
+    }
+}
+
+fn dispatch_with_simulated_wallet(
+    config: &TreasuryConfig,
+    plans: &[TreasuryDispatchPlan],
+) -> TreasuryDispatchBatchResult {
+    let mut outcomes = Vec::with_capacity(plans.len());
+    let mut payments = Vec::with_capacity(plans.len());
+    for plan in plans {
+        let payment_id = simulated_payment_id(plan);
+        payments.push(simulated_payment_summary(plan, payment_id.as_str()));
+        outcomes.push(TreasuryDispatchOutcome::Dispatched {
+            payout_key: plan.payout_key.clone(),
+            payment_id,
+        });
+    }
+    TreasuryDispatchBatchResult {
+        outcomes,
+        wallet_snapshot: Some(simulated_wallet_snapshot(config, payments)),
+        wallet_error: None,
+    }
+}
+
 pub async fn create_live_funding_target(
     config: &TreasuryConfig,
     request: TreasuryFundingTargetRequest,
 ) -> Result<TreasuryFundingMaterial> {
+    if config.simulated_wallet_enabled {
+        return Ok(simulated_funding_target(config, request));
+    }
+
     #[cfg(test)]
     if let Some(hook) = test_wallet_funding_hook()
         .lock()
@@ -4278,6 +4375,14 @@ pub async fn load_live_wallet_refresh_result_with_plan(
     create_if_missing: bool,
     refresh_plan: TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
+    let _ = create_if_missing;
+    if config.simulated_wallet_enabled {
+        return Ok(TreasuryWalletRefreshResult {
+            snapshot: simulated_wallet_snapshot(config, Vec::new()),
+            progress: TreasuryWalletRefreshProgress::default(),
+        });
+    }
+
     #[cfg(test)]
     if let Some(hook) = test_wallet_snapshot_hook()
         .lock()
@@ -4312,6 +4417,10 @@ pub async fn dispatch_live_payouts(
 ) -> TreasuryDispatchBatchResult {
     if plans.is_empty() {
         return TreasuryDispatchBatchResult::default();
+    }
+
+    if config.simulated_wallet_enabled {
+        return dispatch_with_simulated_wallet(config, plans);
     }
 
     #[cfg(test)]
@@ -6629,6 +6738,8 @@ mod tests {
             wallet_network: "regtest".to_string(),
             wallet_api_key_env: None,
             wallet_status_refresh_seconds: 30,
+            simulated_wallet_enabled: false,
+            simulated_wallet_balance_sats: 1_000_000,
             max_concurrent_sends: 16,
             registration_challenge_ttl_seconds: 300,
             integration_token: None,
@@ -8821,6 +8932,59 @@ mod tests {
 
         set_test_wallet_send_hook(None);
         set_test_wallet_snapshot_hook(None);
+    }
+
+    #[tokio::test]
+    async fn simulated_wallet_covers_local_proof_funding_and_dispatch() {
+        let mut config = test_treasury_config();
+        config.simulated_wallet_enabled = true;
+        config.simulated_wallet_balance_sats = 42_000;
+
+        let funding = create_live_funding_target(
+            &config,
+            TreasuryFundingTargetRequest {
+                amount_sats: Some(210),
+                description: Some("fund simulated treasury".to_string()),
+                expiry_seconds: Some(60),
+            },
+        )
+        .await
+        .expect("simulated funding target");
+        assert_eq!(
+            funding.spark_address,
+            "spark:simulated-treasury-proof-wallet"
+        );
+        assert_eq!(
+            funding.bolt11_invoice.as_deref(),
+            Some("lnbc210simulatedproofwallet")
+        );
+        assert_eq!(funding.wallet_snapshot.runtime_status, "connected");
+        assert_eq!(funding.wallet_snapshot.balance_sats, 42_000);
+
+        let batch = dispatch_live_payouts(
+            &config,
+            &[super::TreasuryDispatchPlan {
+                payout_key: "window-a:pubkey-a".to_string(),
+                payment_request: "spark:alice".to_string(),
+                amount_sats: 120,
+            }],
+        )
+        .await;
+        assert_eq!(batch.outcomes.len(), 1);
+        assert!(matches!(
+            batch.outcomes[0],
+            TreasuryDispatchOutcome::Dispatched { .. }
+        ));
+        let snapshot = batch.wallet_snapshot.expect("simulated wallet snapshot");
+        assert_eq!(snapshot.runtime_status, "connected");
+        assert_eq!(
+            snapshot.wallet_hydration_mode.as_deref(),
+            Some("simulated_proof_wallet")
+        );
+        assert_eq!(snapshot.payments.len(), 1);
+        assert_eq!(snapshot.payments[0].direction, "send");
+        assert_eq!(snapshot.payments[0].status, "completed");
+        assert_eq!(snapshot.payments[0].amount_sats, 120);
     }
 
     #[tokio::test]

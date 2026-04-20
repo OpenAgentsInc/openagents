@@ -5255,6 +5255,18 @@ struct TrainingWindowValidationSummary {
     held_challenge_present: bool,
 }
 
+fn training_validation_sample_component(assignment_id: &str) -> String {
+    let normalized = assignment_id.trim();
+    let safe = normalized
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'));
+    if safe && !normalized.is_empty() && normalized.len() <= 64 {
+        return normalized.to_string();
+    }
+    let digest = hex::encode(Sha256::digest(normalized.as_bytes()));
+    format!("assign-{}", &digest[..24])
+}
+
 fn training_validation_challenge_id(
     window: &ComputeAdapterTrainingWindow,
     challenge_kind: TrainingValidationChallengeKind,
@@ -5268,12 +5280,14 @@ fn training_validation_challenge_id(
                 window.training_run_id, window.window_id
             )
         }
-        TrainingValidationChallengeKind::ContributionSample => format!(
-            "challenge.training.{}.{}.sample.{}.a{attempt}",
-            window.training_run_id,
-            window.window_id,
-            assignment_id.unwrap_or("unassigned")
-        ),
+        TrainingValidationChallengeKind::ContributionSample => {
+            let sample =
+                training_validation_sample_component(assignment_id.unwrap_or("unassigned"));
+            format!(
+                "challenge.training.{}.{}.sample.{sample}.a{attempt}",
+                window.training_run_id, window.window_id,
+            )
+        }
     }
 }
 
@@ -24996,6 +25010,8 @@ mod tests {
                 wallet_network: "regtest".to_string(),
                 wallet_api_key_env: None,
                 wallet_status_refresh_seconds: 30,
+                simulated_wallet_enabled: false,
+                simulated_wallet_balance_sats: 1_000_000,
                 max_concurrent_sends: 16,
                 registration_challenge_ttl_seconds: 300,
                 integration_token: None,
@@ -28225,6 +28241,33 @@ mod tests {
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
+    }
+
+    #[test]
+    fn training_validation_sample_challenge_id_hashes_long_assignment_component() {
+        let window = compute_adapter_window_request(
+            "idemp.training.challenge.path",
+            1_762_491_200_000,
+            None,
+        )
+        .window;
+        let assignment_id = format!(
+            "assign.{}.{}",
+            "run.cs336.a1.proof.stale.proof.consolidate".repeat(4),
+            "worker.1.attempt1".repeat(8)
+        );
+        let challenge_id = super::training_validation_challenge_id(
+            &window,
+            super::TrainingValidationChallengeKind::ContributionSample,
+            Some(assignment_id.as_str()),
+            1,
+        );
+        assert!(challenge_id.starts_with(
+            "challenge.training.train.math.basic.client.adapter.window.client.sample.assign-"
+        ));
+        assert!(challenge_id.ends_with(".a1"));
+        assert!(challenge_id.len() < 160);
+        assert!(!challenge_id.contains(assignment_id.as_str()));
     }
 
     fn compute_synthetic_data_sample(
