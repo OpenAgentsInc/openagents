@@ -14463,11 +14463,18 @@ fn training_snapshot_materialized_artifact_path(
     contribution_root: &Path,
     artifact_kind: &str,
     source_path: &Path,
+    artifact_digest: &str,
 ) -> PathBuf {
-    let snapshot_name = source_path
+    let source_name = source_path
         .file_name()
         .map(|value| value.to_string_lossy().to_string())
         .unwrap_or_else(|| format!("{artifact_kind}.bin"));
+    let digest = artifact_digest.trim_start_matches("sha256:");
+    let snapshot_name = if source_name.starts_with(format!("{digest}-").as_str()) {
+        source_name
+    } else {
+        format!("{digest}-{source_name}")
+    };
     contribution_root
         .join("retained_artifacts")
         .join(artifact_kind)
@@ -14504,6 +14511,7 @@ fn snapshot_training_retained_artifact_binding(
             source_path.display()
         )
     })?;
+    let actual_digest = training_raw_sha256_hex(payload.as_slice());
     if let Some(expected_bytes) = expected_bytes {
         let actual_bytes = u64::try_from(payload.len())
             .context("failed to convert retained artifact byte length to u64")?;
@@ -14515,7 +14523,6 @@ fn snapshot_training_retained_artifact_binding(
         }
     }
     if let Some(expected_digest) = expected_digest {
-        let actual_digest = training_raw_sha256_hex(payload.as_slice());
         if actual_digest != expected_digest {
             bail!(
                 "retained contribution artifact `{artifact_kind}` drifted before snapshot: expected digest `{expected_digest}` but {} had `{actual_digest}`",
@@ -14527,6 +14534,7 @@ fn snapshot_training_retained_artifact_binding(
         contribution_root,
         artifact_kind,
         &source_path,
+        actual_digest.as_str(),
     );
     if source_path == snapshot_path {
         binding.insert(
@@ -32442,12 +32450,15 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
         let contribution_root = temp_dir.path().join("contribution");
-        let snapshot_path = contribution_root
-            .join("retained_artifacts")
-            .join("membership_revision")
-            .join("membership_revision_receipt.json");
-        std::fs::create_dir_all(snapshot_path.parent().expect("snapshot parent"))?;
         let payload = br#"{"schema_version":"psionic.train.membership_revision_receipt.v1","membership_revision":"members.rev1"}"#;
+        let digest = training_raw_sha256_hex(payload.as_slice());
+        let snapshot_path = super::training_snapshot_materialized_artifact_path(
+            contribution_root.as_path(),
+            "membership_revision",
+            Path::new("membership_revision_receipt.json"),
+            digest.as_str(),
+        );
+        std::fs::create_dir_all(snapshot_path.parent().expect("snapshot parent"))?;
         std::fs::write(snapshot_path.as_path(), payload)?;
         #[cfg(unix)]
         {
@@ -32458,7 +32469,6 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             std::fs::set_permissions(snapshot_path.as_path(), permissions)?;
         }
 
-        let digest = training_raw_sha256_hex(payload.as_slice());
         let mut binding = json!({
             "artifact_ref": {
                 "artifact_id": "artifact.membership_revision",
@@ -32496,6 +32506,65 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "self-snapshot should not truncate or rewrite the retained artifact",
         )?;
         Ok(())
+    }
+
+    #[test]
+    fn snapshot_training_retained_artifact_binding_keeps_prior_digest_snapshot()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let contribution_root = temp_dir.path().join("contribution");
+        let source_path = temp_dir.path().join("run").join("invocation_manifest.json");
+        std::fs::create_dir_all(source_path.parent().expect("source parent"))?;
+
+        let payload_v1 = br#"{"schema_version":"psionic.train.invocation_manifest.v1","manifest_digest":"sha256:v1"}"#;
+        let payload_v2 = br#"{"schema_version":"psionic.train.invocation_manifest.v1","manifest_digest":"sha256:v2","extra":"later"}"#;
+        std::fs::write(source_path.as_path(), payload_v1)?;
+
+        let digest_v1 = training_raw_sha256_hex(payload_v1.as_slice());
+        let mut binding = json!({
+            "artifact_ref": {
+                "artifact_id": format!("artifact.invocation_manifest.{digest_v1}"),
+                "artifact_digest": digest_v1,
+                "artifact_bytes": payload_v1.len()
+            },
+            "materialized_path": source_path.display().to_string()
+        })
+        .as_object()
+        .expect("binding object")
+        .clone();
+        let snapshot_v1 = snapshot_training_retained_artifact_binding(
+            contribution_root.as_path(),
+            "invocation_manifest",
+            &mut binding,
+        )?
+        .expect("first snapshot path");
+
+        std::fs::write(source_path.as_path(), payload_v2)?;
+        let digest_v2 = training_raw_sha256_hex(payload_v2.as_slice());
+        binding["artifact_ref"] = json!({
+            "artifact_id": format!("artifact.invocation_manifest.{digest_v2}"),
+            "artifact_digest": digest_v2,
+            "artifact_bytes": payload_v2.len()
+        });
+        binding.insert(
+            "materialized_path".to_string(),
+            Value::String(source_path.display().to_string()),
+        );
+        let snapshot_v2 = snapshot_training_retained_artifact_binding(
+            contribution_root.as_path(),
+            "invocation_manifest",
+            &mut binding,
+        )?
+        .expect("second snapshot path");
+
+        ensure(
+            snapshot_v1 != snapshot_v2
+                && std::fs::read(Path::new(snapshot_v1.as_str()))?.as_slice()
+                    == payload_v1.as_slice()
+                && std::fs::read(Path::new(snapshot_v2.as_str()))?.as_slice()
+                    == payload_v2.as_slice(),
+            "retained artifact snapshots should be content-addressed so later stabilization cannot overwrite an earlier proof bundle target",
+        )
     }
 
     #[test]
