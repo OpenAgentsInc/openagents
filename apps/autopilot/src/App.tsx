@@ -1,15 +1,34 @@
 import "./App.css";
 import * as React from "react";
-import { Command } from "cmdk";
-import { CheckCircle, Command as CommandIcon, Pulse } from "@phosphor-icons/react";
+import {
+  CheckCircle,
+  Command as CommandIcon,
+  Pulse,
+} from "@phosphor-icons/react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+  CommandShortcut,
+} from "@/components/ui/command";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import { Separator } from "@/components/ui/separator";
 
 type DemoView = "runtime" | "evidence";
 
@@ -20,14 +39,13 @@ const viewLabels: Record<DemoView, string> = {
 
 function App() {
   const [activeView, setActiveView] = React.useState<DemoView>("runtime");
-  const commandInputRef = React.useRef<HTMLInputElement>(null);
+  const [commandOpen, setCommandOpen] = React.useState(false);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        commandInputRef.current?.focus();
-        commandInputRef.current?.select();
+        setCommandOpen((open) => !open);
       }
     };
 
@@ -37,60 +55,73 @@ function App() {
 
   const selectView = (view: DemoView) => {
     setActiveView(view);
-    commandInputRef.current?.blur();
+    setCommandOpen(false);
   };
 
   return (
-    <main className="dark shell">
-      <section className="autopilot-frame">
-        <div className="command-panel">
-          <div className="command-panel__header">
-            <CommandIcon aria-hidden="true" data-icon="inline-start" />
-            <span>COMMAND INDEX</span>
-            <kbd>⌘K</kbd>
-          </div>
+    <main className="dark shell grid place-items-center p-4">
+      <section className="command-stage">
+        <div className="command-stage__bar">
+          <Badge variant="outline">ACTIVE: {viewLabels[activeView]}</Badge>
 
-          <Command label="Autopilot demo command index" loop>
-            <Command.Input
-              ref={commandInputRef}
-              aria-label="Filter demo commands"
-              placeholder="filter commands"
-            />
-            <Command.List>
-              <Command.Empty>No command matched.</Command.Empty>
-              <Command.Group heading="Demo views">
-                <Command.Item
-                  value="show runtime card"
-                  keywords={["runtime", "state", "worker"]}
-                  onSelect={() => selectView("runtime")}
-                >
-                  <Pulse aria-hidden="true" data-icon="inline-start" />
-                  <span>Show Runtime Card</span>
-                  {activeView === "runtime" ? <strong>ACTIVE</strong> : null}
-                </Command.Item>
-                <Command.Item
-                  value="show evidence card"
-                  keywords={["evidence", "verification", "proof"]}
-                  onSelect={() => selectView("evidence")}
-                >
-                  <CheckCircle aria-hidden="true" data-icon="inline-start" />
-                  <span>Show Evidence Card</span>
-                  {activeView === "evidence" ? <strong>ACTIVE</strong> : null}
-                </Command.Item>
-              </Command.Group>
-            </Command.List>
-          </Command>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setCommandOpen(true)}
+          >
+            <CommandIcon aria-hidden="true" data-icon="inline-start" />
+            Command
+            <KbdGroup className="ml-1">
+              <Kbd>⌘</Kbd>
+              <Kbd>K</Kbd>
+            </KbdGroup>
+          </Button>
         </div>
 
-        <div className="demo-panel" aria-live="polite">
-          <div className="demo-panel__status">
-            <span>ACTIVE VIEW</span>
-            <strong>{viewLabels[activeView]}</strong>
-          </div>
+        <Separator />
 
+        <div className="command-stage__card" aria-live="polite">
           {activeView === "runtime" ? <RuntimeDemoCard /> : <EvidenceDemoCard />}
         </div>
       </section>
+
+      <CommandDialog
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        title="Autopilot Command Menu"
+        description="Switch between Autopilot demo views."
+        className="sm:max-w-lg"
+      >
+        <Command label="Autopilot demo commands" loop>
+          <CommandInput placeholder="Type a command or filter by evidence, runtime, proof..." />
+          <CommandList>
+            <CommandEmpty>No command matched.</CommandEmpty>
+            <CommandGroup heading="Demo views">
+              <CommandItem
+                value="show runtime card"
+                keywords={["runtime", "state", "worker"]}
+                data-checked={activeView === "runtime"}
+                onSelect={() => selectView("runtime")}
+              >
+                <Pulse aria-hidden="true" data-icon="inline-start" />
+                <span>Show Runtime Card</span>
+                <CommandShortcut>runtime</CommandShortcut>
+              </CommandItem>
+              <CommandSeparator />
+              <CommandItem
+                value="show evidence card"
+                keywords={["evidence", "verification", "proof"]}
+                data-checked={activeView === "evidence"}
+                onSelect={() => selectView("evidence")}
+              >
+                <CheckCircle aria-hidden="true" data-icon="inline-start" />
+                <span>Show Evidence Card</span>
+                <CommandShortcut>evidence</CommandShortcut>
+              </CommandItem>
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </CommandDialog>
     </main>
   );
 }
@@ -118,6 +149,9 @@ function RuntimeDemoCard() {
           </div>
         </dl>
       </CardContent>
+      <CardFooter>
+        <Badge variant="secondary">selected by command dialog</Badge>
+      </CardFooter>
     </Card>
   );
 }
@@ -145,6 +179,9 @@ function EvidenceDemoCard() {
           </div>
         </dl>
       </CardContent>
+      <CardFooter>
+        <Badge variant="secondary">selected by command dialog</Badge>
+      </CardFooter>
     </Card>
   );
 }
