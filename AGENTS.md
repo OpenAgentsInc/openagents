@@ -152,9 +152,17 @@ Default to:
   VM-local lock and runtime-masks `nexus-relay` during wallet inspection; if
   you find overlapping recovery containers, stop the stale recovery containers
   and restart/verify `nexus-relay` before generating another report.
-- Do not move wrapper cleanup into command substitutions or subshells; recovery
-  cleanup must only unmask/restart `nexus-relay` from the main remote shell
-  after the inspection or cutover command has exited.
+- Do not arm the recovery cleanup trap before VM metadata, registry-login, or
+  other setup-time command substitutions; pull the image first, then stop
+  `nexus-relay` and arm cleanup immediately before the isolated inspection.
+- Do not wrap the long-running recovery report/cutover command in
+  `REPORT_JSON=$(...)`, pipelines, or other subshell-producing capture while
+  cleanup is armed. Write command stdout to a normal temp file and read that
+  file after the command exits so `nexus-relay` cannot be unmasked/restarted
+  from a subshell while inspection is still running.
+- Before using the recovery wrapper after any shell edit, run
+  `bash scripts/deploy/nexus/test-recover-treasury-wallet-shell-guards.sh`
+  along with `bash -n scripts/deploy/nexus/09-recover-treasury-wallet.sh`.
 - Do not bypass this path with VM-local `docker build`, VM-local image tags,
   manual systemd drop-ins, or ad hoc `docker run` replacements on
   `nexus-mainnet-1`.
