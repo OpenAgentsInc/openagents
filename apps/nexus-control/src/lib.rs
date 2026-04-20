@@ -15635,11 +15635,13 @@ async fn import_treasury_public_snapshot(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.treasury.import_canonical_public_snapshot(
-        &state.config.treasury,
-        snapshot,
-        now,
-    )))
+    let response =
+        store
+            .treasury
+            .import_canonical_public_snapshot(&state.config.treasury, snapshot, now);
+    drop(store);
+    let _ = force_refresh_public_stats_cache(&state, now);
+    Ok(Json(response))
 }
 
 async fn create_treasury_funding_target(
@@ -15651,13 +15653,41 @@ async fn create_treasury_funding_target(
         description: normalize_optional_field(request.description.as_deref()),
         expiry_seconds: request.expiry_seconds.filter(|value| *value > 0),
     };
-    let material = create_live_funding_target(&state.config.treasury, normalized_request)
-        .await
-        .map_err(|error| ApiError {
-            status: StatusCode::BAD_GATEWAY,
-            error: "bad_gateway",
-            reason: error.to_string(),
-        })?;
+    let timeout_ms = state.config.treasury.funding_target_timeout_ms;
+    let material = match tokio::time::timeout(
+        Duration::from_millis(timeout_ms),
+        create_live_funding_target(&state.config.treasury, normalized_request),
+    )
+    .await
+    {
+        Ok(Ok(material)) => material,
+        Ok(Err(error)) => {
+            return Err(ApiError {
+                status: StatusCode::BAD_GATEWAY,
+                error: "bad_gateway",
+                reason: error.to_string(),
+            });
+        }
+        Err(_) => {
+            let timeout_reason = format!("treasury_funding_target_timeout:{timeout_ms}");
+            tracing::error!("treasury funding target timed out: {timeout_reason}");
+            let now = now_unix_ms();
+            if let Ok(mut store) = state.store.write() {
+                store
+                    .treasury
+                    .record_wallet_refresh_error(timeout_reason.clone(), now);
+                store
+                    .treasury
+                    .refresh_public_snapshot_in_memory(&state.config.treasury, now);
+            }
+            let _ = force_refresh_public_stats_cache(&state, now);
+            return Err(ApiError {
+                status: StatusCode::GATEWAY_TIMEOUT,
+                error: "gateway_timeout",
+                reason: timeout_reason,
+            });
+        }
+    };
     let now = now_unix_ms();
     {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -15673,6 +15703,7 @@ async fn create_treasury_funding_target(
             .refresh_public_snapshot(&state.config.treasury, now);
         record_treasury_receipt_events(&mut store, treasury_receipts, now);
     }
+    let _ = force_refresh_public_stats_cache(&state, now);
     Ok(Json(TreasuryFundingTargetResponse {
         authority: "openagents-hosted-nexus".to_string(),
         wallet_runtime_status: material.wallet_snapshot.runtime_status,
@@ -21164,7 +21195,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
                     cycle_started_at_unix_ms,
                 );
             }
-            let _ = refresh_public_stats_cache(state, cycle_started_at_unix_ms);
+            let _ = force_refresh_public_stats_cache(state, cycle_started_at_unix_ms);
             finish_treasury_dispatch_cycle();
             return;
         }
@@ -21195,7 +21226,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
     } else {
         tracing::error!("treasury dispatch cycle completion failed: session_store_poisoned");
     }
-    let _ = refresh_public_stats_cache(state, cycle_completed_at_unix_ms);
+    let _ = force_refresh_public_stats_cache(state, cycle_completed_at_unix_ms);
     finish_treasury_dispatch_cycle();
 }
 
@@ -21212,7 +21243,7 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
                     .treasury
                     .refresh_public_snapshot_in_memory(&state.config.treasury, now);
             }
-            let _ = refresh_public_stats_cache(state, now);
+            let _ = force_refresh_public_stats_cache(state, now);
             return;
         }
     };
@@ -21252,7 +21283,7 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
                 .refresh_public_snapshot_in_memory(&state.config.treasury, now_unix_ms());
         }
     }
-    let _ = refresh_public_stats_cache(state, now_unix_ms());
+    let _ = force_refresh_public_stats_cache(state, now_unix_ms());
     finish_treasury_wallet_refresh_cycle();
 }
 
@@ -24456,6 +24487,13 @@ fn refresh_public_stats_cache(state: &AppState, now_unix_ms: u64) -> Option<Publ
         }
     }
 
+    force_refresh_public_stats_cache(state, now_unix_ms)
+}
+
+fn force_refresh_public_stats_cache(
+    state: &AppState,
+    now_unix_ms: u64,
+) -> Option<PublicStatsSnapshot> {
     let store = state.store.read().ok()?;
     let launch_metrics = training_launch_live_metrics_snapshot(state);
     let mut snapshot =
@@ -25010,6 +25048,7 @@ mod tests {
                 wallet_network: "regtest".to_string(),
                 wallet_api_key_env: None,
                 wallet_status_refresh_seconds: 30,
+                funding_target_timeout_ms: 10_000,
                 simulated_wallet_enabled: false,
                 simulated_wallet_balance_sats: 1_000_000,
                 max_concurrent_sends: 16,
@@ -30384,19 +30423,21 @@ mod tests {
         assert_eq!(status.wallet_balance_sats, 500);
 
         set_test_wallet_funding_hook(Some(Arc::new(|request| {
-            assert_eq!(request.amount_sats, Some(210));
-            Ok(TreasuryFundingMaterial {
-                spark_address: "spark:treasury".to_string(),
-                bitcoin_address: "bc1qtreasury".to_string(),
-                bolt11_invoice: Some("lnbc210fund".to_string()),
-                wallet_snapshot: TreasuryWalletSnapshot {
-                    runtime_status: "connected".to_string(),
-                    runtime_detail: None,
-                    wallet_hydration_mode: None,
-                    wallet_payment_scan_mode: None,
-                    balance_sats: 710,
-                    payments: Vec::new(),
-                },
+            Box::pin(async move {
+                assert_eq!(request.amount_sats, Some(210));
+                Ok(TreasuryFundingMaterial {
+                    spark_address: "spark:treasury".to_string(),
+                    bitcoin_address: "bc1qtreasury".to_string(),
+                    bolt11_invoice: Some("lnbc210fund".to_string()),
+                    wallet_snapshot: TreasuryWalletSnapshot {
+                        runtime_status: "connected".to_string(),
+                        runtime_detail: None,
+                        wallet_hydration_mode: None,
+                        wallet_payment_scan_mode: None,
+                        balance_sats: 710,
+                        payments: Vec::new(),
+                    },
+                })
             })
         })));
 
@@ -30437,6 +30478,79 @@ mod tests {
         );
 
         set_test_wallet_snapshot_hook(None);
+        set_test_wallet_funding_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_funding_target_times_out_and_records_wallet_error() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.funding_target_timeout_ms = 5;
+        let state = build_app_state(config);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+
+        set_test_wallet_funding_hook(Some(Arc::new(|_request| {
+            Box::pin(async move {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                Ok(TreasuryFundingMaterial {
+                    spark_address: "spark:treasury".to_string(),
+                    bitcoin_address: "bc1qtreasury".to_string(),
+                    bolt11_invoice: None,
+                    wallet_snapshot: TreasuryWalletSnapshot {
+                        runtime_status: "connected".to_string(),
+                        runtime_detail: None,
+                        wallet_hydration_mode: None,
+                        wallet_payment_scan_mode: None,
+                        balance_sats: 710,
+                        payments: Vec::new(),
+                    },
+                })
+            })
+        })));
+
+        let app = build_router_with_state(state);
+        let funding_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/treasury/funding-target")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &TreasuryFundingTargetRequest {
+                            amount_sats: Some(210),
+                            description: Some("fund treasury".to_string()),
+                            expiry_seconds: Some(60),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(funding_response.status(), StatusCode::GATEWAY_TIMEOUT);
+        let body: serde_json::Value = response_json(funding_response).await?;
+        assert_eq!(
+            body.get("reason").and_then(serde_json::Value::as_str),
+            Some("treasury_funding_target_timeout:5")
+        );
+
+        let status_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/treasury/status")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(status_response.status(), StatusCode::OK);
+        let status: TreasuryStatusResponse = response_json(status_response).await?;
+        assert_eq!(status.wallet_runtime_status.as_deref(), Some("error"));
+        assert_eq!(
+            status.wallet_last_error.as_deref(),
+            Some("treasury_funding_target_timeout:5")
+        );
+
         set_test_wallet_funding_hook(None);
         Ok(())
     }
@@ -30959,7 +31073,6 @@ mod tests {
         let mut config = test_config()?;
         config.treasury.enabled = true;
         config.treasury.wallet_status_refresh_seconds = 1;
-        let app = super::build_api_router(config);
         let _guard = treasury_test_hook_lock()
             .lock()
             .expect("treasury hook guard");
@@ -30974,6 +31087,7 @@ mod tests {
                 payments: Vec::new(),
             })
         })));
+        let app = super::build_api_router(config);
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
