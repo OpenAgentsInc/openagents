@@ -443,7 +443,8 @@ The report compares, at minimum:
 - unclaimed deposit counts
 - whether the rebuilt wallet materially diverges from the copied current storage
 
-2. Only cut over after the report says `validation_passed=true`.
+2. Only cut over after the report says `validation_passed=true` and
+   `recommended_action=cutover_rebuilt_storage_after_service_stop`.
 
 Local/manual cutover:
 
@@ -490,6 +491,15 @@ defaults `RUST_LOG` to `warn` so large payment-history syncs do not bury the
 report JSON in per-payment info logs. Recovery report generation defaults to
 three attempts and removes the partial work dir between failed attempts so
 transient Spark upstream failures do not leave stale recovery artifacts.
+
+If explicit Spark sync times out during report generation, the inspector makes
+one bounded cached-balance read against the isolated local storage. A report
+with `runtime_status=cached_after_sync_timeout` can validate the wallet identity
+and cached balance comparison for report-only purposes, but it is not cutover
+safe. Such reports recommend either `no_cutover_needed_sync_timeout_cached` or
+`retry_live_sync_before_cutover`; the cutover command rejects both. Use that
+evidence to avoid unnecessary wallet-storage swaps, then resolve live payout or
+refresh behavior through the normal deploy smoke and treasury status evidence.
 
 The cutover path:
 

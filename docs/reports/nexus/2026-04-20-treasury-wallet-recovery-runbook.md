@@ -66,8 +66,11 @@ The script prints JSON and writes the report under the VM data disk. Review:
 
 The report must not be treated as cutover-safe unless both inspections synced
 the isolated wallet storage and the rebuilt storage is not a balance
-regression. A report that shows `rebuilt_storage.balance_sats` lower than
-`current_storage.balance_sats`, missing rebuilt payment history, or
+regression. A report that shows
+`runtime_status=cached_after_sync_timeout`,
+`rebuilt_storage.balance_sats` lower than `current_storage.balance_sats`,
+missing rebuilt payment history,
+`recommended_action: retry_live_sync_before_cutover`, or
 `recommended_action: inspect_divergence_before_cutover` is evidence to keep
 debugging, not permission to swap the production wallet directory.
 
@@ -89,7 +92,9 @@ bash scripts/deploy/nexus/09-recover-treasury-wallet.sh
 ```
 
 The combined mode proceeds to cutover only when the generated report validates
-and recommends `cutover_rebuilt_storage_after_service_stop`.
+and recommends `cutover_rebuilt_storage_after_service_stop`. The direct cutover
+command also enforces that recommendation, so a report-only cached-timeout
+comparison cannot accidentally swap wallet storage.
 
 ## Post-Recovery Proof
 
