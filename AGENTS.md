@@ -152,6 +152,9 @@ Default to:
   VM-local lock and runtime-masks `nexus-relay` during wallet inspection; if
   you find overlapping recovery containers, stop the stale recovery containers
   and restart/verify `nexus-relay` before generating another report.
+- Do not move wrapper cleanup into command substitutions or subshells; recovery
+  cleanup must only unmask/restart `nexus-relay` from the main remote shell
+  after the inspection or cutover command has exited.
 - Do not bypass this path with VM-local `docker build`, VM-local image tags,
   manual systemd drop-ins, or ad hoc `docker run` replacements on
   `nexus-mainnet-1`.

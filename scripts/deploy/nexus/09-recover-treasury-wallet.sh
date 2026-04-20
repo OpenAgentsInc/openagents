@@ -52,6 +52,7 @@ gcloud compute ssh "$NEXUS_VM" \
     exec 9>/tmp/openagents-nexus-treasury-wallet-recovery.lock; \
     flock -n 9 || { echo 'another Nexus treasury wallet recovery action is already running on this VM' >&2; exit 75; }; \
     cleanup_relay_service() { \
+      [[ \"\${BASH_SUBSHELL:-0}\" == \"0\" ]] || return 0; \
       sudo systemctl unmask nexus-relay >/dev/null 2>&1 || true; \
       sudo systemctl start nexus-relay >/dev/null 2>&1 || true; \
     }; \
