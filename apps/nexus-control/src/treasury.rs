@@ -107,6 +107,7 @@ const TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES: usize = 8;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_EARLY_SLACK_MS: u64 = 5 * 60_000;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_WINDOW_MS: u64 = 30 * 60_000;
 const TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL: &str = "nexus_control";
+const TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 30_000;
 const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
     &["public_snapshot"],
     &["public_snapshot", "active_continuity_alerts"],
@@ -4975,10 +4976,25 @@ fn build_treasury_wallet_recovery_comparison(
     let validation_passed = current_storage.error.is_none()
         && rebuilt_storage.error.is_none()
         && wallet_identity_pubkey_match;
+    let rebuilt_is_balance_regression = matches!(
+        (current_storage.balance_sats, rebuilt_storage.balance_sats),
+        (Some(current), Some(rebuilt)) if rebuilt < current
+    );
+    let rebuilt_has_recovery_evidence = matches!(
+        (current_storage.balance_sats, rebuilt_storage.balance_sats),
+        (Some(current), Some(rebuilt)) if rebuilt > current
+    ) || (current_zero_with_receive_history
+        && rebuilt_storage.balance_sats.unwrap_or_default()
+            > TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS);
     let recommended_action = if !validation_passed {
         "inspect_errors".to_string()
-    } else if major_divergence_detected {
+    } else if major_divergence_detected
+        && rebuilt_has_recovery_evidence
+        && !rebuilt_is_balance_regression
+    {
         "cutover_rebuilt_storage_after_service_stop".to_string()
+    } else if major_divergence_detected {
+        "inspect_divergence_before_cutover".to_string()
     } else {
         "no_cutover_needed".to_string()
     };
@@ -5028,14 +5044,34 @@ async fn inspect_treasury_wallet_storage(
         }
     };
 
-    inspection.runtime_status = Some("cached".to_string());
+    inspection.runtime_status = Some("syncing".to_string());
     inspection.runtime_detail =
-        Some("treasury wallet inspection skipped live sync to preserve local state".to_string());
+        Some("treasury wallet inspection is syncing isolated storage".to_string());
 
-    match wallet.get_balance_cached().await {
-        Ok(balance) => inspection.balance_sats = Some(balance.total_sats()),
-        Err(error) => {
+    match tokio::time::timeout(
+        Duration::from_millis(TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS),
+        wallet.get_balance(),
+    )
+    .await
+    {
+        Ok(Ok(balance)) => {
+            inspection.runtime_status = Some("synced".to_string());
+            inspection.runtime_detail = Some(
+                "treasury wallet inspection completed live sync on isolated storage".to_string(),
+            );
+            inspection.balance_sats = Some(balance.total_sats());
+        }
+        Ok(Err(error)) => {
+            inspection.runtime_status = Some("error".to_string());
             inspection.error = Some(format!("failed to fetch treasury Spark balance: {error}"));
+            let _ = wallet.disconnect().await;
+            return inspection;
+        }
+        Err(_) => {
+            inspection.runtime_status = Some("timeout".to_string());
+            inspection.error = Some(format!(
+                "timed out after {TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS} ms while syncing treasury Spark wallet"
+            ));
             let _ = wallet.disconnect().await;
             return inspection;
         }
@@ -5046,6 +5082,7 @@ async fn inspect_treasury_wallet_storage(
             inspection.payment_totals = aggregate_payment_summaries(&payments);
         }
         Err(error) => {
+            inspection.runtime_status = Some("error".to_string());
             inspection.error = Some(format!("failed to list treasury Spark payments: {error}"));
             let _ = wallet.disconnect().await;
             return inspection;
@@ -5057,6 +5094,7 @@ async fn inspect_treasury_wallet_storage(
             inspection.unclaimed_deposit_totals = aggregate_unclaimed_deposits(&deposits);
         }
         Err(error) => {
+            inspection.runtime_status = Some("error".to_string());
             inspection.error = Some(format!(
                 "failed to list treasury Spark unclaimed deposits: {error}"
             ));
@@ -6945,6 +6983,39 @@ mod tests {
         assert_eq!(
             comparison.recommended_action,
             "cutover_rebuilt_storage_after_service_stop"
+        );
+    }
+
+    #[test]
+    fn recovery_comparison_blocks_cutover_when_rebuilt_regresses_current() {
+        let comparison = build_treasury_wallet_recovery_comparison(
+            &TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/current".to_string(),
+                balance_sats: Some(1_500),
+                payment_totals: TreasuryWalletPaymentAggregate {
+                    total_payments: 4,
+                    completed_receive_total_sats: 10_000,
+                    completed_send_total_sats: 8_500,
+                    ..TreasuryWalletPaymentAggregate::default()
+                },
+                ..TreasuryWalletInspection::default()
+            },
+            &TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/rebuilt".to_string(),
+                balance_sats: Some(0),
+                payment_totals: TreasuryWalletPaymentAggregate::default(),
+                ..TreasuryWalletInspection::default()
+            },
+        );
+
+        assert!(comparison.wallet_identity_pubkey_match);
+        assert!(comparison.major_divergence_detected);
+        assert!(comparison.validation_passed);
+        assert_eq!(
+            comparison.recommended_action,
+            "inspect_divergence_before_cutover"
         );
     }
 
