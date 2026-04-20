@@ -1,0 +1,45 @@
+{
+  "schema": "openagents.nexus.deploy_attempt.v1",
+  "attempted_at_utc": "2026-04-20T07:01:51Z",
+  "issue": 4368,
+  "candidate": {
+    "git_sha": "e812174f8be028693f6c0bb73a1f16ba4bba57e9",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:e812174f8be0",
+    "build_receipt": "docs/reports/nexus/20260420-065411-cloudbuild-image-e812174f8be0.json"
+  },
+  "deploy_command": "DEPLOY_IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:e812174f8be0 bash scripts/deploy/nexus/03-configure-and-start.sh",
+  "result": "rolled_back",
+  "post_restart_smoke": {
+    "result": "failed",
+    "service_state": "active",
+    "observed_recent_completed": 0,
+    "observed_inference_ready": 89,
+    "observed_wallet_runtime_status": "error",
+    "observed_last_dispatch_at_unix_ms": 1776207790501,
+    "reason": "wallet_runtime_error_and_no_fresh_completed_payout_evidence_after_post_restart_smoke_window"
+  },
+  "rollback": {
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:da7491d28e3e",
+    "completed": true,
+    "active_image_verified_after_rollback": true
+  },
+  "post_rollback_public_probe": {
+    "healthz": "ok",
+    "active_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:da7491d28e3e",
+    "public_stats": {
+      "http_status": 0,
+      "timed_out": true,
+      "max_time_seconds": 10,
+      "time_total_seconds": 10.011595,
+      "bytes_received": 0
+    },
+    "treasury_status": {
+      "http_status": 0,
+      "timed_out": true,
+      "max_time_seconds": 10,
+      "time_total_seconds": 10.006388,
+      "bytes_received": 0
+    }
+  },
+  "closure_assessment": "issue_4368_not_complete_live_treasury_status_wallet_runtime_and_payout_evidence_still_blocking"
+}
