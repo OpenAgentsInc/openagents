@@ -73,7 +73,7 @@ if [[ -n "$SCCACHE_KEY_PREFIX_SUBSTITUTION" ]]; then
 fi
 
 TMP_BUILD_CONTEXT="$(mktemp -d "${TMPDIR:-/tmp}/openagents-nexus-build-context.XXXXXX")"
-BUILD_RESULT_JSON_PATH="$(mktemp "${TMPDIR:-/tmp}/openagents-nexus-build-result.XXXXXX.json")"
+BUILD_RESULT_JSON_PATH="$(mktemp "${TMPDIR:-/tmp}/openagents-nexus-build-result.XXXXXX")"
 trap 'rm -rf "$TMP_BUILD_CONTEXT" "$BUILD_RESULT_JSON_PATH"' EXIT
 bash "$BUILD_CONTEXT_SCRIPT" "$TMP_BUILD_CONTEXT" >/dev/null
 
