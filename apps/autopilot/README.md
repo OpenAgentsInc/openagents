@@ -7,9 +7,10 @@ The app uses:
 - Tauri 2 for the desktop host and Rust IPC.
 - React and TypeScript for the product UI.
 - Bun for package management and local frontend commands.
-- The deprecated WGPUI Autopilot visual tokens for the initial shell theme:
-  Berkeley Mono first, Midnight black/cyan chrome, Mission Control panel
-  colors, compact mono labels, and 6px panel/control radii.
+- The engineering-graphics UI style in
+  `../../docs/ENGINEERING_GRAPHICS_UI.md`: Berkeley Mono first, dense state
+  registers, explicit authority labels, dark foundations, thin grid lines, and
+  semantic color only.
 
 Run from this directory:
 
