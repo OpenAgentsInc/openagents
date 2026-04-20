@@ -47,8 +47,25 @@ gcloud compute ssh "$NEXUS_VM" \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" \
   --command "set -euo pipefail; \
+    exec 9>/tmp/openagents-nexus-treasury-wallet-recovery.lock; \
+    flock -n 9 || { echo 'another Nexus treasury wallet recovery action is already running on this VM' >&2; exit 75; }; \
+    cleanup_relay_service() { \
+      sudo systemctl unmask nexus-relay >/dev/null 2>&1 || true; \
+      sudo systemctl start nexus-relay >/dev/null 2>&1 || true; \
+    }; \
+    trap 'cleanup_relay_service' EXIT; \
+    sudo systemctl mask --runtime nexus-relay >/dev/null; \
     sudo systemctl stop nexus-relay; \
-    trap 'sudo systemctl start nexus-relay >/dev/null 2>&1 || true' EXIT; \
+    sudo docker rm -f nexus-relay >/dev/null 2>&1 || true; \
+    RELAY_STOPPED=0; \
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do \
+      if ! systemctl is-active nexus-relay >/dev/null; then \
+        RELAY_STOPPED=1; \
+        break; \
+      fi; \
+      sleep 1; \
+    done; \
+    [[ \"\$RELAY_STOPPED\" == \"1\" ]] || { echo 'nexus-relay did not stop before treasury recovery inspection' >&2; exit 1; }; \
     ACCESS_TOKEN=\$(curl -fsS -H 'Metadata-Flavor: Google' 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | jq -r '.access_token'); \
     AR_HOST=\$(echo '$DEPLOY_IMAGE' | cut -d'/' -f1); \
     echo \"\$ACCESS_TOKEN\" | sudo docker login -u oauth2accesstoken --password-stdin \"https://\${AR_HOST}\" >/dev/null; \
@@ -74,6 +91,7 @@ gcloud compute ssh "$NEXUS_VM" \
     else \
       run_nexus_control treasury recovery-cutover --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json; \
     fi; \
+    sudo systemctl unmask nexus-relay >/dev/null; \
     sudo systemctl start nexus-relay; \
     trap - EXIT; \
     systemctl is-active nexus-relay >/dev/null; \

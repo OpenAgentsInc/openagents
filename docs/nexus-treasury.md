@@ -417,7 +417,7 @@ What `recovery-report` does:
 - builds a fresh wallet state from the same mnemonic into `rebuilt-storage`
 - gives each isolated Spark wallet inspection up to
   `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS` milliseconds,
-  defaulting to `120000` and clamped to 10 minutes
+  defaulting to `120000` and clamped to 30 minutes
 - writes a machine-readable `recovery-report.json`
 - records the latest report summary in treasury state/status
 
@@ -451,6 +451,13 @@ The production wrapper runs the `nexus-control` binary shipped inside the
 `nexus-relay` image and overrides the container entrypoint. Do not run recovery
 commands against the default relay entrypoint; that starts the relay server
 instead of executing the treasury command.
+
+The production wrapper also takes a VM-local recovery lock and runtime-masks
+`nexus-relay` while the report or cutover command is inspecting wallet storage.
+Do not run a second recovery wrapper in parallel. If the lock fails, wait for
+the first recovery command to finish or clean up its recovery containers before
+trying again.
+
 Each isolated Spark wallet inspection gets up to
 `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS`; the production
 wrapper exposes that as `NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS`,
