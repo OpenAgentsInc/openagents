@@ -5008,9 +5008,14 @@ fn build_treasury_wallet_recovery_comparison(
             }
             _ => current_zero_with_receive_history,
         };
+    let inspection_outputs_usable =
+        current_storage.balance_sats.is_some() && rebuilt_storage.balance_sats.is_some();
     let validation_passed = current_storage.error.is_none()
         && rebuilt_storage.error.is_none()
-        && wallet_identity_pubkey_match;
+        && wallet_identity_pubkey_match
+        && inspection_outputs_usable;
+    let fully_synced = current_storage.runtime_status.as_deref() == Some("synced")
+        && rebuilt_storage.runtime_status.as_deref() == Some("synced");
     let rebuilt_is_balance_regression = matches!(
         (current_storage.balance_sats, rebuilt_storage.balance_sats),
         (Some(current), Some(rebuilt)) if rebuilt < current
@@ -5026,10 +5031,15 @@ fn build_treasury_wallet_recovery_comparison(
     } else if major_divergence_detected
         && rebuilt_has_recovery_evidence
         && !rebuilt_is_balance_regression
+        && fully_synced
     {
         "cutover_rebuilt_storage_after_service_stop".to_string()
+    } else if major_divergence_detected && !fully_synced {
+        "retry_live_sync_before_cutover".to_string()
     } else if major_divergence_detected {
         "inspect_divergence_before_cutover".to_string()
+    } else if !fully_synced {
+        "no_cutover_needed_sync_timeout_cached".to_string()
     } else {
         "no_cutover_needed".to_string()
     };
@@ -5040,6 +5050,46 @@ fn build_treasury_wallet_recovery_comparison(
         major_divergence_detected,
         validation_passed,
         recommended_action,
+    }
+}
+
+async fn try_cached_balance_after_inspection_sync_failure(
+    wallet: &SparkWallet,
+    inspection: &mut TreasuryWalletInspection,
+    inspection_timeout_ms: u64,
+    sync_failure: String,
+) -> bool {
+    let cached_timeout_ms = inspection_timeout_ms
+        .min(TREASURY_MIN_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS)
+        .max(1);
+    match tokio::time::timeout(
+        Duration::from_millis(cached_timeout_ms),
+        wallet.get_balance_cached(),
+    )
+    .await
+    {
+        Ok(Ok(balance)) => {
+            inspection.runtime_status = Some("cached_after_sync_timeout".to_string());
+            inspection.runtime_detail = Some(format!(
+                "{sync_failure}; using cached local balance only. This validates identity/balance comparison for report-only recovery but is not cutover-safe."
+            ));
+            inspection.balance_sats = Some(balance.total_sats());
+            true
+        }
+        Ok(Err(error)) => {
+            inspection.runtime_status = Some("error".to_string());
+            inspection.error = Some(format!(
+                "{sync_failure}; cached treasury Spark balance also failed: {error}"
+            ));
+            false
+        }
+        Err(_) => {
+            inspection.runtime_status = Some("timeout".to_string());
+            inspection.error = Some(format!(
+                "{sync_failure}; cached treasury Spark balance also timed out after {cached_timeout_ms} ms"
+            ));
+            false
+        }
     }
 }
 
@@ -5102,16 +5152,36 @@ async fn inspect_treasury_wallet_storage(
             inspection.balance_sats = Some(balance.total_sats());
         }
         Ok(Err(error)) => {
-            inspection.runtime_status = Some("error".to_string());
-            inspection.error = Some(format!("failed to fetch treasury Spark balance: {error}"));
+            let sync_failure = format!("failed to fetch synced treasury Spark balance: {error}");
+            if try_cached_balance_after_inspection_sync_failure(
+                &wallet,
+                &mut inspection,
+                inspection_timeout_ms,
+                sync_failure,
+            )
+            .await
+            {
+                let _ = wallet.disconnect().await;
+                return inspection;
+            }
             let _ = wallet.disconnect().await;
             return inspection;
         }
         Err(_) => {
-            inspection.runtime_status = Some("timeout".to_string());
-            inspection.error = Some(format!(
+            let sync_failure = format!(
                 "timed out after {inspection_timeout_ms} ms while syncing treasury Spark wallet"
-            ));
+            );
+            if try_cached_balance_after_inspection_sync_failure(
+                &wallet,
+                &mut inspection,
+                inspection_timeout_ms,
+                sync_failure,
+            )
+            .await
+            {
+                let _ = wallet.disconnect().await;
+                return inspection;
+            }
             let _ = wallet.disconnect().await;
             return inspection;
         }
@@ -5309,6 +5379,12 @@ fn apply_treasury_wallet_recovery_cutover(
     }
     if !report.comparison.wallet_identity_pubkey_match {
         bail!("recovery report wallet identity does not match");
+    }
+    if report.comparison.recommended_action != "cutover_rebuilt_storage_after_service_stop" {
+        bail!(
+            "recovery report does not recommend cutover: {}",
+            report.comparison.recommended_action
+        );
     }
 
     let rebuilt_storage_dir = PathBuf::from(report.rebuilt_storage_dir.as_str());
@@ -7089,6 +7165,7 @@ mod tests {
             &TreasuryWalletInspection {
                 wallet_identity_pubkey: "identity".to_string(),
                 inspected_storage_dir: "/tmp/current".to_string(),
+                runtime_status: Some("synced".to_string()),
                 balance_sats: Some(0),
                 payment_totals: TreasuryWalletPaymentAggregate {
                     completed_receive_total_sats: 100_000,
@@ -7100,6 +7177,7 @@ mod tests {
             &TreasuryWalletInspection {
                 wallet_identity_pubkey: "identity".to_string(),
                 inspected_storage_dir: "/tmp/rebuilt".to_string(),
+                runtime_status: Some("synced".to_string()),
                 balance_sats: Some(80_000),
                 ..TreasuryWalletInspection::default()
             },
@@ -7121,6 +7199,7 @@ mod tests {
             &TreasuryWalletInspection {
                 wallet_identity_pubkey: "identity".to_string(),
                 inspected_storage_dir: "/tmp/current".to_string(),
+                runtime_status: Some("synced".to_string()),
                 balance_sats: Some(1_500),
                 payment_totals: TreasuryWalletPaymentAggregate {
                     total_payments: 4,
@@ -7133,6 +7212,7 @@ mod tests {
             &TreasuryWalletInspection {
                 wallet_identity_pubkey: "identity".to_string(),
                 inspected_storage_dir: "/tmp/rebuilt".to_string(),
+                runtime_status: Some("synced".to_string()),
                 balance_sats: Some(0),
                 payment_totals: TreasuryWalletPaymentAggregate::default(),
                 ..TreasuryWalletInspection::default()
@@ -7145,6 +7225,69 @@ mod tests {
         assert_eq!(
             comparison.recommended_action,
             "inspect_divergence_before_cutover"
+        );
+    }
+
+    #[test]
+    fn recovery_comparison_accepts_cached_timeout_only_as_non_cutover_report() {
+        let comparison = build_treasury_wallet_recovery_comparison(
+            &TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/current".to_string(),
+                runtime_status: Some("cached_after_sync_timeout".to_string()),
+                runtime_detail: Some("live sync timed out; cached balance only".to_string()),
+                balance_sats: Some(80),
+                ..TreasuryWalletInspection::default()
+            },
+            &TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/rebuilt".to_string(),
+                runtime_status: Some("cached_after_sync_timeout".to_string()),
+                runtime_detail: Some("live sync timed out; cached balance only".to_string()),
+                balance_sats: Some(80),
+                ..TreasuryWalletInspection::default()
+            },
+        );
+
+        assert!(comparison.wallet_identity_pubkey_match);
+        assert!(comparison.validation_passed);
+        assert!(!comparison.major_divergence_detected);
+        assert_eq!(
+            comparison.recommended_action,
+            "no_cutover_needed_sync_timeout_cached"
+        );
+    }
+
+    #[test]
+    fn recovery_comparison_never_recommends_cutover_from_cached_timeout_divergence() {
+        let comparison = build_treasury_wallet_recovery_comparison(
+            &TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/current".to_string(),
+                runtime_status: Some("cached_after_sync_timeout".to_string()),
+                balance_sats: Some(0),
+                payment_totals: TreasuryWalletPaymentAggregate {
+                    completed_receive_total_sats: 100_000,
+                    completed_send_total_sats: 20_000,
+                    ..TreasuryWalletPaymentAggregate::default()
+                },
+                ..TreasuryWalletInspection::default()
+            },
+            &TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/rebuilt".to_string(),
+                runtime_status: Some("cached_after_sync_timeout".to_string()),
+                balance_sats: Some(80_000),
+                ..TreasuryWalletInspection::default()
+            },
+        );
+
+        assert!(comparison.wallet_identity_pubkey_match);
+        assert!(comparison.validation_passed);
+        assert!(comparison.major_divergence_detected);
+        assert_eq!(
+            comparison.recommended_action,
+            "retry_live_sync_before_cutover"
         );
     }
 
@@ -9023,6 +9166,84 @@ mod tests {
             Some(config.wallet_storage_dir.display().to_string().as_str())
         );
         assert!(parsed_report.cutover_completed_at_unix_ms.is_some());
+    }
+
+    #[test]
+    fn recovery_cutover_requires_explicit_cutover_recommendation() {
+        let work_dir = unique_temp_dir("cutover-rejected");
+        let current_storage_dir = work_dir.join("current-wallet");
+        let rebuilt_storage_dir = work_dir.join("rebuilt-wallet");
+        let report_path = work_dir.join("recovery-report.json");
+        fs::create_dir_all(current_storage_dir.as_path()).expect("current dir");
+        fs::create_dir_all(rebuilt_storage_dir.as_path()).expect("rebuilt dir");
+        fs::write(current_storage_dir.join("storage.sql"), "current").expect("current wallet");
+        fs::write(rebuilt_storage_dir.join("storage.sql"), "rebuilt").expect("rebuilt wallet");
+
+        let mut config = test_treasury_config();
+        config.wallet_storage_dir = current_storage_dir.clone();
+
+        let report = TreasuryWalletRecoveryReport {
+            authority: "openagents-hosted-nexus".to_string(),
+            generated_at_unix_ms: 100,
+            source_wallet_storage_dir: current_storage_dir.display().to_string(),
+            backup_root_dir: work_dir.join("backup").display().to_string(),
+            current_storage_backup_dir: work_dir
+                .join("backup/current-storage")
+                .display()
+                .to_string(),
+            rebuilt_storage_dir: rebuilt_storage_dir.display().to_string(),
+            report_path: report_path.display().to_string(),
+            mnemonic_backup_path: work_dir
+                .join("backup/treasury.mnemonic")
+                .display()
+                .to_string(),
+            state_backup_path: None,
+            current_storage: TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: work_dir
+                    .join("backup/current-storage")
+                    .display()
+                    .to_string(),
+                runtime_status: Some("cached_after_sync_timeout".to_string()),
+                balance_sats: Some(80),
+                ..TreasuryWalletInspection::default()
+            },
+            rebuilt_storage: TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: rebuilt_storage_dir.display().to_string(),
+                runtime_status: Some("cached_after_sync_timeout".to_string()),
+                balance_sats: Some(80),
+                ..TreasuryWalletInspection::default()
+            },
+            comparison: TreasuryWalletRecoveryComparison {
+                wallet_identity_pubkey_match: true,
+                rebuilt_minus_current_balance_sats: Some(0),
+                current_zero_with_receive_history: false,
+                major_divergence_detected: false,
+                validation_passed: true,
+                recommended_action: "no_cutover_needed_sync_timeout_cached".to_string(),
+            },
+            cutover_active_storage_dir: None,
+            cutover_rollback_storage_dir: None,
+            cutover_completed_at_unix_ms: None,
+        };
+        write_json_file(report_path.as_path(), &report).expect("report file");
+
+        let error = apply_treasury_wallet_recovery_cutover(&config, report_path.as_path())
+            .expect_err("cached timeout report must not cut over");
+        assert!(
+            error
+                .to_string()
+                .contains("does not recommend cutover: no_cutover_needed_sync_timeout_cached")
+        );
+        assert_eq!(
+            fs::read_to_string(current_storage_dir.join("storage.sql")).expect("current"),
+            "current"
+        );
+        assert_eq!(
+            fs::read_to_string(rebuilt_storage_dir.join("storage.sql")).expect("rebuilt"),
+            "rebuilt"
+        );
     }
 
     #[test]
