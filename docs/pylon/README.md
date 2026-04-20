@@ -16,6 +16,11 @@ The matching prior-art and terminology review lives outside `docs/pylon/`:
 
 - `docs/training/distributed-llm-training-runs-diloco-distro-demo-sparseloco-audit.md`
 
+The Autopilot desktop projection contract for Pylon process status and local
+proof-flow visualization lives in:
+
+- `docs/pylon/autopilot-proof-contract.md`
+
 Use those docs for different questions:
 
 - roadmap and phase tracker: what the admitted-node MVP implementation closed
