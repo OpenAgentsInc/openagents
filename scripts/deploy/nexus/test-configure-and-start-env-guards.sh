@@ -33,5 +33,7 @@ done
 
 assert_contains 'Preserving live runtime env ${key}=[redacted]' "$SCRIPT_TEXT"
 assert_contains 'Refusing to deploy ${NEXUS_VM} without ${var_name}.' "$SCRIPT_TEXT"
+assert_contains 'NEXUS_CONTROL_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED' "$SCRIPT_TEXT"
+assert_contains 'NEXUS_CONTROL_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED=${NEXUS_CONTROL_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED}' "$ENV_BLOCK"
 
 printf 'ok: nexus configure-and-start preserves runtime env guards\n'

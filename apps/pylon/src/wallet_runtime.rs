@@ -817,6 +817,7 @@ async fn open_wallet(context: &WalletRuntimeContext) -> Result<SparkWallet> {
             storage_dir: context.storage_dir.clone(),
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
             background_processing: true,
+            real_time_sync_enabled: true,
         },
     )
     .await

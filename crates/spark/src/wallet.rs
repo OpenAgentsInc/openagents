@@ -3,9 +3,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use breez_sdk_spark::{
-    BreezSdk, ClaimDepositRequest, DepositClaimError, GetInfoRequest, ListPaymentsRequest,
-    ListUnclaimedDepositsRequest, MaxFee, Network as SdkNetwork, Payment, PaymentDetails,
-    PaymentStatus, PaymentType, PrepareSendPaymentRequest, ReceivePaymentMethod,
+    BreezSdk, ClaimDepositRequest, Config as SdkConfig, DepositClaimError, GetInfoRequest,
+    ListPaymentsRequest, ListUnclaimedDepositsRequest, MaxFee, Network as SdkNetwork, Payment,
+    PaymentDetails, PaymentStatus, PaymentType, PrepareSendPaymentRequest, ReceivePaymentMethod,
     ReceivePaymentRequest, SdkBuilder, Seed, SendPaymentRequest, SyncWalletRequest, default_config,
 };
 
@@ -36,6 +36,7 @@ pub struct WalletConfig {
     pub storage_dir: PathBuf,
     pub deposit_claim_fee_policy: DepositClaimFeePolicy,
     pub background_processing: bool,
+    pub real_time_sync_enabled: bool,
 }
 
 impl Default for WalletConfig {
@@ -51,6 +52,7 @@ impl Default for WalletConfig {
             storage_dir,
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
             background_processing: true,
+            real_time_sync_enabled: true,
         }
     }
 }
@@ -197,15 +199,7 @@ impl SparkWallet {
             },
         };
 
-        let mut sdk_config = default_config(config.network.to_sdk_network()?);
-        if let Some(api_key) = &config.api_key {
-            sdk_config.api_key = Some(api_key.clone());
-        } else {
-            sdk_config.real_time_sync_server_url = None;
-        }
-        sdk_config.max_deposit_claim_fee = config
-            .deposit_claim_fee_policy
-            .to_sdk_max_fee(config.network);
+        let sdk_config = sdk_config_for_wallet(&config)?;
 
         let builder = SdkBuilder::new(sdk_config, seed)
             .with_default_storage(config.storage_dir.to_string_lossy().to_string())
@@ -494,6 +488,22 @@ impl SparkWallet {
     }
 }
 
+fn sdk_config_for_wallet(config: &WalletConfig) -> Result<SdkConfig, SparkError> {
+    let mut sdk_config = default_config(config.network.to_sdk_network()?);
+    if let Some(api_key) = &config.api_key {
+        sdk_config.api_key = Some(api_key.clone());
+    } else {
+        sdk_config.real_time_sync_server_url = None;
+    }
+    if !config.real_time_sync_enabled {
+        sdk_config.real_time_sync_server_url = None;
+    }
+    sdk_config.max_deposit_claim_fee = config
+        .deposit_claim_fee_policy
+        .to_sdk_max_fee(config.network);
+    Ok(sdk_config)
+}
+
 fn payment_direction_label(payment_type: PaymentType) -> &'static str {
     match payment_type {
         PaymentType::Send => "send",
@@ -649,13 +659,14 @@ mod tests {
     use super::{
         Balance, DepositClaimFeePolicy, Network, PaymentSummary, PaymentType, SdkNetwork,
         UnclaimedDeposit, WalletConfig, payment_direction_label, payment_summary_from_sdk_payment,
-        unclaimed_deposit_from_sdk_deposit,
+        sdk_config_for_wallet, unclaimed_deposit_from_sdk_deposit,
     };
     use crate::SparkError;
     use breez_sdk_spark::{
         DepositClaimError, Fee, Payment, PaymentDetails, PaymentMethod, PaymentStatus,
         SparkHtlcDetails, SparkHtlcStatus,
     };
+    use std::path::PathBuf;
 
     #[test]
     fn network_mapping_mainnet_is_explicit() {
@@ -709,6 +720,43 @@ mod tests {
     #[test]
     fn wallet_config_defaults_to_background_processing_enabled() {
         assert!(WalletConfig::default().background_processing);
+    }
+
+    #[test]
+    fn wallet_config_defaults_to_real_time_sync_enabled() {
+        assert!(WalletConfig::default().real_time_sync_enabled);
+    }
+
+    #[test]
+    fn sdk_config_disables_real_time_sync_without_api_key() {
+        let config = WalletConfig {
+            network: Network::Mainnet,
+            api_key: None,
+            storage_dir: PathBuf::from("/tmp/openagents-spark-test"),
+            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
+            background_processing: false,
+            real_time_sync_enabled: true,
+        };
+        let sdk_config = sdk_config_for_wallet(&config).expect("sdk config");
+
+        assert_eq!(sdk_config.api_key, None);
+        assert_eq!(sdk_config.real_time_sync_server_url, None);
+    }
+
+    #[test]
+    fn sdk_config_can_disable_real_time_sync_with_api_key() {
+        let config = WalletConfig {
+            network: Network::Mainnet,
+            api_key: Some("test-api-key".to_string()),
+            storage_dir: PathBuf::from("/tmp/openagents-spark-test"),
+            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
+            background_processing: false,
+            real_time_sync_enabled: false,
+        };
+        let sdk_config = sdk_config_for_wallet(&config).expect("sdk config");
+
+        assert_eq!(sdk_config.api_key.as_deref(), Some("test-api-key"));
+        assert_eq!(sdk_config.real_time_sync_server_url, None);
     }
 
     #[test]

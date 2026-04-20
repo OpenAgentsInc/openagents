@@ -301,6 +301,13 @@ so the paid-total counter keeps moving even after the wallet has accumulated
 tens of thousands of payouts. `/api/stats` and
 `GET /v1/treasury/status` no longer trigger wallet refresh inline.
 
+Hosted treasury sets
+`NEXUS_CONTROL_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED=false` by default. This
+keeps the Spark API key available for mainnet wallet operations while avoiding
+the Breez real-time data-sync subscription as a production dependency for
+treasury payout continuity. Re-enable it only after a targeted recovery report
+proves the real-time sync path is healthy for the production wallet.
+
 If treasury state JSON ever deserializes badly on restart, `nexus-control` now
 tries to recover from cached/derived fields first and, as a last resort,
 salvages the persisted payout total from the state payload instead of silently

@@ -944,6 +944,7 @@ impl SparkPaneState {
             storage_dir,
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
             background_processing: true,
+            real_time_sync_enabled: true,
         };
         let wallet = run_with_timeout(
             runtime,
