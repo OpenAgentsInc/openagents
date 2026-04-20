@@ -443,6 +443,7 @@ Production VM cutover:
 ```bash
 export NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS=120000
 export NEXUS_TREASURY_RECOVERY_RUST_LOG=warn
+export NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS=3
 export NEXUS_TREASURY_RECOVERY_REPORT_PATH=/var/lib/nexus-relay/treasury-wallet-recovery-<stamp>/recovery-report.json
 scripts/deploy/nexus/09-recover-treasury-wallet.sh
 ```
@@ -463,7 +464,9 @@ Each isolated Spark wallet inspection gets up to
 wrapper exposes that as `NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS`,
 defaults it to `120000` ms, and clamps it to 30 minutes. The wrapper also
 defaults `RUST_LOG` to `warn` so large payment-history syncs do not bury the
-report JSON in per-payment info logs.
+report JSON in per-payment info logs. Recovery report generation defaults to
+three attempts and removes the partial work dir between failed attempts so
+transient Spark upstream failures do not leave stale recovery artifacts.
 
 The cutover path:
 
