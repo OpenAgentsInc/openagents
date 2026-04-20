@@ -1843,7 +1843,7 @@ impl TrainingSchedulerWindowState {
     }
 
     const fn permits_assignment_claims(self) -> bool {
-        !matches!(self, Self::Refused)
+        matches!(self, Self::Planned | Self::Active)
     }
 }
 
@@ -2003,6 +2003,8 @@ impl TrainingSchedulerRolePlan {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct ScheduledTrainingAssignment {
     assignment_id: String,
+    #[serde(default)]
+    window_id: String,
     role: TrainingNodeRoleClaim,
     slot_ordinal: u32,
     attempt: u32,
@@ -2027,6 +2029,39 @@ struct ScheduledTrainingRun {
     window_state: TrainingSchedulerWindowState,
     assignments: Vec<ScheduledTrainingAssignment>,
     updated_at_ms: i64,
+}
+
+fn scheduled_assignment_window_id_for_run(
+    assignment: &ScheduledTrainingAssignment,
+    training_run_id: &str,
+    fallback_window_id: &str,
+) -> String {
+    let assignment_window_id = assignment.window_id.trim();
+    if !assignment_window_id.is_empty() {
+        return assignment_window_id.to_string();
+    }
+    let prefix = format!("assign.{training_run_id}.");
+    let suffix = format!(
+        ".{}.{}.attempt{}",
+        assignment.role.label(),
+        assignment.slot_ordinal,
+        assignment.attempt
+    );
+    assignment
+        .assignment_id
+        .strip_prefix(prefix.as_str())
+        .and_then(|value| value.strip_suffix(suffix.as_str()))
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(fallback_window_id)
+        .to_string()
+}
+
+fn scheduled_assignment_window_matches_for_run(
+    assignment: &ScheduledTrainingAssignment,
+    training_run_id: &str,
+    window_id: &str,
+) -> bool {
+    scheduled_assignment_window_id_for_run(assignment, training_run_id, window_id) == window_id
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -3779,6 +3814,7 @@ impl ScheduledTrainingRun {
                         slot_ordinal,
                         1,
                     ),
+                    window_id: current_window_id.clone(),
                     role,
                     slot_ordinal,
                     attempt: 1,
@@ -3920,6 +3956,11 @@ impl ScheduledTrainingRun {
     ) -> Option<&ScheduledTrainingAssignment> {
         self.assignments.iter().find(|assignment| {
             assignment.role == role
+                && scheduled_assignment_window_matches_for_run(
+                    assignment,
+                    self.training_run_id.as_str(),
+                    self.current_window_id.as_str(),
+                )
                 && matches!(
                     assignment.state,
                     TrainingAssignmentState::Leased
@@ -3937,6 +3978,11 @@ impl ScheduledTrainingRun {
     ) -> Option<&ScheduledTrainingAssignment> {
         self.assignments.iter().find(|assignment| {
             assignment.role != requested_role
+                && scheduled_assignment_window_matches_for_run(
+                    assignment,
+                    self.training_run_id.as_str(),
+                    self.current_window_id.as_str(),
+                )
                 && matches!(
                     assignment.state,
                     TrainingAssignmentState::Leased
@@ -3952,7 +3998,13 @@ impl ScheduledTrainingRun {
             .iter()
             .enumerate()
             .find_map(|(index, assignment)| {
-                (assignment.role == role && assignment.state == TrainingAssignmentState::Planned)
+                (assignment.role == role
+                    && scheduled_assignment_window_matches_for_run(
+                        assignment,
+                        self.training_run_id.as_str(),
+                        self.current_window_id.as_str(),
+                    )
+                    && assignment.state == TrainingAssignmentState::Planned)
                     .then_some(index)
             })
     }
@@ -3984,6 +4036,7 @@ impl ScheduledTrainingRun {
                     slot_ordinal,
                     next_attempt,
                 ),
+                window_id: self.current_window_id.clone(),
                 role,
                 slot_ordinal,
                 attempt: next_attempt,
@@ -4005,6 +4058,11 @@ impl ScheduledTrainingRun {
         idempotency_key: &str,
         recorded_at_ms: i64,
     ) -> RecordTrainingRunLeaseResponse {
+        let window_id = scheduled_assignment_window_id_for_run(
+            assignment,
+            self.training_run_id.as_str(),
+            self.current_window_id.as_str(),
+        );
         RecordTrainingRunLeaseResponse {
             ack: TrainingCoordinatorAck {
                 idempotency_key: idempotency_key.to_string(),
@@ -4013,7 +4071,7 @@ impl ScheduledTrainingRun {
             },
             lease_id: assignment.lease_id.clone().unwrap_or_default(),
             training_run_id: self.training_run_id.clone(),
-            window_id: self.current_window_id.clone(),
+            window_id,
             assignment_id: assignment.assignment_id.clone(),
             role: assignment.role,
             issued_at_ms: assignment.issued_at_ms.unwrap_or(recorded_at_ms),
@@ -4061,9 +4119,12 @@ impl ScheduledTrainingRun {
                 return Err("training_scheduler_launch_assignment_missing".to_string());
             };
             let assignment = &mut self.assignments[assignment_index];
+            if assignment.window_id.trim().is_empty() {
+                assignment.window_id = self.current_window_id.clone();
+            }
             let lease_id = pylon_training_lease_id(
                 self.training_run_id.as_str(),
-                self.current_window_id.as_str(),
+                assignment.window_id.as_str(),
                 assignment.role.label(),
                 assignment.slot_ordinal,
                 assignment.attempt,
@@ -4071,7 +4132,7 @@ impl ScheduledTrainingRun {
             );
             let manifest_digest = pylon_training_manifest_binding_digest(
                 self.training_run_id.as_str(),
-                self.current_window_id.as_str(),
+                assignment.window_id.as_str(),
                 membership_revision,
                 node.node_pubkey_hex.as_str(),
                 assignment.assignment_id.as_str(),
@@ -4095,12 +4156,18 @@ impl ScheduledTrainingRun {
 
     fn assignment_for_binding_mut(
         &mut self,
+        window_id: &str,
         assignment_id: &str,
         lease_id: &str,
         node_pubkey_hex: &str,
     ) -> Option<&mut ScheduledTrainingAssignment> {
         self.assignments.iter_mut().find(|assignment| {
             assignment.assignment_id == assignment_id
+                && scheduled_assignment_window_matches_for_run(
+                    assignment,
+                    self.training_run_id.as_str(),
+                    window_id,
+                )
                 && assignment.lease_id.as_deref() == Some(lease_id)
                 && assignment.node_pubkey_hex.as_deref() == Some(node_pubkey_hex)
         })
@@ -4108,11 +4175,17 @@ impl ScheduledTrainingRun {
 
     fn assignment_for_id_mut(
         &mut self,
+        window_id: &str,
         assignment_id: &str,
         node_pubkey_hex: &str,
     ) -> Option<&mut ScheduledTrainingAssignment> {
         self.assignments.iter_mut().find(|assignment| {
             assignment.assignment_id == assignment_id
+                && scheduled_assignment_window_matches_for_run(
+                    assignment,
+                    self.training_run_id.as_str(),
+                    window_id,
+                )
                 && assignment.node_pubkey_hex.as_deref() == Some(node_pubkey_hex)
         })
     }
@@ -4896,6 +4969,13 @@ fn training_window_active_assignments_for_role(
         .assignments
         .iter()
         .filter(|assignment| assignment.role == role)
+        .filter(|assignment| {
+            scheduled_assignment_window_matches_for_run(
+                assignment,
+                scheduled_run.training_run_id.as_str(),
+                scheduled_run.current_window_id.as_str(),
+            )
+        })
         .filter(|assignment| training_assignment_state_is_active(assignment))
         .filter(|assignment| assignment.node_pubkey_hex.is_some())
         .cloned()
@@ -11531,6 +11611,7 @@ async fn record_training_node_heartbeat(
     let now = now_unix_ms();
     let caller_id = training_node_caller_id(request.node_pubkey_hex.as_str());
     let training_run_id = request.training_run_id.clone();
+    let training_window_id = request.window_id.clone();
     let assignment_id = request.assignment_id.clone();
     let lease_id = request.lease_id.clone();
     let node_pubkey_hex = request.node_pubkey_hex.clone();
@@ -11558,6 +11639,7 @@ async fn record_training_node_heartbeat(
         {
             if let Some(assignment_state) = scheduled_run
                 .assignment_for_binding_mut(
+                    training_window_id.as_str(),
                     assignment_id.as_str(),
                     lease_id.as_str(),
                     node_pubkey_hex.as_str(),
@@ -11575,7 +11657,9 @@ async fn record_training_node_heartbeat(
                 })
             {
                 scheduled_run.updated_at_ms = recorded_at_ms;
-                if matches!(assignment_state, TrainingAssignmentState::Active) {
+                if matches!(assignment_state, TrainingAssignmentState::Active)
+                    && scheduled_run.current_window_id == training_window_id
+                {
                     scheduled_run.window_state = TrainingSchedulerWindowState::Active;
                 }
                 store
@@ -11643,6 +11727,7 @@ async fn record_training_assignment_ack(
         let (accepted, lease_state) = {
             let assignment = scheduled_run
                 .assignment_for_binding_mut(
+                    request.window_id.as_str(),
                     request.assignment_id.as_str(),
                     request.lease_id.as_str(),
                     request.node_pubkey_hex.as_str(),
@@ -11738,6 +11823,7 @@ async fn record_training_drain_notice(
             .ok_or_else(|| kernel_api_error("training_scheduler_run_not_found".to_string()))?;
         let assignment = scheduled_run
             .assignment_for_binding_mut(
+                request.window_id.as_str(),
                 request.assignment_id.as_str(),
                 request.lease_id.as_str(),
                 request.node_pubkey_hex.as_str(),
@@ -11812,6 +11898,7 @@ async fn record_training_failure_notice(
             .ok_or_else(|| kernel_api_error("training_scheduler_run_not_found".to_string()))?;
         let assignment = scheduled_run
             .assignment_for_binding_mut(
+                request.window_id.as_str(),
                 request.assignment_id.as_str(),
                 request.lease_id.as_str(),
                 request.node_pubkey_hex.as_str(),
@@ -11919,9 +12006,11 @@ async fn record_training_window_progress(
             .get_mut(request.training_run_id.as_str())
             .ok_or_else(|| kernel_api_error("training_scheduler_run_not_found".to_string()))?;
         if let Some(assignment_id) = request.assignment_id.as_deref() {
-            if let Some(assignment) =
-                scheduled_run.assignment_for_id_mut(assignment_id, request.node_pubkey_hex.as_str())
-            {
+            if let Some(assignment) = scheduled_run.assignment_for_id_mut(
+                request.window_id.as_str(),
+                assignment_id,
+                request.node_pubkey_hex.as_str(),
+            ) {
                 assignment.state = TrainingAssignmentState::Active;
                 assignment.expires_at_ms = Some(
                     request
@@ -11930,8 +12019,9 @@ async fn record_training_window_progress(
                 );
             }
         }
-        if let Some(window_state) =
-            training_scheduler_window_state_from_label(request.window_state.as_str())
+        if scheduled_run.current_window_id == request.window_id
+            && let Some(window_state) =
+                training_scheduler_window_state_from_label(request.window_state.as_str())
         {
             scheduled_run.window_state = window_state;
         }
@@ -34907,6 +34997,177 @@ mod tests {
             }),
             "replacement lease should allocate a new assignment attempt to the new node",
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_does_not_reissue_old_window_assignment_after_closeout_advance()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_301_000u64;
+        let training_run_id = "run.scheduler.closeout.advance";
+        let network_id = "trainnet.alpha";
+        let node_pubkey_hex = "node-closeout-advance";
+        let build_digest = "sha256:build-closeout-advance";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            node_pubkey_hex,
+            build_digest,
+        );
+
+        let first_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.closeout.advance.initial",
+                            created_at_ms as i64 + 1_000,
+                            node_pubkey_hex,
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_lease_response.status(), StatusCode::OK);
+        let first_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(first_lease_response).await?;
+        assert_eq!(first_lease.window_id, "window.0001");
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let scheduled_run = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get_mut(training_run_id)
+                .expect("scheduled run");
+            let assignment = scheduled_run
+                .assignments
+                .iter_mut()
+                .find(|assignment| assignment.assignment_id == first_lease.assignment_id)
+                .expect("initial scheduled assignment");
+            assert_eq!(assignment.window_id, "window.0001");
+            assignment.state = TrainingAssignmentState::Active;
+            scheduled_run.current_window_id = "window.0002".to_string();
+            scheduled_run.window_state = TrainingSchedulerWindowState::Accepted;
+        }
+
+        let mut old_window_heartbeat =
+            training_node_heartbeat_request(node_pubkey_hex, build_digest);
+        old_window_heartbeat.idempotency_key =
+            "idemp.training.heartbeat.closeout.advance.old-window".to_string();
+        old_window_heartbeat.recorded_at_ms = created_at_ms as i64 + 1_200;
+        old_window_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 1_200);
+        old_window_heartbeat.training_run_id = training_run_id.to_string();
+        old_window_heartbeat.window_id = "window.0001".to_string();
+        old_window_heartbeat.assignment_id = first_lease.assignment_id.clone();
+        old_window_heartbeat.lease_id = first_lease.lease_id.clone();
+
+        let heartbeat_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/heartbeats")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&old_window_heartbeat)?))?,
+            )
+            .await?;
+        assert_eq!(heartbeat_response.status(), StatusCode::OK);
+
+        {
+            let store = state.store.read().expect("read store");
+            let scheduled_run = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run");
+            assert_eq!(scheduled_run.current_window_id, "window.0002");
+            assert_eq!(
+                scheduled_run.window_state,
+                TrainingSchedulerWindowState::Accepted,
+                "old-window heartbeats must not reactivate the advanced scheduler window",
+            );
+        }
+
+        let accepted_claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.closeout.advance.accepted",
+                            created_at_ms as i64 + 1_300,
+                            node_pubkey_hex,
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(accepted_claim_response.status(), StatusCode::BAD_REQUEST);
+        let accepted_claim_error =
+            response_json::<serde_json::Value>(accepted_claim_response).await?;
+        assert_eq!(
+            accepted_claim_error
+                .get("reason")
+                .and_then(serde_json::Value::as_str),
+            Some("training_scheduler_run_not_schedulable"),
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let scheduled_run = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get_mut(training_run_id)
+                .expect("scheduled run");
+            scheduled_run.window_state = TrainingSchedulerWindowState::Active;
+        }
+
+        let stale_active_claim_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.closeout.advance.stale-active",
+                            created_at_ms as i64 + 1_400,
+                            node_pubkey_hex,
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(
+            stale_active_claim_response.status(),
+            StatusCode::BAD_REQUEST
+        );
+        let stale_active_error =
+            response_json::<serde_json::Value>(stale_active_claim_response).await?;
+        assert_eq!(
+            stale_active_error
+                .get("reason")
+                .and_then(serde_json::Value::as_str),
+            Some("training_scheduler_assignment_unavailable"),
+            "old window assignments must not be replayed as leases for the advanced current window",
+        );
+
         Ok(())
     }
 
