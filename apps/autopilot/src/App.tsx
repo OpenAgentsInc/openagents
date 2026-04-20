@@ -11,8 +11,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -41,6 +39,8 @@ function App() {
   const [activeView, setActiveView] = React.useState<DemoView>("runtime");
   const [commandOpen, setCommandOpen] = React.useState(false);
 
+  usePreferredThemeClass();
+
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
@@ -59,7 +59,7 @@ function App() {
   };
 
   return (
-    <main className="dark shell grid place-items-center p-4">
+    <main className="shell grid place-items-center p-4">
       <section className="command-stage">
         <div className="command-stage__bar">
           <Badge variant="outline">ACTIVE: {viewLabels[activeView]}</Badge>
@@ -130,8 +130,7 @@ function RuntimeDemoCard() {
   return (
     <Card className="demo-card">
       <CardHeader>
-        <CardTitle>Runtime Card</CardTitle>
-        <CardDescription>Command-selected view for worker state.</CardDescription>
+        <CardTitle>Runtime</CardTitle>
       </CardHeader>
       <CardContent>
         <dl className="register-grid">
@@ -149,9 +148,6 @@ function RuntimeDemoCard() {
           </div>
         </dl>
       </CardContent>
-      <CardFooter>
-        <Badge variant="secondary">selected by command dialog</Badge>
-      </CardFooter>
     </Card>
   );
 }
@@ -160,8 +156,7 @@ function EvidenceDemoCard() {
   return (
     <Card className="demo-card">
       <CardHeader>
-        <CardTitle>Evidence Card</CardTitle>
-        <CardDescription>Command-selected view for verification state.</CardDescription>
+        <CardTitle>Evidence</CardTitle>
       </CardHeader>
       <CardContent>
         <dl className="register-grid">
@@ -179,11 +174,29 @@ function EvidenceDemoCard() {
           </div>
         </dl>
       </CardContent>
-      <CardFooter>
-        <Badge variant="secondary">selected by command dialog</Badge>
-      </CardFooter>
     </Card>
   );
+}
+
+function usePreferredThemeClass() {
+  React.useLayoutEffect(() => {
+    const root = document.documentElement;
+    const preference = window.matchMedia("(prefers-color-scheme: dark)");
+
+    const applyPreference = () => {
+      root.classList.toggle("dark", preference.matches);
+      root.style.colorScheme = preference.matches ? "dark" : "light";
+    };
+
+    applyPreference();
+    preference.addEventListener("change", applyPreference);
+
+    return () => {
+      preference.removeEventListener("change", applyPreference);
+      root.classList.remove("dark");
+      root.style.removeProperty("color-scheme");
+    };
+  }, []);
 }
 
 export default App;

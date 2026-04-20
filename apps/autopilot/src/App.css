@@ -1,6 +1,12 @@
 :root {
-  --bg-app: #08090a;
+  --bg-app: var(--background);
   background: var(--bg-app);
+  color-scheme: light;
+}
+
+:root.dark {
+  --bg-app: #08090a;
+  color-scheme: dark;
 }
 
 * {
