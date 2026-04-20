@@ -90,23 +90,32 @@
 html,
 body,
 #root {
+  width: 100%;
+  height: 100%;
   min-width: 320px;
-  min-height: 100vh;
   margin: 0;
+  overflow: hidden;
   background: var(--bg-app);
+  overscroll-behavior: none;
 }
 
 .shell {
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   padding: 8px;
+  overflow: hidden;
   background: var(--bg-app);
   color: var(--text);
 }
 
 .terminal {
   width: min(1240px, 100%);
-  min-height: calc(100vh - 16px);
+  height: calc(100dvh - 16px);
+  min-height: 0;
   margin: 0 auto;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
   border: 1px solid var(--grid-strong);
   background: var(--bg-black);
 }
@@ -174,11 +183,16 @@ body,
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
   gap: 8px;
+  min-height: 0;
   padding: 8px;
+  overflow: hidden;
 }
 
 .pane {
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--grid);
   background: var(--bg-pane);
 }
@@ -301,6 +315,16 @@ body,
   .command-strip,
   .pane-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pane-grid {
+    align-content: start;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .pane {
+    overflow: visible;
   }
 
   .status-strip span,
