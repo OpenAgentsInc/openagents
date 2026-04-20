@@ -145,6 +145,10 @@ Default to:
   `NEXUS_TREASURY_RECOVERY_ACTION=cutover NEXUS_TREASURY_RECOVERY_REPORT_PATH=...`.
   Record the report/deploy receipts and keep `#4368` open until a fresh live
   completed payout send and accepted-work receipt are proven.
+- Do not run two treasury recovery wrappers in parallel. The wrapper takes a
+  VM-local lock and runtime-masks `nexus-relay` during wallet inspection; if
+  you find overlapping recovery containers, stop the stale recovery containers
+  and restart/verify `nexus-relay` before generating another report.
 - Do not bypass this path with VM-local `docker build`, VM-local image tags,
   manual systemd drop-ins, or ad hoc `docker run` replacements on
   `nexus-mainnet-1`.

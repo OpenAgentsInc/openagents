@@ -484,7 +484,9 @@ scripts/deploy/nexus/09-recover-treasury-wallet.sh
 
 What the wrapper does:
 
-- stops `nexus-relay`
+- takes a VM-local recovery lock so only one recovery wrapper can run at a time
+- runtime-masks and stops `nexus-relay`, then removes any stale `nexus-relay`
+  container before inspecting wallet storage
 - runs `nexus-control treasury recovery-cutover --report-path ... --json`
   inside the deployed Nexus image against the live data disk, using Docker
   `--entrypoint /usr/local/bin/nexus-control`
@@ -494,7 +496,8 @@ What the wrapper does:
 - defaults `RUST_LOG` to `warn` for quieter recovery report output
 - atomically swaps the validated rebuilt wallet storage into the active treasury
   path while preserving a rollback dir
-- starts `nexus-relay` again and verifies the local treasury status endpoint
+- unmasks and starts `nexus-relay` again, then verifies the local treasury
+  status endpoint
 
 Rollback after cutover:
 
