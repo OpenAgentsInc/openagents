@@ -12,6 +12,9 @@ use std::process::{Command as StdCommand, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+static ATOMIC_REPLACEMENT_TEMP_SEQUENCE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
@@ -4975,13 +4978,37 @@ fn write_training_artifact_destination(path: &Path, payload: &[u8]) -> Result<()
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("artifact");
-    let temp_path = parent.join(format!(".{file_name}.partial-{}", now_epoch_ms()));
-    std::fs::write(temp_path.as_path(), payload).with_context(|| {
+    let timestamp_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let temp_sequence =
+        ATOMIC_REPLACEMENT_TEMP_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let temp_path = parent.join(format!(
+        ".{file_name}.partial-{}.{}.{}.tmp",
+        std::process::id(),
+        timestamp_nanos,
+        temp_sequence
+    ));
+    let mut temp_file = std::fs::File::create(temp_path.as_path()).with_context(|| {
+        format!(
+            "failed to create temporary training artifact {}",
+            temp_path.display()
+        )
+    })?;
+    temp_file.write_all(payload).with_context(|| {
         format!(
             "failed to write temporary training artifact {}",
             temp_path.display()
         )
     })?;
+    temp_file.sync_all().with_context(|| {
+        format!(
+            "failed to sync temporary training artifact {}",
+            temp_path.display()
+        )
+    })?;
+    drop(temp_file);
     if let Err(error) = std::fs::rename(temp_path.as_path(), path) {
         let _ = std::fs::remove_file(temp_path.as_path());
         return Err(error)
@@ -8876,10 +8903,13 @@ fn retained_state_temp_path(path: &Path) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
+    let temp_sequence =
+        ATOMIC_REPLACEMENT_TEMP_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     path.with_file_name(format!(
-        ".{file_name}.{}.{}.tmp",
+        ".{file_name}.{}.{}.{}.tmp",
         std::process::id(),
-        timestamp_nanos
+        timestamp_nanos,
+        temp_sequence
     ))
 }
 
@@ -25391,7 +25421,7 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 mod tests {
     use std::path::{Path, PathBuf};
     use std::process::Command as StdCommand;
-    use std::sync::{Arc, Mutex, OnceLock};
+    use std::sync::{Arc, Barrier, Mutex, OnceLock};
     use std::time::{Duration, Instant};
 
     use super::{
@@ -33200,6 +33230,52 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             cache_key.len() < 64 && cache_key.starts_with("oa_train_artifact_"),
             "resolved training artifact cache keys should stay comfortably below common filesystem filename limits",
+        )
+    }
+
+    #[test]
+    fn training_artifact_destination_writes_use_unique_atomic_temps()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let artifact_path = temp_dir.path().join("artifact_manifest.json");
+        let barrier = Arc::new(Barrier::new(8));
+        let mut handles = Vec::new();
+
+        for index in 0..8 {
+            let barrier = Arc::clone(&barrier);
+            let artifact_path = artifact_path.clone();
+            handles.push(std::thread::spawn(move || -> anyhow::Result<()> {
+                let payload = format!(r#"{{"writer":{index}}}"#);
+                barrier.wait();
+                super::write_training_artifact_destination(
+                    artifact_path.as_path(),
+                    payload.as_bytes(),
+                )
+            }));
+        }
+
+        for handle in handles {
+            handle
+                .join()
+                .expect("artifact writer thread should not panic")?;
+        }
+
+        let final_payload = std::fs::read_to_string(artifact_path.as_path())?;
+        let final_value: Value = serde_json::from_str(final_payload.as_str())?;
+        ensure(
+            final_value
+                .get("writer")
+                .and_then(Value::as_u64)
+                .is_some_and(|writer| writer < 8),
+            "final artifact payload should be one complete writer payload",
+        )?;
+        let temp_entries = std::fs::read_dir(temp_dir.path())?
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".partial-"))
+            .count();
+        ensure(
+            temp_entries == 0,
+            "atomic artifact writes should not leave partial temp files behind",
         )
     }
 
