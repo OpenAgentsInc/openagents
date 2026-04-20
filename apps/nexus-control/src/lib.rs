@@ -21,7 +21,7 @@ use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, RwLock, RwLockReadGuard, TryLockError};
 use std::time::{Duration, UNIX_EPOCH};
 
 use axum::extract::{Path, Query, State};
@@ -4979,8 +4979,28 @@ fn training_window_requests_checkpoint_promotion(window: &ComputeAdapterTraining
             .is_some_and(|pointer| pointer.checkpoint_ref != window.base_checkpoint_ref)
 }
 
+fn training_assignment_targets_validator(
+    assignment_plans: &[TrainingWindowAssignmentPlan],
+    scheduled_run: Option<&ScheduledTrainingRun>,
+    assignment_id: &str,
+    validator_id: &str,
+) -> bool {
+    if let Ok(plan) = training_window_assignment_plan(assignment_plans, assignment_id) {
+        return plan.node_pubkey_hex == validator_id || plan.contributor_node_id == validator_id;
+    }
+    scheduled_run
+        .and_then(|run| {
+            run.assignments
+                .iter()
+                .find(|assignment| assignment.assignment_id == assignment_id)
+        })
+        .and_then(|assignment| assignment.node_pubkey_hex.as_deref())
+        .is_some_and(|node_pubkey_hex| node_pubkey_hex == validator_id)
+}
+
 fn training_validator_targets_own_assignments(
     assignment_plans: &[TrainingWindowAssignmentPlan],
+    scheduled_run: Option<&ScheduledTrainingRun>,
     challenge_plan: &TrainingWindowValidationChallengePlan,
     validator_id: &str,
 ) -> bool {
@@ -4988,13 +5008,12 @@ fn training_validator_targets_own_assignments(
         .target_assignment_ids
         .iter()
         .any(|assignment_id| {
-            assignment_plans
-                .iter()
-                .find(|assignment| assignment.assignment_id == *assignment_id)
-                .is_some_and(|assignment| {
-                    assignment.node_pubkey_hex == validator_id
-                        || assignment.contributor_node_id == validator_id
-                })
+            training_assignment_targets_validator(
+                assignment_plans,
+                scheduled_run,
+                assignment_id,
+                validator_id,
+            )
         })
 }
 
@@ -5015,12 +5034,35 @@ fn training_window_recovery_source_node_ids(
 
 fn training_window_contributor_node_ids(
     assignment_plans: &[TrainingWindowAssignmentPlan],
+    scheduled_run: Option<&ScheduledTrainingRun>,
+    contribution_outcomes: &[ComputeAdapterContributionOutcome],
 ) -> BTreeSet<String> {
-    assignment_plans
+    let contributor_node_ids = contribution_outcomes
+        .iter()
+        .map(|outcome| outcome.contributor_node_id.clone())
+        .filter(|value| !value.trim().is_empty())
+        .collect::<BTreeSet<_>>();
+    if !contributor_node_ids.is_empty() {
+        return contributor_node_ids;
+    }
+    let contributor_node_ids = assignment_plans
         .iter()
         .map(|assignment| assignment.contributor_node_id.clone())
         .filter(|value| !value.trim().is_empty())
-        .collect()
+        .collect::<BTreeSet<_>>();
+    if !contributor_node_ids.is_empty() {
+        return contributor_node_ids;
+    }
+    scheduled_run
+        .map(|run| {
+            run.assignments
+                .iter()
+                .filter(|assignment| assignment.role == TrainingNodeRoleClaim::Worker)
+                .filter_map(|assignment| assignment.node_pubkey_hex.clone())
+                .filter(|value| !value.trim().is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn training_window_assignment_plans(
@@ -5075,6 +5117,57 @@ fn training_window_assignment_plan<'a>(
         .iter()
         .find(|assignment| assignment.assignment_id == assignment_id)
         .ok_or_else(|| "training_window_assignment_missing".to_string())
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct TrainingWindowResolvedAssignment {
+    contributor_node_id: String,
+    worker_id: String,
+    dataset_slice: ComputeAdapterDatasetSlice,
+}
+
+fn training_window_resolved_assignment(
+    assignment_plans: &[TrainingWindowAssignmentPlan],
+    scheduled_run: Option<&ScheduledTrainingRun>,
+    assignment_id: &str,
+) -> Result<TrainingWindowResolvedAssignment, String> {
+    if let Ok(plan) = training_window_assignment_plan(assignment_plans, assignment_id) {
+        return Ok(TrainingWindowResolvedAssignment {
+            contributor_node_id: plan.contributor_node_id.clone(),
+            worker_id: plan.worker_id.clone(),
+            dataset_slice: plan.dataset_slice.clone(),
+        });
+    }
+
+    let Some(scheduled_run) = scheduled_run else {
+        return Err("training_window_assignment_missing".to_string());
+    };
+    let Some(scheduled_assignment) = scheduled_run.assignments.iter().find(|assignment| {
+        assignment.assignment_id == assignment_id
+            && assignment.role == TrainingNodeRoleClaim::Worker
+    }) else {
+        return Err("training_window_assignment_missing".to_string());
+    };
+    let Some(node_pubkey_hex) = scheduled_assignment
+        .node_pubkey_hex
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Err("training_window_assignment_missing".to_string());
+    };
+    let worker_id = format!("worker.{:04}", scheduled_assignment.slot_ordinal);
+    let Some(template_plan) = assignment_plans
+        .iter()
+        .find(|assignment| assignment.worker_id == worker_id)
+    else {
+        return Err("training_window_assignment_missing".to_string());
+    };
+    Ok(TrainingWindowResolvedAssignment {
+        contributor_node_id: node_pubkey_hex.to_string(),
+        worker_id,
+        dataset_slice: template_plan.dataset_slice.clone(),
+    })
 }
 
 fn training_window_summary_digest(
@@ -5417,6 +5510,10 @@ fn training_window_defensibility_audit(
         .iter()
         .map(|outcome| (outcome.assignment_id.as_str(), outcome))
         .collect::<HashMap<_, _>>();
+    let contribution_by_worker_id = contribution_outcomes
+        .iter()
+        .map(|outcome| (outcome.worker_id.as_str(), outcome))
+        .collect::<HashMap<_, _>>();
     let retained_homework_checkpoint_bridge =
         training_retained_homework_checkpoint_bridge_satisfies_closeout_proof(
             contribution_outcomes,
@@ -5432,14 +5529,25 @@ fn training_window_defensibility_audit(
     for plan in assignment_plans {
         let contribution = contribution_by_assignment
             .get(plan.assignment_id.as_str())
-            .copied();
+            .copied()
+            .or_else(|| {
+                contribution_by_worker_id
+                    .get(plan.worker_id.as_str())
+                    .copied()
+            });
+        let audited_assignment_id = contribution
+            .map(|value| value.assignment_id.as_str())
+            .unwrap_or(plan.assignment_id.as_str());
+        let audited_node_pubkey_hex = contribution
+            .map(|value| value.contributor_node_id.as_str())
+            .unwrap_or(plan.node_pubkey_hex.as_str());
         let scheduled_assignment = scheduled_run.and_then(|run| {
             run.assignments
                 .iter()
-                .find(|assignment| assignment.assignment_id == plan.assignment_id)
+                .find(|assignment| assignment.assignment_id == audited_assignment_id)
         });
         let admitted_node =
-            kernel.get_admitted_training_node(plan.node_pubkey_hex.as_str(), None, recorded_at_ms);
+            kernel.get_admitted_training_node(audited_node_pubkey_hex, None, recorded_at_ms);
         let hard_gate_reason = admitted_node.as_ref().and_then(|node| {
             (!node.eligible).then(|| {
                 pylon_training_hard_gate_reason(&node.active_reputation_labels)
@@ -5478,7 +5586,7 @@ fn training_window_defensibility_audit(
                     PylonTrainingRefusalCode::StaleAssignment,
                 );
                 node_identities.push(TrainingWindowDefensibilityNodeIdentity {
-                    node_pubkey_hex: plan.node_pubkey_hex.clone(),
+                    node_pubkey_hex: audited_node_pubkey_hex.to_string(),
                     release_id: String::new(),
                     build_digest: String::new(),
                     eligible: false,
@@ -5534,8 +5642,8 @@ fn training_window_defensibility_audit(
                     );
                 }
                 assignment_trail.push(TrainingWindowDefensibilityAssignmentAudit {
-                    assignment_id: assignment.assignment_id.clone(),
-                    node_pubkey_hex: plan.node_pubkey_hex.clone(),
+                    assignment_id: audited_assignment_id.to_string(),
+                    node_pubkey_hex: audited_node_pubkey_hex.to_string(),
                     state: Some(assignment.state.label().to_string()),
                     lease_id: assignment.lease_id.clone(),
                     expires_at_ms: assignment.expires_at_ms,
@@ -5550,8 +5658,8 @@ fn training_window_defensibility_audit(
                     PylonTrainingRefusalCode::StaleAssignment,
                 );
                 assignment_trail.push(TrainingWindowDefensibilityAssignmentAudit {
-                    assignment_id: plan.assignment_id.clone(),
-                    node_pubkey_hex: plan.node_pubkey_hex.clone(),
+                    assignment_id: audited_assignment_id.to_string(),
+                    node_pubkey_hex: audited_node_pubkey_hex.to_string(),
                     state: None,
                     lease_id: None,
                     expires_at_ms: None,
@@ -5746,7 +5854,11 @@ fn training_window_defensibility_audit(
         .iter()
         .map(|source| source.node_pubkey_hex.clone())
         .collect::<BTreeSet<_>>();
-    let contributor_node_ids = training_window_contributor_node_ids(assignment_plans);
+    let contributor_node_ids = training_window_contributor_node_ids(
+        assignment_plans,
+        scheduled_run,
+        contribution_outcomes,
+    );
     let recovery_source_node_ids = training_window_recovery_source_node_ids(scheduled_run);
     let self_validation_validator_ids = challenge_finalizations
         .iter()
@@ -5757,6 +5869,7 @@ fn training_window_defensibility_audit(
                 .find(|challenge| challenge.challenge_id == source.challenge_id)?;
             training_validator_targets_own_assignments(
                 assignment_plans,
+                scheduled_run,
                 challenge_plan,
                 source.node_pubkey_hex.as_str(),
             )
@@ -6999,6 +7112,7 @@ fn training_window_base_record(
 fn training_window_contribution_outcomes_from_inputs(
     window: &ComputeAdapterTrainingWindow,
     assignment_plans: &[TrainingWindowAssignmentPlan],
+    scheduled_run: Option<&ScheduledTrainingRun>,
     contribution_inputs: &[TrainingWindowContributionInput],
     recorded_at_ms: i64,
     sealed_defaults: bool,
@@ -7016,7 +7130,11 @@ fn training_window_contribution_outcomes_from_inputs(
             input.assignment_id.as_str(),
             "compute_adapter_assignment_id_missing",
         )?;
-        let plan = training_window_assignment_plan(assignment_plans, assignment_id.as_str())?;
+        let resolved_assignment = training_window_resolved_assignment(
+            assignment_plans,
+            scheduled_run,
+            assignment_id.as_str(),
+        )?;
         let validator_disposition = if sealed_defaults {
             ComputeAdapterContributionDisposition::ReplayRequired
         } else {
@@ -7051,8 +7169,8 @@ fn training_window_contribution_outcomes_from_inputs(
             window_id: window.window_id.clone(),
             contributor_set_revision_id: window.contributor_set_revision_id.clone(),
             assignment_id,
-            contributor_node_id: plan.contributor_node_id.clone(),
-            worker_id: plan.worker_id.clone(),
+            contributor_node_id: resolved_assignment.contributor_node_id,
+            worker_id: resolved_assignment.worker_id,
             validator_policy_ref: window.validator_policy_ref.clone(),
             work_class: window.work_class,
             replica_type: window.replica_type,
@@ -7061,7 +7179,7 @@ fn training_window_contribution_outcomes_from_inputs(
             adapter_family: window.adapter_family.clone(),
             base_model_ref: window.base_model_ref.clone(),
             adapter_format: window.adapter_format.clone(),
-            dataset_slice: plan.dataset_slice.clone(),
+            dataset_slice: resolved_assignment.dataset_slice,
             source_policy_revision: window.source_policy_revision.clone(),
             source_checkpoint_pointer: window.source_checkpoint_pointer.clone(),
             submission_receipt_digest: normalize_required_training_string(
@@ -7967,6 +8085,29 @@ impl IntoResponse for ApiError {
     }
 }
 
+fn store_lock_error(reason: &str) -> ApiError {
+    ApiError {
+        status: StatusCode::SERVICE_UNAVAILABLE,
+        error: "service_unavailable",
+        reason: reason.to_string(),
+    }
+}
+
+fn try_read_store<'a>(
+    state: &'a AppState,
+    busy_reason: &'static str,
+) -> Result<RwLockReadGuard<'a, ControlStore>, ApiError> {
+    match state.store.try_read() {
+        Ok(store) => Ok(store),
+        Err(TryLockError::WouldBlock) => Err(store_lock_error(busy_reason)),
+        Err(TryLockError::Poisoned(_)) => Err(ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        }),
+    }
+}
+
 pub fn build_router(config: ServiceConfig) -> Router {
     build_router_with_state(build_app_state(config))
 }
@@ -8436,16 +8577,16 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
-    if let Some(mut stats) = cached_public_stats_snapshot(&state) {
-        apply_public_stats_cache_context(&mut stats, now, "cached");
-        return Ok(Json(stats));
+    match try_cached_public_stats_snapshot(&state) {
+        Ok(Some(mut stats)) => {
+            apply_public_stats_cache_context(&mut stats, now, "cached");
+            return Ok(Json(stats));
+        }
+        Ok(None) => {}
+        Err(error) => return Err(error),
     }
 
-    let store = state.store.read().map_err(|_| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "session_store_poisoned".to_string(),
-    })?;
+    let store = try_read_store(&state, "public_stats_live_store_busy")?;
     let launch_metrics = training_launch_live_metrics_snapshot(&state);
     let mut stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
     apply_public_stats_cache_context(&mut stats, now, "live");
@@ -8524,11 +8665,17 @@ async fn get_training_run_detail(
     {
         return Ok(Json(snapshot));
     }
-    let store = state.store.read().map_err(|_| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "session_store_poisoned".to_string(),
-    })?;
+    let store = match try_read_store(&state, "training_run_detail_live_store_busy") {
+        Ok(store) => store,
+        Err(error) => {
+            if let Some(snapshot) =
+                cached_training_run_detail_snapshot_any_age(&state, training_run_id.as_str())
+            {
+                return Ok(Json(snapshot));
+            }
+            return Err(error);
+        }
+    };
     let summary = training_operator_summary_snapshot(&store, now);
     let visualization = training_visualization_snapshot_with_summary(&store, now, summary.clone());
     let launch_metrics = training_launch_live_metrics_snapshot(&state);
@@ -9568,15 +9715,22 @@ fn prepare_homework_launch(
         training_scheduler_run_definition(&store.kernel, &preview_run).map_err(kernel_api_error)?;
     let preview_metadata =
         training_scheduler_metadata_from_run(&preview_run).map_err(kernel_api_error)?;
-    let admitted_nodes = store.kernel.list_admitted_training_nodes(
-        &TrainingNodeQuery {
-            network_id: None,
-            requested_network_id: None,
-            role: Some(TrainingNodeRoleClaim::Worker),
-            online_only: false,
-            eligible_only: false,
-        },
-        now_unix_ms as i64,
+    let admitted_nodes = training_authority_freshest_node_views_by_pubkey(
+        training_authority_refresh_node_views(
+            &store.kernel,
+            store.kernel.list_admitted_training_nodes(
+                &TrainingNodeQuery {
+                    network_id: None,
+                    requested_network_id: None,
+                    role: Some(TrainingNodeRoleClaim::Worker),
+                    online_only: false,
+                    eligible_only: false,
+                },
+                now_unix_ms as i64,
+            ),
+            now_unix_ms as i64,
+        )
+        .map_err(kernel_api_error)?,
     );
     let matched_nodes = admitted_nodes
         .iter()
@@ -9707,21 +9861,23 @@ fn prepare_homework_launch(
                 .runs_by_training_run_id
                 .get(existing_run.training_run_id.as_str())
             {
-                let node_lookup = store
-                    .kernel
-                    .list_admitted_training_nodes(
-                        &TrainingNodeQuery {
-                            network_id: None,
-                            requested_network_id: None,
-                            role: None,
-                            online_only: false,
-                            eligible_only: false,
-                        },
+                let node_lookup = training_authority_freshest_node_view_lookup(
+                    training_authority_refresh_node_views(
+                        &store.kernel,
+                        store.kernel.list_admitted_training_nodes(
+                            &TrainingNodeQuery {
+                                network_id: None,
+                                requested_network_id: None,
+                                role: None,
+                                online_only: false,
+                                eligible_only: false,
+                            },
+                            now_unix_ms as i64,
+                        ),
                         now_unix_ms as i64,
                     )
-                    .into_iter()
-                    .map(|node| (node.node_pubkey_hex.clone(), node))
-                    .collect::<HashMap<_, _>>();
+                    .map_err(kernel_api_error)?,
+                );
                 return Ok(HomeworkLaunchPrepared {
                     training_run_id: existing_run.training_run_id.clone(),
                     network_id: scheduled_run.network_id.clone(),
@@ -11913,7 +12069,7 @@ async fn claim_training_run_lease(
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
-        let mut node = store
+        let node = store
             .kernel
             .get_admitted_training_node(
                 request.node_pubkey_hex.as_str(),
@@ -11921,16 +12077,20 @@ async fn claim_training_run_lease(
                 request.requested_at_ms,
             )
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
-        node.active_reputation_labels = training_authority_reputation_labels_for_node(
-            &store.kernel,
-            &node,
-            request.requested_at_ms,
-        )
-        .map_err(kernel_api_error)?;
-        node.eligible = pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
+        let node =
+            training_authority_refresh_node_view(&store.kernel, node, request.requested_at_ms)
+                .map_err(kernel_api_error)?;
         if !node.eligible {
             let reason = pylon_training_hard_gate_reason(&node.active_reputation_labels)
                 .unwrap_or_else(|| "training_node_not_eligible".to_string());
+            tracing::warn!(
+                node_pubkey_hex = request.node_pubkey_hex.as_str(),
+                requested_training_run_id = ?request.requested_training_run_id,
+                requested_network_id = ?request.requested_network_id,
+                active_reputation_labels = ?node.active_reputation_labels,
+                hard_gate_reason = reason.as_str(),
+                "training lease claim hard gated"
+            );
             return Err(kernel_api_error(reason));
         }
         let candidate_runs = store.kernel.list_compute_training_runs(None, None, None);
@@ -12263,9 +12423,15 @@ async fn seal_training_window(
         let mut metadata =
             training_window_metadata_from_value(&window.metadata).map_err(kernel_api_error)?;
         let assignment_plans = metadata.assignment_plans.clone();
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get(window.training_run_id.as_str())
+            .cloned();
         let mut contribution_outcomes = training_window_contribution_outcomes_from_inputs(
             &window,
             assignment_plans.as_slice(),
+            scheduled_run.as_ref(),
             request.contribution_outcomes.as_slice(),
             request.recorded_at_ms,
             true,
@@ -12428,9 +12594,15 @@ async fn reconcile_training_window(
             ));
         }
         let assignment_plans = metadata.assignment_plans.clone();
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get(window.training_run_id.as_str())
+            .cloned();
         let mut contribution_outcomes = training_window_contribution_outcomes_from_inputs(
             &window,
             assignment_plans.as_slice(),
+            scheduled_run.as_ref(),
             request.contribution_outcomes.as_slice(),
             request.recorded_at_ms,
             false,
@@ -12724,7 +12896,7 @@ async fn claim_training_validator_challenge(
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
-        let mut node = store
+        let node = store
             .kernel
             .get_admitted_training_node(
                 request.node_pubkey_hex.as_str(),
@@ -12732,13 +12904,9 @@ async fn claim_training_validator_challenge(
                 request.requested_at_ms,
             )
             .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
-        node.active_reputation_labels = training_authority_reputation_labels_for_node(
-            &store.kernel,
-            &node,
-            request.requested_at_ms,
-        )
-        .map_err(kernel_api_error)?;
-        node.eligible = pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
+        let node =
+            training_authority_refresh_node_view(&store.kernel, node, request.requested_at_ms)
+                .map_err(kernel_api_error)?;
         if !node.role_claims.contains(&TrainingNodeRoleClaim::Validator) {
             return Err(kernel_api_error(
                 "training_validator_role_not_admitted".to_string(),
@@ -12750,6 +12918,13 @@ async fn claim_training_validator_challenge(
             ));
         }
         if !node.eligible {
+            tracing::warn!(
+                node_pubkey_hex = request.node_pubkey_hex.as_str(),
+                requested_training_run_id = ?request.requested_training_run_id,
+                requested_network_id = ?request.requested_network_id,
+                active_reputation_labels = ?node.active_reputation_labels,
+                "training validator claim rejected because node is ineligible"
+            );
             return Err(kernel_api_error(
                 "training_scheduler_node_ineligible".to_string(),
             ));
@@ -12809,6 +12984,10 @@ async fn claim_training_validator_challenge(
             for challenge_plan in &validation.challenges {
                 if training_validator_targets_own_assignments(
                     metadata.assignment_plans.as_slice(),
+                    store
+                        .training_scheduler
+                        .runs_by_training_run_id
+                        .get(window.training_run_id.as_str()),
                     challenge_plan,
                     node.node_pubkey_hex.as_str(),
                 ) {
@@ -13828,14 +14007,36 @@ fn training_closeout_has_checkpoint_warning(context: &TrainingCloseoutReputation
             .unwrap_or(false)
 }
 
-fn training_validator_label_for_closeout_status(
-    status: &str,
+fn training_closeout_has_only_operational_assignment_refusals(
+    context: &TrainingCloseoutReputationContext,
+) -> bool {
+    context
+        .metadata
+        .get("defensibility")
+        .and_then(|value| value.get("refusal_codes"))
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            !values.is_empty()
+                && values.iter().all(|value| {
+                    matches!(
+                        value.as_str(),
+                        Some(code)
+                            if code == PylonTrainingRefusalCode::LeaseExpired.label()
+                                || code == PylonTrainingRefusalCode::StaleAssignment.label()
+                    )
+                })
+        })
+}
+
+fn training_validator_label_for_closeout_context(
+    closeout: &TrainingCloseoutReputationContext,
     verdict: ComputeValidatorChallengeVerdict,
 ) -> Option<PylonTrainingReputationLabel> {
-    match status {
+    match closeout.status.as_str() {
         "rewarded" | "no_reward" => (verdict == ComputeValidatorChallengeVerdict::Verified)
             .then_some(PylonTrainingReputationLabel::Good)
             .or_else(|| Some(PylonTrainingReputationLabel::Inconsistent)),
+        "refused" if training_closeout_has_only_operational_assignment_refusals(closeout) => None,
         "quarantined" | "refused" => (verdict == ComputeValidatorChallengeVerdict::Rejected)
             .then_some(PylonTrainingReputationLabel::Good)
             .or_else(|| Some(PylonTrainingReputationLabel::Inconsistent)),
@@ -14092,10 +14293,7 @@ fn training_authority_reputation_sources(
                 .get(finalization.challenge_id.as_str())
                 .and_then(|binding| closeout_contexts.get(binding.window_id.as_str()))
                 .and_then(|closeout| {
-                    training_validator_label_for_closeout_status(
-                        closeout.status.as_str(),
-                        canonical_verdict,
-                    )
+                    training_validator_label_for_closeout_context(closeout, canonical_verdict)
                 })
         };
         let Some(label) = label else {
@@ -14135,6 +14333,17 @@ fn training_authority_reputation_labels_for_node(
     node: &AdmittedTrainingNodeView,
     now_unix_ms: i64,
 ) -> Result<Vec<String>, String> {
+    let labels_by_subject = training_authority_reputation_labels_by_subject(kernel, now_unix_ms)?;
+    Ok(training_authority_merge_node_labels(
+        node.active_reputation_labels.clone(),
+        labels_by_subject.get(node.node_pubkey_hex.as_str()),
+    ))
+}
+
+fn training_authority_reputation_labels_by_subject(
+    kernel: &KernelState,
+    now_unix_ms: i64,
+) -> Result<HashMap<String, Vec<String>>, String> {
     let admitted_nodes = kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
@@ -14163,7 +14372,7 @@ fn training_authority_reputation_labels_for_node(
         })
         .collect::<Vec<_>>();
     let validator_finalizations = kernel.list_training_validator_challenge_finalization_sources();
-    let mut labels = node.active_reputation_labels.clone();
+    let mut labels_by_subject = HashMap::<String, BTreeSet<String>>::new();
     for source in training_authority_reputation_sources(
         admitted_nodes.as_slice(),
         window_sources.as_slice(),
@@ -14175,17 +14384,84 @@ fn training_authority_reputation_labels_for_node(
         if source.scheduler_effect == PylonTrainingSchedulerEffect::Ignored {
             continue;
         }
-        if source.subject_pubkey.as_deref() != Some(node.node_pubkey_hex.as_str()) {
+        let Some(subject_pubkey) = source.subject_pubkey.as_ref() else {
             continue;
-        }
-        let label = training_authority_label_key(&source);
-        if !labels.iter().any(|existing| existing == &label) {
-            labels.push(label);
+        };
+        labels_by_subject
+            .entry(subject_pubkey.clone())
+            .or_default()
+            .insert(training_authority_label_key(&source));
+    }
+    Ok(labels_by_subject
+        .into_iter()
+        .map(|(subject_pubkey, labels)| (subject_pubkey, labels.into_iter().collect::<Vec<_>>()))
+        .collect())
+}
+
+fn training_authority_merge_node_labels(
+    mut labels: Vec<String>,
+    computed_labels: Option<&Vec<String>>,
+) -> Vec<String> {
+    if let Some(computed_labels) = computed_labels {
+        for label in computed_labels {
+            if !labels.iter().any(|existing| existing == label) {
+                labels.push(label.clone());
+            }
         }
     }
     labels.sort();
     labels.dedup();
-    Ok(labels)
+    labels
+}
+
+fn training_authority_refresh_node_view(
+    kernel: &KernelState,
+    mut node: AdmittedTrainingNodeView,
+    now_unix_ms: i64,
+) -> Result<AdmittedTrainingNodeView, String> {
+    node.active_reputation_labels =
+        training_authority_reputation_labels_for_node(kernel, &node, now_unix_ms)?;
+    node.eligible = pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
+    Ok(node)
+}
+
+fn training_authority_refresh_node_views(
+    kernel: &KernelState,
+    nodes: Vec<AdmittedTrainingNodeView>,
+    now_unix_ms: i64,
+) -> Result<Vec<AdmittedTrainingNodeView>, String> {
+    let labels_by_subject = training_authority_reputation_labels_by_subject(kernel, now_unix_ms)?;
+    Ok(nodes
+        .into_iter()
+        .map(|mut node| {
+            node.active_reputation_labels = training_authority_merge_node_labels(
+                node.active_reputation_labels,
+                labels_by_subject.get(node.node_pubkey_hex.as_str()),
+            );
+            node.eligible =
+                pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
+            node
+        })
+        .collect())
+}
+
+fn training_authority_freshest_node_views_by_pubkey(
+    nodes: Vec<AdmittedTrainingNodeView>,
+) -> Vec<AdmittedTrainingNodeView> {
+    let mut seen = HashSet::new();
+    nodes
+        .into_iter()
+        .filter(|node| seen.insert(node.node_pubkey_hex.clone()))
+        .collect()
+}
+
+fn training_authority_freshest_node_view_lookup(
+    nodes: Vec<AdmittedTrainingNodeView>,
+) -> HashMap<String, AdmittedTrainingNodeView> {
+    training_authority_freshest_node_views_by_pubkey(nodes)
+        .into_iter()
+        .map(|node| (node.node_pubkey_hex.clone(), node))
+        .collect()
 }
 
 fn training_trn_network_status(source: &TrainingTrnNetworkContractSource) -> &'static str {
@@ -15260,7 +15536,13 @@ async fn list_training_nodes(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_admitted_training_nodes(&query, now)))
+    let nodes = training_authority_refresh_node_views(
+        &store.kernel,
+        store.kernel.list_admitted_training_nodes(&query, now),
+        now,
+    )
+    .map_err(kernel_api_error)?;
+    Ok(Json(nodes))
 }
 
 async fn get_training_node(
@@ -15282,6 +15564,8 @@ async fn get_training_node(
             now,
         )
         .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
+    let node =
+        training_authority_refresh_node_view(&store.kernel, node, now).map_err(kernel_api_error)?;
     Ok(Json(node))
 }
 
@@ -20705,7 +20989,9 @@ async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool
         }
         Err(error) => {
             if let Ok(mut store) = state.store.write() {
-                store.treasury.record_wallet_error(error.to_string());
+                store
+                    .treasury
+                    .record_wallet_refresh_error(error.to_string(), now);
                 let receipt_events = store
                     .treasury
                     .sync_continuity_alerts(&state.config.treasury, now);
@@ -20739,6 +21025,12 @@ fn treasury_wallet_refresh_state(
         return Ok(TreasuryWalletRefreshState::Fresh);
     }
     if store.treasury.last_wallet_sync_at_unix_ms.is_none() {
+        if !store
+            .treasury
+            .wallet_refresh_due(&state.config.treasury, now_unix_ms)
+        {
+            return Ok(TreasuryWalletRefreshState::Fresh);
+        }
         return Ok(TreasuryWalletRefreshState::Unsynced);
     }
     if store
@@ -20938,7 +21230,9 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
         let timeout_reason = format!("wallet_refresh_timeout:{wallet_refresh_timeout_ms}");
         tracing::error!("treasury wallet refresh timed out: {timeout_reason}");
         if let Ok(mut store) = state.store.write() {
-            store.treasury.record_wallet_error(timeout_reason);
+            store
+                .treasury
+                .record_wallet_refresh_error(timeout_reason, now_unix_ms());
             store
                 .treasury
                 .refresh_public_snapshot_in_memory(&state.config.treasury, now_unix_ms());
@@ -21202,10 +21496,7 @@ fn build_public_stats_snapshot(
     now_unix_ms: u64,
 ) -> PublicStatsSnapshot {
     let treasury_runtime = store.treasury.public_stats(&config.treasury, now_unix_ms);
-    let training_payout_ledger_summary = store
-        .treasury
-        .status_response(&config.treasury, now_unix_ms)
-        .training_payout_ledger_summary;
+    let training_payout_ledger_summary = store.treasury.training_payout_ledger_summary();
     let training_summary = training_operator_summary_snapshot(store, now_unix_ms);
     let mut training_public_state =
         training_public_stats_snapshot(store, now_unix_ms, &training_summary);
@@ -23757,16 +24048,36 @@ fn build_homepage_snapshot(
     let training_summary = training_operator_summary_snapshot(store, now_unix_ms);
     let training_visualization =
         training_visualization_snapshot_with_summary(store, now_unix_ms, training_summary.clone());
-    let training_nodes = store.kernel.list_admitted_training_nodes(
-        &TrainingNodeQuery {
-            network_id: None,
-            requested_network_id: None,
-            role: None,
-            online_only: false,
-            eligible_only: false,
-        },
+    let training_nodes = training_authority_refresh_node_views(
+        &store.kernel,
+        store.kernel.list_admitted_training_nodes(
+            &TrainingNodeQuery {
+                network_id: None,
+                requested_network_id: None,
+                role: None,
+                online_only: false,
+                eligible_only: false,
+            },
+            now_unix_ms as i64,
+        ),
         now_unix_ms as i64,
-    );
+    )
+    .unwrap_or_else(|reason| {
+        tracing::warn!(
+            reason = reason.as_str(),
+            "failed to refresh homepage training node reputation"
+        );
+        store.kernel.list_admitted_training_nodes(
+            &TrainingNodeQuery {
+                network_id: None,
+                requested_network_id: None,
+                role: None,
+                online_only: false,
+                eligible_only: false,
+            },
+            now_unix_ms as i64,
+        )
+    });
 
     let default_run = training_default_run(training_summary.runs.as_slice());
     let default_run_id = default_run.map(|run| run.training_run_id.clone());
@@ -23857,7 +24168,7 @@ fn cached_training_run_detail_snapshot(
 ) -> Option<PublicTrainingRunDetailSnapshot> {
     let snapshot = state
         .training_run_detail_cache
-        .read()
+        .try_read()
         .ok()?
         .get(training_run_id)
         .cloned()?;
@@ -23867,6 +24178,18 @@ fn cached_training_run_detail_snapshot(
         return None;
     }
     Some(snapshot)
+}
+
+fn cached_training_run_detail_snapshot_any_age(
+    state: &AppState,
+    training_run_id: &str,
+) -> Option<PublicTrainingRunDetailSnapshot> {
+    state
+        .training_run_detail_cache
+        .try_read()
+        .ok()?
+        .get(training_run_id)
+        .cloned()
 }
 
 fn record_training_launch_latency_sample(
@@ -24095,6 +24418,20 @@ fn cached_public_stats_snapshot(state: &AppState) -> Option<PublicStatsSnapshot>
         .read()
         .ok()
         .map(|snapshot| snapshot.clone())
+}
+
+fn try_cached_public_stats_snapshot(
+    state: &AppState,
+) -> Result<Option<PublicStatsSnapshot>, ApiError> {
+    match state.public_stats_cache.try_read() {
+        Ok(snapshot) => Ok(Some(snapshot.clone())),
+        Err(TryLockError::WouldBlock) => Err(store_lock_error("public_stats_cache_busy")),
+        Err(TryLockError::Poisoned(_)) => Err(ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "public_stats_cache_poisoned".to_string(),
+        }),
+    }
 }
 
 fn refresh_public_stats_cache(state: &AppState, now_unix_ms: u64) -> Option<PublicStatsSnapshot> {
@@ -24405,12 +24742,12 @@ mod tests {
     const TEST_GCS_SERVICE_ACCOUNT_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC9YHg+P4UZig1h\nzoW/m8IbzylR9O6/9xrqmIzlSfA2S1Cz7w0P+viRoyzLBmYhTmI0p3RmNAMKWwph\nly6a0UkdsGbWsoKoWt8r+gB1zUyP+1tG4A7HDTcTnxG+T2dtJcwE/A0Y8rF4PKEt\nV0qTdHYjRZrEorBYKJdgUbdv1Pgkw0U9SuCJciRLs3SI3PPrKNhNyWERS5Ta0Hnr\nXtwzZ7e44KNJ8F8iMOgh70p0nLN/KtKl+2Gb/CuJh3Mfodkoc+sADKoofBXZct2+\nsGSw66S08q7WfuPkseaqxDlOgSfaHEjzTIMyoxvjyjRWjulVbUIz8i+JWSZUglfP\nIBsQcN1pAgMBAAECggEAAR3yRH5byNkVX4mXVscdkaBZQ35/6qLkz5cZ/3+VeXrA\nUP8uPYGoXQMOEfuoyfFhTZ0OTxRz0lVpmNX63oZ72kWS+jIPUqqeDt/YNwVeQIrp\nCAYGEwV8I+K+Si69sIm9kf2dYEJndw4Zd/QtYGrC+8R+vBaXRagvV2k0wggXVdzx\n7Wq5zqOz9QkeoG11hTkYAgTmVl5PBnAoRE/sNMtYUOf6JnQWmFpEwOTdTf+F8NL1\nFg+ecNH7tjoqsTBjD/lMSaA/kr10fUw4KoITkn2IvtuF2ZFZp2R/Viy9KnfsLyF7\nyb1NJSP2cn3gYp4+BEe5wOdQNO2+lZN7EQKmRzS7uwKBgQD7dtqD6pAw9VFSiLWN\nW8EcDevKOP48lOP++2esUCsXfip3Omn0lmyb+8i11GRz0QwiMywQ21p7sEUwn9HE\nTk2ZjPnaNdPN+i/vZ+RgcmHVeEzeTPNAXeAQ5zAlrJ8Ibh3239BeWHLxCa/p2nsD\nPL3dPXg/CQm68Ph/UjG9XiXSbwKBgQDAyuzEzrqgdc51x2Z40lcQ56zUZVVtW+A8\n485dS5VQMdwFglXzC5QTQ4T3zI1qT+Dd5ATtCkyMNpL07nC/9rQhI0+HTsRZE8P+\nKeSGIFOSvkA2ZwHWKKcctO8n1vOlAwJnjqYEJAZMIg01MtpOFRN0qrDd/9BDUbHi\nHO2smCRZpwKBgAn28r/Jer9F6VwQ6MjaOvPGpXJVAdYavFItWjVc0+hRapNg8DPu\nBg3EU3bJHNXuEcIFLxjX6GUAXi2IF8Lkq3SLPpdkDKmb4WxmPImJ3tCbvMgOWpFR\nZwCkeKb1iTPHUU6oHdSvQpbEoIDu1HMTZB6xQeOVkxoiVGaPNkNfyLXnAoGAeEXg\nQcNKUFJOM9HqzpNCN8ygWHzDN48qrDHeCvvdMYN5ZIJ0BkUB4qarrD+TNXCRszvO\nCuby7EIbmeuqsUdCBq5Vre7otT2MduJBq589I/3GZ2oJjkYcQt9pl2wU4aun81zd\nmxWyTAquPLL11+J0GcNmxYgSr/ymQY6Ug6kCfF8CgYEA2fSIcskydJ94TpX8Dpqm\nBwDXhRIZo6hkLjAqt6hHa7Fs/2qZXAeeX7/oxxfHBWqtPcTnp3N91xgfkPjarPeM\nth0qg1Cu4Y4ZyQfpaVaZB3aWIJB0PdWdMBZa/EUZDu9kFoaExF3BdzA2j7pmMDj4\nOZi9gzTa10z894ZuBJJkMPA=\n-----END PRIVATE KEY-----\n";
 
     use super::{
-        ClaimTrainingValidatorChallengeRequest, FinalizeTrainingValidatorChallengeRequest,
-        PublishTrainingTrnStateRequest, RetryTrainingValidatorChallengeRequest,
-        ScheduledTrainingRun, TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS,
-        TRN_TRAINING_ARTIFACT_LOCATOR_KIND, TRN_TRAINING_CLOSEOUT_KIND,
-        TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND, TRN_TRAINING_WINDOW_KIND,
-        TrainingFleetAbuseNodeSnapshot, TrainingFleetAbuseSnapshot,
+        ClaimTrainingValidatorChallengeRequest, ErrorResponse,
+        FinalizeTrainingValidatorChallengeRequest, PublishTrainingTrnStateRequest,
+        RetryTrainingValidatorChallengeRequest, ScheduledTrainingRun,
+        TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS, TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+        TRN_TRAINING_CLOSEOUT_KIND, TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND,
+        TRN_TRAINING_WINDOW_KIND, TrainingFleetAbuseNodeSnapshot, TrainingFleetAbuseSnapshot,
         TrainingOperatorSummaryResponse, TrainingRolloutAbuseControls, TrainingRolloutChannel,
         TrainingRolloutCohort, TrainingRolloutGate, TrainingRolloutPolicyResponse,
         TrainingRolloutPolicyUpdateRequest, TrainingRolloutTargetKind,
@@ -30522,6 +30859,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn public_stats_fails_fast_when_stats_cache_is_busy() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+        let _cache_guard = state
+            .public_stats_cache
+            .write()
+            .expect("hold stats cache write lock");
+
+        let stats_response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("/api/stats should fail fast while cache is busy")?;
+
+        assert_eq!(stats_response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let error: ErrorResponse = response_json(stats_response).await?;
+        assert_eq!(error.reason, "public_stats_cache_busy");
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn refresh_public_stats_cache_skips_rebuild_while_cache_is_fresh() -> Result<()> {
         let state = build_app_state(test_config()?);
         let now = now_unix_ms();
@@ -30626,6 +30991,53 @@ mod tests {
             .read()
             .expect("store read after idle refresh skip");
         assert_eq!(store.treasury.wallet_balance_sats, 500);
+
+        set_test_wallet_snapshot_hook(None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn treasury_wallet_refresh_cycle_backs_off_failed_attempts() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.wallet_status_refresh_seconds = 1;
+        let state = build_app_state(config);
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let hook_calls = Arc::new(AtomicUsize::new(0));
+        let hook_calls_clone = hook_calls.clone();
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(move || {
+            hook_calls_clone.fetch_add(1, Ordering::SeqCst);
+            Err(anyhow::anyhow!("spark_unavailable"))
+        })));
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+
+        {
+            let store = state.store.read().expect("store read after failed refresh");
+            assert_eq!(store.treasury.last_wallet_sync_at_unix_ms, None);
+            assert!(
+                store
+                    .treasury
+                    .last_wallet_refresh_attempt_at_unix_ms
+                    .is_some()
+            );
+            assert_eq!(
+                store.treasury.wallet_last_error.as_deref(),
+                Some("spark_unavailable")
+            );
+        }
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+
+        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
 
         set_test_wallet_snapshot_hook(None);
         Ok(())
@@ -33500,6 +33912,119 @@ mod tests {
                 .as_deref(),
             Some("heartbeat_stale")
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_node_list_and_single_view_share_authority_refresh_labels() -> Result<()> {
+        let app = build_router(test_config()?);
+
+        let fresh_request = training_node_admission_request(
+            "node-fresh-labels",
+            "sha256:build-fresh-labels",
+            vec!["trainnet.alpha"],
+            Vec::new(),
+            Some(256),
+        );
+        let fresh_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&fresh_request)?))?,
+            )
+            .await?;
+        assert_eq!(fresh_response.status(), StatusCode::OK);
+
+        let mut stale_request = training_node_admission_request(
+            "node-stale-labels",
+            "sha256:build-stale-labels",
+            vec!["trainnet.alpha"],
+            Vec::new(),
+            Some(256),
+        );
+        stale_request.requested_at_ms = now_unix_ms() as i64 - 121_000;
+        let stale_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&stale_request)?))?,
+            )
+            .await?;
+        assert_eq!(stale_response.status(), StatusCode::OK);
+
+        let list_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let listed_nodes = response_json::<Vec<AdmittedTrainingNodeView>>(list_response).await?;
+
+        let listed_fresh = listed_nodes
+            .iter()
+            .find(|node| node.node_pubkey_hex == "node-fresh-labels")
+            .expect("listed fresh node");
+        let listed_stale = listed_nodes
+            .iter()
+            .find(|node| node.node_pubkey_hex == "node-stale-labels")
+            .expect("listed stale node");
+
+        let fresh_single_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-fresh-labels")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fresh_single_response.status(), StatusCode::OK);
+        let fresh_single = response_json::<AdmittedTrainingNodeView>(fresh_single_response).await?;
+
+        let stale_single_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-stale-labels")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stale_single_response.status(), StatusCode::OK);
+        let stale_single = response_json::<AdmittedTrainingNodeView>(stale_single_response).await?;
+
+        assert_eq!(
+            listed_fresh.active_reputation_labels,
+            fresh_single.active_reputation_labels
+        );
+        assert_eq!(
+            listed_stale.active_reputation_labels,
+            stale_single.active_reputation_labels
+        );
+        assert!(
+            listed_fresh
+                .active_reputation_labels
+                .iter()
+                .any(|label| label == "authority::trn/build::admitted")
+        );
+        assert!(
+            listed_stale
+                .active_reputation_labels
+                .iter()
+                .any(|label| label == "authority::trn/build::stale")
+        );
+        assert_eq!(listed_fresh.eligible, fresh_single.eligible);
+        assert_eq!(listed_stale.eligible, stale_single.eligible);
 
         Ok(())
     }
@@ -36464,6 +36989,892 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn training_window_seal_accepts_replacement_assignment_attempts() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_500_500u64;
+        let training_run_id = "run.window.replacement";
+        let window_id = "window.0001";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut node_beta = training_node_admission_request(
+                "node-beta",
+                "sha256:build-beta",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_beta.requested_at_ms = created_at_ms as i64 + 800;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 800),
+                    node_beta,
+                )
+                .expect("admit node beta");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.recorded_at_ms = created_at_ms as i64 + 850;
+            heartbeat_beta.last_heartbeat_at_ms = Some(created_at_ms as i64 + 850);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 850),
+                    heartbeat_beta,
+                )
+                .expect("heartbeat node beta");
+        }
+
+        let claim_requested_at_ms = created_at_ms as i64 + 1_000;
+        let first_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.alpha",
+                            claim_requested_at_ms,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_lease_response.status(), StatusCode::OK);
+        let first_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(first_lease_response).await?;
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.replacement",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://replacement-0001",
+                                "sha256:slice-replacement-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/activate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.replacement",
+                            created_at_ms as i64 + 1_200,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let replacement_requested_at_ms =
+            claim_requested_at_ms + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 1;
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.idempotency_key =
+                "idemp.training.heartbeat.replacement.beta".to_string();
+            heartbeat_beta.recorded_at_ms = replacement_requested_at_ms;
+            heartbeat_beta.last_heartbeat_at_ms = Some(replacement_requested_at_ms);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "node-beta",
+                        replacement_requested_at_ms as u64,
+                    ),
+                    heartbeat_beta,
+                )
+                .expect("refresh heartbeat beta");
+        }
+
+        let replacement_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.beta",
+                            replacement_requested_at_ms,
+                            "node-beta",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(replacement_response.status(), StatusCode::OK);
+        let replacement_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(replacement_response).await?;
+        assert_ne!(replacement_lease.assignment_id, first_lease.assignment_id);
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/seal"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.replacement".to_string(),
+                            recorded_at_ms: replacement_requested_at_ms + 100,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.replacement",
+                                    &replacement_lease,
+                                    "sha256:validator-pending-replacement",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        let sealed_status = sealed.status();
+        let sealed_bytes = to_bytes(sealed.into_body(), usize::MAX).await?;
+        assert_eq!(
+            sealed_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(sealed_bytes.as_ref())
+        );
+        let sealed_window =
+            serde_json::from_slice::<TrainingWindowCoordinatorResponse>(sealed_bytes.as_ref())?;
+        assert_eq!(
+            sealed_window.window.status,
+            ComputeAdapterWindowStatus::Sealed
+        );
+        assert_eq!(sealed_window.contribution_outcomes.len(), 1);
+        assert_eq!(
+            sealed_window.contribution_outcomes[0].assignment_id,
+            replacement_lease.assignment_id
+        );
+        assert_eq!(
+            sealed_window.contribution_outcomes[0].contributor_node_id,
+            "node-beta"
+        );
+        assert_eq!(
+            sealed_window.contribution_outcomes[0].worker_id,
+            "worker.0001"
+        );
+        assert_eq!(
+            sealed_window.contribution_outcomes[0]
+                .dataset_slice
+                .slice_id,
+            "slice://replacement-0001"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_validator_claim_refuses_self_validation_for_replacement_assignment()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_500_900u64;
+        let training_run_id = "run.window.replacement.self_validation";
+        let window_id = "window.0001";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut node_beta = training_node_admission_request(
+                "node-beta",
+                "sha256:build-beta",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_beta.requested_at_ms = created_at_ms as i64 + 800;
+            node_beta.role_claims = vec![
+                TrainingNodeRoleClaim::Worker,
+                TrainingNodeRoleClaim::Validator,
+            ];
+            node_beta.capability_tier =
+                training_capability_tier_profile(node_beta.role_claims.as_slice(), Some(512));
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 800),
+                    node_beta,
+                )
+                .expect("admit node beta");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.recorded_at_ms = created_at_ms as i64 + 850;
+            heartbeat_beta.last_heartbeat_at_ms = Some(created_at_ms as i64 + 850);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 850),
+                    heartbeat_beta,
+                )
+                .expect("heartbeat node beta");
+        }
+
+        let claim_requested_at_ms = created_at_ms as i64 + 1_000;
+        let first_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.self_validation.alpha",
+                            claim_requested_at_ms,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_lease_response.status(), StatusCode::OK);
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.replacement.self_validation",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://replacement-self-validation-0001",
+                                "sha256:slice-replacement-self-validation-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/activate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.replacement.self_validation",
+                            created_at_ms as i64 + 1_200,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let replacement_requested_at_ms =
+            claim_requested_at_ms + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 1;
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.idempotency_key =
+                "idemp.training.heartbeat.replacement.self_validation.beta".to_string();
+            heartbeat_beta.recorded_at_ms = replacement_requested_at_ms;
+            heartbeat_beta.last_heartbeat_at_ms = Some(replacement_requested_at_ms);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "node-beta",
+                        replacement_requested_at_ms as u64,
+                    ),
+                    heartbeat_beta,
+                )
+                .expect("refresh heartbeat beta");
+        }
+
+        let replacement_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.self_validation.beta",
+                            replacement_requested_at_ms,
+                            "node-beta",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(replacement_response.status(), StatusCode::OK);
+        let replacement_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(replacement_response).await?;
+
+        let sealed =
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/api/training/windows/{window_id}/seal"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(
+                            &SealTrainingWindowRequest {
+                                idempotency_key:
+                                    "idemp.training.window.seal.replacement.self_validation"
+                                        .to_string(),
+                                recorded_at_ms: replacement_requested_at_ms + 100,
+                                window_id: window_id.to_string(),
+                                contribution_outcomes: vec![
+                                    training_window_contribution_input_for_lease(
+                                        "contrib.window.replacement.self_validation",
+                                        &replacement_lease,
+                                        "sha256:validator-pending-replacement-self-validation",
+                                        None,
+                                    ),
+                                ],
+                            },
+                        )?))?,
+                )
+                .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let validator_claim = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.replacement.self_validation",
+                            replacement_requested_at_ms + 110,
+                            "node-beta",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(validator_claim.status(), StatusCode::CONFLICT);
+        let error = response_json::<serde_json::Value>(validator_claim).await?;
+        assert_eq!(
+            error.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_validator_challenge_unavailable")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_reconcile_rewards_replacement_assignment_attempts() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_501_200u64;
+        let training_run_id = "run.window.replacement.reconcile";
+        let window_id = "window.0001";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut node_beta = training_node_admission_request(
+                "node-beta",
+                "sha256:build-beta",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_beta.requested_at_ms = created_at_ms as i64 + 800;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 800),
+                    node_beta,
+                )
+                .expect("admit node beta");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.recorded_at_ms = created_at_ms as i64 + 850;
+            heartbeat_beta.last_heartbeat_at_ms = Some(created_at_ms as i64 + 850);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 850),
+                    heartbeat_beta,
+                )
+                .expect("heartbeat node beta");
+
+            let mut validator_gamma = training_node_admission_request(
+                "validator-gamma",
+                "sha256:build-validator-gamma",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            validator_gamma.idempotency_key =
+                "idemp.training.admission.validator-gamma".to_string();
+            validator_gamma.requested_at_ms = created_at_ms as i64 + 860;
+            validator_gamma.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            validator_gamma.capability_tier =
+                training_capability_tier_profile(validator_gamma.role_claims.as_slice(), Some(512));
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-gamma", created_at_ms + 860),
+                    validator_gamma,
+                )
+                .expect("admit validator gamma");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-gamma", "sha256:build-validator-gamma");
+            validator_heartbeat.idempotency_key =
+                "idemp.training.heartbeat.validator-gamma".to_string();
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 870;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 870);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-gamma", created_at_ms + 870),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator gamma");
+        }
+
+        let claim_requested_at_ms = created_at_ms as i64 + 1_000;
+        let first_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.reconcile.alpha",
+                            claim_requested_at_ms,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_lease_response.status(), StatusCode::OK);
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.replacement.reconcile",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://replacement-reconcile-0001",
+                                "sha256:slice-replacement-reconcile-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/activate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.replacement.reconcile",
+                            created_at_ms as i64 + 1_200,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let replacement_requested_at_ms =
+            claim_requested_at_ms + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 1;
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.idempotency_key =
+                "idemp.training.heartbeat.replacement.reconcile.beta".to_string();
+            heartbeat_beta.recorded_at_ms = replacement_requested_at_ms;
+            heartbeat_beta.last_heartbeat_at_ms = Some(replacement_requested_at_ms);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "node-beta",
+                        replacement_requested_at_ms as u64,
+                    ),
+                    heartbeat_beta,
+                )
+                .expect("refresh heartbeat beta");
+
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-gamma", "sha256:build-validator-gamma");
+            validator_heartbeat.idempotency_key =
+                "idemp.training.heartbeat.validator-gamma.reconcile".to_string();
+            validator_heartbeat.recorded_at_ms = replacement_requested_at_ms;
+            validator_heartbeat.last_heartbeat_at_ms = Some(replacement_requested_at_ms);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "validator-gamma",
+                        replacement_requested_at_ms as u64,
+                    ),
+                    validator_heartbeat,
+                )
+                .expect("refresh heartbeat validator gamma");
+        }
+
+        let replacement_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.reconcile.beta",
+                            replacement_requested_at_ms,
+                            "node-beta",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(replacement_response.status(), StatusCode::OK);
+        let replacement_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(replacement_response).await?;
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/seal"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.replacement.reconcile"
+                                .to_string(),
+                            recorded_at_ms: replacement_requested_at_ms + 100,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.replacement.reconcile",
+                                    &replacement_lease,
+                                    "sha256:validator-pending-replacement-reconcile",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let claimed_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.replacement.reconcile.1",
+                            replacement_requested_at_ms + 110,
+                            "validator-gamma",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_one.status(), StatusCode::OK);
+        let claimed_one =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_one).await?;
+        let finalized_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        claimed_one.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.replacement.reconcile.1",
+                            replacement_requested_at_ms + 120,
+                            "validator-gamma",
+                            claimed_one.lease.clone().expect("first claim lease"),
+                            claimed_one
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            claimed_one.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-replacement-reconcile-one",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_one.status(), StatusCode::OK);
+
+        let claimed_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.replacement.reconcile.2",
+                            replacement_requested_at_ms + 130,
+                            "validator-gamma",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_two.status(), StatusCode::OK);
+        let claimed_two =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_two).await?;
+        let finalized_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        claimed_two.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.replacement.reconcile.2",
+                            replacement_requested_at_ms + 140,
+                            "validator-gamma",
+                            claimed_two.lease.clone().expect("second claim lease"),
+                            claimed_two
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            claimed_two.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-replacement-reconcile-two",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_two.status(), StatusCode::OK);
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/reconcile"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key:
+                                "idemp.training.window.reconcile.replacement.reconcile".to_string(),
+                            recorded_at_ms: replacement_requested_at_ms + 200,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.replacement.reconcile",
+                                    &replacement_lease,
+                                    "sha256:validator-final-replacement-reconcile",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-replacement-reconcile".to_string(),
+                            ),
+                            accepted_aggregate_id: Some(
+                                "aggregate.window.replacement.reconcile".to_string(),
+                            ),
+                            promoted_checkpoint_ref: None,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+        let reconciled_window =
+            response_json::<TrainingWindowCoordinatorResponse>(reconciled).await?;
+        assert_eq!(
+            reconciled_window.window.status,
+            ComputeAdapterWindowStatus::Reconciled
+        );
+        assert_eq!(reconciled_window.window.accepted_contributions, 1);
+        assert!(reconciled_window.window.promotion_ready);
+        assert_eq!(
+            reconciled_window.window.accepted_outcome_id.as_deref(),
+            Some("accepted.training_window.window.0001")
+        );
+
+        let store = state.store.read().expect("read store");
+        let closeout = store
+            .kernel
+            .get_compute_accepted_outcome("accepted.training_window.window.0001")
+            .expect("rewarded closeout");
+        assert_eq!(
+            closeout
+                .metadata
+                .get("closeout_status")
+                .and_then(serde_json::Value::as_str),
+            Some("rewarded")
+        );
+        let defensibility = closeout
+            .metadata
+            .get("defensibility")
+            .expect("defensibility metadata");
+        assert_eq!(
+            defensibility
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("satisfied")
+        );
+        let refusal_codes = defensibility
+            .get("refusal_codes")
+            .and_then(serde_json::Value::as_array)
+            .expect("refusal codes");
+        assert!(refusal_codes.is_empty());
+        let assignment_trail = defensibility
+            .get("assignment_trail")
+            .and_then(serde_json::Value::as_array)
+            .expect("assignment trail");
+        assert!(assignment_trail.iter().any(|value| {
+            value
+                .get("assignment_id")
+                .and_then(serde_json::Value::as_str)
+                == Some(replacement_lease.assignment_id.as_str())
+        }));
+        assert!(assignment_trail.iter().all(|value| {
+            value
+                .get("refusal_code")
+                .and_then(serde_json::Value::as_str)
+                .is_none()
+        }));
+        assert_eq!(
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .window_state,
+            TrainingSchedulerWindowState::Accepted
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn training_window_reconcile_rewards_retained_homework_closeout_without_aggregate_delta_digest()
     -> Result<()> {
         let state = build_app_state(test_config()?);
@@ -38295,6 +39706,49 @@ mod tests {
                 .filter(|entry| !entry.status.starts_with("trn/build="))
                 .all(|entry| entry.publication_state == "published")
         );
+        let worker_node_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-alpha")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(worker_node_response.status(), StatusCode::OK);
+        let worker_node = response_json::<AdmittedTrainingNodeView>(worker_node_response).await?;
+        assert!(
+            worker_node
+                .active_reputation_labels
+                .iter()
+                .any(|label| label == "authority::trn/build::admitted"),
+            "{:?}",
+            worker_node.active_reputation_labels
+        );
+        assert!(worker_node.eligible);
+
+        let validator_node_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/validator-alpha")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(validator_node_response.status(), StatusCode::OK);
+        let validator_node =
+            response_json::<AdmittedTrainingNodeView>(validator_node_response).await?;
+        assert!(
+            validator_node
+                .active_reputation_labels
+                .iter()
+                .any(|label| label == "authority::trn/build::admitted"),
+            "{:?}",
+            validator_node.active_reputation_labels
+        );
+        assert!(validator_node.eligible);
+
         let second_events = collect_training_trn_events(&mut event_rx).await;
         let second_trn_events = parse_training_trn_events(second_events.as_slice())?;
         let second_kinds = second_events
@@ -39902,6 +41356,39 @@ mod tests {
             Some("window.0001")
         );
 
+        {
+            let mut cache = state
+                .training_run_detail_cache
+                .write()
+                .expect("write training run detail cache");
+            let stale_detail = cache
+                .get_mut(training_run_id)
+                .expect("cached training run detail");
+            stale_detail.generated_at_unix_ms = super::now_unix_ms()
+                .saturating_sub(super::TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS + 1);
+        }
+        let store_guard = state.store.write().expect("hold live store write lock");
+        let stale_detail_response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.clone().oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}"))
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("stale training run detail cache should return without live store")?;
+        drop(store_guard);
+        assert_eq!(stale_detail_response.status(), StatusCode::OK);
+        let stale_detail =
+            response_json::<PublicTrainingRunDetailSnapshot>(stale_detail_response).await?;
+        assert_eq!(stale_detail.training_run_id, training_run_id);
+        assert_eq!(
+            stale_detail.featured_window_id.as_deref(),
+            Some("window.0001")
+        );
+
         Ok(())
     }
 
@@ -40377,6 +41864,95 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn prepare_homework_launch_uses_freshest_worker_view_per_pubkey() {
+        let config = test_config().expect("config");
+        let state = build_app_state(config);
+        let network_id = "trainnet.cs336.a1.duplicates";
+        let training_run_id = "run.cs336.a1.duplicates";
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(200),
+            "node-duplicate-alpha",
+            "sha256:build-duplicate-alpha-old",
+            network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodeduplicatealpha"),
+        );
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-duplicate-alpha",
+            "sha256:build-duplicate-alpha-new",
+            network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodeduplicatealpha"),
+        );
+
+        let prepared = {
+            let mut store = state.store.write().expect("write store");
+            super::prepare_homework_launch(
+                &state.config,
+                &mut store,
+                recorded_at_ms,
+                LaunchHomeworkRunRequest {
+                    course_id: "cs336".to_string(),
+                    homework_id: "a1".to_string(),
+                    run_slug: "duplicates".to_string(),
+                    training_run_id: Some(training_run_id.to_string()),
+                    display_name: Some("Duplicate Nodes".to_string()),
+                    reuse_existing_run: false,
+                    network_id: Some(network_id.to_string()),
+                    run_kind: Some("homework".to_string()),
+                    assignment_family: Some("cs336.a1".to_string()),
+                    artifact_prefix: None,
+                    target: super::HomeworkLaunchTargetRequest {
+                        only_online: true,
+                        min_pylon_version: None,
+                        require_updated_build: true,
+                        tags_any: Vec::new(),
+                        tags_all: Vec::new(),
+                    },
+                    assignment: super::HomeworkLaunchAssignmentRequest {
+                        mode: super::HomeworkAssignmentMode::AllMatchingPylons,
+                        max_contributors: None,
+                        window_duration_seconds: 1_800,
+                    },
+                    payout: super::HomeworkLaunchPayoutRequest {
+                        enabled: false,
+                        rail: None,
+                        amount_sats: None,
+                        pay_only_on_accept: true,
+                    },
+                },
+            )
+            .expect("prepare homework launch")
+        };
+
+        assert_eq!(prepared.matched_pylons.len(), 1);
+        assert_eq!(prepared.assigned_nodes.len(), 1);
+        assert_eq!(
+            prepared.matched_pylons[0].node_pubkey_hex,
+            "node-duplicate-alpha"
+        );
+        assert_eq!(
+            prepared.matched_pylons[0].build_digest,
+            "sha256:build-duplicate-alpha-new"
+        );
+        assert_eq!(
+            prepared.assigned_nodes[0].build_digest,
+            "sha256:build-duplicate-alpha-new"
+        );
     }
 
     #[tokio::test]
@@ -44838,6 +46414,65 @@ mod tests {
         assert_eq!(
             training_window_closeout_status(&refused_summary, &[], 0, 0, 1, 0),
             TrainingWindowCloseoutStatus::Refused
+        );
+    }
+
+    #[test]
+    fn training_validator_reputation_ignores_operational_assignment_refusals() {
+        let operational_refused = super::TrainingCloseoutReputationContext {
+            network_id: "training".to_string(),
+            status: "refused".to_string(),
+            outcome_id: "accepted.training_window.window.operational".to_string(),
+            accepted_at_ms: 1_776_240_000_000,
+            metadata: serde_json::json!({
+                "defensibility": {
+                    "refusal_codes": [
+                        PylonTrainingRefusalCode::LeaseExpired.label(),
+                        PylonTrainingRefusalCode::StaleAssignment.label()
+                    ]
+                }
+            }),
+        };
+        assert_eq!(
+            super::training_validator_label_for_closeout_context(
+                &operational_refused,
+                ComputeValidatorChallengeVerdict::Verified
+            ),
+            None
+        );
+
+        let validator_refused = super::TrainingCloseoutReputationContext {
+            network_id: "training".to_string(),
+            status: "refused".to_string(),
+            outcome_id: "accepted.training_window.window.validator".to_string(),
+            accepted_at_ms: 1_776_240_000_000,
+            metadata: serde_json::json!({
+                "defensibility": {
+                    "refusal_codes": [PylonTrainingRefusalCode::ValidatorDisagreement.label()]
+                }
+            }),
+        };
+        assert_eq!(
+            super::training_validator_label_for_closeout_context(
+                &validator_refused,
+                ComputeValidatorChallengeVerdict::Verified
+            ),
+            Some(super::PylonTrainingReputationLabel::Inconsistent)
+        );
+
+        let rewarded = super::TrainingCloseoutReputationContext {
+            network_id: "training".to_string(),
+            status: "rewarded".to_string(),
+            outcome_id: "accepted.training_window.window.rewarded".to_string(),
+            accepted_at_ms: 1_776_240_000_000,
+            metadata: serde_json::json!({}),
+        };
+        assert_eq!(
+            super::training_validator_label_for_closeout_context(
+                &rewarded,
+                ComputeValidatorChallengeVerdict::Verified
+            ),
+            Some(super::PylonTrainingReputationLabel::Good)
         );
     }
 
