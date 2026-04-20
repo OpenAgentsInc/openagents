@@ -78,6 +78,11 @@ oa proof run cs336-a1-replacement-attempt --namespace <namespace> --workers 0 --
 oa proof doctor --namespace <namespace> --json
 ```
 
+Proof runs start in the background and return an immediate `running`
+projection. Completion or failure is delivered back to React through Tauri
+events, so the command dialog remains usable for stop/reset while the proof
+lane is active.
+
 The card reads the same machine artifacts documented in
 `../../docs/pylon/autopilot-proof-contract.md`:
 

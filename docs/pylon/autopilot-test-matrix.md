@@ -57,6 +57,8 @@ Expected result:
   path, Pylon home, blocker codes, last action, last error, and exit code.
 - Logs open under `~/.openagents/autopilot/logs`.
 - No user-provided command text is passed through a shell.
+- Long-running proof commands do not block Pylon status refresh or stop/reset
+  commands.
 
 ## Local Proof Replacement Smoke
 
@@ -74,6 +76,8 @@ cargo run -p pylon --bin oa -- proof run cs336-a1-replacement-attempt \
 
 Expected result:
 
+- Autopilot receives an immediate `running` projection and remains usable while
+  the proof lane completes in the background.
 - `status` is `completed`.
 - The run report detail says the replacement attempt was sealed and reconciled
   locally.

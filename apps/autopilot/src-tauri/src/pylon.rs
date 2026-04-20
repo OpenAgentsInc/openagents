@@ -371,22 +371,43 @@ pub fn proof_run(
         OsString::from(timeout_seconds.to_string()),
         OsString::from("--json"),
     ];
-    let status = proof_get_projection(&namespace, &lane, Some("running"));
+    let mut status = proof_get_projection(&namespace, &lane, Some("running"));
+    status.detail = Some(format!(
+        "started oa proof run {lane} in background namespace {namespace}"
+    ));
     emit_status(&app, "proof://status", &status);
-    let output = run_command_with_timeout(
-        &binary,
-        &args,
-        Duration::from_secs(timeout_seconds.saturating_add(30)),
-    )?;
-    if !output.status.success() {
-        let mut projection = proof_get_projection(&namespace, &lane, Some("failed"));
-        projection.detail = Some(command_failure("oa proof run", &output));
-        emit_status(&app, "proof://error", &projection);
-        return Ok(projection);
-    }
-    let projection = proof_get_projection(&namespace, &lane, None);
-    emit_status(&app, "proof://summary", &projection);
-    Ok(projection)
+    let app_for_thread = app.clone();
+    let background_namespace = namespace.clone();
+    let background_lane = lane.clone();
+
+    thread::spawn(move || {
+        let output = run_command_with_timeout(
+            &binary,
+            &args,
+            Duration::from_secs(timeout_seconds.saturating_add(30)),
+        );
+        match output {
+            Ok(output) if output.status.success() => {
+                let projection =
+                    proof_get_projection(&background_namespace, &background_lane, None);
+                emit_status(&app_for_thread, "proof://summary", &projection);
+            }
+            Ok(output) => {
+                let mut projection =
+                    proof_get_projection(&background_namespace, &background_lane, Some("failed"));
+                projection.detail = Some(command_failure("oa proof run", &output));
+                emit_status(&app_for_thread, "proof://error", &projection);
+            }
+            Err(error) => {
+                let mut projection =
+                    proof_get_projection(&background_namespace, &background_lane, Some("failed"));
+                projection.detail = Some(redact_sensitive(&error));
+                emit_status(&app_for_thread, "proof://error", &projection);
+            }
+        }
+    });
+
+    Ok(status)
 }
 
 #[tauri::command]
@@ -422,7 +443,7 @@ pub fn proof_doctor(namespace: String) -> Result<ProofRunProjection, String> {
 #[tauri::command]
 pub fn proof_stop(namespace: String) -> Result<ProofRuntimeProjection, String> {
     let binary = resolve_binary_path(BinaryKind::Oa)?;
-    let args = vec![
+    let fleet_args = vec![
         OsString::from("proof"),
         OsString::from("fleet"),
         OsString::from("down"),
@@ -430,14 +451,62 @@ pub fn proof_stop(namespace: String) -> Result<ProofRuntimeProjection, String> {
         OsString::from(&namespace),
         OsString::from("--json"),
     ];
-    let output = run_command_with_timeout(&binary, &args, DEFAULT_COMMAND_TIMEOUT)?;
-    if !output.status.success() {
-        return Err(command_failure("oa proof fleet down", &output));
+    let authority_args = vec![
+        OsString::from("proof"),
+        OsString::from("authority"),
+        OsString::from("down"),
+        OsString::from("--namespace"),
+        OsString::from(&namespace),
+        OsString::from("--json"),
+    ];
+
+    let mut details = Vec::new();
+    let mut errors = Vec::new();
+
+    match run_command_with_timeout(&binary, &fleet_args, DEFAULT_COMMAND_TIMEOUT) {
+        Ok(output) if output.status.success() => {
+            details.push("fleet down completed".to_string());
+        }
+        Ok(output) => {
+            errors.push(command_failure("oa proof fleet down", &output));
+        }
+        Err(error) => {
+            errors.push(redact_sensitive(&error));
+        }
     }
+
+    let authority_stopped =
+        match run_command_with_timeout(&binary, &authority_args, DEFAULT_COMMAND_TIMEOUT) {
+            Ok(output) if output.status.success() => {
+                details.push("authority down completed".to_string());
+                true
+            }
+            Ok(output) if proof_authority_output_stopped(&output) => {
+                details.push("authority down reported stopped processes".to_string());
+                true
+            }
+            Ok(output) => {
+                errors.push(command_failure("oa proof authority down", &output));
+                false
+            }
+            Err(error) => {
+                errors.push(redact_sensitive(&error));
+                false
+            }
+        };
+
+    if !authority_stopped && !errors.is_empty() {
+        return Err(errors.join(" | "));
+    }
+
     Ok(ProofRuntimeProjection {
         namespace: namespace.clone(),
         status: "stopped".to_string(),
-        detail: "proof namespace stop requested".to_string(),
+        detail: if errors.is_empty() {
+            details.join("; ")
+        } else {
+            format!("{}; warnings: {}", details.join("; "), errors.join(" | "))
+        },
         artifacts: proof_artifacts(&namespace),
         updated_at: now_rfc3339ish(),
     })
@@ -1118,6 +1187,23 @@ fn command_output_excerpt(output: &Output) -> String {
     }
     let redacted = redact_sensitive(text.trim());
     redacted.chars().take(800).collect()
+}
+
+fn proof_authority_output_stopped(output: &Output) -> bool {
+    let Ok(value) = serde_json::from_slice::<Value>(&output.stdout) else {
+        return false;
+    };
+    let authority_running = value
+        .get("authority_process")
+        .and_then(|process| process.get("running"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let artifact_store_running = value
+        .get("artifact_store_process")
+        .and_then(|process| process.get("running"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    !authority_running && !artifact_store_running
 }
 
 fn normalize_provider_mode(mode: &str) -> Result<&'static str, String> {
