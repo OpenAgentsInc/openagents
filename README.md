@@ -14,6 +14,7 @@ This repo is not the entire OpenAgents system. It does own several of the key
 shipped surfaces:
 
 - the `Autopilot` desktop product
+- the planned Tauri `Autopilot` shell at `apps/autopilot`
 - the `Pylon` provider connector
 - the `Nexus` hosted coordination and authority slice
 - the `wgpui` product UI stack
@@ -46,6 +47,15 @@ and withdraws over Lightning.
 - the provider earn loop
 - the secondary Data Market surfaces
 - later richer workflow, labor, and business-system surfaces
+
+The current refactor plan keeps the next Tauri implementation in this monorepo:
+
+```text
+apps/autopilot
+```
+
+Do not call that app `autopilot-tauri`. The product name is `Autopilot`; Tauri
+is the desktop shell implementation.
 
 ### `Probe`
 
