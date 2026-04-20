@@ -7846,6 +7846,7 @@ dependencies = [
  "futures-util",
  "hex",
  "jsonwebtoken",
+ "libc",
  "nostr 0.1.1",
  "nostr-client",
  "openagents-kernel-core",

@@ -44,6 +44,188 @@ cargo pylon-headless <command>
 
 It is still a narrow supply connector. It is not a buyer shell, not a labor runtime, and not a raw accelerator exchange.
 
+## Local Proof Authority Runtime
+
+The local proof-runtime foundation now has a dedicated authority lane for
+running prod-shaped `Nexus` proof work without touching shared environments.
+
+From a source checkout, use the `oa` binary:
+
+```bash
+cargo run -p pylon --bin oa -- proof authority up --json
+cargo run -p pylon --bin oa -- proof authority status --json
+cargo run -p pylon --bin oa -- proof authority down --json
+cargo run -p pylon --bin oa -- proof authority reset --json
+```
+
+Use the launch modes deliberately:
+
+- `prod-shaped` is the default and boots local `nexus-relay` with embedded
+  `nexus-control`
+- `debug-authority` boots `nexus-control` directly when you want a narrower
+  authority-only debug path
+
+```bash
+cargo run -p pylon --bin oa -- proof authority up --mode debug-authority --json
+```
+
+The default proof namespace is `authority`. Its state persists under:
+
+```text
+~/.openagents/pylon/proof/namespaces/authority
+```
+
+That namespace root keeps the prod-shaped authority world together:
+
+- authority env manifest and logs
+- relay data and persistent runtime state
+- treasury state, wallet material, and receipt log
+- local artifact-store objects plus canonical object-path trace output
+
+The artifact adapter intentionally records canonical publication paths in:
+
+```text
+~/.openagents/pylon/proof/namespaces/authority/artifacts/object-trace.jsonl
+```
+
+That makes proof runs validate the same object naming path the production
+authority expects while still writing to local backing storage.
+
+`proof authority status` probes the local authority health/admin/training
+surfaces plus the local artifact-store health route so the operator can see
+whether the proof world is actually intact before running a lane.
+
+## Local Proof Fleet Manager
+
+The next proof layer is the isolated fleet manager. It boots fresh worker and
+validator homes under a named proof namespace so a local run does not reuse the
+shared `authority` state root.
+
+Bring up a smoke fleet explicitly:
+
+```bash
+cargo run -p pylon --bin oa -- proof fleet up \
+  --namespace proof.smoke \
+  --workers 1 \
+  --validators 1 \
+  --json
+
+cargo run -p pylon --bin oa -- proof fleet status --namespace proof.smoke --json
+cargo run -p pylon --bin oa -- proof fleet down --namespace proof.smoke --json
+cargo run -p pylon --bin oa -- proof fleet reset --namespace proof.smoke --json
+```
+
+Drive a real proof lane with a fresh namespace by default:
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1 --workers 1 --validators 1 --json
+```
+
+Pin the namespace only when you want to keep the artifacts and logs under a
+stable root for inspection:
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1 \
+  --namespace proof.cs336-a1.debug \
+  --workers 1 \
+  --validators 1 \
+  --timeout-seconds 60 \
+  --json
+```
+
+Each namespace now keeps its own:
+
+- authority runtime state and logs
+- per-role worker and validator config, log, and training roots
+- deterministic admin/checkpoint ports
+- local artifact-store objects and trace file
+- `fleet-state.json` and `run-report.json` summaries
+
+The worker and validator roots live under:
+
+```text
+~/.openagents/pylon/proof/namespaces/<namespace>/fleet/
+```
+
+Use the stale retained-state toggles when you want replayable prod-class
+retained state without manual filesystem edits:
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1 \
+  --workers 1 \
+  --validators 1 \
+  --stale-worker-state \
+  --stale-validator-state \
+  --json
+
+cargo run -p pylon --bin oa -- proof run cs336-a1-stale-recovery \
+  --namespace proof.cs336-a1.stale \
+  --workers 1 \
+  --validators 1 \
+  --json
+```
+
+Use the replacement-attempt lane when you want the authority-side
+`lease -> ack -> failure -> replacement claim -> seal -> reconcile` path from
+`#4368` without bringing up worker or validator processes:
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1-replacement-attempt \
+  --namespace proof.cs336-a1.replace \
+  --workers 0 \
+  --validators 0 \
+  --json
+```
+
+`proof run` now writes the first concrete blocker it can observe into
+`run-report.json`. In the current local proof world that commonly means a
+critical authority caveat or a node-local training issue instead of a generic
+timeout.
+
+The retained-state fixture corpus that seeds those lanes lives under:
+
+```text
+fixtures/proof/4368/
+```
+
+That corpus packages reduced `#4368` regression inputs:
+
+- stale worker and validator retained-state templates
+- accepted-but-payout-open closeout templates
+- replacement-attempt contribution/reconcile digests
+
+Each proof run now also writes:
+
+- `authority-state-trace.json` for machine-readable authority/node state at the
+  point the run stopped
+- `proof-summary.json` for the closure-oriented first-red-stage summary
+
+Those artifacts sit beside `run-report.json` under:
+
+```text
+~/.openagents/pylon/proof/namespaces/<namespace>/fleet/
+```
+
+Use the dedicated doctor lane when you need transport/provenance attribution
+without manually reading logs:
+
+```bash
+cargo run -p pylon --bin oa -- proof doctor --namespace proof.cs336-a1.debug --json
+```
+
+`proof doctor` reports:
+
+- current `oa` / `nexus-relay` / `nexus-control` binary provenance
+- current workspace Git branch and commit
+- authority env-manifest key presence
+- process-level env drift checks for worker and validator nodes
+- a transport split view across authority front-door, relay, artifact-store,
+  node-admin, and checkpoint surfaces
+
+The intent is narrow: make it obvious whether the first red stage is authority
+state, operator drift, hard-gated retained state, or transport/runtime failure
+before anyone reaches for production.
+
 Optional account visibility now also has an explicit headless lane:
 
 ```bash
