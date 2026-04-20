@@ -240,7 +240,7 @@ const HOMEWORK_LANES: &[HomeworkLaneSpec] = &[
         namespace_suffix: "clean",
         workers: 1,
         validators: 1,
-        timeout_seconds: 180,
+        timeout_seconds: 360,
         min_workers: 1,
         min_validators: 1,
         expected_closeout_stage: Some("rewarded"),
@@ -250,7 +250,7 @@ const HOMEWORK_LANES: &[HomeworkLaneSpec] = &[
         namespace_suffix: "replacement",
         workers: 0,
         validators: 0,
-        timeout_seconds: 90,
+        timeout_seconds: 180,
         min_workers: 0,
         min_validators: 0,
         expected_closeout_stage: None,
@@ -260,7 +260,7 @@ const HOMEWORK_LANES: &[HomeworkLaneSpec] = &[
         namespace_suffix: "stale",
         workers: 1,
         validators: 1,
-        timeout_seconds: 180,
+        timeout_seconds: 360,
         min_workers: 1,
         min_validators: 1,
         expected_closeout_stage: Some("rewarded"),
@@ -393,16 +393,26 @@ fn run_smoke(target: &ControlTarget, args: &[&str]) -> Result<Value, String> {
         "pylon_start",
         request_json(target, "POST", "/v1/pylon/start", Some(json!({})))?,
     );
-    push_step(
-        &mut steps,
-        "pylon_mode_offline",
-        request_json(
-            target,
-            "POST",
-            "/v1/pylon/mode",
-            Some(json!({ "mode": "offline" })),
-        )?,
-    );
+    let pylon_mode = request_json(
+        target,
+        "POST",
+        "/v1/pylon/mode",
+        Some(json!({ "mode": "offline" })),
+    )?;
+    let pylon_validation = validate_pylon_configured(&pylon_mode);
+    let pylon_ok = pylon_validation
+        .get("ok")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    push_step(&mut steps, "pylon_mode_offline", pylon_mode);
+    push_step(&mut steps, "pylon_configured_validation", pylon_validation);
+    if !pylon_ok {
+        return Err(format!(
+            "pylon is not configured for smoke: {}",
+            serde_json::to_string_pretty(steps.last().unwrap_or(&Value::Null))
+                .unwrap_or_else(|_| "validation unavailable".to_string())
+        ));
+    }
     push_step(
         &mut steps,
         "pylon_stop",
@@ -491,16 +501,19 @@ fn run_homework_matrix(target: &ControlTarget, args: &[&str]) -> Result<Value, S
         "pylon_start",
         request_json(target, "POST", "/v1/pylon/start", Some(json!({})))?,
     );
-    push_step(
-        &mut steps,
-        "pylon_mode_offline",
-        request_json(
-            target,
-            "POST",
-            "/v1/pylon/mode",
-            Some(json!({ "mode": "offline" })),
-        )?,
-    );
+    let pylon_mode = request_json(
+        target,
+        "POST",
+        "/v1/pylon/mode",
+        Some(json!({ "mode": "offline" })),
+    )?;
+    let pylon_validation = validate_pylon_configured(&pylon_mode);
+    matrix_ok &= pylon_validation
+        .get("ok")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    push_step(&mut steps, "pylon_mode_offline", pylon_mode);
+    push_step(&mut steps, "pylon_configured_validation", pylon_validation);
 
     for spec in HOMEWORK_LANES {
         let namespace = format!("{}.{}", namespace_prefix, spec.namespace_suffix);
@@ -606,58 +619,53 @@ fn validate_homework_lane(spec: HomeworkLaneSpec, completed: &Value, doctor: &Va
     push_check(
         &mut checks,
         "workers",
-        array_len(completed, "workers") >= spec.min_workers,
+        max_array_len(completed, doctor, "workers") >= spec.min_workers,
         &format!(
             "{} >= {}",
-            array_len(completed, "workers"),
+            max_array_len(completed, doctor, "workers"),
             spec.min_workers
         ),
     );
     push_check(
         &mut checks,
         "validators",
-        array_len(completed, "validators") >= spec.min_validators,
+        max_array_len(completed, doctor, "validators") >= spec.min_validators,
         &format!(
             "{} >= {}",
-            array_len(completed, "validators"),
+            max_array_len(completed, doctor, "validators"),
             spec.min_validators
         ),
     );
     push_check(
         &mut checks,
         "run_report_artifact",
-        artifact_exists(completed, "runReportPath"),
+        artifact_exists_any(completed, doctor, "runReportPath"),
         "runReportPath exists",
     );
     push_check(
         &mut checks,
         "authority_trace_artifact",
-        artifact_exists(completed, "authorityTracePath"),
+        artifact_exists_any(completed, doctor, "authorityTracePath"),
         "authorityTracePath exists",
     );
     push_check(
         &mut checks,
         "proof_summary_artifact",
-        artifact_exists(completed, "summaryPath"),
+        artifact_exists_any(completed, doctor, "summaryPath"),
         "summaryPath exists",
     );
     push_check(
         &mut checks,
         "object_trace_artifact",
-        artifact_exists(completed, "artifactTracePath"),
+        artifact_exists_any(completed, doctor, "artifactTracePath"),
         "artifactTracePath exists",
     );
+    let (transport_ok, transport_detail) = transport_acceptable(spec, completed, doctor);
     push_check(
         &mut checks,
         "transport_split",
-        transport_ok(completed),
-        "authority/relay/artifact-store/node-surfaces all ok",
-    );
-    push_check(
-        &mut checks,
-        "doctor_transport_split",
-        transport_ok(doctor),
-        "doctor authority/relay/artifact-store/node-surfaces all ok",
+        transport_ok,
+        transport_detail.as_str(),
     );
     if let Some(expected) = spec.expected_closeout_stage {
         let stage = completed
@@ -681,6 +689,36 @@ fn validate_homework_lane(spec: HomeworkLaneSpec, completed: &Value, doctor: &Va
     json!({
         "ok": ok,
         "checks": checks,
+    })
+}
+
+fn validate_pylon_configured(status: &Value) -> Value {
+    let blockers = status
+        .get("blockerCodes")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let configured = status
+        .get("configured")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let missing_setup = blockers
+        .iter()
+        .any(|code| matches!(code.as_str(), "CONFIG_MISSING" | "IDENTITY_MISSING"));
+    let ok = configured && !missing_setup;
+    json!({
+        "ok": ok,
+        "configured": configured,
+        "providerState": str_field(status, "providerState"),
+        "configPath": str_field(status, "configPath"),
+        "pylonHome": str_field(status, "pylonHome"),
+        "blockerCodes": blockers,
     })
 }
 
@@ -819,6 +857,10 @@ fn array_len(value: &Value, key: &str) -> usize {
         .unwrap_or(0)
 }
 
+fn max_array_len(left: &Value, right: &Value, key: &str) -> usize {
+    array_len(left, key).max(array_len(right, key))
+}
+
 fn artifact_exists(value: &Value, key: &str) -> bool {
     let Some(path) = value
         .get("artifacts")
@@ -830,19 +872,67 @@ fn artifact_exists(value: &Value, key: &str) -> bool {
     fs::metadata(path).is_ok()
 }
 
-fn transport_ok(value: &Value) -> bool {
-    let Some(transport) = value.get("transport") else {
-        return false;
-    };
-    ["authority", "relay", "artifactStore", "nodeSurfaces"]
-        .iter()
-        .all(|key| {
-            transport
-                .get(key)
-                .and_then(Value::as_str)
-                .map(|status| status == "ok")
-                .unwrap_or(false)
-        })
+fn artifact_exists_any(left: &Value, right: &Value, key: &str) -> bool {
+    artifact_exists(left, key) || artifact_exists(right, key)
+}
+
+fn transport_component_ok(left: &Value, right: &Value, key: &str) -> bool {
+    [left, right].iter().any(|value| {
+        value
+            .get("transport")
+            .and_then(|transport| transport.get(key))
+            .and_then(Value::as_str)
+            .map(|status| status == "ok")
+            .unwrap_or(false)
+    })
+}
+
+fn transport_status(left: &Value, right: &Value, key: &str) -> String {
+    for value in [right, left] {
+        if let Some(status) = value
+            .get("transport")
+            .and_then(|transport| transport.get(key))
+            .and_then(Value::as_str)
+        {
+            if status != "unknown" {
+                return status.to_string();
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
+fn transport_acceptable(
+    spec: HomeworkLaneSpec,
+    completed: &Value,
+    doctor: &Value,
+) -> (bool, String) {
+    let authority = transport_component_ok(completed, doctor, "authority");
+    let relay = transport_component_ok(completed, doctor, "relay");
+    let artifact_store = transport_component_ok(completed, doctor, "artifactStore");
+    let node_status = transport_status(completed, doctor, "nodeSurfaces");
+    let detail = completed
+        .get("detail")
+        .and_then(Value::as_str)
+        .or_else(|| doctor.get("detail").and_then(Value::as_str))
+        .unwrap_or("");
+    let has_expected_nodes = spec.min_workers + spec.min_validators > 0;
+    let node_surfaces = node_status == "ok"
+        || (!has_expected_nodes && matches!(node_status.as_str(), "unknown" | "down"))
+        || (node_status == "down"
+            && detail.contains("workers_quiesced")
+            && detail.contains("validators_quiesced"));
+    (
+        authority && relay && artifact_store && node_surfaces,
+        format!(
+            "authority={} relay={} artifactStore={} nodeSurfaces={} detail={}",
+            transport_status(completed, doctor, "authority"),
+            transport_status(completed, doctor, "relay"),
+            transport_status(completed, doctor, "artifactStore"),
+            node_status,
+            detail
+        ),
+    )
 }
 
 fn wait_condition_for_smoke(

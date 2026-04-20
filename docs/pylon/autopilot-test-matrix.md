@@ -85,8 +85,12 @@ Expected result:
 - Clean and stale lanes expose a rewarded closeout signal.
 - Each lane projects the authority-state trace, proof summary, run report, and
   object trace artifacts.
-- Each lane projects authority, relay, artifact-store, and node-surface
-  transport as `ok`, including the `proof doctor` refresh.
+- Each lane projects authority, relay, and artifact-store transport as `ok`.
+- Node-surface transport may be `ok` while nodes are active, `down` after clean
+  or stale lanes quiesce workers/validators during rewarded closeout, or
+  `unknown` for the zero-node replacement-attempt lane.
+- `proof doctor` refreshes the enriched worker/validator projection and
+  transport split after the completion snapshot.
 
 The default script uses deterministic fake `pylon` and `oa` binaries so this is
 always an Autopilot/Tauri regression gate. Add `--real-binaries` to make it a
@@ -95,6 +99,12 @@ local installed proof-runtime gate:
 ```bash
 scripts/autopilot/tauri-homework-matrix.sh --real-binaries
 ```
+
+Real-binaries mode bootstraps a disposable app-owned Pylon home, config,
+identity, and loopback admin port under
+`target/autopilot-tauri-control-smoke/`. It should not fail with
+`CONFIG_MISSING` or `IDENTITY_MISSING`; those codes indicate a harness
+regression.
 
 ## Pylon Status Projection
 
