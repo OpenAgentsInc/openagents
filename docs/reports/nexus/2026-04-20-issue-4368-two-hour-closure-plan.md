@@ -13,12 +13,15 @@ What is already done:
 - The #4385 local proof runtime can complete the stale-recovery lane with one
   accepted contribution, rewarded closeout, worker/validator quiescence, and
   zero caveats.
-- Nexus image `a6bf0cc3c75b` built successfully from `main`.
+- Nexus image `a06a1af62024` built successfully from `main`.
 - Treasury recovery report generation no longer treats Spark explicit sync
   timeout as opaque wallet-storage divergence.
 - The latest recovery report proves no wallet-storage cutover is needed:
   current and rebuilt cached balances match and the recommendation is
   `no_cutover_needed_sync_timeout_cached`.
+- The latest scripted deploy proved the funding-target status poisoning fix on
+  the candidate image: `wallet_runtime_status` reached `connected` during
+  candidate smoke instead of `treasury_funding_target_timeout:*`.
 
 What is not done:
 
@@ -26,6 +29,9 @@ What is not done:
   evidence from the new image.
 - Production Spark explicit sync is still slow enough to time out during
   isolated recovery inspection.
+- Production payout smoke still stalls after the wallet-status fix because the
+  wallet has less spendable balance than the active payout policy and the
+  payout loop remains degraded on stale reconciliation state.
 - The production deploy/smoke loop takes materially longer than the local proof
   loop and must not be the primary iteration mechanism.
 
@@ -43,9 +49,13 @@ The script:
 - runs focused treasury recovery comparison/cutover tests
 - runs the homework accepted-work payout integration test
 - rebuilds the real `oa` and `nexus-relay` binaries separately
-- runs the local post-deploy smoke simulation for the exact Nexus failure
-  shape: zero fresh completed sends, nonzero inference-ready payout targets,
-  and `treasury_funding_target_timeout:*` wallet status
+- runs the local post-deploy smoke simulations for both observed Nexus failure
+  shapes:
+  - zero fresh completed sends, nonzero inference-ready payout targets, and
+    `treasury_funding_target_timeout:*` wallet status
+  - zero fresh completed sends, nonzero inference-ready payout targets,
+    `wallet_runtime_status=connected`, degraded payout loop, and wallet balance
+    below the active sats-per-window payout policy
 - runs the local replacement-attempt proof lane
 - runs the local stale-recovery proof lane with worker and validator
 - copies `run-report.json`, `authority-state-trace.json`, and
@@ -61,8 +71,8 @@ Local closure proof is green only if:
 - stale-recovery closeout is `rewarded`
 - stale-recovery caveat count is `0`
 - stale-recovery accepted contribution count is at least `1`
-- post-deploy smoke simulation reports `decision=rollback` and
-  `reproduced_current_failure=true`
+- both post-deploy smoke simulations report `decision=rollback`, a matching
+  `failure_class`, and `reproduced_current_failure=true`
 
 This local artifact is the fast iteration target. It is not a substitute for
 live settlement proof, but it is the primary evidence that the CS336 homework
@@ -112,7 +122,7 @@ Do replace the old operating model:
 - stop using production Nexus as the debugger
 - make `scripts/pylon/issue-4368-local-closure.sh` the first gate
 - add Spark sync-timeout, funding-target timeout, and post-deploy smoke
-  simulation to the local proof runtime
+  simulations to the local proof runtime
 - split production treasury continuity from CS336 homework proof when it blocks
   unrelated local proof progress
 
