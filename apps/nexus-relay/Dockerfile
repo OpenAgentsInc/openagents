@@ -65,6 +65,23 @@ ENV SCCACHE_DIR=/var/cache/sccache \
 
 COPY . .
 
+# The deps layer builds placeholder local crates from .nexus-build-plan. After
+# overlaying the full source tree, remove those local artifacts so Cargo cannot
+# reuse a placeholder nexus-relay binary in the final image.
+RUN set -eux; \
+    cargo clean --profile "${BUILD_PROFILE}" \
+      -p nexus-relay \
+      -p nexus-control \
+      -p nostr-rs-relay \
+      -p nostr \
+      -p nostr-client \
+      -p openagents-kernel-core \
+      -p openagents-kernel-proto \
+      -p openagents-provider-substrate \
+      -p openagents-spark \
+      -p openagents-validator-service \
+      -p psionic-train-contract
+
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/var/cache/sccache \
