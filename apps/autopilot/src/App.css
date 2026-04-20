@@ -70,6 +70,24 @@ body,
   width: min(28rem, 100%);
 }
 
+.command-entry {
+  align-self: center;
+  justify-self: center;
+  display: flex;
+  width: min(28rem, 100%);
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.command-entry textarea {
+  min-height: 8rem;
+  resize: none;
+}
+
+.command-entry button {
+  align-self: flex-end;
+}
+
 .register-grid {
   display: grid;
   gap: 1px;
@@ -114,5 +132,9 @@ body,
   .command-stage__actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .command-entry button {
+    align-self: stretch;
   }
 }
