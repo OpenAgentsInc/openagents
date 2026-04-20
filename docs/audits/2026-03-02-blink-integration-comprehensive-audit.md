@@ -8,7 +8,7 @@
 This audit covers the full Blink integration surface in OpenAgents as of March 2, 2026:
 
 - `skills/blink` skill package (scripts, references, operational docs).
-- `apps/autopilot-desktop` integration points (skill discovery/attachment, swap tools, goal evidence, credentials interaction, live harness).
+- `apps/autopilot-deprecated` integration points (skill discovery/attachment, swap tools, goal evidence, credentials interaction, live harness).
 - Runtime behavior for BTC wallet, stablesat USD wallet, invoice/payment paths, and BTC<->USD swaps.
 - Operational/testing coverage and current production-readiness gaps.
 
@@ -56,7 +56,7 @@ Script surface includes:
 - Swap: `swap_quote.js`, `swap_execute.js`, `_swap_common.js`
 - Shared client: `_blink_client.js`
 
-## 2) App-Level Integration (`apps/autopilot-desktop`)
+## 2) App-Level Integration (`apps/autopilot-deprecated`)
 
 Blink is integrated into Autopilot flow at multiple layers:
 
@@ -239,7 +239,7 @@ Gaps in current test profile:
 ## MVP / Ownership Alignment
 
 - MVP fit: strong. Blink now underpins core money movement and swap behavior needed for "earn bitcoin on autopilot".
-- Ownership fit: strong. Product logic remains in `apps/autopilot-desktop`; skill implementation remains in `skills/blink`; reusable crate boundaries are respected.
+- Ownership fit: strong. Product logic remains in `apps/autopilot-deprecated`; skill implementation remains in `skills/blink`; reusable crate boundaries are respected.
 
 ## Overall Audit Verdict
 

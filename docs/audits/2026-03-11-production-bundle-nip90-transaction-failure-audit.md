@@ -28,12 +28,12 @@ Docs reviewed:
 
 Code reviewed:
 
-- `apps/autopilot-desktop/src/state/operations.rs`
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/nip90_compute_semantics.rs`
-- `apps/autopilot-desktop/src/nip90_compute_flow.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/nip90_compute_semantics.rs`
+- `apps/autopilot-deprecated/src/nip90_compute_flow.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
 
 Runtime evidence reviewed:
 

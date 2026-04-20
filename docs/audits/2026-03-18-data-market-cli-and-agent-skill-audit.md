@@ -12,14 +12,14 @@ This audit answers one practical question:
 
 Primary OpenAgents surfaces reviewed:
 
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/compute_mcp.rs`
-- `apps/autopilot-desktop/src/data_seller_control.rs`
-- `apps/autopilot-desktop/src/data_market_control.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/compute_mcp.rs`
+- `apps/autopilot-deprecated/src/data_seller_control.rs`
+- `apps/autopilot-deprecated/src/data_market_control.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
 - `skills/autopilot-data-seller/SKILL.md`
 - `skills/autopilot-data-market-control/SKILL.md`
 - `docs/plans/data-market-mvp-plan.md`
@@ -81,7 +81,7 @@ The right next move is:
 ### 1. The seller workflow is real inside the app
 
 The current app already has a meaningful seller state model in
-`apps/autopilot-desktop/src/app_state.rs`.
+`apps/autopilot-deprecated/src/app_state.rs`.
 
 `DataSellerDraft` already captures the practical publication contract:
 
@@ -111,8 +111,8 @@ seller must say. The contract is already embodied in the seller state.
 ### 2. Typed seller tools already exist
 
 The OpenAgents dynamic tool surface already includes a real data-market family
-in `apps/autopilot-desktop/src/openagents_dynamic_tools.rs` and
-`apps/autopilot-desktop/src/input/tool_bridge.rs`:
+in `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs` and
+`apps/autopilot-deprecated/src/input/tool_bridge.rs`:
 
 - `openagents.data_market.seller_status`
 - `openagents.data_market.draft_asset`
@@ -160,7 +160,7 @@ They are not yet:
 
 ### 4. `autopilotctl` is real, but narrow
 
-`apps/autopilot-desktop/src/bin/autopilotctl.rs` is explicitly a thin CLI
+`apps/autopilot-deprecated/src/bin/autopilotctl.rs` is explicitly a thin CLI
 client for the running desktop-control runtime.
 
 Today it can already do useful app-owned control work:
@@ -187,7 +187,7 @@ seller workflow.
 The compute side already shows the pattern OpenAgents should reuse:
 
 - `docs/headless-compute.md` documents a real headless compute surface
-- `apps/autopilot-desktop/src/compute_mcp.rs` exposes compute control over the
+- `apps/autopilot-deprecated/src/compute_mcp.rs` exposes compute control over the
   same desktop-control contract
 
 That precedent matters.

@@ -1,7 +1,7 @@
 # Autopilot Project Management — Step 0 Native Dogfood Package
 
 **Status:** Ready for implementation
-**Scope:** Step 0 only — native internal dogfood slice inside `apps/autopilot-desktop`
+**Scope:** Step 0 only — native internal dogfood slice inside `apps/autopilot-deprecated`
 **Goal:** Let one internal team manage a real cycle in a native PM surface using canonical PM stream ids, local projection caches, and the repo's existing replay/checkpoint discipline.
 
 ---
@@ -575,7 +575,7 @@ Minimum regression set:
 ## 7. Implementation checklist
 
 1. Add `project_ops` feature gate and pane entry point.
-2. Create `project_ops` module structure in `apps/autopilot-desktop`.
+2. Create `project_ops` module structure in `apps/autopilot-deprecated`.
 3. Define Step 0 entity, command, event, and stream-id types.
 4. Add PM projection documents and persistence helpers.
 5. Integrate PM sequence/checkpoint behavior with the shared apply engine.

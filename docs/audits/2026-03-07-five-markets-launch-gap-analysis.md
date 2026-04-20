@@ -18,7 +18,7 @@ Audit what is and is not implemented for the five markets announced to launch we
 
 This audit uses a strict distinction between:
 
-- `productized`: visible, end-user-capable behavior in `apps/autopilot-desktop`
+- `productized`: visible, end-user-capable behavior in `apps/autopilot-deprecated`
 - `starter authority slice`: typed objects, authenticated HTTP mutations, canonical receipts, and tests in `apps/nexus-control` + `crates/openagents-kernel-core`
 - `missing`: required for the launch-note behavior but not yet exposed as a real user-facing market
 
@@ -45,16 +45,16 @@ Product / architecture authority:
 
 Implementation surfaces reviewed:
 
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/starter_demand_client.rs`
-- `apps/autopilot-desktop/src/kernel_control.rs`
-- `apps/autopilot-desktop/src/labor_orchestrator.rs`
-- `apps/autopilot-desktop/src/spark_wallet.rs`
-- `apps/autopilot-desktop/src/state/swap_quote_adapter.rs`
-- `apps/autopilot-desktop/src/state/swap_contract.rs`
-- `apps/autopilot-desktop/src/panes/credit.rs`
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/economy_snapshot.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/starter_demand_client.rs`
+- `apps/autopilot-deprecated/src/kernel_control.rs`
+- `apps/autopilot-deprecated/src/labor_orchestrator.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/state/swap_quote_adapter.rs`
+- `apps/autopilot-deprecated/src/state/swap_contract.rs`
+- `apps/autopilot-deprecated/src/panes/credit.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/economy_snapshot.rs`
 - `apps/nexus-control/src/lib.rs`
 - `apps/nexus-control/src/economy.rs`
 - `apps/nexus-control/src/kernel.rs`
@@ -108,7 +108,7 @@ Result: all passed.
 
 Implemented:
 
-- Real desktop earn loop in `apps/autopilot-desktop`:
+- Real desktop earn loop in `apps/autopilot-deprecated`:
   - provider runtime + `Go Online`
   - NIP-90 ingress / execution / result publishing
   - starter-demand seeding
@@ -297,7 +297,7 @@ That is enough for the current compute-provider MVP, but not enough to call the 
 
 ### 3. Desktop integration is narrow
 
-`apps/autopilot-desktop/src/kernel_control.rs` currently wires only the labor-side authority mutations plus snapshot/receipt projection streams.
+`apps/autopilot-deprecated/src/kernel_control.rs` currently wires only the labor-side authority mutations plus snapshot/receipt projection streams.
 
 There is no desktop integration today for:
 

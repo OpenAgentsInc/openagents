@@ -7,7 +7,7 @@ Purpose: keep visual decisions consistent across panes, sidebar controls, and fu
 
 ## 1) Scope
 
-- **Product surface:** `apps/autopilot-desktop`
+- **Product surface:** `apps/autopilot-deprecated`
 - **Primary layout model:** pane-based workspace + global sidebar + hotbar
 - **Source of truth for tokens:** `crates/wgpui/src/theme/mod.rs`
 - **Related docs:** `docs/PANES.md`, `docs/brand.md`

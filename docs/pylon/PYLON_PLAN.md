@@ -72,7 +72,7 @@ The key point is sequencing, not delay: `Pylon` is part of the current delivery 
 
 The current repo has two true things at once.
 
-First, the MVP and active compute-market work are explicitly `Autopilot`-first. `docs/MVP.md`, `docs/OWNERSHIP.md`, and `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keep provider runtime ownership in `apps/autopilot-desktop` for the current pass.
+First, the MVP and active compute-market work are explicitly `Autopilot`-first. `docs/MVP.md`, `docs/OWNERSHIP.md`, and `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keep provider runtime ownership in `apps/autopilot-deprecated` for the current pass.
 
 Second, the archived Pylon audit shows that the old runtime did contain useful provider patterns, but it failed as a clean product boundary because it grew into too many things at once: provider node, buyer client, wallet shell, host runtime, browser bridge, Codex shell, and RLM bundle.
 
@@ -121,7 +121,7 @@ This plan is additive to the current repo direction, not a reversal of it.
 
 ### Near-term truth during `#3116`
 
-- `apps/autopilot-desktop` continues to own mission control, onboarding, provider UX, payout UX, and buyer-facing product workflows.
+- `apps/autopilot-deprecated` continues to own mission control, onboarding, provider UX, payout UX, and buyer-facing product workflows.
 - `apps/nexus-control` continues to own authority-side compute-market state and projections.
 - `crates/openagents-kernel-core` and `crates/openagents-kernel-proto` continue to own reusable compute types, contracts, and generated wire shapes.
 - `crates/nostr/*` and `crates/spark` continue to own transport and wallet primitives.
@@ -177,7 +177,7 @@ Pylon v0 should emit inventory, capability-envelope truth, delivery evidence, an
 
 The 33 open PM issues from `#3071` through `#3103` are a separate execution program around PM domains, Spacetime rollout, coordination, bounties, and cutover evidence. They are not direct product dependencies for Pylon, but they matter operationally because they share:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - sync and replay expectations
 - authority-boundary discipline
 - truthful wallet and payout messaging
@@ -496,7 +496,7 @@ The shared runtime should become the source of truth for:
 
 | Path | Responsibility |
 | --- | --- |
-| `apps/autopilot-desktop` | provider UX, mission control, onboarding, payout UX, buyer flows, current provider runtime ownership |
+| `apps/autopilot-deprecated` | provider UX, mission control, onboarding, payout UX, buyer flows, current provider runtime ownership |
 | `apps/nexus-control` | compute-market authority state, durable mutations, read models, settlement truth |
 | `crates/openagents-kernel-core` | reusable compute types, authority client contracts, validation helpers, receipt helpers |
 | `crates/openagents-kernel-proto` | generated compute-market wire contracts |
@@ -508,7 +508,7 @@ The shared runtime should become the source of truth for:
 | Path | Responsibility |
 | --- | --- |
 | `apps/pylon` | standalone provider CLI/service binary |
-| `apps/autopilot-desktop` | product UX and embedding shell for the shared provider runtime |
+| `apps/autopilot-deprecated` | product UX and embedding shell for the shared provider runtime |
 | `crates/openagents-provider-*` or similar narrow shared crate(s) | provider substrate only: backend detection, lifecycle state machine, product derivation, local persistence, control API, evidence adapters |
 | `apps/nexus-control` | authority/control plane |
 

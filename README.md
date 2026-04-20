@@ -369,8 +369,8 @@ hosts.
 
 The repo now includes an app-owned control plane for the running desktop app:
 
-- implementation: [apps/autopilot-desktop/src/desktop_control.rs](apps/autopilot-desktop/src/desktop_control.rs)
-- CLI client: [apps/autopilot-desktop/src/bin/autopilotctl.rs](apps/autopilot-desktop/src/bin/autopilotctl.rs)
+- implementation: [apps/autopilot-deprecated/src/desktop_control.rs](apps/autopilot-deprecated/src/desktop_control.rs)
+- CLI client: [apps/autopilot-deprecated/src/bin/autopilotctl.rs](apps/autopilot-deprecated/src/bin/autopilotctl.rs)
 - documentation: [docs/headless-compute.md](docs/headless-compute.md)
 
 This is UI-synced control, not a separate fake harness. `autopilotctl` drives

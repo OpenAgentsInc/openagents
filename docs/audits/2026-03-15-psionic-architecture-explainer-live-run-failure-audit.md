@@ -40,9 +40,9 @@ The immediate target was open issue `#3658`:
 The implementation path I was using was:
 
 - add a dedicated reference-run harness in
-  `apps/autopilot-desktop/src/apple_architecture_explainer_reference_run.rs`
+  `apps/autopilot-deprecated/src/apple_architecture_explainer_reference_run.rs`
 - drive the existing app-owned operator lane in
-  `apps/autopilot-desktop/src/apple_adapter_training_control.rs`
+  `apps/autopilot-deprecated/src/apple_adapter_training_control.rs`
 - use a real local Swift bridge on `127.0.0.1:11435`
 - use a real local `nexus-control` authority on `127.0.0.1:42020`
 - produce durable JSON and markdown run reports in the repo

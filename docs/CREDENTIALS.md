@@ -1,6 +1,6 @@
 # Credentials In Autopilot Desktop
 
-This document explains how credentials work in `apps/autopilot-desktop`: how they are stored, how users manage them in the UI, and how they are injected into runtime services like Codex and Spark.
+This document explains how credentials work in `apps/autopilot-deprecated`: how they are stored, how users manage them in the UI, and how they are injected into runtime services like Codex and Spark.
 
 ## Why This Exists
 
@@ -11,7 +11,7 @@ Autopilot needs API keys and environment variables for different integrations (f
 This doc covers the credentials system used by Autopilot Desktop only:
 
 - UI pane: `PaneKind::Credentials`
-- State + storage logic: `apps/autopilot-desktop/src/credentials.rs` and `apps/autopilot-desktop/src/app_state.rs`
+- State + storage logic: `apps/autopilot-deprecated/src/credentials.rs` and `apps/autopilot-deprecated/src/app_state.rs`
 - Runtime wiring: `sync_credentials_runtime(...)` into Codex and Spark lanes
 
 ## Key Concepts
@@ -233,11 +233,11 @@ When an action fails, Autopilot:
 
 Core files:
 
-- `apps/autopilot-desktop/src/credentials.rs`
-- `apps/autopilot-desktop/src/app_state.rs` (`CredentialsState`, `sync_credentials_runtime`)
-- `apps/autopilot-desktop/src/input.rs` (`run_credentials_action`)
-- `apps/autopilot-desktop/src/codex_lane.rs` (AppServer env wiring)
-- `apps/autopilot-desktop/src/spark_wallet.rs` (Spark env overrides)
+- `apps/autopilot-deprecated/src/credentials.rs`
+- `apps/autopilot-deprecated/src/app_state.rs` (`CredentialsState`, `sync_credentials_runtime`)
+- `apps/autopilot-deprecated/src/input.rs` (`run_credentials_action`)
+- `apps/autopilot-deprecated/src/codex_lane.rs` (AppServer env wiring)
+- `apps/autopilot-deprecated/src/spark_wallet.rs` (Spark env overrides)
 
 If adding a new first-class integration:
 

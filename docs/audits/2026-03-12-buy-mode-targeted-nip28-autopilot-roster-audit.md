@@ -11,7 +11,7 @@ This audit answers a specific product ask:
 - Each request should be scoped to one provider identity that has recently and explicitly indicated it is online for compute.
 - The same truth must be visible in the UI and through the programmatic control plane (`autopilotctl` / desktop control / runtime logs).
 
-This audit is limited to MVP-owned behavior inside `apps/autopilot-desktop` and intentionally excludes signing/notarization concerns.
+This audit is limited to MVP-owned behavior inside `apps/autopilot-deprecated` and intentionally excludes signing/notarization concerns.
 
 ## Product Constraint
 
@@ -25,7 +25,7 @@ This audit is limited to MVP-owned behavior inside `apps/autopilot-desktop` and 
 
 `docs/OWNERSHIP.md` also constrains the implementation:
 
-- this feature belongs in `apps/autopilot-desktop`,
+- this feature belongs in `apps/autopilot-deprecated`,
 - not in shared crates,
 - not in `wgpui`,
 - and not as a new reusable protocol abstraction unless a narrower primitive is clearly warranted later.
@@ -57,7 +57,7 @@ Current Buy Mode is single-flight and open broadcast.
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
   - `run_mission_control_buy_mode_tick`
   - `submit_mission_control_buy_mode_request`
   - `build_mission_control_buy_mode_request_event`
@@ -84,7 +84,7 @@ The underlying request pipeline is already capable of targeted dispatch.
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
   - `submit_signed_network_request`
   - `submit_signed_network_request_with_event`
   - `build_nip90_request_event_for_network_submission`
@@ -106,7 +106,7 @@ Provider ingress already rejects requests targeted to someone else.
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
   - `target_policy_reject_reason_for`
   - `local_provider_keys`
 
@@ -127,7 +127,7 @@ This means once Buy Mode begins emitting targeted requests, non-target peers wil
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
   - `event_to_inbox_request`
 
 The relay lane already parses NIP-90 service-provider tags into:
@@ -140,7 +140,7 @@ So target pubkeys survive the wire format and are visible all the way through th
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/headless_compute.rs`
+- `apps/autopilot-deprecated/src/headless_compute.rs`
   - `HeadlessBuyerConfig.target_provider_pubkeys`
   - `build_buyer_request_event`
   - `provider_request_is_supported`
@@ -157,8 +157,8 @@ This matters because it gives a safe place to validate the logic before or along
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 
 Current control surface already supports:
 
@@ -183,9 +183,9 @@ This is important because the requested feature should not be built as "UI-only 
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/nip28_chat_lane.rs`
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
 
 What works now:
 
@@ -218,8 +218,8 @@ But the current projection treats them only as chat messages, not as compute-par
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/spacetime_presence.rs`
-- `apps/autopilot-desktop/src/chat_spacetime.rs`
+- `apps/autopilot-deprecated/src/spacetime_presence.rs`
+- `apps/autopilot-deprecated/src/chat_spacetime.rs`
 
 The app does have online presence concepts today, but they are not what this feature needs.
 
@@ -240,9 +240,9 @@ So the current presence model is useful as background product truth, but it cann
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
   - `run_reciprocal_loop_engine_tick`
-- `apps/autopilot-desktop/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
   - reciprocal loop start validation
 
 The reciprocal loop already dispatches a request to one explicit peer pubkey using:
@@ -338,7 +338,7 @@ but there is no combined proof for:
 
 ## 1. Introduce An App-Owned Autopilot Peer Roster
 
-Add a new app-owned projection in `apps/autopilot-desktop` derived from the configured main NIP-28 channel.
+Add a new app-owned projection in `apps/autopilot-deprecated` derived from the configured main NIP-28 channel.
 
 Suggested model:
 
@@ -557,10 +557,10 @@ Add a new app-owned projection that scans the configured main NIP-28 channel for
 
 Suggested initial files:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/input/reducers/mod.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/input/reducers/mod.rs`
 - or a new focused module such as
-  - `apps/autopilot-desktop/src/autopilot_peer_roster.rs`
+  - `apps/autopilot-deprecated/src/autopilot_peer_roster.rs`
 
 This module should consume only app-owned state:
 
@@ -575,10 +575,10 @@ Add emission of presence messages when provider mode changes.
 
 Likely touch points:
 
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/nip28_chat_lane.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
 
 The system needs:
 
@@ -597,9 +597,9 @@ Change Mission Control Buy Mode dispatch to:
 
 Likely touch points:
 
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/state/operations.rs`
-- `apps/autopilot-desktop/src/nip90_compute_flow.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/nip90_compute_flow.rs`
 
 The most direct code change is to replace the dedicated untargeted builder path with a targeted one, or extend `build_mission_control_buy_mode_request_event(...)` to accept target pubkeys and add NIP-90 service-provider tags.
 
@@ -615,10 +615,10 @@ Expose:
 
 Likely touch points:
 
-- `apps/autopilot-desktop/src/nip90_compute_flow.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/nip90_compute_flow.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 
 ### Phase 5: End-to-End Verification
 

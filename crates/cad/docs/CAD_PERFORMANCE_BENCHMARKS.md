@@ -14,12 +14,12 @@ A/B/E acceptance criteria in `crates/cad/docs/PLAN.md`.
 ## Implementation
 
 - Benchmark test location:
-  - `apps/autopilot-desktop/src/input/reducers/cad.rs`
+  - `apps/autopilot-deprecated/src/input/reducers/cad.rs`
   - tests:
     - `cad_performance_benchmark_suite_maps_gate_a_b_e_thresholds`
     - `cad_performance_benchmark_suite_outputs_non_empty_metrics`
 - Deterministic benchmark snapshot fixture:
-  - `apps/autopilot-desktop/tests/goldens/cad_performance_benchmark_snapshot.json`
+  - `apps/autopilot-deprecated/tests/goldens/cad_performance_benchmark_snapshot.json`
 - CI command:
   - `scripts/cad/perf-benchmark-ci.sh`
 
@@ -45,7 +45,7 @@ Gate E:
 - Mesh/hit-test/memory/FPS metrics computed from deterministic mesh payload
   complexity and benchmark formulas.
 - Canonical source script:
-  - `apps/autopilot-desktop/tests/scripts/cad_demo_canonical_script.json`
+  - `apps/autopilot-deprecated/tests/scripts/cad_demo_canonical_script.json`
 
 ## Run
 

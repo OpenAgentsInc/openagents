@@ -19,24 +19,24 @@ Authoritative design inputs:
 
 Primary implementation surfaces reviewed:
 
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/spark_wallet.rs`
-- `apps/autopilot-desktop/src/sync_bootstrap.rs`
-- `apps/autopilot-desktop/src/spacetime_presence.rs`
-- `apps/autopilot-desktop/src/runtime_lanes.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/app_state_domains.rs`
-- `apps/autopilot-desktop/src/state/operations.rs`
-- `apps/autopilot-desktop/src/state/wallet_reconciliation.rs`
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/economy_snapshot.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/sync_bootstrap.rs`
+- `apps/autopilot-deprecated/src/spacetime_presence.rs`
+- `apps/autopilot-deprecated/src/runtime_lanes.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/state/wallet_reconciliation.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/economy_snapshot.rs`
 - `crates/nostr/core/src/nip90/mod.rs`
 - `crates/nostr/core/src/nip89.rs`
 - `crates/autopilot-spacetime/src/reducers.rs`
@@ -170,7 +170,7 @@ The desktop should own:
 
 ### 1. Real NIP-90 provider transport exists
 
-`apps/autopilot-desktop/src/provider_nip90_lane.rs` is a real relay lane, not a stub.
+`apps/autopilot-deprecated/src/provider_nip90_lane.rs` is a real relay lane, not a stub.
 
 It already provides:
 
@@ -189,7 +189,7 @@ This is reinforced by passing tests in `provider_nip90_lane` including:
 
 ### 2. A buyer path already exists
 
-`apps/autopilot-desktop/src/input/actions.rs` and `apps/autopilot-desktop/src/state/operations.rs` already support:
+`apps/autopilot-deprecated/src/input/actions.rs` and `apps/autopilot-deprecated/src/state/operations.rs` already support:
 
 - signed NIP-90 request creation,
 - request publication through the provider relay lane,
@@ -201,21 +201,21 @@ So the repo is not only able to consume jobs. It can already originate them in a
 
 ### 3. Spark wallet integration is real enough for MVP foundations
 
-`apps/autopilot-desktop/src/spark_wallet.rs` supports:
+`apps/autopilot-deprecated/src/spark_wallet.rs` supports:
 
 - refresh,
 - invoice generation,
 - payment sending,
 - recent payment history.
 
-`apps/autopilot-desktop/src/state/wallet_reconciliation.rs` and related app state reconcile payouts against wallet evidence instead of just trusting a UI state transition. That is a strong and correct foundation for the current MVP direction.
+`apps/autopilot-deprecated/src/state/wallet_reconciliation.rs` and related app state reconcile payouts against wallet evidence instead of just trusting a UI state transition. That is a strong and correct foundation for the current MVP direction.
 
 ### 4. Local receipts and projections are more advanced than the backend story
 
 Two desktop-local systems are already doing a large amount of kernel-like work:
 
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/economy_snapshot.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/economy_snapshot.rs`
 
 They already model receipt-like records, incidents, policy metadata, rollback-related records, and economy snapshots. The problem is not lack of domain modeling. The problem is that this logic still lives as desktop-local state instead of an authoritative backend service.
 
@@ -248,8 +248,8 @@ The design now assumes an earn-first Mission Control experience.
 
 Current implementation evidence:
 
-- `apps/autopilot-desktop/src/pane_registry.rs` starts with `Autopilot Chat` as a startup pane.
-- `apps/autopilot-desktop/src/pane_registry.rs` also starts `CadDemo` by default.
+- `apps/autopilot-deprecated/src/pane_registry.rs` starts with `Autopilot Chat` as a startup pane.
+- `apps/autopilot-deprecated/src/pane_registry.rs` also starts `CadDemo` by default.
 - `GoOnline` is not the startup shell.
 - earnings, starter jobs, job inbox, wallet, and relay panes remain separated as operational panes.
 
@@ -269,7 +269,7 @@ The current docs now say the app should show live observed market activity immed
 
 Current implementation evidence:
 
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs` explicitly stops polling when `wants_online` is false.
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs` explicitly stops polling when `wants_online` is false.
 - the lane loops past ingress work if the provider is offline.
 - current inbox behavior is still driven by online ingestion.
 
@@ -287,7 +287,7 @@ The docs now say matching jobs should auto-accept by default.
 
 Current implementation evidence:
 
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs` still accepts work through `JobInboxPaneAction::AcceptSelected`.
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs` still accepts work through `JobInboxPaneAction::AcceptSelected`.
 - the active-job lifecycle is still user-driven from the pane layer.
 - I did not find a production ingress path that takes a matching live request directly from inbox to accepted/running based on provider policy.
 
@@ -304,7 +304,7 @@ The designed MVP assumes a real execution loop.
 
 Current implementation evidence:
 
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs` advances the active job through manual `AdvanceStage` actions.
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs` advances the active job through manual `AdvanceStage` actions.
 - feedback and result publication are coupled to those stage transitions.
 - the lifecycle can progress because the operator clicks through the pane, not because a real provider executor advanced it from actual work completion.
 
@@ -323,8 +323,8 @@ The current starter-demand path is not the designed OpenAgents-hosted Nexus syst
 
 Current implementation evidence:
 
-- `apps/autopilot-desktop/src/state/operations.rs` defines `StarterJobsState` with local templates, local budget, local kill switch, local dispatch interval, and a desktop-local `STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS`.
-- `apps/autopilot-desktop/src/input/actions.rs` runs `run_auto_starter_demand_generator` inside the desktop process.
+- `apps/autopilot-deprecated/src/state/operations.rs` defines `StarterJobsState` with local templates, local budget, local kill switch, local dispatch interval, and a desktop-local `STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS`.
+- `apps/autopilot-deprecated/src/input/actions.rs` runs `run_auto_starter_demand_generator` inside the desktop process.
 - `queue_starter_demand_request` inserts starter requests directly into the local `job_inbox` and records local projections/receipts.
 - starter jobs are completed through local actions and local wallet-pointer checks.
 
@@ -354,8 +354,8 @@ For the designed MVP, a real backend is required. That backend does not exist in
 Evidence:
 
 - repo search did not find a Rust HTTP server surface for `control-api`, `kernel-authority`, `stats-api`, or `treasury-router`.
-- `apps/autopilot-desktop/src/sync_bootstrap.rs` defines the client contract for `POST /api/sync/token`, but there is no repo-local server implementation.
-- `apps/autopilot-desktop/src/render.rs` calls `bootstrap_sync_session_from_env(&client, None)`, which means there is no integrated bearer-auth session being supplied there today.
+- `apps/autopilot-deprecated/src/sync_bootstrap.rs` defines the client contract for `POST /api/sync/token`, but there is no repo-local server implementation.
+- `apps/autopilot-deprecated/src/render.rs` calls `bootstrap_sync_session_from_env(&client, None)`, which means there is no integrated bearer-auth session being supplied there today.
 - there is no repo-local Nostr relay server implementation even though the design now expects the OpenAgents-hosted Nexus to be the default primary relay path.
 
 What is missing for the designed MVP:
@@ -414,7 +414,7 @@ The product decision is now:
 
 Current implementation evidence:
 
-- `apps/autopilot-desktop/src/app_state.rs` still defaults `relay_url` to `wss://relay.damus.io`.
+- `apps/autopilot-deprecated/src/app_state.rs` still defaults `relay_url` to `wss://relay.damus.io`.
 - `SettingsDocumentV1` remains single-relay-centric.
 - `configured_provider_relay_urls()` can merge in-memory relay rows, but the persistent settings model is not yet shaped like a first-class curated relay set plus Nexus default.
 
@@ -430,8 +430,8 @@ Two defaults are now clearly out of sync with the spec.
 
 Current code:
 
-- `apps/autopilot-desktop/src/app_state.rs` defaults `provider_max_queue_depth` to `4`.
-- `apps/autopilot-desktop/src/state/operations.rs` defaults local starter demand `max_inflight_jobs` to `3`.
+- `apps/autopilot-deprecated/src/app_state.rs` defaults `provider_max_queue_depth` to `4`.
+- `apps/autopilot-deprecated/src/state/operations.rs` defaults local starter demand `max_inflight_jobs` to `3`.
 
 Current docs:
 
@@ -449,7 +449,7 @@ The current design assumes the hosted Nexus is the primary relay path and that t
 What exists today:
 
 - `crates/nostr/core/src/nip89.rs` and the NIP-90 module document the right discovery model.
-- NIP-89 helper usage appears in simulation code under `apps/autopilot-desktop/src/app_state_domains.rs`.
+- NIP-89 helper usage appears in simulation code under `apps/autopilot-deprecated/src/app_state_domains.rs`.
 - relay auth parsing exists in library code and the broader codebase knows about NIP-42 concepts.
 
 What does not exist as a product path:
@@ -468,8 +468,8 @@ The current docs and ADR now allow Spacetime authority for selected domains. The
 Current implementation evidence:
 
 - `docs/SPACETIME_ROLLOUT_INDEX.md` still labels the current state as Phase 1 mirror/proxy discipline.
-- `apps/autopilot-desktop/src/spacetime_presence.rs` uses a local in-memory `ProviderPresenceRegistry`, not a remote Spacetime subscription.
-- `apps/autopilot-desktop/src/render.rs` bootstraps sync from env, but it does not show a full hosted auth path and still passes `None` for bearer auth.
+- `apps/autopilot-deprecated/src/spacetime_presence.rs` uses a local in-memory `ProviderPresenceRegistry`, not a remote Spacetime subscription.
+- `apps/autopilot-deprecated/src/render.rs` bootstraps sync from env, but it does not show a full hosted auth path and still passes `None` for bearer auth.
 - the deployable module only exposes sync and connection tables, not the broader provider capability and compute-assignment surfaces that exist in the crate primitives.
 
 What is missing:
@@ -489,7 +489,7 @@ The current docs are right to keep that boundary strict.
 
 Current implementation evidence:
 
-- `apps/autopilot-desktop/src/runtime_lanes.rs` creates synthetic event ids and local timing delays.
+- `apps/autopilot-deprecated/src/runtime_lanes.rs` creates synthetic event ids and local timing delays.
 - the lanes produce local accepted/rejected command responses and local event ids like `sa:<kind>:<seq>`.
 
 That means:

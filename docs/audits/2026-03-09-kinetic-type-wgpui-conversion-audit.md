@@ -342,7 +342,7 @@ Possible later reusable additions:
 
 Do not start here.
 
-## `apps/autopilot-desktop`
+## `apps/autopilot-deprecated`
 
 This is where product usage belongs, not the generic implementation.
 

@@ -9,7 +9,7 @@ Audited surface:
 
 - `crates/cad/src/*`
 - `crates/cad/tests/*`
-- CAD-facing contracts and validation behavior used by `apps/autopilot-desktop`
+- CAD-facing contracts and validation behavior used by `apps/autopilot-deprecated`
 
 Primary objective:
 

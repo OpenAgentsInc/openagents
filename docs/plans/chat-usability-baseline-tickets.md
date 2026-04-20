@@ -83,7 +83,7 @@ NIP-42 auth UX, pane routing, roster condition, team test channel, Ben DM gate.
 reactions, threading, Spacetime presence, wallet-in-chat.
 
 ### Invariants
-- `crates/nostr/core` stays app-agnostic; classification lives in `apps/autopilot-desktop`
+- `crates/nostr/core` stays app-agnostic; classification lives in `apps/autopilot-deprecated`
 - State transitions must remain deterministic and replay-safe
 - No `.github/workflows/` automation
 
@@ -114,7 +114,7 @@ This ticket creates the classification abstraction. Subsequent tickets
 
 **Requirements:**
 - Define `ChatMessageClass` enum in a new file
-  `apps/autopilot-desktop/src/chat_message_classifier.rs`
+  `apps/autopilot-deprecated/src/chat_message_classifier.rs`
 - Minimum required variants:
 
   | Variant | Definition |
@@ -135,7 +135,7 @@ This ticket creates the classification abstraction. Subsequent tickets
 - The classifier must handle malformed or unparseable content gracefully (return `DebugEvent` rather than panicking).
 
 **Technical Details:**
-- Presence type constant: `AUTOPILOT_COMPUTE_PRESENCE_TYPE` in `apps/autopilot-desktop/src/autopilot_peer_roster.rs`
+- Presence type constant: `AUTOPILOT_COMPUTE_PRESENCE_TYPE` in `apps/autopilot-deprecated/src/autopilot_peer_roster.rs`
 - Existing presence parsing logic lives in that same file; the classifier should reuse the same detection logic (no duplication)
 - Protocol primitives in `crates/nostr/core` — classifier must not add app-specific logic to that crate
 - Run: `cargo test -p autopilot-desktop` (all existing tests must still pass)
@@ -150,7 +150,7 @@ This ticket creates the classification abstraction. Subsequent tickets
 
 **Dependencies:** None — this ticket can start immediately
 
-**Completed:** 2026-03-19 — `apps/autopilot-desktop/src/chat_message_classifier.rs`
+**Completed:** 2026-03-19 — `apps/autopilot-deprecated/src/chat_message_classifier.rs`
 
 ---
 
@@ -184,7 +184,7 @@ on classification result.
 - The change must not affect the Autopilot assistant chat lane (`ChatBrowseMode::Autopilot`)
 
 **Technical Details:**
-- Primary file: `apps/autopilot-desktop/src/input/reducers/mod.rs` (the NIP-28 update arm that calls `record_relay_events`)
+- Primary file: `apps/autopilot-deprecated/src/input/reducers/mod.rs` (the NIP-28 update arm that calls `record_relay_events`)
 - Classification should happen in the reducer, before appending to projection
 - `ManagedChatMessageProjection` in `app_state/chat_projection.rs` may need an optional `message_class` field or a separate list for system notices
 - `ConnectionError` and `Eose` arms in the reducer currently discard silently (confirmed in code review); do not change that behavior in this ticket
@@ -227,7 +227,7 @@ transcript. This ticket gives them a home.
 
 **Technical Details:**
 - Source data: `AutopilotPeerRosterRow`, `autopilot_peer_roster.rs`
-- Target: new member list component in the managed chat pane render path (`apps/autopilot-desktop/src/panes/chat.rs` or a new sub-module)
+- Target: new member list component in the managed chat pane render path (`apps/autopilot-deprecated/src/panes/chat.rs` or a new sub-module)
 - Channel header already exists in the chat pane; extend it to show count
 - WGPUI component conventions: follow existing patterns in `chat.rs`
 - Presence data is already available in app state via the roster parsing path; no new relay subscriptions needed
@@ -305,7 +305,7 @@ production channel and gives Ben a clean environment to test in during Phase E.
 
 **Technical Details:**
 - Channel creation: publish kind-40 via nostr client (CLI tooling, npub.pro, or any NIP-28-capable client)
-- App config: follow existing env var patterns in `apps/autopilot-desktop`
+- App config: follow existing env var patterns in `apps/autopilot-deprecated`
 - The channel should be on the same relay already configured for managed chat (check `nip28_chat_lane.rs` for the relay URL currently in use)
 
 **Acceptance Criteria:**
@@ -394,7 +394,7 @@ for Autopilot threads but is not used for managed chat rows.
 - Own messages visually distinct: right-aligned bubble or distinct background — consistent with whatever right-side style the current pane uses
 
 **Technical Details:**
-- Primary file: `apps/autopilot-desktop/src/panes/chat.rs` (managed chat message row render function, around `managed_message_delivery_note` ~line 1362)
+- Primary file: `apps/autopilot-deprecated/src/panes/chat.rs` (managed chat message row render function, around `managed_message_delivery_note` ~line 1362)
 - Message grouping can be computed at render time from adjacent items in the list
 - WGPUI render conventions: follow existing row patterns in `chat.rs`
 - Do not block render on metadata availability; show fallback name/avatar immediately, update when kind-0 arrives
@@ -450,7 +450,7 @@ message failed or why.
 **Technical Details:**
 - `delivery_error: Option<String>` already populated by `fail_outbound_message`
 - `delivery_state: ManagedChatDeliveryState` (`Publishing` / `Acked` / `Confirmed` / `Failed`) already exists on the projection
-- Primary render file: `apps/autopilot-desktop/src/panes/chat.rs` (`managed_message_delivery_note` function ~line 1362 and the row renderer that calls it)
+- Primary render file: `apps/autopilot-deprecated/src/panes/chat.rs` (`managed_message_delivery_note` function ~line 1362 and the row renderer that calls it)
 - Error text may come from the relay OK message or a connection error — surface whatever is available in `delivery_error`
 
 **Acceptance Criteria:**
@@ -490,8 +490,8 @@ cannot retry from the failed row itself.
 **Technical Details:**
 - The existing retry hint in the composer (`active_managed_chat_retryable_message`) can be removed or kept as a secondary affordance; the per-row button is primary
 - Retry command: re-enqueue the stored event in `Nip28ChatLaneCommand::Publish`
-- `apps/autopilot-desktop/src/panes/chat.rs` for the row render
-- `apps/autopilot-desktop/src/input/reducers/mod.rs` for the retry command handler
+- `apps/autopilot-deprecated/src/panes/chat.rs` for the row render
+- `apps/autopilot-deprecated/src/input/reducers/mod.rs` for the retry command handler
 
 **Acceptance Criteria:**
 - [x] "Retry" affordance visible on every failed message row
@@ -531,7 +531,7 @@ client layer. The desktop integration layer (the lane) does not call them.
 
 **Technical Details:**
 - NIP-42 primitives: `crates/nostr/core/src/nip42.rs`
-- Lane worker: `apps/autopilot-desktop/src/nip28_chat_lane.rs`
+- Lane worker: `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
 - The relay connection pool should already surface AUTH messages; the lane needs to handle them
 - Auth challenge response signing uses the same keypair as publish signing
 - Auth state can be a new enum in app state (or extended from existing relay connection state)
@@ -629,10 +629,10 @@ local execution UX." It must not default to managed content.
 - When the user IS in managed chat and opens `pane.autopilot_chat`, they should be taken back to the assistant mode
 
 **Technical Details:**
-- `apps/autopilot-desktop/src/app_state.rs` — `chat_browse_mode()` function
+- `apps/autopilot-deprecated/src/app_state.rs` — `chat_browse_mode()` function
 - The fix: when `pane.autopilot_chat` is the active pane command, always return `ChatBrowseMode::Autopilot` regardless of workspace selection
 - If managed chat needs its own pane entry point, it should have one (e.g., `pane.managed_chat`); this ticket does not require creating a new pane but must decouple the routing
-- `apps/autopilot-desktop/src/panes/chat.rs` — pane title must also reflect the correct mode (see D-2)
+- `apps/autopilot-deprecated/src/panes/chat.rs` — pane title must also reflect the correct mode (see D-2)
 
 **Acceptance Criteria:**
 - [x] Opening "Autopilot Chat" command always shows local assistant view
@@ -668,7 +668,7 @@ are talking to the local assistant.
 - The distinction must be visible without hovering or expanding anything
 
 **Technical Details:**
-- `apps/autopilot-desktop/src/panes/chat.rs` — pane title render path
+- `apps/autopilot-deprecated/src/panes/chat.rs` — pane title render path
 - Channel metadata (name, about) is available from kind-40/41 events; ensure it is included in app state and accessible to the header renderer
 
 **Acceptance Criteria:**
@@ -694,7 +694,7 @@ that have no NIP-29 group authority. This ticket conditions the warning on
 room type.
 
 **Context:**
-Confirmed bug in `apps/autopilot-desktop/src/panes/chat.rs`,
+Confirmed bug in `apps/autopilot-deprecated/src/panes/chat.rs`,
 `managed_group_membership_label()` (~line 1540):
 
 ```rust

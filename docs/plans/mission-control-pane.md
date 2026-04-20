@@ -1,7 +1,7 @@
 # Mission Control Split Plan
 
 Mission Control no longer exists as the active earn-first pane in
-`apps/autopilot-desktop`.
+`apps/autopilot-deprecated`.
 
 The old two-column fullscreen `PaneKind::GoOnline` shell was the right
 `v0.1` release cut, but the landed desktop architecture is now the split
@@ -78,9 +78,9 @@ Primary data sources:
 
 Implementation grounding:
 
-- `apps/autopilot-desktop/src/panes/provider_control.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/panes/provider_control.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
 
 ### Wallet
 
@@ -126,7 +126,7 @@ Primary data sources:
 
 Implementation grounding:
 
-- `apps/autopilot-desktop/src/panes/earnings_jobs.rs`
+- `apps/autopilot-deprecated/src/panes/earnings_jobs.rs`
 
 ### Buy Mode
 
@@ -164,8 +164,8 @@ Primary data sources:
 
 Implementation grounding:
 
-- `apps/autopilot-desktop/src/panes/log_stream.rs`
-- `apps/autopilot-desktop/src/runtime_log.rs`
+- `apps/autopilot-deprecated/src/panes/log_stream.rs`
+- `apps/autopilot-deprecated/src/runtime_log.rs`
 
 ### Nostr Keys
 
@@ -202,7 +202,7 @@ The split shipped in this order:
 
 The split changes shell composition, not the truth model.
 
-- Provider truth remains app-owned in `apps/autopilot-desktop`.
+- Provider truth remains app-owned in `apps/autopilot-deprecated`.
 - Wallet truth remains explicit and authoritative in `SparkPaneState`.
 - Job lifecycle truth remains replay-safe and receipt-backed.
 - Buy-mode state remains app-owned and intentionally constrained.
@@ -216,15 +216,15 @@ not a pane contract and must not grow monolithic UI state again.
 
 Current split-shell implementation is grounded in:
 
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/desktop_shell.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/panes/provider_control.rs`
-- `apps/autopilot-desktop/src/panes/earnings_jobs.rs`
-- `apps/autopilot-desktop/src/panes/buy_mode.rs`
-- `apps/autopilot-desktop/src/panes/log_stream.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/desktop_shell.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/panes/provider_control.rs`
+- `apps/autopilot-deprecated/src/panes/earnings_jobs.rs`
+- `apps/autopilot-deprecated/src/panes/buy_mode.rs`
+- `apps/autopilot-deprecated/src/panes/log_stream.rs`
 
 ## Definition Of Done
 

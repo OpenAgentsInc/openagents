@@ -5,7 +5,7 @@
 Maintain an accurate execution plan for SA/SKL/AC that reflects current in-repo implementation reality and clearly separates:
 
 - what is already implemented in `crates/nostr/core`,
-- what is integrated in `apps/autopilot-desktop`,
+- what is integrated in `apps/autopilot-deprecated`,
 - and what remains for MVP hardening.
 
 This document is aligned to:
@@ -50,7 +50,7 @@ Protocol and integration coverage exists and is active, including:
 
 ## 2.3 Desktop integration status
 
-`apps/autopilot-desktop` includes typed SA/SKL/AC command lanes and pane-level state mapping:
+`apps/autopilot-deprecated` includes typed SA/SKL/AC command lanes and pane-level state mapping:
 
 - runtime lanes: `src/runtime_lanes.rs`
 - reducer wiring: `src/input/reducers/skl.rs` and lane peers
@@ -59,7 +59,7 @@ Protocol and integration coverage exists and is active, including:
 Current lane behavior remains simulation-first for relay transport, but now includes local SKL registry integration:
 
 - local registry discovery + manifest derivation utility:
-  - `apps/autopilot-desktop/src/skills_registry.rs`
+  - `apps/autopilot-deprecated/src/skills_registry.rs`
 - SKL manifest/version commands validate against local project skills:
   - single-skill: `skills/<project>/SKILL.md`
   - multi-skill: `skills/<project>/<skill-name>/SKILL.md`

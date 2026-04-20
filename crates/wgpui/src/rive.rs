@@ -951,7 +951,7 @@ mod tests {
     };
 
     fn packaged_hud_bytes() -> &'static [u8] {
-        include_bytes!("../../../apps/autopilot-desktop/resources/rive/simple-fui-hud.riv")
+        include_bytes!("../../../apps/autopilot-deprecated/resources/rive/simple-fui-hud.riv")
     }
 
     #[test]

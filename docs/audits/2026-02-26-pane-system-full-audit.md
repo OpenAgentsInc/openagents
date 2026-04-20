@@ -4,7 +4,7 @@
 
 
 - Date: 2026-02-26
-- Scope: `apps/autopilot-desktop` pane inventory, pane system orchestration, pane data realism vs demo/hardcoded behavior.
+- Scope: `apps/autopilot-deprecated` pane inventory, pane system orchestration, pane data realism vs demo/hardcoded behavior.
 - Authority checked: `docs/MVP.md`, `docs/OWNERSHIP.md`.
 
 ## Executive Summary

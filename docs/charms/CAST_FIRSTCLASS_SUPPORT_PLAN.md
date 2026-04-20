@@ -35,7 +35,7 @@ In scope:
 
 Out of scope for this phase:
 
-- New marketplace UI or CAST-specific product pane in `apps/autopilot-desktop`.
+- New marketplace UI or CAST-specific product pane in `apps/autopilot-deprecated`.
 - Broad protocol changes in `crates/wgpui` or `crates/spark`.
 - Any non-Bitcoin chain support.
 
@@ -355,7 +355,7 @@ Start Phase 1 by adding `skills/cast/` and CAST references/scripts, then validat
 
 ## 13. Sequential GitHub Issues
 
-This is the implementation-order issue backlog required to complete this plan across repo surfaces (`skills/`, `docs/`, `scripts/`, and optional app-layer follow-ons in `apps/autopilot-desktop`).
+This is the implementation-order issue backlog required to complete this plan across repo surfaces (`skills/`, `docs/`, `scripts/`, and optional app-layer follow-ons in `apps/autopilot-deprecated`).
 
 ## Issue 1: `CAST-01` Lock CAST Contract + Environment Contract
 
@@ -391,7 +391,7 @@ Relevant details:
 - Follow existing registry contract and metadata style from existing skills (`skills/mezo`, `skills/maestro`, `skills/charms`).
 - Acceptance:
   - `scripts/skills/validate_registry.sh` passes
-  - `apps/autopilot-desktop/src/skills_registry.rs` local discovery can resolve `cast`
+  - `apps/autopilot-deprecated/src/skills_registry.rs` local discovery can resolve `cast`
 
 Depends on: `CAST-01`
 
@@ -620,8 +620,8 @@ Description:
 Relevant details:
 
 - Candidate files:
-  - `apps/autopilot-desktop/src/pane_registry.rs`
-  - `apps/autopilot-desktop/src/pane_renderer.rs`
+  - `apps/autopilot-deprecated/src/pane_registry.rs`
+  - `apps/autopilot-deprecated/src/pane_renderer.rs`
   - `docs/PANES.md`
 - Keep logic as orchestration only; no CAST protocol logic in reusable crates.
 - Acceptance:
@@ -639,10 +639,10 @@ Description:
 Relevant details:
 
 - Candidate files:
-  - `apps/autopilot-desktop/src/pane_registry.rs`
-  - `apps/autopilot-desktop/src/pane_renderer.rs`
-  - `apps/autopilot-desktop/src/pane_system.rs`
-  - `apps/autopilot-desktop/src/input.rs`
+  - `apps/autopilot-deprecated/src/pane_registry.rs`
+  - `apps/autopilot-deprecated/src/pane_renderer.rs`
+  - `apps/autopilot-deprecated/src/pane_system.rs`
+  - `apps/autopilot-deprecated/src/input.rs`
   - `docs/PANES.md`
 - Pane should support at minimum:
   - prereq/status visibility (tooling + dependency health)
@@ -666,8 +666,8 @@ Description:
 Relevant details:
 
 - Candidate files:
-  - `apps/autopilot-desktop/src/app_state.rs`
-  - `apps/autopilot-desktop/src/pane_renderer.rs`
+  - `apps/autopilot-deprecated/src/app_state.rs`
+  - `apps/autopilot-deprecated/src/pane_renderer.rs`
   - `docs/PANES.md`
 - Must preserve authoritative wallet-truth model from MVP.
 - Acceptance:

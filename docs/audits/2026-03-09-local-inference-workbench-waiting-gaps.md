@@ -2,11 +2,11 @@
 
 Date: 2026-03-09
 Branch: `metal-gptoss`
-Scope: `apps/autopilot-desktop` workbench pane only
+Scope: `apps/autopilot-deprecated` workbench pane only
 
 ## What Landed In This Slice
 
-- Added a new singleton `Local Inference` pane in `apps/autopilot-desktop`.
+- Added a new singleton `Local Inference` pane in `apps/autopilot-deprecated`.
 - The pane is app-owned and uses the current `local_inference_runtime` seam instead of reviving the older direct `ollama` UI approach.
 - It exposes:
   - runtime refresh / warm / unload controls
@@ -47,7 +47,7 @@ Scope: `apps/autopilot-desktop` workbench pane only
 5. This slice intentionally avoided the other agent’s active Psionic/Metal files.
 
 - The branch already had concurrent edits in `crates/psionic/psionic-backend-metal/src/lib.rs`.
-- To avoid collisions, this work stayed in `apps/autopilot-desktop` plus docs only.
+- To avoid collisions, this work stayed in `apps/autopilot-deprecated` plus docs only.
 - Any follow-up that depends on the other agent’s Metal-serving work should start by rebasing this pane onto their runtime/API shape instead of guessing it now.
 
 ## Recommended Next Step

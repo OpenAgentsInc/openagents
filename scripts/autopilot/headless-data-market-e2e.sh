@@ -618,7 +618,7 @@ publish_buyer_request_with_recovery() {
 DEFAULT_SPARK_API_KEY="$(
 python3 - <<'PY'
 import pathlib, re
-text = pathlib.Path("apps/autopilot-desktop/src/spark_wallet.rs").read_text()
+text = pathlib.Path("apps/autopilot-deprecated/src/spark_wallet.rs").read_text()
 match = re.search(r'DEFAULT_OPENAGENTS_SPARK_API_KEY: &str = "([^"]+)";', text)
 if not match:
     raise SystemExit("failed to locate default OPENAGENTS_SPARK_API_KEY fallback")

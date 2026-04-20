@@ -5,7 +5,7 @@
 
 ## Scope
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - `crates/codex-client`
 - `crates/nostr/*`
 - `crates/spark`
@@ -51,11 +51,11 @@
 - Delta vs prior monthly audit:
   - 149,192 -> 169,839 (`+20,647 LOC`)
 - Top concentration files (current):
-  - `apps/autopilot-desktop/src/codex_lane.rs` (5,285)
-  - `apps/autopilot-desktop/src/app_state.rs` (5,155)
-  - `apps/autopilot-desktop/src/input.rs` (4,298)
-  - `apps/autopilot-desktop/src/pane_system.rs` (3,500)
-  - `apps/autopilot-desktop/src/pane_renderer.rs` (2,700)
+  - `apps/autopilot-deprecated/src/codex_lane.rs` (5,285)
+  - `apps/autopilot-deprecated/src/app_state.rs` (5,155)
+  - `apps/autopilot-deprecated/src/input.rs` (4,298)
+  - `apps/autopilot-deprecated/src/pane_system.rs` (3,500)
+  - `apps/autopilot-deprecated/src/pane_renderer.rs` (2,700)
 - Notable deltas vs prior monthly audit:
   - `app_state.rs`: 3,439 -> 5,155 (`+1,716`)
   - `input.rs`: 2,525 -> 4,298 (`+1,773`)
@@ -71,7 +71,7 @@
 - Delta vs prior monthly audit:
   - Maintained at zero dead-code warnings.
 - Highest-priority removals/wiring:
-  - `#[allow(dead_code)]` remains in active modules (e.g. `apps/autopilot-desktop/src/app_state.rs`, `apps/autopilot-desktop/src/codex_lane.rs`, `apps/autopilot-desktop/src/state/alerts_recovery.rs`) and should continue to be burned down with ownership tickets.
+  - `#[allow(dead_code)]` remains in active modules (e.g. `apps/autopilot-deprecated/src/app_state.rs`, `apps/autopilot-deprecated/src/codex_lane.rs`, `apps/autopilot-deprecated/src/state/alerts_recovery.rs`) and should continue to be burned down with ownership tickets.
 
 ## Lint-Gate Trend
 
@@ -92,7 +92,7 @@
 
 - `cargo test --workspace --quiet` did not complete within 300s.
 - A targeted test also timed out:
-  - `codex_lane::tests::server_request_command_approval_round_trip` in `apps/autopilot-desktop/src/codex_lane.rs`.
+  - `codex_lane::tests::server_request_command_approval_round_trip` in `apps/autopilot-deprecated/src/codex_lane.rs`.
 - This indicates regression risk in deterministic test execution for lane/threaded integration tests.
 
 ## Findings (Ranked)
@@ -100,9 +100,9 @@
 ### 1) Critical: `autopilot-desktop` has re-consolidated into multiple mega-modules
 
 Evidence:
-- `apps/autopilot-desktop/src/codex_lane.rs` (5,285)
-- `apps/autopilot-desktop/src/app_state.rs` (5,155)
-- `apps/autopilot-desktop/src/input.rs` (4,298)
+- `apps/autopilot-deprecated/src/codex_lane.rs` (5,285)
+- `apps/autopilot-deprecated/src/app_state.rs` (5,155)
+- `apps/autopilot-deprecated/src/input.rs` (4,298)
 - `PaneKind` and top-level app state live in the same file as broad pane state definitions and tests (`app_state.rs`).
 
 Impact:
@@ -129,8 +129,8 @@ Impact:
 ### 4) High: Codex transcript assembly still relies on brittle string heuristics
 
 Evidence:
-- Message assembly logic in `apps/autopilot-desktop/src/app_state.rs` manipulates ad-hoc `"Reasoning:\n"` and `"\n\nAnswer:\n"` delimiters.
-- Reducer pipeline has duplicate suppression and fallback transcript probing heuristics in `apps/autopilot-desktop/src/input/reducers/codex.rs`.
+- Message assembly logic in `apps/autopilot-deprecated/src/app_state.rs` manipulates ad-hoc `"Reasoning:\n"` and `"\n\nAnswer:\n"` delimiters.
+- Reducer pipeline has duplicate suppression and fallback transcript probing heuristics in `apps/autopilot-deprecated/src/input/reducers/codex.rs`.
 
 Impact:
 - Susceptible to duplicated/misordered rendering and hard-to-debug edge cases as app-server event shapes evolve.
@@ -138,7 +138,7 @@ Impact:
 ### 5) High: Codex lane surface is too manual and drift-prone
 
 Evidence:
-- Large manual command/notification mapping in `apps/autopilot-desktop/src/codex_lane.rs` and `apps/autopilot-desktop/src/input/reducers/codex.rs`.
+- Large manual command/notification mapping in `apps/autopilot-deprecated/src/codex_lane.rs` and `apps/autopilot-deprecated/src/input/reducers/codex.rs`.
 - Large API type monolith in `crates/codex-client/src/types.rs` (1,590 LOC).
 
 Impact:

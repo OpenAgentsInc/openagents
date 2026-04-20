@@ -1,7 +1,7 @@
 # VCAD Parity Plan (100% Target)
 
 Last updated: 2026-03-02
-Owner lane: `crates/cad` + `apps/autopilot-desktop`
+Owner lane: `crates/cad` + `apps/autopilot-deprecated`
 
 ## 1) Goal
 

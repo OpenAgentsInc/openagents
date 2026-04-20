@@ -4,8 +4,8 @@ set -euo pipefail
 
 SCRIPT_NAME=$(basename "$0")
 ROOT_CARGO_TOML="Cargo.toml"
-APP_CARGO_TOML="apps/autopilot-desktop/Cargo.toml"
-APP_DIR="apps/autopilot-desktop"
+APP_CARGO_TOML="apps/autopilot-deprecated/Cargo.toml"
+APP_DIR="apps/autopilot-deprecated"
 LOCKFILE_PATH="Cargo.lock"
 APP_NAME="Autopilot"
 APP_PACKAGE="autopilot-desktop"

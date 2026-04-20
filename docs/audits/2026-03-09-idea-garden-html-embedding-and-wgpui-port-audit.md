@@ -29,8 +29,8 @@ Authority and ownership:
 Current retained implementation:
 
 - `Cargo.toml`
-- `apps/autopilot-desktop/Cargo.toml`
-- `apps/autopilot-desktop/src/render.rs`
+- `apps/autopilot-deprecated/Cargo.toml`
+- `apps/autopilot-deprecated/src/render.rs`
 - `crates/wgpui/Cargo.toml`
 - `crates/wgpui/src/lib.rs`
 - `crates/wgpui/src/platform/web.rs`
@@ -49,11 +49,11 @@ External bundle inspected:
 
 ## Executive Recommendation
 
-Do not try to embed `garden.html` directly "inside WGPUI." The current WGPUI stack is a native `wgpu` scene renderer, not an HTML runtime, and `apps/autopilot-desktop` does not currently include any desktop webview lane.
+Do not try to embed `garden.html` directly "inside WGPUI." The current WGPUI stack is a native `wgpu` scene renderer, not an HTML runtime, and `apps/autopilot-deprecated` does not currently include any desktop webview lane.
 
 The lowest-regret order is:
 
-1. **Best fit for the MVP desktop app:** build our own native scene in `apps/autopilot-desktop`, using WGPUI as the renderer and keeping product behavior in the app crate.
+1. **Best fit for the MVP desktop app:** build our own native scene in `apps/autopilot-deprecated`, using WGPUI as the renderer and keeping product behavior in the app crate.
 2. **Best fit if browser parity matters:** build a new small wasm visualization app using the retained `wgpui` web lane, following the `apps/deck` pattern, and only later consider embedding that in a desktop webview.
 3. **Fastest way to reuse the existing HTML bundle:** add an app-owned embedded webview lane beside WGPUI, but treat that as a separate surface, not as a WGPUI feature.
 
@@ -70,7 +70,7 @@ This repo is already set up for:
 It is **not** currently set up for:
 
 - embedding HTML/JS content into the desktop app,
-- hosting a desktop webview inside `apps/autopilot-desktop`,
+- hosting a desktop webview inside `apps/autopilot-deprecated`,
 - drawing foreign textures or canvases into WGPUI as a first-class public API.
 
 So the real choice is not "can WGPUI embed this HTML app right now?" It is:
@@ -131,7 +131,7 @@ This matters because it is not just "an effect." It is a full browser app shell 
 
 ## 1. A native desktop `wgpu` app shell
 
-`apps/autopilot-desktop` is a native Winit + `wgpu` app. Its main rendering path in `apps/autopilot-desktop/src/render.rs` creates a single native surface and uses `wgpui::renderer::Renderer` to paint the app scene.
+`apps/autopilot-deprecated` is a native Winit + `wgpu` app. Its main rendering path in `apps/autopilot-deprecated/src/render.rs` creates a single native surface and uses `wgpui::renderer::Renderer` to paint the app scene.
 
 That is a strong fit for:
 
@@ -184,7 +184,7 @@ This is important because it creates a third option between:
 
 ## 4. The repo does not retain a desktop webview lane
 
-Search across `Cargo.toml`, `apps/autopilot-desktop`, `crates/wgpui`, and docs shows no current dependency or retained integration lane for:
+Search across `Cargo.toml`, `apps/autopilot-deprecated`, `crates/wgpui`, and docs shows no current dependency or retained integration lane for:
 
 - `wry`
 - `tao`-hosted webviews
@@ -193,7 +193,7 @@ Search across `Cargo.toml`, `apps/autopilot-desktop`, `crates/wgpui`, and docs s
 - `tauri`
 - CEF
 
-`apps/autopilot-desktop/Cargo.toml` depends on `wgpui`, `wgpu`, `winit`, and app/runtime crates, but not a browser embedding stack.
+`apps/autopilot-deprecated/Cargo.toml` depends on `wgpui`, `wgpu`, `winit`, and app/runtime crates, but not a browser embedding stack.
 
 That means an embedded HTML surface is possible only as **new app work**, not by flipping on an existing feature.
 
@@ -220,7 +220,7 @@ That gap is architectural, not cosmetic.
 
 Per `docs/OWNERSHIP.md`:
 
-- `apps/autopilot-desktop` owns app wiring, pane orchestration, and product behavior.
+- `apps/autopilot-deprecated` owns app wiring, pane orchestration, and product behavior.
 - `crates/wgpui` owns product-agnostic UI APIs and rendering support.
 - product workflows must not move into `crates/wgpui`.
 
@@ -234,13 +234,13 @@ This is consistent with MVP guidance too: keep changes small, verifiable, and de
 
 ## Integration Options
 
-## Option A: Native WGPUI Port Inside `apps/autopilot-desktop`
+## Option A: Native WGPUI Port Inside `apps/autopilot-deprecated`
 
 ### What it means
 
 Rebuild the visual system in Rust and render it natively through WGPUI:
 
-- app-owned scene state in `apps/autopilot-desktop`
+- app-owned scene state in `apps/autopilot-deprecated`
 - WGPUI primitives for HUD chrome and overlays
 - mesh primitives for branches/leaves/particles or billboards
 - app-owned input controller for pan/zoom/orbit-style camera
@@ -322,7 +322,7 @@ Choose this if:
 ### Limits
 
 - This does not by itself embed into the native app.
-- To show it inside `apps/autopilot-desktop`, you would still need a desktop webview lane.
+- To show it inside `apps/autopilot-deprecated`, you would still need a desktop webview lane.
 
 ### Recommendation
 
@@ -410,7 +410,7 @@ The MVP spec is desktop-first and performance-sensitive. If the visual system is
 
 ## Path 1: Recommended For The Desktop MVP
 
-1. Build a small app-owned "visual scene pane" in `apps/autopilot-desktop`.
+1. Build a small app-owned "visual scene pane" in `apps/autopilot-deprecated`.
 2. Port only the core retained behaviors first:
    - folder-backed content ingest
    - grouping
@@ -452,10 +452,10 @@ Use this only as a prototype or research surface.
 
 | Concern | Recommended owner |
 | --- | --- |
-| Product visualization state for Autopilot | `apps/autopilot-desktop` |
+| Product visualization state for Autopilot | `apps/autopilot-deprecated` |
 | Browser-only visualization app | new `apps/*` crate, same pattern as `apps/deck` |
 | Generic mesh/camera/input/render helpers | `crates/wgpui*` only if proven reusable |
-| Embedded desktop webview host | `apps/autopilot-desktop` |
+| Embedded desktop webview host | `apps/autopilot-deprecated` |
 | Obsidian/note ingest, clustering, embeddings | app crate, not `wgpui` |
 
 ## Practical Recommendation For This Repo

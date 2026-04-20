@@ -30,20 +30,20 @@ I read the current data-market-specific docs and implementation in:
 - `crates/nostr/core/src/nip90/data_vending.rs`
 - `apps/nexus-control/src/kernel.rs`
 - `apps/nexus-control/src/lib.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/data_market_control.rs`
-- `apps/autopilot-desktop/src/data_buyer_control.rs`
-- `apps/autopilot-desktop/src/data_seller_control.rs`
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/bin/autopilot_headless_data_market.rs`
-- `apps/autopilot-desktop/src/panes/data_market.rs`
-- `apps/autopilot-desktop/src/panes/data_seller.rs`
-- `apps/autopilot-desktop/src/panes/data_buyer.rs`
-- `apps/autopilot-desktop/src/skill_autoload.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/data_market_control.rs`
+- `apps/autopilot-deprecated/src/data_buyer_control.rs`
+- `apps/autopilot-deprecated/src/data_seller_control.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/bin/autopilot_headless_data_market.rs`
+- `apps/autopilot-deprecated/src/panes/data_market.rs`
+- `apps/autopilot-deprecated/src/panes/data_seller.rs`
+- `apps/autopilot-deprecated/src/panes/data_buyer.rs`
+- `apps/autopilot-deprecated/src/skill_autoload.rs`
 - `scripts/autopilot/data_market_package.py`
 - `scripts/autopilot/package_codex_conversations.py`
 - `scripts/autopilot/headless-data-market-e2e.sh`
@@ -321,9 +321,9 @@ This is the targeted request/feedback/result transport.
 It lives in:
 
 - `crates/nostr/core/src/nip90/data_vending.rs`
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/data_buyer_control.rs`
-- `apps/autopilot-desktop/src/data_seller_control.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/data_buyer_control.rs`
+- `apps/autopilot-deprecated/src/data_seller_control.rs`
 
 It owns:
 
@@ -339,12 +339,12 @@ This is the operational state machine that makes the feature usable.
 
 It lives in:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/bin/autopilot_headless_data_market.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/bin/autopilot_headless_data_market.rs`
 
 It owns:
 
@@ -476,7 +476,7 @@ The preview posture values are:
 
 ### What the relay lane actually does
 
-`apps/autopilot-desktop/src/provider_nip90_lane.rs` is the live runtime bridge
+`apps/autopilot-deprecated/src/provider_nip90_lane.rs` is the live runtime bridge
 between the market logic and relays.
 
 Important current behavior:
@@ -509,8 +509,8 @@ E2E loop uses zero-price grants and zero-price requests.
 
 ## The App-Owned Seller State Machine
 
-The core seller implementation lives in `apps/autopilot-desktop/src/app_state.rs`
-and `apps/autopilot-desktop/src/data_seller_control.rs`.
+The core seller implementation lives in `apps/autopilot-deprecated/src/app_state.rs`
+and `apps/autopilot-deprecated/src/data_seller_control.rs`.
 
 ### Seller draft model
 
@@ -653,10 +653,10 @@ first-class visible event.
 
 The buyer implementation lives in:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/data_buyer_control.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/data_buyer_control.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 
 The current buyer flow is intentionally narrow.
 
@@ -784,11 +784,11 @@ The panes have distinct jobs:
 - `Data Seller`: conversational authoring and fulfillment surface
 - `Data Buyer`: narrow targeted-request surface
 
-The pane code in `apps/autopilot-desktop/src/panes/` confirms that split.
+The pane code in `apps/autopilot-deprecated/src/panes/` confirms that split.
 
 ### Desktop control contract
 
-`apps/autopilot-desktop/src/desktop_control.rs` exposes a typed action set for:
+`apps/autopilot-deprecated/src/desktop_control.rs` exposes a typed action set for:
 
 - seller status
 - buyer status
@@ -809,7 +809,7 @@ This is the real reuse point.
 
 ### CLI reuse
 
-`apps/autopilot-desktop/src/bin/autopilotctl.rs` maps the
+`apps/autopilot-deprecated/src/bin/autopilotctl.rs` maps the
 `autopilotctl data-market ...` command tree onto those desktop-control actions.
 
 So the CLI is not a separate market implementation. It is a shell wrapper over
@@ -817,7 +817,7 @@ the same app-owned state machine.
 
 ### Headless reuse
 
-`apps/autopilot-desktop/src/bin/autopilot_headless_data_market.rs` simply boots
+`apps/autopilot-deprecated/src/bin/autopilot_headless_data_market.rs` simply boots
 the normal desktop host in a no-window posture and writes the desktop-control
 manifest.
 
@@ -828,8 +828,8 @@ Again, no second implementation.
 The in-app seller lane also reuses the same state machine through typed dynamic
 tools in:
 
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
 
 The important tool family is:
 
@@ -846,7 +846,7 @@ The important tool family is:
 - `openagents.data_market.revoke_grant`
 - `openagents.data_market.snapshot`
 
-`apps/autopilot-desktop/src/skill_autoload.rs` then auto-provisions the
+`apps/autopilot-deprecated/src/skill_autoload.rs` then auto-provisions the
 managed first-party seller skills so the dedicated seller lane uses the same
 typed control path instead of generic pane poking.
 

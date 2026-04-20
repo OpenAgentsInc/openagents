@@ -25,7 +25,7 @@ Current outside-facing contribution types are:
 ## Product Surface
 
 The first product surface is the `Contributor Beta` pane in
-`apps/autopilot-desktop`.
+`apps/autopilot-deprecated`.
 
 Phase 5 makes that pane Tailnet-first.
 

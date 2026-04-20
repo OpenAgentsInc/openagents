@@ -11,14 +11,14 @@
 - `crates/psionic/docs/METAL_GPT_OSS_UNIFIED_PLAN.md`
 - `crates/psionic/docs/HARDWARE_VALIDATION_MATRIX.md`
 - `docs/audits/2026-03-09-psionic-gpt-oss-metal-gap-audit.md`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/local_inference_runtime.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/state/provider_runtime.rs`
-- `apps/autopilot-desktop/src/kernel_control.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/local_inference_runtime.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/state/provider_runtime.rs`
+- `apps/autopilot-deprecated/src/kernel_control.rs`
 - `crates/openagents-provider-substrate/src/lib.rs`
 - `crates/psionic/psionic-serve/src/lib.rs`
 - `crates/psionic/psionic-serve/src/gpt_oss.rs`
@@ -32,12 +32,12 @@
 
 Psionic is now far enough along that a desktop GPT-OSS local-inference pane is worth starting immediately. The March 9, 2026 Metal issue sequence closed the core engine/bootstrap work: the shared GPT-OSS runtime seam exists, `MetalGgufGptOssTextGenerationService` exists, the OpenAI-compatible GPT-OSS server can run with `--backend metal`, and the hardware validation matrix now has an explicit `metal.gpt_oss.text_generation.apple_silicon` row.
 
-The blocker has moved from "there is no real Metal GPT-OSS lane" to "the desktop does not expose it honestly." `apps/autopilot-desktop` still has no local-inference pane, still stores the local Psionic runtime snapshot under `ollama_execution`, still copies that into `provider_runtime.ollama`, and still maps launch inventory and metering to `ollama.*` product IDs. The app seam exists, but it is too thin and too stale to support a truthful GPT-OSS workbench.
+The blocker has moved from "there is no real Metal GPT-OSS lane" to "the desktop does not expose it honestly." `apps/autopilot-deprecated` still has no local-inference pane, still stores the local Psionic runtime snapshot under `ollama_execution`, still copies that into `provider_runtime.ollama`, and still maps launch inventory and metering to `ollama.*` product IDs. The app seam exists, but it is too thin and too stale to support a truthful GPT-OSS workbench.
 
 The right path is:
 
 1. clean up the app-owned local-inference seam and naming debt,
-2. add a singleton `Local Inference` pane in `apps/autopilot-desktop`,
+2. add a singleton `Local Inference` pane in `apps/autopilot-deprecated`,
 3. expand the app seam to surface catalog, load, unload, observability, and workbench execution state, and
 4. then swap the desktop from the current CPU reference adapter to a real model-backed Psionic GPT-OSS adapter without routing through loopback HTTP as the primary product path.
 
@@ -134,7 +134,7 @@ This is the right substrate. The desktop just is not exposing it yet.
 
 ### 1. There is no local-inference pane
 
-`apps/autopilot-desktop` currently has no pane kind or registry entry for local inference:
+`apps/autopilot-deprecated` currently has no pane kind or registry entry for local inference:
 
 - no `PaneKind::LocalInference`
 - no `PaneSpec` entry in `pane_registry.rs`
@@ -144,7 +144,7 @@ The only visible local-inference UI is a small status summary embedded inside `M
 
 ### 2. The app seam exists, but only as a narrow job-execution slot
 
-`apps/autopilot-desktop/src/local_inference_runtime.rs` currently gives the app:
+`apps/autopilot-deprecated/src/local_inference_runtime.rs` currently gives the app:
 
 - `Refresh`
 - `WarmConfiguredModel`
@@ -261,7 +261,7 @@ The right product shape is not "one more provider debug box." It should be a sin
 
 This is the first required slice before any real pane work.
 
-In `apps/autopilot-desktop`:
+In `apps/autopilot-deprecated`:
 
 - rename the app-owned snapshot/state fields away from `ollama_*`
 - add app-owned `LocalInferencePaneState` and `LocalInferencePaneInputs`
@@ -291,7 +291,7 @@ The app seam should gain app-owned DTOs and commands for at least:
 - `GenerateStream`
 - `ReadObservability`
 
-The DTOs can be derived from Psionic types, but the seam itself should stay owned by `apps/autopilot-desktop`.
+The DTOs can be derived from Psionic types, but the seam itself should stay owned by `apps/autopilot-deprecated`.
 
 ### Phase 3: add the pane skeleton in the desktop app
 
@@ -299,11 +299,11 @@ This is pure app work and should stay out of reusable crates.
 
 Expected future edit surface:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/input.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/input.rs`
 - `docs/PANES.md`
 
 The pane should follow the existing singleton-pane pattern used by the Codex panes.

@@ -60,7 +60,7 @@ The critical lesson is simple:
 
 The primary bug was in open-network seller settlement reconciliation inside:
 
-- [actions.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/actions.rs)
+- [actions.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/actions.rs)
 
 The reconciliation logic was willing to fall back to heuristic matching when it could not prove exact settlement identity.
 

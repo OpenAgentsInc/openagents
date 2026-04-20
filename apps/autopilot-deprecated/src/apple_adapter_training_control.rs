@@ -5181,7 +5181,7 @@ mod tests {
         )
         .expect("train dataset");
         let held_out_dataset = AppleAdapterDatasetContract::from_jsonl_str(
-            r#"[{"role":"system","content":"Answer from docs only."},{"role":"user","content":"What owns pane orchestration?"},{"role":"assistant","content":"`apps/autopilot-desktop` owns pane orchestration."}]"#,
+            r#"[{"role":"system","content":"Answer from docs only."},{"role":"user","content":"What owns pane orchestration?"},{"role":"assistant","content":"`apps/autopilot-deprecated` owns pane orchestration."}]"#,
             runtime_profile.dataset_metadata(),
         )
         .expect("held out dataset");

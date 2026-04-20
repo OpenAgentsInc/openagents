@@ -97,22 +97,22 @@ run_check E "chat-build runbook present" \
 run_check E "phase-2 demo runbook present" \
     test -f "$ROOT_DIR/docs/codex/CAD_PHASE2_DEMO_RUNBOOK.md"
 run_check E "week-1 gripper script + golden present" \
-    test -f "$ROOT_DIR/apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_week1_gripper_script.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_week1_gripper_snapshot.json"
+    test -f "$ROOT_DIR/apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_week1_gripper_script.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_week1_gripper_snapshot.json"
 run_check E "phase-2 harness scripts + goldens present" \
-    test -f "$ROOT_DIR/apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_phase2_gripper_script.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_phase2_gripper_snapshot.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_phase2_underactuated_script.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_phase2_underactuated_snapshot.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_phase2_three_finger_script.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_phase2_three_finger_snapshot.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_phase2_motors_script.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_phase2_motors_snapshot.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_phase2_sensors_script.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_phase2_sensors_snapshot.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_phase2_full_hand_script.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_phase2_full_hand_snapshot.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_phase2_failure_script.json" \
-    -a -f "$ROOT_DIR/apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_phase2_failure_snapshot.json"
+    test -f "$ROOT_DIR/apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_phase2_gripper_script.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_phase2_gripper_snapshot.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_phase2_underactuated_script.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_phase2_underactuated_snapshot.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_phase2_three_finger_script.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_phase2_three_finger_snapshot.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_phase2_motors_script.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_phase2_motors_snapshot.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_phase2_sensors_script.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_phase2_sensors_snapshot.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_phase2_full_hand_script.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_phase2_full_hand_snapshot.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_phase2_failure_script.json" \
+    -a -f "$ROOT_DIR/apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_phase2_failure_snapshot.json"
 
 printf 'CAD demo release gates passed (A-E).\n'

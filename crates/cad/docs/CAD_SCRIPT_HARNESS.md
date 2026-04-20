@@ -6,11 +6,11 @@ This harness runs deterministic `CadIntent` and pane-action sequences against
 ## Location
 
 - Harness implementation:
-  - `apps/autopilot-desktop/src/input/reducers/cad.rs` (test module)
+  - `apps/autopilot-deprecated/src/input/reducers/cad.rs` (test module)
 - Script fixtures:
-  - `apps/autopilot-desktop/tests/scripts/cad_demo_canonical_script.json`
-  - `apps/autopilot-desktop/tests/scripts/cad_demo_failure_paths_script.json`
-  - `apps/autopilot-desktop/tests/scripts/cad_demo_reliability_20s_script.json`
+  - `apps/autopilot-deprecated/tests/scripts/cad_demo_canonical_script.json`
+  - `apps/autopilot-deprecated/tests/scripts/cad_demo_failure_paths_script.json`
+  - `apps/autopilot-deprecated/tests/scripts/cad_demo_reliability_20s_script.json`
 
 ## Script Format
 

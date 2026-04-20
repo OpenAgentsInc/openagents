@@ -10,7 +10,7 @@
 
 ## Scope
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - `crates/nostr/core`
 - `crates/nostr/client`
 - `crates/spark`
@@ -36,10 +36,10 @@
 - Rust files in repo: 348
 - Total Rust LOC (apps + crates): 133,556
 - Largest MVP app files:
-  - `apps/autopilot-desktop/src/app_state.rs` (3,404 lines)
-  - `apps/autopilot-desktop/src/input.rs` (3,133 lines)
-  - `apps/autopilot-desktop/src/pane_renderer.rs` (2,427 lines)
-  - `apps/autopilot-desktop/src/pane_system.rs` (2,220 lines)
+  - `apps/autopilot-deprecated/src/app_state.rs` (3,404 lines)
+  - `apps/autopilot-deprecated/src/input.rs` (3,133 lines)
+  - `apps/autopilot-deprecated/src/pane_renderer.rs` (2,427 lines)
+  - `apps/autopilot-deprecated/src/pane_system.rs` (2,220 lines)
 - Largest protocol files:
   - `crates/nostr/core/src/nip90.rs` (1,762 lines)
   - `crates/nostr/core/src/nip_sa/skill.rs` (971 lines)
@@ -90,7 +90,7 @@ Impact:
 ### 3) High: `autopilot-desktop` runtime/app model is concentrated in several "god modules"
 
 Evidence:
-- `RenderState` aggregates windowing, renderer, input state, wallet state, SA/SKL/AC lanes, pane states, command palette, and orchestration fields in one struct (`apps/autopilot-desktop/src/app_state.rs:2711-2773`).
+- `RenderState` aggregates windowing, renderer, input state, wallet state, SA/SKL/AC lanes, pane states, command palette, and orchestration fields in one struct (`apps/autopilot-deprecated/src/app_state.rs:2711-2773`).
 - `app_state.rs` defines dozens of pane/domain state types and impls in one file (3,404 lines).
 - `input.rs` centralizes event-loop handling, pane action reducers, command construction, runtime lane reconciliation, and validation (3,133 lines, 86 functions, 93 matches).
 - `pane_renderer.rs` and `pane_system.rs` remain large and heavily branch-based.
@@ -103,7 +103,7 @@ Impact:
 
 Evidence:
 - `PaneKind` handling duplicated across at least four files (`pane_registry`, `pane_system`, `pane_renderer`, `input`).
-- Manual index mapping in registry (`apps/autopilot-desktop/src/pane_registry.rs:48-77`) coupled to static array order (`apps/autopilot-desktop/src/pane_registry.rs:107+`).
+- Manual index mapping in registry (`apps/autopilot-deprecated/src/pane_registry.rs:48-77`) coupled to static array order (`apps/autopilot-deprecated/src/pane_registry.rs:107+`).
 - Large action fan-out in `input.rs` (`run_*_action` pattern) and separate hit-action graph in `pane_system.rs`.
 
 Impact:
@@ -113,12 +113,12 @@ Impact:
 ### 5) High: Dead/legacy state pathways remain in hot runtime code
 
 Evidence (warnings from check/clippy):
-- Unused methods: `ProviderRuntimeState::toggle_online`, `tick`, `start_online`, `go_offline`, `move_degraded` (`apps/autopilot-desktop/src/app_state.rs:2544-2634`).
+- Unused methods: `ProviderRuntimeState::toggle_online`, `tick`, `start_online`, `go_offline`, `move_degraded` (`apps/autopilot-deprecated/src/app_state.rs:2544-2634`).
 - Unconstructed variants:
-  - `RuntimeCommandErrorClass::Internal` (`apps/autopilot-desktop/src/runtime_lanes.rs:56`)
-  - `SaRunnerMode::Degraded` (`apps/autopilot-desktop/src/runtime_lanes.rs:190`)
-  - `SkillTrustTier::Revoked` (`apps/autopilot-desktop/src/runtime_lanes.rs:253`)
-  - `SaLifecycleCommand::PublishTickResult` (`apps/autopilot-desktop/src/runtime_lanes.rs:342`)
+  - `RuntimeCommandErrorClass::Internal` (`apps/autopilot-deprecated/src/runtime_lanes.rs:56`)
+  - `SaRunnerMode::Degraded` (`apps/autopilot-deprecated/src/runtime_lanes.rs:190`)
+  - `SkillTrustTier::Revoked` (`apps/autopilot-deprecated/src/runtime_lanes.rs:253`)
+  - `SaLifecycleCommand::PublishTickResult` (`apps/autopilot-deprecated/src/runtime_lanes.rs:342`)
 
 Impact:
 - Confusing runtime contract surface; harder to reason about real state transitions.
@@ -127,7 +127,7 @@ Impact:
 ### 6) Medium-High: Runtime lane transport types are heavier than needed
 
 Evidence:
-- Clippy flags `large_enum_variant` for `SaLaneUpdate` with large snapshot payload (`apps/autopilot-desktop/src/runtime_lanes.rs:401-404`).
+- Clippy flags `large_enum_variant` for `SaLaneUpdate` with large snapshot payload (`apps/autopilot-deprecated/src/runtime_lanes.rs:401-404`).
 - Worker channels move snapshot-rich enums continuously.
 
 Impact:
@@ -192,7 +192,7 @@ Impact:
 - Make pane spec the single source for title, command ID, defaults, and startup/hotbar metadata.
 
 3. Introduce typed request structs where argument lists are too long.
-- Start with `NetworkRequestsState::queue_request_submission` (`apps/autopilot-desktop/src/app_state.rs:730-739`).
+- Start with `NetworkRequestsState::queue_request_submission` (`apps/autopilot-deprecated/src/app_state.rs:730-739`).
 
 ## P2 (Performance + maintainability)
 

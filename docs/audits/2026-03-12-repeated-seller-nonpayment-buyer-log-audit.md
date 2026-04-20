@@ -1,7 +1,7 @@
 # Repeated Seller Nonpayment Buyer-Log Audit
 
 Date: March 12, 2026
-Scope: `apps/autopilot-desktop`
+Scope: `apps/autopilot-deprecated`
 Related incidents: repeated seller-side `delivered / awaiting buyer Lightning payment` jobs observed on the open network
 
 ## Executive Summary
@@ -33,12 +33,12 @@ To verify the buyer side, we inspected the active buyer session logs on this mac
 
 We also inspected the buyer payment/state code paths in:
 
-- [wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/wallet.rs)
-- [operations.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/state/operations.rs)
-- [spark_wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/spark_wallet.rs)
-- [jobs.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/jobs.rs)
-- [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/state/job_inbox.rs)
-- [provider_nip90_lane.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/provider_nip90_lane.rs)
+- [wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/wallet.rs)
+- [operations.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/state/operations.rs)
+- [spark_wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/spark_wallet.rs)
+- [jobs.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/jobs.rs)
+- [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/state/job_inbox.rs)
+- [provider_nip90_lane.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/provider_nip90_lane.rs)
 
 ## Timeline and Evidence
 
@@ -99,8 +99,8 @@ This is the most serious seller-facing defect in the current evidence.
 
 Current state:
 
-- Request ingestion stores `ttl_seconds` in [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/state/job_inbox.rs).
-- Acceptance checks in [jobs.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/jobs.rs) verify only:
+- Request ingestion stores `ttl_seconds` in [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/state/job_inbox.rs).
+- Acceptance checks in [jobs.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/jobs.rs) verify only:
   - request validity
   - minimum TTL
   - price floor
@@ -110,9 +110,9 @@ Current state:
 
 Evidence from code:
 
-- `request_accept_block_reason(...)` in [jobs.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/jobs.rs) checks `request.ttl_seconds < MIN_PROVIDER_TTL_SECONDS`, but not whether the request has already expired in wall-clock time.
-- `JobInboxRequest` in [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/state/job_inbox.rs) stores price, TTL, risk, and arrival sequencing, but not a derived “expired / deadline passed” rejection state.
-- `event_to_inbox_request(...)` in [provider_nip90_lane.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/provider_nip90_lane.rs) parses `ttl_seconds`, but the current acceptance path does not enforce freshness against the event’s actual age.
+- `request_accept_block_reason(...)` in [jobs.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/jobs.rs) checks `request.ttl_seconds < MIN_PROVIDER_TTL_SECONDS`, but not whether the request has already expired in wall-clock time.
+- `JobInboxRequest` in [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/state/job_inbox.rs) stores price, TTL, risk, and arrival sequencing, but not a derived “expired / deadline passed” rejection state.
+- `event_to_inbox_request(...)` in [provider_nip90_lane.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/provider_nip90_lane.rs) parses `ttl_seconds`, but the current acceptance path does not enforce freshness against the event’s actual age.
 
 Operational consequence:
 
@@ -125,19 +125,19 @@ The buyer payment path is real up to the point where Spark send is queued.
 
 Code path:
 
-- `prepare_auto_payment_attempt_internal(...)` in [operations.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/state/operations.rs) sets `pending_auto_payment_request_id` and records the invoice.
-- `SparkWalletCommand::SendPayment` eventually calls `send_payment(...)` in [spark_wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/spark_wallet.rs).
+- `prepare_auto_payment_attempt_internal(...)` in [operations.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/state/operations.rs) sets `pending_auto_payment_request_id` and records the invoice.
+- `SparkWalletCommand::SendPayment` eventually calls `send_payment(...)` in [spark_wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/spark_wallet.rs).
 - `send_payment(...)` stores:
   - `last_payment_id`
   - `pending_balance_confirmation_payment_id`
   - then triggers `refresh_balance_and_payments(...)`
-- Buyer reconciliation happens in `reconcile_pending_buyer_payment_confirmation(...)` in [wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/wallet.rs).
+- Buyer reconciliation happens in `reconcile_pending_buyer_payment_confirmation(...)` in [wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/wallet.rs).
 
 The weak point:
 
 - Buyer reconciliation only advances when a Spark worker update provides a matching payment record or terminal wallet error.
 - We do not have a seller-style periodic buyer payment-evidence refresh loop while `pending_auto_payment_request_id` is still active.
-- Seller side does have that pattern in [actions.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/actions.rs): it refreshes Spark every `5s` while delivered work is awaiting wallet evidence.
+- Seller side does have that pattern in [actions.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/actions.rs): it refreshes Spark every `5s` while delivered work is awaiting wallet evidence.
 - Buyer side, by contrast, appears to rely on the initial send-time refresh plus any incidental later wallet updates.
 
 Operational consequence:
@@ -212,7 +212,7 @@ Minimum product rule:
 
 Required change:
 
-- Persist request created-at epoch and a derived expiry epoch in [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/state/job_inbox.rs).
+- Persist request created-at epoch and a derived expiry epoch in [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/state/job_inbox.rs).
 - Surface freshness in the inbox and active-job reasoning, not just TTL length.
 
 ### 3. Add a buyer-side payment-evidence watchdog

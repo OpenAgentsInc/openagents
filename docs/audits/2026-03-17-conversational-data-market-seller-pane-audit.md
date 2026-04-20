@@ -23,15 +23,15 @@ Primary docs reviewed:
 
 Primary implementation surfaces reviewed:
 
-- `apps/autopilot-desktop/src/codex_lane.rs`
-- `apps/autopilot-desktop/src/codex_remote.rs`
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/panes/data_market.rs`
-- `apps/autopilot-desktop/src/data_market_control.rs`
+- `apps/autopilot-deprecated/src/codex_lane.rs`
+- `apps/autopilot-deprecated/src/codex_remote.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/panes/data_market.rs`
+- `apps/autopilot-deprecated/src/data_market_control.rs`
 - `skills/autopilot-pane-control/SKILL.md`
 - `skills/autopilot-cad-builder/SKILL.md`
 - `crates/openagents-kernel-core/src/data.rs`
@@ -96,10 +96,10 @@ economic object model. The authority objects already exist.
 
 ### 2. The current Data Market desktop pane is read-only
 
-The current pane in `apps/autopilot-desktop/src/panes/data_market.rs` is a
+The current pane in `apps/autopilot-deprecated/src/panes/data_market.rs` is a
 read-only snapshot surface.
 
-Its backing control path in `apps/autopilot-desktop/src/data_market_control.rs`
+Its backing control path in `apps/autopilot-deprecated/src/data_market_control.rs`
 only loads:
 
 - assets
@@ -115,7 +115,7 @@ So the repo has a control-plane view of the market, but not a seller workflow.
 
 ### 3. Codex integration is already strong and app-owned
 
-`apps/autopilot-desktop/src/codex_lane.rs` shows a substantial Codex app-server
+`apps/autopilot-deprecated/src/codex_lane.rs` shows a substantial Codex app-server
 integration:
 
 - thread lifecycle,
@@ -142,7 +142,7 @@ existing lane rather than a separate runtime.
 ### 4. The generic chat path already supports policy-attached skills
 
 `run_chat_submit_action_with_trigger` in
-`apps/autopilot-desktop/src/input/actions.rs` already assembles a turn from:
+`apps/autopilot-deprecated/src/input/actions.rs` already assembles a turn from:
 
 - prompt text,
 - mentions/images,
@@ -180,8 +180,8 @@ That is exactly the architectural shape the data-listing flow should reuse.
 
 ### 6. The Codex tool bridge is real, but data-market writes are not on it yet
 
-`apps/autopilot-desktop/src/openagents_dynamic_tools.rs` and
-`apps/autopilot-desktop/src/input/tool_bridge.rs` expose and auto-execute
+`apps/autopilot-deprecated/src/openagents_dynamic_tools.rs` and
+`apps/autopilot-deprecated/src/input/tool_bridge.rs` expose and auto-execute
 allowlisted `openagents.*` tools.
 
 Today that surface covers things like:

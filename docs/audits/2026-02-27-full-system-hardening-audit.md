@@ -5,7 +5,7 @@
 
 ## Scope
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - `crates/nostr/core`
 - `crates/nostr/client`
 - `crates/spark`
@@ -36,7 +36,7 @@
 
 - Total Rust LOC (`apps/` + `crates/`): `148,368`
 - LOC by active surface:
-  - `apps/autopilot-desktop`: `17,721`
+  - `apps/autopilot-deprecated`: `17,721`
   - `crates/nostr/core`: `32,957`
   - `crates/nostr/client`: `781`
   - `crates/spark`: `461`
@@ -44,10 +44,10 @@
   - `crates/wgpui-core`: `1,666`
   - `crates/wgpui-render`: `1,206`
 - Largest active files:
-  - `apps/autopilot-desktop/src/app_state.rs` (`3,944`)
-  - `apps/autopilot-desktop/src/input.rs` (`3,027`)
-  - `apps/autopilot-desktop/src/pane_renderer.rs` (`2,451`)
-  - `apps/autopilot-desktop/src/pane_system.rs` (`2,340`)
+  - `apps/autopilot-deprecated/src/app_state.rs` (`3,944`)
+  - `apps/autopilot-deprecated/src/input.rs` (`3,027`)
+  - `apps/autopilot-deprecated/src/pane_renderer.rs` (`2,451`)
+  - `apps/autopilot-deprecated/src/pane_system.rs` (`2,340`)
   - `crates/nostr/core/src/nip77.rs` (`2,032`)
   - `crates/nostr/core/src/nip90.rs` (`1,759`)
 
@@ -58,7 +58,7 @@
 Evidence:
 
 - Desktop runtime panic path:
-  - `apps/autopilot-desktop/src/pane_registry.rs:54`
+  - `apps/autopilot-deprecated/src/pane_registry.rs:54`
 - Nostr production unwraps (strict `--lib` clippy failures):
   - `crates/nostr/core/src/nip42.rs:219`
   - `crates/nostr/core/src/nip42.rs:305`
@@ -116,10 +116,10 @@ Why this matters:
 
 Evidence:
 
-- `apps/autopilot-desktop/src/app_state.rs` (`3,944` lines)
-- `apps/autopilot-desktop/src/input.rs` (`3,027` lines)
-- `apps/autopilot-desktop/src/pane_renderer.rs` (`2,451` lines)
-- `apps/autopilot-desktop/src/pane_system.rs` (`2,340` lines)
+- `apps/autopilot-deprecated/src/app_state.rs` (`3,944` lines)
+- `apps/autopilot-deprecated/src/input.rs` (`3,027` lines)
+- `apps/autopilot-deprecated/src/pane_renderer.rs` (`2,451` lines)
+- `apps/autopilot-deprecated/src/pane_system.rs` (`2,340` lines)
 
 Why this matters:
 
@@ -133,7 +133,7 @@ Evidence:
 - Notable clusters:
   - `crates/nostr/core/src/nip77.rs` (`#[allow(dead_code)]` across protocol internals)
   - `crates/nostr/core/src/nip69.rs` (multiple helper builders marked dead)
-  - `apps/autopilot-desktop/src/app_state.rs` (multiple dead-code allowances)
+  - `apps/autopilot-deprecated/src/app_state.rs` (multiple dead-code allowances)
 
 Why this matters:
 
@@ -180,7 +180,7 @@ Why this matters:
 
 1. Remove all production panic/unwrap violations now.
 - Fix targets:
-  - `apps/autopilot-desktop/src/pane_registry.rs:54`
+  - `apps/autopilot-deprecated/src/pane_registry.rs:54`
   - `crates/nostr/core/src/nip42.rs`
   - `crates/nostr/core/src/nip69.rs`
   - `crates/nostr/core/src/nip89.rs`

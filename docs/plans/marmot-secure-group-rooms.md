@@ -1,7 +1,7 @@
 # Marmot Secure-Group Rooms Plan
 
 Status: draft
-Owners: `apps/autopilot-desktop`, future secure-room adapter
+Owners: `apps/autopilot-deprecated`, future secure-room adapter
 Last updated: 2026-03-06
 
 ## Purpose
@@ -310,7 +310,7 @@ OpenAgents should keep the existing room-model boundary:
 - `dm`
 - `secure-group`
 
-For the secure-room implementation path, prefer a dedicated adapter boundary inside `apps/autopilot-desktop` that yields:
+For the secure-room implementation path, prefer a dedicated adapter boundary inside `apps/autopilot-deprecated` that yields:
 
 - room metadata snapshot
 - member snapshot

@@ -17,7 +17,7 @@ Out of scope:
 - Full analytic B-Rep reconstruction and advanced topology healing.
 - Assembly hierarchy import.
 - STEP color/PMI/material parsing.
-- UI-level import workflows in `apps/autopilot-desktop`.
+- UI-level import workflows in `apps/autopilot-deprecated`.
 
 ## API
 

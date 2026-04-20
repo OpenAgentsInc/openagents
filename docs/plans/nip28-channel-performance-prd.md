@@ -55,7 +55,7 @@ The problem worsens with channel age. It is not self-correcting.
 Six targeted fixes, ordered by impact. Each is independent and can ship separately.
 
 ### Fix 1 — Add `since` filter to NIP-28 subscription
-**File:** `apps/autopilot-desktop/src/nip28_chat_lane.rs`
+**File:** `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
 
 Split the subscription into two filters with a time window:
 - Channel create/metadata (kinds 40, 41): no time limit, tiny volume
@@ -64,35 +64,35 @@ Split the subscription into two filters with a time window:
 Eliminates 90%+ of initial relay load. Turns a 4746-event burst into dozens. Channel age no longer affects startup time.
 
 ### Fix 2 — Defer `refresh_projection` until EOSE
-**Files:** `apps/autopilot-desktop/src/app_state/chat_projection.rs`, `apps/autopilot-desktop/src/input/reducers/mod.rs`
+**Files:** `apps/autopilot-deprecated/src/app_state/chat_projection.rs`, `apps/autopilot-deprecated/src/input/reducers/mod.rs`
 
 `record_relay_events` currently calls `refresh_projection` (sort + rebuild + disk write) on every incoming batch. Change it to accumulate events, then flush once at EOSE.
 
 Turns 74 rebuilds per connect into 1.
 
 ### Fix 3 — Prune stale presence events before persisting
-**File:** `apps/autopilot-desktop/src/app_state/chat_projection.rs`
+**File:** `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
 
 After normalize, remove kind-42 events whose `oa.autopilot.presence.v1` TTL has expired (`expires_at < now`, or `created_at + 90s < now` as fallback). Normal chat messages (kind-42 without presence content) are kept.
 
 Stops unbounded memory and disk growth. Idempotent — safe to run on existing large caches.
 
 ### Fix 4 — Throttle disk writes
-**File:** `apps/autopilot-desktop/src/app_state/chat_projection.rs`
+**File:** `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
 
 Add a dirty flag and minimum write interval (1 second). Write to disk on EOSE, on clean shutdown, or on a timer tick rather than on every incoming event batch.
 
 Removes blocking file I/O from the hot event path.
 
 ### Fix 5 — Fix kind-0 pubkey collection scope
-**File:** `apps/autopilot-desktop/src/input/reducers/mod.rs`
+**File:** `apps/autopilot-deprecated/src/input/reducers/mod.rs`
 
 After each event drain the reducer collects author pubkeys from ALL snapshot messages to pass to `fetch_kind0_if_needed`. Change to collect only from the new events just received. The lane worker deduplicates with `fetched_kind0_pubkeys` so correctness is unchanged.
 
 Drops per-batch work from O(total messages) to O(batch size).
 
 ### Fix 6 — Wire incremental peer presence index
-**File:** `apps/autopilot-desktop/src/app_state.rs`
+**File:** `apps/autopilot-deprecated/src/app_state.rs`
 
 `build_autopilot_peer_presence_index` has an incremental path (`previous_index` parameter) that skips already-processed messages. The call site in `app_state.rs` passes `None`, forcing a full replay every time. Wire the cached index through.
 

@@ -22,7 +22,7 @@ Phase 1 decomposition.
 ## Phase 1 migration outcome
 
 - Core and renderer code moved out of the `wgpui` monolith into dedicated crates.
-- `apps/autopilot-desktop` continues to build without behavior changes by using
+- `apps/autopilot-deprecated` continues to build without behavior changes by using
   the `wgpui` facade.
 - LiveEditor advanced Vim handling was removed from the active MVP path; editor
   input now follows a single standard editing lane.

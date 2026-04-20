@@ -41,7 +41,7 @@ Default to:
 ## Current Working Set
 
 - The current shipped desktop implementation still uses the existing
-  `apps/autopilot-desktop` and WGPUI paths.
+  `apps/autopilot-deprecated` and WGPUI paths.
 - The current refactor plan for the next Autopilot desktop shell is a Tauri app
   in `apps/autopilot`, not `apps/autopilot-tauri` and not a separate repo by
   default.
@@ -114,14 +114,14 @@ Default to:
 ## Programmatic Control And Test Docs
 
 - The running desktop app now has an app-owned control plane plus a thin CLI:
-  - implementation: `apps/autopilot-desktop/src/desktop_control.rs`
-  - CLI: `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+  - implementation: `apps/autopilot-deprecated/src/desktop_control.rs`
+  - CLI: `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 - The narrow user/agent-facing guide for the current internal Forge CLI lives
   in `docs/codex/AUTOPILOTCTL_FORGE_CLI.md`.
 - The agent-specific runbook for how to operate shared Forge sessions lives in
   `docs/codex/FORGE_AGENT_INSTRUCTIONS.md`.
 - Forge also has a no-window host at
-  `apps/autopilot-desktop/src/bin/autopilot_headless_forge.rs`, and
+  `apps/autopilot-deprecated/src/bin/autopilot_headless_forge.rs`, and
   `autopilotctl forge ...` will autostart that host when the resolved
   desktop-control target is missing or stale.
 - Full operator/testing docs for `autopilotctl`, headless compute, packaged
@@ -159,8 +159,8 @@ Read these first:
 - `scripts/wgpui/capture-storybook.sh`
 - `crates/wgpui/examples/gallery_capture.rs`
 - `crates/wgpui/examples/storybook_capture.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 
 Useful commands:
 
@@ -272,8 +272,8 @@ around the app. Use the repo’s existing entrypoints:
     every mutation
 - Shell-first / no-window packaging + publication flow:
   - skill: `skills/autopilot-data-seller-cli/SKILL.md`
-  - runtime: `apps/autopilot-desktop/src/bin/autopilot_headless_data_market.rs`
-  - CLI: `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+  - runtime: `apps/autopilot-deprecated/src/bin/autopilot_headless_data_market.rs`
+  - CLI: `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
   - conversational terminal automation of the same seller lane:
     `autopilotctl data-market seller-prompt "<prompt>"`
 

@@ -21,10 +21,10 @@ Plan/spec docs:
 - `docs/plans/aegis.md`
 
 Implementation context:
-- `apps/autopilot-desktop/src/economy_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/economy_snapshot.rs`
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/job_inbox.rs`
+- `apps/autopilot-deprecated/src/economy_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/economy_snapshot.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/job_inbox.rs`
 - `docs/MVP.md`
 
 ## Executive Summary

@@ -18,21 +18,21 @@ The integration has to fit the code that already exists:
 - `crates/wgpui-render/src/renderer.rs` turns each scene layer into GPU buffers in `Renderer::prepare` and draws them in one pass in `Renderer::render_with_clear`.
 - `crates/wgpui-render/src/svg.rs` is an SVG rasterizer for static icon/image usage. It is fine for toolbar glyphs. It is the wrong path for interactive `.riv` playback.
 - `crates/wgpui/src/components/*` already contains reusable, product-agnostic visual components like `Heatmap`, `DotsGrid`, `RingGauge`, and `Scanlines`. A reusable Rive surface belongs in this layer, not in the app.
-- `apps/autopilot-desktop/src/pane_renderer.rs` is the app-side pane dispatcher. Panes paint through `PaintContext`.
+- `apps/autopilot-deprecated/src/pane_renderer.rs` is the app-side pane dispatcher. Panes paint through `PaintContext`.
 - A new desktop pane is never "just one file". The actual registration path runs through:
-  - `apps/autopilot-desktop/src/app_state.rs`
-  - `apps/autopilot-desktop/src/app_state_domains.rs`
-  - `apps/autopilot-desktop/src/panes/mod.rs`
-  - `apps/autopilot-desktop/src/panes/<pane>.rs`
-  - `apps/autopilot-desktop/src/pane_renderer.rs`
-  - `apps/autopilot-desktop/src/pane_registry.rs`
-  - `apps/autopilot-desktop/src/pane_system.rs`
-  - `apps/autopilot-desktop/src/input/tool_bridge.rs` if we want automation aliases
+  - `apps/autopilot-deprecated/src/app_state.rs`
+  - `apps/autopilot-deprecated/src/app_state_domains.rs`
+  - `apps/autopilot-deprecated/src/panes/mod.rs`
+  - `apps/autopilot-deprecated/src/panes/<pane>.rs`
+  - `apps/autopilot-deprecated/src/pane_renderer.rs`
+  - `apps/autopilot-deprecated/src/pane_registry.rs`
+  - `apps/autopilot-deprecated/src/pane_system.rs`
+  - `apps/autopilot-deprecated/src/input/tool_bridge.rs` if we want automation aliases
 
 Two constraints from the current implementation matter immediately:
 
 1. `Scene` is layered for quads, text, curves, and meshes, but not for SVG quads.
-2. Desktop redraw is already driven by the main event loop in `apps/autopilot-desktop/src/input.rs`, with a 16 ms active cadence and a 50 ms idle cadence via `handle_about_to_wait`.
+2. Desktop redraw is already driven by the main event loop in `apps/autopilot-deprecated/src/input.rs`, with a 16 ms active cadence and a 50 ms idle cadence via `handle_about_to_wait`.
 
 That means we do not need a second timing loop, but we do need a cleaner layered scene contract for vector/image drawables before Rive can fit properly.
 
@@ -45,7 +45,7 @@ This needs to follow the repo boundary rules in `docs/OWNERSHIP.md`.
 | `crates/wgpui-core` | product-agnostic | vector scene types and scene integration |
 | `crates/wgpui-render` | product-agnostic | GPU compilation and rendering of vector batches |
 | `crates/wgpui` | product-agnostic | Rive-facing surface/controller API |
-| `apps/autopilot-desktop` | app-owned | preview pane, pane state, and app-specific input mapping |
+| `apps/autopilot-deprecated` | app-owned | preview pane, pane state, and app-specific input mapping |
 
 The app should own "what do wallet/provider/runtime facts mean for this animation". The crates should own "how do we render a Rive artboard in WGPUI".
 
@@ -55,7 +55,7 @@ The app should own "what do wallet/provider/runtime facts mean for this animatio
 2. Keep the renderer inside `crates/wgpui-render`; no side renderer hidden behind the pane.
 3. Keep the pane workbench app-owned and reusable surface logic crate-owned.
 4. Start with a preview/workbench pane, not a hardwired production HUD replacement.
-5. Treat the current `.riv` file in `docs/plans/` as a planning asset. Copy a runtime asset into `apps/autopilot-desktop/resources/rive/` when implementation starts.
+5. Treat the current `.riv` file in `docs/plans/` as a planning asset. Copy a runtime asset into `apps/autopilot-deprecated/resources/rive/` when implementation starts.
 
 ## Target Architecture
 
@@ -171,7 +171,7 @@ This is the only shape that keeps rendering ownership aligned with the repo.
 
 ### 4. Frame Cadence And Redraw
 
-The desktop app already has an adequate redraw loop in `apps/autopilot-desktop/src/input.rs`.
+The desktop app already has an adequate redraw loop in `apps/autopilot-deprecated/src/input.rs`.
 
 Implementation rule:
 
@@ -196,7 +196,7 @@ is good as a planning artifact, but it is the wrong place to load runtime assets
 
 When implementation starts:
 
-- copy or rename the asset to `apps/autopilot-desktop/resources/rive/simple-fui-hud.riv`
+- copy or rename the asset to `apps/autopilot-deprecated/resources/rive/simple-fui-hud.riv`
 - load it from there for runtime use
 
 For the first working cut, the cleanest path is:
@@ -217,7 +217,7 @@ The closest existing patterns are:
 - `PsionicViz` for a visual-only pane
 - `LocalInference` and `AppleFmWorkbench` for panes that mix controls and a visualization surface
 
-Add in `apps/autopilot-desktop`:
+Add in `apps/autopilot-deprecated`:
 
 - `PaneKind::RivePreview` in `src/app_state.rs`
 - `RivePaneState` in `src/app_state_domains.rs`
@@ -302,7 +302,7 @@ Files:
 
 - `crates/wgpui/src/rive.rs`
 - `crates/wgpui-render/src/vector.rs`
-- `apps/autopilot-desktop/src/panes/rive.rs`
+- `apps/autopilot-deprecated/src/panes/rive.rs`
 
 Deliverables:
 
@@ -322,9 +322,9 @@ Exit criteria:
 Files:
 
 - `crates/wgpui/src/rive.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/panes/rive.rs`
-- `apps/autopilot-desktop/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/panes/rive.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
 
 Deliverables:
 
@@ -343,11 +343,11 @@ Exit criteria:
 
 Files:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
 
 Deliverables:
 
@@ -380,7 +380,7 @@ Rule:
 ## Data Flow
 
 ```text
-apps/autopilot-desktop::RivePaneState
+apps/autopilot-deprecated::RivePaneState
     -> wgpui::rive::RiveSurface
     -> wgpui_core::scene::draw_vector_batch(...)
     -> wgpui_render::Renderer::prepare(...)
@@ -391,27 +391,27 @@ apps/autopilot-desktop::RivePaneState
 
 The pane work is not done until all of these are wired:
 
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
   - add `PaneKind::RivePreview`
   - add `RenderState` storage for pane state and runtime object
-- `apps/autopilot-desktop/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
   - add `RivePaneState`
-- `apps/autopilot-desktop/src/panes/mod.rs`
+- `apps/autopilot-deprecated/src/panes/mod.rs`
   - export the pane module
-- `apps/autopilot-desktop/src/panes/rive.rs`
+- `apps/autopilot-deprecated/src/panes/rive.rs`
   - host the `RiveSurface`
   - paint controls and metrics
-- `apps/autopilot-desktop/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
   - dispatch `PaneKind::RivePreview`
-- `apps/autopilot-desktop/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
   - register title, size, command id, singleton flag
-- `apps/autopilot-desktop/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
   - minimum size
   - hit boxes for controls
   - cursor behavior if the surface becomes interactive
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
   - pane aliases for automation
-- `apps/autopilot-desktop/resources/rive/`
+- `apps/autopilot-deprecated/resources/rive/`
   - packaged runtime asset
 
 ## Validation

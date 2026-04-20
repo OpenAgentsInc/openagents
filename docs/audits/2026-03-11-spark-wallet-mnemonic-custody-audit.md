@@ -24,13 +24,13 @@ Primary code reviewed:
 - `crates/nostr/core/src/nip06.rs`
 - `crates/spark/src/signer.rs`
 - `crates/spark/src/wallet.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/spark_wallet.rs`
-- `apps/autopilot-desktop/src/bin/spark_wallet_cli.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/panes/wallet.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/bin/spark_wallet_cli.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/panes/wallet.rs`
 
 Local host observations:
 
@@ -99,7 +99,7 @@ Generation path:
 
 Code authority:
 
-- `apps/autopilot-desktop/src/render.rs:177-180`
+- `apps/autopilot-deprecated/src/render.rs:177-180`
 - `crates/nostr/core/src/identity.rs:20-33`
 
 Entropy and mnemonic format:
@@ -150,9 +150,9 @@ but not for the wallet mnemonic.
 Code authority:
 
 - `docs/CREDENTIALS.md`
-- `apps/autopilot-desktop/src/credentials.rs`
-- `apps/autopilot-desktop/src/spark_wallet.rs:642-653`
-- `apps/autopilot-desktop/src/bin/spark_wallet_cli.rs:524-563`
+- `apps/autopilot-deprecated/src/credentials.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs:642-653`
+- `apps/autopilot-deprecated/src/bin/spark_wallet_cli.rs:524-563`
 
 ## 5. How does Spark use it?
 
@@ -166,8 +166,8 @@ Desktop wallet initialization:
 
 Code authority:
 
-- `apps/autopilot-desktop/src/spark_wallet.rs:503-545`
-- `apps/autopilot-desktop/src/bin/spark_wallet_cli.rs:86-106`
+- `apps/autopilot-deprecated/src/spark_wallet.rs:503-545`
+- `apps/autopilot-deprecated/src/bin/spark_wallet_cli.rs:86-106`
 
 The reusable Spark signer derives a Bitcoin private key from:
 
@@ -198,8 +198,8 @@ That means the effective BIP-39 passphrase is empty today.
 
 Code authority:
 
-- `apps/autopilot-desktop/src/spark_wallet.rs:517-519`
-- `apps/autopilot-desktop/src/bin/spark_wallet_cli.rs:87-89`
+- `apps/autopilot-deprecated/src/spark_wallet.rs:517-519`
+- `apps/autopilot-deprecated/src/bin/spark_wallet_cli.rs:87-89`
 
 ## 7. Where is Spark wallet state stored?
 
@@ -213,8 +213,8 @@ So the default storage root is:
 
 Code authority:
 
-- `apps/autopilot-desktop/src/spark_wallet.rs:521-535`
-- `apps/autopilot-desktop/src/bin/spark_wallet_cli.rs:315-322`
+- `apps/autopilot-deprecated/src/spark_wallet.rs:521-535`
+- `apps/autopilot-deprecated/src/bin/spark_wallet_cli.rs:315-322`
 
 The reusable crate has a different default:
 
@@ -225,7 +225,7 @@ but the desktop app overrides it with the identity-adjacent storage path above.
 Code authority:
 
 - `crates/spark/src/wallet.rs:38-49`
-- `apps/autopilot-desktop/src/spark_wallet.rs:532-535`
+- `apps/autopilot-deprecated/src/spark_wallet.rs:532-535`
 
 Local host observation during this audit:
 
@@ -316,7 +316,7 @@ When secrets are revealed, the pane renders the full mnemonic.
 
 Code authority:
 
-- `apps/autopilot-desktop/src/pane_renderer.rs:4142-4264`
+- `apps/autopilot-deprecated/src/pane_renderer.rs:4142-4264`
 - `docs/PANES.md:171-177`
 
 There is no dedicated `Copy mnemonic` action in the reviewed pane logic, which is good, but:
@@ -329,7 +329,7 @@ The `Regenerate` action calls `regenerate_identity()`, replaces the mnemonic fil
 
 Code authority:
 
-- `apps/autopilot-desktop/src/input.rs:2633-2644`
+- `apps/autopilot-deprecated/src/input.rs:2633-2644`
 
 Practical consequence:
 
@@ -345,7 +345,7 @@ Startup calls `load_or_create_identity()` automatically.
 
 Code authority:
 
-- `apps/autopilot-desktop/src/render.rs:177-180`
+- `apps/autopilot-deprecated/src/render.rs:177-180`
 
 Practical consequence:
 
@@ -364,7 +364,7 @@ The settings document contains an `identity_path` field, but on parse the app ov
 
 Code authority:
 
-- `apps/autopilot-desktop/src/app_state.rs:6409-6503`
+- `apps/autopilot-deprecated/src/app_state.rs:6409-6503`
 
 Practical consequence:
 
@@ -380,7 +380,7 @@ Practical consequence:
 Evidence:
 
 - `crates/nostr/core/src/identity.rs:67-77`
-- `apps/autopilot-desktop/src/spark_wallet.rs:508-519`
+- `apps/autopilot-deprecated/src/spark_wallet.rs:508-519`
 - `crates/spark/src/wallet.rs:96-118`
 
 Impact:
@@ -391,7 +391,7 @@ Impact:
 
 Evidence:
 
-- `apps/autopilot-desktop/src/input.rs:2633-2644`
+- `apps/autopilot-deprecated/src/input.rs:2633-2644`
 
 Impact:
 
@@ -413,7 +413,7 @@ Impact:
 
 Evidence:
 
-- `apps/autopilot-desktop/src/render.rs:177-180`
+- `apps/autopilot-deprecated/src/render.rs:177-180`
 - `crates/nostr/core/src/identity.rs:20-33`
 
 Impact:
@@ -440,8 +440,8 @@ Impact:
 
 Evidence:
 
-- `apps/autopilot-desktop/src/spark_wallet.rs:517-519`
-- `apps/autopilot-desktop/src/bin/spark_wallet_cli.rs:87-89`
+- `apps/autopilot-deprecated/src/spark_wallet.rs:517-519`
+- `apps/autopilot-deprecated/src/bin/spark_wallet_cli.rs:87-89`
 
 Impact:
 
@@ -465,7 +465,7 @@ Impact:
 
 1. Remove ambiguity between settings path display and real authority path by surfacing the env override state directly in UI.
 2. Audit Spark `storage.sql` contents more deeply for sensitive material retention and redaction requirements.
-3. Revisit the embedded default Spark API key in `apps/autopilot-desktop/src/spark_wallet.rs:20` as a separate credential-hardening issue.
+3. Revisit the embedded default Spark API key in `apps/autopilot-deprecated/src/spark_wallet.rs:20` as a separate credential-hardening issue.
 
 ## Bottom Line
 

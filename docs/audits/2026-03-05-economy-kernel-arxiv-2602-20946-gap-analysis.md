@@ -25,9 +25,9 @@ Planned/spec authority:
 - `docs/MVP.md` (MVP scope constraints)
 
 Implemented (MVP/Earn kernel subset):
-- `apps/autopilot-desktop/src/economy_kernel_receipts.rs` (receipt envelope + canonical hashing)
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs` (Earn receipt stream, WorkUnit metadata mapping, idempotency, receipt export)
-- `apps/autopilot-desktop/src/state/economy_snapshot.rs` (minute snapshot object derived from receipts)
+- `apps/autopilot-deprecated/src/economy_kernel_receipts.rs` (receipt envelope + canonical hashing)
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs` (Earn receipt stream, WorkUnit metadata mapping, idempotency, receipt export)
+- `apps/autopilot-deprecated/src/state/economy_snapshot.rs` (minute snapshot object derived from receipts)
 
 Recent GitHub issues (via `gh issue list` on 2026-03-05):
 - No open issues in the repo at time of check.
@@ -39,8 +39,8 @@ The kernel plan matches the paper's core technical prescription:
 
 - Control variable framing: maximize verified output (kernel: `sv`, `NV = rho * N`) and gate autonomy on measured trust capacity (`sv`, correlation risk, `XA_hat`, `delta_m_hat`). (`docs/plans/economy-kernel.md` sections 2.4, 6.8, 7)
 - Explicit pipeline: work definition -> verification -> liability assignment -> settlement, with receipts as canonical truth and deterministic replay safety. (`docs/plans/economy-kernel.md` sections 1-5)
-- Correlation-aware verification: verification tiering and independence metadata are first-class, not an afterthought. (`docs/plans/economy-kernel.md` sections 2.3, 4.5; `apps/autopilot-desktop/src/economy_kernel_receipts.rs`)
-- Measurement substrate exists in MVP form: receipt stream + deterministic minute snapshots with `sv` breakdown and correlation/provenance headlines. (`apps/autopilot-desktop/src/state/economy_snapshot.rs`, snapshot receipts in `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`)
+- Correlation-aware verification: verification tiering and independence metadata are first-class, not an afterthought. (`docs/plans/economy-kernel.md` sections 2.3, 4.5; `apps/autopilot-deprecated/src/economy_kernel_receipts.rs`)
+- Measurement substrate exists in MVP form: receipt stream + deterministic minute snapshots with `sv` breakdown and correlation/provenance headlines. (`apps/autopilot-deprecated/src/state/economy_snapshot.rs`, snapshot receipts in `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`)
 
 The remaining gaps are primarily the paper's "policy/ecosystem" layer: explicit insurance-boundary primitives (risk charges), identity/personhood gates, standardized incident reporting and export formats, rollback planning/receipts, continuous drift detection, privacy-preserving safety signals, and certification constructs.
 
@@ -159,7 +159,7 @@ Status legend:
 
 **What we have:**
 - Spec: requires authenticated caller identity, but does not define assurance levels or personhood proofs. (`docs/plans/economy-kernel.md` section 1.1)
-- Impl: `PolicyContext.approved_by` is a string; no assurance level or credential linkage is recorded. (`apps/autopilot-desktop/src/economy_kernel_receipts.rs`)
+- Impl: `PolicyContext.approved_by` is a string; no assurance level or credential linkage is recorded. (`apps/autopilot-deprecated/src/economy_kernel_receipts.rs`)
 
 **Gaps:**
 - No `AuthAssuranceLevel` dimension in receipts/policy (anon vs authenticated vs org-KYC vs personhood vs hardware-bound).
@@ -244,7 +244,7 @@ Status legend:
 
 **What we have:**
 - Spec: `/stats` with redaction rules. (`docs/plans/economy-kernel.md` section 7.4)
-- Impl: snapshot inputs are redacted (receipt-window digest only). (`apps/autopilot-desktop/src/state/economy_snapshot.rs`)
+- Impl: snapshot inputs are redacted (receipt-window digest only). (`apps/autopilot-deprecated/src/state/economy_snapshot.rs`)
 
 **Gaps:**
 - No explicit SafetySignal object/feed and no restricted sharing mode.

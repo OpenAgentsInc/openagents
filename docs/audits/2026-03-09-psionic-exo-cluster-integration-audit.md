@@ -170,7 +170,7 @@ truthful" posture in the MVP docs.
 - reusable provider-domain semantics stay out of app code
 
 So the cluster control plane should live in `crates/psionic/*`, not inside
-`apps/autopilot-desktop`, not inside `crates/wgpui`, and not as hidden logic in
+`apps/autopilot-deprecated`, not inside `crates/wgpui`, and not as hidden logic in
 `psionic-serve`.
 
 ## Recommended Integration Shape

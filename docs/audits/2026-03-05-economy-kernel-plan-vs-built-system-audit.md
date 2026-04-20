@@ -46,19 +46,19 @@ Kernel-plan targets:
 Current repo implementation:
 
 - `Cargo.toml`
-- `apps/autopilot-desktop/src/economy_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/economy_snapshot.rs`
-- `apps/autopilot-desktop/src/state/operations.rs`
-- `apps/autopilot-desktop/src/sync_bootstrap.rs`
-- `apps/autopilot-desktop/src/sync_apply.rs`
-- `apps/autopilot-desktop/src/spacetime_presence.rs`
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/runtime_lanes.rs`
-- `apps/autopilot-desktop/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/economy_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/economy_snapshot.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/sync_bootstrap.rs`
+- `apps/autopilot-deprecated/src/sync_apply.rs`
+- `apps/autopilot-deprecated/src/spacetime_presence.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/runtime_lanes.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
 - `crates/autopilot-spacetime/src/client.rs`
 - `crates/autopilot-spacetime/src/reducers.rs`
 - `crates/autopilot-spacetime/src/schema.rs`
@@ -106,7 +106,7 @@ Broader Spacetime ecosystem review:
 ## Executive Verdict
 
 1. We do not currently have a repo-local backend implementation of the kernel-plan systems. There is no `TreasuryRouter`, no `Kernel Authority API`, no kernel HTTP service, no proto package tree, and no public `/stats` service in this workspace.
-2. What we do have is substantial desktop-local kernel modeling inside `apps/autopilot-desktop`: receipts, policy bundle parsing, incident tracking, outcome registry, audit export, safety feed export, rollback tracking, and minute-level economy snapshots.
+2. What we do have is substantial desktop-local kernel modeling inside `apps/autopilot-deprecated`: receipts, policy bundle parsing, incident tracking, outcome registry, audit export, safety feed export, rollback tracking, and minute-level economy snapshots.
 3. We also have real Spacetime work, but it is narrowly scoped. The active remote artifact is the `autopilot-sync` Spacetime module for presence/checkpoints/sync events. The desktop still mostly operates in Phase 1 mirror/proxy semantics with local stand-ins.
 4. If you want the system described in the kernel-plan docs as written, then yes: `TreasuryRouter` and `Kernel Authority API` need backend deployment. The plan docs explicitly place them server-side and outside Nostr/Spacetime.
 5. After reviewing the broader Spacetime ecosystem, the stronger conclusion is: SpacetimeDB can clearly host much larger server-side state machines than this repo currently uses it for, but it is still not the recommended place to put the entire OpenAgents economy backend. It remains a strong fit for presence, checkpoints, projections, and selected pure coordination state. It remains a weak fit for money-moving settlement, external routing, underwriting, verification pipelines, and OpenAgents-specific authority and audit surfaces.
@@ -158,7 +158,7 @@ The deeper Nostr review does not weaken the backend conclusion from the rest of 
 
 Nostr should carry the open protocol surfaces where interoperability and market visibility matter:
 
-- NIP-90 job requests, feedback, and results. This is already the MVP path in `docs/MVP.md`, `docs/autopilot-earn/AUTOPILOT_EARN_MVP.md`, `crates/nostr/core/src/nip90/mod.rs`, `crates/nostr/client/src/dvm.rs`, and `apps/autopilot-desktop/src/provider_nip90_lane.rs`.
+- NIP-90 job requests, feedback, and results. This is already the MVP path in `docs/MVP.md`, `docs/autopilot-earn/AUTOPILOT_EARN_MVP.md`, `crates/nostr/core/src/nip90/mod.rs`, `crates/nostr/client/src/dvm.rs`, and `apps/autopilot-deprecated/src/provider_nip90_lane.rs`.
 - NIP-89 capability and handler discovery for providers and future app/skill handlers.
 - NIP-65 relay list metadata and NIP-42 relay authentication, because those are relay-transport concerns.
 - Public or portable artifacts from the repo's intended protocol surface where third-party clients should be able to observe or reuse them:
@@ -260,7 +260,7 @@ The desktop should not be treated as the long-term shared authority for multi-us
 
 ### 1) Desktop-local economy kernel primitives are real
 
-`apps/autopilot-desktop` contains a large amount of local kernel-shaped logic:
+`apps/autopilot-deprecated` contains a large amount of local kernel-shaped logic:
 
 - `economy_kernel_receipts.rs` defines receipt primitives and policy/trace context.
 - `state/earn_kernel_receipts.rs` persists a local receipt stream, tracks work units and incidents, records settlement and rollback actions, and exports audit/safety bundles.
@@ -300,7 +300,7 @@ Code search found no current desktop call sites that drive `SpacetimeReducerHttp
 
 `Cargo.toml` includes:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - reusable crates
 - `crates/autopilot-spacetime`
 
@@ -345,7 +345,7 @@ The repo contains local snapshot computation, but not a public or operator-facin
 
 The strongest simple signal is the workspace shape:
 
-- one app: `apps/autopilot-desktop`
+- one app: `apps/autopilot-deprecated`
 - several reusable crates
 - one Spacetime crate and one Spacetime module directory
 
@@ -410,7 +410,7 @@ That is far short of the full kernel-plan service stack.
 
 ### 5) Credit/treasury-like flows are currently local simulation, not authority
 
-`apps/autopilot-desktop/src/runtime_lanes.rs` implements AC lane commands such as:
+`apps/autopilot-deprecated/src/runtime_lanes.rs` implements AC lane commands such as:
 
 - `PublishCreditIntent`
 - `PublishCreditOffer`
@@ -945,9 +945,9 @@ I would no longer recommend GKE as the default first Spacetime deployment. On GC
 
 Create a shared Rust crate, for example `crates/economy-kernel-core`, and move into it the pure logic from:
 
-- `apps/autopilot-desktop/src/economy_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/economy_snapshot.rs`
+- `apps/autopilot-deprecated/src/economy_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/economy_snapshot.rs`
 
 Move only pure domain logic first:
 

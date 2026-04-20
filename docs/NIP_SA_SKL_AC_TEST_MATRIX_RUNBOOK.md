@@ -44,13 +44,13 @@ It is the execution companion to `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md` (Ph
 
 ### 2.3 Desktop flow checks
 
-- `apps/autopilot-desktop/src/app_state.rs` test module:
+- `apps/autopilot-deprecated/src/app_state.rs` test module:
   - sync stale-cursor rebootstrap
   - relay-loss resubscribe behavior
   - wallet-error scoreboard degradation
-- `apps/autopilot-desktop/src/input.rs` test module:
+- `apps/autopilot-deprecated/src/input.rs` test module:
   - command/submit parity and payment/invoice validation paths
-- `apps/autopilot-desktop/src/pane_system.rs` test module:
+- `apps/autopilot-deprecated/src/pane_system.rs` test module:
   - pane action hit-target ordering for SA/SKL/AC panes
 
 ## 3. Failure-Mode Expectations

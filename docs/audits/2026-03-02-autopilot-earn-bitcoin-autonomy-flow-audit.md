@@ -33,11 +33,11 @@ Conclusion: this requested flow is in-scope for MVP and should be treated as cor
 
 ## What Exists
 
-- Local skills registry exists and is structured for discovery and manifest derivation (`skills/README.md:31-34`, `apps/autopilot-desktop/src/skills_registry.rs:30-137`).
-- Codex skill discovery is wired through `skills/list` and uses repo skill roots (`apps/autopilot-desktop/src/input/reducers/skl.rs:76-110`, `apps/autopilot-desktop/src/input/reducers/codex.rs:366-399`).
-- Skill enable/disable toggle through `skills/config/write` exists (`apps/autopilot-desktop/src/input/reducers/skl.rs:145-190`).
-- Chat turn input supports skill attachments (`UserInput::Skill`) (`apps/autopilot-desktop/src/input/actions.rs:285-334`).
-- Spark wallet worker is real integration (refresh/balance/invoice/send/list payments) (`apps/autopilot-desktop/src/spark_wallet.rs:18-36`, `apps/autopilot-desktop/src/spark_wallet.rs:232-265`, `apps/autopilot-desktop/src/spark_wallet.rs:460-492`).
+- Local skills registry exists and is structured for discovery and manifest derivation (`skills/README.md:31-34`, `apps/autopilot-deprecated/src/skills_registry.rs:30-137`).
+- Codex skill discovery is wired through `skills/list` and uses repo skill roots (`apps/autopilot-deprecated/src/input/reducers/skl.rs:76-110`, `apps/autopilot-deprecated/src/input/reducers/codex.rs:366-399`).
+- Skill enable/disable toggle through `skills/config/write` exists (`apps/autopilot-deprecated/src/input/reducers/skl.rs:145-190`).
+- Chat turn input supports skill attachments (`UserInput::Skill`) (`apps/autopilot-deprecated/src/input/actions.rs:285-334`).
+- Spark wallet worker is real integration (refresh/balance/invoice/send/list payments) (`apps/autopilot-deprecated/src/spark_wallet.rs:18-36`, `apps/autopilot-deprecated/src/spark_wallet.rs:232-265`, `apps/autopilot-deprecated/src/spark_wallet.rs:460-492`).
 
 ## What Is Missing For Requested Flow
 
@@ -54,13 +54,13 @@ Conclusion: this requested flow is in-scope for MVP and should be treated as cor
 
 ### Current behavior
 
-- Skill discovery uses Codex `skills/list` with `per_cwd_extra_user_roots` injected from repo and managed skill roots (`apps/autopilot-desktop/src/input/reducers/skl.rs:93-107`, `apps/autopilot-desktop/src/skill_autoload.rs:58-74`).
-- Discovered skills are stored with `name/path/scope/enabled/dependencies` (`apps/autopilot-desktop/src/input/reducers/codex.rs:838-878`).
-- Turn assembly attaches selected skill(s), deduped and ordered (`apps/autopilot-desktop/src/input/actions.rs:231-335`).
+- Skill discovery uses Codex `skills/list` with `per_cwd_extra_user_roots` injected from repo and managed skill roots (`apps/autopilot-deprecated/src/input/reducers/skl.rs:93-107`, `apps/autopilot-deprecated/src/skill_autoload.rs:58-74`).
+- Discovered skills are stored with `name/path/scope/enabled/dependencies` (`apps/autopilot-deprecated/src/input/reducers/codex.rs:838-878`).
+- Turn assembly attaches selected skill(s), deduped and ordered (`apps/autopilot-deprecated/src/input/actions.rs:231-335`).
 
 ### Gap
 
-- Relevance-based attachment is not generalized. Current policy auto-attaches only CAD skills (`apps/autopilot-desktop/src/input/actions.rs:248-269`, `apps/autopilot-desktop/src/skill_autoload.rs:10-29`).
+- Relevance-based attachment is not generalized. Current policy auto-attaches only CAD skills (`apps/autopilot-deprecated/src/input/actions.rs:248-269`, `apps/autopilot-deprecated/src/skill_autoload.rs:10-29`).
 - This does not satisfy "use any relevant skills" for earning workflows.
 
 ### Impact
@@ -72,7 +72,7 @@ Conclusion: this requested flow is in-scope for MVP and should be treated as cor
 
 ### Current behavior
 
-- Chat submit queues a single `turn/start` request; no built-in iterative goal loop state machine (`apps/autopilot-desktop/src/input/actions.rs:3-133`).
+- Chat submit queues a single `turn/start` request; no built-in iterative goal loop state machine (`apps/autopilot-deprecated/src/input/actions.rs:3-133`).
 - There is no explicit condition evaluator tied to chat turns for "stop when wallet increased by X sats" or similar.
 
 ### Gap
@@ -92,9 +92,9 @@ Conclusion: this requested flow is in-scope for MVP and should be treated as cor
 
 ### Current behavior
 
-- SA pane can apply heartbeat seconds and publish manual tick (`apps/autopilot-desktop/src/input/reducers/sa.rs:178-229`).
-- SA lane heartbeat/tick loop is in-process and simulated (`apps/autopilot-desktop/src/runtime_lanes.rs:510-571`).
-- WGPUI has a generic schedule component with `Cron` type, but it is not wired into `apps/autopilot-desktop` runtime (`crates/wgpui/src/components/organisms/schedule_config.rs:10-17`, `crates/wgpui/src/components/organisms/schedule_config.rs:73-79`, `crates/wgpui/src/components/organisms/schedule_config.rs:120-123`).
+- SA pane can apply heartbeat seconds and publish manual tick (`apps/autopilot-deprecated/src/input/reducers/sa.rs:178-229`).
+- SA lane heartbeat/tick loop is in-process and simulated (`apps/autopilot-deprecated/src/runtime_lanes.rs:510-571`).
+- WGPUI has a generic schedule component with `Cron` type, but it is not wired into `apps/autopilot-deprecated` runtime (`crates/wgpui/src/components/organisms/schedule_config.rs:10-17`, `crates/wgpui/src/components/organisms/schedule_config.rs:73-79`, `crates/wgpui/src/components/organisms/schedule_config.rs:120-123`).
 
 ### Gap
 
@@ -110,11 +110,11 @@ Conclusion: this requested flow is in-scope for MVP and should be treated as cor
 
 ### Current behavior
 
-- Go Online toggles SA runner state and refreshes wallet (`apps/autopilot-desktop/src/input.rs:1446-1478`).
-- SA/AC lanes are local simulated command handlers that generate synthetic event IDs (`apps/autopilot-desktop/src/runtime_lanes.rs:574-727`, `apps/autopilot-desktop/src/runtime_lanes.rs:1003-1272`).
-- Network request submission and starter job completion are local state operations (`apps/autopilot-desktop/src/input/actions.rs:1850-2051`, `apps/autopilot-desktop/src/state/operations.rs:323-445`, `apps/autopilot-desktop/src/state/operations.rs:494-537`).
-- Starter completion sets synthetic payout pointer `pay:<job_id>` and updates history (`apps/autopilot-desktop/src/state/operations.rs:525-536`, `apps/autopilot-desktop/src/input/actions.rs:2005-2042`).
-- Scoreboard lifetime sats is sourced from Spark balance, but sats_today/jobs_today are sourced from local job-history rows (`apps/autopilot-desktop/src/app_state.rs:2537-2595`).
+- Go Online toggles SA runner state and refreshes wallet (`apps/autopilot-deprecated/src/input.rs:1446-1478`).
+- SA/AC lanes are local simulated command handlers that generate synthetic event IDs (`apps/autopilot-deprecated/src/runtime_lanes.rs:574-727`, `apps/autopilot-deprecated/src/runtime_lanes.rs:1003-1272`).
+- Network request submission and starter job completion are local state operations (`apps/autopilot-deprecated/src/input/actions.rs:1850-2051`, `apps/autopilot-deprecated/src/state/operations.rs:323-445`, `apps/autopilot-deprecated/src/state/operations.rs:494-537`).
+- Starter completion sets synthetic payout pointer `pay:<job_id>` and updates history (`apps/autopilot-deprecated/src/state/operations.rs:525-536`, `apps/autopilot-deprecated/src/input/actions.rs:2005-2042`).
+- Scoreboard lifetime sats is sourced from Spark balance, but sats_today/jobs_today are sourced from local job-history rows (`apps/autopilot-deprecated/src/app_state.rs:2537-2595`).
 
 ### Gap
 
@@ -130,9 +130,9 @@ Conclusion: this requested flow is in-scope for MVP and should be treated as cor
 
 ### Current behavior
 
-- Dynamic tools exposed to Codex are OpenAgents pane/CAD tools only (`apps/autopilot-desktop/src/openagents_dynamic_tools.rs:13-22`, `apps/autopilot-desktop/src/openagents_dynamic_tools.rs:24-128`).
-- Tool bridge allowlist enforces OpenAgents namespace (`apps/autopilot-desktop/src/input/tool_bridge.rs:48-50`, `apps/autopilot-desktop/src/input/tool_bridge.rs:135-184`).
-- Non-OpenAgents tool calls are not auto-executed by tool bridge path (`docs/PANES.md:243-244`, `apps/autopilot-desktop/src/input/reducers/codex.rs:1702-1707`).
+- Dynamic tools exposed to Codex are OpenAgents pane/CAD tools only (`apps/autopilot-deprecated/src/openagents_dynamic_tools.rs:13-22`, `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs:24-128`).
+- Tool bridge allowlist enforces OpenAgents namespace (`apps/autopilot-deprecated/src/input/tool_bridge.rs:48-50`, `apps/autopilot-deprecated/src/input/tool_bridge.rs:135-184`).
+- Non-OpenAgents tool calls are not auto-executed by tool bridge path (`docs/PANES.md:243-244`, `apps/autopilot-deprecated/src/input/reducers/codex.rs:1702-1707`).
 
 ### Gap
 
@@ -147,7 +147,7 @@ Conclusion: this requested flow is in-scope for MVP and should be treated as cor
 
 ### Current behavior
 
-- Chat turn flow uses `AskForApproval::Never` and `DangerFullAccess` sandbox policy (`apps/autopilot-desktop/src/input/actions.rs:271-283`, `apps/autopilot-desktop/src/input/actions.rs:99-111`).
+- Chat turn flow uses `AskForApproval::Never` and `DangerFullAccess` sandbox policy (`apps/autopilot-deprecated/src/input/actions.rs:271-283`, `apps/autopilot-deprecated/src/input/actions.rs:99-111`).
 - This no-approval/full-autonomy mode is the intended operating mode for unattended execution.
 
 ### Gap
@@ -210,7 +210,7 @@ Conclusion: BTC <-> stablesat USD is only partially covered in the current Blink
 
 Ownership-compliant placement (`docs/OWNERSHIP.md:13-25`, `docs/OWNERSHIP.md:26-38`):
 
-- Put product workflow logic in `apps/autopilot-desktop`.
+- Put product workflow logic in `apps/autopilot-deprecated`.
 - Keep `crates/wgpui` UI-generic only.
 - Keep wallet primitives in `crates/spark`.
 
@@ -271,7 +271,7 @@ The following is the full recommended GitHub issue sequence to implement this fl
 1. **[Epic] Autopilot Goal Automation: Earn Bitcoin Until Condition Met**
    Create the umbrella issue that tracks scope, dependencies, and acceptance gates for the entire feature set in this audit. This issue should define the MVP bar as: chat-directed goal, autonomous loop, authoritative payout verification, and scheduler support. All issues below should link back to this epic.
 
-2. **Define Goal Spec and Persistence Model in `apps/autopilot-desktop`**
+2. **Define Goal Spec and Persistence Model in `apps/autopilot-deprecated`**
    Add typed models for objective, constraints, stop conditions, retry policy, schedule config, and execution receipts. Persist active and historical goals so runs survive app restarts. Keep all workflow ownership in app-layer state per `docs/OWNERSHIP.md`.
 
 3. **Add Goal Runner State Machine (Queued/Running/Succeeded/Failed/Aborted)**
@@ -361,4 +361,4 @@ Flow is considered implemented when all are true:
 
 Current codebase has strong prerequisites (skills registry, Codex lane, Spark wallet, pane control), but it does **not yet** implement the requested autonomous "earn bitcoin until condition met" flow end-to-end.
 
-The shortest path is to add an app-layer goal runner + condition evaluator + scheduler + skill relevance resolver in `apps/autopilot-desktop`, while keeping existing crate boundaries intact.
+The shortest path is to add an app-layer goal runner + condition evaluator + scheduler + skill relevance resolver in `apps/autopilot-deprecated`, while keeping existing crate boundaries intact.

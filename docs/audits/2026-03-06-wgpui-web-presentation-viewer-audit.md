@@ -49,7 +49,7 @@ Historical files inspected from git history:
 
 ## Executive Recommendation
 
-Build the new presentation viewer as a **new app surface**, not inside `apps/autopilot-desktop` and not as a large workflow layer inside `crates/wgpui`.
+Build the new presentation viewer as a **new app surface**, not inside `apps/autopilot-deprecated` and not as a large workflow layer inside `crates/wgpui`.
 
 Recommended split:
 
@@ -316,14 +316,14 @@ You do not need React/Vite to solve this, but you do need **some** explicit host
 
 ## Where Stuff Should Go
 
-## 1. Do not put the presentation viewer in `apps/autopilot-desktop`
+## 1. Do not put the presentation viewer in `apps/autopilot-deprecated`
 
 This would violate the spirit of the current MVP scope.
 
 Reasons:
 
 - `docs/MVP.md` is desktop-first and tightly scoped to the Autopilot earn loop.
-- `apps/autopilot-desktop` owns product behavior, pane orchestration, and MVP flows.
+- `apps/autopilot-deprecated` owns product behavior, pane orchestration, and MVP flows.
 - A browser presentation viewer is not part of the current desktop MVP path.
 - Mixing it into the desktop app would increase product/runtime surface area for no MVP gain.
 
@@ -902,6 +902,6 @@ If the goal is “I want to do slide deck presentations in the browser using WGP
 2. **Create a new browser app surface for the viewer.**
 3. **Use markdown as one slide content source, not the entire presentation model.**
 4. **Borrow visual language and interaction patterns from the old `/gfn` page, but do not restore the old `crates/web` architecture.**
-5. **Keep `apps/autopilot-desktop` out of it and keep `crates/wgpui` product-agnostic.**
+5. **Keep `apps/autopilot-deprecated` out of it and keep `crates/wgpui` product-agnostic.**
 
 In short: the old repo already proved that WGPUI can do browser-native presentation-like experiences. The current repo still has the rendering core, the HUD vocabulary, the markdown lane, and the demo/test tooling. What it does not have anymore is the browser app shell and the deck model. That is exactly what the next implementation should add, in a new app-owned lane.
