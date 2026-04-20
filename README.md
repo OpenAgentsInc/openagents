@@ -109,6 +109,8 @@ A higher-level overview lives in [docs/kernel/README.md](docs/kernel/README.md).
 
 The product authority is [docs/MVP.md](docs/MVP.md).
 Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
+Autopilot UI style is defined in
+[docs/ENGINEERING_GRAPHICS_UI.md](docs/ENGINEERING_GRAPHICS_UI.md).
 Docs are indexed in [docs/README.md](docs/README.md).
 
 For the current release cut and honest shipped-vs-planned scope, see
