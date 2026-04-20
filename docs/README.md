@@ -6,6 +6,8 @@ This directory is organized around a small number of canonical entry points.
 
 - `MVP.md`: product authority for the current MVP.
 - `OWNERSHIP.md`: crate/app ownership boundaries.
+- `ENGINEERING_GRAPHICS_UI.md`: Autopilot UI style guide for dense,
+  explicit, professional operator surfaces.
 - `kernel/README.md`: marketplace and kernel architecture overview.
 - `kernel/markets/data-market.md`: canonical current Data Market implementation status.
 - `headless-data-market.md`: no-window and `autopilotctl` Data Market runbook.

@@ -52,6 +52,25 @@ Default to:
 - Keep `docs/MVP.md` as the product/spec authority.
 - Architecture ownership boundaries are defined in `docs/OWNERSHIP.md`.
 
+## Autopilot Design Style
+
+- The canonical UI style guide is `docs/ENGINEERING_GRAPHICS_UI.md`.
+- Treat Autopilot UI as engineering graphics for professionals: truthful
+  visual representation of state, work, evidence, authority, and execution.
+- Prefer dense tables, registers, event tapes, status strips, split panes,
+  explicit labels, timestamps, IDs, and exact failure states.
+- Use Berkeley Mono as the default UI font. Use a tight type scale and tight
+  line-height. Do not create large marketing typography inside operator tools.
+- Use dark foundations, thin grid lines, and semantic color only. Do not add
+  gradients, decorative shadows, trend ornaments, or motion that does not carry
+  state.
+- Expose inner workings. Show which subsystem owns authority, which command or
+  event changed state, and what proof exists.
+- Do not infantilize users. If the domain is complex, represent the complexity
+  clearly instead of hiding it behind vague copy or oversized empty space.
+- No consignments: do not accept decorative UI components or borrowed trend
+  patterns unless they carry state, clarify action, or improve perception.
+
 ## Archived Backroom Code
 
 - Most historical code/docs were moved to `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp`.
