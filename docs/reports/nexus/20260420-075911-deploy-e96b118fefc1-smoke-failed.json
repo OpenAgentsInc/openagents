@@ -1,0 +1,81 @@
+{
+  "generated_at": "20260420-075911",
+  "kind": "nexus_deploy_smoke_failed",
+  "git_sha": "e96b118fefc198f9d11488146dc8179cc41f23d4",
+  "git_short_sha": "e96b118fefc1",
+  "candidate_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:e96b118fefc1",
+  "build_receipt": "docs/reports/nexus/20260420-074544-cloudbuild-image-e96b118fefc1.json",
+  "previous_image_observed_before_deploy": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:da7491d28e3e",
+  "rollback_target_reported_by_deploy_script": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:da7491d28e3e",
+  "post_command_active_image_observed": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:6cc0723e8136",
+  "attempt": {
+    "started_at_utc": "2026-04-20T07:51:52Z",
+    "last_failed_smoke_observation_at_utc": "2026-04-20T07:58:06Z",
+    "rollback_observed_at_utc": "2026-04-20T07:59:11Z"
+  },
+  "pre_deploy_baseline": {
+    "vm_local_healthz": {
+      "http_code": 200,
+      "elapsed_ms": 11064
+    },
+    "vm_local_stats": {
+      "http_code": 0,
+      "elapsed_ms": 15030,
+      "error": "curl timeout after 15 seconds"
+    },
+    "vm_local_treasury_status": {
+      "http_code": 200,
+      "elapsed_ms": 8606,
+      "wallet_runtime_status": "error",
+      "last_dispatch_at_unix_ms": 1776207790501
+    },
+    "public_healthz": {
+      "http_code": 200,
+      "elapsed_ms": 5418
+    },
+    "public_stats": {
+      "http_code": 200,
+      "elapsed_ms": 2418
+    },
+    "public_treasury_status": {
+      "http_code": 200,
+      "elapsed_ms": 10052,
+      "wallet_runtime_status": "error",
+      "last_dispatch_at_unix_ms": 1776207790501
+    }
+  },
+  "failed_smoke_observation": {
+    "service_state": "active",
+    "service_uptime_seconds": 374,
+    "warmup_grace_seconds": 180,
+    "phase": "stalled_candidate",
+    "recent_completed": 0,
+    "inference_ready": 94,
+    "wallet_runtime_status": "error",
+    "last_dispatch_at_unix_ms": 1776207790501
+  },
+  "post_command_observation": {
+    "completed_sends_since_candidate_start": 0,
+    "completed_sends_since_rollback": 0,
+    "vm_local_healthz": {
+      "http_code": 200,
+      "elapsed_ms": 1595
+    },
+    "vm_local_stats": {
+      "http_code": 200,
+      "elapsed_ms": 1396
+    },
+    "vm_local_treasury_status": {
+      "http_code": 200,
+      "elapsed_ms": 3193,
+      "wallet_runtime_status": "error",
+      "last_dispatch_at_unix_ms": 1776207790501
+    }
+  },
+  "result": {
+    "completed": false,
+    "rolled_back": true,
+    "close_issue_4368": false,
+    "reason": "The candidate image did not produce a fresh post-restart completed payout send and treasury wallet runtime stayed in error."
+  }
+}
