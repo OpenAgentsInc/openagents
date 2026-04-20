@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -44,6 +46,8 @@ const ENV_TREASURY_WALLET_NETWORK: &str = "NEXUS_CONTROL_TREASURY_WALLET_NETWORK
 const ENV_TREASURY_WALLET_API_KEY_ENV: &str = "NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV";
 const ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS";
+const ENV_TREASURY_FUNDING_TARGET_TIMEOUT_MS: &str =
+    "NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS";
 const ENV_TREASURY_SIMULATED_WALLET_ENABLED: &str =
     "NEXUS_CONTROL_TREASURY_SIMULATED_WALLET_ENABLED";
 const ENV_TREASURY_SIMULATED_WALLET_BALANCE_SATS: &str =
@@ -71,6 +75,7 @@ const DEFAULT_TREASURY_WALLET_MNEMONIC_PATH: &str = "var/nexus-control/treasury.
 const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wallet";
 const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
 const DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS: u64 = 3;
+const DEFAULT_TREASURY_FUNDING_TARGET_TIMEOUT_MS: u64 = 10_000;
 const DEFAULT_TREASURY_SIMULATED_WALLET_ENABLED: bool = false;
 const DEFAULT_TREASURY_SIMULATED_WALLET_BALANCE_SATS: u64 = 1_000_000;
 const DEFAULT_TREASURY_MAX_CONCURRENT_SENDS: usize = 16;
@@ -180,6 +185,7 @@ pub struct TreasuryConfig {
     pub wallet_network: String,
     pub wallet_api_key_env: Option<String>,
     pub wallet_status_refresh_seconds: u64,
+    pub funding_target_timeout_ms: u64,
     pub simulated_wallet_enabled: bool,
     pub simulated_wallet_balance_sats: u64,
     pub max_concurrent_sends: usize,
@@ -239,6 +245,11 @@ impl TreasuryConfig {
         let wallet_status_refresh_seconds = parse_u64_env(
             ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS,
             DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS,
+        )?
+        .max(1);
+        let funding_target_timeout_ms = parse_u64_env(
+            ENV_TREASURY_FUNDING_TARGET_TIMEOUT_MS,
+            DEFAULT_TREASURY_FUNDING_TARGET_TIMEOUT_MS,
         )?
         .max(1);
         let simulated_wallet_enabled = parse_bool_env(
@@ -310,6 +321,7 @@ impl TreasuryConfig {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
             wallet_status_refresh_seconds,
+            funding_target_timeout_ms,
             simulated_wallet_enabled,
             simulated_wallet_balance_sats,
             max_concurrent_sends,
@@ -4315,12 +4327,14 @@ pub async fn create_live_funding_target(
     }
 
     #[cfg(test)]
-    if let Some(hook) = test_wallet_funding_hook()
-        .lock()
-        .expect("treasury funding hook")
-        .as_ref()
     {
-        return hook(request);
+        let hook = test_wallet_funding_hook()
+            .lock()
+            .expect("treasury funding hook")
+            .clone();
+        if let Some(hook) = hook {
+            return hook(request).await;
+        }
     }
 
     with_live_wallet(config, true, |wallet| async move {
@@ -6601,7 +6615,11 @@ type TestWalletSnapshotHook =
     std::sync::Arc<dyn Fn() -> Result<TreasuryWalletSnapshot> + Send + Sync>;
 #[cfg(test)]
 type TestWalletFundingHook = std::sync::Arc<
-    dyn Fn(TreasuryFundingTargetRequest) -> Result<TreasuryFundingMaterial> + Send + Sync,
+    dyn Fn(
+            TreasuryFundingTargetRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<TreasuryFundingMaterial>> + Send>>
+        + Send
+        + Sync,
 >;
 #[cfg(test)]
 type TestWalletSendHook = std::sync::Arc<dyn Fn(String, u64) -> Result<String> + Send + Sync>;
@@ -6738,6 +6756,7 @@ mod tests {
             wallet_network: "regtest".to_string(),
             wallet_api_key_env: None,
             wallet_status_refresh_seconds: 30,
+            funding_target_timeout_ms: 10_000,
             simulated_wallet_enabled: false,
             simulated_wallet_balance_sats: 1_000_000,
             max_concurrent_sends: 16,
@@ -8851,19 +8870,21 @@ mod tests {
         let _lock = treasury_test_hook_lock().lock().expect("guard");
 
         set_test_wallet_funding_hook(Some(Arc::new(|request| {
-            assert_eq!(request.amount_sats, Some(210));
-            Ok(TreasuryFundingMaterial {
-                spark_address: "spark:treasury".to_string(),
-                bitcoin_address: "bc1qtreasury".to_string(),
-                bolt11_invoice: Some("lnbc210fund".to_string()),
-                wallet_snapshot: TreasuryWalletSnapshot {
-                    runtime_status: "connected".to_string(),
-                    runtime_detail: None,
-                    wallet_hydration_mode: None,
-                    wallet_payment_scan_mode: None,
-                    balance_sats: 500,
-                    payments: Vec::new(),
-                },
+            Box::pin(async move {
+                assert_eq!(request.amount_sats, Some(210));
+                Ok(TreasuryFundingMaterial {
+                    spark_address: "spark:treasury".to_string(),
+                    bitcoin_address: "bc1qtreasury".to_string(),
+                    bolt11_invoice: Some("lnbc210fund".to_string()),
+                    wallet_snapshot: TreasuryWalletSnapshot {
+                        runtime_status: "connected".to_string(),
+                        runtime_detail: None,
+                        wallet_hydration_mode: None,
+                        wallet_payment_scan_mode: None,
+                        balance_sats: 500,
+                        payments: Vec::new(),
+                    },
+                })
             })
         })));
         let funding = create_live_funding_target(

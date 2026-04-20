@@ -27,6 +27,14 @@ HTTP:
 current treasury Spark receive address, Bitcoin receive address, and an optional
 Bolt11 invoice when an amount is requested.
 
+Funding target creation is a bounded wallet operation. Hosted Nexus uses
+`NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS` and defaults to `10000` ms.
+If the Spark wallet path is unhealthy, the endpoint must fail with
+`treasury_funding_target_timeout:<ms>` instead of hanging the operator surface.
+Do not retry production funding-target calls as a debugging loop; reproduce the
+wallet/funding behavior locally or in the private treasury runner first, then
+use hosted Nexus only as the live confirmation surface.
+
 ## Private Treasury Integration
 
 `nexus-control` now exposes a narrow bridge for the private `treasury` service
