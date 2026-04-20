@@ -56,12 +56,41 @@ Default to:
 - Confirm changes respect `docs/OWNERSHIP.md` crate boundaries.
 - Prefer deletion/simplification over expansion unless requested.
 - Keep changes small, verifiable, and directly tied to current MVP goals.
+- Do not treat work as issue-complete while it only exists on a feature,
+  issue, or temporary worktree branch. Branch work is in-progress evidence.
+  An issue can be closed as completed only after the required code/docs are
+  merged to and pushed on the canonical default branch (`main`), with any
+  required deployment or runtime proof completed from that integrated state.
 - Do not add `.github/workflows/` automation in this repo.
 - The public `openagents.com` website does not live in this repo. It lives in
   the sibling checkout at `/Users/christopherdavid/work/openagents.com`.
 - If the task is about the main website, homepage, landing pages, or public
   domain entry flows, switch repos. Do not edit or recreate
   `apps/openagents.com/` here.
+
+## Local Proof Runtime First
+
+- For distributed training, homework, Nexus authority, Pylon fleet, artifact,
+  validator, reconcile, closeout, or payout-proof work, use the local proof
+  runtime from `#4385` as the primary development and verification loop.
+- Default to `oa proof ...` local runs before any production Nexus deploy,
+  host-local probe, Cloudflare tunnel change, or live payout confirmation.
+- Production Nexus is a final confirmation surface, not the primary debugger.
+  Do not use live Nexus to discover ordinary scheduler, artifact, worker,
+  validator, closeout, or payout-eligibility bugs that the local proof runtime
+  should be able to reproduce.
+- If the local proof runtime cannot reproduce a blocker, improve the proof
+  runtime, fixture corpus, transport split view, simulated treasury, artifact
+  adapter, or seeded proof lane first. Continue to production only after the
+  local harness either reproduces the problem or has a documented, deliberate
+  gap that cannot be modeled safely.
+- Proof evidence for these issues should include the `oa proof` command,
+  namespace, `run-report.json`, `authority-state-trace.json`,
+  `proof-summary.json`, first red stage, and any harness gap that had to be
+  closed before touching production.
+- Use production Nexus only after the relevant local proof lane is green from
+  code integrated on `main`, and only to confirm live deployment or real
+  settlement behavior that the simulated system intentionally does not cover.
 
 ## Nexus Release Process
 

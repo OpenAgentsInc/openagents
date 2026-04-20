@@ -1550,6 +1550,7 @@ async fn ensure_proof_authority_up(
         &[StatusCode::OK],
     )
     .await?;
+    wait_for_proof_treasury_ready(authority_base_url.as_str()).await?;
 
     let mut state = ProofAuthorityRuntimeState {
         schema_version: PROOF_RUNTIME_SCHEMA_VERSION,
@@ -2008,6 +2009,30 @@ async fn run_standard_proof_lane(
             persist_proof_run_outputs(config_path, &report).await?;
             return Ok(report);
         }
+        if let Some(detail) = last_detail.as_ref() {
+            if let Some(completion_detail) = standard_proof_lane_completion_detail(
+                &fleet_status,
+                detail,
+                command.workers,
+                command.validators,
+            ) {
+                let report = ProofRunReport {
+                    namespace,
+                    lane: command.lane.label().to_string(),
+                    generated_at_ms: super::now_epoch_ms(),
+                    timeout_seconds: command.timeout_seconds,
+                    status: "completed".to_string(),
+                    detail: completion_detail,
+                    blocker_id: None,
+                    fleet: fleet_status,
+                    launch: Some(launch.clone()),
+                    observed_run: last_detail,
+                    first_failed_authority_write: first_failed_authority_write.clone(),
+                };
+                persist_proof_run_outputs(config_path, &report).await?;
+                return Ok(report);
+            }
+        }
         if Instant::now() >= deadline {
             let report = ProofRunReport {
                 namespace,
@@ -2256,6 +2281,94 @@ async fn run_manual_replacement_attempt_proof_lane(
         persist_proof_run_outputs(config_path, &report).await?;
         return Ok(report);
     }
+
+    let validator = replacement_attempt_validator_admission_request(
+        "proof-replacement-validator",
+        lane_network_id.as_str(),
+        "lnbc1proofreplacementvalidator",
+    );
+    let _: super::PylonTrainingNodeAdmissionResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/nodes/admission",
+        &validator,
+        &mut first_failed_authority_write,
+        "replacement_validator_admission",
+    )
+    .await?;
+    let _: super::PylonTrainingHeartbeatResponse = proof_post_authority_json(
+        authority_state.urls.authority_base_url.as_str(),
+        authority_state.admin_bearer_token.as_str(),
+        "/api/training/heartbeats",
+        &replacement_attempt_idle_heartbeat(
+            validator.node_pubkey_hex.as_str(),
+            super::now_epoch_ms(),
+        ),
+        &mut first_failed_authority_write,
+        "replacement_validator_heartbeat",
+    )
+    .await?;
+    for validation_index in 1..=2 {
+        let validator_claim: super::PylonTrainingValidatorChallengeCoordinatorResponse =
+            proof_post_authority_json(
+                authority_state.urls.authority_base_url.as_str(),
+                authority_state.admin_bearer_token.as_str(),
+                "/api/training/validator-challenges/claim",
+                &super::PylonClaimTrainingValidatorChallengeRequest {
+                    idempotency_key: format!(
+                        "proof.replacement.validator.claim.{}.{}.{}",
+                        namespace_slug(namespace.as_str()),
+                        replacement_lease.assignment_id,
+                        validation_index
+                    ),
+                    requested_at_ms: super::now_epoch_ms(),
+                    node_pubkey_hex: validator.node_pubkey_hex.clone(),
+                    requested_network_id: Some(lane_network_id.clone()),
+                    requested_training_run_id: Some(training_run_id.clone()),
+                },
+                &mut first_failed_authority_write,
+                "replacement_validator_claim",
+            )
+            .await?;
+        let validator_lease = validator_claim
+            .lease
+            .clone()
+            .ok_or_else(|| anyhow!("replacement validator claim missing lease"))?;
+        let finalized_at_ms = super::now_epoch_ms();
+        let validator_result = replacement_attempt_validator_result(
+            &validator_claim,
+            &validator_lease,
+            finalized_at_ms,
+        );
+        let _: super::PylonTrainingValidatorChallengeCoordinatorResponse =
+            proof_post_authority_json(
+                authority_state.urls.authority_base_url.as_str(),
+                authority_state.admin_bearer_token.as_str(),
+                format!(
+                    "/api/training/validator-challenges/{}/finalize",
+                    validator_claim.challenge_id
+                )
+                .as_str(),
+                &super::PylonFinalizeTrainingValidatorChallengeRequest {
+                    idempotency_key: format!(
+                        "proof.replacement.validator.finalize.{}.{}",
+                        namespace_slug(namespace.as_str()),
+                        validator_claim.challenge_id
+                    ),
+                    recorded_at_ms: finalized_at_ms,
+                    node_pubkey_hex: validator.node_pubkey_hex.clone(),
+                    lease: validator_lease,
+                    result: validator_result,
+                    training_disposition: Some(
+                        super::ComputeAdapterContributionDisposition::Accepted,
+                    ),
+                },
+                &mut first_failed_authority_write,
+                "replacement_validator_finalize",
+            )
+            .await?;
+    }
+
     if let Err(error) =
         proof_post_authority_json::<_, super::PylonTrainingWindowCoordinatorResponse>(
             authority_state.urls.authority_base_url.as_str(),
@@ -2410,6 +2523,54 @@ fn replacement_attempt_node_admission_request(
         host_telemetry: None,
         active_reputation_labels: Vec::new(),
         settlement_destination: Some(settlement_destination.to_string()),
+    }
+}
+
+fn replacement_attempt_validator_admission_request(
+    node_pubkey_hex: &str,
+    network_id: &str,
+    settlement_destination: &str,
+) -> super::PylonTrainingNodeAdmissionRequest {
+    let mut request = replacement_attempt_node_admission_request(
+        node_pubkey_hex,
+        network_id,
+        settlement_destination,
+    );
+    request.role_claims = vec![super::PylonTrainingRoleClaim::Validator];
+    request.node_label = Some(format!("proof-{node_pubkey_hex}-validator"));
+    request
+}
+
+fn replacement_attempt_validator_result(
+    claim: &super::PylonTrainingValidatorChallengeCoordinatorResponse,
+    lease: &super::ComputeValidatorChallengeLease,
+    finalized_at_ms: i64,
+) -> super::ComputeValidatorChallengeResult {
+    let result_digest = sha256_prefixed_bytes(
+        format!(
+            "proof.replacement.validator.result.{}.{}",
+            claim.challenge_id, lease.attempt
+        )
+        .as_bytes(),
+    );
+    super::ComputeValidatorChallengeResult {
+        challenge_id: claim.challenge_id.clone(),
+        proof_bundle_digest: claim.challenge.request.context.proof_bundle_digest.clone(),
+        protocol_id: claim.challenge.request.protocol.label().to_string(),
+        attempt: lease.attempt,
+        status: super::ComputeValidatorChallengeStatus::Verified,
+        verdict: openagents_kernel_core::compute::ComputeValidatorChallengeVerdict::Verified,
+        reason_code: None,
+        detail: "proof replacement validator verdict".to_string(),
+        created_at_ms: claim.challenge.request.context.created_at_ms,
+        finalized_at_ms: finalized_at_ms.max(0) as u64,
+        challenge_seed_digest: None,
+        verified_row_count: Some(1),
+        result_digest: result_digest.clone(),
+        challenge_result_ref: format!(
+            "validator_challenge_result:{}:{}",
+            claim.challenge_id, lease.attempt
+        ),
     }
 }
 
@@ -2712,25 +2873,29 @@ async fn load_proof_node_training_status(
     config_path: &Path,
 ) -> Option<ProofFleetNodeTrainingStatus> {
     match super::load_training_status_report(config_path).await {
-        Ok(report) => Some(ProofFleetNodeTrainingStatus {
-            current_run_id: report.current_run_id,
-            active_window_id: report.active_window_id,
-            active_runtime_process_state: report
-                .active_runtime
-                .as_ref()
-                .map(|runtime| runtime.process_state.clone()),
-            last_failure_reason: report
-                .active_runtime
-                .as_ref()
-                .and_then(|runtime| runtime.last_failure_reason.clone()),
-            recent_issue_count: report.recent_issues.len(),
-            first_issue_reason: report
+        Ok(report) => {
+            let explicit_issues = report
                 .recent_issues
-                .first()
-                .map(|issue| issue.reason.clone()),
-            pending_closeout_count: report.pending_closeout_objects.len(),
-            load_error: None,
-        }),
+                .iter()
+                .filter(|issue| proof_training_issue_counts_as_explicit_blocker(issue))
+                .collect::<Vec<_>>();
+            Some(ProofFleetNodeTrainingStatus {
+                current_run_id: report.current_run_id,
+                active_window_id: report.active_window_id,
+                active_runtime_process_state: report
+                    .active_runtime
+                    .as_ref()
+                    .map(|runtime| runtime.process_state.clone()),
+                last_failure_reason: report
+                    .active_runtime
+                    .as_ref()
+                    .and_then(|runtime| runtime.last_failure_reason.clone()),
+                recent_issue_count: explicit_issues.len(),
+                first_issue_reason: explicit_issues.first().map(|issue| issue.reason.clone()),
+                pending_closeout_count: report.pending_closeout_objects.len(),
+                load_error: None,
+            })
+        }
         Err(error) => Some(ProofFleetNodeTrainingStatus {
             current_run_id: None,
             active_window_id: None,
@@ -2742,6 +2907,24 @@ async fn load_proof_node_training_status(
             load_error: Some(format!("{error:#}")),
         }),
     }
+}
+
+fn proof_training_issue_counts_as_explicit_blocker(
+    issue: &super::TrainingOperatorIssueStatus,
+) -> bool {
+    if !issue.retryable {
+        return true;
+    }
+    let kind = issue.kind.trim();
+    let reason = issue.reason.trim();
+    let blocking_class = issue.blocking_class.as_deref().map(str::trim);
+    if kind == "artifact_bundle" && reason == "artifact_incomplete" {
+        return false;
+    }
+    if kind == "closeout_progress_stalled" && blocking_class == Some("local_queue_replay") {
+        return false;
+    }
+    true
 }
 
 fn detect_proof_run_blocker(
@@ -2824,6 +3007,17 @@ fn critical_run_caveat_detail(observed: &ProofObservedTrainingRunDetail) -> Opti
     if normalized != "critical" && normalized != "error" {
         return None;
     }
+    if observed
+        .first_caveat_id
+        .as_deref()
+        .is_some_and(|value| value == "payout_lag")
+        && observed
+            .first_caveat_detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("0 accepted-work payout(s) need attention"))
+    {
+        return None;
+    }
     let mut parts = Vec::new();
     if let Some(title) = observed
         .first_caveat_title
@@ -2863,6 +3057,62 @@ fn proof_run_status_is_terminal(run: &ProofObservedRunState) -> bool {
         && run.pending_validation_window_count == 0
         && run.validator_challenges_open == 0
         && run.validator_challenges_queued == 0
+}
+
+fn standard_proof_lane_completion_detail(
+    fleet: &ProofFleetStatusReport,
+    observed: &ProofObservedTrainingRunDetail,
+    expected_workers: usize,
+    expected_validators: usize,
+) -> Option<String> {
+    if observed.run.active_window_count != 0
+        || observed.run.pending_validation_window_count != 0
+        || observed.run.validator_challenges_open != 0
+        || observed.run.validator_challenges_queued != 0
+    {
+        return None;
+    }
+    let reconciled_window = observed.windows.iter().find(|window| {
+        window.status == "reconciled"
+            && window.accepted_contributions > 0
+            && matches!(
+                window.closeout_status.as_deref(),
+                Some("rewarded" | "paid" | "confirmed" | "settled")
+            )
+    })?;
+    let worker_count = proof_quiesced_node_count(fleet, ProofFleetNodeRole::Worker);
+    let validator_count = proof_quiesced_node_count(fleet, ProofFleetNodeRole::Validator);
+    if worker_count < expected_workers || validator_count < expected_validators {
+        return None;
+    }
+    Some(format!(
+        "window {} reconciled with {} accepted contribution(s), closeout={}, workers_quiesced={}, validators_quiesced={}",
+        reconciled_window.window_id,
+        reconciled_window.accepted_contributions,
+        reconciled_window.closeout_status.as_deref().unwrap_or("-"),
+        worker_count,
+        validator_count
+    ))
+}
+
+fn proof_quiesced_node_count(fleet: &ProofFleetStatusReport, role: ProofFleetNodeRole) -> usize {
+    fleet
+        .nodes
+        .iter()
+        .filter(|node| {
+            node.role == role
+                && node.process.running
+                && node.training.as_ref().is_some_and(|training| {
+                    training.load_error.is_none()
+                        && training.last_failure_reason.is_none()
+                        && training.recent_issue_count == 0
+                        && training.pending_closeout_count == 0
+                        && training.active_runtime_process_state.as_deref() == Some("stopped")
+                        && training.current_run_id.is_some()
+                        && training.active_window_id.is_some()
+                })
+        })
+        .count()
 }
 
 fn proof_psionic_repo_root() -> Option<PathBuf> {
@@ -4425,6 +4675,18 @@ fn authority_environment(
             "regtest".to_string(),
         ),
         (
+            "NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS".to_string(),
+            "3600".to_string(),
+        ),
+        (
+            "NEXUS_CONTROL_TREASURY_SIMULATED_WALLET_ENABLED".to_string(),
+            "true".to_string(),
+        ),
+        (
+            "NEXUS_CONTROL_TREASURY_SIMULATED_WALLET_BALANCE_SATS".to_string(),
+            "1000000".to_string(),
+        ),
+        (
             "NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR".to_string(),
             layout.treasury_wallet_dir.display().to_string(),
         ),
@@ -4611,6 +4873,45 @@ async fn wait_for_route(url: &str, expected: &[StatusCode]) -> Result<()> {
         tokio::time::sleep(PROOF_POLL_INTERVAL).await;
     }
     bail!("timed out waiting for route {}", url);
+}
+
+async fn wait_for_proof_treasury_ready(authority_base_url: &str) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("{authority_base_url}/v1/treasury/status");
+    let deadline = Instant::now() + PROOF_ROUTE_TIMEOUT;
+    let mut last_detail = "treasury status not observed".to_string();
+    while Instant::now() < deadline {
+        match client.get(url.as_str()).send().await {
+            Ok(response) if response.status() == StatusCode::OK => {
+                let status: serde_json::Value = response.json().await.with_context(|| {
+                    format!("failed to decode proof treasury status from {url}")
+                })?;
+                let degraded = status
+                    .get("degraded_reason")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.trim().is_empty());
+                let wallet_status = status
+                    .get("wallet_runtime_status")
+                    .and_then(serde_json::Value::as_str);
+                if degraded.is_none() && wallet_status == Some("connected") {
+                    return Ok(());
+                }
+                last_detail = format!(
+                    "degraded_reason={} wallet_runtime_status={}",
+                    degraded.unwrap_or("none"),
+                    wallet_status.unwrap_or("unknown")
+                );
+            }
+            Ok(response) => {
+                last_detail = format!("unexpected status {}", response.status().as_u16());
+            }
+            Err(error) => {
+                last_detail = error.to_string();
+            }
+        }
+        tokio::time::sleep(PROOF_POLL_INTERVAL).await;
+    }
+    bail!("timed out waiting for proof treasury readiness at {url}: {last_detail}");
 }
 
 async fn run_artifact_smoke(
@@ -5336,7 +5637,7 @@ mod tests {
     }
 
     #[test]
-    fn detect_proof_run_blocker_surfaces_critical_caveat() {
+    fn detect_proof_run_blocker_ignores_zero_accepted_work_payout_lag() {
         let fleet = super::ProofFleetStatusReport {
             configured: true,
             namespace: "proof.caveat".to_string(),
@@ -5386,8 +5687,63 @@ mod tests {
                     .to_string(),
             ),
         };
+        let blocker = detect_proof_run_blocker(&fleet, Some(&observed));
+        assert!(blocker.is_none());
+    }
+
+    #[test]
+    fn detect_proof_run_blocker_surfaces_accepted_work_payout_lag() {
+        let fleet = super::ProofFleetStatusReport {
+            configured: true,
+            namespace: "proof.caveat".to_string(),
+            mode: Some(super::ProofAuthorityMode::ProdShaped),
+            network_id: Some("trainnet.proof.caveat".to_string()),
+            run_slug: Some("proof.caveat".to_string()),
+            paths: None,
+            authority: super::ProofAuthorityStatusReport {
+                configured: true,
+                namespace: "proof.caveat".to_string(),
+                mode: Some(super::ProofAuthorityMode::ProdShaped),
+                started_at_ms: None,
+                admin_auth_configured: true,
+                treasury_enabled: true,
+                ports: None,
+                paths: None,
+                urls: None,
+                authority_process: None,
+                artifact_store_process: None,
+                probes: Vec::new(),
+                artifact_smoke: None,
+            },
+            nodes: Vec::new(),
+            launched_run: None,
+        };
+        let observed = super::ProofObservedTrainingRunDetail {
+            training_run_id: "run.cs336.a1.proof.caveat".to_string(),
+            run: super::ProofObservedRunState {
+                training_run_id: "run.cs336.a1.proof.caveat".to_string(),
+                run_status: "running".to_string(),
+                current_window_id: "window.cs336.a1.proof.caveat.0001".to_string(),
+                active_window_count: 1,
+                pending_validation_window_count: 0,
+                validator_challenges_open: 0,
+                validator_challenges_queued: 0,
+                latest_closeout_status: None,
+            },
+            windows: Vec::new(),
+            contribution_count: 0,
+            node_count: 0,
+            caveat_count: 1,
+            first_caveat_id: Some("payout_lag".to_string()),
+            first_caveat_severity: Some("critical".to_string()),
+            first_caveat_title: Some("Payout attention required".to_string()),
+            first_caveat_detail: Some(
+                "1 accepted-work payout(s) need attention // failed 24h 0 // skipped 24h 0."
+                    .to_string(),
+            ),
+        };
         let blocker = detect_proof_run_blocker(&fleet, Some(&observed))
-            .expect("critical caveat should surface as blocker");
+            .expect("accepted-work payout caveat should surface as blocker");
         assert_eq!(blocker.0, "authority_run_caveat");
         assert!(blocker.1.contains("Payout attention required"));
     }
