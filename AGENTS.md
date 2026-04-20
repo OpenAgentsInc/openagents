@@ -42,9 +42,11 @@ Default to:
 
 - The current shipped desktop implementation still uses the existing
   `apps/autopilot-deprecated` and WGPUI paths.
-- The current refactor plan for the next Autopilot desktop shell is a Tauri app
-  in `apps/autopilot`, not `apps/autopilot-tauri` and not a separate repo by
+- The next Autopilot desktop shell is scaffolded as a Tauri app in
+  `apps/autopilot`, not `apps/autopilot-tauri` and not a separate repo by
   default.
+- Keep `apps/autopilot` as the product shell prototype: TypeScript UI,
+  Tauri IPC, and Rust-backed authority integration.
 - Keep WGPUI as retained infrastructure and specialized rendering unless the
   user asks to remove it.
 - Keep `docs/MVP.md` as the product/spec authority.
