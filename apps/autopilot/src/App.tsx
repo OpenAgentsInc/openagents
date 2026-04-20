@@ -774,6 +774,7 @@ function ProofRunCard({
     ["first red stage", proof?.firstRedStage ?? "none"],
     ["first red subject", proof?.firstRedSubject ?? "none"],
     ["blocker", proof?.blockerId ?? "none"],
+    ["detail", proof?.detail ?? "none"],
     ["closeout", proof?.closeoutStage ?? "none"],
     ["next action", proof?.closeoutNextAction ?? "none"],
     ["closeout error", proof?.closeoutLastError ?? "none"],
