@@ -19,6 +19,12 @@ hotbar shell, Provider Control, Buy Mode, Wallet, Log Stream, and the mirrored
 runtime status surfaces all come from the same app-owned snapshot instead of a
 separate headless-only state machine.
 
+The next Tauri shell has a separate, narrower control plane for the Pylon and
+proof surfaces now being built in `apps/autopilot`. Use
+`docs/codex/AUTOPILOT_TAURI_CONTROL.md` and
+`scripts/autopilot/tauri-control-smoke.sh` for that app. Do not use the legacy
+WGPUI `autopilotctl` docs as proof that the Tauri shell was exercised.
+
 ## Desktop control and `autopilotctl`
 
 `autopilotctl` is the thin CLI client for the running desktop-control runtime.

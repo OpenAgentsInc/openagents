@@ -163,7 +163,28 @@ Default to:
 
 ## Programmatic Control And Test Docs
 
-- The running desktop app now has an app-owned control plane plus a thin CLI:
+- The current Tauri Autopilot shell in `apps/autopilot` has its own app-owned
+  control plane plus a thin CLI:
+  - implementation: `apps/autopilot/src-tauri/src/control.rs`
+  - CLI: `apps/autopilot/src-tauri/src/bin/autopilotctl-tauri.rs`
+  - docs: `docs/codex/AUTOPILOT_TAURI_CONTROL.md`
+  - smoke: `scripts/autopilot/tauri-control-smoke.sh`
+- When changing `apps/autopilot`, verify the running Tauri app
+  programmatically with `autopilotctl-tauri`. Do not rely only on manual
+  clicking or screenshots for Pylon/proof command changes.
+- For ordinary Tauri UI/runtime changes, run:
+  `cargo check -p autopilot`, `cargo test -p autopilot --lib`,
+  `cd apps/autopilot && bun run build`, and
+  `scripts/autopilot/tauri-control-smoke.sh --status-only`.
+- For Pylon buttons, proof buttons, command-dialog runtime actions, proof
+  projections, or Tauri control changes, run the full
+  `scripts/autopilot/tauri-control-smoke.sh`. The default smoke uses
+  deterministic fake `pylon` and `oa` binaries through the same Tauri control
+  routes; add `--real-binaries` when the task specifically requires the local
+  installed Pylon/proof stack. If `--real-binaries` is blocked by local
+  provider prerequisites, document the blocker and still run the default smoke.
+- The legacy WGPUI desktop app also has an app-owned control plane plus a thin
+  CLI:
   - implementation: `apps/autopilot-deprecated/src/desktop_control.rs`
   - CLI: `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 - The narrow user/agent-facing guide for the current internal Forge CLI lives
