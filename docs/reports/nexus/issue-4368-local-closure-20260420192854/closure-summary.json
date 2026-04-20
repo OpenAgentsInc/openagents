@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-04-20T19:29:46Z",
+  "issue": 4368,
+  "git_sha": "25cd89e5f044932b1bbe5e20194513c7259c5a8b",
+  "out_dir": "/tmp/openagents-issue-4368-local-closure-integrated-20260420192854",
+  "replacement_namespace": "proof.4368.local.20260420192854.replace",
+  "stale_namespace": "proof.4368.local.20260420192854.stale",
+  "status": "completed",
+  "post_deploy_smoke_simulation": {
+    "decision": "rollback",
+    "reason": "post_deploy_payout_smoke_stalled",
+    "reproduced_current_failure": true,
+    "report": "docs/reports/nexus/issue-4368-local-closure-20260420192854/post-deploy-smoke-simulation.json"
+  },
+  "replacement": {
+    "status": "completed",
+    "closeout": "refused",
+    "caveat_count": 0,
+    "run_report": "docs/reports/nexus/issue-4368-local-closure-20260420192854/replacement-run-report.json"
+  },
+  "stale_recovery": {
+    "status": "completed",
+    "closeout": "rewarded",
+    "caveat_count": 0,
+    "accepted_contributions": 1,
+    "node_count": 1,
+    "run_report": "docs/reports/nexus/issue-4368-local-closure-20260420192854/stale-recovery-run-report.json"
+  }
+}
