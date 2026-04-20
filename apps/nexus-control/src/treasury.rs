@@ -109,6 +109,7 @@ const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
 const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
 const TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS: u64 = 5_000;
+const TREASURY_WALLET_REFRESH_SYNC_TIMEOUT_MS: u64 = 20_000;
 const TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES: usize = 1;
 const TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES: usize = 8;
 const TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE: usize = 100;
@@ -6572,21 +6573,44 @@ async fn wallet_snapshot_from_wallet_with_plan_result(
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
-    wallet
-        .sync_wallet_state()
-        .await
-        .context("failed to hydrate treasury Spark wallet with sync_wallet")?;
+    let (hydration_mode, runtime_detail) = match tokio::time::timeout(
+        Duration::from_millis(TREASURY_WALLET_REFRESH_SYNC_TIMEOUT_MS),
+        wallet.sync_wallet_state(),
+    )
+    .await
+    {
+        Ok(Ok(())) => ("sync_wallet_then_cached_balance", None),
+        Ok(Err(error)) => {
+            let detail = format!(
+                "sync_wallet_failed:{error}; using cached balance and bounded payment scan"
+            );
+            tracing::warn!(
+                error = %error,
+                "treasury wallet refresh fell back after Spark sync failed"
+            );
+            ("cached_balance_after_sync_failure", Some(detail))
+        }
+        Err(_) => {
+            let detail = format!(
+                "sync_wallet_timeout:{TREASURY_WALLET_REFRESH_SYNC_TIMEOUT_MS}; using cached balance and bounded payment scan"
+            );
+            tracing::warn!(
+                timeout_ms = TREASURY_WALLET_REFRESH_SYNC_TIMEOUT_MS,
+                "treasury wallet refresh fell back after Spark sync timed out"
+            );
+            ("cached_balance_after_sync_timeout", Some(detail))
+        }
+    };
     let balance = wallet
         .get_balance_cached()
         .await
         .context("failed to fetch treasury Spark balance")?;
     let refresh = wallet_refresh_payments(wallet, plan).await?;
-    let hydration_mode = "sync_wallet_then_cached_balance";
     validate_wallet_hydration_balance(plan, balance.total_sats(), hydration_mode)?;
     Ok(TreasuryWalletRefreshResult {
         snapshot: TreasuryWalletSnapshot {
             runtime_status: "connected".to_string(),
-            runtime_detail: None,
+            runtime_detail,
             wallet_hydration_mode: Some(hydration_mode.to_string()),
             wallet_payment_scan_mode: Some(wallet_payment_scan_mode(plan).to_string()),
             balance_sats: balance.total_sats(),
