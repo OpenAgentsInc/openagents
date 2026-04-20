@@ -9,6 +9,15 @@ type AutopilotStatus = {
   runtimeLane: string;
 };
 
+type IpcState = "pending" | "ok" | "error";
+
+type RegisterRow = {
+  field: string;
+  value: string;
+  evidence: string;
+  tone?: "positive" | "warning" | "negative" | "info";
+};
+
 const fallbackStatus: AutopilotStatus = {
   product: "Autopilot",
   shell: "Tauri",
@@ -16,98 +25,193 @@ const fallbackStatus: AutopilotStatus = {
   runtimeLane: "prototype",
 };
 
+function formatClock() {
+  return new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 function App() {
   const [status, setStatus] = useState<AutopilotStatus>(fallbackStatus);
+  const [ipcState, setIpcState] = useState<IpcState>("pending");
+  const [updatedAt, setUpdatedAt] = useState<string>("pending");
 
   useEffect(() => {
     invoke<AutopilotStatus>("autopilot_status")
-      .then(setStatus)
-      .catch(() => setStatus(fallbackStatus));
+      .then((nextStatus) => {
+        setStatus(nextStatus);
+        setIpcState("ok");
+        setUpdatedAt(formatClock());
+      })
+      .catch(() => {
+        setStatus(fallbackStatus);
+        setIpcState("error");
+        setUpdatedAt(formatClock());
+      });
   }, []);
+
+  const stateRows: RegisterRow[] = [
+    {
+      field: "PRODUCT",
+      value: status.product,
+      evidence: "tauri command payload",
+    },
+    {
+      field: "SHELL",
+      value: status.shell,
+      evidence: "desktop host",
+      tone: "info",
+    },
+    {
+      field: "RUST_AUTHORITY",
+      value: status.rustAuthority,
+      evidence: "ipc bridge",
+      tone: ipcState === "ok" ? "positive" : "warning",
+    },
+    {
+      field: "RUNTIME_LANE",
+      value: status.runtimeLane,
+      evidence: "attached lane",
+    },
+    {
+      field: "IPC_STATE",
+      value: ipcState.toUpperCase(),
+      evidence: "autopilot_status",
+      tone:
+        ipcState === "ok" ? "positive" : ipcState === "error" ? "negative" : "warning",
+    },
+    {
+      field: "UPDATED_AT",
+      value: updatedAt,
+      evidence: "local clock",
+    },
+  ];
+
+  const authorityRows: RegisterRow[] = [
+    {
+      field: "PRIVILEGED_STATE",
+      value: "Rust",
+      evidence: "Tauri command boundary",
+    },
+    {
+      field: "PRODUCT_SURFACE",
+      value: "TypeScript",
+      evidence: "React projection",
+    },
+    {
+      field: "CONTROL_PATTERN",
+      value: "Explicit",
+      evidence: "table rows, named fields",
+      tone: "info",
+    },
+    {
+      field: "VISUAL_BUDGET",
+      value: "Dense",
+      evidence: "11px register rhythm",
+      tone: "warning",
+    },
+  ];
 
   return (
     <main className="shell">
-      <section className="app-frame" aria-label="Autopilot">
-        <aside className="side-rail" aria-label="Autopilot navigation">
-          <div className="brand-row">
-            <div className="brand-mark" aria-hidden="true">
-              OA
-            </div>
-            <div>
-              <span>OpenAgents</span>
-              <strong>{status.product}</strong>
-            </div>
+      <section className="terminal" aria-label="Autopilot">
+        <header className="status-strip">
+          <span>OPENAGENTS</span>
+          <span>AUTOPILOT</span>
+          <span>DESKTOP</span>
+          <span data-tone={ipcState === "ok" ? "positive" : "warning"}>
+            {ipcState.toUpperCase()}
+          </span>
+        </header>
+
+        <section className="command-strip" aria-label="Command state">
+          <div>
+            <span>COMMAND</span>
+            <strong>autopilot_status</strong>
           </div>
-
-          <nav className="nav-stack" aria-label="Primary">
-            <a aria-current="page" href="#mission">
-              Mission
-            </a>
-            <a href="#runtime">Runtime</a>
-          </nav>
-
-          <div className="rail-meter" aria-label="Operator mode">
-            <span>Mode</span>
-            <strong>LOCAL</strong>
+          <div>
+            <span>HOST</span>
+            <strong>{status.shell}</strong>
           </div>
-        </aside>
+          <div>
+            <span>AUTHORITY</span>
+            <strong>{status.rustAuthority}</strong>
+          </div>
+          <div>
+            <span>LANE</span>
+            <strong>{status.runtimeLane}</strong>
+          </div>
+        </section>
 
-        <section className="stage">
-          <header className="topbar">
-            <div>
-              <span className="section-kicker">\\ MISSION CONTROL</span>
-              <h1>{status.product}</h1>
+        <section className="pane-grid">
+          <article className="pane pane-wide">
+            <div className="pane-header">
+              <span>STATE REGISTER</span>
+              <strong>{updatedAt}</strong>
             </div>
-            <div className="status-pill" aria-label="Shell status">
-              <span aria-hidden="true" />
-              Online
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>FIELD</th>
+                  <th>VALUE</th>
+                  <th>EVIDENCE</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stateRows.map((row) => (
+                  <tr key={row.field}>
+                    <td>{row.field}</td>
+                    <td data-tone={row.tone}>{row.value}</td>
+                    <td>{row.evidence}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
+
+          <article className="pane">
+            <div className="pane-header">
+              <span>AUTHORITY MAP</span>
+              <strong>LOCAL</strong>
             </div>
-          </header>
+            <table className="data-table compact">
+              <tbody>
+                {authorityRows.map((row) => (
+                  <tr key={row.field}>
+                    <td>{row.field}</td>
+                    <td data-tone={row.tone}>{row.value}</td>
+                    <td>{row.evidence}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
 
-          <section className="workspace" id="mission">
-            <article className="mission-panel">
-              <div className="panel-header">
-                <span>\\ OPERATOR SHELL</span>
-                <strong>READY</strong>
-              </div>
-              <p className="terminal-line">local operator shell online</p>
-              <div className="status-grid" aria-label="Autopilot status">
-                <article>
-                  <span>Shell</span>
-                  <strong>{status.shell}</strong>
-                </article>
-                <article>
-                  <span>Rust core</span>
-                  <strong>{status.rustAuthority}</strong>
-                </article>
-                <article>
-                  <span>Runtime lane</span>
-                  <strong>{status.runtimeLane}</strong>
-                </article>
-              </div>
-            </article>
-
-            <aside className="telemetry-panel" id="runtime" aria-label="Runtime">
-              <div className="panel-header">
-                <span>\\ RUNTIME</span>
-                <strong>TAURI</strong>
-              </div>
-              <dl>
-                <div>
-                  <dt>Window</dt>
-                  <dd>Desktop</dd>
-                </div>
-                <div>
-                  <dt>Authority</dt>
-                  <dd>Rust</dd>
-                </div>
-                <div>
-                  <dt>Surface</dt>
-                  <dd>TypeScript</dd>
-                </div>
-              </dl>
-            </aside>
-          </section>
+          <article className="pane">
+            <div className="pane-header">
+              <span>EXECUTION SURFACE</span>
+              <strong>READ ONLY</strong>
+            </div>
+            <div className="log-tape" aria-label="Execution details">
+              <p>
+                <span>01</span>
+                <strong>UI</strong>
+                React/TypeScript renders product state.
+              </p>
+              <p>
+                <span>02</span>
+                <strong>IPC</strong>
+                Tauri command returns typed shell status.
+              </p>
+              <p>
+                <span>03</span>
+                <strong>CORE</strong>
+                Rust remains the authority boundary.
+              </p>
+            </div>
+          </article>
         </section>
       </section>
     </main>
