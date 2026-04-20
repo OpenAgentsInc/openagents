@@ -3074,14 +3074,20 @@ impl TreasuryState {
     }
 
     pub fn record_wallet_refresh_error(&mut self, detail: impl Into<String>, now_unix_ms: u64) {
+        let detail = detail.into();
+        let status_changed = self.wallet_runtime_status.as_deref() != Some("error")
+            || self.wallet_last_error.as_deref() != Some(detail.as_str());
+        let had_recorded_attempt = self.last_wallet_refresh_attempt_at_unix_ms.is_some();
         self.wallet_runtime_status = Some("error".to_string());
-        self.wallet_last_error = Some(detail.into());
+        self.wallet_last_error = Some(detail);
         self.last_wallet_refresh_attempt_at_unix_ms = Some(
             self.last_wallet_refresh_attempt_at_unix_ms
                 .unwrap_or(now_unix_ms)
                 .max(now_unix_ms),
         );
-        self.persist();
+        if status_changed || !had_recorded_attempt {
+            self.persist();
+        }
     }
 
     pub fn note_wallet_recovery_report(&mut self, report: &TreasuryWalletRecoveryReport) {
@@ -7952,6 +7958,36 @@ mod tests {
         );
         assert!(!state.wallet_refresh_due(&config, now_unix_ms + 29_999));
         assert!(state.wallet_refresh_due(&config, now_unix_ms + 30_000));
+    }
+
+    #[test]
+    fn repeated_wallet_refresh_error_updates_backoff_without_rewriting_state() {
+        let path = unique_treasury_state_path("wallet-refresh-error-noop");
+        let mut state = TreasuryState::default();
+        state.state_path = Some(path.clone());
+
+        state.record_wallet_refresh_error("not_enough_funds", 1_000_000);
+        let persisted_first = std::fs::read_to_string(path.as_path()).expect("read first persist");
+
+        state.record_wallet_refresh_error("not_enough_funds", 1_030_000);
+
+        assert_eq!(
+            state.last_wallet_refresh_attempt_at_unix_ms,
+            Some(1_030_000)
+        );
+        assert_eq!(
+            std::fs::read_to_string(path.as_path()).expect("read repeated failure persist"),
+            persisted_first
+        );
+
+        state.record_wallet_refresh_error("wallet_refresh_timeout:60000", 1_060_000);
+        let persisted_changed =
+            std::fs::read_to_string(path.as_path()).expect("read changed failure persist");
+
+        assert_ne!(persisted_changed, persisted_first);
+        assert!(persisted_changed.contains("wallet_refresh_timeout:60000"));
+
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
