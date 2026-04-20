@@ -322,6 +322,23 @@ When adding a new Tauri command that affects runtime state:
    path.
 7. Update this document and `docs/pylon/autopilot-test-matrix.md`.
 
+## Operator Command Hierarchy
+
+The Tauri shell operator UI now uses a typed action registry in
+`apps/autopilot/src/lib/autopilot-actions.ts`.
+
+The registry is the source for:
+
+- the old-school top menu bar (`Autopilot`, `View`, `Pylon`, `Proof`, `Help`)
+- Command-K search rows with breadcrumb paths
+- pane-local Pylon and Proof controls
+- disabled reasons, action kinds, authority labels, effects, and evidence
+
+Do not add new operator actions directly to Command-K or to a pane button
+without adding the corresponding registry entry. Mutating commands must declare
+their authority, effect, and evidence. Destructive commands must remain guarded
+in the UI.
+
 Do not add a second hidden runtime just to make tests easy. Programmatic tests
 must exercise the running Tauri app.
 
