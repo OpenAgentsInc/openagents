@@ -8591,16 +8591,29 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
-    match try_cached_public_stats_snapshot(&state) {
-        Ok(Some(mut stats)) => {
+    let cached_stats = match try_cached_public_stats_snapshot(&state) {
+        Ok(snapshot) => snapshot,
+        Err(error) => return Err(error),
+    };
+
+    if let Some(mut stats) = cached_stats.clone() {
+        let age_ms = now.saturating_sub(stats.as_of_unix_ms);
+        if age_ms < PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS {
             apply_public_stats_cache_context(&mut stats, now, "cached");
             return Ok(Json(stats));
         }
-        Ok(None) => {}
-        Err(error) => return Err(error),
     }
 
-    let store = try_read_store(&state, "public_stats_live_store_busy")?;
+    let store = match try_read_store(&state, "public_stats_live_store_busy") {
+        Ok(store) => store,
+        Err(error) => {
+            if let Some(mut stats) = cached_stats {
+                apply_public_stats_cache_context(&mut stats, now, "cached");
+                return Ok(Json(stats));
+            }
+            return Err(error);
+        }
+    };
     let launch_metrics = training_launch_live_metrics_snapshot(&state);
     let mut stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
     apply_public_stats_cache_context(&mut stats, now, "live");
@@ -15761,6 +15774,7 @@ async fn create_desktop_session(
         desktop_session_receipt_context(&record),
     );
     drop(store);
+    invalidate_public_stats_cache(&state, now);
 
     Ok(Json(DesktopSessionResponse {
         session_id,
@@ -15833,6 +15847,7 @@ async fn create_sync_token(
         sync_token_receipt_context(&session, &record),
     );
     drop(store);
+    invalidate_public_stats_cache(&state, now);
 
     Ok(Json(SyncTokenResponse {
         token: record.token,
@@ -17360,6 +17375,7 @@ async fn get_kernel_compute_training_artifact_resolver(
         TrainingLaunchLatencyMetricKind::ResolverLookup,
         started.elapsed().as_millis() as u64,
     );
+    invalidate_public_stats_cache(&state, now_unix_ms());
     result.map(Json)
 }
 
@@ -17420,6 +17436,7 @@ async fn post_kernel_compute_training_artifact_signed_access(
         TrainingLaunchLatencyMetricKind::SignedAccess,
         started.elapsed().as_millis() as u64,
     );
+    invalidate_public_stats_cache(&state, now_unix_ms());
     result.map(Json)
 }
 
@@ -24195,6 +24212,14 @@ fn replace_public_stats_cache(state: &AppState, snapshot: PublicStatsSnapshot) {
     if let Ok(mut cache) = state.public_stats_cache.write() {
         *cache = snapshot;
     }
+}
+
+fn invalidate_public_stats_cache(state: &AppState, now_unix_ms: u64) {
+    let Ok(mut cache) = state.public_stats_cache.try_write() else {
+        return;
+    };
+    cache.as_of_unix_ms =
+        now_unix_ms.saturating_sub(PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS + 1);
 }
 
 fn replace_training_run_detail_cache(state: &AppState, snapshot: PublicTrainingRunDetailSnapshot) {
@@ -31004,6 +31029,88 @@ mod tests {
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(stats.nexus_wallet_balance_sats, 777);
         assert_eq!(stats.nexus_wallet_runtime_status.as_deref(), Some("cached"));
+        assert_eq!(
+            stats
+                .training_public_state
+                .launch_health
+                .public_snapshot_source,
+            "cached"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_refreshes_stale_cache_when_store_is_readable() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+        let now = now_unix_ms();
+
+        let mut cached = super::cached_public_stats_snapshot(&state).expect("initial cached stats");
+        cached.as_of_unix_ms =
+            now.saturating_sub(super::PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS + 1);
+        cached.nexus_wallet_balance_sats = 777;
+        super::replace_public_stats_cache(&state, cached);
+
+        {
+            let mut store = state.store.write().expect("store write lock");
+            store.treasury.wallet_balance_sats = 999;
+            store
+                .treasury
+                .refresh_public_snapshot_in_memory(&state.config.treasury, now);
+        }
+
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_wallet_balance_sats, 999);
+        assert_eq!(
+            stats
+                .training_public_state
+                .launch_health
+                .public_snapshot_source,
+            "live"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_returns_stale_cache_when_store_is_busy() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+        let now = now_unix_ms();
+
+        let mut cached = super::cached_public_stats_snapshot(&state).expect("initial cached stats");
+        cached.as_of_unix_ms =
+            now.saturating_sub(super::PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS + 1);
+        cached.nexus_wallet_balance_sats = 777;
+        super::replace_public_stats_cache(&state, cached);
+
+        let _store_guard = state.store.write().expect("store write lock");
+        let stats_response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("/api/stats should return cached data while store is busy")?;
+
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.nexus_wallet_balance_sats, 777);
         assert_eq!(
             stats
                 .training_public_state
