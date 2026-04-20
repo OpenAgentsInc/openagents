@@ -16,6 +16,7 @@ DEPLOY_IMAGE="${DEPLOY_IMAGE:-${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${NEXU
 NEXUS_TREASURY_RECOVERY_ACTION="${NEXUS_TREASURY_RECOVERY_ACTION:-}"
 NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS="${NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS:-120000}"
 NEXUS_TREASURY_RECOVERY_RUST_LOG="${NEXUS_TREASURY_RECOVERY_RUST_LOG:-warn}"
+NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS="${NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS:-3}"
 
 if [[ -z "${NEXUS_TREASURY_RECOVERY_ACTION}" ]]; then
   if [[ -n "${NEXUS_TREASURY_RECOVERY_REPORT_PATH:-}" ]]; then
@@ -81,8 +82,26 @@ gcloud compute ssh "$NEXUS_VM" \
         '$DEPLOY_IMAGE' \
         \"\$@\"; \
     }; \
+    run_recovery_report() { \
+      local attempt=1; \
+      local max_attempts='${NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS}'; \
+      local status=0; \
+      while true; do \
+        if REPORT_JSON=\$(run_nexus_control treasury recovery-report --work-dir '${NEXUS_TREASURY_RECOVERY_WORK_DIR:-}' --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json); then \
+          printf '%s\n' \"\$REPORT_JSON\"; \
+          return 0; \
+        fi; \
+        status=\$?; \
+        if (( attempt >= max_attempts )); then \
+          return \"\$status\"; \
+        fi; \
+        sudo rm -rf '${NEXUS_TREASURY_RECOVERY_WORK_DIR:-}'; \
+        sleep \$((attempt * 15)); \
+        attempt=\$((attempt + 1)); \
+      done; \
+    }; \
     if [[ '${NEXUS_TREASURY_RECOVERY_ACTION}' == 'report' || '${NEXUS_TREASURY_RECOVERY_ACTION}' == 'report-and-cutover' ]]; then \
-      REPORT_JSON=\$(run_nexus_control treasury recovery-report --work-dir '${NEXUS_TREASURY_RECOVERY_WORK_DIR:-}' --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json); \
+      REPORT_JSON=\$(run_recovery_report); \
       printf '%s\n' \"\$REPORT_JSON\"; \
       if [[ '${NEXUS_TREASURY_RECOVERY_ACTION}' == 'report-and-cutover' ]]; then \
         jq -e '.comparison.validation_passed == true and .comparison.recommended_action == \"cutover_rebuilt_storage_after_service_stop\"' <<<\"\$REPORT_JSON\" >/dev/null; \
