@@ -14499,6 +14499,13 @@ fn snapshot_training_retained_artifact_binding(
         artifact_kind,
         &source_path,
     );
+    if source_path == snapshot_path {
+        binding.insert(
+            "materialized_path".to_string(),
+            Value::String(snapshot_path.display().to_string()),
+        );
+        return Ok(Some(snapshot_path.display().to_string()));
+    }
     if let Some(parent) = snapshot_path.parent() {
         std::fs::create_dir_all(parent).with_context(|| {
             format!(
@@ -14507,12 +14514,14 @@ fn snapshot_training_retained_artifact_binding(
             )
         })?;
     }
-    std::fs::write(snapshot_path.as_path(), payload).with_context(|| {
-        format!(
-            "failed to write retained artifact snapshot {}",
-            snapshot_path.display()
-        )
-    })?;
+    write_training_artifact_destination(snapshot_path.as_path(), payload.as_slice()).with_context(
+        || {
+            format!(
+                "failed to write retained artifact snapshot {}",
+                snapshot_path.display()
+            )
+        },
+    )?;
     binding.insert(
         "materialized_path".to_string(),
         Value::String(snapshot_path.display().to_string()),
@@ -25490,7 +25499,8 @@ mod tests {
         run_local_gemma_chat_stream, run_provider_requests,
         run_training_assignment_intake_once_with_context, save_config,
         save_gemma_diagnostic_report, save_training_runtime_state, scan_provider_requests, serve,
-        snapshot_training_status_report, stabilize_training_retained_psionic_worker_contract,
+        snapshot_training_retained_artifact_binding, snapshot_training_status_report,
+        stabilize_training_retained_psionic_worker_contract,
         stable_training_contribution_receipt_digest, start_training_checkpoint_server,
         start_training_supervisor, submit_buyer_job, sync_live_announcement,
         sync_provider_payout_target_with_report, sync_training_authority_state,
@@ -32252,6 +32262,67 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && run_root.ends_with("runs/run.cs336.a1.demo"),
             "CS336 A1 demo assignments should map to the packaged psionic-train demo lane and small-model work class",
         )
+    }
+
+    #[test]
+    fn snapshot_training_retained_artifact_binding_skips_already_retained_source()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let contribution_root = temp_dir.path().join("contribution");
+        let snapshot_path = contribution_root
+            .join("retained_artifacts")
+            .join("membership_revision")
+            .join("membership_revision_receipt.json");
+        std::fs::create_dir_all(snapshot_path.parent().expect("snapshot parent"))?;
+        let payload = br#"{"schema_version":"psionic.train.membership_revision_receipt.v1","membership_revision":"members.rev1"}"#;
+        std::fs::write(snapshot_path.as_path(), payload)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mut permissions = std::fs::metadata(snapshot_path.as_path())?.permissions();
+            permissions.set_mode(0o444);
+            std::fs::set_permissions(snapshot_path.as_path(), permissions)?;
+        }
+
+        let digest = training_raw_sha256_hex(payload.as_slice());
+        let mut binding = json!({
+            "artifact_ref": {
+                "artifact_id": "artifact.membership_revision",
+                "artifact_digest": digest,
+                "artifact_bytes": payload.len()
+            },
+            "materialized_path": snapshot_path.display().to_string()
+        })
+        .as_object()
+        .expect("binding object")
+        .clone();
+        let snapshot_path_string = snapshot_path.display().to_string();
+
+        let result = snapshot_training_retained_artifact_binding(
+            contribution_root.as_path(),
+            "membership_revision",
+            &mut binding,
+        )?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mut permissions = std::fs::metadata(snapshot_path.as_path())?.permissions();
+            permissions.set_mode(0o644);
+            std::fs::set_permissions(snapshot_path.as_path(), permissions)?;
+        }
+        ensure(
+            result.as_deref() == Some(snapshot_path_string.as_str())
+                && binding["materialized_path"].as_str() == Some(snapshot_path_string.as_str()),
+            "self-snapshot should keep the already retained materialized path",
+        )?;
+        ensure(
+            std::fs::read(snapshot_path.as_path())?.as_slice() == payload.as_slice(),
+            "self-snapshot should not truncate or rewrite the retained artifact",
+        )?;
+        Ok(())
     }
 
     #[test]

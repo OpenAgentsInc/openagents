@@ -1165,6 +1165,12 @@ pub struct LaunchCs336A1DemoRunResponse {
     pub run_detail: PublicTrainingRunDetailSnapshot,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+struct TrainingRunDetailQuery {
+    #[serde(default)]
+    refresh: bool,
+}
+
 const fn launch_cs336_a1_demo_reuse_existing_default() -> bool {
     true
 }
@@ -8686,20 +8692,23 @@ async fn training_visualization(
 async fn get_training_run_detail(
     State(state): State<AppState>,
     Path(training_run_id): Path<String>,
+    Query(query): Query<TrainingRunDetailQuery>,
 ) -> Result<Json<PublicTrainingRunDetailSnapshot>, ApiError> {
     let training_run_id =
         normalize_required_field(training_run_id.as_str(), "training_run_id_missing")?;
     let now = now_unix_ms();
-    if let Some(snapshot) =
-        cached_training_run_detail_snapshot(&state, training_run_id.as_str(), now)
+    if !query.refresh
+        && let Some(snapshot) =
+            cached_training_run_detail_snapshot(&state, training_run_id.as_str(), now)
     {
         return Ok(Json(snapshot));
     }
     let store = match try_read_store(&state, "training_run_detail_live_store_busy") {
         Ok(store) => store,
         Err(error) => {
-            if let Some(snapshot) =
-                cached_training_run_detail_snapshot_any_age(&state, training_run_id.as_str())
+            if !query.refresh
+                && let Some(snapshot) =
+                    cached_training_run_detail_snapshot_any_age(&state, training_run_id.as_str())
             {
                 return Ok(Json(snapshot));
             }
@@ -41837,6 +41846,44 @@ mod tests {
             cached_detail.featured_window_id.as_deref(),
             Some("window.0001")
         );
+
+        {
+            let mut cache = state
+                .training_run_detail_cache
+                .write()
+                .expect("write training run detail cache");
+            let cached_detail = cache
+                .get_mut(training_run_id)
+                .expect("cached training run detail");
+            cached_detail.run.run_status = "cached-only".to_string();
+        }
+        let cached_detail_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(cached_detail_response.status(), StatusCode::OK);
+        let cached_detail =
+            response_json::<PublicTrainingRunDetailSnapshot>(cached_detail_response).await?;
+        assert_eq!(cached_detail.run.run_status, "cached-only");
+
+        let refreshed_detail_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}?refresh=true"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(refreshed_detail_response.status(), StatusCode::OK);
+        let refreshed_detail =
+            response_json::<PublicTrainingRunDetailSnapshot>(refreshed_detail_response).await?;
+        assert_eq!(refreshed_detail.run.run_status, "running");
 
         {
             let mut cache = state

@@ -483,8 +483,9 @@ scripts/deploy/nexus/09-recover-treasury-wallet.sh
 What the wrapper does:
 
 - stops `nexus-relay`
-- runs `treasury recovery-cutover --report-path ... --json` inside the deployed
-  Nexus image against the live data disk
+- runs `nexus-control treasury recovery-cutover --report-path ... --json`
+  inside the deployed Nexus image against the live data disk, using Docker
+  `--entrypoint /usr/local/bin/nexus-control`
 - atomically swaps the validated rebuilt wallet storage into the active treasury
   path while preserving a rollback dir
 - starts `nexus-relay` again and verifies the local treasury status endpoint
