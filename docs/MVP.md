@@ -421,6 +421,9 @@ Current implementation note:
 
 * The pane inventory above is retained as canonical surface naming for MVP.
 * Truth-source semantics for current rollout phase are tracked in `docs/PANES.md` and `docs/SPACETIME_ROLLOUT_INDEX.md`.
+* The Tauri shell should not treat the command palette as its product
+  architecture. Use `docs/plans/autopilot-command-hierarchy.md` for the planned
+  menu hierarchy, action registry, and Command-K search model.
 
 ---
 
