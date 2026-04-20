@@ -11,7 +11,7 @@ See also:
 
 The runtime bridge lives in:
 
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
 
 The bridge executes tool calls received through Codex app-server `item/tool/call` server requests.
 
@@ -19,15 +19,15 @@ The bridge executes tool calls received through Codex app-server `item/tool/call
 
 Core runtime files:
 
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
   - tool decode/dispatch, pane action bridge, CAD tool execution, checkpoint payload contract.
-- `apps/autopilot-desktop/src/input/reducers/codex.rs`
+- `apps/autopilot-deprecated/src/input/reducers/codex.rs`
   - tool-call auto-response handling, transport retries, failure-class inference, chat progress syncing.
-- `apps/autopilot-desktop/src/input/reducers/cad.rs`
+- `apps/autopilot-deprecated/src/input/reducers/cad.rs`
   - CAD chat-intent application, rebuild enqueue/retry, progress block synthesis, harness fixtures.
-- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
   - chat submit path, CAD-turn classification, required skill auto-attachment.
-- `apps/autopilot-desktop/src/input/cad_turn_classifier.rs`
+- `apps/autopilot-deprecated/src/input/cad_turn_classifier.rs`
   - deterministic CAD-turn classifier used at turn submission.
 
 See [`CAD_CHAT_BUILD_IMPLEMENTATION.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_IMPLEMENTATION.md) for detailed flow and state-model coverage.
@@ -308,13 +308,13 @@ Operator rollback flag:
 
 Harness inputs:
 
-- `apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_success_script.json`
-- `apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_failure_script.json`
+- `apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_success_script.json`
+- `apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_failure_script.json`
 
 Golden snapshots:
 
-- `apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_success_snapshot.json`
-- `apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_failure_snapshot.json`
+- `apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_success_snapshot.json`
+- `apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_failure_snapshot.json`
 
 Local run commands:
 

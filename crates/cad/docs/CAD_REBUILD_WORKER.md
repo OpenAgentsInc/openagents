@@ -2,8 +2,8 @@
 
 Desktop CAD pane rebuilds are queued to a background worker in:
 
-- `apps/autopilot-desktop/src/cad_rebuild_worker.rs`
-- `apps/autopilot-desktop/src/input/reducers/cad.rs`
+- `apps/autopilot-deprecated/src/cad_rebuild_worker.rs`
+- `apps/autopilot-deprecated/src/input/reducers/cad.rs`
 
 ## Flow
 

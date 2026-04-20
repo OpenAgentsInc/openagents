@@ -5,7 +5,7 @@ This crate now separates retained MVP runtime surfaces from optional non-MVP sur
 ## Default (MVP) path
 
 - Enabled by default features (`desktop`).
-- Includes reusable UI primitives and runtime components consumed by `apps/autopilot-desktop`.
+- Includes reusable UI primitives and runtime components consumed by `apps/autopilot-deprecated`.
 - Excludes demo/storybook/testing integration surfaces from the default compile path.
 
 ## Non-MVP surfaces

@@ -2,7 +2,7 @@
 
 Date: 2026-03-10
 Branch audited: `main`
-Scope: current retained-tree state for Apple Foundation Models via the Swift bridge in `apps/autopilot-desktop`, in light of the new MVP decision:
+Scope: current retained-tree state for Apple Foundation Models via the Swift bridge in `apps/autopilot-deprecated`, in light of the new MVP decision:
 
 - do not ship GPT-OSS-on-Metal for Mac
 - do keep shipping GPT-OSS via Psionic CUDA where that path is good
@@ -16,7 +16,7 @@ What is real today:
 
 - there is an active Swift package at `swift/foundation-bridge/`
 - it builds on this machine and exposes a small localhost HTTP surface
-- `apps/autopilot-desktop` has a real Rust worker that supervises that sidecar, polls health, starts/stops it, and issues completions
+- `apps/autopilot-deprecated` has a real Rust worker that supervises that sidecar, polls health, starts/stops it, and issues completions
 - provider-mode plumbing already knows how to prefer Apple FM for inference when it is ready
 - Apple FM state is surfaced through provider runtime, kernel inventory, NIP-90 capability selection, delivery-proof metadata, and desktop status UI
 - targeted bridge tests in `autopilot-desktop` pass
@@ -43,15 +43,15 @@ Primary files inspected:
 
 - `docs/MVP.md`
 - `docs/OWNERSHIP.md`
-- `apps/autopilot-desktop/src/apple_fm_bridge.rs`
-- `apps/autopilot-desktop/src/local_inference_runtime.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/kernel_control.rs`
+- `apps/autopilot-deprecated/src/apple_fm_bridge.rs`
+- `apps/autopilot-deprecated/src/local_inference_runtime.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/kernel_control.rs`
 - `crates/openagents-provider-substrate/src/lib.rs`
 - `swift/foundation-bridge/Package.swift`
 - `swift/foundation-bridge/Sources/foundation-bridge/ChatHandler.swift`
@@ -76,11 +76,11 @@ There are currently two separate local-model lanes in the desktop app:
 
 1. `Apple FM bridge` lane
    - implemented as a localhost Swift sidecar supervised by Rust
-   - lives in `apps/autopilot-desktop/src/apple_fm_bridge.rs`
+   - lives in `apps/autopilot-deprecated/src/apple_fm_bridge.rs`
    - used today mainly by provider/runtime plumbing
 
 2. `Local inference runtime` lane
-   - implemented as an app-owned Rust trait in `apps/autopilot-desktop/src/local_inference_runtime.rs`
+   - implemented as an app-owned Rust trait in `apps/autopilot-deprecated/src/local_inference_runtime.rs`
    - currently defaults to `PsionicGptOssRuntimeAdapter::new_auto()`
    - on macOS, that auto path still prefers `Metal` then `Cpu`
 
@@ -104,7 +104,7 @@ That is not a doc stub. It is a buildable executable with a retained API surface
 
 ### 2. The bridge is supervised by the desktop app
 
-`apps/autopilot-desktop/src/apple_fm_bridge.rs` implements:
+`apps/autopilot-deprecated/src/apple_fm_bridge.rs` implements:
 
 - a worker thread
 - command queue
@@ -124,13 +124,13 @@ That means the app already knows how to supervise the Swift bridge as an app-own
 
 ### 3. App startup already instantiates the Apple FM worker
 
-`apps/autopilot-desktop/src/render.rs` creates `AppleFmBridgeWorker::spawn()` during app boot and queues an initial `Refresh`.
+`apps/autopilot-deprecated/src/render.rs` creates `AppleFmBridgeWorker::spawn()` during app boot and queues an initial `Refresh`.
 
 So the sidecar is not hidden behind a developer-only path. The app always has the worker present.
 
 ### 4. Provider-mode lifecycle already uses Apple FM
 
-When the user goes online, `apps/autopilot-desktop/src/input.rs` does all of the following:
+When the user goes online, `apps/autopilot-deprecated/src/input.rs` does all of the following:
 
 - refreshes Apple FM health
 - asks the worker to ensure the bridge is running
@@ -141,7 +141,7 @@ This is real product wiring, not just tests.
 
 ### 5. Provider execution can already run through Apple FM
 
-`apps/autopilot-desktop/src/input/reducers/jobs.rs` has a full Apple FM provider execution path:
+`apps/autopilot-deprecated/src/input/reducers/jobs.rs` has a full Apple FM provider execution path:
 
 - request preflight and accept-block logic
 - queueing generation through the bridge worker
@@ -156,7 +156,7 @@ If Apple FM is the active inference backend, text-generation provider jobs can a
 
 `crates/openagents-provider-substrate/src/lib.rs` makes `ProviderAvailability::active_inference_backend()` prefer `AppleFoundationModels` over `Ollama`.
 
-`apps/autopilot-desktop/src/kernel_control.rs` and `apps/autopilot-desktop/src/input/reducers/jobs.rs` then flow that preference through:
+`apps/autopilot-deprecated/src/kernel_control.rs` and `apps/autopilot-deprecated/src/input/reducers/jobs.rs` then flow that preference through:
 
 - inventory registration
 - launch compute bindings
@@ -169,7 +169,7 @@ So the higher-level provider product model already conceptually understands `App
 
 ### 7. The desktop UI already shows Apple FM state
 
-`apps/autopilot-desktop/src/pane_renderer.rs` exposes Apple FM readiness and blocker state in provider surfaces:
+`apps/autopilot-deprecated/src/pane_renderer.rs` exposes Apple FM readiness and blocker state in provider surfaces:
 
 - Apple FM ready/degraded/offline status
 - active backend label
@@ -208,7 +208,7 @@ This is enough to be useful, but it is still a thin bridge, not a complete app-s
 
 ### 1. The ownership shape is correct
 
-The retained implementation lives in `apps/autopilot-desktop`, which matches `docs/OWNERSHIP.md`. This is app-specific runtime orchestration and should stay app-owned.
+The retained implementation lives in `apps/autopilot-deprecated`, which matches `docs/OWNERSHIP.md`. This is app-specific runtime orchestration and should stay app-owned.
 
 ### 2. The sidecar supervision model is pragmatic
 
@@ -259,7 +259,7 @@ That is a better starting point than a blank integration.
 
 This is the biggest gap relative to the MVP direction.
 
-`apps/autopilot-desktop/src/local_inference_runtime.rs` still defines the app-owned local runtime seam, and `default_local_inference_runtime()` still returns `PsionicGptOssRuntimeAdapter::new_auto()`.
+`apps/autopilot-deprecated/src/local_inference_runtime.rs` still defines the app-owned local runtime seam, and `default_local_inference_runtime()` still returns `PsionicGptOssRuntimeAdapter::new_auto()`.
 
 On macOS, `GptOssRuntimeBackend::Auto` still prefers:
 

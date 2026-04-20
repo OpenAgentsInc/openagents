@@ -1,7 +1,7 @@
 # AttnRes Lab
 
 `AttnRes Lab` is the retained desktop pane that ports the Burn/TUI AttnRes
-inspection flow into `apps/autopilot-desktop` using WGPUI for presentation and
+inspection flow into `apps/autopilot-deprecated` using WGPUI for presentation and
 Psionic for model, routing, parity, and training truth.
 
 Important scope note:

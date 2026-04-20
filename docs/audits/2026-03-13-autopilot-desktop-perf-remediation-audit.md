@@ -17,7 +17,7 @@ The intent is to separate:
 
 ## Scope
 
-This audit covers the retained MVP desktop app in `apps/autopilot-desktop`
+This audit covers the retained MVP desktop app in `apps/autopilot-deprecated`
 and the app-owned control/harness surface around it.
 
 It does not try to relitigate older repo history. It covers the recent
@@ -91,11 +91,11 @@ Commit:
 
 Key files:
 
-- `apps/autopilot-desktop/src/app_state_domains.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/panes/frame_debugger.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/panes/frame_debugger.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
 
 What shipped:
 
@@ -155,11 +155,11 @@ Commit:
 
 Key files:
 
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/hotbar.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/hotbar.rs`
 
 What changed:
 
@@ -188,11 +188,11 @@ Commit:
 
 Key files:
 
-- `apps/autopilot-desktop/src/state/nip90_payment_facts.rs`
-- `apps/autopilot-desktop/src/spark_wallet.rs`
-- `apps/autopilot-desktop/src/panes/earnings_jobs.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/state/nip90_payment_facts.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/panes/earnings_jobs.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
 
 This commit mattered because it addressed three separate stall classes, not
 just one.
@@ -259,7 +259,7 @@ Commit:
 
 Key file:
 
-- `apps/autopilot-desktop/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
 
 What changed:
 
@@ -286,9 +286,9 @@ Commit:
 
 Key files:
 
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
 - `docs/headless-compute.md`
 
 What shipped:
@@ -317,9 +317,9 @@ Commit:
 
 Key files:
 
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/autopilot_peer_roster.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/autopilot_peer_roster.rs`
 
 What changed:
 
@@ -449,7 +449,7 @@ Without a gate, regressions will recur.
 
 Owner:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 
 Do next:
 
@@ -467,7 +467,7 @@ Why:
 
 Owner:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 
 Do next:
 
@@ -492,7 +492,7 @@ Why:
 
 Owner:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 
 Do next:
 
@@ -511,7 +511,7 @@ Why:
 
 Owner:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
   and, if reusable caching primitives are needed, `crates/wgpui` /
   `crates/wgpui-render`
 
@@ -532,7 +532,7 @@ Why:
 
 Owner:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 
 Do next:
 
@@ -550,7 +550,7 @@ Why:
 
 Owner:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 
 Do next:
 
@@ -568,7 +568,7 @@ Why:
 
 Owner:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 
 Do next:
 
@@ -585,7 +585,7 @@ Why:
 
 Owner:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 
 Do next:
 

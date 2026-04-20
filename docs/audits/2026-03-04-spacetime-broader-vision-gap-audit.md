@@ -26,7 +26,7 @@ Evidence:
 3. No `spacetime/` module directory exists in this repo.
 4. Code search finds no active Spacetime transport/reducer client usage in `apps/` or `crates/`.
 5. `POST /api/sync/token` appears in docs (`docs/MVP.md`) but there is no active desktop call path in this repo.
-6. Sync pane labels say "Spacetime", but values are local projections (`apps/autopilot-desktop/src/state/operations.rs` + `apps/autopilot-desktop/src/pane_renderer.rs`).
+6. Sync pane labels say "Spacetime", but values are local projections (`apps/autopilot-deprecated/src/state/operations.rs` + `apps/autopilot-deprecated/src/pane_renderer.rs`).
 
 This is a hard implementation gap vs product spec language.
 
@@ -36,11 +36,11 @@ Current repo:
 1. `docs/MVP.md`
 2. `docs/PANES.md`
 3. `docs/NIP_SA_SKL_AC_TEST_MATRIX_RUNBOOK.md`
-4. `apps/autopilot-desktop/src/state/operations.rs`
-5. `apps/autopilot-desktop/src/pane_renderer.rs`
-6. `apps/autopilot-desktop/src/pane_registry.rs`
-7. `apps/autopilot-desktop/src/app_state.rs`
-8. `apps/autopilot-desktop/src/input/actions.rs`
+4. `apps/autopilot-deprecated/src/state/operations.rs`
+5. `apps/autopilot-deprecated/src/pane_renderer.rs`
+6. `apps/autopilot-deprecated/src/pane_registry.rs`
+7. `apps/autopilot-deprecated/src/app_state.rs`
+8. `apps/autopilot-deprecated/src/input/actions.rs`
 9. Workspace `Cargo.toml`
 
 Backroom archive:
@@ -56,7 +56,7 @@ Backroom archive:
 10. `spacetime/modules/autopilot-sync/spacetimedb/src/lib.rs`
 11. `spacetime/modules/autopilot-sync/README.md`
 12. `crates/autopilot-spacetime/src/*`
-13. `apps/autopilot-desktop/src/{main.rs,sync_lifecycle.rs,sync_apply_engine.rs,runtime_codex_proto.rs}`
+13. `apps/autopilot-deprecated/src/{main.rs,sync_lifecycle.rs,sync_apply_engine.rs,runtime_codex_proto.rs}`
 14. `scripts/spacetime/*`
 
 ## What Spacetime Was Initially Envisioned For

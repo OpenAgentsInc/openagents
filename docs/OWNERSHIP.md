@@ -10,7 +10,7 @@ This document defines what each active surface in this pruned repo owns, and wha
 
 ## Active Surfaces
 
-## `apps/autopilot-desktop`
+## `apps/autopilot-deprecated`
 
 Owns:
 
@@ -38,7 +38,7 @@ Owns:
 Must not own:
 
 - OpenAgents product workflows.
-- App-specific business logic from `apps/autopilot-desktop`.
+- App-specific business logic from `apps/autopilot-deprecated`.
 - Dependencies on app crates.
 
 ## `crates/wgpui-core`
@@ -114,7 +114,7 @@ Must not own:
 - Pane-facing product UX.
 - Mission Control orchestration.
 - Buyer workflows, payout UX, or app-specific execution snapshots.
-- App-to-kernel control flow that depends on `apps/autopilot-desktop`.
+- App-to-kernel control flow that depends on `apps/autopilot-deprecated`.
 - Long-term sandbox runtime engines, clustered transport, or validator logic.
 
 ## `crates/openagents-compiled-agent`
@@ -130,7 +130,7 @@ Owns:
 Must not own:
 
 - App UX or pane orchestration.
-- Product-specific workflow policy that belongs in `apps/autopilot-desktop`.
+- Product-specific workflow policy that belongs in `apps/autopilot-deprecated`.
 - Model serving, training, or execution substrate that belongs in `psionic`.
 - Market settlement, wallet authority, or provider lifecycle state that belongs
   in existing product or kernel crates.
@@ -177,7 +177,7 @@ Must not own:
   orchestration.
 - Wallet, payout, provider, marketplace, data-market, or CAD product truth.
 - App-owned remote companion behavior for the desktop product surface.
-- Final operator projections that belong to `apps/autopilot-desktop`.
+- Final operator projections that belong to `apps/autopilot-deprecated`.
 
 `openagents` should consume Probe through a stable runtime boundary rather than
 through app-to-engine internal coupling.

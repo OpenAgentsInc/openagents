@@ -650,7 +650,7 @@ impl LookupKind {
                 "Repo-relative concrete documentation file path. Use markdown/text files such as `docs/OWNERSHIP.md`. Do not use directories, globs, absolute paths, or `..`."
             }
             Self::Code => {
-                "Repo-relative concrete source/config file path. Use files such as `apps/autopilot-desktop/src/apple_adapter_training_control.rs`. Do not use directories, globs, absolute paths, or `..`."
+                "Repo-relative concrete source/config file path. Use files such as `apps/autopilot-deprecated/src/apple_adapter_training_control.rs`. Do not use directories, globs, absolute paths, or `..`."
             }
         }
     }
@@ -661,7 +661,7 @@ impl LookupKind {
                 "Retry with one concrete repo-relative markdown/text file path. For ownership or product docs, prefer paths under `docs/`."
             }
             Self::Code => {
-                "Retry with one concrete repo-relative source/config file path. For desktop behavior, prefer files under `apps/autopilot-desktop/src/`."
+                "Retry with one concrete repo-relative source/config file path. For desktop behavior, prefer files under `apps/autopilot-deprecated/src/`."
             }
         }
     }
@@ -964,7 +964,7 @@ mod tests {
             AppleRepoLookupRecorder::default(),
         )?;
         let payload = tool.handle_call(&json!({
-            "path": "apps/autopilot-desktop/src/apple_adapter_training_control.rs"
+            "path": "apps/autopilot-deprecated/src/apple_adapter_training_control.rs"
         }))?;
         assert!(payload.contains("\"lookup_kind\":\"code\""));
         assert!(payload.contains("content_excerpt"));
@@ -979,7 +979,7 @@ mod tests {
         )?;
         let error = tool
             .handle_call(&json!({
-                "path": "apps/autopilot-desktop/src/apple_adapter_training_control.rs"
+                "path": "apps/autopilot-deprecated/src/apple_adapter_training_control.rs"
             }))
             .expect_err("code path should be rejected by doc tool");
         assert_eq!(
@@ -996,7 +996,7 @@ mod tests {
             AppleRepoLookupRecorder::default(),
         )?;
         let payload = tool.call(AppleFmGeneratedContent::new(json!({
-            "path": "apps/autopilot-desktop/src/apple_adapter_training_control.rs"
+            "path": "apps/autopilot-deprecated/src/apple_adapter_training_control.rs"
         })))?;
         let payload: serde_json::Value = serde_json::from_str(payload.as_str())?;
         assert_eq!(
@@ -1021,7 +1021,7 @@ mod tests {
                 .and_then(serde_json::Value::as_array)
                 .and_then(|paths| paths.first())
                 .and_then(serde_json::Value::as_str),
-            Some("apps/autopilot-desktop/src/apple_adapter_training_control.rs")
+            Some("apps/autopilot-deprecated/src/apple_adapter_training_control.rs")
         );
         Ok(())
     }
@@ -1033,7 +1033,7 @@ mod tests {
             AppleRepoLookupRecorder::default(),
         )?;
         let payload = tool.call(AppleFmGeneratedContent::new(json!({
-            "path": "apps/autopilot-desktop"
+            "path": "apps/autopilot-deprecated"
         })))?;
         let payload: serde_json::Value = serde_json::from_str(payload.as_str())?;
         assert_eq!(
@@ -1059,7 +1059,7 @@ mod tests {
                 .into_iter()
                 .flatten()
                 .filter_map(serde_json::Value::as_str)
-                .any(|path| path.starts_with("apps/autopilot-desktop/"))
+                .any(|path| path.starts_with("apps/autopilot-deprecated/"))
         );
         Ok(())
     }

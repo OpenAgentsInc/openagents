@@ -7,7 +7,7 @@
     "Cargo.toml",
     "crates/cad/src/lib.rs",
     "crates/cad/src/intent.rs",
-    "apps/autopilot-desktop/src/openagents_dynamic_tools.rs",
+    "apps/autopilot-deprecated/src/openagents_dynamic_tools.rs",
     "crates/cad/docs/PLAN.md",
     "crates/cad/docs/decisions/0001-kernel-strategy.md",
     "crates/cad/docs/CAD_FEATURE_OPS.md",
@@ -392,7 +392,7 @@
     {
       "source_file": "crates/cad/docs/PLAN.md",
       "section": "root",
-      "capability": "`apps/autopilot-desktop` integration",
+      "capability": "`apps/autopilot-deprecated` integration",
       "status": "documented"
     },
     {
@@ -464,7 +464,7 @@
   ],
   "crates": [
     {
-      "member_path": "apps/autopilot-desktop",
+      "member_path": "apps/autopilot-deprecated",
       "package_name": "autopilot-desktop",
       "category": "cad-app"
     },
@@ -720,13 +720,13 @@
       "detail": "set-objective"
     },
     {
-      "source_file": "apps/autopilot-desktop/src/openagents_dynamic_tools.rs",
+      "source_file": "apps/autopilot-deprecated/src/openagents_dynamic_tools.rs",
       "command": "openagents_cad_action",
       "kind": "dynamic_tool",
       "detail": null
     },
     {
-      "source_file": "apps/autopilot-desktop/src/openagents_dynamic_tools.rs",
+      "source_file": "apps/autopilot-deprecated/src/openagents_dynamic_tools.rs",
       "command": "openagents_cad_intent",
       "kind": "dynamic_tool",
       "detail": null

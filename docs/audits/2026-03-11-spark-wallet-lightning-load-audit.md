@@ -28,18 +28,18 @@ Primary docs reviewed:
 Primary code reviewed:
 
 - `crates/spark/src/wallet.rs`
-- `apps/autopilot-desktop/src/spark_wallet.rs`
-- `apps/autopilot-desktop/src/panes/wallet.rs`
-- `apps/autopilot-desktop/src/spark_pane.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
-- `apps/autopilot-desktop/src/state/operations.rs`
-- `apps/autopilot-desktop/src/bin/spark_wallet_cli.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/panes/wallet.rs`
+- `apps/autopilot-deprecated/src/spark_pane.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/bin/spark_wallet_cli.rs`
 
 ## Executive Summary
 
@@ -80,7 +80,7 @@ This matters because the missing product behavior is not blocked on the crate la
 
 ### 2. The app-owned Spark worker exposes more than Mission Control uses
 
-`apps/autopilot-desktop/src/spark_wallet.rs` wraps those primitives in app-owned commands:
+`apps/autopilot-deprecated/src/spark_wallet.rs` wraps those primitives in app-owned commands:
 
 - `Refresh`
 - `GenerateSparkAddress`
@@ -96,7 +96,7 @@ Important detail:
 
 ### 3. The old wallet panes still have more funding functionality than Mission Control
 
-The older wallet surfaces in `apps/autopilot-desktop/src/panes/wallet.rs` and `apps/autopilot-desktop/src/spark_pane.rs` expose:
+The older wallet surfaces in `apps/autopilot-deprecated/src/panes/wallet.rs` and `apps/autopilot-deprecated/src/spark_pane.rs` expose:
 
 - refresh wallet,
 - generate Spark receive address,
@@ -131,7 +131,7 @@ Mission Control does not currently expose:
 
 ### 5. Startup only refreshes wallet state; it does not prepare a funding target
 
-On startup, the Mission Control path in `apps/autopilot-desktop/src/render.rs` enqueues `SparkWalletCommand::Refresh`.
+On startup, the Mission Control path in `apps/autopilot-deprecated/src/render.rs` enqueues `SparkWalletCommand::Refresh`.
 
 It does not also enqueue:
 
@@ -163,13 +163,13 @@ So a fresh Mission Control session can show wallet connectivity and maybe balanc
 
 This is the most important finding.
 
-In `apps/autopilot-desktop/src/input/reducers/jobs.rs`, both the provider result publish path and the feedback publish path call:
+In `apps/autopilot-deprecated/src/input/reducers/jobs.rs`, both the provider result publish path and the feedback publish path call:
 
 - `with_amount(..., None)`
 
 That means the provider publishes an amount, but no BOLT11 invoice.
 
-Separately, the buyer-side auto-payment path in `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs` only pays when it receives:
+Separately, the buyer-side auto-payment path in `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs` only pays when it receives:
 
 - `status = payment-required`
 - plus a `bolt11` invoice
@@ -204,7 +204,7 @@ Given `docs/v01.md` and the current shell gating, this is now the critical produ
 
 ### 3. The desktop UI label "Create Lightning Invoice" is currently misleading
 
-The dedicated `Create Lightning Invoice` pane is wired through `build_create_invoice_command(...)` in `apps/autopilot-desktop/src/input/actions.rs`.
+The dedicated `Create Lightning Invoice` pane is wired through `build_create_invoice_command(...)` in `apps/autopilot-deprecated/src/input/actions.rs`.
 
 That path currently builds:
 
@@ -279,7 +279,7 @@ For the specific question "did Lightning funds load into my wallet?", this is a 
 
 ### 7. The default network is still regtest
 
-`apps/autopilot-desktop/src/spark_wallet.rs` defaults `OPENAGENTS_SPARK_NETWORK` to `regtest` when unset.
+`apps/autopilot-deprecated/src/spark_wallet.rs` defaults `OPENAGENTS_SPARK_NETWORK` to `regtest` when unset.
 
 Also, the reusable Spark crate rejects:
 

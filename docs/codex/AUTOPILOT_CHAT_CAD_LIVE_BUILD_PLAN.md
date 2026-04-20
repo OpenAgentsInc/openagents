@@ -35,27 +35,27 @@ Operational references:
 
 This plan is scoped to MVP architecture boundaries:
 
-- `apps/autopilot-desktop` owns chat UX, pane orchestration, Codex lane plumbing, and tool-call execution.
+- `apps/autopilot-deprecated` owns chat UX, pane orchestration, Codex lane plumbing, and tool-call execution.
 - `crates/cad` owns typed CAD intents, dispatch, rebuild determinism, validity/events, and export contracts.
 
 ## Current State (Codebase Reality)
 
 ### What already exists
 
-- Main chat turn path is in [`apps/autopilot-desktop/src/input/actions.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/actions.rs).
+- Main chat turn path is in [`apps/autopilot-deprecated/src/input/actions.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/actions.rs).
   - `run_chat_submit_action` sends `turn/start` through Codex lane.
   - It can attach one selected skill via `UserInput::Skill`.
-- OpenAgents tool bridge already exists in [`apps/autopilot-desktop/src/input/tool_bridge.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/tool_bridge.rs).
+- OpenAgents tool bridge already exists in [`apps/autopilot-deprecated/src/input/tool_bridge.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/tool_bridge.rs).
   - Supports `openagents.pane.*`, `openagents.cad.intent`, and `openagents.cad.action`.
-  - Auto-exec policy for `openagents.*` is wired in [`apps/autopilot-desktop/src/input/reducers/codex.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/codex.rs).
+  - Auto-exec policy for `openagents.*` is wired in [`apps/autopilot-deprecated/src/input/reducers/codex.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/codex.rs).
 - CAD intent translation and typed dispatch exist in `crates/cad`:
   - [`crates/cad/src/chat_adapter.rs`](/Users/christopherdavid/code/openagents/crates/cad/src/chat_adapter.rs)
   - [`crates/cad/src/intent.rs`](/Users/christopherdavid/code/openagents/crates/cad/src/intent.rs)
   - [`crates/cad/src/dispatch.rs`](/Users/christopherdavid/code/openagents/crates/cad/src/dispatch.rs)
 - CAD pane rendering and rebuild worker already exist:
-  - [`apps/autopilot-desktop/src/panes/cad.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/panes/cad.rs)
-  - [`apps/autopilot-desktop/src/input/reducers/cad.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/cad.rs)
-  - [`apps/autopilot-desktop/src/cad_rebuild_worker.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/cad_rebuild_worker.rs)
+  - [`apps/autopilot-deprecated/src/panes/cad.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/panes/cad.rs)
+  - [`apps/autopilot-deprecated/src/input/reducers/cad.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/cad.rs)
+  - [`apps/autopilot-deprecated/src/cad_rebuild_worker.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/cad_rebuild_worker.rs)
 - Codex tooling docs/skill already exist:
   - [`docs/codex/CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
   - [`skills/autopilot-pane-control/SKILL.md`](/Users/christopherdavid/code/openagents/skills/autopilot-pane-control/SKILL.md)
@@ -156,7 +156,7 @@ Add deterministic CAD-turn classification in `run_chat_submit_action` path and p
 
 **Scope**
 
-- Add classifier module near input layer (`apps/autopilot-desktop/src/input/`).
+- Add classifier module near input layer (`apps/autopilot-deprecated/src/input/`).
 - Populate per-turn metadata at submission time.
 - Emit diagnostics timeline entries for classifier decisions.
 
@@ -383,7 +383,7 @@ Create an end-to-end test harness that simulates a CAD design chat turn, verifie
 
 **Validation**
 
-- New test target under `apps/autopilot-desktop` integration tests.
+- New test target under `apps/autopilot-deprecated` integration tests.
 - Add CI invocation from existing CAD reliability lanes.
 
 ---

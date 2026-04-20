@@ -737,7 +737,7 @@ already the repo direction.
 
 ## Ownership Map For The Adaptation
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
   - own the simple provider UX, Mission Control, and buyer/provider product
     surfaces
 - `crates/openagents-provider-substrate`

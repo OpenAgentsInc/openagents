@@ -44,14 +44,14 @@ Primary OpenAgents comparison surfaces reviewed:
 
 - `crates/codex-client/src/*`
 - `crates/codex-client/tests/*`
-- `apps/autopilot-desktop/src/codex_lane.rs`
-- `apps/autopilot-desktop/src/codex_lane/types.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input/reducers/codex.rs`
-- `apps/autopilot-desktop/src/input/reducers/skl.rs`
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/panes/codex.rs`
+- `apps/autopilot-deprecated/src/codex_lane.rs`
+- `apps/autopilot-deprecated/src/codex_lane/types.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/reducers/codex.rs`
+- `apps/autopilot-deprecated/src/input/reducers/skl.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/panes/codex.rs`
 
 ## Executive Summary
 
@@ -337,7 +337,7 @@ This is a real strength. Our wrapper is much deeper at the Codex protocol edge t
 
 ### 2. Desktop lane surface is broad
 
-`apps/autopilot-desktop/src/codex_lane.rs` currently exposes:
+`apps/autopilot-deprecated/src/codex_lane.rs` currently exposes:
 
 - `50` command kinds
 - `64` typed notifications
@@ -375,9 +375,9 @@ Unlike T3 Code, OpenAgents has explicit pane surfaces for:
 
 Primary files:
 
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/panes/codex.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/panes/codex.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
 
 ### 4. Skills support is stronger
 
@@ -404,9 +404,9 @@ OpenAgents already has explicit handling for:
 
 Primary files:
 
-- `apps/autopilot-desktop/src/codex_lane.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input/reducers/codex.rs`
+- `apps/autopilot-deprecated/src/codex_lane.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/reducers/codex.rs`
 
 ### 6. OpenAgents-native dynamic tools are much richer
 
@@ -422,7 +422,7 @@ OpenAgents currently publishes `29` dynamic tool specs into Codex, spanning:
 
 Primary file:
 
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
 
 This is a very different product emphasis from T3 Code’s coding-workbench focus.
 
@@ -506,7 +506,7 @@ The correct lesson is to borrow product concepts, not architecture wholesale.
 
 ### 2. Do not move product-specific orchestration into `crates/wgpui`
 
-Per `docs/OWNERSHIP.md`, coding-workflow product state belongs in `apps/autopilot-desktop`, not in `crates/wgpui`.
+Per `docs/OWNERSHIP.md`, coding-workflow product state belongs in `apps/autopilot-deprecated`, not in `crates/wgpui`.
 
 If we build any T3 Code-style parity layer, it should start app-owned.
 
@@ -536,7 +536,7 @@ This keeps us aligned with `docs/MVP.md` and avoids turning OpenAgents into a ge
 
 ### Option B: Intentionally compete on coding-workbench UX
 
-If the goal is genuine parity with T3 Code’s product shape, then we need an app-owned layer in `apps/autopilot-desktop` for:
+If the goal is genuine parity with T3 Code’s product shape, then we need an app-owned layer in `apps/autopilot-deprecated` for:
 
 - project/workspace registry
 - per-thread branch/worktree state

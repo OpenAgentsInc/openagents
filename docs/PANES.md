@@ -1,6 +1,6 @@
 # Autopilot Desktop Panes
 
-This document defines the active pane surfaces in `apps/autopilot-desktop` and how they are opened.
+This document defines the active pane surfaces in `apps/autopilot-deprecated` and how they are opened.
 
 Deprecated simulation-only pane routes have been removed from the retained MVP runtime. The pane inventory below describes the active surfaces that remain available in current builds.
 
@@ -299,13 +299,13 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
 
 ## Packaged Rive Assets
 
-- Runtime `.riv` assets live under `apps/autopilot-desktop/resources/rive/`.
-- The app-owned manifest and deterministic lookup path live in `apps/autopilot-desktop/src/rive_assets.rs`.
+- Runtime `.riv` assets live under `apps/autopilot-deprecated/resources/rive/`.
+- The app-owned manifest and deterministic lookup path live in `apps/autopilot-deprecated/src/rive_assets.rs`.
 - Each manifest entry owns the packaged asset id, runtime path, description, and default artboard/scene handles; the renderer/runtime path stays shared in `wgpui`.
 - `Rive Preview` cycles through the manifest with `Prev asset` and `Next asset`; `rive_hud_viewer` accepts `--asset <id>` and `--list-assets`.
 - The current registry includes the primary HUD asset plus a second deterministic fixture file so multi-asset bring-up is proven before a distinct second production asset lands.
 - `Presentation` always uses the primary `simple_fui_hud` packaged asset and does not expose manifest cycling.
-- To add another asset: copy the `.riv` file into `apps/autopilot-desktop/resources/rive/`, add one manifest entry in `apps/autopilot-desktop/src/rive_assets.rs`, and verify it through `Rive Preview` or `cargo run -p autopilot-desktop --bin rive_hud_viewer -- --asset <id>`.
+- To add another asset: copy the `.riv` file into `apps/autopilot-deprecated/resources/rive/`, add one manifest entry in `apps/autopilot-deprecated/src/rive_assets.rs`, and verify it through `Rive Preview` or `cargo run -p autopilot-desktop --bin rive_hud_viewer -- --asset <id>`.
 
 ## Source Badges
 

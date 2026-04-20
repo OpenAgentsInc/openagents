@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This is a second-pass performance audit for `apps/autopilot-desktop`.
+This is a second-pass performance audit for `apps/autopilot-deprecated`.
 
 The earlier audits on 2026-03-13 established:
 
@@ -30,32 +30,32 @@ Product / ownership:
 
 Desktop runtime / render loop:
 
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/panes/provider_control.rs`
-- `apps/autopilot-desktop/src/panes/earnings_jobs.rs`
-- `apps/autopilot-desktop/src/panes/presentation.rs`
-- `apps/autopilot-desktop/src/panes/rive.rs`
-- `apps/autopilot-desktop/src/panes/frame_debugger.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/panes/provider_control.rs`
+- `apps/autopilot-deprecated/src/panes/earnings_jobs.rs`
+- `apps/autopilot-deprecated/src/panes/presentation.rs`
+- `apps/autopilot-deprecated/src/panes/rive.rs`
+- `apps/autopilot-deprecated/src/panes/frame_debugger.rs`
 
 State / projection hot paths:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/autopilot_peer_roster.rs`
-- `apps/autopilot-desktop/src/state/nip90_payment_facts.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/autopilot_peer_roster.rs`
+- `apps/autopilot-deprecated/src/state/nip90_payment_facts.rs`
 
 Control / mirror runtimes:
 
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/provider_admin.rs`
-- `apps/autopilot-desktop/src/codex_remote.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/provider_admin.rs`
+- `apps/autopilot-deprecated/src/codex_remote.rs`
 
 ## Status Notes
 
 - 2026-03-14: `#3532` is implemented. `desktop_control`, `provider_admin`, and
   `codex_remote` now share an app-owned snapshot-domain invalidation layer in
-  `apps/autopilot-desktop/src/snapshot_domains.rs`, and desktop-control action
+  `apps/autopilot-deprecated/src/snapshot_domains.rs`, and desktop-control action
   responses reuse an already-built snapshot when the payload path needs both the
   payload and response metadata.
 - 2026-03-14: `#3533` is implemented. Autopilot peer roster and buy-mode target
@@ -107,7 +107,7 @@ and projection invalidation across `desktop_control`, `provider_admin`, and
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/input.rs`
+- `apps/autopilot-deprecated/src/input.rs`
   - `build_frame_redraw_pressure_snapshot(...)`
   - `should_request_desktop_redraw(...)`
   - `WindowEvent::RedrawRequested`
@@ -153,7 +153,7 @@ Recommended refactor:
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/input.rs`
+- `apps/autopilot-deprecated/src/input.rs`
   - `handle_about_to_wait(...)`
   - `pump_background_state(...)`
   - `WindowEvent::RedrawRequested`
@@ -194,11 +194,11 @@ Recommended refactor:
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/provider_admin.rs`
+- `apps/autopilot-deprecated/src/provider_admin.rs`
   - `sync_runtime_snapshot(...)`
   - `snapshot_for_state(...)`
   - `snapshot_signature(...)`
-- `apps/autopilot-desktop/src/codex_remote.rs`
+- `apps/autopilot-deprecated/src/codex_remote.rs`
   - `sync_runtime_snapshot(...)`
   - `snapshot_for_state(...)`
 
@@ -227,7 +227,7 @@ Recommended fix:
 Recommended refactor:
 
 - add a `ProjectionHub` or `SnapshotDomains` service in
-  `apps/autopilot-desktop` that owns:
+  `apps/autopilot-deprecated` that owns:
   - dirty flags,
   - per-domain revision counters,
   - cached projection payloads,
@@ -237,7 +237,7 @@ Recommended refactor:
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
   - `apply_action_request(...)`
   - `snapshot_payload_response(...)`
   - `attach_snapshot_metadata(...)`
@@ -265,10 +265,10 @@ This is a good cleanup target once snapshot ownership is centralized.
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/autopilot_peer_roster.rs`
+- `apps/autopilot-deprecated/src/autopilot_peer_roster.rs`
   - `build_autopilot_peer_roster(...)`
   - `parse_autopilot_compute_presence_message(...)`
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
   - `autopilot_peer_roster(...)`
   - `select_autopilot_buy_mode_target(...)`
 
@@ -304,8 +304,8 @@ Recommended refactor:
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/panes/earnings_jobs.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/panes/earnings_jobs.rs`
 
 Current behavior:
 
@@ -345,9 +345,9 @@ Recommended refactor:
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/panes/presentation.rs`
+- `apps/autopilot-deprecated/src/panes/presentation.rs`
   - `sync_runtime_state(...)`
-- `apps/autopilot-desktop/src/panes/rive.rs`
+- `apps/autopilot-deprecated/src/panes/rive.rs`
   - `sync_runtime_state(...)`
 
 Current behavior:
@@ -377,11 +377,11 @@ Recommended fix:
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
   - `snapshot_sync_signature(...)`
-- `apps/autopilot-desktop/src/provider_admin.rs`
+- `apps/autopilot-deprecated/src/provider_admin.rs`
   - `snapshot_signature(...)`
-- `apps/autopilot-desktop/src/codex_remote.rs`
+- `apps/autopilot-deprecated/src/codex_remote.rs`
   - inline `serde_json::to_string(...)` hashing in `sync_runtime_snapshot(...)`
 
 Current behavior:
@@ -411,7 +411,7 @@ duplication.
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
   - `active_managed_chat_channels(...)`
   - `active_managed_chat_messages(...)`
   - `active_managed_chat_channel(...)`
@@ -438,9 +438,9 @@ Recommended fix:
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/panes/frame_debugger.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/render.rs`
+- `apps/autopilot-deprecated/src/panes/frame_debugger.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/render.rs`
 
 What is missing:
 

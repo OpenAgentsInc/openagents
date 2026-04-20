@@ -192,10 +192,10 @@ Inspect these checkpoints for every incident:
   - `build_session`
   - `last_rebuild_receipt`
 - Gate/harness artifacts:
-  - `apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_*`
-  - `apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_*`
-  - `apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_week1_gripper_script.json`
-  - `apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_week1_gripper_snapshot.json`
+  - `apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_*`
+  - `apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_*`
+  - `apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_week1_gripper_script.json`
+  - `apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_week1_gripper_snapshot.json`
 
 ## Dry-Run Evidence (Scripted)
 

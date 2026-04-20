@@ -5,7 +5,7 @@
 
 ## Scope
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - `crates/nostr/*`
 - `crates/spark`
 - `crates/wgpui*`
@@ -39,12 +39,12 @@
 ## Largest-File Trend
 
 - Top file sizes (current):
-  - `apps/autopilot-desktop/src/app_state.rs` (3,439)
+  - `apps/autopilot-deprecated/src/app_state.rs` (3,439)
   - `crates/wgpui/examples/storybook/sections/products.rs` (2,901)
   - `crates/wgpui/examples/storybook/sections/flows.rs` (2,654)
-  - `apps/autopilot-desktop/src/input.rs` (2,525)
-  - `apps/autopilot-desktop/src/pane_renderer.rs` (2,452)
-  - `apps/autopilot-desktop/src/pane_system.rs` (2,341)
+  - `apps/autopilot-deprecated/src/input.rs` (2,525)
+  - `apps/autopilot-deprecated/src/pane_renderer.rs` (2,452)
+  - `apps/autopilot-deprecated/src/pane_system.rs` (2,341)
 - Delta vs previous monthly architecture audit:
   - Total Rust LOC (apps + crates): `133,556 -> 149,192` (`+15,636`)
   - `app_state.rs`: `3,404 -> 3,439` (`+35`)
@@ -64,8 +64,8 @@
   - Current run shows dead-code warnings reduced to zero.
 - Highest-priority removals/wiring:
   - Remaining targeted `#[allow(dead_code)]` annotations still exist in:
-    - `apps/autopilot-desktop/src/app_state.rs`
-    - `apps/autopilot-desktop/src/state/operations.rs`
+    - `apps/autopilot-deprecated/src/app_state.rs`
+    - `apps/autopilot-deprecated/src/state/operations.rs`
     - `crates/nostr/core/src/nip65.rs`
 
 ## Lint-Gate Trend

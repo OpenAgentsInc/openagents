@@ -47,7 +47,7 @@ That means the code graph is already close to extractable.
 
 The real coupling is outward:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - `crates/openagents-provider-substrate`
 - `crates/openagents-validator-service`
 - `crates/arc/benchmark`
@@ -160,7 +160,7 @@ These should stay here:
 - `docs/OWNERSHIP.md`
 - `docs/headless-compute.md`
 - `docs/v01.md`
-- `apps/autopilot-desktop/*`
+- `apps/autopilot-deprecated/*`
 - `crates/openagents-provider-substrate/*`
 - `crates/openagents-validator-service/*`
 - `apps/nexus-control/*`
@@ -172,7 +172,7 @@ OpenAgents overlay:
 - `scripts/release/check-psionic-apple-architecture-explainer-acceptance.sh`
   because it runs `cargo run -p autopilot-desktop --bin apple_architecture_explainer_acceptance_harness`
 - `scripts/release/check-psionic-apple-rust-only-gate.sh`
-  because it scans `apps/autopilot-desktop`, `docs/headless-compute.md`, and
+  because it scans `apps/autopilot-deprecated`, `docs/headless-compute.md`, and
   Psionic together
 - `scripts/release/check-v01-packaged-compute.sh`
 - `scripts/release/check-v01-packaged-autopilotctl-roundtrip.sh`
@@ -314,7 +314,7 @@ paths in canonical docs or fixtures.
 
 Some current Psionic docs and fixtures reference:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - `autopilotctl`
 - `docs/MVP.md`
 - `docs/OWNERSHIP.md`

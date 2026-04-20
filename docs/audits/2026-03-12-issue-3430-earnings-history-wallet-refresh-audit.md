@@ -35,12 +35,12 @@ There are three separate bugs behind `#3430`.
 
 The Mission Control earnings panel is computed from `JobHistoryState` plus reconciled Spark receive payments.
 
-The problem is that `JobHistoryState` is initialized empty on startup in `apps/autopilot-desktop/src/render.rs`, and I do not see a production hydration path that rebuilds it from the persisted authoritative receipt bundle on restart.
+The problem is that `JobHistoryState` is initialized empty on startup in `apps/autopilot-deprecated/src/render.rs`, and I do not see a production hydration path that rebuilds it from the persisted authoritative receipt bundle on restart.
 
 What *is* persisted:
 
-- `EarnKernelReceiptState` in `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `EarnJobLifecycleProjectionState` in `apps/autopilot-desktop/src/app_state.rs`
+- `EarnKernelReceiptState` in `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `EarnJobLifecycleProjectionState` in `apps/autopilot-deprecated/src/app_state.rs`
 
 What the earnings scoreboard actually reads:
 
@@ -82,9 +82,9 @@ The Spark wallet pane does not appear to subscribe to a “wallet sync completed
 
 At startup:
 
-- `open_startup_panes()` in `apps/autopilot-desktop/src/render.rs` immediately queues `SparkWalletCommand::Refresh`
+- `open_startup_panes()` in `apps/autopilot-deprecated/src/render.rs` immediately queues `SparkWalletCommand::Refresh`
 
-That refresh path in `apps/autopilot-desktop/src/spark_wallet.rs`:
+That refresh path in `apps/autopilot-deprecated/src/spark_wallet.rs`:
 
 - ensures the wallet exists
 - fetches network status
@@ -118,7 +118,7 @@ That makes sense because the app does persist lifecycle projection rows:
 
 But the earnings scoreboard does **not** derive from that projection stream.
 
-Instead, `EarningsScoreboardState::refresh_from_sources()` in `apps/autopilot-desktop/src/app_state.rs` uses:
+Instead, `EarningsScoreboardState::refresh_from_sources()` in `apps/autopilot-deprecated/src/app_state.rs` uses:
 
 - `job_history.wallet_reconciled_payout_rows(spark_wallet)`
 
@@ -157,7 +157,7 @@ This is especially plausible because the issue body explicitly reports that the 
 
 ## C. Why “Go Offline fixed it” is probably a timing artifact, not a special offline wallet path
 
-The current `SetOnline { online: false }` flow in `apps/autopilot-desktop/src/input.rs` does **not** queue a wallet refresh in the same way that the online path does.
+The current `SetOnline { online: false }` flow in `apps/autopilot-deprecated/src/input.rs` does **not** queue a wallet refresh in the same way that the online path does.
 
 So the user observation:
 

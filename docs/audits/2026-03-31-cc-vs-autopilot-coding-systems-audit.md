@@ -39,14 +39,14 @@ Primary OpenAgents coding surfaces reviewed:
 - `docs/audits/2026-03-10-t3code-codex-wrapper-gap-audit.md`
 - `docs/audits/2026-03-26-tailnet-codex-remote-companion-audit.md`
 - `crates/codex-client/src/*`
-- `apps/autopilot-desktop/src/codex_lane.rs`
-- `apps/autopilot-desktop/src/codex_lane/{session,router,types}.rs`
-- `apps/autopilot-desktop/src/codex_exec.rs`
-- `apps/autopilot-desktop/src/codex_remote.rs`
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
-- `apps/autopilot-desktop/src/panes/codex.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/codex_lane.rs`
+- `apps/autopilot-deprecated/src/codex_lane/{session,router,types}.rs`
+- `apps/autopilot-deprecated/src/codex_exec.rs`
+- `apps/autopilot-deprecated/src/codex_remote.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/panes/codex.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 
 Related `psionic` Hermes/Qwen surfaces reviewed for this extension:
 
@@ -127,7 +127,7 @@ Autopilot does not own the same layer.
 Autopilot today owns:
 
 - `crates/codex-client` as the protocol wrapper
-- `apps/autopilot-desktop/src/codex_lane.rs` as the lane thread and
+- `apps/autopilot-deprecated/src/codex_lane.rs` as the lane thread and
   app-server request/notification projection
 - desktop state and pane behavior around that lane
 
@@ -215,7 +215,7 @@ If we want runtime independence, this is the biggest missing ownership area.
 Autopilot does not own generic coding tools at that level.
 
 Autopilot instead injects app-owned dynamic tools into Codex. The current
-inventory in `apps/autopilot-desktop/src/openagents_dynamic_tools.rs` is
+inventory in `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs` is
 already substantial: `41` tool specs.
 
 Those tools cover:
@@ -324,7 +324,7 @@ areas to borrow from `cc`.
 Autopilot has a narrower but already useful remote stack:
 
 - `autopilot-codex-exec` for one-shot non-interactive runs
-- a local-first remote companion in `apps/autopilot-desktop/src/codex_remote.rs`
+- a local-first remote companion in `apps/autopilot-deprecated/src/codex_remote.rs`
 - Tailnet-safe bind rules
 - remote visibility into:
   - transcript

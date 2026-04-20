@@ -8,10 +8,10 @@
 
 The same repo now also has an app-owned desktop control plane for the running GUI:
 
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/compute_mcp.rs`
-- `apps/autopilot-desktop/src/bin/autopilot_compute_mcp.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/compute_mcp.rs`
+- `apps/autopilot-deprecated/src/bin/autopilot_compute_mcp.rs`
 
 That control plane is intentionally UI-synced. `autopilotctl` drives the running
 desktop app through the same split-shell truth model the user sees on screen:

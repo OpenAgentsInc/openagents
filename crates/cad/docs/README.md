@@ -11,7 +11,7 @@ as implementation continues.
 
 The current architecture is scoped to MVP realities:
 `crates/cad` owns CAD-domain primitives, evaluation, geometry/analysis metadata, and serialization contracts;
-`apps/autopilot-desktop` owns pane behavior, orchestration, and user experience wiring.
+`apps/autopilot-deprecated` owns pane behavior, orchestration, and user experience wiring.
 The design center is "engineering confidence under iteration": when a model changes, the system should explain what changed,
 why it changed, and whether that change remains valid within declared tolerances and safety policies.
 

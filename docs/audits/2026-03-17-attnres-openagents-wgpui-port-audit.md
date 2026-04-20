@@ -56,18 +56,18 @@ OpenAgents sources reviewed:
 - `docs/MVP.md`
 - `docs/OWNERSHIP.md`
 - `Cargo.toml`
-- `apps/autopilot-desktop/Cargo.toml`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/app_state_domains.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/research_control.rs`
-- `apps/autopilot-desktop/src/panes/mod.rs`
-- `apps/autopilot-desktop/src/panes/local_inference.rs`
-- `apps/autopilot-desktop/src/panes/psionic_viz.rs`
+- `apps/autopilot-deprecated/Cargo.toml`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/research_control.rs`
+- `apps/autopilot-deprecated/src/panes/mod.rs`
+- `apps/autopilot-deprecated/src/panes/local_inference.rs`
+- `apps/autopilot-deprecated/src/panes/psionic_viz.rs`
 
 Original AttnRes sources reviewed:
 
@@ -105,7 +105,7 @@ The current answer is:
   parity inspection, persisted pane state, and TUI-faithful keyboard controls.
 - The retained desktop no longer needs any AttnRes-specific work inside
   `crates/wgpui`; the port closure lives where it should, in
-  `apps/autopilot-desktop` plus upstream Psionic contracts.
+  `apps/autopilot-deprecated` plus upstream Psionic contracts.
 - Remaining work is discretionary:
   1. optional polish or UX refinement inside the pane
   2. optional future extraction of proven-generic WGPUI primitives
@@ -116,7 +116,7 @@ The most important ownership rule is unchanged:
 - AttnRes model math, diagnostics truth, two-phase parity, and training
   semantics belong in `OpenAgentsInc/psionic`
 - the pane, view state, event log, input controls, and WGPUI composition belong
-  in `apps/autopilot-desktop`
+  in `apps/autopilot-deprecated`
 - `crates/wgpui` should only receive generic primitives after the pane exists
   and at least one more pane wants the same abstraction
 
@@ -135,7 +135,7 @@ That matters for implementation shape:
 
 `docs/OWNERSHIP.md` is also clear:
 
-- `apps/autopilot-desktop` owns pane orchestration, app-level event routing, UX
+- `apps/autopilot-deprecated` owns pane orchestration, app-level event routing, UX
   flows, and app-owned execution snapshots
 - `crates/wgpui` owns product-agnostic UI APIs, not product workflows
 - `OpenAgentsInc/psionic` owns reusable compute execution substrate, backend
@@ -223,11 +223,11 @@ The retained app already has the required shell:
 
 Good local patterns to copy:
 
-- `apps/autopilot-desktop/src/panes/local_inference.rs`
+- `apps/autopilot-deprecated/src/panes/local_inference.rs`
   for controls, state summary, and load/error/action presentation
-- `apps/autopilot-desktop/src/panes/psionic_viz.rs`
+- `apps/autopilot-deprecated/src/panes/psionic_viz.rs`
   for derived telemetry visualization using current WGPUI primitives
-- `apps/autopilot-desktop/src/research_control.rs`
+- `apps/autopilot-deprecated/src/research_control.rs`
   for app-owned background-control and persisted program-state patterns
 
 ### 3. The pinned OpenAgents Psionic revision now contains the full desktop-facing AttnRes APIs
@@ -335,7 +335,7 @@ The app still needs an app-owned snapshot that flattens:
 - inference parity summary
 - currently selected diagnostics slice
 
-That snapshot belongs in `apps/autopilot-desktop`, not in `crates/wgpui`, and
+That snapshot belongs in `apps/autopilot-deprecated`, not in `crates/wgpui`, and
 not in Psionic.
 
 ### Gap 4. A few convenience APIs may still be worth adding upstream
@@ -376,19 +376,19 @@ Add a new app-owned pane:
 
 Recommended new files:
 
-- `apps/autopilot-desktop/src/panes/attnres_lab.rs`
-- `apps/autopilot-desktop/src/attnres_lab_control.rs`
+- `apps/autopilot-deprecated/src/panes/attnres_lab.rs`
+- `apps/autopilot-deprecated/src/attnres_lab_control.rs`
 
 Recommended touched files:
 
-- `apps/autopilot-desktop/src/panes/mod.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/app_state_domains.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/render.rs`
+- `apps/autopilot-deprecated/src/panes/mod.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/render.rs`
 
 The pane should own:
 
@@ -619,7 +619,7 @@ Recommendation:
 
 This port should only be called complete when all of the following are true:
 
-- an `AttnRes Lab` pane opens inside `apps/autopilot-desktop`
+- an `AttnRes Lab` pane opens inside `apps/autopilot-deprecated`
 - the pane supports the three original view families:
   - Overview
   - Pipeline

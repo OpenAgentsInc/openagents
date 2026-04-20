@@ -2,7 +2,7 @@
 
 **Status:** Draft
 **Date:** 2026-03-19
-**Owner:** `apps/autopilot-desktop`
+**Owner:** `apps/autopilot-deprecated`
 **Spec authority:** `docs/MVP.md`, `docs/plans/nostr-group-chat.md`
 **Dogfood target:** Internal team chat channel — Ben is the primary usability tester
 
@@ -296,14 +296,14 @@ The milestone closes when Ben can use the test channel for a real conversation w
 
 | Area | Primary file(s) | Owner crate |
 |---|---|---|
-| Message classification logic | New: `chat_message_classifier.rs` | `apps/autopilot-desktop` |
-| Transcript render | Existing chat pane render path | `apps/autopilot-desktop` |
-| Kind-0 metadata fetch + cache | New or existing identity fetch helper | `apps/autopilot-desktop` / `crates/nostr/client` |
-| Presence projection (member list) | `autopilot_peer_roster.rs` + new member list component | `apps/autopilot-desktop` |
-| Send diagnostics / PublishError surface | `nip28_chat_lane.rs` + chat pane state | `apps/autopilot-desktop` |
-| NIP-42 auth handling | `crates/nostr/client` relay auth + chat lane integration | `crates/nostr/client`, `apps/autopilot-desktop` |
-| Pane routing / assistant vs managed separation | Pane selection logic | `apps/autopilot-desktop` |
-| Roster condition check | Chat pane membership display logic | `apps/autopilot-desktop` |
+| Message classification logic | New: `chat_message_classifier.rs` | `apps/autopilot-deprecated` |
+| Transcript render | Existing chat pane render path | `apps/autopilot-deprecated` |
+| Kind-0 metadata fetch + cache | New or existing identity fetch helper | `apps/autopilot-deprecated` / `crates/nostr/client` |
+| Presence projection (member list) | `autopilot_peer_roster.rs` + new member list component | `apps/autopilot-deprecated` |
+| Send diagnostics / PublishError surface | `nip28_chat_lane.rs` + chat pane state | `apps/autopilot-deprecated` |
+| NIP-42 auth handling | `crates/nostr/client` relay auth + chat lane integration | `crates/nostr/client`, `apps/autopilot-deprecated` |
+| Pane routing / assistant vs managed separation | Pane selection logic | `apps/autopilot-deprecated` |
+| Roster condition check | Chat pane membership display logic | `apps/autopilot-deprecated` |
 
 Protocol primitives for NIP-42, NIP-44, NIP-59 already exist in `crates/nostr/core`. This milestone does not require new crate-level protocol work — the gap is in application-level classification, routing, and diagnostic UX.
 
@@ -429,6 +429,6 @@ Per `docs/MVP.md` and `docs/OWNERSHIP.md`:
 
 - Sync and state continuity must remain deterministic and replay-safe.
 - Wallet and payout state must be explicit and truthful; chat must never imply payment unless the wallet confirms it.
-- `crates/nostr/core` protocol primitives must remain app-agnostic. Classification and routing logic lives in `apps/autopilot-desktop`, not in the protocol crate.
+- `crates/nostr/core` protocol primitives must remain app-agnostic. Classification and routing logic lives in `apps/autopilot-deprecated`, not in the protocol crate.
 - No new `.github/workflows/` automation.
 - Do not pull in archived code from the backroom without explicit direction.

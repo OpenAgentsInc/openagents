@@ -7,11 +7,11 @@ This document defines the deterministic reliability lane for the scripted
 
 - `cad_demo_20s_reliability_script_has_no_stalls_flicker_or_state_loss`
 - Location:
-  - `apps/autopilot-desktop/src/input/reducers/cad.rs`
+  - `apps/autopilot-deprecated/src/input/reducers/cad.rs`
 
 ## Script Fixture
 
-- `apps/autopilot-desktop/tests/scripts/cad_demo_reliability_20s_script.json`
+- `apps/autopilot-deprecated/tests/scripts/cad_demo_reliability_20s_script.json`
 
 Flow covered:
 

@@ -13,11 +13,11 @@
 - Current OpenAgents NIP-90/provider implementation:
   - `crates/nostr/core/src/nip90/*`
   - `crates/nostr/client/src/dvm.rs`
-  - `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-  - `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-  - `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
-  - `apps/autopilot-desktop/src/state/job_inbox.rs`
-  - `apps/autopilot-desktop/src/state/provider_runtime.rs`
+  - `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+  - `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+  - `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
+  - `apps/autopilot-deprecated/src/state/job_inbox.rs`
+  - `apps/autopilot-deprecated/src/state/provider_runtime.rs`
 - Relevant OpenAgents issues reviewed with `gh`:
   - `#2982` provider auto-accept / MVP concurrency defaults
   - `#2983` automated provider execution
@@ -55,7 +55,7 @@ The smallest correct MVP is:
 4. Return the generated text itself in the result `content`, not the current JSON execution envelope.
 5. Keep money authority exactly where the kernel docs say it belongs: wallet-confirmed settlement and explicit receipts, not Ollama metrics and not Nostr event publication alone.
 
-This should be implemented as an app-owned backend inside `apps/autopilot-desktop`, with only a small interop fix in `crates/nostr/core`. It should not be generalized into a broad multi-provider framework yet. A narrow execution-backend seam is enough for MVP.
+This should be implemented as an app-owned backend inside `apps/autopilot-deprecated`, with only a small interop fix in `crates/nostr/core`. It should not be generalized into a broad multi-provider framework yet. A narrow execution-backend seam is enough for MVP.
 
 ## Kernel And MVP Alignment
 
@@ -65,7 +65,7 @@ The docs are internally consistent on the key product constraint:
 - Nostr is the coordination surface, not the money authority.
 - Provider runtime must remain deterministic and replay-safe where state is projected locally.
 - Wallet and payout truth must remain explicit and honest in the UI and receipts.
-- Ownership boundaries say product/provider behavior belongs in `apps/autopilot-desktop`, while reusable protocol parsing belongs in `crates/nostr/*`.
+- Ownership boundaries say product/provider behavior belongs in `apps/autopilot-deprecated`, while reusable protocol parsing belongs in `crates/nostr/*`.
 
 That means:
 
@@ -116,11 +116,11 @@ Important protocol implication: for the first Ollama lane, the correct event kin
   - `JobResult`
   - `JobFeedback`
   - `i`, `param`, `bid`, `output`, `p`, `relays`, and encryption-related tags
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs` already:
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs` already:
   - parses inbound NIP-90 requests
   - maps `5050` to capability `"text.generation"`
   - publishes a NIP-89 handler event
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs` already:
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs` already:
   - auto-accepts valid requests
   - enforces provider runtime sequencing
   - publishes NIP-90 feedback and results
@@ -143,7 +143,7 @@ This is a real interop bug and the highest-priority shared protocol fix.
 
 #### 2. The provider execution path is still Codex-specific.
 
-`apps/autopilot-desktop/src/input/reducers/jobs.rs` currently:
+`apps/autopilot-deprecated/src/input/reducers/jobs.rs` currently:
 
 - starts a Codex thread
 - starts a Codex turn
@@ -170,7 +170,7 @@ This is the second biggest protocol-correctness gap after the `prompt` alias bug
 
 #### 4. Capability advertisement is currently over-claiming.
 
-`supported_handler_kinds()` in `apps/autopilot-desktop/src/provider_nip90_lane.rs` currently advertises:
+`supported_handler_kinds()` in `apps/autopilot-deprecated/src/provider_nip90_lane.rs` currently advertises:
 
 - `5050`
 - summarization
@@ -305,7 +305,7 @@ Why this belongs here:
 
 - It is a reusable NIP-90 interoperability fix, not app-specific policy.
 
-### 2. Introduce A Narrow Provider Execution Backend In `apps/autopilot-desktop`
+### 2. Introduce A Narrow Provider Execution Backend In `apps/autopilot-deprecated`
 
 Do not build a large provider abstraction framework. Add only the seam needed to swap the current Codex execution lane for an Ollama-backed `5050` executor.
 
@@ -321,8 +321,8 @@ Recommended shape:
 Recommended placement:
 
 - New app-local module such as:
-  - `apps/autopilot-desktop/src/provider_execution/mod.rs`
-  - `apps/autopilot-desktop/src/provider_execution/ollama.rs`
+  - `apps/autopilot-deprecated/src/provider_execution/mod.rs`
+  - `apps/autopilot-deprecated/src/provider_execution/ollama.rs`
 
 Why app-owned:
 
@@ -334,7 +334,7 @@ Why app-owned:
 
 Primary file:
 
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
 
 Required change:
 
@@ -406,7 +406,7 @@ This normalization should be deterministic and recorded in local receipts for re
 
 Primary file:
 
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
 
 Required change:
 
@@ -433,7 +433,7 @@ Residual protocol reality:
 
 Primary file:
 
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
 
 Required change:
 
@@ -486,8 +486,8 @@ Important policy point:
 
 Likely touch points:
 
-- `apps/autopilot-desktop/src/state/provider_runtime.rs`
-- provider-related UI panes in `apps/autopilot-desktop`
+- `apps/autopilot-deprecated/src/state/provider_runtime.rs`
+- provider-related UI panes in `apps/autopilot-deprecated`
 
 The provider UI should explicitly show:
 
@@ -611,14 +611,14 @@ This makes "online" and "offline" more truthful from the operator's point of vie
 
 ### Provider Lane
 
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
   - make capability publication backend-driven
   - advertise only `5050` for Ollama MVP
   - gate capability publication on real backend health
 
 ### Job Execution
 
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
   - route `5050` jobs to Ollama instead of Codex
   - fix result `content` to be generated text
   - publish truthful feedback on failure/processing
@@ -626,19 +626,19 @@ This makes "online" and "offline" more truthful from the operator's point of vie
 
 ### Provider Validation / Ingress
 
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
   - extend invalid/pending reasons for Ollama-specific preflight failures
-- `apps/autopilot-desktop/src/state/job_inbox.rs`
+- `apps/autopilot-deprecated/src/state/job_inbox.rs`
   - no model change required in principle, but new validation reasons will surface here
 
 ### Provider Runtime State
 
-- `apps/autopilot-desktop/src/state/provider_runtime.rs`
+- `apps/autopilot-deprecated/src/state/provider_runtime.rs`
   - add backend-health and model-state fields needed for truthful UI
 
 ### New App-Owned Ollama Module(s)
 
-- likely new files under `apps/autopilot-desktop/src/`
+- likely new files under `apps/autopilot-deprecated/src/`
   - `provider_execution/*`
   - `ollama_client/*`
   - exact layout is flexible as long as ownership stays app-local

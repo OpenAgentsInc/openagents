@@ -8,7 +8,7 @@
 This audit covers:
 
 - Agent Skills protocol/reference implementation in `/Users/christopherdavid/code/agentskills`.
-- Current OpenAgents skill-related implementation and docs in `crates/nostr/*`, `apps/autopilot-desktop/*`, and `docs/*`.
+- Current OpenAgents skill-related implementation and docs in `crates/nostr/*`, `apps/autopilot-deprecated/*`, and `docs/*`.
 - A proposal for a root-level `skills/` registry in this repo that can be used locally now and mapped to the Nostr SKL registry (`kind:33400/33401`) later.
 
 ## Method
@@ -24,8 +24,8 @@ This audit covers:
   - `crates/nostr/core/src/nip_skl/*`
   - `crates/nostr/core/src/nip_sa/skill.rs`
   - `crates/nostr/core/src/nip_ac/scope_hash.rs`
-  - `apps/autopilot-desktop/src/runtime_lanes.rs`
-  - `apps/autopilot-desktop/src/input/reducers/skl.rs`
+  - `apps/autopilot-deprecated/src/runtime_lanes.rs`
+  - `apps/autopilot-deprecated/src/input/reducers/skl.rs`
   - `docs/PROTOCOL_SURFACE.md`
   - `docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md`
 - Verified current protocol tests:

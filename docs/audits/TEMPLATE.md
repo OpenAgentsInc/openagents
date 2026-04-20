@@ -2,7 +2,7 @@
 
 ## Scope
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - `crates/nostr/*`
 - `crates/spark`
 - `crates/wgpui*`

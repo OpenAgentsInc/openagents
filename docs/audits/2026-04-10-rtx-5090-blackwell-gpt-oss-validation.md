@@ -34,7 +34,7 @@ assistant responses) for any prompt phrased as an instruction. This is a chat
 template integration bug in autopilot's local-inference runtime, not a
 hardware bug, not a kernel correctness bug, and not a quantization bug. Both
 `handle_generate` implementations in
-`apps/autopilot-desktop/src/local_inference_runtime.rs` call
+`apps/autopilot-deprecated/src/local_inference_runtime.rs` call
 `psionic_serve::GenerationRequest::new_text` with raw user prompt text and
 bypass psionic's `render_prompt_for_model` pipeline, which is the layer that
 wraps prompts in the GPT-OSS Harmony chat format. Continuation prompts work
@@ -48,7 +48,7 @@ helpers into both `handle_generate` sites. No psionic changes are required —
 `render_gpt_oss_harmony_prompt`, `parse_gpt_oss_harmony_text`,
 `GptOssHarmonyParseOptions`, `PromptMessage`, and `PromptMessageRole` are
 already public on the `psionic_models` crate, and
-`apps/autopilot-desktop/Cargo.toml:74` already declares
+`apps/autopilot-deprecated/Cargo.toml:74` already declares
 `psionic-models = { workspace = true }`. The fix is included in this PR as a
 second commit. See the "Fix shape" and "Post-fix validation" sections.
 
@@ -183,7 +183,7 @@ is the ground truth.
 
 Three independent generation runs were captured by adding a one-line
 `tracing::info!` debug dump in
-`apps/autopilot-desktop/src/input/reducers/local_inference.rs` (in the
+`apps/autopilot-deprecated/src/input/reducers/local_inference.rs` (in the
 `apply_completed` reducer, immediately after the ownership check) that prints
 the full untruncated response from `LocalInferenceExecutionCompleted.output`.
 The patch is a temporary capture aid and is not intended to ship. The dumps
@@ -303,7 +303,7 @@ contains an explicit GPT-OSS branch that returns Harmony-rendered text plus
 the matching stop sequences.
 
 Autopilot's workbench path skips all of this. Both `handle_generate`
-implementations in `apps/autopilot-desktop/src/local_inference_runtime.rs`
+implementations in `apps/autopilot-deprecated/src/local_inference_runtime.rs`
 call `GenerationRequest::new_text` with the raw, untransformed user prompt:
 
 `local_inference_runtime.rs:593` (the generic psionic adapter):
@@ -347,7 +347,7 @@ produces inner-monologue text or loop collapse. This is exactly the failure
 pattern observed in Runs 1 and 2.
 
 The pane action call site at
-`apps/autopilot-desktop/src/input/actions.rs:14250-14256` is where the
+`apps/autopilot-deprecated/src/input/actions.rs:14250-14256` is where the
 `LocalInferenceGenerateJob` is constructed from pane state. The prompt
 arrives as the trimmed string the user typed into the workbench input field
 and is passed straight through without any role wrapping. There is no
@@ -361,13 +361,13 @@ needed: `render_gpt_oss_harmony_prompt`, `parse_gpt_oss_harmony_text`,
 all public on the `psionic_models` crate (visible in
 `psionic-serve/src/openai_http.rs:33-42`, where psionic's own OpenAI HTTP
 chat completions handler imports them via a normal `use psionic_models::{...}`
-statement). `apps/autopilot-desktop/Cargo.toml:74` already declares
+statement). `apps/autopilot-deprecated/Cargo.toml:74` already declares
 `psionic-models = { workspace = true }`, so autopilot can call those
 helpers directly. No psionic changes are required, no `Cargo.toml`
 changes are required, and no cross-repo coordination is required.
 
 The change has three parts, all in
-`apps/autopilot-desktop/src/local_inference_runtime.rs`:
+`apps/autopilot-deprecated/src/local_inference_runtime.rs`:
 
 1. Add a `use psionic_models::{...}` import for `PromptMessage`,
    `PromptMessageRole`, `GptOssHarmonyParseOptions`,
@@ -521,7 +521,7 @@ ui error [provider.runtime]: Apple Foundation Models requires macOS 26+ on
 Apple Silicon
 ```
 
-The error is sourced from `apps/autopilot-desktop/src/apple_fm_bridge.rs:507`
+The error is sourced from `apps/autopilot-deprecated/src/apple_fm_bridge.rs:507`
 in `AppleFmLocalBridge::ensure_running`, which sets
 `self.status = AppleFmBridgeStatus::UnsupportedPlatform` and writes the error
 to the snapshot when `cfg!(target_os = "macos")` is false. The error is
@@ -572,7 +572,7 @@ the warm transition and update, or the field should be removed in favor of
 
 The GPT-OSS Workbench pane renders an "Output" section as the last item in
 its pane content area, painted at `line_y + 8.0` after the Prompt digest
-line at `apps/autopilot-desktop/src/panes/local_inference.rs:307-313`. The
+line at `apps/autopilot-deprecated/src/panes/local_inference.rs:307-313`. The
 section has no scrolling and no separate panel; if the rendered metadata
 above it consumes more vertical space than the pane bounds allow, the
 Output is clipped below the pane's bottom edge and is not visible to the
@@ -629,7 +629,7 @@ are sub-second.
 
 To verify numerical correctness, the `tracing::info!` debug dump used in
 this audit can be re-applied to
-`apps/autopilot-desktop/src/input/reducers/local_inference.rs` in the
+`apps/autopilot-deprecated/src/input/reducers/local_inference.rs` in the
 `apply_completed` reducer immediately after the ownership check. The dump
 prints `completed.output` to the launch log under target
 `gpt_oss_audit_dump`. Grep the launch log for that target string to read

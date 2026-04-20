@@ -40,10 +40,10 @@ The in-app balance source of truth is `RenderState.spark_wallet.balance`, which 
 
 Relevant code:
 
-- `apps/autopilot-desktop/src/spark_wallet.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
 
 `Balance` comes from `crates/spark/src/wallet.rs` and currently consists of:
 

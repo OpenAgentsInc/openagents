@@ -32,7 +32,7 @@ Primary assertions:
 
 ### 2) Desktop Earn Loop End-to-End State Harness (`autopilot-desktop`)
 
-File: `apps/autopilot-desktop/src/app_state.rs` test `mission_control_earn_loop_wallet_confirmed_end_to_end`
+File: `apps/autopilot-deprecated/src/app_state.rs` test `mission_control_earn_loop_wallet_confirmed_end_to_end`
 
 What it covers:
 - request accepted from inbox,
@@ -50,7 +50,7 @@ Primary assertions:
 
 ### 3) Desktop Relay -> Execute -> Publish -> Wallet Confirm Harness (`autopilot-desktop`)
 
-File: `apps/autopilot-desktop/src/provider_nip90_lane.rs` test `desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end`
+File: `apps/autopilot-deprecated/src/provider_nip90_lane.rs` test `desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end`
 
 What it covers:
 - spins up a websocket relay mock,
@@ -67,7 +67,7 @@ Primary assertions:
 
 ### 4) Starter-Demand Generator Controls Harness (`autopilot-desktop`)
 
-File: `apps/autopilot-desktop/src/app_state.rs` tests prefixed with `starter_demand_`
+File: `apps/autopilot-deprecated/src/app_state.rs` tests prefixed with `starter_demand_`
 
 What it covers:
 - deterministic starter-demand dispatch sequence,
@@ -84,7 +84,7 @@ Primary assertions:
 
 ### 5) Starter-Demand Provenance Tagging Harness (`autopilot-desktop`)
 
-File: `apps/autopilot-desktop/src/app_state.rs` test `starter_provenance_propagates_from_inbox_to_history_receipt`
+File: `apps/autopilot-deprecated/src/app_state.rs` test `starter_provenance_propagates_from_inbox_to_history_receipt`
 
 What it covers:
 - creates a starter-demand request in inbox state,
@@ -98,7 +98,7 @@ Primary assertions:
 
 ### 6) Mission Control Aggregate Counters Harness (`autopilot-desktop`)
 
-File: `apps/autopilot-desktop/src/app_state.rs` tests prefixed with `network_aggregate_counters_`
+File: `apps/autopilot-deprecated/src/app_state.rs` tests prefixed with `network_aggregate_counters_`
 
 What it covers:
 - refreshes a dedicated aggregate-counters service state from authoritative wallet-reconciled payout rows,
@@ -113,8 +113,8 @@ Primary assertions:
 ### 7) Relay Connectivity Truth Harness (`autopilot-desktop`)
 
 Files:
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs` test `worker_ingests_live_relay_request`
-- `apps/autopilot-desktop/src/app_state.rs` test `relay_connections_add_retry_remove_flow`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs` test `worker_ingests_live_relay_request`
+- `apps/autopilot-deprecated/src/app_state.rs` test `relay_connections_add_retry_remove_flow`
 
 What it covers:
 - verifies provider-lane snapshots carry live relay health rows sourced from transport state,
@@ -142,7 +142,7 @@ Primary assertions:
 
 ### 9) Failure Taxonomy + Diagnostics Classifier (`autopilot-desktop`)
 
-File: `apps/autopilot-desktop/src/input/actions.rs` test `provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation`
+File: `apps/autopilot-deprecated/src/input/actions.rs` test `provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation`
 
 What it covers:
 - classifies provider failures into one canonical class with deterministic precedence,
@@ -157,8 +157,8 @@ Primary assertions:
 ### 10) Loop Integrity SLO Metrics + Alerts (`autopilot-desktop`)
 
 Files:
-- `apps/autopilot-desktop/src/app_state.rs` test `earnings_scoreboard_tracks_loop_integrity_slo_metrics`
-- `apps/autopilot-desktop/src/input/actions.rs` test `loop_integrity_alert_specs_flags_expected_slo_breaches`
+- `apps/autopilot-deprecated/src/app_state.rs` test `earnings_scoreboard_tracks_loop_integrity_slo_metrics`
+- `apps/autopilot-deprecated/src/input/actions.rs` test `loop_integrity_alert_specs_flags_expected_slo_breaches`
 
 What it covers:
 - tracks first-job latency, completion ratio, payout success ratio, and wallet confirmation latency in Earnings Scoreboard state,
@@ -173,7 +173,7 @@ Primary assertions:
 ### 11) Kernel Authority + Projection Coverage (`autopilot-desktop` + `nexus-control`)
 
 Files:
-- `apps/autopilot-desktop/src/kernel_control.rs` tests:
+- `apps/autopilot-deprecated/src/kernel_control.rs` tests:
   - `resolve_kernel_authority_mode_uses_remote_when_complete_config_present`
   - `flush_pending_sse_event_decodes_named_receipt_event`
   - `consume_sse_buffer_ignores_keepalives_and_partial_lines`

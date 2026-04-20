@@ -9,9 +9,9 @@
 ## 1. Guardrails and product position
 
 - The core OpenAgents MVP is still `Go Online -> paid job -> wallet tick up -> withdrawal`. PM work must not derail that loop.
-- The first useful version must be a native Autopilot surface in `apps/autopilot-desktop`, not a process wrapper around another tool.
+- The first useful version must be a native Autopilot surface in `apps/autopilot-deprecated`, not a process wrapper around another tool.
 - Keep Step 0 and early PM work behind a default-off `project_ops` feature gate.
-- Keep PM product behavior in `apps/autopilot-desktop`; do not move workflow logic into `crates/wgpui`.
+- Keep PM product behavior in `apps/autopilot-deprecated`; do not move workflow logic into `crates/wgpui`.
 - Align PM storage and replay with the repo's current Spacetime Phase 1 semantics:
   - canonical stream ids
   - deterministic `(stream_id, seq)` apply discipline
@@ -37,7 +37,7 @@ The current PM draft was too local-store-specific. The repo already has a real s
   - stream-grant auth
   - subscribe/resume planning
   - reducer semantics for idempotency and sequence conflicts
-- `apps/autopilot-desktop` already has deterministic replay plumbing:
+- `apps/autopilot-deprecated` already has deterministic replay plumbing:
   - `sync_apply.rs`
   - `sync_bootstrap.rs`
   - `sync_lifecycle.rs`
@@ -94,7 +94,7 @@ This preserves MVP scope while making Spacetime integration the spine instead of
 
 ### 3.1 Ownership boundaries
 
-- `apps/autopilot-desktop/src/project_ops/*`
+- `apps/autopilot-deprecated/src/project_ops/*`
   - Owns pane wiring, view state, commands, UX flows, and feature gating.
 - Optional later extraction into dedicated crates
   - Only after the entity model and stream contracts stabilize through dogfooding.
@@ -186,7 +186,7 @@ Sequence progress should not be tracked in a separate PM-only metadata table. It
 ### 3.5 Runtime shape
 
 - Feature gate: `project_ops`
-- One explicit PM command/service loop in `apps/autopilot-desktop`
+- One explicit PM command/service loop in `apps/autopilot-deprecated`
 - Local Step 0 write path:
   1. UI issues command
   2. PM service validates command
@@ -294,7 +294,7 @@ Step 0 should not include:
 
 ### Minimum deliverable
 
-Build a `Project Ops` pane in `apps/autopilot-desktop` with:
+Build a `Project Ops` pane in `apps/autopilot-deprecated` with:
 
 - work-item create/edit flows
 - status changes
@@ -859,7 +859,7 @@ These do not belong in active implementation until the earlier phases are proven
 
 ## 13. Recommended first 10 implementation tickets
 
-1. Add `project_ops` feature gate and pane entry in `apps/autopilot-desktop`.
+1. Add `project_ops` feature gate and pane entry in `apps/autopilot-deprecated`.
 2. Define Step 0 work-item schema, command types, event types, and canonical PM stream ids.
 3. Add local PM projection documents for work items, activity, cycles, and saved views.
 4. Integrate PM apply/checkpoint behavior with the existing `SyncApplyEngine`.

@@ -1,7 +1,7 @@
 # Tassadar Lab
 
 `Tassadar Lab` is the retained desktop pane for inspecting Psionic Tassadar
-execution truth inside `apps/autopilot-desktop`.
+execution truth inside `apps/autopilot-deprecated`.
 
 Important scope note:
 

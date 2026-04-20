@@ -10,18 +10,18 @@
 
 OpenAgents now has three different compute truths in active use:
 
-1. the product truth in `apps/autopilot-desktop`
+1. the product truth in `apps/autopilot-deprecated`
 2. the reusable execution truth in `OpenAgentsInc/psionic` and
    `crates/openagents-provider-substrate`
 3. the economic truth in `openagents-kernel-*` plus `apps/nexus-control`
 
 That split is already visible in the retained tree:
 
-- `apps/autopilot-desktop/src/local_inference_runtime.rs` owns the app-level
+- `apps/autopilot-deprecated/src/local_inference_runtime.rs` owns the app-level
   local-runtime seam and operator experience
-- `apps/autopilot-desktop/src/kernel_control.rs` already bridges provider
+- `apps/autopilot-deprecated/src/kernel_control.rs` already bridges provider
   execution back into kernel compute-market objects
-- `apps/autopilot-desktop/src/desktop_control.rs` and `autopilotctl.rs` already
+- `apps/autopilot-deprecated/src/desktop_control.rs` and `autopilotctl.rs` already
   provide an app-owned compute control plane
 - `crates/openagents-provider-substrate` already owns provider health, product
   derivation, inventory controls, and sandbox profile summaries
@@ -54,9 +54,9 @@ toward one of three bad outcomes:
 Compute ownership is split by function, not by which layer happens to touch the
 feature first.
 
-### 1) `apps/autopilot-desktop` owns product and operator truth
+### 1) `apps/autopilot-deprecated` owns product and operator truth
 
-`apps/autopilot-desktop` owns:
+`apps/autopilot-deprecated` owns:
 
 - Mission Control, Provider Control, and buyer/provider product behavior
 - the app-owned local-runtime seam
@@ -65,7 +65,7 @@ feature first.
 - the app-owned control plane in `desktop_control.rs`
 - the thin operator CLI in `autopilotctl.rs`
 
-`apps/autopilot-desktop` must not own:
+`apps/autopilot-deprecated` must not own:
 
 - reusable clustered transport or cluster state machines
 - reusable sandbox runtimes

@@ -18,7 +18,7 @@ Update after `#3768` through `#3775` on 2026-03-16:
 
 - the shipped Apple operator path no longer uses Python for the train phase or
   the export phase
-- `apps/autopilot-desktop/src/apple_adapter_training_control.rs` now launches
+- `apps/autopilot-deprecated/src/apple_adapter_training_control.rs` now launches
   the repo-owned `AppleAdapterTrainingExecutionBackend` through
   `run_apple_adapter_sft_export(...)`
 - a real operator run,
@@ -31,7 +31,7 @@ Update after `#3768` through `#3775` on 2026-03-16:
   `9799725ff8e851184037110b422d891ad3b92ec1`
 - the Apple runtime parity follow-on now uses shared repo-backed `lookup_doc`
   and `lookup_code` tool handlers in
-  `apps/autopilot-desktop/src/apple_repo_lookup_tools.rs`, normalizes guided
+  `apps/autopilot-deprecated/src/apple_repo_lookup_tools.rs`, normalizes guided
   generation schemas through
   `psionic_apple_fm::AppleFmGenerationSchema::with_title_hint(...)`, caps live
   eval requests with bounded greedy generation options, and emits full
@@ -97,7 +97,7 @@ runtime behavior.
 
 The relevant orchestrator is:
 
-- `apps/autopilot-desktop/src/apple_adapter_training_control.rs`
+- `apps/autopilot-deprecated/src/apple_adapter_training_control.rs`
 
 The current launch flow now does this:
 
@@ -141,7 +141,7 @@ reference lane.
 ### 4. The operator telemetry is now live and typed
 
 The operator status types in
-`apps/autopilot-desktop/src/apple_adapter_training_control.rs` do have:
+`apps/autopilot-deprecated/src/apple_adapter_training_control.rs` do have:
 
 - stage state
 - `last_action`
@@ -165,7 +165,7 @@ The current shipped lane now surfaces:
 That telemetry contract is now backed by:
 
 - the app-owned progress/event stream in
-  `apps/autopilot-desktop/src/apple_adapter_training_control.rs`
+  `apps/autopilot-deprecated/src/apple_adapter_training_control.rs`
 - streamed toolkit compatibility output from `#3772` for non-default oracle
   runs
 - the WGPUI run-detail work from `#3773`
@@ -242,14 +242,14 @@ credible Rust-only replacement:
 
 Before `#3770`, the benchmark and held-out harnesses used recording tools in:
 
-- `apps/autopilot-desktop/src/apple_adapter_training_control.rs`
-- `apps/autopilot-desktop/src/apple_architecture_explainer_reference_run.rs`
+- `apps/autopilot-deprecated/src/apple_adapter_training_control.rs`
+- `apps/autopilot-deprecated/src/apple_architecture_explainer_reference_run.rs`
 
 Those tools used to record the call and echo synthetic JSON.
 They did not actually read repo docs or code.
 
 After `#3770`, both harnesses share real repo-backed lookup tools in
-`apps/autopilot-desktop/src/apple_repo_lookup_tools.rs`. Benchmark and held-out
+`apps/autopilot-deprecated/src/apple_repo_lookup_tools.rs`. Benchmark and held-out
 receipts now carry the lookup events plus model-request or harness failure
 metadata when a tool call goes wrong.
 
@@ -312,7 +312,7 @@ Deliverables:
 
 Acceptance:
 
-- `apps/autopilot-desktop/src/apple_adapter_training_control.rs` no longer
+- `apps/autopilot-deprecated/src/apple_adapter_training_control.rs` no longer
   calls the Python training wrapper for the shipped path
 - `psionic-train` can produce the live training artifacts directly
 - the first reference run uses the Rust executor, not Python

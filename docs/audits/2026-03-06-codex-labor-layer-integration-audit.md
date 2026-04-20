@@ -18,19 +18,19 @@ This audit evaluates how Codex is currently wired into OpenAgents, specifically 
 Implementation surfaces reviewed:
 
 - `crates/codex-client/src/*`
-- `apps/autopilot-desktop/src/codex_lane.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/input/reducers/codex.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
-- `apps/autopilot-desktop/src/state/autopilot_goals.rs`
-- `apps/autopilot-desktop/src/state/goal_loop_executor.rs`
-- `apps/autopilot-desktop/src/state/goal_skill_resolver.rs`
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/provider_runtime.rs`
+- `apps/autopilot-deprecated/src/codex_lane.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/input/reducers/codex.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/state/autopilot_goals.rs`
+- `apps/autopilot-deprecated/src/state/goal_loop_executor.rs`
+- `apps/autopilot-deprecated/src/state/goal_skill_resolver.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/provider_runtime.rs`
 - `crates/openagents-kernel-core/src/authority.rs`
 - `apps/nexus-control/src/lib.rs`
 
@@ -73,7 +73,7 @@ The docs are consistent on the intended separation of concerns:
 - The kernel is the authority layer for contracts, verification, liability, settlement, policy, and receipts.
 - The desktop app is a local runtime and projection surface, not the final authority for money, verdicts, or liability.
 - Nostr and other sync/coordination layers are not authority lanes.
-- `apps/autopilot-desktop` owns product orchestration; reusable crates should not absorb app-specific labor semantics.
+- `apps/autopilot-deprecated` owns product orchestration; reusable crates should not absorb app-specific labor semantics.
 
 For Codex specifically, `docs/MVP.md` already frames Autopilot as:
 
@@ -89,7 +89,7 @@ The kernel docs go further: labor is only complete when work has explicit accept
 
 ### 1. Codex has a strong app-level runtime integration
 
-`crates/codex-client` and `apps/autopilot-desktop/src/codex_lane.rs` provide a substantial app-server integration:
+`crates/codex-client` and `apps/autopilot-deprecated/src/codex_lane.rs` provide a substantial app-server integration:
 
 - process spawning,
 - JSON-RPC request/notification handling,
@@ -105,7 +105,7 @@ It manages how Codex runs. It does not define what economic object a run represe
 
 ### 2. The primary Codex unit in desktop is the chat turn
 
-The main user-facing path is `run_chat_submit_action` in `apps/autopilot-desktop/src/input/actions.rs`.
+The main user-facing path is `run_chat_submit_action` in `apps/autopilot-deprecated/src/input/actions.rs`.
 
 That path:
 
@@ -117,7 +117,7 @@ That path:
 - sets CWD and sandbox policy,
 - queues `CodexLaneCommand::TurnStart`.
 
-`AutopilotChatState` in `apps/autopilot-desktop/src/app_state.rs` stores:
+`AutopilotChatState` in `apps/autopilot-deprecated/src/app_state.rs` stores:
 
 - active thread id,
 - active turn id,
@@ -134,9 +134,9 @@ This is a rich thread/turn execution model, but it is not a labor object model.
 
 The strongest current bridge from Codex into something labor-shaped is the goal system in:
 
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/state/goal_loop_executor.rs`
-- `apps/autopilot-desktop/src/state/autopilot_goals.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/state/goal_loop_executor.rs`
+- `apps/autopilot-deprecated/src/state/autopilot_goals.rs`
 
 The flow is:
 
@@ -163,7 +163,7 @@ These are useful local records, but they are app-owned and goal-centric, not aut
 
 ### 4. Codex is wired to local action execution through the tool bridge
 
-`apps/autopilot-desktop/src/input/reducers/codex.rs` handles `CodexLaneNotification::ToolCallRequested` by routing OpenAgents-namespaced tools into `execute_openagents_tool_request` in `apps/autopilot-desktop/src/input/tool_bridge.rs`.
+`apps/autopilot-deprecated/src/input/reducers/codex.rs` handles `CodexLaneNotification::ToolCallRequested` by routing OpenAgents-namespaced tools into `execute_openagents_tool_request` in `apps/autopilot-deprecated/src/input/tool_bridge.rs`.
 
 Current dynamic tools include:
 
@@ -228,7 +228,7 @@ This is not a bug by itself. It is evidence that the current integration is stil
 
 ### 7. Codex is still wired into the compute-provider lane
 
-`apps/autopilot-desktop/src/input/reducers/jobs.rs` shows that the current active-job execution path still uses Codex:
+`apps/autopilot-deprecated/src/input/reducers/jobs.rs` shows that the current active-job execution path still uses Codex:
 
 - `queue_provider_execution_thread_start`
 - `queue_provider_execution_turn_start`
@@ -261,7 +261,7 @@ That is the most important architectural contamination to remove.
 
 `apps/nexus-control/src/lib.rs` already exposes hosted endpoints for those mutations.
 
-At the same time, `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs` contains a large local prototype for:
+At the same time, `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs` contains a large local prototype for:
 
 - work-unit metadata,
 - provenance hints,
@@ -405,7 +405,7 @@ That makes it hard to reason truthfully about which market a given Codex run bel
 
 ### 1. Introduce an explicit Codex labor orchestrator
 
-Add an app-owned labor orchestration layer in `apps/autopilot-desktop` that sits above `codex_lane` and below product flows.
+Add an app-owned labor orchestration layer in `apps/autopilot-deprecated` that sits above `codex_lane` and below product flows.
 
 Its job should be to translate:
 
@@ -533,7 +533,7 @@ With the new desired split:
 - Ollama should execute Compute-market inference jobs.
 - Codex should execute Labor-market machine work.
 
-That means the current provider-job Codex execution path in `apps/autopilot-desktop/src/input/reducers/jobs.rs` should be retired from the compute-provider loop.
+That means the current provider-job Codex execution path in `apps/autopilot-deprecated/src/input/reducers/jobs.rs` should be retired from the compute-provider loop.
 
 Codex may still consume compute, but it should do so as a labor worker using compute, not as the compute market itself.
 
@@ -624,7 +624,7 @@ Truthful labeling matters here because each mode has different authority, verifi
 
 ### Phase 2: introduce local labor binding for Codex
 
-1. Add a labor-orchestrator module in `apps/autopilot-desktop`.
+1. Add a labor-orchestrator module in `apps/autopilot-deprecated`.
 2. Bind economically meaningful Codex runs to local `work_unit_id` and `contract_id`.
 3. Convert turn completion into a local `Submission` assembly step.
 4. Attach provenance bundles and tool evidence.
@@ -645,21 +645,21 @@ Truthful labeling matters here because each mode has different authority, verifi
 
 ## Likely Touch Points For Future Implementation
 
-- `apps/autopilot-desktop/src/codex_lane.rs`
+- `apps/autopilot-deprecated/src/codex_lane.rs`
   - keep as runtime/session lane, not labor authority
-- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
   - identify which turns become labor work units
-- `apps/autopilot-desktop/src/input.rs`
+- `apps/autopilot-deprecated/src/input.rs`
   - goal loop should bind attempts to work-unit and contract ids
-- `apps/autopilot-desktop/src/input/reducers/codex.rs`
+- `apps/autopilot-deprecated/src/input/reducers/codex.rs`
   - convert turn/tool outcomes into submission/provenance events
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
   - add labor-domain tools and evidence helpers
-- `apps/autopilot-desktop/src/state/autopilot_goals.rs`
+- `apps/autopilot-deprecated/src/state/autopilot_goals.rs`
   - extend local receipts with kernel object linkage
-- `apps/autopilot-desktop/src/state/goal_loop_executor.rs`
+- `apps/autopilot-deprecated/src/state/goal_loop_executor.rs`
   - track labor ids and submission/verdict state
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
   - reuse receipt vocabulary for labor provenance and verification linkage
 - `crates/openagents-kernel-core/src/authority.rs`
   - likely remains the canonical trait surface

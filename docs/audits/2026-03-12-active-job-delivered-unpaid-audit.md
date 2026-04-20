@@ -27,12 +27,12 @@ Docs reviewed:
 
 Code reviewed:
 
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input/reducers/wallet.rs`
-- `apps/autopilot-desktop/src/nip90_compute_flow.rs`
-- `apps/autopilot-desktop/src/nip90_compute_domain_events.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/reducers/wallet.rs`
+- `apps/autopilot-deprecated/src/nip90_compute_flow.rs`
+- `apps/autopilot-deprecated/src/nip90_compute_domain_events.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
 
 Issue evidence reviewed:
 

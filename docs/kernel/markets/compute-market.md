@@ -432,7 +432,7 @@ The most important truth to preserve is the one in `docs/MVP.md` and
 
 Today that means:
 
-- a provider can go online from `apps/autopilot-desktop`
+- a provider can go online from `apps/autopilot-deprecated`
 - the app can receive compute work through the current network flow
 - the provider executes the work locally
 - the provider publishes a result
@@ -943,7 +943,7 @@ proof, and execution stack.
 
 ### 1. Productized desktop behavior
 
-Implemented in `apps/autopilot-desktop` and supporting docs:
+Implemented in `apps/autopilot-deprecated` and supporting docs:
 
 - provider online/offline lifecycle
 - local runtime health and provider readiness
@@ -1206,7 +1206,7 @@ These markets interact heavily, but they are not the same thing.
 
 Code:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - `apps/nexus-control/src/lib.rs`
 - `apps/nexus-control/src/kernel.rs`
 - `crates/openagents-kernel-core/src/compute.rs`

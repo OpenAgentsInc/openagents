@@ -55,7 +55,7 @@ The important part is that Pylon was not just a thin provider daemon. By the tim
 
 The archive shows real implementation in provider mode, buyer/wallet flows, RLM, and the local Codex bridge. It also shows a lot of product drift: docs and README frequently describe a larger, cleaner, more complete system than the code actually provides.
 
-For the current MVP repo, Pylon is best read as historical precedent and a pattern library. It is not a good candidate for wholesale restoration. The current repo's earlier decisions to keep provider runtime ownership in `apps/autopilot-desktop` and keep `crates/pylon` archived are consistent with what this audit found.
+For the current MVP repo, Pylon is best read as historical precedent and a pattern library. It is not a good candidate for wholesale restoration. The current repo's earlier decisions to keep provider runtime ownership in `apps/autopilot-deprecated` and keep `crates/pylon` archived are consistent with what this audit found.
 
 ## What Pylon Was Supposed To Be
 
@@ -326,7 +326,7 @@ The parts that should stay archived unless explicitly requested are:
 - the coupled daemon + provider + buyer + wallet + host + bridge + RLM bundle
 - the older host-mode/runtime layering
 
-This matches the existing repo decision to keep provider runtime ownership in `apps/autopilot-desktop` and not pull archived `pylon`/`compute` crates back into MVP scope (`docs/autopilot-earn/AUTOPILOT_EARN_BACKROOM_HARVEST_AUDIT.md`, `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md`).
+This matches the existing repo decision to keep provider runtime ownership in `apps/autopilot-deprecated` and not pull archived `pylon`/`compute` crates back into MVP scope (`docs/autopilot-earn/AUTOPILOT_EARN_BACKROOM_HARVEST_AUDIT.md`, `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md`).
 
 ## Bottom Line
 

@@ -11,7 +11,7 @@ Scope note: restored blocks listed here support the compute-provider MVP lane; n
 
 ### 1) NIP-90 submit + await helper sequencing
 
-- Source: `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-desktop/src/main.rs` (`submit_nip90_text_generation`)
+- Source: `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-deprecated/src/main.rs` (`submit_nip90_text_generation`)
 - Destination: `crates/nostr/client/src/dvm.rs`
 - Restored behavior:
   - publish request event,
@@ -25,8 +25,8 @@ Scope note: restored blocks listed here support the compute-provider MVP lane; n
 
 ### 2) Provider domain lifecycle mapping patterns
 
-- Source: `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-desktop/src/provider_domain.rs`
-- Destination: `apps/autopilot-desktop/src/state/provider_runtime.rs` + Mission Control projection in `apps/autopilot-desktop/src/render.rs`
+- Source: `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-deprecated/src/provider_domain.rs`
+- Destination: `apps/autopilot-deprecated/src/state/provider_runtime.rs` + Mission Control projection in `apps/autopilot-deprecated/src/render.rs`
 - Restored behavior:
   - explicit mode transitions (`offline/connecting/online/degraded`),
   - heartbeat/uptime visibility,
@@ -37,8 +37,8 @@ Scope note: restored blocks listed here support the compute-provider MVP lane; n
 
 ### 3) Wallet bridge normalization patterns
 
-- Source: `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-desktop/src/wallet_domain.rs`
-- Destination: `apps/autopilot-desktop/src/spark_wallet.rs`, `apps/autopilot-desktop/src/state/earnings_gate.rs`, `apps/autopilot-desktop/src/state/wallet_reconciliation.rs`
+- Source: `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-deprecated/src/wallet_domain.rs`
+- Destination: `apps/autopilot-deprecated/src/spark_wallet.rs`, `apps/autopilot-deprecated/src/state/earnings_gate.rs`, `apps/autopilot-deprecated/src/state/wallet_reconciliation.rs`
 - Restored behavior:
   - authoritative wallet status/balance/payment history as payout source,
   - payout correlation via wallet payment pointer,
