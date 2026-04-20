@@ -477,6 +477,7 @@ Validated recovery/cutover flow:
 
 ```bash
 export NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS=120000
+export NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS=false
 export NEXUS_TREASURY_RECOVERY_RUST_LOG=warn
 export NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS=3
 export NEXUS_TREASURY_RECOVERY_REPORT_PATH=/var/lib/nexus-relay/treasury-wallet-recovery-<stamp>/recovery-report.json
@@ -493,7 +494,11 @@ What the wrapper does:
   `--entrypoint /usr/local/bin/nexus-control`
 - passes `NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS` through as
   `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS`; the wrapper
-  defaults to `120000` ms when unset and the binary clamps it to 30 minutes
+  defaults to `120000` ms when unset and the binary clamps it to 30 minutes for
+  each balance, payment-list, and unclaimed-deposit read
+- passes `NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS=false` by default so
+  the current and rebuilt storage inspections run serially and avoid doubling
+  Spark upstream sync pressure during production recovery
 - defaults `RUST_LOG` to `warn` for quieter recovery report output
 - retries recovery report generation up to `NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS`
   times and removes the partial work dir between failed attempts

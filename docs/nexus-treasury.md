@@ -406,6 +406,7 @@ export NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH=/path/to/copied/treasury.mnem
 export NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR=/path/to/copied/treasury-wallet
 export NEXUS_CONTROL_TREASURY_STATE_PATH=/path/to/copied/treasury-state.json
 export NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS=120000
+export NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_PARALLEL_INSPECTIONS=false
 
 cargo run -p nexus-control -- treasury recovery-report --work-dir /tmp/nexus-treasury-recovery --json
 ```
@@ -415,9 +416,14 @@ What `recovery-report` does:
 - copies the current wallet storage into `backup/current-storage`
 - copies the mnemonic and treasury state into the same recovery work dir
 - builds a fresh wallet state from the same mnemonic into `rebuilt-storage`
-- gives each isolated Spark wallet inspection up to
+- gives each isolated Spark wallet balance, payment-list, and
+  unclaimed-deposit read up to
   `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS` milliseconds,
   defaulting to `120000` and clamped to 30 minutes
+- inspects the current and rebuilt wallet storage serially by default; set
+  `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_PARALLEL_INSPECTIONS=true` only for
+  local or non-mutating probes where Spark upstream health can absorb two
+  simultaneous historical syncs
 - writes a machine-readable `recovery-report.json`
 - records the latest report summary in treasury state/status
 
@@ -442,6 +448,7 @@ Production VM cutover:
 
 ```bash
 export NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS=120000
+export NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS=false
 export NEXUS_TREASURY_RECOVERY_RUST_LOG=warn
 export NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS=3
 export NEXUS_TREASURY_RECOVERY_REPORT_PATH=/var/lib/nexus-relay/treasury-wallet-recovery-<stamp>/recovery-report.json
@@ -462,7 +469,10 @@ trying again.
 Each isolated Spark wallet inspection gets up to
 `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS`; the production
 wrapper exposes that as `NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS`,
-defaults it to `120000` ms, and clamps it to 30 minutes. The wrapper also
+defaults it to `120000` ms, and clamps it to 30 minutes. The production wrapper
+passes `NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS=false` by default so the
+current and rebuilt storage inspections do not double upstream Spark sync load;
+enable it only for deliberate local or non-mutating probes. The wrapper also
 defaults `RUST_LOG` to `warn` so large payment-history syncs do not bury the
 report JSON in per-payment info logs. Recovery report generation defaults to
 three attempts and removes the partial work dir between failed attempts so
