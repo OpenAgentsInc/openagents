@@ -97,7 +97,8 @@ use psionic_train::{
     PsionicTrainCoordinationContext, PsionicTrainInvocationManifest, PsionicTrainLaneContract,
     PsionicTrainMinimumMachineClass, PsionicTrainOperation, PsionicTrainRole,
     PsionicTrainWorkClass, admitted_environment_ref_for_lane, admitted_release_id_for_lane,
-    build_psionic_train_artifact_binding_from_path, runtime_build_digest,
+    build_psionic_train_artifact_binding_from_path, psionic_train_local_artifact_id,
+    runtime_build_digest,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -14603,6 +14604,10 @@ fn stabilize_training_retained_psionic_worker_contract(
     let artifact_manifest_raw_digest = training_raw_sha256_hex(artifact_manifest_bytes.as_slice());
     let artifact_manifest_raw_bytes = u64::try_from(artifact_manifest_bytes.len())
         .context("failed to convert stabilized contribution artifact manifest length to u64")?;
+    let artifact_manifest_artifact_id = psionic_train_local_artifact_id(
+        "contribution_artifact_manifest",
+        artifact_manifest_raw_digest.as_str(),
+    );
     let artifact_manifest_digest =
         artifact_digest_from_json(&artifact_manifest).map_err(anyhow::Error::msg)?;
 
@@ -14614,6 +14619,10 @@ fn stabilize_training_retained_psionic_worker_contract(
             .get_mut("artifact_ref")
             .and_then(Value::as_object_mut)
         {
+            artifact_ref.insert(
+                "artifact_id".to_string(),
+                Value::String(artifact_manifest_artifact_id),
+            );
             artifact_ref.insert(
                 "artifact_digest".to_string(),
                 Value::String(artifact_manifest_raw_digest),
@@ -25607,7 +25616,7 @@ mod tests {
     };
     use psionic_train::{
         PSION_ACTUAL_PRETRAINING_LANE_ID, PsionicTrainInvocationManifest, PsionicTrainOperation,
-        PsionicTrainRole, PsionicTrainWorkClass,
+        PsionicTrainRole, PsionicTrainWorkClass, psionic_train_local_artifact_id,
     };
     use serde_json::{Value, json};
     use sha2::{Digest, Sha256};
@@ -32655,10 +32664,16 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let stabilized_manifest_bytes = std::fs::read(artifact_manifest_path.as_path())?;
         let stabilized_manifest_digest =
             training_raw_sha256_hex(stabilized_manifest_bytes.as_slice());
+        let stabilized_manifest_artifact_id = psionic_train_local_artifact_id(
+            "contribution_artifact_manifest",
+            stabilized_manifest_digest.as_str(),
+        );
         let artifact_manifest_path_string = artifact_manifest_path.display().to_string();
         ensure(
             stabilized_receipt["artifact_manifest"]["materialized_path"].as_str()
                 == Some(artifact_manifest_path_string.as_str())
+                && stabilized_receipt["artifact_manifest"]["artifact_ref"]["artifact_id"].as_str()
+                    == Some(stabilized_manifest_artifact_id.as_str())
                 && stabilized_receipt["artifact_manifest"]["artifact_ref"]["artifact_digest"]
                     .as_str()
                     == Some(stabilized_manifest_digest.as_str())
@@ -32666,6 +32681,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     == Some(
                         stable_training_contribution_receipt_digest(&stabilized_receipt)?.as_str(),
                     )
+                && stabilized_proof_bundle["source"]["contribution_receipt"]
+                    ["artifact_manifest"]["artifact_ref"]["artifact_id"]
+                    .as_str()
+                    == Some(stabilized_manifest_artifact_id.as_str())
                 && stabilized_proof_bundle["source"]["artifact_manifest"]["artifacts"][0]["binding"]
                     ["materialized_path"]
                     .as_str() == Some(checkpoint_surface_snapshot.as_str()),
@@ -32996,12 +33015,24 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         )?
         .ok_or_else(|| std::io::Error::other("expected retained validator inputs"))?;
 
+        let expected_artifact_id = psionic_train_local_artifact_id(
+            "contribution_artifact_manifest",
+            training_raw_sha256_hex(manifest_before.as_slice()).as_str(),
+        );
+        let receipt_before_value: Value = serde_json::from_slice(receipt_before.as_slice())?;
         ensure(
             std::fs::read(validator_contribution_receipt_path.as_path())? == receipt_before
                 && std::fs::read(validator_artifact_manifest_path.as_path())? == manifest_before
                 && retained.contribution_receipt_path == validator_contribution_receipt_path
                 && retained.artifact_manifest_path == validator_artifact_manifest_path,
             "validator retained-artifact inspection should not restabilize copied worker contribution inputs under a validator-local path",
+        )?;
+        ensure(
+            retained.artifact_id == expected_artifact_id
+                && receipt_before_value["artifact_manifest"]["artifact_ref"]["artifact_id"]
+                    .as_str()
+                    == Some(expected_artifact_id.as_str()),
+            "validator retained-artifact inspection should inherit the worker-stabilized manifest artifact id",
         )
     }
 
