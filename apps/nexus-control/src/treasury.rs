@@ -2785,49 +2785,69 @@ impl TreasuryState {
     }
 
     pub(crate) fn payout_target_identity_rows(&self) -> Vec<TreasuryPayoutTargetIdentityStatus> {
+        #[derive(Default)]
+        struct PayoutTargetAggregate {
+            payout_record_count: u64,
+            confirmed_payout_count: u64,
+            confirmed_payout_sats: u64,
+            confirmed_accepted_work_payout_sats: u64,
+            last_payout_at_unix_ms: Option<u64>,
+        }
+
+        let mut aggregates: BTreeMap<&str, PayoutTargetAggregate> = BTreeMap::new();
+        for record in self.payout_records_by_key.values() {
+            let aggregate = aggregates
+                .entry(record.nostr_pubkey_hex.as_str())
+                .or_default();
+            aggregate.payout_record_count = aggregate.payout_record_count.saturating_add(1);
+            aggregate.last_payout_at_unix_ms = Some(
+                aggregate
+                    .last_payout_at_unix_ms
+                    .map(|current| current.max(record.updated_at_unix_ms))
+                    .unwrap_or(record.updated_at_unix_ms),
+            );
+
+            if record.status == "confirmed" {
+                aggregate.confirmed_payout_count =
+                    aggregate.confirmed_payout_count.saturating_add(1);
+                aggregate.confirmed_payout_sats = aggregate
+                    .confirmed_payout_sats
+                    .saturating_add(record.amount_sats);
+                if record.classification.accepted_work() {
+                    aggregate.confirmed_accepted_work_payout_sats = aggregate
+                        .confirmed_accepted_work_payout_sats
+                        .saturating_add(record.amount_sats);
+                }
+            }
+        }
+
         let mut rows = self
             .payout_targets_by_identity
             .values()
             .map(|target| {
-                let mut row = TreasuryPayoutTargetIdentityStatus {
+                let aggregate = aggregates.get(target.nostr_pubkey_hex.as_str());
+                TreasuryPayoutTargetIdentityStatus {
                     nostr_pubkey_hex: target.nostr_pubkey_hex.clone(),
                     source_session_id: target.source_session_id.clone(),
                     spark_address: target.spark_address.clone(),
                     bitcoin_address: target.bitcoin_address.clone(),
                     registered_at_unix_ms: target.registered_at_unix_ms,
                     last_verified_at_unix_ms: target.last_verified_at_unix_ms,
-                    payout_record_count: 0,
-                    confirmed_payout_count: 0,
-                    confirmed_payout_sats: 0,
-                    confirmed_accepted_work_payout_sats: 0,
-                    last_payout_at_unix_ms: None,
-                };
-
-                for record in self
-                    .payout_records_by_key
-                    .values()
-                    .filter(|record| record.nostr_pubkey_hex == target.nostr_pubkey_hex)
-                {
-                    row.payout_record_count = row.payout_record_count.saturating_add(1);
-                    row.last_payout_at_unix_ms = Some(
-                        row.last_payout_at_unix_ms
-                            .map(|current| current.max(record.updated_at_unix_ms))
-                            .unwrap_or(record.updated_at_unix_ms),
-                    );
-
-                    if record.status == "confirmed" {
-                        row.confirmed_payout_count = row.confirmed_payout_count.saturating_add(1);
-                        row.confirmed_payout_sats =
-                            row.confirmed_payout_sats.saturating_add(record.amount_sats);
-                        if record.classification.accepted_work() {
-                            row.confirmed_accepted_work_payout_sats = row
-                                .confirmed_accepted_work_payout_sats
-                                .saturating_add(record.amount_sats);
-                        }
-                    }
+                    payout_record_count: aggregate
+                        .map(|aggregate| aggregate.payout_record_count)
+                        .unwrap_or_default(),
+                    confirmed_payout_count: aggregate
+                        .map(|aggregate| aggregate.confirmed_payout_count)
+                        .unwrap_or_default(),
+                    confirmed_payout_sats: aggregate
+                        .map(|aggregate| aggregate.confirmed_payout_sats)
+                        .unwrap_or_default(),
+                    confirmed_accepted_work_payout_sats: aggregate
+                        .map(|aggregate| aggregate.confirmed_accepted_work_payout_sats)
+                        .unwrap_or_default(),
+                    last_payout_at_unix_ms: aggregate
+                        .and_then(|aggregate| aggregate.last_payout_at_unix_ms),
                 }
-
-                row
             })
             .collect::<Vec<_>>();
 
@@ -7539,6 +7559,121 @@ mod tests {
         assert_eq!(
             prepared.reconciliation_degraded_reason.as_deref(),
             Some("reconciliation_horizon_exceeded:1200000")
+        );
+    }
+
+    #[test]
+    fn payout_target_identity_rows_aggregate_payout_records_once() {
+        let mut state = TreasuryState::default();
+
+        for target_index in 0..80 {
+            let pubkey = format!("pubkey-{target_index:03}");
+            state.payout_targets_by_identity.insert(
+                pubkey.clone(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: pubkey.clone(),
+                    source_session_id: format!("session-{target_index:03}"),
+                    spark_address: format!("spark:{target_index:03}"),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 1_000u64.saturating_sub(target_index),
+                    last_verified_at_unix_ms: 10_000u64.saturating_sub(target_index),
+                },
+            );
+
+            for record_index in 0..20 {
+                let payout_key = format!("{pubkey}:record-{record_index:02}");
+                state.payout_records_by_key.insert(
+                    payout_key.clone(),
+                    TreasuryPayoutRecord {
+                        payout_key,
+                        nostr_pubkey_hex: pubkey.clone(),
+                        payout_target: format!("spark:{target_index:03}"),
+                        amount_sats: 10 + record_index,
+                        status: if record_index % 2 == 0 {
+                            "confirmed".to_string()
+                        } else {
+                            "failed".to_string()
+                        },
+                        reason: None,
+                        payment_id: Some(format!("payment-{target_index:03}-{record_index:02}")),
+                        window_started_at_unix_ms: 20_000 + record_index,
+                        window_ends_at_unix_ms: 21_000 + record_index,
+                        created_at_unix_ms: 20_000 + record_index,
+                        updated_at_unix_ms: 20_000 + record_index,
+                        sellable_at_window_open: true,
+                        dispatch_receipt_recorded: true,
+                        confirm_receipt_recorded: record_index % 2 == 0,
+                        fail_receipt_recorded: record_index % 2 != 0,
+                        skip_receipt_recorded: false,
+                        counted_in_paid_total: record_index % 2 == 0,
+                        classification: if record_index % 4 == 0 {
+                            TreasuryPayoutClassification {
+                                payout_class: TreasuryPayoutClass::AcceptedWork,
+                                payout_basis: Some("validator_verdict".to_string()),
+                                work_class: Some("validation_replay".to_string()),
+                                progress_class: Some("model_progress".to_string()),
+                                accepted_outcome_id: Some(format!(
+                                    "accepted-{target_index:03}-{record_index:02}"
+                                )),
+                                training_run_id: Some("run.aggregate.test".to_string()),
+                                window_id: Some(format!("window-{record_index:02}")),
+                                contribution_id: Some(format!(
+                                    "contrib-{target_index:03}-{record_index:02}"
+                                )),
+                                assignment_id: Some(format!(
+                                    "assignment-{target_index:03}-{record_index:02}"
+                                )),
+                                share_bps: Some(10_000),
+                                weight_basis: Some("tokens".to_string()),
+                                weight_value: Some(1_024),
+                                weak_device_bearing: false,
+                                progress_bearing: true,
+                            }
+                        } else {
+                            TreasuryPayoutClassification::default()
+                        },
+                    },
+                );
+            }
+        }
+
+        state.payout_records_by_key.insert(
+            "unregistered-record".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "unregistered-record".to_string(),
+                nostr_pubkey_hex: "pubkey-unregistered".to_string(),
+                payout_target: "spark:unregistered".to_string(),
+                amount_sats: 999,
+                status: "confirmed".to_string(),
+                reason: None,
+                payment_id: Some("payment-unregistered".to_string()),
+                window_started_at_unix_ms: 30_000,
+                window_ends_at_unix_ms: 31_000,
+                created_at_unix_ms: 30_000,
+                updated_at_unix_ms: 30_000,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: true,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: true,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        let rows = state.payout_target_identity_rows();
+
+        assert_eq!(rows.len(), super::TREASURY_STATUS_PAYOUT_TARGET_ROW_LIMIT);
+        assert_eq!(rows[0].nostr_pubkey_hex, "pubkey-000");
+        assert_eq!(rows[0].payout_record_count, 20);
+        assert_eq!(rows[0].confirmed_payout_count, 10);
+        assert_eq!(rows[0].confirmed_payout_sats, 190);
+        assert_eq!(rows[0].confirmed_accepted_work_payout_sats, 90);
+        assert_eq!(rows[0].last_payout_at_unix_ms, Some(20_019));
+        assert!(
+            !rows
+                .iter()
+                .any(|row| row.nostr_pubkey_hex == "pubkey-unregistered")
         );
     }
 
