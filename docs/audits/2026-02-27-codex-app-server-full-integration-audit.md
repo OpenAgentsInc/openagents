@@ -24,14 +24,14 @@ For this audit, "100% integration" means:
 - OpenAgents:
   - `crates/codex-client/src/client.rs`
   - `crates/codex-client/src/types.rs`
-  - `apps/autopilot-desktop/src/codex_lane.rs`
-  - `apps/autopilot-desktop/src/input.rs`
-  - `apps/autopilot-desktop/src/input/reducers/codex.rs`
-  - `apps/autopilot-desktop/src/input/reducers/skl.rs`
-  - `apps/autopilot-desktop/src/panes/chat.rs`
-  - `apps/autopilot-desktop/src/panes/skill.rs`
-  - `apps/autopilot-desktop/src/pane_registry.rs`
-  - `apps/autopilot-desktop/src/app_state.rs`
+  - `apps/autopilot-deprecated/src/codex_lane.rs`
+  - `apps/autopilot-deprecated/src/input.rs`
+  - `apps/autopilot-deprecated/src/input/reducers/codex.rs`
+  - `apps/autopilot-deprecated/src/input/reducers/skl.rs`
+  - `apps/autopilot-deprecated/src/panes/chat.rs`
+  - `apps/autopilot-deprecated/src/panes/skill.rs`
+  - `apps/autopilot-deprecated/src/pane_registry.rs`
+  - `apps/autopilot-deprecated/src/app_state.rs`
 - Upstream Codex:
   - `codex-rs/app-server/README.md`
   - `codex-rs/app-server-protocol/src/protocol/common.rs`
@@ -43,7 +43,7 @@ For this audit, "100% integration" means:
 
 - `crates/codex-client` currently implements **23 methods** (including `initialize`).
 - Upstream v2+initialize surface is **51 methods** (`50` v2 wire methods + `initialize`).
-- `apps/autopilot-desktop` Codex lane exposes **8 command kinds** to desktop reducers:
+- `apps/autopilot-deprecated` Codex lane exposes **8 command kinds** to desktop reducers:
   - `thread/start`, `thread/resume`, `thread/read`, `thread/list`, `turn/start`, `turn/interrupt`, `skills/list`, `skills/config/write`.
 - Desktop has one Codex-focused pane (`PaneKind::AutopilotChat`, title "Codex") plus skill registry interactions via Codex skills endpoints.
 

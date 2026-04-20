@@ -95,23 +95,23 @@ Key reference takeaways used for scope:
    - `crates/cad/src/chat_adapter.rs`
    - `crates/cad/src/dispatch.rs`
 2. **Feature graph builder is rack-specific**
-   - `apps/autopilot-desktop/src/input/reducers/cad.rs` (`build_demo_feature_graph`)
+   - `apps/autopilot-deprecated/src/input/reducers/cad.rs` (`build_demo_feature_graph`)
 3. **Tessellation handlers are rack-specific**
    - `crates/cad/src/tessellation.rs`
 4. **CAD turn classifier misses robot/gripper nouns**
-   - `apps/autopilot-desktop/src/input/cad_turn_classifier.rs`
+   - `apps/autopilot-deprecated/src/input/cad_turn_classifier.rs`
 5. **Variant visibility can be misreported**
    - legacy path renders 2x2; basic path is single viewport
    - snapshot payload currently lacks explicit viewport layout/visible-variant truth fields
-   - `apps/autopilot-desktop/src/panes/cad.rs`
-   - `apps/autopilot-desktop/src/input/tool_bridge.rs`
+   - `apps/autopilot-deprecated/src/panes/cad.rs`
+   - `apps/autopilot-deprecated/src/input/tool_bridge.rs`
 
 ## Architecture Approach
 
 Keep ownership clean:
 
 - `crates/cad`: typed intent/schema, validation, dispatch semantics, tessellation op handlers.
-- `apps/autopilot-desktop`: chat routing, pane snapshot truth, reducer graph generation, demo UX flow.
+- `apps/autopilot-deprecated`: chat routing, pane snapshot truth, reducer graph generation, demo UX flow.
 
 Do not import historical backroom code. Build the week-1 path directly in this repo.
 
@@ -123,7 +123,7 @@ Do not import historical backroom code. Build the week-1 path directly in this r
 
 File:
 
-- `apps/autopilot-desktop/src/input/cad_turn_classifier.rs`
+- `apps/autopilot-deprecated/src/input/cad_turn_classifier.rs`
 
 Changes:
 
@@ -185,7 +185,7 @@ Acceptance:
 
 File:
 
-- `apps/autopilot-desktop/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
 
 Changes:
 
@@ -203,7 +203,7 @@ Acceptance:
 
 File:
 
-- `apps/autopilot-desktop/src/input/reducers/cad.rs`
+- `apps/autopilot-deprecated/src/input/reducers/cad.rs`
 
 Changes:
 
@@ -245,8 +245,8 @@ Acceptance:
 
 Files:
 
-- `apps/autopilot-desktop/src/input/reducers/cad.rs`
-- `apps/autopilot-desktop/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/input/reducers/cad.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
 - optional: `crates/cad/src/dispatch.rs` (if variant objective metadata is persisted there)
 
 Changes:
@@ -266,9 +266,9 @@ Acceptance:
 
 Files:
 
-- `apps/autopilot-desktop/src/app_state_domains.rs`
-- `apps/autopilot-desktop/src/input/reducers/cad.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs` (checkpoint payload)
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/input/reducers/cad.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs` (checkpoint payload)
 
 Changes:
 
@@ -287,8 +287,8 @@ Acceptance:
 
 Files:
 
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/panes/cad.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/panes/cad.rs`
 
 Changes:
 
@@ -306,10 +306,10 @@ Acceptance:
 
 Files:
 
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/panes/cad.rs`
-- `apps/autopilot-desktop/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/panes/cad.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
 
 Changes:
 
@@ -333,7 +333,7 @@ Acceptance:
 
 File:
 
-- `apps/autopilot-desktop/src/input/reducers/cad.rs` tests
+- `apps/autopilot-deprecated/src/input/reducers/cad.rs` tests
 
 Add:
 
@@ -344,7 +344,7 @@ Add:
 
 File:
 
-- `apps/autopilot-desktop/src/input/tool_bridge.rs` tests
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs` tests
 
 Add:
 
@@ -354,8 +354,8 @@ Add:
 
 Files:
 
-- `apps/autopilot-desktop/tests/scripts/*`
-- `apps/autopilot-desktop/tests/goldens/*`
+- `apps/autopilot-deprecated/tests/scripts/*`
+- `apps/autopilot-deprecated/tests/goldens/*`
 
 Add new script/golden:
 
@@ -419,7 +419,7 @@ Ensure chat prompts about robotic grippers/hands are classified as CAD turns wit
 
 Scope:
 
-- Update `apps/autopilot-desktop/src/input/cad_turn_classifier.rs`.
+- Update `apps/autopilot-deprecated/src/input/cad_turn_classifier.rs`.
 - Add terms: `gripper`, `robotic hand`, `jaw`, `servo mount`, `3d printable`, `parametric`.
 - Preserve existing rack classification behavior.
 
@@ -524,7 +524,7 @@ Expose editable gripper dimensions in desktop CAD state and keep dimension-edit 
 
 Scope:
 
-- Update `apps/autopilot-desktop/src/app_state_domains.rs`.
+- Update `apps/autopilot-deprecated/src/app_state_domains.rs`.
 - Add gripper dimension entries with defaults/bounds from `OA-CAD-W1-01`.
 - Ensure profile switch selects correct dimension subset.
 
@@ -548,7 +548,7 @@ Replace rack-only graph generation with profile-based graph builders.
 
 Scope:
 
-- Update `apps/autopilot-desktop/src/input/reducers/cad.rs`.
+- Update `apps/autopilot-deprecated/src/input/reducers/cad.rs`.
 - Extract:
   - `build_rack_feature_graph(...)`
   - `build_parallel_jaw_gripper_feature_graph(...)`
@@ -680,7 +680,7 @@ Expose enough state in tool responses for reliable agent reasoning.
 
 Scope:
 
-- Update `apps/autopilot-desktop/src/input/tool_bridge.rs` checkpoint payload.
+- Update `apps/autopilot-deprecated/src/input/tool_bridge.rs` checkpoint payload.
 - Add:
   - design profile
   - variant->material map
@@ -733,10 +733,10 @@ Make 2x2 multi-variant display explicit and agent-addressable in non-legacy mode
 Scope:
 
 - Update:
-  - `apps/autopilot-desktop/src/app_state_domains.rs`
-  - `apps/autopilot-desktop/src/panes/cad.rs`
-  - `apps/autopilot-desktop/src/pane_system.rs`
-  - `apps/autopilot-desktop/src/input/tool_bridge.rs`
+  - `apps/autopilot-deprecated/src/app_state_domains.rs`
+  - `apps/autopilot-deprecated/src/panes/cad.rs`
+  - `apps/autopilot-deprecated/src/pane_system.rs`
+  - `apps/autopilot-deprecated/src/input/tool_bridge.rs`
 - Add new CAD action key for layout toggle.
 
 Acceptance Criteria:
@@ -815,9 +815,9 @@ Cover profile branching, variants/material maps, and snapshot truth in desktop t
 Scope:
 
 - Add tests in:
-  - `apps/autopilot-desktop/src/input/reducers/cad.rs`
-  - `apps/autopilot-desktop/src/input/tool_bridge.rs`
-  - `apps/autopilot-desktop/src/input/cad_turn_classifier.rs`
+  - `apps/autopilot-deprecated/src/input/reducers/cad.rs`
+  - `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+  - `apps/autopilot-deprecated/src/input/cad_turn_classifier.rs`
 
 Acceptance Criteria:
 
@@ -843,8 +843,8 @@ Add deterministic script/golden coverage for the entire week-1 gripper flow.
 
 Scope:
 
-- Add new script under `apps/autopilot-desktop/tests/scripts/`.
-- Add corresponding golden under `apps/autopilot-desktop/tests/goldens/`.
+- Add new script under `apps/autopilot-deprecated/tests/scripts/`.
+- Add corresponding golden under `apps/autopilot-deprecated/tests/goldens/`.
 - Cover:
   - gripper prompt
   - 4 variants

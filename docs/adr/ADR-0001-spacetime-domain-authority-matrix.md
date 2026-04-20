@@ -28,7 +28,7 @@ Authority is scoped by domain. Spacetime is authoritative only for explicitly li
 
 ### PM Collaboration Candidates (Not Yet Spacetime-Authoritative)
 
-The native `Project Ops` Step 0 and early Phase 2 work in `apps/autopilot-desktop` use canonical PM stream ids, replay-safe local projection caches, and shared checkpoint discipline. Those PM streams are intentionally shaped like the existing Spacetime stack, but they are not granted live remote authority by this ADR yet.
+The native `Project Ops` Step 0 and early Phase 2 work in `apps/autopilot-deprecated` use canonical PM stream ids, replay-safe local projection caches, and shared checkpoint discipline. Those PM streams are intentionally shaped like the existing Spacetime stack, but they are not granted live remote authority by this ADR yet.
 
 Before any PM reducer or subscription becomes authoritative, the exact domain must be promoted from this candidate table into the accepted domain matrix above.
 

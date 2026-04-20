@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/autopilot-desktop",
+    "apps/autopilot-deprecated",
     "apps/deck",
     "apps/pylon",
     "apps/pylon-tui",

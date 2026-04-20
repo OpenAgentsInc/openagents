@@ -26,7 +26,7 @@ Proposed short definition:
 
 In current MVP terms:
 
-- `runtime` is mostly an embedded desktop/provider concern living in `apps/autopilot-desktop`.
+- `runtime` is mostly an embedded desktop/provider concern living in `apps/autopilot-deprecated`.
 - `kernel` is mostly an authority model and receipt schema, with the full server-side Kernel Authority API still planned rather than built in this repo.
 
 ## Sources Reviewed
@@ -54,11 +54,11 @@ Recent kernel audits:
 
 Current implementation references:
 
-- `apps/autopilot-desktop/src/state/provider_runtime.rs`
-- `apps/autopilot-desktop/src/sync_lifecycle.rs`
-- `apps/autopilot-desktop/src/economy_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/state/provider_runtime.rs`
+- `apps/autopilot-deprecated/src/sync_lifecycle.rs`
+- `apps/autopilot-deprecated/src/economy_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
 
 ## What The Repo Means By `Kernel` Today
 
@@ -77,9 +77,9 @@ This is not execution-environment language. It is authority language.
 
 The strongest in-repo code signal is the earn receipt stream:
 
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs` uses stream id `stream.earn_kernel_receipts.v1`.
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs` uses stream id `stream.earn_kernel_receipts.v1`.
 - The same file hard-codes the authority marker `kernel.authority`.
-- The desktop loads and persists a local economy-kernel receipt stream using kernel-shaped receipt objects from `apps/autopilot-desktop/src/economy_kernel_receipts.rs`.
+- The desktop loads and persists a local economy-kernel receipt stream using kernel-shaped receipt objects from `apps/autopilot-deprecated/src/economy_kernel_receipts.rs`.
 
 That means current code already treats `kernel` as the namespace for authoritative economic truth, even though the full remote kernel service is not yet present.
 
@@ -102,19 +102,19 @@ So in this repo today, `kernel` is mostly:
 
 ### 1. `runtime` consistently points at execution and operational state
 
-The most direct signals are in `apps/autopilot-desktop`:
+The most direct signals are in `apps/autopilot-deprecated`:
 
 - `ProviderRuntimeState` models `offline / connecting / online / degraded`, heartbeat freshness, queue depth, last result, and runtime failure classes.
 - `RuntimeSyncConnectionState` and `RuntimeSyncLifecycleManager` model connection, replay, token refresh, backoff, and reconnect behavior.
 - `docs/MVP.md` says `Go Online` initializes the embedded Autopilot provider runtime and provider identity.
-- `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keeps provider runtime ownership in `apps/autopilot-desktop`.
+- `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keeps provider runtime ownership in `apps/autopilot-deprecated`.
 - `docs/PANES.md` uses `runtime` as the source for provider status, relay connections, network requests, alerts, job intake, and other execution-facing panes.
 
 This is all “where work runs / how the app stays live” language.
 
 ### 2. `runtime` also already means execution provenance
 
-`apps/autopilot-desktop/src/economy_kernel_receipts.rs` defines `ProvenanceAttestationKind::RuntimeIntegrity`.
+`apps/autopilot-deprecated/src/economy_kernel_receipts.rs` defines `ProvenanceAttestationKind::RuntimeIntegrity`.
 
 That only makes sense if `runtime` is the execution environment whose integrity can be attested and then evaluated by something else.
 
@@ -125,7 +125,7 @@ This is a strong boundary clue:
 
 ### 3. `runtime` is used for local event recording, not final authority
 
-`apps/autopilot-desktop/src/app_state_domains.rs` exposes `record_runtime_event(...)`.
+`apps/autopilot-deprecated/src/app_state_domains.rs` exposes `record_runtime_event(...)`.
 
 That usage fits execution telemetry and simulations. It does not imply final settlement or authority.
 
@@ -207,7 +207,7 @@ Those belong to the kernel.
 
 For the current MVP repo, the practical mapping is:
 
-- `OpenAgents Runtime` = the embedded provider/runtime behavior in `apps/autopilot-desktop`
+- `OpenAgents Runtime` = the embedded provider/runtime behavior in `apps/autopilot-deprecated`
 - `OpenAgents Kernel` = the planned server-authoritative economy system, currently represented locally by receipt/snapshot models and kernel-plan docs
 
 That matches:
@@ -263,9 +263,9 @@ Potentially later, yes. Right now, probably not as an MVP-wide move.
 
 The current code layout still supports the earlier placement decision:
 
-- `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keeps provider runtime ownership in `apps/autopilot-desktop` for MVP.
-- `docs/OWNERSHIP.md` says `apps/autopilot-desktop` owns app wiring, pane orchestration, and product behavior.
-- Search results show the current runtime code is heavily consumed inside `apps/autopilot-desktop` and not by other apps or crates.
+- `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` keeps provider runtime ownership in `apps/autopilot-deprecated` for MVP.
+- `docs/OWNERSHIP.md` says `apps/autopilot-deprecated` owns app wiring, pane orchestration, and product behavior.
+- Search results show the current runtime code is heavily consumed inside `apps/autopilot-deprecated` and not by other apps or crates.
 
 In practice, today’s runtime implementation is still strongly entangled with:
 
@@ -288,7 +288,7 @@ If runtime code is extracted later, the best candidates are the product-agnostic
 
 ### What should stay app-owned
 
-These areas should remain in `apps/autopilot-desktop` unless the product architecture changes materially:
+These areas should remain in `apps/autopilot-deprecated` unless the product architecture changes materially:
 
 - Mission Control orchestration,
 - pane-facing `job_inbox` / `active_job` / payout UX state,
@@ -299,7 +299,7 @@ These areas should remain in `apps/autopilot-desktop` unless the product archite
 
 The right posture is:
 
-- keep runtime ownership in `apps/autopilot-desktop` for the current MVP,
+- keep runtime ownership in `apps/autopilot-deprecated` for the current MVP,
 - avoid reviving a large legacy runtime crate just to create a named abstraction,
 - extract a crate only when there is a clearly product-agnostic core and at least one additional consumer or a strong testability boundary,
 - if extraction happens, prefer a narrow crate such as `crates/openagents-runtime-core` rather than a broad product-runtime crate.
@@ -362,7 +362,7 @@ The kernel plans correctly treat wallet execution as the custody boundary. The r
 
 - `apps/runtime` remains the retained authority for execution boundaries and projection publishing.
 
-But this pruned repo has only `apps/autopilot-desktop`, and `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` explicitly keeps provider runtime ownership in that app.
+But this pruned repo has only `apps/autopilot-deprecated`, and `docs/autopilot-earn/AUTOPILOT_EARN_RUNTIME_PLACEMENT_DECISION.md` explicitly keeps provider runtime ownership in that app.
 
 That did not block defining the runtime, but it did require terminology cleanup. Follow-up doc edits now align MVP wording with the current repo layout.
 

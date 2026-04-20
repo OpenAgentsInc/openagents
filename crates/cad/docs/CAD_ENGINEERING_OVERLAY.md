@@ -1,7 +1,7 @@
 # CAD Engineering Overlay Panel
 
 This document defines the live engineering overlay rendered in the CAD demo pane
-(`apps/autopilot-desktop/src/panes/cad.rs`).
+(`apps/autopilot-deprecated/src/panes/cad.rs`).
 
 ## Goal
 

@@ -28,7 +28,7 @@ scan_forbidden_ref() {
     rg -n \
       --glob '!psionic-train/src/apple_toolkit.rs' \
       "$pattern" \
-      apps/autopilot-desktop \
+      apps/autopilot-deprecated \
       scripts/release \
       "$PSIONIC_REPO/crates" \
       "$PSIONIC_REPO/scripts" \

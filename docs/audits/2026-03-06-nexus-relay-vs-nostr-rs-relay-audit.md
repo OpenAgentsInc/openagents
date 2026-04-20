@@ -19,7 +19,7 @@ Sources reviewed:
   - `apps/nexus-relay/src/lib.rs`
   - `apps/nexus-relay/src/managed_groups.rs`
   - `apps/nexus-control/src/lib.rs`
-  - `apps/autopilot-desktop/src/app_state.rs`
+  - `apps/autopilot-deprecated/src/app_state.rs`
 - local full relay repo:
   - `/Users/christopherdavid/code/nostr-rs-relay/README.md`
   - `/Users/christopherdavid/code/nostr-rs-relay/config.toml`

@@ -34,7 +34,7 @@ This is not a vendor-integration plan. It assumes:
 The right long-horizon move is to turn today's local compute-provider lane into
 the first truthful slice of a much broader compute stack with five major layers:
 
-1. `apps/autopilot-desktop` stays the operator and product surface.
+1. `apps/autopilot-deprecated` stays the operator and product surface.
 2. `openagents-provider-substrate` stays a narrow provider descriptor and
    inventory-control layer.
 3. `OpenAgentsInc/psionic` becomes the reusable compute substrate for local,
@@ -73,7 +73,7 @@ ever becomes a large user-facing surface.
 
 `docs/OWNERSHIP.md` still applies:
 
-- `apps/autopilot-desktop` owns app wiring, UX flows, Mission Control, Provider
+- `apps/autopilot-deprecated` owns app wiring, UX flows, Mission Control, Provider
   Control, and desktop control
 - `crates/openagents-provider-substrate` owns narrow reusable provider health,
   product derivation, inventory controls, and lifecycle helpers
@@ -95,10 +95,10 @@ The current app is not just a GUI wrapper around invisible backend state.
 
 Relevant files:
 
-- `apps/autopilot-desktop/src/local_inference_runtime.rs`
-- `apps/autopilot-desktop/src/kernel_control.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/local_inference_runtime.rs`
+- `apps/autopilot-deprecated/src/kernel_control.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 
 Important current truths:
 
@@ -527,7 +527,7 @@ Each sandbox product should declare:
 - `psionic-sandbox` should own the actual runtime engine and evidence bundle
 - `openagents-provider-substrate` should own provider-facing summaries and
   advertised product descriptors
-- `apps/autopilot-desktop` should own the pane and control interactions
+- `apps/autopilot-deprecated` should own the pane and control interactions
 - the kernel should own lots, instruments, delivery proof, challenge state, and
   settlement
 

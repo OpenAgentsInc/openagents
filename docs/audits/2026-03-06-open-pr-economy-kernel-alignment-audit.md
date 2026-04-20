@@ -68,7 +68,7 @@ Current in-repo protocol docs:
 
 This audit has been updated to reflect the intended hierarchy more accurately:
 
-1. The SA/SKL/AC NIPs in `crates/nostr/nips/` were written specifically to power parts of the app and are already partially implemented in `crates/nostr/core` and integrated in `apps/autopilot-desktop`.
+1. The SA/SKL/AC NIPs in `crates/nostr/nips/` were written specifically to power parts of the app and are already partially implemented in `crates/nostr/core` and integrated in `apps/autopilot-deprecated`.
 2. The default review posture should therefore be: hold the NIPs relatively stable and evaluate PRs primarily as changes to those established NIPs.
 3. Nostr being a relay / websocket protocol is not itself a reason to reject NIP changes. The relevant review questions are whether a PR is backwards-compatible, whether it creates a single clear way of doing the thing, and whether the new semantics actually belong in that NIP.
 

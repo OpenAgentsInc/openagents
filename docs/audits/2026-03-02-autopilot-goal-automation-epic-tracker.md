@@ -36,7 +36,7 @@ Epic acceptance requires all of the following:
 
 ## Issue Sequence
 
-1. [#2709](https://github.com/OpenAgentsInc/openagents/issues/2709) Define Goal Spec and Persistence Model in `apps/autopilot-desktop`
+1. [#2709](https://github.com/OpenAgentsInc/openagents/issues/2709) Define Goal Spec and Persistence Model in `apps/autopilot-deprecated`
 2. [#2710](https://github.com/OpenAgentsInc/openagents/issues/2710) Add Goal Runner State Machine (Queued/Running/Succeeded/Failed/Aborted)
 3. [#2711](https://github.com/OpenAgentsInc/openagents/issues/2711) Implement Condition Evaluator for Wallet Delta, Job Count, Timeout, and Error Budget
 4. [#2712](https://github.com/OpenAgentsInc/openagents/issues/2712) Add Authoritative Earnings Verification Gate (Wallet/Payment Evidence Only)

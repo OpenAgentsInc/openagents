@@ -29,9 +29,9 @@ This audit covers:
 
 Key files:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/panes/chat.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/panes/chat.rs`
 
 What exists now:
 
@@ -43,10 +43,10 @@ What exists now:
 
 Key files:
 
-- `apps/autopilot-desktop/src/runtime_lanes.rs`
-- `apps/autopilot-desktop/src/input/reducers/skl.rs`
-- `apps/autopilot-desktop/src/panes/skill.rs`
-- `apps/autopilot-desktop/src/skills_registry.rs`
+- `apps/autopilot-deprecated/src/runtime_lanes.rs`
+- `apps/autopilot-deprecated/src/input/reducers/skl.rs`
+- `apps/autopilot-deprecated/src/panes/skill.rs`
+- `apps/autopilot-deprecated/src/skills_registry.rs`
 
 What exists now:
 
@@ -72,16 +72,16 @@ What exists now:
 
 ### Archived desktop integration surfaces
 
-- `apps/autopilot-desktop/src/main.rs`
+- `apps/autopilot-deprecated/src/main.rs`
   - Full legacy integration (AppServer spawn, session/thread mapping, turn dispatch, notification loop).
-- `apps/autopilot-desktop/src/codex_control.rs`
+- `apps/autopilot-deprecated/src/codex_control.rs`
   - Auto-response helpers for server-initiated requests.
-- `apps/autopilot-desktop/src/runtime_codex_proto.rs`
+- `apps/autopilot-deprecated/src/runtime_codex_proto.rs`
   - Runtime sync protocol parsing for shared worker event streams.
-- `apps/autopilot-desktop/src/runtime_auth.rs`
-- `apps/autopilot-desktop/src/sync_apply_engine.rs`
-- `apps/autopilot-desktop/src/sync_checkpoint_store.rs`
-- `apps/autopilot-desktop/src/sync_lifecycle.rs`
+- `apps/autopilot-deprecated/src/runtime_auth.rs`
+- `apps/autopilot-deprecated/src/sync_apply_engine.rs`
+- `apps/autopilot-deprecated/src/sync_checkpoint_store.rs`
+- `apps/autopilot-deprecated/src/sync_lifecycle.rs`
 
 ### Other codex-related archived artifacts
 
@@ -124,7 +124,7 @@ Keep the existing MVP desktop architecture (single app crate + lane workers) and
 
 ### Recommended integration shape
 
-1. Add a dedicated Codex worker lane in `apps/autopilot-desktop`.
+1. Add a dedicated Codex worker lane in `apps/autopilot-deprecated`.
 
 - Pattern: mirror Spark worker style (thread + internal tokio runtime + command/update channels).
 - Lane owns app-server process lifecycle and notification stream.
@@ -199,7 +199,7 @@ Required pulls/sync:
 ## Proposed Implementation Sequence
 
 1. Introduce `crates/codex-client` (restored + updated for current v2 skills/user-input types).
-2. Add `codex_lane.rs` to `apps/autopilot-desktop` with command/update channels and app-server lifecycle.
+2. Add `codex_lane.rs` to `apps/autopilot-deprecated` with command/update channels and app-server lifecycle.
 3. Replace chat submit simulation path with lane-backed turn dispatch and notification-driven transcript updates.
 4. Rewire skill pane actions to Codex `skills/list` + local `skills/` root injection via `perCwdExtraUserRoots`.
 5. Add explicit skill attachment in chat turn input (`UserInput::Skill`).

@@ -33,17 +33,17 @@ Primary docs reviewed:
 
 Primary code reviewed:
 
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/state/operations.rs`
-- `apps/autopilot-desktop/src/state/provider_runtime.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/logging.rs`
-- `apps/autopilot-desktop/src/runtime_log.rs`
-- `apps/autopilot-desktop/src/headless_compute.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/state/provider_runtime.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/logging.rs`
+- `apps/autopilot-deprecated/src/runtime_log.rs`
+- `apps/autopilot-deprecated/src/headless_compute.rs`
 
 ## Executive Summary
 
@@ -51,7 +51,7 @@ The NIP-90 compute lane in this tree is substantially real. It is not a mock mar
 
 The strongest parts of the current implementation are:
 
-- the app-owned product orchestration stays mostly within `apps/autopilot-desktop`, which matches `docs/OWNERSHIP.md`,
+- the app-owned product orchestration stays mostly within `apps/autopilot-deprecated`, which matches `docs/OWNERSHIP.md`,
 - payment truth is wallet-authoritative rather than inferred from optimistic relay events,
 - Mission Control is now a serious operator surface rather than a decorative pane,
 - the headless compute harness is strong enough to validate the real paid loop end-to-end,
@@ -84,12 +84,12 @@ Against `docs/MVP.md`, the current tree is directionally aligned:
 
 Against `docs/OWNERSHIP.md`, the current retained shape is also mostly correct:
 
-- `apps/autopilot-desktop` owns pane orchestration, provider orchestration, payout UX, execution snapshots, and Mission Control behavior,
+- `apps/autopilot-deprecated` owns pane orchestration, provider orchestration, payout UX, execution snapshots, and Mission Control behavior,
 - reusable provider/backend identity primitives stay narrow in `openagents-provider-substrate`,
 - wallet primitives remain in `spark`,
 - and product-specific NIP-90 orchestration has not been pushed down into generic crates.
 
-This matters because the next round of cleanup should not be "move more logic into reusable crates." The next cleanup should be "make the app-owned compute flow easier to understand inside `apps/autopilot-desktop`."
+This matters because the next round of cleanup should not be "move more logic into reusable crates." The next cleanup should be "make the app-owned compute flow easier to understand inside `apps/autopilot-deprecated`."
 
 ## What Is Implemented Today
 
@@ -236,7 +236,7 @@ The current design mostly respects the MVP ownership boundary:
 
 - protocol transport stays narrow,
 - reusable crates stay reusable,
-- and product-specific orchestration remains in `apps/autopilot-desktop`.
+- and product-specific orchestration remains in `apps/autopilot-deprecated`.
 
 That is the right architecture for this stage.
 
@@ -439,7 +439,7 @@ This is the right place for app-owned projection, but it needs a cleaner domain 
 
 ### Priority 0: Introduce one app-owned compute flow snapshot
 
-Add a single app-owned domain model inside `apps/autopilot-desktop`, something like:
+Add a single app-owned domain model inside `apps/autopilot-deprecated`, something like:
 
 - `Nip90ComputeFlowSnapshot`
 - or `ComputeMarketFlowSnapshot`
@@ -454,7 +454,7 @@ It should normalize, for each active request/job:
 - next expected event
 - timer/deadline context
 
-This should stay app-owned in `apps/autopilot-desktop`. Do not push this into reusable crates.
+This should stay app-owned in `apps/autopilot-deprecated`. Do not push this into reusable crates.
 
 Why this matters:
 

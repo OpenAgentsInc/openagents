@@ -31,20 +31,20 @@ I read the current product and implementation surface in:
 - `crates/openagents-kernel-core/src/authority.rs`
 - `apps/nexus-control/src/kernel.rs`
 - `apps/nexus-control/src/lib.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/data_market_control.rs`
-- `apps/autopilot-desktop/src/data_buyer_control.rs`
-- `apps/autopilot-desktop/src/data_seller_control.rs`
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/nip28_chat_lane.rs`
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/bin/autopilot_headless_data_market.rs`
-- `apps/autopilot-desktop/src/panes/data_market.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/data_market_control.rs`
+- `apps/autopilot-deprecated/src/data_buyer_control.rs`
+- `apps/autopilot-deprecated/src/data_seller_control.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/bin/autopilot_headless_data_market.rs`
+- `apps/autopilot-deprecated/src/panes/data_market.rs`
 - `scripts/autopilot/data_market_package.py`
 - `scripts/autopilot/headless-data-market-smoke.sh`
 - `scripts/autopilot/headless-data-market-e2e.sh`
@@ -140,12 +140,12 @@ invent one from scratch.
 The desktop app, `autopilotctl`, and the no-window host all share the same
 state machine and control surface:
 
-- `apps/autopilot-desktop/src/data_seller_control.rs`
-- `apps/autopilot-desktop/src/data_buyer_control.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/bin/autopilot_headless_data_market.rs`
+- `apps/autopilot-deprecated/src/data_seller_control.rs`
+- `apps/autopilot-deprecated/src/data_buyer_control.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/bin/autopilot_headless_data_market.rs`
 
 That is good news for DS integration. We only need to change one real flow.
 
@@ -154,8 +154,8 @@ That is good news for DS integration. We only need to change one real flow.
 The live access path is built around:
 
 - `crates/nostr/core/src/nip90/data_vending.rs`
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/data_buyer_control.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/data_buyer_control.rs`
 
 This code is not "wrong". It is just narrower than DS:
 
@@ -174,7 +174,7 @@ around it.
 
 ### 1. The buyer request model is NIP-90-native, not DS-native
 
-`apps/autopilot-desktop/src/data_buyer_control.rs` builds a
+`apps/autopilot-deprecated/src/data_buyer_control.rs` builds a
 `DataVendingRequest` directly and publishes a signed `kind 5960` event.
 
 Important properties of the current buyer request:
@@ -210,7 +210,7 @@ addressable event coordinates, not just an opaque asset-ref string param.
 
 ### 3. Seller intake and validation are NIP-90-specific
 
-`apps/autopilot-desktop/src/provider_nip90_lane.rs` does all of the following:
+`apps/autopilot-deprecated/src/provider_nip90_lane.rs` does all of the following:
 
 - parses incoming requests as `JobRequest`
 - tries to decode `DataVendingRequest`
@@ -224,7 +224,7 @@ provider", not "I publish DS listings and optional DS-DVM fulfillment".
 
 ### 4. Seller fulfillment publishes NIP-90 feedback and result events
 
-`apps/autopilot-desktop/src/data_seller_control.rs`:
+`apps/autopilot-deprecated/src/data_seller_control.rs`:
 
 - builds `payment-required` feedback as NIP-90
 - builds delivery results as NIP-90 `DataVendingResult`
@@ -235,7 +235,7 @@ sees the NIP-90 request/feedback/result loop.
 
 ### 5. Seller request evaluation is singleton inventory, not market inventory
 
-The seller-side evaluation logic in `apps/autopilot-desktop/src/app_state.rs`
+The seller-side evaluation logic in `apps/autopilot-deprecated/src/app_state.rs`
 does not evaluate against a real inventory index.
 
 It evaluates against:
@@ -316,7 +316,7 @@ knows enough to derive a stable DS `d` tag and dataset scope id.
 
 ### Visibility and sensitivity intent already exist
 
-`apps/autopilot-desktop/src/app_state.rs` already models:
+`apps/autopilot-deprecated/src/app_state.rs` already models:
 
 - `targeted_only`
 - `operator_only`
@@ -340,8 +340,8 @@ look.
 The repo already has:
 
 - `crates/nostr/core/src/nip28.rs`
-- `apps/autopilot-desktop/src/nip28_chat_lane.rs`
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs`
+- `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
 
 So the repo can already parse, project, and publish NIP-28 channels and
 messages. The missing piece is dataset-aware channel creation and discovery.
@@ -444,12 +444,12 @@ reference.
 
 Three concrete issues block DS chat integration today:
 
-1. `apps/autopilot-desktop/src/input/actions.rs` creates a standard NIP-28
+1. `apps/autopilot-deprecated/src/input/actions.rs` creates a standard NIP-28
    kind-40 channel with only name/about metadata. It cannot attach DS `a` tags.
-2. `apps/autopilot-desktop/src/app_state/chat_projection.rs` projects channel
+2. `apps/autopilot-deprecated/src/app_state/chat_projection.rs` projects channel
    metadata but does not preserve dataset/offer reference tags as first-class
    channel properties.
-3. `apps/autopilot-desktop/src/nip28_chat_lane.rs` subscribes only to the
+3. `apps/autopilot-deprecated/src/nip28_chat_lane.rs` subscribes only to the
    configured main channel and optional team channel. It is not a dataset
    discussion discovery lane.
 
@@ -592,11 +592,11 @@ Why this phase matters:
 
 Files:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/data_seller_control.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/data_seller_control.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
 - `scripts/autopilot/data_market_package.py`
 
 Recommended behavior:
@@ -627,8 +627,8 @@ fields:
 
 Files:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/data_market_control.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/data_market_control.rs`
 - possibly a new seller inventory helper module
 
 Required changes:
@@ -646,10 +646,10 @@ like a one-item demo lane.
 
 Files:
 
-- `apps/autopilot-desktop/src/data_market_control.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/panes/data_market.rs`
-- `apps/autopilot-desktop/src/data_buyer_control.rs`
+- `apps/autopilot-deprecated/src/data_market_control.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/panes/data_market.rs`
+- `apps/autopilot-deprecated/src/data_buyer_control.rs`
 - likely a new relay catalog lane module
 
 Add a relay-backed catalog projection for:
@@ -673,10 +673,10 @@ Files:
 
 - `crates/nostr/core/src/nip90/data_vending.rs`
 - or new DS DVM helper files under `crates/nostr/core/src/nip_ds/`
-- `apps/autopilot-desktop/src/data_buyer_control.rs`
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/data_seller_control.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/data_buyer_control.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/data_seller_control.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
 
 Recommended change:
 
@@ -715,11 +715,11 @@ Reason:
 
 Files:
 
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/nip28_chat_lane.rs`
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 
 Required changes:
 
@@ -748,27 +748,27 @@ like this:
 5. `crates/openagents-kernel-core/src/data_contracts.rs`: wire proto roundtrip
 6. `apps/nexus-control/src/kernel.rs`: persist DS/Nostr publication refs
 7. `apps/nexus-control/src/lib.rs`: expose new proto fields cleanly
-8. `apps/autopilot-desktop/src/app_state.rs`: replace singleton seller
+8. `apps/autopilot-deprecated/src/app_state.rs`: replace singleton seller
    inventory assumptions
-9. `apps/autopilot-desktop/src/data_seller_control.rs`: dual-publish kernel and
+9. `apps/autopilot-deprecated/src/data_seller_control.rs`: dual-publish kernel and
    DS
-10. `apps/autopilot-desktop/src/data_buyer_control.rs`: buyer discovery and
+10. `apps/autopilot-deprecated/src/data_buyer_control.rs`: buyer discovery and
     request from DS coordinates
-11. `apps/autopilot-desktop/src/provider_nip90_lane.rs`: DS-aware fulfillment
+11. `apps/autopilot-deprecated/src/provider_nip90_lane.rs`: DS-aware fulfillment
     matching
-12. `apps/autopilot-desktop/src/data_market_control.rs`: authority plus relay
+12. `apps/autopilot-deprecated/src/data_market_control.rs`: authority plus relay
     catalog merge
-13. `apps/autopilot-desktop/src/panes/data_market.rs`: show DS listing/offer
+13. `apps/autopilot-deprecated/src/panes/data_market.rs`: show DS listing/offer
     state, not only kernel snapshot rows
-14. `apps/autopilot-desktop/src/input/tool_bridge.rs`: add DS discovery,
+14. `apps/autopilot-deprecated/src/input/tool_bridge.rs`: add DS discovery,
     publication, and discussion-channel tools
-15. `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`: expose the same
+15. `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`: expose the same
     new typed tools to the in-app agent lane
-16. `apps/autopilot-desktop/src/input/actions.rs`: allow DS-tagged NIP-28
+16. `apps/autopilot-deprecated/src/input/actions.rs`: allow DS-tagged NIP-28
     channel creation
-17. `apps/autopilot-desktop/src/nip28_chat_lane.rs`: dataset channel discovery
+17. `apps/autopilot-deprecated/src/nip28_chat_lane.rs`: dataset channel discovery
     and subscriptions
-18. `apps/autopilot-desktop/src/app_state/chat_projection.rs`: preserve DS
+18. `apps/autopilot-deprecated/src/app_state/chat_projection.rs`: preserve DS
     reference tags on channels
 19. `scripts/autopilot/data_market_package.py`: add DS helper outputs
 20. `scripts/autopilot/headless-data-market-*.sh`: assert DS publishes and DS

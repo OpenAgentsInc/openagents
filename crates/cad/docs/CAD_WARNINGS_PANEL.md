@@ -2,9 +2,9 @@
 
 CAD warning UI integration is implemented in:
 
-- `apps/autopilot-desktop/src/input/reducers/cad.rs`
-- `apps/autopilot-desktop/src/panes/cad.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/input/reducers/cad.rs`
+- `apps/autopilot-deprecated/src/panes/cad.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
 
 ## Behavior
 

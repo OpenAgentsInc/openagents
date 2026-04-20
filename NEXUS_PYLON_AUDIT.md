@@ -21,8 +21,8 @@ Repo implementation:
 - `apps/nexus-control/src/economy.rs`
 - `apps/pylon/src/lib.rs`
 - `apps/pylon-tui/src/lib.rs`
-- `apps/autopilot-desktop/src/starter_demand_client.rs`
-- `apps/autopilot-desktop/src/sync_bootstrap.rs`
+- `apps/autopilot-deprecated/src/starter_demand_client.rs`
+- `apps/autopilot-deprecated/src/sync_bootstrap.rs`
 
 Repo docs:
 
@@ -254,7 +254,7 @@ This is not a generic "OpenAgents provider" proof system. It is explicitly an `A
 
 ### 3.3 Desktop has the hosted Nexus client path
 
-`apps/autopilot-desktop` contains the client code for the hosted Nexus control plane:
+`apps/autopilot-deprecated` contains the client code for the hosted Nexus control plane:
 
 - `sync_bootstrap.rs` calls `/api/session/desktop` and `/api/sync/token`
 - `starter_demand_client.rs` calls `/api/starter-demand/*`

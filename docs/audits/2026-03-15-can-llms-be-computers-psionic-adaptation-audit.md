@@ -287,7 +287,7 @@ the exact class of truths the article depends on:
 
 This does **not** belong in:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
   - product UX and orchestration, not framework-core execution
 - kernel or Nexus authority
   - accepted outcome and settlement truth, not model runtime internals

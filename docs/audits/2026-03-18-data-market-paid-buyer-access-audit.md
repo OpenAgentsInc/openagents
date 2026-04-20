@@ -63,7 +63,7 @@ Before the fix:
 
 Fix:
 
-- `apps/autopilot-desktop/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
 - Data Market requests now allow invoice-ready payment selection before the result event exists
 
 Regression:
@@ -83,9 +83,9 @@ That was the central reason the earlier proof was not good enough.
 
 Fix:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input.rs`
 
 The seller pane now keeps a payment-evidence refresh timer while a request is in `AwaitingPayment` and no `payment_pointer` has been observed yet. That queues wallet refreshes automatically until the seller sees the settled Lightning receive.
 
@@ -105,7 +105,7 @@ That made debugging much harder because it erased whether the request had:
 
 Fix:
 
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
 
 Expired requests now preserve matched context in the summary.
 
@@ -119,7 +119,7 @@ During live runs, Spark-side invoice creation could fail transiently.
 
 Fix:
 
-- `apps/autopilot-desktop/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
 
 The wallet layer now retries transient invoice-creation failures before surfacing a hard error.
 
@@ -134,7 +134,7 @@ Repeated publish attempts against the same asset/grant identity could come back 
 
 Fix:
 
-- `apps/autopilot-desktop/src/data_seller_control.rs`
+- `apps/autopilot-deprecated/src/data_seller_control.rs`
 
 On kernel idempotency conflict, the seller publish path now rehydrates the existing authority object instead of failing the flow outright.
 
@@ -164,7 +164,7 @@ Root cause:
 
 Fix:
 
-- `apps/autopilot-desktop/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
 
 Changes:
 

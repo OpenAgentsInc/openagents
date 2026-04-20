@@ -26,13 +26,13 @@ Primary docs reviewed:
 
 Primary code reviewed:
 
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/state/job_inbox.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/state/job_inbox.rs`
 - `crates/openagents-provider-substrate/src/lib.rs`
 
 ## Executive Summary
@@ -65,7 +65,7 @@ So the confusing behavior in the log is real. It is not just noisy logging. The 
 
 ### 1. Relay lane state
 
-Owned by `apps/autopilot-desktop/src/provider_nip90_lane.rs`.
+Owned by `apps/autopilot-deprecated/src/provider_nip90_lane.rs`.
 
 Important modes:
 
@@ -92,7 +92,7 @@ Practical consequence:
 
 ### 2. Provider runtime mode
 
-Owned by `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs` and derived through `crates/openagents-provider-substrate/src/lib.rs`.
+Owned by `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs` and derived through `crates/openagents-provider-substrate/src/lib.rs`.
 
 Important modes shown in UI:
 
@@ -113,7 +113,7 @@ Practical consequence:
 
 ### 3. Active job lifecycle
 
-Owned by `apps/autopilot-desktop/src/input/reducers/jobs.rs` and `apps/autopilot-desktop/src/app_state.rs`.
+Owned by `apps/autopilot-deprecated/src/input/reducers/jobs.rs` and `apps/autopilot-deprecated/src/app_state.rs`.
 
 Important stages:
 

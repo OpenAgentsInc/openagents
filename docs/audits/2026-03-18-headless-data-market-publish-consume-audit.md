@@ -273,14 +273,14 @@ one truth path.
 
 ## Files that now matter most
 
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/data_buyer_control.rs`
-- `apps/autopilot-desktop/src/data_seller_control.rs`
-- `apps/autopilot-desktop/src/nip90_compute_semantics.rs`
-- `apps/autopilot-desktop/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/data_buyer_control.rs`
+- `apps/autopilot-deprecated/src/data_seller_control.rs`
+- `apps/autopilot-deprecated/src/nip90_compute_semantics.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
 - `scripts/autopilot/headless-data-market-e2e.sh`
 - `scripts/autopilot/verify-data-market-cli-headless.sh`
 - `docs/headless-data-market.md`

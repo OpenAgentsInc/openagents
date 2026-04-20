@@ -1,10 +1,10 @@
 # Jira Tickets — NIP-28 Group Chat Performance
 
-Use this as the current issue breakdown for managed NIP-28 group chat performance work in `apps/autopilot-desktop`.
+Use this as the current issue breakdown for managed NIP-28 group chat performance work in `apps/autopilot-deprecated`.
 
 This backlog is based on the `2026-03-27` code review of the current reducer, lane worker, projection rebuild, and chat pane render path. It is scoped to the retained MVP codebase and follows the current crate ownership split:
 
-- keep product behavior in `apps/autopilot-desktop`
+- keep product behavior in `apps/autopilot-deprecated`
 - do not move app-specific chat workflow into `crates/wgpui` or `crates/nostr/core`
 
 This doc is intentionally narrower than the older default-channel performance notes. It covers the issues that still exist in the current tree.
@@ -105,9 +105,9 @@ even when the derived tuple is unchanged.
 
 ### Files
 
-- `apps/autopilot-desktop/src/input/reducers/mod.rs`
-- `apps/autopilot-desktop/src/nip28_chat_lane.rs`
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs`
+- `apps/autopilot-deprecated/src/input/reducers/mod.rs`
+- `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
 
 ### Notes
 
@@ -178,9 +178,9 @@ This is more expensive than duplicate no-op command traffic. Once the cursor mov
 
 ### Files
 
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs`
-- `apps/autopilot-desktop/src/input/reducers/mod.rs`
-- `apps/autopilot-desktop/src/nip28_chat_lane.rs`
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
+- `apps/autopilot-deprecated/src/input/reducers/mod.rs`
+- `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
 
 ### Notes
 
@@ -242,8 +242,8 @@ That work runs in the same reducer-driven path that is supposed to keep the app 
 
 ### Files
 
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs`
-- `apps/autopilot-desktop/src/input/reducers/mod.rs`
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
+- `apps/autopilot-deprecated/src/input/reducers/mod.rs`
 
 ### Notes
 
@@ -295,7 +295,7 @@ This is avoidable. The rebuild can derive channel-local message lists in the sam
 
 ### Files
 
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs`
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
 
 ### Notes
 
@@ -342,9 +342,9 @@ Worker-side dedupe via `fetched_kind0_pubkeys` preserves correctness, but CPU wo
 
 ### Files
 
-- `apps/autopilot-desktop/src/input/reducers/mod.rs`
-- `apps/autopilot-desktop/src/nip28_chat_lane.rs`
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs`
+- `apps/autopilot-deprecated/src/input/reducers/mod.rs`
+- `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs`
 
 ### Notes
 
@@ -398,8 +398,8 @@ This is a likely contributor to perceived lag after projection work is fixed.
 
 ### Files
 
-- `apps/autopilot-desktop/src/panes/chat.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/panes/chat.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
 
 ### Notes
 

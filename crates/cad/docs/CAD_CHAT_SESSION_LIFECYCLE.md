@@ -4,7 +4,7 @@ This document defines CAD session binding behavior for Autopilot chat threads.
 
 ## Ownership
 
-- App orchestration lives in `apps/autopilot-desktop`.
+- App orchestration lives in `apps/autopilot-deprecated`.
 - Typed intent/schema/dispatch primitives stay in `crates/cad`.
 
 ## Flow
@@ -32,7 +32,7 @@ This document defines CAD session binding behavior for Autopilot chat threads.
 
 Golden fixture:
 
-- `apps/autopilot-desktop/tests/goldens/cad_followup_parameter_edit_interaction.json`
+- `apps/autopilot-deprecated/tests/goldens/cad_followup_parameter_edit_interaction.json`
 
 Covered scripted path:
 

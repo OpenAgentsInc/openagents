@@ -100,11 +100,11 @@ The code and docs checked for this audit were:
 - `crates/openagents-kernel-core/src/compute.rs`
 - `crates/openagents-kernel-core/src/compute_benchmarks.rs`
 - `crates/openagents-provider-substrate/src/lib.rs`
-- `apps/autopilot-desktop/src/apple_fm_bridge.rs`
-- `apps/autopilot-desktop/src/panes/apple_fm_workbench.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/research_control.rs`
+- `apps/autopilot-deprecated/src/apple_fm_bridge.rs`
+- `apps/autopilot-deprecated/src/panes/apple_fm_workbench.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/research_control.rs`
 - `swift/foundation-bridge/Sources/foundation-bridge/*`
 
 ## What Is Already Proven
@@ -175,7 +175,7 @@ There is already meaningful reusable substrate in repo:
     object model
 - `apps/nexus-control`
   - generic persistence for training runs and accepted outcomes
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
   - training read-model projection through `desktop_control`
 
 So the remaining work is not "invent train or authority from zero." It is
@@ -191,16 +191,16 @@ adapter lifecycle or training workflow truth.
 
 Concrete evidence:
 
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
   - `AppleFmCommand` currently exposes only `Refresh` and `SmokeTest`
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
   - `DesktopControlAppleFmStatus` only carries readiness-style fields:
     `reachable`, `ready`, `model_available`, `ready_model`, `bridge_status`,
     `last_action`, and `last_error`
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
   - `DesktopControlActionRequest` only exposes `RefreshAppleFm` and
     `RunAppleFmSmokeTest` for the Apple FM lane
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
   - `DesktopControlTrainingStatus` is a projected read model over generic
     authority truth, not an Apple training control plane
 
@@ -341,7 +341,7 @@ Concrete evidence:
     validation posture
 - `apps/nexus-control/src/kernel.rs`
   - generic create, finalize, and accepted-outcome paths already exist
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
   - desktop already projects generic training runs and accepted outcomes
 
 What that means:
@@ -365,7 +365,7 @@ Concrete evidence:
   - `ProviderComputeProduct` includes `AppleFoundationModelsInference`
   - there is no Apple adapter-hosting product family there
   - provider product derivation is built around current visible products only
-- `apps/autopilot-desktop/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
   - compute-family drafting includes generic `training` and `adapter_hosting`
     labels, but that is not the same as a truthful Apple product derivation
 - `docs/kernel/markets/compute-market.md`

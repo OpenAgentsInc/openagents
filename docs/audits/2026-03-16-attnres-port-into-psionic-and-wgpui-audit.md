@@ -54,9 +54,9 @@ Psionic/OpenAgents sources reviewed:
 - `crates/psionic/psionic-train/src/core_loop.rs`
 - `crates/psionic/psionic-train/src/optimizer.rs`
 - `crates/wgpui/src/components/hud/heatmap.rs`
-- `apps/autopilot-desktop/src/panes/psionic_viz.rs`
-- `apps/autopilot-desktop/src/panes/frame_debugger.rs`
-- `apps/autopilot-desktop/src/panes/key_ledger.rs`
+- `apps/autopilot-deprecated/src/panes/psionic_viz.rs`
+- `apps/autopilot-deprecated/src/panes/frame_debugger.rs`
+- `apps/autopilot-deprecated/src/panes/key_ledger.rs`
 
 Additional Burn sources reviewed for prerequisite planning:
 
@@ -116,7 +116,7 @@ The correct owner split is:
   checkpoints, optimizer wiring, and train receipts
 - `crates/psionic/psionic-eval` for parity, property, differential, and
   benchmark coverage
-- `apps/autopilot-desktop` for the WGPUI "AttnRes Lab" pane and control flow
+- `apps/autopilot-deprecated` for the WGPUI "AttnRes Lab" pane and control flow
 - `crates/wgpui` only for generic visualization primitives that become
   demonstrably reusable after the app port exists
 
@@ -274,7 +274,7 @@ runtime truth OpenAgents should avoid.
 | fixtures JSON | `crates/psionic/fixtures/attnres/` | Keeps parity fixtures next to other Psionic-owned fixtures |
 | Burn record serialization | replace with Psionic-native `safetensors` plus JSON manifest in `psionic-models`; optional one-shot Burn import tool in `psionic-research` or gated bin | Burn should not become a long-lived runtime dependency of Psionic |
 | `compare_residuals.rs` and `visualize_weights.rs` narrative programs | `crates/psionic/psionic-research` or `psionic-eval` examples | These are experiment drivers and reports, not app UX and not core runtime |
-| `demo_tui.rs` | `apps/autopilot-desktop/src/panes/attnres_lab.rs` plus app state/reducers | The interactive visual experience is app-owned product UX |
+| `demo_tui.rs` | `apps/autopilot-deprecated/src/panes/attnres_lab.rs` plus app state/reducers | The interactive visual experience is app-owned product UX |
 | `web-demo` visual language | use as visual reference only for WGPUI pane; do not port the duplicate WASM engine | One model runtime should feed all views |
 
 ## Burn To Psionic Gap Analysis
@@ -602,9 +602,9 @@ Goal:
 
 Recommended app-owned files:
 
-- `apps/autopilot-desktop/src/panes/attnres_lab.rs`
-- `apps/autopilot-desktop/src/attnres_lab_control.rs`
-- `apps/autopilot-desktop/src/input/reducers/attnres_lab.rs`
+- `apps/autopilot-deprecated/src/panes/attnres_lab.rs`
+- `apps/autopilot-deprecated/src/attnres_lab_control.rs`
+- `apps/autopilot-deprecated/src/input/reducers/attnres_lab.rs`
 - state additions in app-owned pane state modules and registry wiring
 
 Recommended UI rule:

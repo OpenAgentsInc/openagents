@@ -23,7 +23,7 @@ earn loop, not Apple adapter training as a primary product loop.
 
 Per `docs/OWNERSHIP.md`, reusable training substrate belongs in
 `crates/psionic/*`, while operator flow and UX belong in
-`apps/autopilot-desktop`.
+`apps/autopilot-deprecated`.
 
 This audit is therefore a Psionic and operator-readiness document, not a claim
 that Apple adapter training should replace the current MVP focus.
@@ -49,7 +49,7 @@ Repo sources:
 - `crates/psionic/psionic-train/src/apple_adapter.rs`
 - `crates/psionic/psionic-eval/src/apple_adapter.rs`
 - `crates/psionic/psionic-data/src/apple_adapter.rs`
-- `apps/autopilot-desktop/src/apple_adapter_training_control.rs`
+- `apps/autopilot-deprecated/src/apple_adapter_training_control.rs`
 - `crates/psionic/fixtures/apple_adapter/datasets/*`
 
 External reference sources:
@@ -101,7 +101,7 @@ So the correct near-term answer is:
 ## 1. The repo does have a narrow Apple operator lane now
 
 `TRAIN_SYSTEM.md`, `docs/headless-compute.md`, and
-`apps/autopilot-desktop/src/apple_adapter_training_control.rs` are consistent
+`apps/autopilot-deprecated/src/apple_adapter_training_control.rs` are consistent
 about the current operator story:
 
 - import train and held-out datasets
@@ -131,7 +131,7 @@ the honest answer is:
 
 ## 3. The current desktop operator flow still injects synthetic lineage
 
-`apps/autopilot-desktop/src/apple_adapter_training_control.rs` currently:
+`apps/autopilot-deprecated/src/apple_adapter_training_control.rs` currently:
 
 - hard-codes a base-model signature
 - hard-codes tokenizer and prompt-shaping digests

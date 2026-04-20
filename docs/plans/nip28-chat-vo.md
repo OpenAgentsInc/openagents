@@ -267,7 +267,7 @@ But that list is too narrow. Other likely possibilities include:
 The repo clearly has:
 - identity primitives in `crates/nostr/core/src/identity.rs`
 - NIP-42 primitives in `crates/nostr/core/src/nip42.rs`
-- publish ack/error handling in `apps/autopilot-desktop/src/nip28_chat_lane.rs`
+- publish ack/error handling in `apps/autopilot-deprecated/src/nip28_chat_lane.rs`
 
 What’s missing from the assessment is the need for **explicit diagnostics UX**, not just protocol support.
 
@@ -625,4 +625,4 @@ After this PRD ships, the next PRD should cover:
 - recipient relay compatibility
 - private-room identity and trust UX
 
-If you want, I can turn this next into a **PRD outline with requirements, non-goals, success metrics, and acceptance criteria** tailored to `apps/autopilot-desktop`.
+If you want, I can turn this next into a **PRD outline with requirements, non-goals, success metrics, and acceptance criteria** tailored to `apps/autopilot-deprecated`.

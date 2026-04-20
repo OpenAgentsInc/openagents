@@ -29,7 +29,7 @@ anchors the corpus to:
 - `OpenAgentsInc/psionic/docs/ARCHITECTURE.md`
 - `docs/headless-compute.md`
 - `docs/kernel/compute-training-authority.md`
-- `apps/autopilot-desktop/src/apple_adapter_training_control.rs`
+- `apps/autopilot-deprecated/src/apple_adapter_training_control.rs`
 - `crates/openagents-provider-substrate/src/lib.rs`
 
 ## Split Policy

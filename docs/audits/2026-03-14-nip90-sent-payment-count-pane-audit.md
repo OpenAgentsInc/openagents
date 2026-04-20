@@ -41,23 +41,23 @@ Primary docs reviewed:
 
 Primary code reviewed:
 
-- `apps/autopilot-desktop/src/state/nip90_payment_facts.rs`
-- `apps/autopilot-desktop/src/nip90_compute_flow.rs`
-- `apps/autopilot-desktop/src/state/operations.rs`
-- `apps/autopilot-desktop/src/input/reducers/wallet.rs`
-- `apps/autopilot-desktop/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/state/nip90_payment_facts.rs`
+- `apps/autopilot-deprecated/src/nip90_compute_flow.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/input/reducers/wallet.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
 - `crates/spark/src/wallet.rs`
-- `apps/autopilot-desktop/src/panes/buy_mode.rs`
-- `apps/autopilot-desktop/src/panes/key_ledger.rs`
-- `apps/autopilot-desktop/src/panes/seller_earnings_timeline.rs`
-- `apps/autopilot-desktop/src/panes/settlement_atlas.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/nip90_compute_domain_events.rs`
+- `apps/autopilot-deprecated/src/panes/buy_mode.rs`
+- `apps/autopilot-deprecated/src/panes/key_ledger.rs`
+- `apps/autopilot-deprecated/src/panes/seller_earnings_timeline.rs`
+- `apps/autopilot-deprecated/src/panes/settlement_atlas.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/nip90_compute_domain_events.rs`
 
 ## Executive Summary
 
@@ -427,7 +427,7 @@ Recommended fix:
 
 Severity: low
 
-This feature belongs in `apps/autopilot-desktop`.
+This feature belongs in `apps/autopilot-deprecated`.
 
 It touches:
 
@@ -552,19 +552,19 @@ That command should read the same app-owned report substrate the UI uses.
 
 Likely touch points:
 
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/panes/mod.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/panes/<new pane>.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/panes/mod.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/panes/<new pane>.rs`
 
 ### 6. Extend control-plane visibility
 
 Likely touch points:
 
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
 - `docs/headless-compute.md`
 
 If the pane is meant to be product-real, not just local eye candy, this should be done in the same implementation slice.

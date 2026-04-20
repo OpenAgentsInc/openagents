@@ -685,7 +685,7 @@ Likely new crate families:
 
 ## Keep app/tooling responsibility in app layers
 
-`apps/autopilot-desktop`, `autopilotctl`, and future tooling crates should own:
+`apps/autopilot-deprecated`, `autopilotctl`, and future tooling crates should own:
 
 - CLI and MCP wrappers
 - local workspace setup

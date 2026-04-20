@@ -33,7 +33,7 @@ This means we do not need a new lane; we need a **tool-call execution bridge** o
 
 ### 1) Tool Bridge Layer
 
-Add a dedicated bridge in `apps/autopilot-desktop/src/input/tool_bridge.rs`:
+Add a dedicated bridge in `apps/autopilot-deprecated/src/input/tool_bridge.rs`:
 
 - Parse Codex tool call requests (`tool` + JSON `arguments`).
 - Resolve pane identifiers (`command id`, title, aliases).

@@ -18,11 +18,11 @@ Audit basis:
 - `docs/MVP.md`
 - `docs/OWNERSHIP.md`
 - `docs/codex/ROADMAP_CODEX.md`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/codex_lane.rs`
-- `apps/autopilot-desktop/src/codex_exec.rs`
-- `apps/autopilot-desktop/src/codex_remote.rs`
-- `apps/autopilot-desktop/src/openagents_dynamic_tools.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/codex_lane.rs`
+- `apps/autopilot-deprecated/src/codex_exec.rs`
+- `apps/autopilot-deprecated/src/codex_remote.rs`
+- `apps/autopilot-deprecated/src/openagents_dynamic_tools.rs`
 - `crates/codex-client/src/lib.rs`
 
 ## Bottom Line
@@ -67,7 +67,7 @@ Those remain desktop responsibilities.
 
 ## 2. Chat, threads, workspaces, and projects are app-owned state
 
-`AutopilotChatState` in `apps/autopilot-desktop/src/app_state.rs` is the center
+`AutopilotChatState` in `apps/autopilot-deprecated/src/app_state.rs` is the center
 of gravity for the coding shell.
 
 It owns:
@@ -126,7 +126,7 @@ The desktop does not embed Codex UI. It embeds a Codex runtime connection.
 
 ## 2. `codex_lane.rs` owns the live engine session integration
 
-`apps/autopilot-desktop/src/codex_lane.rs` is the main desktop-side Codex lane.
+`apps/autopilot-deprecated/src/codex_lane.rs` is the main desktop-side Codex lane.
 
 It owns:
 
@@ -152,7 +152,7 @@ instead of creating a parallel product surface.
 
 ## 3. OpenAgents-specific tools are injected from the app layer
 
-`apps/autopilot-desktop/src/openagents_dynamic_tools.rs` defines the
+`apps/autopilot-deprecated/src/openagents_dynamic_tools.rs` defines the
 product-specific dynamic tool set currently attached to Codex turns.
 
 Those tools cover OpenAgents-owned surfaces such as:
@@ -175,7 +175,7 @@ Probe should preserve that separation.
 
 ## 4. Non-interactive execution is already app-owned
 
-`apps/autopilot-desktop/src/codex_exec.rs` exposes `autopilot-codex-exec`.
+`apps/autopilot-deprecated/src/codex_exec.rs` exposes `autopilot-codex-exec`.
 
 That binary is important because it proves the current product direction is not
 "desktop only" in a naive sense. The product already wants:
@@ -190,7 +190,7 @@ Autopilot needs an app-owned or app-supervised non-interactive execution lane.
 
 ## 5. Remote supervision is also app-owned
 
-`apps/autopilot-desktop/src/codex_remote.rs` exposes the local-first remote
+`apps/autopilot-deprecated/src/codex_remote.rs` exposes the local-first remote
 companion for the same desktop runtime.
 
 The remote snapshot includes:

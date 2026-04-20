@@ -31,7 +31,7 @@ OpenAgents sources reviewed:
 - `docs/kernel/economy-kernel.md`
 - `crates/openagents-kernel-core/src/compute.rs`
 - `crates/openagents-provider-substrate/src/{sandbox.rs,sandbox_execution.rs}`
-- `apps/autopilot-desktop/src/kernel_control.rs`
+- `apps/autopilot-deprecated/src/kernel_control.rs`
 
 Cocoon sources reviewed:
 
@@ -53,7 +53,7 @@ Cocoon contracts sources reviewed:
 The current OpenAgents Prime plan is directionally right. It already points at
 the correct long-term owners:
 
-- `apps/autopilot-desktop` for operator and product control
+- `apps/autopilot-deprecated` for operator and product control
 - `crates/psionic/*` for reusable execution substrate
 - `openagents-kernel-*` plus `apps/nexus-control` for economic truth
 
@@ -85,7 +85,7 @@ The repo already models proof and environment concerns in the kernel:
 - `crates/openagents-kernel-core/src/compute.rs` carries execution kind,
   topology kind, proof posture, environment binding, attestation posture, cost
   proof posture, and delivery proof fields.
-- `apps/autopilot-desktop/src/kernel_control.rs` already publishes compute
+- `apps/autopilot-deprecated/src/kernel_control.rs` already publishes compute
   products and capacity lots into the kernel and records delivery proofs when
   jobs complete.
 - `crates/openagents-provider-substrate/src/sandbox.rs` and
@@ -391,7 +391,7 @@ available through the same app-owned control plane the product already uses.
 
 ## Ownership Map For The Adaptation
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
   - own operator presentation, `autopilotctl`, health views, and user-facing
     trust/readiness state
 - `crates/openagents-provider-substrate`

@@ -16,9 +16,9 @@ This audit answers four questions:
 Sources reviewed:
 
 - current repo:
-  - `apps/autopilot-desktop/src/app_state.rs`
-  - `apps/autopilot-desktop/src/sync_bootstrap.rs`
-  - `apps/autopilot-desktop/src/starter_demand_client.rs`
+  - `apps/autopilot-deprecated/src/app_state.rs`
+  - `apps/autopilot-deprecated/src/sync_bootstrap.rs`
+  - `apps/autopilot-deprecated/src/starter_demand_client.rs`
   - `apps/nexus-control/src/lib.rs`
   - `apps/nexus-relay/src/lib.rs`
   - `docs/MVP.md`
@@ -79,7 +79,7 @@ Current retained defaults are still set to `wss://relay.openagents.dev`.
 
 Primary examples:
 
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
   - `DEFAULT_NEXUS_PRIMARY_RELAY_URL = "wss://relay.openagents.dev"`
 - `apps/nexus-control/src/lib.rs`
   - `DEFAULT_HOSTED_NEXUS_RELAY_URL = "wss://relay.openagents.dev"`

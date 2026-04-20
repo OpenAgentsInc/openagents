@@ -19,7 +19,7 @@ What is real today:
 
 What is not true today:
 
-- `apps/autopilot-desktop` has no mic capture, no STT worker, no TTS worker, no voice state, no chat mic button, and no voice control-plane surface
+- `apps/autopilot-deprecated` has no mic capture, no STT worker, no TTS worker, no voice state, no chat mic button, and no voice control-plane surface
 - the retained local runtime seams are text-only
 - the retained desktop Codex lane does not expose `thread/realtime/appendAudio`
 - the active GCP project does not yet have the dedicated speech APIs enabled
@@ -44,7 +44,7 @@ Per `docs/MVP.md`, voice is not a core MVP gate. The MVP gate is still:
 
 That means voice should be treated as a buy-side capability upgrade, not a new authority boundary or a new provider-market product.
 
-Per `docs/OWNERSHIP.md`, the right owner is `apps/autopilot-desktop`:
+Per `docs/OWNERSHIP.md`, the right owner is `apps/autopilot-deprecated`:
 
 - mic capture
 - STT/TTS orchestration
@@ -72,16 +72,16 @@ Primary retained-tree files inspected:
 - `docs/v01.md`
 - `docs/headless-compute.md`
 - `docs/transcripts/214.md`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/panes/chat.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/codex_lane.rs`
-- `apps/autopilot-desktop/src/apple_fm_bridge.rs`
-- `apps/autopilot-desktop/src/local_inference_runtime.rs`
-- `apps/autopilot-desktop/src/local_runtime_capabilities.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/panes/chat.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/codex_lane.rs`
+- `apps/autopilot-deprecated/src/apple_fm_bridge.rs`
+- `apps/autopilot-deprecated/src/local_inference_runtime.rs`
+- `apps/autopilot-deprecated/src/local_runtime_capabilities.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 - `crates/codex-client/src/client.rs`
 - `crates/codex-client/src/types/thread.rs`
 - `crates/wgpui/Cargo.toml`
@@ -134,14 +134,14 @@ The question is which implementation path gets there without destabilizing the r
 
 ### 1. Chat is text-only
 
-`apps/autopilot-desktop/src/app_state.rs` defines `ChatPaneInputs` with only:
+`apps/autopilot-deprecated/src/app_state.rs` defines `ChatPaneInputs` with only:
 
 - `composer`
 - `thread_search`
 
 There is no voice input state, no selected microphone, no recording state, no speaking state, no partial transcript buffer, and no voice settings.
 
-`apps/autopilot-desktop/src/panes/chat.rs` paints:
+`apps/autopilot-deprecated/src/panes/chat.rs` paints:
 
 - the transcript
 - the composer
@@ -151,7 +151,7 @@ There is no mic button, no hold-to-talk affordance, no waveform, no live transcr
 
 ### 2. The local runtime seams are text seams
 
-`apps/autopilot-desktop/src/local_inference_runtime.rs` is app-owned and well-shaped, but it is intentionally text generation only.
+`apps/autopilot-deprecated/src/local_inference_runtime.rs` is app-owned and well-shaped, but it is intentionally text generation only.
 
 The core job shape is:
 
@@ -169,12 +169,12 @@ The completion shape is:
 That is a good seam for MVP text inference.
 It is not a speech runtime seam.
 
-`apps/autopilot-desktop/src/apple_fm_bridge.rs` is also text-generation oriented.
+`apps/autopilot-deprecated/src/apple_fm_bridge.rs` is also text-generation oriented.
 It supervises the Swift bridge and handles chat/text/session operations, but it does not provide speech recognition or TTS.
 
 ### 3. The desktop control plane has no voice surface
 
-`docs/headless-compute.md`, `apps/autopilot-desktop/src/desktop_control.rs`, and `apps/autopilot-desktop/src/bin/autopilotctl.rs` expose:
+`docs/headless-compute.md`, `apps/autopilot-deprecated/src/desktop_control.rs`, and `apps/autopilot-deprecated/src/bin/autopilotctl.rs` expose:
 
 - local runtime
 - Apple FM
@@ -199,7 +199,7 @@ If voice lands, it should eventually be visible here too.
 - `thread/realtime/appendText`
 - `thread/realtime/stop`
 
-But `apps/autopilot-desktop/src/codex_lane.rs` only exposes:
+But `apps/autopilot-deprecated/src/codex_lane.rs` only exposes:
 
 - `ThreadRealtimeStart`
 - `ThreadRealtimeAppendText`
@@ -220,7 +220,7 @@ This is the single clearest “full voice comms” gap in the current app:
 - a rodio-backed audio engine
 - a `BleepCategory::Voice`
 
-But `apps/autopilot-desktop/Cargo.toml` currently depends on:
+But `apps/autopilot-deprecated/Cargo.toml` currently depends on:
 
 - `wgpui` with `default-features = false`
 - `features = ["desktop"]`
@@ -475,16 +475,16 @@ This is the right later phase because it depends on gaps that are still real:
 
 ### Architecture Shape
 
-The new implementation should stay app-owned under `apps/autopilot-desktop`.
+The new implementation should stay app-owned under `apps/autopilot-deprecated`.
 
 Suggested module shape:
 
-- `apps/autopilot-desktop/src/voice/mod.rs`
-- `apps/autopilot-desktop/src/voice/state.rs`
-- `apps/autopilot-desktop/src/voice/worker.rs`
-- `apps/autopilot-desktop/src/voice/gcloud.rs`
-- `apps/autopilot-desktop/src/voice/audio_capture.rs`
-- `apps/autopilot-desktop/src/voice/audio_playback.rs`
+- `apps/autopilot-deprecated/src/voice/mod.rs`
+- `apps/autopilot-deprecated/src/voice/state.rs`
+- `apps/autopilot-deprecated/src/voice/worker.rs`
+- `apps/autopilot-deprecated/src/voice/gcloud.rs`
+- `apps/autopilot-deprecated/src/voice/audio_capture.rs`
+- `apps/autopilot-deprecated/src/voice/audio_playback.rs`
 
 Suggested command/update pattern:
 
@@ -526,25 +526,25 @@ This matters for replay safety:
 
 Phase 1 should touch app-owned files only:
 
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
   - add voice session state
   - add chat voice input state
   - add settings fields for enable/disable and selected voice
-- `apps/autopilot-desktop/src/panes/chat.rs`
+- `apps/autopilot-deprecated/src/panes/chat.rs`
   - add mic button
   - add recording/transcribing/speaking indicators
   - add optional replay button for spoken assistant output
-- `apps/autopilot-desktop/src/input.rs`
+- `apps/autopilot-deprecated/src/input.rs`
   - add pointer and keyboard handling for press-to-talk
   - add escape/cancel behavior
-- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
   - start recording
   - stop recording
   - submit transcript
   - play/stop spoken reply
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
   - later, expose voice status and test hooks
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
   - later, add `voice status`, `voice transcribe`, and `voice speak` commands for verification
 
 Files that should not be changed first:
@@ -661,7 +661,7 @@ That is the right interpretation for the next implementation step.
 2. Decide whether the first build is:
    - internal direct-to-GCP via ADC
    - or proxy-backed via Cloud Run
-3. Add an app-owned voice worker in `apps/autopilot-desktop`.
+3. Add an app-owned voice worker in `apps/autopilot-deprecated`.
 4. Add a chat-pane mic button and hold-to-talk flow.
 5. Submit final transcript text into the existing chat pipeline.
 6. Add spoken playback of final assistant replies.

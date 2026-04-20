@@ -171,7 +171,7 @@ This spec aligns to current MVP authority docs:
 
 Ownership constraints:
 
-- Product workflow/UI behavior lives in `apps/autopilot-desktop`.
+- Product workflow/UI behavior lives in `apps/autopilot-deprecated`.
 - `crates/wgpui` remains product-agnostic UI infrastructure.
 - Wallet primitives remain in `crates/spark`.
 
@@ -405,9 +405,9 @@ This is the full issue set required to implement Autopilot Earn end-to-end from 
 
 Backroom review completed before this list. Relevant candidate restore sources include:
 
-- `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-desktop/src/provider_domain.rs`
-- `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-desktop/src/wallet_domain.rs`
-- `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-desktop/src/main.rs` (`submit_nip90_text_generation`)
+- `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-deprecated/src/provider_domain.rs`
+- `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-deprecated/src/wallet_domain.rs`
+- `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/apps/autopilot-deprecated/src/main.rs` (`submit_nip90_text_generation`)
 - `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/pylon/`
 - `/Users/christopherdavid/code/backroom/openagents-prune-20260225-205724-wgpui-mvp/crates/compute/`
 

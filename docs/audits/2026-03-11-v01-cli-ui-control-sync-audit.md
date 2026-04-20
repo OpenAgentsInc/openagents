@@ -12,7 +12,7 @@ More concretely:
 
 - what control seams already exist,
 - what is missing today,
-- what should remain app-owned in `apps/autopilot-desktop`,
+- what should remain app-owned in `apps/autopilot-deprecated`,
 - what should not be moved into shared crates,
 - and what is the smallest honest control architecture that matches the `v0.1` Mission Control-first product cut?
 
@@ -27,14 +27,14 @@ Primary docs reviewed:
 
 Primary code reviewed:
 
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/runtime_log.rs`
-- `apps/autopilot-desktop/src/codex_remote.rs`
-- `apps/autopilot-desktop/src/bin/autopilot_headless_compute.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/runtime_log.rs`
+- `apps/autopilot-deprecated/src/codex_remote.rs`
+- `apps/autopilot-deprecated/src/bin/autopilot_headless_compute.rs`
 
 ## v0.1 Product Constraint
 
@@ -157,7 +157,7 @@ That is the architectural gap to close.
 
 ### 1. The right control boundary is app-owned, not crate-generic
 
-Per `docs/OWNERSHIP.md`, this work belongs in `apps/autopilot-desktop`.
+Per `docs/OWNERSHIP.md`, this work belongs in `apps/autopilot-deprecated`.
 
 Reason:
 
@@ -291,7 +291,7 @@ Without this, control will feel racey even if the state transitions are correct.
 
 ## 1. Add an app-owned Desktop Control Runtime
 
-Add a new app-owned module under `apps/autopilot-desktop/src/`, for example:
+Add a new app-owned module under `apps/autopilot-deprecated/src/`, for example:
 
 - `desktop_control.rs`
 
@@ -510,7 +510,7 @@ The control-plane work should only be considered complete when all of these are 
 - CLI status and on-screen status agree.
 - Runtime/session logs show the same command and lifecycle truth.
 - There is no second hidden state model used only by the CLI.
-- The implementation stays inside `apps/autopilot-desktop` except for narrow reusable transport helpers if strictly necessary.
+- The implementation stays inside `apps/autopilot-deprecated` except for narrow reusable transport helpers if strictly necessary.
 
 ## What Not To Do
 

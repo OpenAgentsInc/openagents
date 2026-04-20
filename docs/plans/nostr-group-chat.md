@@ -379,7 +379,7 @@ If we use Spacetime, the invariant must be:
 
 This should respect the current repo boundaries.
 
-### `apps/autopilot-desktop`
+### `apps/autopilot-deprecated`
 
 Own:
 
@@ -562,7 +562,7 @@ Supporting material:
 
 Description:
 
-- Add the Discord-style shell in `apps/autopilot-desktop`: server/workspace rail, channel rail, transcript pane, header, and composer slot.
+- Add the Discord-style shell in `apps/autopilot-deprecated`: server/workspace rail, channel rail, transcript pane, header, and composer slot.
 - Keep the UI WGPUI-native and aligned with existing pane architecture.
 - Match the best interaction patterns from Primal without copying its visual style.
 
@@ -570,7 +570,7 @@ Supporting material:
 
 - `/Users/christopherdavid/code/primal/primal-web-app/src/pages/DirectMessages.tsx`
 - `/Users/christopherdavid/code/primal/primal-web-app/src/pages/DirectMessages.module.scss`
-- `/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/panes/chat.rs`
+- `/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/panes/chat.rs`
 - `/Users/christopherdavid/code/openagents/docs/OWNERSHIP.md`
 
 ### 7. Implement local chat projection store and replay-safe rebuild
@@ -612,7 +612,7 @@ Supporting material:
 
 - `/Users/christopherdavid/code/nips/01.md`
 - `/Users/christopherdavid/code/primal/primal-web-app/src/components/DirectMessages/DirectMessagesComposer.tsx`
-- `/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/panes/chat.rs`
+- `/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/panes/chat.rs`
 
 ### 10. Implement threaded replies, mentions, and reactions
 
@@ -669,7 +669,7 @@ Supporting material:
 
 - `/Users/christopherdavid/code/primal/primal-web-app/src/components/DirectMessages/DirectMessageParsedContent.tsx`
 - `/Users/christopherdavid/code/primal/primal-web-app/src/components/DirectMessages/DirectMessageContent.tsx`
-- `/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/panes/wallet.rs`
+- `/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/panes/wallet.rs`
 
 ### 14. Implement unread state, read cursors, and notification counts
 
@@ -723,7 +723,7 @@ Description:
 Supporting material:
 
 - `/Users/christopherdavid/code/openagents/crates/spark/src/lib.rs`
-- `/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/panes/wallet.rs`
+- `/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/panes/wallet.rs`
 - `/Users/christopherdavid/code/openagents/docs/MVP.md`
 
 ### 18. Add presence, typing, and search acceleration behind an optional Spacetime adapter

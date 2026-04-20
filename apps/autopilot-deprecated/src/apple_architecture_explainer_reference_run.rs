@@ -1000,7 +1000,7 @@ fn benchmark_behavior_addendum(sample: &AppleAdapterTrainingSample) -> &'static 
         return "Return exactly one minified JSON object that satisfies the requested schema. Do not explain the schema, do not use markdown fences, and do not include any prose before or after the JSON object.";
     }
     if !sample.tools.is_empty() {
-        return "Use every required tool before answering. Use only concrete repo-relative file paths. Prefer canonical docs under `docs/` and desktop code under `apps/autopilot-desktop/src/`. After the tool calls succeed, answer concisely with the exact `Use lookup_doc on ... and lookup_code on ... before answering.` pattern.";
+        return "Use every required tool before answering. Use only concrete repo-relative file paths. Prefer canonical docs under `docs/` and desktop code under `apps/autopilot-deprecated/src/`. After the tool calls succeed, answer concisely with the exact `Use lookup_doc on ... and lookup_code on ... before answering.` pattern.";
     }
     if system.contains("refuse exact claims") {
         return "Do not refuse generically. State that you do not have access to the up-to-date exact result from static repo files alone, and explicitly say that it will have to be checked with live runtime validation or a fresh check.";

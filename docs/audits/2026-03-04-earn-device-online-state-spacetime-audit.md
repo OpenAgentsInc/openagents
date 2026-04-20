@@ -14,20 +14,20 @@ Audit how Earn currently marks devices as "online" in `openagents`, then define 
 ## Scope Reviewed
 
 Current repo (`openagents`):
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/runtime_lanes.rs`
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/input/reducers/{sa.rs,provider_ingress.rs}`
-- `apps/autopilot-desktop/src/state/{provider_runtime.rs,operations.rs}`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/render.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/runtime_lanes.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/input/reducers/{sa.rs,provider_ingress.rs}`
+- `apps/autopilot-deprecated/src/state/{provider_runtime.rs,operations.rs}`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/render.rs`
 
 Backroom reference (`~/code/backroom/openagents-prune-20260225-205724-wgpui-mvp`):
 - `spacetime/modules/autopilot-sync/spacetimedb/src/lib.rs`
 - `spacetime/modules/autopilot-sync/README.md`
 - `crates/autopilot-spacetime/src/{client.rs,reducers.rs,schema.rs,mapping.rs,subscriptions.rs}`
-- `apps/autopilot-desktop/src/{main.rs,sync_lifecycle.rs,runtime_codex_proto.rs}`
+- `apps/autopilot-deprecated/src/{main.rs,sync_lifecycle.rs,runtime_codex_proto.rs}`
 - `scripts/spacetime/{publish-promote.sh,maincloud-handshake-smoke.sh}`
 - `docs/sync/*` (connection lifecycle, client crate, roadmap)
 
