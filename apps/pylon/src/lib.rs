@@ -5,6 +5,7 @@ mod training_trn_mapping;
 mod wallet_runtime;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
@@ -8801,7 +8802,37 @@ fn load_or_create_training_runtime_state(
     let artifact_path = training_artifact_cache_state_path(config);
     let authority_sync_path = training_authority_sync_cache_state_path(config);
     if path.exists() {
-        let mut state = load_training_runtime_state_raw(path.as_path())?;
+        let mut state = match load_training_runtime_state_raw(path.as_path()) {
+            Ok(state) => state,
+            Err(error)
+                if execution_path.exists()
+                    || artifact_path.exists()
+                    || authority_sync_path.exists() =>
+            {
+                training_trace(&format!(
+                    "recovering training runtime state from layer files after combined state load failed: {error}"
+                ));
+                let mut state = training_runtime_state_from_layers(
+                    load_training_retained_state_file(
+                        execution_path.as_path(),
+                        "training execution state",
+                    )?,
+                    load_training_retained_state_file(
+                        artifact_path.as_path(),
+                        "training artifact state",
+                    )?,
+                    load_training_retained_state_file(
+                        authority_sync_path.as_path(),
+                        "training authority sync state",
+                    )?,
+                );
+                normalize_training_runtime_state(&mut state);
+                reconcile_training_runtime_state_for_config(config, &mut state);
+                save_training_runtime_state(config, &state)?;
+                return Ok(state);
+            }
+            Err(error) => return Err(error),
+        };
         let normalized = normalize_training_runtime_state(&mut state);
         let reconciled = reconcile_training_runtime_state_for_config(config, &mut state);
         if normalized
@@ -8834,6 +8865,22 @@ fn load_or_create_training_runtime_state(
     let state = PylonTrainingRuntimeState::default();
     save_training_runtime_state(config, &state)?;
     Ok(state)
+}
+
+fn retained_state_temp_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("retained-state");
+    let timestamp_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    path.with_file_name(format!(
+        ".{file_name}.{}.{}.tmp",
+        std::process::id(),
+        timestamp_nanos
+    ))
 }
 
 fn load_training_runtime_state(path: &Path) -> Result<PylonTrainingRuntimeState> {
@@ -9005,15 +9052,28 @@ where
     let retained_value = serde_json::to_value(value)
         .with_context(|| format!("failed to encode retained {label}"))?;
     validate_redacted_retained_state(&retained_value).map_err(anyhow::Error::msg)?;
-    std::fs::write(
-        path,
+    let payload = format!(
+        "{}\n",
+        serde_json::to_string_pretty(value)
+            .with_context(|| format!("failed to serialize {label}"))?
+    );
+    let temp_path = retained_state_temp_path(path);
+    let mut temp_file = std::fs::File::create(temp_path.as_path())
+        .with_context(|| format!("failed to create temporary {label} {}", temp_path.display()))?;
+    temp_file
+        .write_all(payload.as_bytes())
+        .with_context(|| format!("failed to write temporary {label} {}", temp_path.display()))?;
+    temp_file
+        .sync_all()
+        .with_context(|| format!("failed to sync temporary {label} {}", temp_path.display()))?;
+    drop(temp_file);
+    std::fs::rename(temp_path.as_path(), path).with_context(|| {
         format!(
-            "{}\n",
-            serde_json::to_string_pretty(value)
-                .with_context(|| format!("failed to serialize {label}"))?
-        ),
-    )
-    .with_context(|| format!("failed to write {label} {}", path.display()))?;
+            "failed to atomically replace {label} {} from {}",
+            path.display(),
+            temp_path.display()
+        )
+    })?;
     Ok(())
 }
 
@@ -28523,6 +28583,93 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             runtime_state_path.exists(),
             "reloading from layer files should backfill the combined runtime-state.json compatibility blob",
+        )
+    }
+
+    #[test]
+    fn training_runtime_state_load_recovers_empty_combined_blob_from_layers()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path())?;
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        state.active_runtime = Some(training_active_runtime_fixture());
+        state.lease_cache.insert(
+            "lease.node01.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.node01.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_260_020),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(
+                    "/tmp/run.alpha/manifests/invocation_manifest.json".to_string(),
+                ),
+                runtime_manifest_digest: Some("sha256:runtime-manifest-alpha".to_string()),
+                runtime_lane_id: Some(PSION_ACTUAL_PRETRAINING_LANE_ID.to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("full_island_local_update_training".to_string()),
+                updated_at_ms: 1_762_491_200_020,
+            },
+        );
+        state
+            .closeout_journal
+            .push(super::PylonTrainingCloseoutJournalEntry {
+                sequence: 1,
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                stage: super::PylonTrainingCloseoutStage::WindowSealed,
+                challenge_id: Some("challenge.alpha".to_string()),
+                contribution_id: Some("contrib.alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                authority_assignment_state: Some("sealed".to_string()),
+                authority_window_state: Some("sealed".to_string()),
+                acceptance_state: Some("pending".to_string()),
+                payout_state: Some("pending".to_string()),
+                payout_receipt_id: None,
+                transition_reason: "stage_transition".to_string(),
+                blocking_reason: Some("waiting_for_validator_claim".to_string()),
+                observed_at_ms: 1_762_491_200_060,
+            });
+        let projected_closeout_progress = super::training_closeout_progress_from_journal_entry(
+            state
+                .closeout_journal
+                .last()
+                .expect("closeout journal entry"),
+        );
+        state.closeout_progress.insert(
+            "assign.node01.window0001::challenge.alpha".to_string(),
+            projected_closeout_progress,
+        );
+
+        save_training_runtime_state(&config, &state)?;
+        let runtime_state_path = training_runtime_state_path(&config);
+        std::fs::write(runtime_state_path.as_path(), "")?;
+
+        let recovered_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            recovered_state == state,
+            "empty combined runtime-state.json should recover from retained layer files",
+        )?;
+        let repaired_blob = std::fs::read_to_string(runtime_state_path.as_path())?;
+        ensure(
+            repaired_blob.trim_start().starts_with('{'),
+            "recovery should atomically rewrite a valid combined runtime-state.json blob",
         )
     }
 
