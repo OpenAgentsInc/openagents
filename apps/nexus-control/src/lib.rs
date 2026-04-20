@@ -21496,10 +21496,7 @@ fn build_public_stats_snapshot(
     now_unix_ms: u64,
 ) -> PublicStatsSnapshot {
     let treasury_runtime = store.treasury.public_stats(&config.treasury, now_unix_ms);
-    let training_payout_ledger_summary = store
-        .treasury
-        .status_response(&config.treasury, now_unix_ms)
-        .training_payout_ledger_summary;
+    let training_payout_ledger_summary = store.treasury.training_payout_ledger_summary();
     let training_summary = training_operator_summary_snapshot(store, now_unix_ms);
     let mut training_public_state =
         training_public_stats_snapshot(store, now_unix_ms, &training_summary);

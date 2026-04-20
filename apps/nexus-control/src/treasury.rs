@@ -2812,7 +2812,7 @@ impl TreasuryState {
         rows
     }
 
-    fn training_payout_ledger_summary(&self) -> TreasuryTrainingPayoutLedgerSummary {
+    pub(crate) fn training_payout_ledger_summary(&self) -> TreasuryTrainingPayoutLedgerSummary {
         let mut summary = TreasuryTrainingPayoutLedgerSummary::default();
 
         for record in self.payout_records_by_key.values() {
