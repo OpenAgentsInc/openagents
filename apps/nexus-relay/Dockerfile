@@ -49,7 +49,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
     if [ -n "${SCCACHE_GCS_BUCKET}" ]; then export RUSTC_WRAPPER=/usr/local/bin/sccache; fi; \
-    cargo build --locked --profile "${BUILD_PROFILE}" -p nexus-relay; \
+    cargo build --locked --profile "${BUILD_PROFILE}" -p nexus-relay -p nexus-control; \
     if [ -n "${SCCACHE_GCS_BUCKET}" ]; then sccache --show-stats || true; fi
 
 FROM deps AS builder
@@ -87,7 +87,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/var/cache/sccache \
     set -eux; \
     if [ -n "${SCCACHE_GCS_BUCKET}" ]; then export RUSTC_WRAPPER=/usr/local/bin/sccache; fi; \
-    cargo build --locked --profile "${BUILD_PROFILE}" -p nexus-relay; \
+    cargo build --locked --profile "${BUILD_PROFILE}" -p nexus-relay -p nexus-control; \
     if [ -n "${SCCACHE_GCS_BUCKET}" ]; then sccache --show-stats || true; fi
 
 FROM debian:bookworm-slim
