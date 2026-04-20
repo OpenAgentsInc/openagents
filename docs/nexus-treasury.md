@@ -441,6 +441,11 @@ export NEXUS_TREASURY_RECOVERY_REPORT_PATH=/var/lib/nexus-relay/treasury-wallet-
 scripts/deploy/nexus/09-recover-treasury-wallet.sh
 ```
 
+The production wrapper runs the `nexus-control` binary shipped inside the
+`nexus-relay` image and overrides the container entrypoint. Do not run recovery
+commands against the default relay entrypoint; that starts the relay server
+instead of executing the treasury command.
+
 The cutover path:
 
 - preserves the live wallet storage by renaming it into a rollback dir

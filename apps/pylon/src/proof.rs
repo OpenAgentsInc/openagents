@@ -3018,6 +3018,16 @@ fn critical_run_caveat_detail(observed: &ProofObservedTrainingRunDetail) -> Opti
     {
         return None;
     }
+    if observed
+        .first_caveat_id
+        .as_deref()
+        .is_some_and(|value| value == "validator_backlog")
+        && (observed.run.pending_validation_window_count > 0
+            || observed.run.validator_challenges_open > 0
+            || observed.run.validator_challenges_queued > 0)
+    {
+        return None;
+    }
     let mut parts = Vec::new();
     if let Some(title) = observed
         .first_caveat_title
@@ -3348,7 +3358,7 @@ async fn fetch_proof_training_run_detail(
     authority_base_url: &str,
     training_run_id: &str,
 ) -> Result<Option<ProofObservedTrainingRunDetail>> {
-    let url = format!("{authority_base_url}/api/training/runs/{training_run_id}");
+    let url = format!("{authority_base_url}/api/training/runs/{training_run_id}?refresh=true");
     let response = reqwest::Client::new()
         .get(url.as_str())
         .send()
@@ -5685,6 +5695,60 @@ mod tests {
             first_caveat_detail: Some(
                 "0 accepted-work payout(s) need attention // failed 24h 0 // skipped 24h 2."
                     .to_string(),
+            ),
+        };
+        let blocker = detect_proof_run_blocker(&fleet, Some(&observed));
+        assert!(blocker.is_none());
+    }
+
+    #[test]
+    fn detect_proof_run_blocker_defers_active_validator_backlog() {
+        let fleet = super::ProofFleetStatusReport {
+            configured: true,
+            namespace: "proof.caveat".to_string(),
+            mode: Some(super::ProofAuthorityMode::ProdShaped),
+            network_id: Some("trainnet.proof.caveat".to_string()),
+            run_slug: Some("proof.caveat".to_string()),
+            paths: None,
+            authority: super::ProofAuthorityStatusReport {
+                configured: true,
+                namespace: "proof.caveat".to_string(),
+                mode: Some(super::ProofAuthorityMode::ProdShaped),
+                started_at_ms: None,
+                admin_auth_configured: true,
+                treasury_enabled: true,
+                ports: None,
+                paths: None,
+                urls: None,
+                authority_process: None,
+                artifact_store_process: None,
+                probes: Vec::new(),
+                artifact_smoke: None,
+            },
+            nodes: Vec::new(),
+            launched_run: None,
+        };
+        let observed = super::ProofObservedTrainingRunDetail {
+            training_run_id: "run.cs336.a1.proof.caveat".to_string(),
+            run: super::ProofObservedRunState {
+                training_run_id: "run.cs336.a1.proof.caveat".to_string(),
+                run_status: "running".to_string(),
+                current_window_id: "window.cs336.a1.proof.caveat.0001".to_string(),
+                active_window_count: 1,
+                pending_validation_window_count: 1,
+                validator_challenges_open: 2,
+                validator_challenges_queued: 2,
+                latest_closeout_status: None,
+            },
+            windows: Vec::new(),
+            contribution_count: 1,
+            node_count: 2,
+            caveat_count: 2,
+            first_caveat_id: Some("validator_backlog".to_string()),
+            first_caveat_severity: Some("critical".to_string()),
+            first_caveat_title: Some("Validator backlog".to_string()),
+            first_caveat_detail: Some(
+                "1 pending window(s) // 2 open challenge(s) // 2 queued challenge(s).".to_string(),
             ),
         };
         let blocker = detect_proof_run_blocker(&fleet, Some(&observed));

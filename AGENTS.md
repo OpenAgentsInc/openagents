@@ -111,6 +111,10 @@ Default to:
   adapter, or seeded proof lane first. Continue to production only after the
   local harness either reproduces the problem or has a documented, deliberate
   gap that cannot be modeled safely.
+- For Dockerized Nexus operational commands, prove the actual container command
+  path locally or in a non-mutating VM probe before using it on production.
+  Do not assume appending CLI arguments to the `nexus-relay` image runs
+  `nexus-control`; use an explicit entrypoint for operator subcommands.
 - Proof evidence for these issues should include the `oa proof` command,
   namespace, `run-report.json`, `authority-state-trace.json`,
   `proof-summary.json`, first red stage, and any harness gap that had to be
