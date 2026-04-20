@@ -405,6 +405,7 @@ balance despite funded receive history.
 export NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH=/path/to/copied/treasury.mnemonic
 export NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR=/path/to/copied/treasury-wallet
 export NEXUS_CONTROL_TREASURY_STATE_PATH=/path/to/copied/treasury-state.json
+export NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS=120000
 
 cargo run -p nexus-control -- treasury recovery-report --work-dir /tmp/nexus-treasury-recovery --json
 ```
@@ -414,6 +415,9 @@ What `recovery-report` does:
 - copies the current wallet storage into `backup/current-storage`
 - copies the mnemonic and treasury state into the same recovery work dir
 - builds a fresh wallet state from the same mnemonic into `rebuilt-storage`
+- gives each isolated Spark wallet inspection up to
+  `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS` milliseconds,
+  defaulting to `120000` and clamped to 10 minutes
 - writes a machine-readable `recovery-report.json`
 - records the latest report summary in treasury state/status
 
@@ -437,6 +441,7 @@ cargo run -p nexus-control -- treasury recovery-cutover --report-path /tmp/nexus
 Production VM cutover:
 
 ```bash
+export NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS=120000
 export NEXUS_TREASURY_RECOVERY_REPORT_PATH=/var/lib/nexus-relay/treasury-wallet-recovery-<stamp>/recovery-report.json
 scripts/deploy/nexus/09-recover-treasury-wallet.sh
 ```

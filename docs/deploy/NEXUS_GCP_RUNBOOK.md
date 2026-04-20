@@ -476,6 +476,7 @@ Validated recovery/cutover flow:
 3. Set the report path and run the production cutover wrapper:
 
 ```bash
+export NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS=120000
 export NEXUS_TREASURY_RECOVERY_REPORT_PATH=/var/lib/nexus-relay/treasury-wallet-recovery-<stamp>/recovery-report.json
 scripts/deploy/nexus/09-recover-treasury-wallet.sh
 ```
@@ -486,6 +487,9 @@ What the wrapper does:
 - runs `nexus-control treasury recovery-cutover --report-path ... --json`
   inside the deployed Nexus image against the live data disk, using Docker
   `--entrypoint /usr/local/bin/nexus-control`
+- passes `NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS` through as
+  `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS`; the wrapper
+  defaults to `120000` ms when unset
 - atomically swaps the validated rebuilt wallet storage into the active treasury
   path while preserving a rollback dir
 - starts `nexus-relay` again and verifies the local treasury status endpoint
