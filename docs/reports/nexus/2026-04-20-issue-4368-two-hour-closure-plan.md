@@ -32,6 +32,8 @@ What is not done:
 - Production payout smoke still stalls after the wallet-status fix because the
   wallet has less spendable balance than the active payout policy and the
   payout loop remains degraded on stale reconciliation state.
+- Production placeholder payouts must remain disabled. `#4368` is a homework
+  closeout problem, not a periodic liveness-stipend problem.
 - The production deploy/smoke loop takes materially longer than the local proof
   loop and must not be the primary iteration mechanism.
 
@@ -56,6 +58,8 @@ The script:
   - zero fresh completed sends, nonzero inference-ready payout targets,
     `wallet_runtime_status=connected`, degraded payout loop, and wallet balance
     below the active sats-per-window payout policy
+  - homework-only production policy with placeholder payouts disabled and no
+    pending accepted-work payout records
 - runs the local replacement-attempt proof lane
 - runs the local stale-recovery proof lane with worker and validator
 - copies `run-report.json`, `authority-state-trace.json`, and
@@ -73,6 +77,9 @@ Local closure proof is green only if:
 - stale-recovery accepted contribution count is at least `1`
 - both post-deploy smoke simulations report `decision=rollback`, a matching
   `failure_class`, and `reproduced_current_failure=true`
+- the homework-only smoke simulation reports `decision=pass` because
+  placeholder payouts are disabled and there are no pending accepted-work payout
+  records
 
 This local artifact is the fast iteration target. It is not a substitute for
 live settlement proof, but it is the primary evidence that the CS336 homework
@@ -123,6 +130,9 @@ Do replace the old operating model:
 - make `scripts/pylon/issue-4368-local-closure.sh` the first gate
 - add Spark sync-timeout, funding-target timeout, and post-deploy smoke
   simulations to the local proof runtime
+- disable placeholder payout accrual by default; disabled placeholder mode
+  should not create payout records at all, and only accepted-work/homework
+  closeouts should create new payout records
 - split production treasury continuity from CS336 homework proof when it blocks
   unrelated local proof progress
 

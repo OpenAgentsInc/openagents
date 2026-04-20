@@ -216,21 +216,22 @@ eligible at the same time. The hosted production Nexus should currently pin
 this lower than the default to avoid wedging entire send batches behind a
 Spark-side stall.
 
-For the hosted production Nexus, the current safe reference treasury policy is:
+For the hosted production Nexus, the current safe reference treasury policy is
+homework-only:
 
 - `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=25`
 - `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600`
 - `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000`
-- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4`
-- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=inference_ready`
+- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=1`
+- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=disabled`
 - `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true`
 
-That policy keeps the hosted treasury under `864000 sats/day` even if the
-eligible set reaches `240` providers and holds the steady-state Spark send rate
-to `0.4` transfers/second instead of the unsustainable `5+` transfers/second
-range that a `2 sats / 20s` policy reaches once the provider set crosses `100`.
-The lower concurrent-send cap keeps a single wedged Spark batch from occupying
-all live payout slots at once.
+That policy disables periodic placeholder stipends entirely. The
+`payout_sats_per_window` value remains available for accepted-work closeouts,
+including homework runs, but Nexus must not create new presence-only,
+inference-ready, or disabled-placeholder payout windows. The single-send cap
+keeps accepted homework payout dispatch serial while the wallet has low
+available balance.
 
 `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE` controls what a placeholder
 window actually means:
@@ -247,10 +248,10 @@ from provider heartbeat telemetry and blocks extra placeholder payouts when
 multiple clients appear to be the same underlying machine. This dedupe does not
 change accepted-work payouts; it only stops presence/readiness inflation.
 
-Fresh config defaults now use `inference_ready` plus host dedupe. Old persisted
-policy blobs that predate these fields still deserialize as the legacy
-`presence_only` lane until an explicit policy apply changes them, so production
-can roll forward safely without silently tightening payout rules.
+Fresh config defaults now use `disabled` plus host dedupe. Old persisted policy
+blobs that predate these fields also deserialize as `disabled`. Any production
+Nexus that still shows `presence_only` or `inference_ready` must be corrected
+with an explicit policy apply before treating deploy payout smoke as meaningful.
 
 When the fleet is ready to stop awarding fresh windows to the old
 `0.0.1-rc*` line, Nexus now supports a separate new-accrual version floor:
