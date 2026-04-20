@@ -20,7 +20,7 @@ The OpenAgents marketplace has five interlocking markets:
 This repo also owns several key shipped and planned product surfaces:
 
 - the `Autopilot` desktop product
-- the planned Tauri `Autopilot` shell at `apps/autopilot`
+- the Tauri `Autopilot` shell scaffold at `apps/autopilot`
 - the `Pylon` provider connector
 - the `Nexus` hosted coordination and authority slice
 - the `wgpui` product UI stack
@@ -53,7 +53,7 @@ The market is still called the OpenAgents Compute Market. At launch, the first l
 
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast, hardware-accelerated desktop experience with a game-like HUD feel.
 
-The current refactor plan keeps the next Tauri implementation in this monorepo:
+The next Tauri implementation now lives in this monorepo:
 
 ```text
 apps/autopilot
@@ -61,6 +61,9 @@ apps/autopilot
 
 Do not call that app `autopilot-tauri`. The product name is `Autopilot`; Tauri
 is the desktop shell implementation.
+
+The current WGPUI desktop surface remains at `apps/autopilot-deprecated` while
+the Tauri shell proves the next product direction.
 
 ## Marketplace
 
@@ -286,6 +289,20 @@ cargo autopilot
 ```
 
 `cargo autopilot` is defined in `.cargo/config.toml` as a local Cargo alias for `autopilot-desktop`.
+
+### Autopilot Tauri Shell
+
+The next desktop shell starts in `apps/autopilot`.
+
+```bash
+cd apps/autopilot
+bun install
+bun run tauri dev
+```
+
+The Tauri shell is intentionally a starter surface. Keep Rust authority and
+privileged integration behind Tauri commands, events, or channels. Keep
+TypeScript focused on product UI and projection.
 
 ### Psionic Checkout For Cross-Repo Dev
 
