@@ -61,6 +61,11 @@ function App() {
     setCommandOpen(false);
   };
 
+  const toggleTheme = () => {
+    setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"));
+    setCommandOpen(false);
+  };
+
   return (
     <main className="shell grid place-items-center p-4">
       <section className="command-stage">
@@ -121,7 +126,7 @@ function App() {
         className="sm:max-w-lg"
       >
         <Command label="Autopilot demo commands" loop>
-          <CommandInput placeholder="Type a command or filter by evidence, runtime, proof..." />
+          <CommandInput placeholder="Type a command or filter by runtime, evidence, theme..." />
           <CommandList>
             <CommandEmpty>No command matched.</CommandEmpty>
             <CommandGroup heading="Demo views">
@@ -145,6 +150,26 @@ function App() {
                 <CheckCircle aria-hidden="true" data-icon="inline-start" />
                 <span>Show Evidence Card</span>
                 <CommandShortcut>evidence</CommandShortcut>
+              </CommandItem>
+            </CommandGroup>
+            <CommandSeparator />
+            <CommandGroup heading="Theme">
+              <CommandItem
+                value="toggle theme"
+                keywords={["light", "dark", "mode", "appearance"]}
+                onSelect={toggleTheme}
+              >
+                {theme === "dark" ? (
+                  <Sun aria-hidden="true" data-icon="inline-start" />
+                ) : (
+                  <Moon aria-hidden="true" data-icon="inline-start" />
+                )}
+                <span>
+                  Switch to {theme === "dark" ? "Light" : "Dark"} Theme
+                </span>
+                <CommandShortcut>
+                  {theme === "dark" ? "light" : "dark"}
+                </CommandShortcut>
               </CommandItem>
             </CommandGroup>
           </CommandList>
