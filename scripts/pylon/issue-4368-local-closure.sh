@@ -8,6 +8,7 @@ STAMP="${ISSUE_4368_PROOF_STAMP:-$(date -u +%Y%m%d%H%M%S)}"
 OUT_DIR="${ISSUE_4368_PROOF_OUT_DIR:-var/proof/issue-4368-local-closure-${STAMP}}"
 SMOKE_FUNDING_TIMEOUT_OUT_DIR="${OUT_DIR}/post-deploy-smoke-funding-timeout"
 SMOKE_CONNECTED_INSUFFICIENT_OUT_DIR="${OUT_DIR}/post-deploy-smoke-connected-insufficient-balance"
+SMOKE_HOMEWORK_ONLY_OUT_DIR="${OUT_DIR}/post-deploy-smoke-homework-only-disabled"
 REPLACE_NS="proof.4368.local.${STAMP}.replace"
 STALE_NS="proof.4368.local.${STAMP}.stale"
 
@@ -88,6 +89,20 @@ run_logged post-deploy-smoke-connected-insufficient-balance env \
   ISSUE_4368_SMOKE_PAYOUTS_DISPATCHED_24H=0 \
   ISSUE_4368_SMOKE_PAYOUTS_CONFIRMED_24H=0 \
   scripts/pylon/issue-4368-post-deploy-smoke-simulation.sh
+run_logged post-deploy-smoke-homework-only-disabled env \
+  ISSUE_4368_SMOKE_OUT_DIR="$SMOKE_HOMEWORK_ONLY_OUT_DIR" \
+  ISSUE_4368_SMOKE_SCENARIO=homework_only_placeholder_disabled \
+  ISSUE_4368_SMOKE_EXPECT_DECISION=pass \
+  ISSUE_4368_SMOKE_PLACEHOLDER_PAYOUT_MODE=disabled \
+  ISSUE_4368_SMOKE_WALLET_RUNTIME_STATUS=connected \
+  ISSUE_4368_SMOKE_WALLET_LAST_ERROR= \
+  ISSUE_4368_SMOKE_WALLET_BALANCE_SATS=80 \
+  ISSUE_4368_SMOKE_PAYOUT_SATS_PER_WINDOW=25 \
+  ISSUE_4368_SMOKE_ACCEPTED_WORK_PENDING_PAYOUT_COUNT=0 \
+  ISSUE_4368_SMOKE_INFERENCE_READY=49 \
+  ISSUE_4368_SMOKE_PAYOUTS_DISPATCHED_24H=0 \
+  ISSUE_4368_SMOKE_PAYOUTS_CONFIRMED_24H=0 \
+  scripts/pylon/issue-4368-post-deploy-smoke-simulation.sh
 
 log "running replacement-attempt proof lane"
 target/debug/oa proof run cs336-a1-replacement-attempt \
@@ -118,6 +133,7 @@ jq -n \
   --arg stale_namespace "$STALE_NS" \
   --slurpfile smoke_funding_timeout "$SMOKE_FUNDING_TIMEOUT_OUT_DIR/post-deploy-smoke-simulation.json" \
   --slurpfile smoke_connected_insufficient "$SMOKE_CONNECTED_INSUFFICIENT_OUT_DIR/post-deploy-smoke-simulation.json" \
+  --slurpfile smoke_homework_only "$SMOKE_HOMEWORK_ONLY_OUT_DIR/post-deploy-smoke-simulation.json" \
   --slurpfile replacement "$OUT_DIR/${REPLACE_NS}/run-report.json" \
   --slurpfile stale "$OUT_DIR/${STALE_NS}/run-report.json" \
   '{
@@ -148,6 +164,15 @@ jq -n \
         payout_loop_runtime_status: $smoke_connected_insufficient[0].payout_loop_runtime_status,
         payout_loop_last_error: $smoke_connected_insufficient[0].payout_loop_last_error,
         report: ($out_dir + "/post-deploy-smoke-connected-insufficient-balance/post-deploy-smoke-simulation.json")
+      },
+      {
+        scenario: $smoke_homework_only[0].scenario,
+        decision: $smoke_homework_only[0].decision,
+        reason: $smoke_homework_only[0].reason,
+        placeholder_payout_mode: $smoke_homework_only[0].placeholder_payout_mode,
+        accepted_work_pending_payout_count: $smoke_homework_only[0].accepted_work_pending_payout_count,
+        expected_outcome_reproduced: $smoke_homework_only[0].expected_outcome_reproduced,
+        report: ($out_dir + "/post-deploy-smoke-homework-only-disabled/post-deploy-smoke-simulation.json")
       }
     ],
     replacement: {

@@ -132,9 +132,9 @@ const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TreasuryPlaceholderPayoutMode {
-    #[default]
     InferenceReady,
     PresenceOnly,
+    #[default]
     Disabled,
 }
 
@@ -149,7 +149,7 @@ impl TreasuryPlaceholderPayoutMode {
 }
 
 const fn legacy_treasury_placeholder_payout_mode() -> TreasuryPlaceholderPayoutMode {
-    TreasuryPlaceholderPayoutMode::PresenceOnly
+    TreasuryPlaceholderPayoutMode::Disabled
 }
 
 fn default_treasury_public_snapshot_source() -> String {
@@ -234,7 +234,7 @@ impl TreasuryConfig {
         )?;
         let placeholder_payout_mode = parse_placeholder_payout_mode_env(
             ENV_TREASURY_PLACEHOLDER_PAYOUT_MODE,
-            TreasuryPlaceholderPayoutMode::InferenceReady,
+            TreasuryPlaceholderPayoutMode::Disabled,
         )?;
         let dedupe_placeholder_hosts = parse_bool_env(
             ENV_TREASURY_DEDUPE_PLACEHOLDER_HOSTS,
@@ -3522,6 +3522,18 @@ impl TreasuryState {
             };
         }
         if policy.payout_sats_per_window == 0 {
+            if changed {
+                self.refresh_public_snapshot(config, now_unix_ms);
+            } else {
+                self.refresh_public_snapshot_in_memory(config, now_unix_ms);
+            }
+            return TreasuryPayoutPreparation {
+                dispatch_plans,
+                receipt_events,
+                reconciliation_degraded_reason: None,
+            };
+        }
+        if policy.placeholder_payout_mode == TreasuryPlaceholderPayoutMode::Disabled {
             if changed {
                 self.refresh_public_snapshot(config, now_unix_ms);
             } else {
@@ -7121,6 +7133,29 @@ mod tests {
     }
 
     #[test]
+    fn runtime_policy_missing_placeholder_mode_defaults_disabled() {
+        let policy: super::TreasuryRuntimePolicy = serde_json::from_value(serde_json::json!({
+            "schema_version": 1,
+            "treasury_enabled": true,
+            "payout_sats_per_window": 25,
+            "payout_interval_seconds": 600,
+            "require_sellable": false,
+            "daily_budget_cap_sats": 1_000_000,
+            "checksum": "sha256:test"
+        }))
+        .expect("legacy policy should deserialize");
+
+        assert_eq!(
+            policy.placeholder_payout_mode,
+            TreasuryPlaceholderPayoutMode::Disabled
+        );
+        assert_eq!(
+            TreasuryPlaceholderPayoutMode::default(),
+            TreasuryPlaceholderPayoutMode::Disabled
+        );
+    }
+
+    #[test]
     fn runtime_policy_applies_explicit_safe_env_change() {
         let mut config = test_treasury_config();
         config.state_path = unique_treasury_state_path("safe-change");
@@ -7645,6 +7680,78 @@ mod tests {
             record.classification.payout_basis.as_deref(),
             Some("inference_ready")
         );
+    }
+
+    #[test]
+    fn placeholder_payouts_disabled_only_dispatches_queued_accepted_work() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let now_unix_ms = super::now_unix_ms();
+        let online = vec![OnlinePylonIdentity {
+            nostr_pubkey_hex: "pubkey-a".to_string(),
+            sellable: true,
+            client_version: Some("pylon-v0.1.1-rc1".to_string()),
+            inference_ready: true,
+            host_fingerprint: None,
+        }];
+
+        state.observe_payout_eligibility(&config, &online, now_unix_ms);
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(
+            stats.placeholder_payout_mode,
+            TreasuryPlaceholderPayoutMode::Disabled
+        );
+        assert_eq!(stats.inference_ready_online_payout_targets, 1);
+        assert_eq!(stats.eligible_online_payout_targets, 0);
+
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
+        assert!(prepared.dispatch_plans.is_empty());
+        assert!(prepared.receipt_events.is_empty());
+        assert!(state.payout_records_by_key.is_empty());
+
+        state.queue_payout_requests(
+            &config,
+            &[TreasuryQueuedPayoutRequest {
+                payout_key: "accepted-work:cs336-a1:pubkey-a".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                amount_sats: 25,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms.saturating_add(1),
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("homework_acceptance".to_string()),
+                    assignment_id: Some("cs336-a1".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+                queue_block_reason: None,
+            }],
+            now_unix_ms,
+        );
+
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms.saturating_add(1));
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(prepared.dispatch_plans[0].amount_sats, 25);
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:alice");
+        let accepted_work = state
+            .payout_records_by_key
+            .get("accepted-work:cs336-a1:pubkey-a")
+            .expect("accepted-work payout record");
+        assert_eq!(accepted_work.status, "dispatching");
+        assert!(accepted_work.classification.accepted_work());
+        assert_eq!(state.payout_records_by_key.len(), 1);
     }
 
     #[test]

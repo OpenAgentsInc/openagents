@@ -340,6 +340,7 @@ perform_post_restart_smoke_check() {
   while (( $(date +%s) < deadline_unix_s )); do
     local service_state service_start_unix_s recent_completed status_json
     local inference_ready_targets wallet_runtime_status last_dispatch_at_unix_ms service_uptime_seconds
+    local placeholder_payout_mode accepted_work_pending_payout_count payouts_dispatched_24h
 
     service_state="$(
       gcloud compute ssh "$NEXUS_VM" \
@@ -365,19 +366,34 @@ perform_post_restart_smoke_check() {
       recent_completed="$(remote_recent_completed_sends_since "$service_start_unix_s" | tr -d '[:space:]')"
     fi
 
-    if [[ "$recent_completed" =~ ^[0-9]+$ ]] && (( recent_completed > 0 )); then
-      log "Post-deploy smoke passed image=${deployed_image} recent_completed=${recent_completed}"
-      return 0
-    fi
-
     status_json="$(remote_treasury_status_json)"
     inference_ready_targets="unknown"
     wallet_runtime_status="unknown"
+    placeholder_payout_mode="unknown"
+    accepted_work_pending_payout_count="0"
+    payouts_dispatched_24h="0"
     last_dispatch_at_unix_ms="0"
     if [[ -n "$status_json" ]]; then
       inference_ready_targets="$(jq -r '.inference_ready_online_payout_targets // .eligible_online_payout_targets // 0' <<<"$status_json")"
       wallet_runtime_status="$(jq -r '.wallet_runtime_status // empty' <<<"$status_json")"
+      placeholder_payout_mode="$(jq -r '.placeholder_payout_mode // empty' <<<"$status_json")"
+      accepted_work_pending_payout_count="$(jq -r '.training_payout_ledger_summary.accepted_work_pending_payout_count // 0' <<<"$status_json")"
+      payouts_dispatched_24h="$(jq -r '.payouts_dispatched_24h // 0' <<<"$status_json")"
       last_dispatch_at_unix_ms="$(jq -r '.last_dispatch_at_unix_ms // 0' <<<"$status_json")"
+      if [[ "$placeholder_payout_mode" == "disabled" ]] \
+        && [[ "$accepted_work_pending_payout_count" =~ ^[0-9]+$ ]] \
+        && (( accepted_work_pending_payout_count == 0 )); then
+        log "Post-deploy smoke passed image=${deployed_image} with placeholder payouts disabled and no pending accepted-work payouts"
+        return 0
+      fi
+      if [[ "$last_dispatch_at_unix_ms" =~ ^[0-9]+$ ]] \
+        && [[ "$payouts_dispatched_24h" =~ ^[0-9]+$ ]] \
+        && (( payouts_dispatched_24h > 0 )) \
+        && [[ "$service_start_unix_s" =~ ^[0-9]+$ ]] \
+        && (( last_dispatch_at_unix_ms >= service_start_unix_s * 1000 )); then
+        log "Post-deploy smoke passed image=${deployed_image} fresh_dispatch_at_unix_ms=${last_dispatch_at_unix_ms} recent_completed_log_lines=${recent_completed}"
+        return 0
+      fi
       if [[ "$inference_ready_targets" =~ ^[0-9]+$ ]] && (( inference_ready_targets == 0 )) \
         && [[ "$wallet_runtime_status" == "connected" ]]; then
         log "Post-deploy smoke passed image=${deployed_image} with zero inference-ready payout targets"
@@ -386,12 +402,12 @@ perform_post_restart_smoke_check() {
     fi
 
     if [[ "$service_uptime_seconds" =~ ^[0-9]+$ ]] && (( service_uptime_seconds < warmup_grace_seconds )); then
-      log "Warming up post-deploy smoke image=${deployed_image} service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed=${recent_completed} inference_ready=${inference_ready_targets} wallet_runtime_status=${wallet_runtime_status} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
+      log "Warming up post-deploy smoke image=${deployed_image} service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed_log_lines=${recent_completed} inference_ready=${inference_ready_targets} wallet_runtime_status=${wallet_runtime_status} placeholder_payout_mode=${placeholder_payout_mode} accepted_work_pending=${accepted_work_pending_payout_count} payouts_dispatched_24h=${payouts_dispatched_24h} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
       sleep "$poll_seconds"
       continue
     fi
 
-    log "Waiting for post-deploy payout smoke image=${deployed_image} phase=stalled_candidate service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed=${recent_completed} inference_ready=${inference_ready_targets} wallet_runtime_status=${wallet_runtime_status} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
+    log "Waiting for post-deploy payout smoke image=${deployed_image} phase=stalled_candidate service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed_log_lines=${recent_completed} inference_ready=${inference_ready_targets} wallet_runtime_status=${wallet_runtime_status} placeholder_payout_mode=${placeholder_payout_mode} accepted_work_pending=${accepted_work_pending_payout_count} payouts_dispatched_24h=${payouts_dispatched_24h} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
     sleep "$poll_seconds"
   done
 
@@ -425,7 +441,7 @@ preserve_remote_runtime_env
 : "${NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS:=3}"
 : "${NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS:=16}"
 : "${NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS:=300}"
-: "${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE:=inference_ready}"
+: "${NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE:=disabled}"
 : "${NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS:=true}"
 : "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION:=}"
 : "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS:=}"
