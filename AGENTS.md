@@ -132,6 +132,15 @@ Default to:
   `DEPLOY_IMAGE=... bash scripts/deploy/nexus/04-verify-gates.sh`
 - After deploy, also verify `https://nexus.openagents.com/v1/treasury/status`
   and any task-specific payout or receipt checks required by the change.
+- If post-restart payout smoke fails with wallet errors after the local proof
+  runtime is green, use the explicit treasury recovery path instead of blind
+  redeploys. Build a main image that contains both `nexus-relay` and
+  `nexus-control`, generate a wallet recovery report with
+  `NEXUS_TREASURY_RECOVERY_ACTION=report DEPLOY_IMAGE=... bash scripts/deploy/nexus/09-recover-treasury-wallet.sh`,
+  review the report, and cut over only with a validated report via
+  `NEXUS_TREASURY_RECOVERY_ACTION=cutover NEXUS_TREASURY_RECOVERY_REPORT_PATH=...`.
+  Record the report/deploy receipts and keep `#4368` open until a fresh live
+  completed payout send and accepted-work receipt are proven.
 - Do not bypass this path with VM-local `docker build`, VM-local image tags,
   manual systemd drop-ins, or ad hoc `docker run` replacements on
   `nexus-mainnet-1`.

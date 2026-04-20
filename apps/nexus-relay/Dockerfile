@@ -100,6 +100,7 @@ RUN apt-get update \
     && useradd --system --create-home --home-dir /nonexistent --shell /usr/sbin/nologin --uid 60000 nexus
 
 COPY --from=builder /work/target/${BUILD_PROFILE}/nexus-relay /usr/local/bin/nexus-relay
+COPY --from=builder /work/target/${BUILD_PROFILE}/nexus-control /usr/local/bin/nexus-control
 
 USER nexus
 
