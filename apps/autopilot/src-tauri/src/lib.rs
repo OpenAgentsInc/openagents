@@ -1,3 +1,5 @@
+mod pylon;
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AutopilotStatus {
@@ -21,7 +23,23 @@ fn autopilot_status() -> AutopilotStatus {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![autopilot_status])
+        .manage(pylon::PylonManager::default())
+        .invoke_handler(tauri::generate_handler![
+            autopilot_status,
+            pylon::pylon_detect,
+            pylon::pylon_get_status,
+            pylon::pylon_start,
+            pylon::pylon_stop,
+            pylon::pylon_restart,
+            pylon::pylon_set_mode,
+            pylon::pylon_open_logs,
+            pylon::proof_run,
+            pylon::proof_get,
+            pylon::proof_doctor,
+            pylon::proof_stop,
+            pylon::proof_reset,
+            pylon::proof_open_artifacts,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
