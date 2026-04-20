@@ -190,6 +190,13 @@ Default to:
   app, drives `homework matrix` through `autopilotctl-tauri`, and verifies the
   clean CS336, replacement-attempt, and stale-recovery lanes plus authority
   trace, proof summary, object trace, transport split, and closure signals.
+  When using direct `oa proof ...` commands instead of the Tauri matrix, build
+  the real proof binaries as separate commands first:
+  `cargo build -p pylon --bin oa` and
+  `cargo build -p nexus-relay --bin nexus-relay`. Do not combine them as
+  `cargo build -p pylon --bin oa -p nexus-relay`; the `--bin oa` filter can
+  leave `target/debug/nexus-relay` stale while tests rebuild only the
+  `nexus-control` library.
   For work that changes the real Pylon/proof stack, also run
   `scripts/autopilot/tauri-homework-matrix.sh --real-binaries` before calling
   the work complete. The real-binaries harness bootstraps an isolated app-owned
