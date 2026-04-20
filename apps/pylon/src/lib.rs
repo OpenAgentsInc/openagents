@@ -4705,8 +4705,21 @@ fn parse_training_membership_revision_label(value: &str) -> Option<u64> {
     value.strip_prefix("members.rev")?.parse::<u64>().ok()
 }
 
+fn pylon_runtime_absolute_path(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(path)
+}
+
+fn training_run_root(config: &PylonConfig) -> PathBuf {
+    pylon_runtime_absolute_path(config.training.run_root.as_path())
+}
+
 fn training_run_root_for_id(config: &PylonConfig, training_run_id: &str) -> PathBuf {
-    config.training.run_root.join("runs").join(training_run_id)
+    training_run_root(config).join("runs").join(training_run_id)
 }
 
 fn training_runtime_manifest_path_for_run(run_root: &Path) -> PathBuf {
@@ -6572,7 +6585,7 @@ async fn ensure_training_assignment_runtime_manifest(
         initial_lease.runtime_operation.clone(),
         initial_lease.runtime_work_class.clone(),
     ) {
-        let manifest_path = PathBuf::from(runtime_manifest_path);
+        let manifest_path = pylon_runtime_absolute_path(Path::new(runtime_manifest_path.as_str()));
         if manifest_path.is_file() && validator_inputs_materialized {
             // Retained validator replay should not stall on a fresh run read when a valid
             // invocation manifest is already materialized on disk.
@@ -8802,7 +8815,7 @@ fn validate_nonempty_string_list(
 }
 
 fn training_state_dir(config: &PylonConfig) -> PathBuf {
-    config.training.run_root.join("state")
+    training_run_root(config).join("state")
 }
 
 fn training_runtime_state_path(config: &PylonConfig) -> PathBuf {
@@ -11640,11 +11653,11 @@ fn training_metadata_token_url() -> Option<String> {
 }
 
 fn training_runs_root(config: &PylonConfig) -> PathBuf {
-    config.training.run_root.join("runs")
+    training_run_root(config).join("runs")
 }
 
 fn training_download_cache_root(config: &PylonConfig) -> PathBuf {
-    config.training.run_root.join("download-cache")
+    training_run_root(config).join("download-cache")
 }
 
 fn training_checkpoint_serve_url(config: &PylonConfig) -> String {
@@ -19366,12 +19379,14 @@ fn training_start_request_from_retained_lease(
     config: &PylonConfig,
     lease: &PylonTrainingLeaseCacheEntry,
 ) -> Result<PylonTrainingSupervisorStartRequest> {
-    let manifest_path = PathBuf::from(lease.runtime_manifest_path.clone().ok_or_else(|| {
-        anyhow!(
-            "training lease `{}` is missing a runtime manifest path",
-            lease.lease_id
-        )
-    })?);
+    let manifest_path = pylon_runtime_absolute_path(Path::new(
+        lease.runtime_manifest_path.as_deref().ok_or_else(|| {
+            anyhow!(
+                "training lease `{}` is missing a runtime manifest path",
+                lease.lease_id
+            )
+        })?,
+    ));
     if !manifest_path.is_file() {
         bail!(
             "training runtime manifest {} is missing for lease `{}`",
@@ -25507,7 +25522,8 @@ mod tests {
         sync_training_terminal_runtime_once, training_artifact_digest_from_locator_payload,
         training_artifact_resolved_cache_key, training_download_cache_root,
         training_raw_sha256_hex, training_retained_assignment_authority_error_is_stale,
-        training_run_root_for_id, training_runtime_state_path, training_settlement_destination,
+        training_run_root_for_id, training_runs_root, training_runtime_manifest_path_for_run,
+        training_runtime_state_path, training_settlement_destination,
         training_supervisor_pid_is_running, training_validator_challenge_path_segment,
         training_validator_challenge_root, watch_buyer_jobs, write_training_json_value,
     };
@@ -25570,6 +25586,40 @@ mod tests {
         } else {
             Err(std::io::Error::other(message.to_string()).into())
         }
+    }
+
+    #[test]
+    fn relative_training_run_root_materializes_absolute_runtime_paths()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(Path::new("target/pylon-relative-runtime-path-test"));
+        config.training.run_root =
+            PathBuf::from("target/pylon-relative-runtime-path-test/training");
+
+        let cwd = std::env::current_dir()?;
+        let expected_training_root = cwd.join("target/pylon-relative-runtime-path-test/training");
+        let runs_root = training_runs_root(&config);
+        let run_root = training_run_root_for_id(&config, "run.alpha");
+        let manifest_path = training_runtime_manifest_path_for_run(run_root.as_path());
+        let state_path = training_runtime_state_path(&config);
+        let cache_root = training_download_cache_root(&config);
+
+        ensure(
+            runs_root == expected_training_root.join("runs")
+                && run_root == expected_training_root.join("runs").join("run.alpha")
+                && manifest_path
+                    == expected_training_root
+                        .join("runs")
+                        .join("run.alpha")
+                        .join("manifests")
+                        .join("invocation_manifest.json")
+                && state_path
+                    == expected_training_root
+                        .join("state")
+                        .join("runtime-state.json")
+                && cache_root == expected_training_root.join("download-cache")
+                && manifest_path.is_absolute(),
+            "relative Pylon training roots should produce absolute runtime paths",
+        )
     }
 
     fn first_tag_value(event: &Value, name: &str) -> Option<String> {
