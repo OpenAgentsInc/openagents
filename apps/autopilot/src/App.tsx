@@ -29,19 +29,23 @@ import {
 } from "@/components/ui/command";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-type DemoView = "runtime" | "evidence";
+type DemoView = "command" | "runtime" | "evidence";
 type Theme = "light" | "dark";
 
 const viewLabels: Record<DemoView, string> = {
+  command: "Command",
   runtime: "Runtime",
   evidence: "Evidence",
 };
 
 function App() {
-  const [activeView, setActiveView] = React.useState<DemoView>("runtime");
+  const [activeView, setActiveView] = React.useState<DemoView>("command");
   const [commandOpen, setCommandOpen] = React.useState(false);
+  const [commandText, setCommandText] = React.useState("");
   const [theme, setTheme] = useTheme();
 
   React.useEffect(() => {
@@ -64,6 +68,11 @@ function App() {
   const toggleTheme = () => {
     setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"));
     setCommandOpen(false);
+  };
+
+  const submitCommand = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCommandText("");
   };
 
   return (
@@ -114,7 +123,17 @@ function App() {
         <Separator />
 
         <div className="command-stage__card" aria-live="polite">
-          {activeView === "runtime" ? <RuntimeDemoCard /> : <EvidenceDemoCard />}
+          {activeView === "command" ? (
+            <CommandEntry
+              value={commandText}
+              onChange={setCommandText}
+              onSubmit={submitCommand}
+            />
+          ) : activeView === "runtime" ? (
+            <RuntimeDemoCard />
+          ) : (
+            <EvidenceDemoCard />
+          )}
         </div>
       </section>
 
@@ -130,6 +149,17 @@ function App() {
           <CommandList>
             <CommandEmpty>No command matched.</CommandEmpty>
             <CommandGroup heading="Demo views">
+              <CommandItem
+                value="show command input"
+                keywords={["command", "input", "compose", "submit"]}
+                data-checked={activeView === "command"}
+                onSelect={() => selectView("command")}
+              >
+                <CommandIcon aria-hidden="true" data-icon="inline-start" />
+                <span>Show Command Input</span>
+                <CommandShortcut>input</CommandShortcut>
+              </CommandItem>
+              <CommandSeparator />
               <CommandItem
                 value="show runtime card"
                 keywords={["runtime", "state", "worker"]}
@@ -176,6 +206,35 @@ function App() {
         </Command>
       </CommandDialog>
     </main>
+  );
+}
+
+function CommandEntry({
+  value,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="command-entry" onSubmit={onSubmit}>
+      <FieldGroup>
+        <Field>
+          <FieldLabel className="sr-only" htmlFor="autopilot-command">
+            Command
+          </FieldLabel>
+          <Textarea
+            id="autopilot-command"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Enter command"
+          />
+        </Field>
+      </FieldGroup>
+      <Button type="submit">Submit</Button>
+    </form>
   );
 }
 
