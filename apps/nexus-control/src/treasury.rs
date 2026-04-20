@@ -48,6 +48,8 @@ const ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS";
 const ENV_TREASURY_FUNDING_TARGET_TIMEOUT_MS: &str =
     "NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS";
+const ENV_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: &str =
+    "NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS";
 const ENV_TREASURY_SIMULATED_WALLET_ENABLED: &str =
     "NEXUS_CONTROL_TREASURY_SIMULATED_WALLET_ENABLED";
 const ENV_TREASURY_SIMULATED_WALLET_BALANCE_SATS: &str =
@@ -76,6 +78,7 @@ const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wa
 const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
 const DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS: u64 = 3;
 const DEFAULT_TREASURY_FUNDING_TARGET_TIMEOUT_MS: u64 = 10_000;
+const DEFAULT_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 120_000;
 const DEFAULT_TREASURY_SIMULATED_WALLET_ENABLED: bool = false;
 const DEFAULT_TREASURY_SIMULATED_WALLET_BALANCE_SATS: u64 = 1_000_000;
 const DEFAULT_TREASURY_MAX_CONCURRENT_SENDS: usize = 16;
@@ -107,7 +110,8 @@ const TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES: usize = 8;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_EARLY_SLACK_MS: u64 = 5 * 60_000;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_WINDOW_MS: u64 = 30 * 60_000;
 const TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL: &str = "nexus_control";
-const TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 30_000;
+const TREASURY_MIN_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 1_000;
+const TREASURY_MAX_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 600_000;
 const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
     &["public_snapshot"],
     &["public_snapshot", "active_continuity_alerts"],
@@ -187,6 +191,7 @@ pub struct TreasuryConfig {
     pub wallet_api_key_env: Option<String>,
     pub wallet_status_refresh_seconds: u64,
     pub funding_target_timeout_ms: u64,
+    pub wallet_recovery_inspection_timeout_ms: u64,
     pub simulated_wallet_enabled: bool,
     pub simulated_wallet_balance_sats: u64,
     pub max_concurrent_sends: usize,
@@ -253,6 +258,14 @@ impl TreasuryConfig {
             DEFAULT_TREASURY_FUNDING_TARGET_TIMEOUT_MS,
         )?
         .max(1);
+        let wallet_recovery_inspection_timeout_ms = parse_u64_env(
+            ENV_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS,
+            DEFAULT_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS,
+        )?
+        .clamp(
+            TREASURY_MIN_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS,
+            TREASURY_MAX_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS,
+        );
         let simulated_wallet_enabled = parse_bool_env(
             ENV_TREASURY_SIMULATED_WALLET_ENABLED,
             DEFAULT_TREASURY_SIMULATED_WALLET_ENABLED,
@@ -323,6 +336,7 @@ impl TreasuryConfig {
                 .filter(|value| !value.is_empty()),
             wallet_status_refresh_seconds,
             funding_target_timeout_ms,
+            wallet_recovery_inspection_timeout_ms,
             simulated_wallet_enabled,
             simulated_wallet_balance_sats,
             max_concurrent_sends,
@@ -460,6 +474,8 @@ pub struct TreasuryWalletUnclaimedDepositAggregate {
 pub struct TreasuryWalletInspection {
     pub wallet_identity_pubkey: String,
     pub inspected_storage_dir: String,
+    #[serde(default)]
+    pub inspection_timeout_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5014,8 +5030,13 @@ async fn inspect_treasury_wallet_storage(
     mnemonic: &str,
     storage_dir: &Path,
 ) -> TreasuryWalletInspection {
+    let inspection_timeout_ms = config.wallet_recovery_inspection_timeout_ms.clamp(
+        TREASURY_MIN_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS,
+        TREASURY_MAX_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS,
+    );
     let mut inspection = TreasuryWalletInspection {
         inspected_storage_dir: storage_dir.display().to_string(),
+        inspection_timeout_ms,
         ..TreasuryWalletInspection::default()
     };
     let signer = match SparkSigner::from_mnemonic(mnemonic, "") {
@@ -5050,7 +5071,7 @@ async fn inspect_treasury_wallet_storage(
         Some("treasury wallet inspection is syncing isolated storage".to_string());
 
     match tokio::time::timeout(
-        Duration::from_millis(TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS),
+        Duration::from_millis(inspection_timeout_ms),
         wallet.get_balance(),
     )
     .await
@@ -5071,7 +5092,7 @@ async fn inspect_treasury_wallet_storage(
         Err(_) => {
             inspection.runtime_status = Some("timeout".to_string());
             inspection.error = Some(format!(
-                "timed out after {TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS} ms while syncing treasury Spark wallet"
+                "timed out after {inspection_timeout_ms} ms while syncing treasury Spark wallet"
             ));
             let _ = wallet.disconnect().await;
             return inspection;
@@ -6790,6 +6811,7 @@ mod tests {
             wallet_api_key_env: None,
             wallet_status_refresh_seconds: 30,
             funding_target_timeout_ms: 10_000,
+            wallet_recovery_inspection_timeout_ms: 120_000,
             simulated_wallet_enabled: false,
             simulated_wallet_balance_sats: 1_000_000,
             max_concurrent_sends: 16,

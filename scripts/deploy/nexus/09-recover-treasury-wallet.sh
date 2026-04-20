@@ -14,6 +14,7 @@ fi
 
 DEPLOY_IMAGE="${DEPLOY_IMAGE:-${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${NEXUS_ARTIFACT_REPO}/${NEXUS_IMAGE_NAME}:latest}"
 NEXUS_TREASURY_RECOVERY_ACTION="${NEXUS_TREASURY_RECOVERY_ACTION:-}"
+NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS="${NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS:-120000}"
 
 if [[ -z "${NEXUS_TREASURY_RECOVERY_ACTION}" ]]; then
   if [[ -n "${NEXUS_TREASURY_RECOVERY_REPORT_PATH:-}" ]]; then
@@ -56,6 +57,7 @@ gcloud compute ssh "$NEXUS_VM" \
         --entrypoint /usr/local/bin/nexus-control \
         --network host \
         --env-file /etc/nexus-relay/nexus-relay.env \
+        --env NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS='${NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS}' \
         -v '${NEXUS_DATA_DIR}:${NEXUS_DATA_DIR}' \
         '$DEPLOY_IMAGE' \
         \"\$@\"; \
