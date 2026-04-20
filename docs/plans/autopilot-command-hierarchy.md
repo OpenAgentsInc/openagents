@@ -2,6 +2,9 @@
 
 Status: draft for Tauri shell implementation
 
+Implementation status: initial registry-backed Tauri shell implementation
+landed in `apps/autopilot`.
+
 Owner repo: `openagents`
 
 Primary surface: `apps/autopilot`
@@ -295,16 +298,16 @@ UI a clear action model and gives tests a stable inventory to assert against.
 
 ## Implementation Issues
 
-Create these GitHub issues in `OpenAgentsInc/openagents`:
+Implementation tracking issues in `OpenAgentsInc/openagents`:
 
-1. Define `apps/autopilot` action registry and command metadata model.
-2. Render Command-K from the action registry with breadcrumb rows.
-3. Add hierarchical Tauri top menus or in-app dropdown menus from the registry.
-4. Route Pylon and Proof pane-local controls through registered actions.
-5. Replace loose command-entry keyword routing with exact actions or remove it
-   from the default first screen.
-6. Add tests and docs gates for command hierarchy, Command-K, menus, and Tauri
-   control alignment.
+1. `#4402` Define `apps/autopilot` action registry and command metadata model.
+2. `#4403` Render Command-K from the action registry with breadcrumb rows.
+3. `#4404` Add hierarchical Tauri top menus or in-app dropdown menus from the registry.
+4. `#4405` Route Pylon and Proof pane-local controls through registered actions.
+5. `#4406` Replace loose command-entry keyword routing with exact actions or
+   remove it from the default first screen.
+6. `#4407` Add tests and docs gates for command hierarchy, Command-K, menus,
+   and Tauri control alignment.
 
 ## Acceptance Criteria
 

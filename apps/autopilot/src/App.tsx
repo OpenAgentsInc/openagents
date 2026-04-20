@@ -20,15 +20,38 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
+import {
+  Menubar,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarSeparator,
+  MenubarShortcut,
+  MenubarSub,
+  MenubarSubContent,
+  MenubarSubTrigger,
+  MenubarTrigger,
+} from "@/components/ui/menubar";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
+  actionBreadcrumb,
+  type ActiveView,
+  type AutopilotAction,
+  buildAutopilotActions,
+  proofLaneLabels,
+  resolveRegisteredAction,
+  type Theme,
+  topLevelMenus,
+  validateAutopilotActions,
+  viewLabels,
+} from "@/lib/autopilot-actions";
+import {
+  autopilotStatus,
   type ProviderMode,
   type ProofLane,
   type ProofNodeProjection,
@@ -50,25 +73,24 @@ import {
   pylonStop,
 } from "@/lib/autopilot-runtime";
 
-type ActiveView = "command" | "pylon" | "proof";
-type Theme = "light" | "dark";
+type ActionRunner = (action: AutopilotAction) => Promise<void>;
+type RegisterRow = [string, React.ReactNode];
 
-const viewLabels: Record<ActiveView, string> = {
-  command: "Command",
-  pylon: "Pylon",
-  proof: "Proof",
-};
-
-const proofLaneLabels: Record<ProofLane, string> = {
-  "cs336-a1": "CS336 A1",
-  "cs336-a1-stale-recovery": "CS336 Stale Recovery",
-  "cs336-a1-replacement-attempt": "CS336 Replacement Attempt",
+type MenuBranch = {
+  key: string;
+  label: string;
+  action?: AutopilotAction;
+  children?: MenuBranch[];
+  separatorBefore?: boolean;
 };
 
 function App() {
   const [activeView, setActiveView] = React.useState<ActiveView>("command");
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [commandText, setCommandText] = React.useState("");
+  const [consoleMessage, setConsoleMessage] = React.useState(
+    "Select a subsystem from the menu bar, or enter an exact action ID.",
+  );
   const [theme, setTheme] = useTheme();
   const [pylonBinary, setPylonBinary] =
     React.useState<PylonBinaryStatus | null>(null);
@@ -207,6 +229,157 @@ function App() {
     [activeNamespace],
   );
 
+  const showControlStatus = React.useCallback(async () => {
+    setBusy("autopilot.status");
+    try {
+      const status = await autopilotStatus();
+      setActiveView("command");
+      setConsoleMessage(
+        `${status.product} ${status.shell}: authority ${status.rustAuthority}; lane ${status.runtimeLane}.`,
+      );
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatError(error));
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+
+  const openPylonLogs = React.useCallback(async () => {
+    try {
+      const path = await pylonOpenLogs();
+      setConsoleMessage(`Opened Pylon logs: ${path}`);
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatError(error));
+    }
+  }, []);
+
+  const openProofArtifacts = React.useCallback(async () => {
+    try {
+      const path = await proofOpenArtifacts(activeNamespace);
+      setConsoleMessage(`Opened proof artifacts: ${path}`);
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatError(error));
+    }
+  }, [activeNamespace]);
+
+  const pylonInstalled =
+    pylonBinary?.installed ?? pylonStatus?.installed ?? true;
+
+  const actions = React.useMemo(
+    () =>
+      buildAutopilotActions({
+        activeView,
+        busy,
+        pylonInstalled,
+        theme,
+        setActiveView,
+        setTheme,
+        showControlStatus,
+        refreshPylon,
+        openPylonLogs,
+        startPylon: () => runPylonControl("pylon.start", pylonStart),
+        stopPylon: () => runPylonControl("pylon.stop", pylonStop),
+        restartPylon: () => runPylonControl("pylon.restart", pylonRestart),
+        setProviderMode,
+        showProofFlow: () => setActiveView("proof"),
+        refreshProof: () =>
+          runProofCommand("proof.refresh", () => proofGet(activeNamespace)),
+        runProofLane,
+        doctorProof: () =>
+          runProofCommand("proof.doctor", () => proofDoctor(activeNamespace)),
+        stopProof: () =>
+          runProofCommand("proof.stop", () => proofStop(activeNamespace)),
+        resetProof: () =>
+          runProofCommand("proof.reset", () => proofReset(activeNamespace)),
+        openProofArtifacts,
+      }),
+    [
+      activeNamespace,
+      activeView,
+      busy,
+      openProofArtifacts,
+      openPylonLogs,
+      pylonInstalled,
+      refreshPylon,
+      runProofCommand,
+      runProofLane,
+      runPylonControl,
+      setProviderMode,
+      setTheme,
+      showControlStatus,
+      theme,
+    ],
+  );
+
+  const actionById = React.useMemo(
+    () => new Map(actions.map((action) => [action.id, action])),
+    [actions],
+  );
+
+  const actionRegistryErrors = React.useMemo(
+    () => validateAutopilotActions(actions),
+    [actions],
+  );
+
+  React.useEffect(() => {
+    if (actionRegistryErrors.length > 0) {
+      console.error("Autopilot action registry errors", actionRegistryErrors);
+      setActionError(actionRegistryErrors.join("; "));
+    }
+  }, [actionRegistryErrors]);
+
+  const executeAction = React.useCallback<ActionRunner>(
+    async (action) => {
+      if (action.disabledReason) {
+        setActionError(`${actionBreadcrumb(action)}: ${action.disabledReason}`);
+        return;
+      }
+
+      if (
+        action.kind === "destructive" &&
+        !window.confirm(`${actionBreadcrumb(action)}\n\n${action.effect}`)
+      ) {
+        return;
+      }
+
+      await action.run();
+      setCommandOpen(false);
+
+      if (
+        action.id !== "autopilot.runtime.status" &&
+        action.id !== "help.control.status"
+      ) {
+        setConsoleMessage(`Ran ${actionBreadcrumb(action)}.`);
+      }
+    },
+    [],
+  );
+
+  const submitCommand = React.useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const action = resolveRegisteredAction(actions, commandText);
+
+      if (!commandText.trim()) {
+        setCommandOpen(true);
+        return;
+      }
+
+      if (!action) {
+        setActionError(`No exact action matched: ${commandText}`);
+        setConsoleMessage("Use Command-K for search, or enter an exact action ID.");
+        return;
+      }
+
+      setCommandText("");
+      void executeAction(action);
+    },
+    [actions, commandText, executeAction],
+  );
+
   React.useEffect(() => {
     void refreshPylon();
   }, [refreshPylon]);
@@ -258,76 +431,58 @@ function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const toggleTheme = () => {
-    setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"));
-    setCommandOpen(false);
+  const pylonCardActions = {
+    refresh: requireAction(actionById, "pylon.refresh"),
+    logs: requireAction(actionById, "pylon.logs.open"),
+    start: requireAction(actionById, "pylon.serve.start"),
+    stop: requireAction(actionById, "pylon.serve.stop"),
+    restart: requireAction(actionById, "pylon.serve.restart"),
+    modes: (["online", "offline", "pause", "resume"] as ProviderMode[]).map(
+      (mode) => requireAction(actionById, `pylon.provider.${mode}`),
+    ),
   };
 
-  const submitCommand = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const command = commandText.trim().toLowerCase();
-
-    if (command.includes("pylon")) {
-      setActiveView("pylon");
-    } else if (command.includes("proof") || command.includes("nexus")) {
-      setActiveView("proof");
-    }
-
-    setCommandText("");
-  };
-
-  const selectCommand = (action: () => void) => {
-    action();
-    setCommandOpen(false);
+  const proofCardActions = {
+    refresh: requireAction(actionById, "proof.namespace.refresh"),
+    artifacts: requireAction(actionById, "proof.artifacts.open"),
+    lanes: (Object.keys(proofLaneLabels) as ProofLane[]).map((lane) =>
+      requireAction(actionById, `proof.run.${lane}`),
+    ),
+    doctor: requireAction(actionById, "proof.namespace.doctor"),
+    stop: requireAction(actionById, "proof.namespace.stop"),
+    reset: requireAction(actionById, "proof.namespace.reset"),
   };
 
   return (
-    <main className="shell grid place-items-center p-4">
+    <main className="shell">
       <section className="operator-stage">
-        <div className="operator-stage__bar">
+        <div className="system-menu-strip">
+          <div className="system-title">Autopilot</div>
+          <AutopilotMenuBar actions={actions} onAction={executeAction} />
+          <Button
+            className="command-launcher"
+            type="button"
+            variant="outline"
+            onClick={() => setCommandOpen(true)}
+          >
+            <CommandIcon aria-hidden="true" data-icon="inline-start" />
+            Command
+            <KbdGroup className="ml-1">
+              <Kbd>cmd</Kbd>
+              <Kbd>K</Kbd>
+            </KbdGroup>
+          </Button>
+        </div>
+
+        <div className="system-status-row">
           <div className="status-strip">
             <Badge variant="outline">ACTIVE: {viewLabels[activeView]}</Badge>
             <StateBadge value={pylonStatus?.processState ?? "unknown"} />
             <StateBadge value={pylonStatus?.providerState ?? "unknown"} />
             <StateBadge value={proofStatus?.status ?? "no proof"} />
           </div>
-
-          <div className="operator-stage__actions">
-            <ToggleGroup
-              aria-label="Theme"
-              value={[theme]}
-              variant="outline"
-              size="sm"
-              onValueChange={(value) => {
-                const nextTheme = value[0];
-
-                if (nextTheme === "light" || nextTheme === "dark") {
-                  setTheme(nextTheme);
-                }
-              }}
-            >
-              <ToggleGroupItem value="dark" aria-label="Use dark theme">
-                <Moon aria-hidden="true" data-icon="inline-start" />
-                Dark
-              </ToggleGroupItem>
-              <ToggleGroupItem value="light" aria-label="Use light theme">
-                <Sun aria-hidden="true" data-icon="inline-start" />
-                Light
-              </ToggleGroupItem>
-            </ToggleGroup>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setCommandOpen(true)}
-            >
-              <CommandIcon aria-hidden="true" data-icon="inline-start" />
-              Command
-              <KbdGroup className="ml-1">
-                <Kbd>⌘</Kbd>
-                <Kbd>K</Kbd>
-              </KbdGroup>
-            </Button>
+          <div className="system-status-copy">
+            {busy ? `busy ${busy}` : "ready"}
           </div>
         </div>
 
@@ -342,335 +497,253 @@ function App() {
         <div className="operator-stage__content" aria-live="polite">
           {activeView === "command" ? (
             <CommandEntry
+              message={consoleMessage}
               value={commandText}
               onChange={setCommandText}
               onSubmit={submitCommand}
             />
           ) : activeView === "pylon" ? (
             <PylonStatusCard
+              actions={pylonCardActions}
               binary={pylonBinary}
-              busy={busy}
+              onAction={executeAction}
               status={pylonStatus}
-              onOpenLogs={() => {
-                void pylonOpenLogs().catch((error) =>
-                  setActionError(formatError(error)),
-                );
-              }}
-              onRefresh={refreshPylon}
-              onRestart={() =>
-                void runPylonControl("pylon.restart", pylonRestart)
-              }
-              onSetMode={setProviderMode}
-              onStart={() => void runPylonControl("pylon.start", pylonStart)}
-              onStop={() => void runPylonControl("pylon.stop", pylonStop)}
             />
           ) : (
             <ProofRunCard
-              busy={busy}
+              actions={proofCardActions}
               namespace={activeNamespace}
+              onAction={executeAction}
               proof={proofStatus}
-              onDoctor={() =>
-                void runProofCommand("proof.doctor", () =>
-                  proofDoctor(activeNamespace),
-                )
-              }
-              onOpenArtifacts={() => {
-                void proofOpenArtifacts(activeNamespace).catch((error) =>
-                  setActionError(formatError(error)),
-                );
-              }}
-              onRefresh={() =>
-                void runProofCommand("proof.refresh", () =>
-                  proofGet(activeNamespace),
-                )
-              }
-              onReset={() =>
-                void runProofCommand("proof.reset", () =>
-                  proofReset(activeNamespace),
-                )
-              }
-              onRunLane={runProofLane}
-              onStop={() =>
-                void runProofCommand("proof.stop", () =>
-                  proofStop(activeNamespace),
-                )
-              }
             />
           )}
         </div>
       </section>
 
-      <CommandDialog
-        open={commandOpen}
+      <AutopilotCommandPalette
+        actions={actions}
+        activeView={activeView}
+        onAction={executeAction}
         onOpenChange={setCommandOpen}
-        title="Autopilot Command Menu"
-        description="Run local Autopilot, Pylon, and proof commands."
-        className="sm:max-w-2xl"
-      >
-        <Command label="Autopilot commands" loop>
-          <CommandInput placeholder="Filter commands by pylon, proof, theme..." />
-          <CommandList className="max-h-[26rem]">
-            <CommandEmpty>No command matched.</CommandEmpty>
-            <CommandGroup heading="Pylon">
-              <CommandItem
-                value="show pylon status"
-                keywords={["status", "provider", "process"]}
-                data-checked={activeView === "pylon"}
-                onSelect={() => selectCommand(() => setActiveView("pylon"))}
-              >
-                <Pulse aria-hidden="true" data-icon="inline-start" />
-                <span>Show Pylon Status</span>
-                <CommandShortcut>view</CommandShortcut>
-              </CommandItem>
-              <CommandItem
-                value="refresh pylon status"
-                keywords={["reload", "detect", "binary"]}
-                onSelect={() => selectCommand(() => void refreshPylon())}
-              >
-                <Pulse aria-hidden="true" data-icon="inline-start" />
-                <span>Refresh Pylon</span>
-                <CommandShortcut>status</CommandShortcut>
-              </CommandItem>
-              <CommandSeparator />
-              <CommandItem
-                value="start pylon serve"
-                keywords={["serve", "spawn", "process"]}
-                onSelect={() =>
-                  selectCommand(
-                    () => void runPylonControl("pylon.start", pylonStart),
-                  )
-                }
-              >
-                <Pulse aria-hidden="true" data-icon="inline-start" />
-                <span>Start Pylon Serve</span>
-                <CommandShortcut>spawn</CommandShortcut>
-              </CommandItem>
-              <CommandItem
-                value="stop pylon serve"
-                keywords={["kill", "process"]}
-                onSelect={() =>
-                  selectCommand(
-                    () => void runPylonControl("pylon.stop", pylonStop),
-                  )
-                }
-              >
-                <Pulse aria-hidden="true" data-icon="inline-start" />
-                <span>Stop Pylon Serve</span>
-                <CommandShortcut>stop</CommandShortcut>
-              </CommandItem>
-              <CommandItem
-                value="restart pylon serve"
-                keywords={["process", "serve"]}
-                onSelect={() =>
-                  selectCommand(
-                    () => void runPylonControl("pylon.restart", pylonRestart),
-                  )
-                }
-              >
-                <Pulse aria-hidden="true" data-icon="inline-start" />
-                <span>Restart Pylon Serve</span>
-                <CommandShortcut>restart</CommandShortcut>
-              </CommandItem>
-              <CommandSeparator />
-              {(["online", "offline", "pause", "resume"] as ProviderMode[]).map(
-                (mode) => (
-                  <CommandItem
-                    key={mode}
-                    value={`set pylon ${mode}`}
-                    keywords={["provider", "mode"]}
-                    onSelect={() => selectCommand(() => setProviderMode(mode))}
-                  >
-                    <Pulse aria-hidden="true" data-icon="inline-start" />
-                    <span>Set Provider {mode}</span>
-                    <CommandShortcut>{mode}</CommandShortcut>
-                  </CommandItem>
-                ),
-              )}
-              <CommandItem
-                value="open pylon logs"
-                keywords={["logs", "folder"]}
-                onSelect={() =>
-                  selectCommand(
-                    () =>
-                      void pylonOpenLogs().catch((error) =>
-                        setActionError(formatError(error)),
-                      ),
-                  )
-                }
-              >
-                <CommandIcon aria-hidden="true" data-icon="inline-start" />
-                <span>Open Pylon Logs</span>
-                <CommandShortcut>logs</CommandShortcut>
-              </CommandItem>
-            </CommandGroup>
-            <CommandSeparator />
-            <CommandGroup heading="Proof">
-              <CommandItem
-                value="show proof flow"
-                keywords={["nexus", "fleet", "simulation"]}
-                data-checked={activeView === "proof"}
-                onSelect={() => selectCommand(() => setActiveView("proof"))}
-              >
-                <CheckCircle aria-hidden="true" data-icon="inline-start" />
-                <span>Show Proof Flow</span>
-                <CommandShortcut>view</CommandShortcut>
-              </CommandItem>
-              {(Object.keys(proofLaneLabels) as ProofLane[]).map((lane) => (
-                <CommandItem
-                  key={lane}
-                  value={`run proof ${lane}`}
-                  keywords={["cs336", "nexus", "pylon", "fleet"]}
-                  onSelect={() => selectCommand(() => void runProofLane(lane))}
-                >
-                  <CheckCircle aria-hidden="true" data-icon="inline-start" />
-                  <span>Run {proofLaneLabels[lane]}</span>
-                  <CommandShortcut>proof</CommandShortcut>
-                </CommandItem>
-              ))}
-              <CommandSeparator />
-              <CommandItem
-                value="doctor proof namespace"
-                keywords={["diagnose", "transport", "split"]}
-                onSelect={() =>
-                  selectCommand(
-                    () =>
-                      void runProofCommand("proof.doctor", () =>
-                        proofDoctor(activeNamespace),
-                      ),
-                  )
-                }
-              >
-                <CheckCircle aria-hidden="true" data-icon="inline-start" />
-                <span>Doctor Proof Namespace</span>
-                <CommandShortcut>doctor</CommandShortcut>
-              </CommandItem>
-              <CommandItem
-                value="stop proof namespace"
-                keywords={["fleet", "down"]}
-                onSelect={() =>
-                  selectCommand(
-                    () =>
-                      void runProofCommand("proof.stop", () =>
-                        proofStop(activeNamespace),
-                      ),
-                  )
-                }
-              >
-                <Pulse aria-hidden="true" data-icon="inline-start" />
-                <span>Stop Proof Namespace</span>
-                <CommandShortcut>down</CommandShortcut>
-              </CommandItem>
-              <CommandItem
-                value="reset proof namespace"
-                keywords={["fleet", "clean"]}
-                onSelect={() =>
-                  selectCommand(
-                    () =>
-                      void runProofCommand("proof.reset", () =>
-                        proofReset(activeNamespace),
-                      ),
-                  )
-                }
-              >
-                <Pulse aria-hidden="true" data-icon="inline-start" />
-                <span>Reset Proof Namespace</span>
-                <CommandShortcut>reset</CommandShortcut>
-              </CommandItem>
-              <CommandItem
-                value="open proof artifacts"
-                keywords={["files", "run-report", "summary", "trace"]}
-                onSelect={() =>
-                  selectCommand(
-                    () =>
-                      void proofOpenArtifacts(activeNamespace).catch((error) =>
-                        setActionError(formatError(error)),
-                      ),
-                  )
-                }
-              >
-                <CommandIcon aria-hidden="true" data-icon="inline-start" />
-                <span>Open Proof Artifacts</span>
-                <CommandShortcut>files</CommandShortcut>
-              </CommandItem>
-            </CommandGroup>
-            <CommandSeparator />
-            <CommandGroup heading="Theme">
-              <CommandItem
-                value="toggle theme"
-                keywords={["light", "dark", "mode", "appearance"]}
-                onSelect={toggleTheme}
-              >
-                {theme === "dark" ? (
-                  <Sun aria-hidden="true" data-icon="inline-start" />
-                ) : (
-                  <Moon aria-hidden="true" data-icon="inline-start" />
-                )}
-                <span>
-                  Switch to {theme === "dark" ? "Light" : "Dark"} Theme
-                </span>
-                <CommandShortcut>
-                  {theme === "dark" ? "light" : "dark"}
-                </CommandShortcut>
-              </CommandItem>
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </CommandDialog>
+        open={commandOpen}
+      />
     </main>
   );
 }
 
+function AutopilotMenuBar({
+  actions,
+  onAction,
+}: {
+  actions: AutopilotAction[];
+  onAction: ActionRunner;
+}) {
+  return (
+    <Menubar className="system-menubar">
+      {topLevelMenus.map((menu) => {
+        const branches = buildMenuBranches(
+          actions.filter((action) => action.menuPath[0] === menu),
+        );
+
+        return (
+          <MenubarMenu key={menu}>
+            <MenubarTrigger>{menu}</MenubarTrigger>
+            <MenubarContent className="system-menu-content">
+              {branches.map((branch) => (
+                <MenuBranchItem
+                  branch={branch}
+                  key={branch.key}
+                  onAction={onAction}
+                />
+              ))}
+            </MenubarContent>
+          </MenubarMenu>
+        );
+      })}
+    </Menubar>
+  );
+}
+
+function MenuBranchItem({
+  branch,
+  onAction,
+}: {
+  branch: MenuBranch;
+  onAction: ActionRunner;
+}) {
+  return (
+    <React.Fragment>
+      {branch.separatorBefore ? <MenubarSeparator /> : null}
+      {branch.children ? (
+        <MenubarSub>
+          <MenubarSubTrigger>{branch.label}</MenubarSubTrigger>
+          <MenubarSubContent className="system-menu-content">
+            {branch.children.map((child) => (
+              <MenuBranchItem
+                branch={child}
+                key={child.key}
+                onAction={onAction}
+              />
+            ))}
+          </MenubarSubContent>
+        </MenubarSub>
+      ) : branch.action ? (
+        <MenubarItem
+          data-checked={branch.action.active}
+          disabled={Boolean(branch.action.disabledReason)}
+          title={branch.action.disabledReason ?? branch.action.effect}
+          variant={branch.action.kind === "destructive" ? "destructive" : "default"}
+          onClick={() => void onAction(branch.action as AutopilotAction)}
+        >
+          <ActionGlyph action={branch.action} />
+          <span>{branch.label}</span>
+          {branch.action.disabledReason ? (
+            <span className="menu-disabled-reason">
+              {branch.action.disabledReason}
+            </span>
+          ) : null}
+          <MenubarShortcut>
+            {branch.action.shortcut ?? branch.action.kind}
+          </MenubarShortcut>
+        </MenubarItem>
+      ) : null}
+    </React.Fragment>
+  );
+}
+
+function AutopilotCommandPalette({
+  actions,
+  activeView,
+  onAction,
+  onOpenChange,
+  open,
+}: {
+  actions: AutopilotAction[];
+  activeView: ActiveView;
+  onAction: ActionRunner;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+}) {
+  const orderedMenus = orderCommandMenus(activeView);
+
+  return (
+    <CommandDialog
+      className="sm:max-w-3xl"
+      description="Search registered Autopilot commands."
+      onOpenChange={onOpenChange}
+      open={open}
+      title="Autopilot Command Menu"
+    >
+      <Command label="Autopilot commands" loop>
+        <CommandInput placeholder="Search actions by subsystem, authority, or exact ID..." />
+        <CommandList className="max-h-[30rem]">
+          <CommandEmpty>No registered command matched.</CommandEmpty>
+          {orderedMenus.map((menu) => {
+            const menuActions = actions.filter(
+              (action) => action.menuPath[0] === menu,
+            );
+
+            if (menuActions.length === 0) {
+              return null;
+            }
+
+            return (
+              <CommandGroup heading={menu} key={menu}>
+                {menuActions.map((action) => (
+                  <CommandItem
+                    data-checked={action.active}
+                    disabled={Boolean(action.disabledReason)}
+                    key={action.id}
+                    keywords={[
+                      action.id,
+                      actionBreadcrumb(action),
+                      action.authority,
+                      action.kind,
+                      ...action.paletteKeywords,
+                    ]}
+                    value={`${action.id} ${actionBreadcrumb(action)}`}
+                    onSelect={() => void onAction(action)}
+                  >
+                    <ActionGlyph action={action} />
+                    <span className="command-row-copy">
+                      <span className="command-row-label">{action.label}</span>
+                      <span className="command-row-path">
+                        {actionBreadcrumb(action)}
+                      </span>
+                      <span className="command-row-meta">
+                        {action.kind} / {action.authority}
+                        {action.disabledReason ? ` / ${action.disabledReason}` : ""}
+                      </span>
+                    </span>
+                    <CommandShortcut>
+                      {action.shortcut ?? action.id}
+                    </CommandShortcut>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            );
+          })}
+        </CommandList>
+      </Command>
+    </CommandDialog>
+  );
+}
+
 function CommandEntry({
+  message,
   value,
   onChange,
   onSubmit,
 }: {
+  message: string;
   value: string;
   onChange: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form className="command-entry" onSubmit={onSubmit}>
-      <FieldGroup>
-        <Field>
-          <FieldLabel className="sr-only" htmlFor="autopilot-command">
-            Command
-          </FieldLabel>
-          <Textarea
-            id="autopilot-command"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            placeholder="Enter command"
-          />
-        </Field>
-      </FieldGroup>
-      <Button type="submit">Submit</Button>
-    </form>
+    <section className="command-home" aria-label="Command console">
+      <p>{message}</p>
+      <form className="command-entry" onSubmit={onSubmit}>
+        <FieldGroup>
+          <Field>
+            <FieldLabel className="sr-only" htmlFor="autopilot-command">
+              Command
+            </FieldLabel>
+            <Input
+              autoComplete="off"
+              id="autopilot-command"
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder="action id, for example view.pylon"
+            />
+          </Field>
+        </FieldGroup>
+        <Button type="submit" variant="outline">
+          Run
+        </Button>
+      </form>
+    </section>
   );
 }
 
 function PylonStatusCard({
+  actions,
   binary,
-  busy,
+  onAction,
   status,
-  onOpenLogs,
-  onRefresh,
-  onRestart,
-  onSetMode,
-  onStart,
-  onStop,
 }: {
+  actions: {
+    refresh: AutopilotAction;
+    logs: AutopilotAction;
+    start: AutopilotAction;
+    stop: AutopilotAction;
+    restart: AutopilotAction;
+    modes: AutopilotAction[];
+  };
   binary: PylonBinaryStatus | null;
-  busy: string | null;
+  onAction: ActionRunner;
   status: PylonStatusProjection | null;
-  onOpenLogs: () => void;
-  onRefresh: () => void;
-  onRestart: () => void;
-  onSetMode: (mode: ProviderMode) => void;
-  onStart: () => void;
-  onStop: () => void;
 }) {
-  const disabled = busy !== null;
   const rows: RegisterRow[] = [
     ["binary", binary?.binaryPath ?? status?.binaryPath ?? "not found"],
     ["binary source", binary?.source ?? "unknown"],
@@ -697,41 +770,17 @@ function PylonStatusCard({
       <CardHeader className="operator-card__header">
         <CardTitle>Pylon</CardTitle>
         <div className="button-row">
-          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onRefresh}>
-            <Pulse aria-hidden="true" data-icon="inline-start" />
-            Refresh
-          </Button>
-          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onOpenLogs}>
-            <CommandIcon aria-hidden="true" data-icon="inline-start" />
-            Logs
-          </Button>
+          <ActionButton action={actions.refresh} onAction={onAction} />
+          <ActionButton action={actions.logs} onAction={onAction} />
         </div>
       </CardHeader>
       <CardContent className="operator-card__content">
         <div className="button-row button-row--wrap">
-          <Button type="button" variant="default" size="sm" disabled={disabled} onClick={onStart}>
-            <Pulse aria-hidden="true" data-icon="inline-start" />
-            Start
-          </Button>
-          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onStop}>
-            <Pulse aria-hidden="true" data-icon="inline-start" />
-            Stop
-          </Button>
-          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onRestart}>
-            <Pulse aria-hidden="true" data-icon="inline-start" />
-            Restart
-          </Button>
-          {(["online", "offline", "pause", "resume"] as ProviderMode[]).map((mode) => (
-            <Button
-              key={mode}
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={disabled}
-              onClick={() => onSetMode(mode)}
-            >
-              {mode}
-            </Button>
+          <ActionButton action={actions.start} onAction={onAction} variant="default" />
+          <ActionButton action={actions.stop} onAction={onAction} />
+          <ActionButton action={actions.restart} onAction={onAction} />
+          {actions.modes.map((action) => (
+            <ActionButton action={action} key={action.id} onAction={onAction} />
           ))}
         </div>
         <RegisterGrid rows={rows} />
@@ -741,27 +790,23 @@ function PylonStatusCard({
 }
 
 function ProofRunCard({
-  busy,
+  actions,
   namespace,
+  onAction,
   proof,
-  onDoctor,
-  onOpenArtifacts,
-  onRefresh,
-  onReset,
-  onRunLane,
-  onStop,
 }: {
-  busy: string | null;
+  actions: {
+    refresh: AutopilotAction;
+    artifacts: AutopilotAction;
+    lanes: AutopilotAction[];
+    doctor: AutopilotAction;
+    stop: AutopilotAction;
+    reset: AutopilotAction;
+  };
   namespace: string;
+  onAction: ActionRunner;
   proof: ProofRunProjection | null;
-  onDoctor: () => void;
-  onOpenArtifacts: () => void;
-  onRefresh: () => void;
-  onReset: () => void;
-  onRunLane: (lane: ProofLane) => void;
-  onStop: () => void;
 }) {
-  const disabled = busy !== null;
   const rows: RegisterRow[] = [
     ["namespace", proof?.namespace ?? namespace],
     ["lane", proof?.lane ?? "none"],
@@ -788,40 +833,23 @@ function ProofRunCard({
       <CardHeader className="operator-card__header">
         <CardTitle>Proof Flow</CardTitle>
         <div className="button-row">
-          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onRefresh}>
-            <Pulse aria-hidden="true" data-icon="inline-start" />
-            Refresh
-          </Button>
-          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onOpenArtifacts}>
-            <CommandIcon aria-hidden="true" data-icon="inline-start" />
-            Artifacts
-          </Button>
+          <ActionButton action={actions.refresh} onAction={onAction} />
+          <ActionButton action={actions.artifacts} onAction={onAction} />
         </div>
       </CardHeader>
       <CardContent className="operator-card__content">
         <div className="button-row button-row--wrap">
-          {(Object.keys(proofLaneLabels) as ProofLane[]).map((lane) => (
-            <Button
-              key={lane}
-              type="button"
+          {actions.lanes.map((action) => (
+            <ActionButton
+              action={action}
+              key={action.id}
+              onAction={onAction}
               variant="default"
-              size="sm"
-              disabled={disabled}
-              onClick={() => onRunLane(lane)}
-            >
-              <CheckCircle aria-hidden="true" data-icon="inline-start" />
-              {proofLaneLabels[lane]}
-            </Button>
+            />
           ))}
-          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onDoctor}>
-            Doctor
-          </Button>
-          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onStop}>
-            Stop
-          </Button>
-          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onReset}>
-            Reset
-          </Button>
+          <ActionButton action={actions.doctor} onAction={onAction} />
+          <ActionButton action={actions.stop} onAction={onAction} />
+          <ActionButton action={actions.reset} onAction={onAction} />
         </div>
         <ProofStageGrid proof={proof} />
         <RegisterGrid rows={rows} />
@@ -830,6 +858,53 @@ function ProofRunCard({
       </CardContent>
     </Card>
   );
+}
+
+function ActionButton({
+  action,
+  onAction,
+  variant,
+}: {
+  action: AutopilotAction;
+  onAction: ActionRunner;
+  variant?: "default" | "outline";
+}) {
+  const resolvedVariant =
+    variant ?? (action.kind === "destructive" ? "destructive" : "outline");
+
+  return (
+    <Button
+      disabled={Boolean(action.disabledReason)}
+      size="sm"
+      title={action.disabledReason ?? action.effect}
+      type="button"
+      variant={resolvedVariant}
+      onClick={() => void onAction(action)}
+    >
+      <ActionGlyph action={action} />
+      {action.label}
+    </Button>
+  );
+}
+
+function ActionGlyph({ action }: { action: AutopilotAction }) {
+  if (action.authority === "pylon") {
+    return <Pulse aria-hidden="true" data-icon="inline-start" />;
+  }
+
+  if (action.authority === "proof") {
+    return <CheckCircle aria-hidden="true" data-icon="inline-start" />;
+  }
+
+  if (action.authority === "theme") {
+    return action.id.endsWith(".light") ? (
+      <Sun aria-hidden="true" data-icon="inline-start" />
+    ) : (
+      <Moon aria-hidden="true" data-icon="inline-start" />
+    );
+  }
+
+  return <CommandIcon aria-hidden="true" data-icon="inline-start" />;
 }
 
 function ProofStageGrid({ proof }: { proof: ProofRunProjection | null }) {
@@ -902,8 +977,6 @@ function ProofNodeTable({
   );
 }
 
-type RegisterRow = [string, React.ReactNode];
-
 function RegisterGrid({ rows }: { rows: RegisterRow[] }) {
   return (
     <dl className="register-grid">
@@ -941,6 +1014,75 @@ function useTheme(): [Theme, React.Dispatch<React.SetStateAction<Theme>>] {
   }, [theme]);
 
   return [theme, setTheme];
+}
+
+function buildMenuBranches(actions: AutopilotAction[], depth = 1): MenuBranch[] {
+  const branches: MenuBranch[] = [];
+  const nested = new Map<string, { branch: MenuBranch; actions: AutopilotAction[] }>();
+
+  for (const action of actions) {
+    const segment = action.menuPath[depth];
+
+    if (!segment) {
+      continue;
+    }
+
+    if (action.menuPath.length === depth + 1) {
+      branches.push({
+        action,
+        key: action.id,
+        label: segment,
+        separatorBefore: action.separatorBefore,
+      });
+      continue;
+    }
+
+    let entry = nested.get(segment);
+
+    if (!entry) {
+      entry = {
+        actions: [],
+        branch: {
+          key: `${depth}-${segment}`,
+          label: segment,
+          separatorBefore: action.separatorBefore,
+        },
+      };
+      nested.set(segment, entry);
+      branches.push(entry.branch);
+    }
+
+    entry.actions.push(action);
+  }
+
+  for (const entry of nested.values()) {
+    entry.branch.children = buildMenuBranches(entry.actions, depth + 1);
+  }
+
+  return branches;
+}
+
+function orderCommandMenus(activeView: ActiveView) {
+  const activeMenu =
+    activeView === "pylon" ? "Pylon" : activeView === "proof" ? "Proof" : "View";
+
+  return [
+    activeMenu,
+    ...topLevelMenus.filter((menu) => menu !== activeMenu),
+  ];
+}
+
+function requireAction(
+  actions: Map<string, AutopilotAction>,
+  id: string,
+): AutopilotAction {
+  const action = actions.get(id);
+
+  if (!action) {
+    throw new Error(`missing registered action: ${id}`);
+  }
+
+  return action;
 }
 
 function makeProofNamespace(lane: ProofLane) {

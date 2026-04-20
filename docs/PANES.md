@@ -379,6 +379,11 @@ Current pane badge mapping:
 
 ## Opening Panes
 
+This section describes the retained WGPUI pane inventory and the
+`apps/autopilot-deprecated` command surface. The Tauri shell in `apps/autopilot`
+uses a registry-backed command hierarchy instead: top menus are the canonical
+structure, and Command-K searches that hierarchy with breadcrumb rows.
+
 - Hotbar:
   - `1` opens `Provider Control`.
   - `2` opens `Nostr Keys (NIP-06)`.
@@ -386,7 +391,7 @@ Current pane badge mapping:
   - `4` opens `Earnings & Jobs`.
   - `5` opens `Log Stream`.
   - `K` opens the command palette.
-- Command Palette (`K`):
+- Command Palette (`K`, retained WGPUI surface):
   - `Autopilot Chat` -> opens `Autopilot Chat`.
   - `Codex Account` -> opens `Codex Account`.
   - `Codex Models` -> opens `Codex Models`.

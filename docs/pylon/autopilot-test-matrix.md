@@ -126,15 +126,19 @@ Manual packaged-app or `bun run tauri dev` validation after the programmatic
 smoke:
 
 1. Open Autopilot.
-2. Press `Command-K`.
-3. Run `Show Pylon Status`.
-4. Run `Start Pylon Serve`.
-5. Run `Refresh Pylon`.
-6. Run `Set Provider online`.
-7. Run `Set Provider offline`.
-8. Run `Restart Pylon Serve`.
-9. Run `Stop Pylon Serve`.
-10. Run `Open Pylon Logs`.
+2. Confirm the top menu bar shows `Autopilot`, `View`, `Pylon`, `Proof`, and
+   `Help`.
+3. Open `View > Pylon`.
+4. Open `Pylon > Start Serve`.
+5. Open `Pylon > Refresh`.
+6. Open `Pylon > Provider Mode > Online`.
+7. Open `Pylon > Provider Mode > Offline`.
+8. Open `Pylon > Restart Serve`.
+9. Press `Command-K`.
+10. Confirm Command-K rows show breadcrumb paths such as
+    `Pylon > Provider Mode > Online`.
+11. Run `Stop Pylon Serve`.
+12. Run `Open Pylon Logs`.
 
 Expected result:
 
@@ -222,7 +226,9 @@ bun run tauri dev
 
 Inspect:
 
-- default view is the centered command textarea and submit button
+- default view is the sparse command console message plus one exact-action
+  input box
+- menu items, Command-K rows, and pane-local buttons use the same action labels
 - `Command-K` opens the command dialog in the active theme
 - no static runtime/evidence placeholder cards are shown
 - Pylon and Proof cards remain inside the fixed viewport

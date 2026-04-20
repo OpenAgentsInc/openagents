@@ -6,6 +6,13 @@ export type ProofLane =
   | "cs336-a1-stale-recovery"
   | "cs336-a1-replacement-attempt";
 
+export interface AutopilotStatus {
+  product: string;
+  shell: string;
+  rustAuthority: string;
+  runtimeLane: string;
+}
+
 export interface PylonBinaryStatus {
   installed: boolean;
   binaryName: string;
@@ -115,6 +122,10 @@ export interface ProofRunOptions {
   workers?: number;
   validators?: number;
   timeoutSeconds?: number;
+}
+
+export function autopilotStatus() {
+  return invoke<AutopilotStatus>("autopilot_status");
 }
 
 export function pylonDetect() {
