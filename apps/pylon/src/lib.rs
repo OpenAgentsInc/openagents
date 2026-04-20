@@ -13117,6 +13117,13 @@ fn training_closeout_progress_superseded_by_terminal_assignment(
     if entry.stage.terminal() {
         return false;
     }
+    if state.closeout_cache.values().any(|closeout| {
+        closeout.training_run_id == entry.training_run_id
+            && closeout.window_id == entry.window_id
+            && matches!(closeout.closeout_status.as_str(), "accepted" | "rewarded")
+    }) {
+        return true;
+    }
     state.closeout_progress.values().any(|candidate| {
         candidate.assignment_id == entry.assignment_id
             && candidate.training_run_id == entry.training_run_id
@@ -39091,6 +39098,56 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 &challenge_entry,
             ),
             "challenge-specific validator progress should not remain a stale issue after the assignment has a paid terminal closeout entry",
+        )
+    }
+
+    #[test]
+    fn training_closeout_progress_issue_ignores_worker_progress_after_rewarded_closeout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = PylonTrainingRuntimeState::default();
+        let worker_entry = super::PylonTrainingCloseoutProgressEntry {
+            assignment_id: "assign.alpha".to_string(),
+            training_run_id: "run.alpha".to_string(),
+            window_id: "window.0001".to_string(),
+            role: PylonTrainingRoleClaim::Worker,
+            stage: super::PylonTrainingCloseoutStage::WindowSealed,
+            challenge_id: None,
+            contribution_id: Some("contrib.alpha".to_string()),
+            checkpoint_ref: Some("checkpoint://alpha".to_string()),
+            authority_assignment_state: Some("released".to_string()),
+            authority_window_state: Some("sealed".to_string()),
+            acceptance_state: Some("sealed".to_string()),
+            payout_state: None,
+            payout_receipt_id: None,
+            last_error: None,
+            updated_at_ms: 1_762_500_000_000,
+        };
+        state
+            .closeout_progress
+            .insert("assign.alpha".to_string(), worker_entry.clone());
+        state.closeout_cache.insert(
+            "accepted.window.0001".to_string(),
+            super::PylonTrainingCloseoutCacheEntry {
+                outcome_id: "accepted.window.0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                outcome_kind: "training_run".to_string(),
+                closeout_status: "rewarded".to_string(),
+                payout_eligible: true,
+                accepted_checkpoint_ref: Some("checkpoint://alpha".to_string()),
+                completed_step_count: Some(4),
+                processed_token_count: None,
+                best_eval_score_bps: None,
+                accepted_at_ms: 1_762_500_030_000,
+            },
+        );
+
+        ensure(
+            super::training_closeout_progress_superseded_by_terminal_assignment(
+                &state,
+                &worker_entry,
+            ),
+            "worker progress should not remain a stale issue after another validator records the rewarded closeout",
         )
     }
 
