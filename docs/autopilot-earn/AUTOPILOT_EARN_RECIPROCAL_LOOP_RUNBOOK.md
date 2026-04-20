@@ -1,7 +1,7 @@
 # Autopilot Earn Reciprocal Loop Runbook
 
 Date: 2026-03-04  
-Owner: `apps/autopilot-desktop` (compute-lane MVP)
+Owner: `apps/autopilot-deprecated` (compute-lane MVP)
 
 ## Goal
 

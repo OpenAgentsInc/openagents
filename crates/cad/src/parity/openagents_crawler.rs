@@ -10,7 +10,7 @@ pub const OPENAGENTS_PARITY_PINNED_COMMIT: &str = "04faa5227f077c419f1c5c52ddebb
 const WORKSPACE_CARGO_TOML: &str = "Cargo.toml";
 const CAD_LIB_PATH: &str = "crates/cad/src/lib.rs";
 const CAD_INTENT_PATH: &str = "crates/cad/src/intent.rs";
-const CAD_DYNAMIC_TOOLS_PATH: &str = "apps/autopilot-desktop/src/openagents_dynamic_tools.rs";
+const CAD_DYNAMIC_TOOLS_PATH: &str = "apps/autopilot-deprecated/src/openagents_dynamic_tools.rs";
 
 const DOC_SOURCES: [&str; 7] = [
     "crates/cad/docs/PLAN.md",
@@ -223,7 +223,7 @@ fn parse_workspace_cad_surfaces(
     let members = parse_workspace_members(workspace_toml)?;
     let mut capabilities = Vec::new();
     for member_path in members {
-        if !member_path.contains("cad") && member_path != "apps/autopilot-desktop" {
+        if !member_path.contains("cad") && member_path != "apps/autopilot-deprecated" {
             continue;
         }
         let cargo_toml_path = format!("{member_path}/Cargo.toml");
@@ -591,12 +591,12 @@ mod tests {
         let workspace = r#"
 [workspace]
 members = [
-  "apps/autopilot-desktop",
+  "apps/autopilot-deprecated",
   "crates/cad",
 ]
 "#;
         let members = parse_workspace_members(workspace).expect("members parse");
-        assert_eq!(members, vec!["apps/autopilot-desktop", "crates/cad"]);
+        assert_eq!(members, vec!["apps/autopilot-deprecated", "crates/cad"]);
     }
 
     #[test]

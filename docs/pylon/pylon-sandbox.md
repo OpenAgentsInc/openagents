@@ -614,7 +614,7 @@ Recommended repo-level implementation targets
   - show recent sandbox jobs and receipts
 - Autopilot integration:
   - consume the same shared substrate truth for sandbox-capable providers
-  - do not move product UX ownership out of apps/autopilot-desktop
+  - do not move product UX ownership out of apps/autopilot-deprecated
 
 Deliverables
 

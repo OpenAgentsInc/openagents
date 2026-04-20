@@ -35,15 +35,15 @@ Product / architecture authority:
 Current implementation surfaces reviewed:
 
 - `Cargo.toml`
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/starter_demand_client.rs`
-- `apps/autopilot-desktop/src/economy_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/state/economy_snapshot.rs`
-- `apps/autopilot-desktop/src/state/provider_runtime.rs`
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/runtime_lanes.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/starter_demand_client.rs`
+- `apps/autopilot-deprecated/src/economy_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/state/economy_snapshot.rs`
+- `apps/autopilot-deprecated/src/state/provider_runtime.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/runtime_lanes.rs`
 - `apps/nexus-control/src/lib.rs`
 - `apps/nexus-control/src/economy.rs`
 - `crates/spark/src/wallet.rs`
@@ -70,7 +70,7 @@ These pieces are already pointed in the right direction:
 
 - `README.md` now presents the marketplace as Compute, Data, Labor, Liquidity, and Risk on a shared kernel.
 - `docs/kernel/README.md` now mirrors that five-market stack and explains the dependency order clearly.
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs` and `apps/autopilot-desktop/src/state/economy_snapshot.rs` already prototype many kernel concepts locally:
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs` and `apps/autopilot-deprecated/src/state/economy_snapshot.rs` already prototype many kernel concepts locally:
   - receipts
   - policy bundles
   - work-unit metadata
@@ -218,7 +218,7 @@ Before market-by-market detail, the biggest implementation gap is structural:
 
 What exists instead:
 
-- desktop-local receipt and snapshot state in `apps/autopilot-desktop`
+- desktop-local receipt and snapshot state in `apps/autopilot-deprecated`
 - small hosted-Nexus control endpoints in `apps/nexus-control`
 - protocol/event lanes for Nostr-facing flows
 
@@ -242,8 +242,8 @@ This is the only market with real MVP product behavior today.
 
 Built now:
 
-- Desktop provider ingress and relay health in `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- Job acceptance/execution/result handling in `apps/autopilot-desktop/src/input/reducers/jobs.rs`
+- Desktop provider ingress and relay health in `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- Job acceptance/execution/result handling in `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
 - Starter-demand authority flow in `apps/nexus-control/src/lib.rs`
 - Wallet payout path via `crates/spark/src/wallet.rs`
 
@@ -308,8 +308,8 @@ Built now:
 
 - Spark receive/send flows
 - starter-demand completion uses payment pointers
-- local AC/credit lane prototypes in `apps/autopilot-desktop/src/runtime_lanes.rs`
-- treasury/stablesats simulations in `apps/autopilot-desktop/src/app_state_domains.rs`
+- local AC/credit lane prototypes in `apps/autopilot-deprecated/src/runtime_lanes.rs`
+- treasury/stablesats simulations in `apps/autopilot-deprecated/src/app_state_domains.rs`
 
 Still missing:
 

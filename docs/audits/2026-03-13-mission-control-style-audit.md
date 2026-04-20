@@ -8,11 +8,11 @@ Analyze the high-quality rendering style of the Mission Control pane, contrast i
 
 | File | Lines | Role |
 |------|-------|------|
-| `apps/autopilot-desktop/src/pane_renderer.rs` | 8 464 | Main pane dispatch + MC rendering + shared helpers |
-| `apps/autopilot-desktop/src/panes/chat.rs` | 4 192 | Chat pane (extracted module) |
-| `apps/autopilot-desktop/src/panes/wallet.rs` | 672 | Wallet pane (extracted module) |
-| `apps/autopilot-desktop/src/panes/relay_connections.rs` | 141 | Relay connections pane (extracted module) |
-| `apps/autopilot-desktop/src/panes/buy_mode_payments.rs` | 65 | Buy-mode payments pane (extracted module) |
+| `apps/autopilot-deprecated/src/pane_renderer.rs` | 8 464 | Main pane dispatch + MC rendering + shared helpers |
+| `apps/autopilot-deprecated/src/panes/chat.rs` | 4 192 | Chat pane (extracted module) |
+| `apps/autopilot-deprecated/src/panes/wallet.rs` | 672 | Wallet pane (extracted module) |
+| `apps/autopilot-deprecated/src/panes/relay_connections.rs` | 141 | Relay connections pane (extracted module) |
+| `apps/autopilot-deprecated/src/panes/buy_mode_payments.rs` | 65 | Buy-mode payments pane (extracted module) |
 | `crates/wgpui/src/theme/mod.rs` | 424 | Global theme system (color tokens, spacing, typography) |
 
 ---

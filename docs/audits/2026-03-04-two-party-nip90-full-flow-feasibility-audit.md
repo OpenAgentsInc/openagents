@@ -5,7 +5,7 @@
 
 Date: 2026-03-04  
 Author: Codex  
-Scope: `apps/autopilot-desktop`, `crates/nostr/core`, and `/Users/christopherdavid/code/nips/90.md`
+Scope: `apps/autopilot-deprecated`, `crates/nostr/core`, and `/Users/christopherdavid/code/nips/90.md`
 
 ## Objective
 
@@ -47,9 +47,9 @@ Implication:
 - Identity path can be overridden per process via `OPENAGENTS_IDENTITY_MNEMONIC_PATH`.
   - `crates/nostr/core/src/identity.rs:8,35-47`
 - Spark signer derives from that mnemonic path and stores wallet state under the identity directory.
-  - `apps/autopilot-desktop/src/spark_wallet.rs:407-445`
+  - `apps/autopilot-deprecated/src/spark_wallet.rs:407-445`
 - App settings path defaults to `$HOME/.openagents/autopilot-settings-v1.conf`, so two local instances will collide unless you isolate env/home.
-  - `apps/autopilot-desktop/src/app_state.rs:2306-2312`
+  - `apps/autopilot-deprecated/src/app_state.rs:2306-2312`
 
 Conclusion:
 
@@ -58,11 +58,11 @@ Conclusion:
 ## 2) Provider ingest is live for request kinds, but not provider-target filtered
 
 - Ingress subscription currently filters only by job request kinds (`5000-5999`) with no pubkey/provider filter.
-  - `apps/autopilot-desktop/src/provider_nip90_lane.rs:724-729`
+  - `apps/autopilot-deprecated/src/provider_nip90_lane.rs:724-729`
 - Request parsing captures tags (including service providers in the underlying model), but desktop mapping does not enforce provider targeting.
   - Parse model supports service providers: `crates/nostr/core/src/nip90/model.rs:337,432,487`
-  - Desktop mapping to inbox: `apps/autopilot-desktop/src/provider_nip90_lane.rs:924-991`
-  - Service providers are only surfaced in shape text: `apps/autopilot-desktop/src/provider_nip90_lane.rs:1010-1028`
+  - Desktop mapping to inbox: `apps/autopilot-deprecated/src/provider_nip90_lane.rs:924-991`
+  - Service providers are only surfaced in shape text: `apps/autopilot-deprecated/src/provider_nip90_lane.rs:1010-1028`
 
 Conclusion:
 
@@ -71,11 +71,11 @@ Conclusion:
 ## 3) Buyer-side request creation is not yet relay-published NIP-90
 
 - `NetworkRequestsPaneAction::SubmitRequest` queues AC intent + local request submission state; it does not publish a NIP-90 request event to relays.
-  - `apps/autopilot-desktop/src/input/actions.rs:3590-3715`
+  - `apps/autopilot-deprecated/src/input/actions.rs:3590-3715`
 - Optional local injection path writes directly into inbox for simulation/dev.
-  - `apps/autopilot-desktop/src/input/actions.rs:3670-3692`
+  - `apps/autopilot-deprecated/src/input/actions.rs:3670-3692`
 - Starter demand path similarly injects local inbox requests instead of publishing to relay.
-  - `apps/autopilot-desktop/src/input/actions.rs:3801-3888`
+  - `apps/autopilot-deprecated/src/input/actions.rs:3801-3888`
 
 Conclusion:
 
@@ -84,11 +84,11 @@ Conclusion:
 ## 4) Provider-side result/feedback publish exists, but payment handshake is incomplete
 
 - Active-job flow publishes NIP-90 result and feedback events through provider relay lane.
-  - `apps/autopilot-desktop/src/input/reducers/jobs.rs:299-382`
+  - `apps/autopilot-deprecated/src/input/reducers/jobs.rs:299-382`
 - Result/feedback include `amount` but currently pass `None` bolt11 invoice.
-  - `apps/autopilot-desktop/src/input/reducers/jobs.rs:324,367`
+  - `apps/autopilot-deprecated/src/input/reducers/jobs.rs:324,367`
 - Publish success/degraded handling is wired by accepted relay count.
-  - `apps/autopilot-desktop/src/provider_nip90_lane.rs:474-521`
+  - `apps/autopilot-deprecated/src/provider_nip90_lane.rs:474-521`
 
 Conclusion:
 
@@ -97,11 +97,11 @@ Conclusion:
 ## 5) Open-network paid transition is blocked by missing runtime payment pointer wiring
 
 - Active job `Delivered -> Paid` is gated on authoritative `payment_id`.
-  - `apps/autopilot-desktop/src/app_state.rs:2507-2547`
+  - `apps/autopilot-deprecated/src/app_state.rs:2507-2547`
 - Non-test runtime assignment to `active_job.payment_id` is not present (only test assignments in `app_state.rs`).
-  - `apps/autopilot-desktop/src/app_state.rs:4898,4988` (test-only)
+  - `apps/autopilot-deprecated/src/app_state.rs:4898,4988` (test-only)
 - Starter demand has separate wallet-confirmed payout path by matching recent receive payments.
-  - `apps/autopilot-desktop/src/input/actions.rs:3938-4051`
+  - `apps/autopilot-deprecated/src/input/actions.rs:3938-4051`
 
 Conclusion:
 

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Define the macOS release flow for `apps/autopilot-desktop` with one script:
+Define the macOS release flow for `apps/autopilot-deprecated` with one script:
 
 - versioning
 - testing/build
@@ -90,7 +90,7 @@ Script fails fast unless all are true:
 
 1. Validate environment + git state.
 2. Resolve version and verify tag does not already exist.
-3. Update versions in `Cargo.toml` and `apps/autopilot-desktop/Cargo.toml`.
+3. Update versions in `Cargo.toml` and `apps/autopilot-deprecated/Cargo.toml`.
 4. Run:
    - `scripts/lint/ownership-boundary-check.sh`
    - `scripts/cad/release-gate-checklist.sh` (CAD demo milestone gate)

@@ -30,7 +30,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-git diff --unified=0 "$RANGE" -- 'apps/autopilot-desktop/src/**/*.rs' 'crates/**/src/**/*.rs' >"$DIFF_FILE" || true
+git diff --unified=0 "$RANGE" -- 'apps/autopilot-deprecated/src/**/*.rs' 'crates/**/src/**/*.rs' >"$DIFF_FILE" || true
 
 python3 - "$DIFF_FILE" <<'PY'
 import pathlib

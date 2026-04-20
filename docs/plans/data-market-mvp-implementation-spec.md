@@ -44,7 +44,7 @@ This document is the implementation-oriented companion. It defines:
 The first real product wedge for the Data Market should be a dedicated
 conversational seller surface:
 
-- a `Data Seller` pane in `apps/autopilot-desktop`,
+- a `Data Seller` pane in `apps/autopilot-deprecated`,
 - backed by the existing Codex lane,
 - using a seller-specific Codex skill/policy profile,
 - with typed OpenAgents data-market tools,
@@ -297,7 +297,7 @@ Recommended initial asset families:
 
 ## 1. Add a dedicated `Data Seller` pane
 
-We should add a new pane to `apps/autopilot-desktop` with its own pane state,
+We should add a new pane to `apps/autopilot-deprecated` with its own pane state,
 renderer, actions, and command routing.
 
 This pane should contain:
@@ -672,7 +672,7 @@ legible rather than burying them in raw payloads.
 
 Primary landing zone:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 
 Expected files/modules:
 
@@ -787,7 +787,7 @@ These titles are phrased so they can be opened directly as GitHub issues.
 
 2. **[DATA P0] Add `Data Seller` pane shell and state model**
    - Register a new pane, pane state, renderer, and action routing in
-     `apps/autopilot-desktop`.
+     `apps/autopilot-deprecated`.
    - The first version only needs transcript shell, draft card, status area,
      and explicit preview/publish controls.
 

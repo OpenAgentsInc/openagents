@@ -47,7 +47,7 @@ buffers were also dropped from the SFT execution artifacts.
 The second concrete bug was operator misconfiguration: the live Apple operator
 was silently inflating manifest-backed runs to `128` steps even when the frozen
 experiment manifest explicitly requested `8`. That bug is now fixed in
-`apps/autopilot-desktop/src/apple_adapter_training_control.rs`. Manifest-backed
+`apps/autopilot-deprecated/src/apple_adapter_training_control.rs`. Manifest-backed
 runs now respect the manifest step budget.
 
 Those two fixes materially improved operability:
@@ -102,7 +102,7 @@ Also landed in `149e0dcc5`.
 
 Changed:
 
-- `apps/autopilot-desktop/src/apple_adapter_training_control.rs`
+- `apps/autopilot-deprecated/src/apple_adapter_training_control.rs`
 
 What changed:
 
@@ -124,10 +124,10 @@ Landed in `80d17bd72`.
 
 Changed:
 
-- `apps/autopilot-desktop/src/apple_architecture_explainer_reference_run.rs`
-- `apps/autopilot-desktop/src/bin/apple_architecture_explainer_reference_run.rs`
-- `apps/autopilot-desktop/src/apple_repo_lookup_tools.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/apple_architecture_explainer_reference_run.rs`
+- `apps/autopilot-deprecated/src/bin/apple_architecture_explainer_reference_run.rs`
+- `apps/autopilot-deprecated/src/apple_repo_lookup_tools.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
 
 What changed:
 
@@ -312,7 +312,7 @@ The recorded model-request failures show that the model attempted invalid tool
 paths such as:
 
 - `crates/psionic/*`
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 
 The first is a wildcard path the repo lookup harness does not resolve. The
 second is a directory path, not a file path.

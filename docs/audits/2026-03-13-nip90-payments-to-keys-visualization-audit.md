@@ -33,17 +33,17 @@ Primary docs reviewed:
 
 Primary code reviewed:
 
-- `apps/autopilot-desktop/src/provider_nip90_lane.rs`
-- `apps/autopilot-desktop/src/input/reducers/provider_ingress.rs`
-- `apps/autopilot-desktop/src/input/reducers/wallet.rs`
-- `apps/autopilot-desktop/src/state/operations.rs`
-- `apps/autopilot-desktop/src/nip90_compute_flow.rs`
-- `apps/autopilot-desktop/src/state/job_inbox.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/state/earn_kernel_receipts.rs`
-- `apps/autopilot-desktop/src/runtime_log.rs`
-- `apps/autopilot-desktop/src/panes/earnings_jobs.rs`
-- `apps/autopilot-desktop/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
+- `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
+- `apps/autopilot-deprecated/src/input/reducers/wallet.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/nip90_compute_flow.rs`
+- `apps/autopilot-deprecated/src/state/job_inbox.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/state/earn_kernel_receipts.rs`
+- `apps/autopilot-deprecated/src/runtime_log.rs`
+- `apps/autopilot-deprecated/src/panes/earnings_jobs.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
 - `crates/spark/src/wallet.rs`
 - `crates/nostr/core/src/nip90/*`
 - `crates/nostr/core/tests/nip90_integration.rs`
@@ -639,7 +639,7 @@ Until Phase 2 exists, any per-relay historical payment graph would be guesswork.
 
 ## Recommended Visualization-Ready Data Model
 
-Add one app-owned ledger in `apps/autopilot-desktop`, not a reusable crate:
+Add one app-owned ledger in `apps/autopilot-deprecated`, not a reusable crate:
 
 ### `Nip90PaymentFact`
 
@@ -769,7 +769,7 @@ Why last:
 
 ## Concrete Product Recommendations
 
-1. Introduce an app-owned `Nip90PaymentFact` stream in `apps/autopilot-desktop` and persist it beside the current lifecycle projection and earn-kernel receipts.
+1. Introduce an app-owned `Nip90PaymentFact` stream in `apps/autopilot-deprecated` and persist it beside the current lifecycle projection and earn-kernel receipts.
 
 2. Carry requester pubkey through seller-facing history projections so the earnings side can answer `who paid me`.
 

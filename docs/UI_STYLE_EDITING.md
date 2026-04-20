@@ -6,7 +6,7 @@ This file explains where to edit shared UI styles without digging through pane r
 
 Edit this file for shared Autopilot UI styling:
 
-- [ui_style.rs](/Users/kevinfremon/code/OpenAgents/openagents/apps/autopilot-desktop/src/ui_style.rs)
+- [ui_style.rs](/Users/kevinfremon/code/OpenAgents/openagents/apps/autopilot-deprecated/src/ui_style.rs)
 
 Think of it like a CSS variables file.
 

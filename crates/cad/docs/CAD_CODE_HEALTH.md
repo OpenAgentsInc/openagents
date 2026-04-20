@@ -12,12 +12,12 @@ Provide a single repeatable workflow for CAD lint, formatting, tests, and strict
 This runbook is the canonical local quality gate for:
 
 - `crates/cad`
-- CAD integration paths in `apps/autopilot-desktop`
+- CAD integration paths in `apps/autopilot-deprecated`
 - CAD strict lanes in `scripts/lint/strict-production-hardening-check.sh`
 
 ## Ownership + Scope
 
-- Product wiring and pane behavior live in `apps/autopilot-desktop`.
+- Product wiring and pane behavior live in `apps/autopilot-deprecated`.
 - Reusable CAD logic lives in `crates/cad`.
 - Keep changes aligned with `docs/MVP.md` and `docs/OWNERSHIP.md`.
 

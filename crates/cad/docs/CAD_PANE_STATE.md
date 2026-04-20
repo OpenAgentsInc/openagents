@@ -4,13 +4,13 @@ This document defines the MVP `CadDemoPaneState` container in desktop app state.
 
 ## Location
 
-- `apps/autopilot-desktop/src/app_state_domains.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
 
 ## Purpose
 
 - Provide deterministic CAD pane bootstrap/session metadata before full reducer wiring.
-- Keep app-layer orchestration state in `apps/autopilot-desktop` per ownership boundaries.
+- Keep app-layer orchestration state in `apps/autopilot-deprecated` per ownership boundaries.
 
 ## Fields (MVP)
 

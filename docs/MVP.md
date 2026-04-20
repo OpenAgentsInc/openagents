@@ -309,7 +309,7 @@ Terminology in this spec:
 
 - `OpenAgents Runtime` is the execution environment on the user/provider node where jobs run, local state advances, and provenance is produced.
 - `OpenAgents Kernel` is the authority layer that verifies outcomes, settles value, and emits canonical receipts.
-- For this MVP, the desktop embeds the runtime in `apps/autopilot-desktop`. A thin backend kernel authority slice already exists in `apps/nexus-control` and `openagents-kernel-core`, while richer market coverage and broader package surfaces remain in flight.
+- For this MVP, the desktop embeds the runtime in `apps/autopilot-deprecated`. A thin backend kernel authority slice already exists in `apps/nexus-control` and `openagents-kernel-core`, while richer market coverage and broader package surfaces remain in flight.
 
 * The retained implementation is Rust-only. We do not ship a split-brain authority system.
 * Cross-boundary contracts are proto-first. The desktop app and services talk in typed, versioned contracts.
@@ -428,11 +428,11 @@ Current implementation note:
 
 The implementation remains grounded in the same lanes as the original draft, but the emphasis shifts: we are building a “money printer” experience, not a pile of subsystems.
 
-The primary app surface is `apps/autopilot-desktop`. It owns the moment-to-moment experience: Go Online, job lifecycle visibility, Autopilot chat, wallet tick up.
+The primary app surface is `apps/autopilot-deprecated`. It owns the moment-to-moment experience: Go Online, job lifecycle visibility, Autopilot chat, wallet tick up.
 
 The default OpenAgents-hosted server-authority stack is the Nexus role: an open-source, opinionated, self-hostable surface for desktop-facing auth/session flows, sync token issuance (`POST /api/sync/token`), public stats, and the primary Nostr relay/index path the desktop uses by default. Autopilot should connect to the OpenAgents Nexus by default while still allowing users and organizations to point at their own Nexus deployment, including using that Nexus as the primary relay with other relays as backup. A self-hosted Nexus is expected to operate as a public/open relay by default. Private/team-scoped Nexus modes belong on the roadmap, not in the near-term MVP. The starter-job path, however, is initially an OpenAgents-hosted service rather than part of the minimum Nexus contract. The current in-repo backend authority slice is hosted by `apps/nexus-control`, which exposes the retained mutation and projection entry points the desktop can call.
 
-`apps/autopilot-desktop` currently contains the embedded OpenAgents Runtime for MVP execution boundaries, provider lifecycle, and any sync-facing projection publishing the desktop needs.
+`apps/autopilot-deprecated` currently contains the embedded OpenAgents Runtime for MVP execution boundaries, provider lifecycle, and any sync-facing projection publishing the desktop needs.
 
 Core crates remain as previously enumerated (wgpui, autopilot_ui/app/core, client-core, codex control, spacetime client, provider runtime, spark wallet integration, nostr client/core, proto/protocol). The key requirement is that these crates expose outcomes in a way that the UI can render as legible state transitions, not just logs.
 

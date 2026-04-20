@@ -34,14 +34,14 @@ Primary docs reviewed:
 
 Primary code reviewed:
 
-- `apps/autopilot-desktop/src/app_state.rs` (PaneKind, MissionControlPaneState, data sources)
-- `apps/autopilot-desktop/src/pane_registry.rs` (PaneSpec, hotbar slots, startup)
-- `apps/autopilot-desktop/src/pane_system.rs` (MissionControlPaneAction, layout, hit testing)
-- `apps/autopilot-desktop/src/pane_renderer.rs` (paint_go_online_pane, ~840 lines of MC rendering)
-- `apps/autopilot-desktop/src/input/actions.rs` (MC action dispatch)
-- `apps/autopilot-desktop/src/input/shortcuts.rs` (MC input focus)
-- `apps/autopilot-desktop/src/desktop_shell.rs` (DesktopShellMode, dev mode gate)
-- `apps/autopilot-desktop/src/render.rs` (shell chrome, hotbar, grid gating)
+- `apps/autopilot-deprecated/src/app_state.rs` (PaneKind, MissionControlPaneState, data sources)
+- `apps/autopilot-deprecated/src/pane_registry.rs` (PaneSpec, hotbar slots, startup)
+- `apps/autopilot-deprecated/src/pane_system.rs` (MissionControlPaneAction, layout, hit testing)
+- `apps/autopilot-deprecated/src/pane_renderer.rs` (paint_go_online_pane, ~840 lines of MC rendering)
+- `apps/autopilot-deprecated/src/input/actions.rs` (MC action dispatch)
+- `apps/autopilot-deprecated/src/input/shortcuts.rs` (MC input focus)
+- `apps/autopilot-deprecated/src/desktop_shell.rs` (DesktopShellMode, dev mode gate)
+- `apps/autopilot-deprecated/src/render.rs` (shell chrome, hotbar, grid gating)
 
 ## Executive Summary
 
@@ -322,11 +322,11 @@ about pane availability. Once the chrome is unified, the gate has no purpose.
 7. Mark it as `singleton: true, startup: true`.
 
 Key files:
-- `apps/autopilot-desktop/src/app_state.rs` (new state struct)
-- `apps/autopilot-desktop/src/pane_registry.rs` (new PaneSpec)
-- `apps/autopilot-desktop/src/pane_system.rs` (new action enum, layout, hit testing)
-- `apps/autopilot-desktop/src/pane_renderer.rs` (move rendering)
-- `apps/autopilot-desktop/src/panes/provider_control.rs` (new module)
+- `apps/autopilot-deprecated/src/app_state.rs` (new state struct)
+- `apps/autopilot-deprecated/src/pane_registry.rs` (new PaneSpec)
+- `apps/autopilot-deprecated/src/pane_system.rs` (new action enum, layout, hit testing)
+- `apps/autopilot-deprecated/src/pane_renderer.rs` (move rendering)
+- `apps/autopilot-deprecated/src/panes/provider_control.rs` (new module)
 
 ### Phase 2: Promote Wallet pane to hotbar default
 
@@ -340,9 +340,9 @@ Key files:
    Control being open.
 
 Key files:
-- `apps/autopilot-desktop/src/app_state.rs` (remove fields from MC state)
-- `apps/autopilot-desktop/src/input/shortcuts.rs` (update focus checks)
-- `apps/autopilot-desktop/src/pane_system.rs` (remove MC wallet hit zones)
+- `apps/autopilot-deprecated/src/app_state.rs` (remove fields from MC state)
+- `apps/autopilot-deprecated/src/input/shortcuts.rs` (update focus checks)
+- `apps/autopilot-deprecated/src/pane_system.rs` (remove MC wallet hit zones)
 
 ### Phase 3: Create Earnings and Jobs pane
 
@@ -353,9 +353,9 @@ Key files:
 4. Register on hotbar.
 
 Key files:
-- `apps/autopilot-desktop/src/panes/earnings_jobs.rs` (new module)
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/panes/earnings_jobs.rs` (new module)
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
 
 ### Phase 4: Extract Buy Mode pane
 
@@ -367,9 +367,9 @@ Key files:
 4. Register on hotbar (conditional on feature gate if desired).
 
 Key files:
-- `apps/autopilot-desktop/src/panes/buy_mode.rs` (new or extended module)
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/panes/buy_mode.rs` (new or extended module)
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
 
 ### Phase 5: Extract Log Stream pane
 
@@ -380,8 +380,8 @@ Key files:
 4. Register on hotbar.
 
 Key files:
-- `apps/autopilot-desktop/src/panes/log_stream.rs` (new module)
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/panes/log_stream.rs` (new module)
+- `apps/autopilot-deprecated/src/app_state.rs`
 
 ### Phase 6: Remove dev mode gate and unify shell
 
@@ -397,11 +397,11 @@ Key files:
    normal windowed presentation alongside the hotbar.
 
 Key files:
-- `apps/autopilot-desktop/src/desktop_shell.rs` (simplify or remove)
-- `apps/autopilot-desktop/src/render.rs` (remove dev-mode gating)
-- `apps/autopilot-desktop/src/input.rs` (remove dev-mode gating)
-- `apps/autopilot-desktop/src/pane_registry.rs` (update hotbar slots)
-- `apps/autopilot-desktop/src/pane_system.rs` (remove fullscreen path)
+- `apps/autopilot-deprecated/src/desktop_shell.rs` (simplify or remove)
+- `apps/autopilot-deprecated/src/render.rs` (remove dev-mode gating)
+- `apps/autopilot-deprecated/src/input.rs` (remove dev-mode gating)
+- `apps/autopilot-deprecated/src/pane_registry.rs` (update hotbar slots)
+- `apps/autopilot-deprecated/src/pane_system.rs` (remove fullscreen path)
 
 ### Phase 7: Clean up residual Mission Control code
 

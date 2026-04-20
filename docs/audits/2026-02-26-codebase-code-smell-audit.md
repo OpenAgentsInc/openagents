@@ -5,7 +5,7 @@
 
 ## Scope
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 - `crates/spark`
 - `crates/nostr/core`
 - `crates/wgpui`
@@ -39,7 +39,7 @@ This combination is the main source of future slowdown and fragility.
 
 - Rust LOC by surface:
   - `crates/wgpui`: **100,917**
-  - `apps/autopilot-desktop`: 2,205
+  - `apps/autopilot-deprecated`: 2,205
   - `crates/spark`: 395
   - `crates/nostr/core`: 236
 - Large single files:
@@ -102,12 +102,12 @@ This combination is the main source of future slowdown and fragility.
 **Evidence**
 
 - UI input handling directly triggers wallet actions:
-  - [`apps/autopilot-desktop/src/input.rs:261`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input.rs:261)
+  - [`apps/autopilot-deprecated/src/input.rs:261`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input.rs:261)
 - Wallet state performs synchronous `block_on` calls inside those actions:
-  - [`apps/autopilot-desktop/src/spark_wallet.rs:78`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/spark_wallet.rs:78)
-  - [`apps/autopilot-desktop/src/spark_wallet.rs:100`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/spark_wallet.rs:100)
-  - [`apps/autopilot-desktop/src/spark_wallet.rs:146`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/spark_wallet.rs:146)
-  - [`apps/autopilot-desktop/src/spark_wallet.rs:187`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/spark_wallet.rs:187)
+  - [`apps/autopilot-deprecated/src/spark_wallet.rs:78`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/spark_wallet.rs:78)
+  - [`apps/autopilot-deprecated/src/spark_wallet.rs:100`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/spark_wallet.rs:100)
+  - [`apps/autopilot-deprecated/src/spark_wallet.rs:146`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/spark_wallet.rs:146)
+  - [`apps/autopilot-deprecated/src/spark_wallet.rs:187`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/spark_wallet.rs:187)
 
 **Why this is a smell**
 
@@ -128,20 +128,20 @@ This combination is the main source of future slowdown and fragility.
 
 **Evidence**
 
-- [`apps/autopilot-desktop/src/input.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input.rs:19) handles:
+- [`apps/autopilot-deprecated/src/input.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input.rs:19) handles:
   - window event routing
   - pane events
   - hotbar events
   - Nostr action dispatch
   - Spark action dispatch
   - keyboard mapping/parsing
-- [`apps/autopilot-desktop/src/render.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/render.rs:219) handles:
+- [`apps/autopilot-deprecated/src/render.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/render.rs:219) handles:
   - GPU frame orchestration
   - pane layout iteration
   - Nostr pane rendering
   - Spark pane rendering
   - generic text formatting helpers
-- [`apps/autopilot-desktop/src/pane_system.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/pane_system.rs:22) duplicates pane construction logic per pane kind.
+- [`apps/autopilot-deprecated/src/pane_system.rs`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/pane_system.rs:22) duplicates pane construction logic per pane kind.
 
 **Why this is a smell**
 
@@ -164,8 +164,8 @@ This combination is the main source of future slowdown and fragility.
 **Evidence**
 
 - Nostr pane renders full secret material by default:
-  - [`apps/autopilot-desktop/src/render.rs:329`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/render.rs:329)
-  - [`apps/autopilot-desktop/src/render.rs:350`](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/render.rs:350)
+  - [`apps/autopilot-deprecated/src/render.rs:329`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/render.rs:329)
+  - [`apps/autopilot-deprecated/src/render.rs:350`](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/render.rs:350)
 
 **Why this is a smell**
 
@@ -224,7 +224,7 @@ This combination is the main source of future slowdown and fragility.
 
 **Evidence**
 
-- `apps/autopilot-desktop/src`: **0** unit tests.
+- `apps/autopilot-deprecated/src`: **0** unit tests.
 - `crates/spark/src`: **0** unit tests.
 - `crates/nostr/core/src`: 2 tests (good but narrow).
 

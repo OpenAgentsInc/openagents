@@ -104,7 +104,7 @@ ensure_cargo_bundle() {
 resolve_default_spark_api_key() {
   python3 - <<'PY'
 import pathlib, re
-text = pathlib.Path("apps/autopilot-desktop/src/spark_wallet.rs").read_text()
+text = pathlib.Path("apps/autopilot-deprecated/src/spark_wallet.rs").read_text()
 match = re.search(r'DEFAULT_OPENAGENTS_SPARK_API_KEY: &str = "([^"]+)";', text)
 if not match:
     raise SystemExit("failed to locate DEFAULT_OPENAGENTS_SPARK_API_KEY in spark_wallet.rs")
@@ -597,12 +597,12 @@ if [[ "$SKIP_BUILD" != "1" ]]; then
   log "Bundling Autopilot.app"
   if [[ "$CARGO_BUNDLE_BIN" == "cargo bundle" ]]; then
     (
-      cd apps/autopilot-desktop
+      cd apps/autopilot-deprecated
       cargo bundle --release --bin autopilot-desktop --format osx
     )
   else
     (
-      cd apps/autopilot-desktop
+      cd apps/autopilot-deprecated
       "$CARGO_BUNDLE_BIN" --release --bin autopilot-desktop --format osx
     )
   fi

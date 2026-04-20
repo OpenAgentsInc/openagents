@@ -26,8 +26,8 @@ Explore how OpenAgents could integrate a Symphony-like project management orches
 
 - `docs/MVP.md`
 - `docs/OWNERSHIP.md`
-- `apps/autopilot-desktop/src/codex_lane.rs`
-- `apps/autopilot-desktop/src/runtime_lanes.rs`
+- `apps/autopilot-deprecated/src/codex_lane.rs`
+- `apps/autopilot-deprecated/src/runtime_lanes.rs`
 - `crates/codex-client/src/*`
 - `crates/codex-client/tests/skills_and_user_input.rs`
 - `docs/CODEX_INTEGRATION_*`
@@ -42,7 +42,7 @@ OpenAgents already has docs for "Maestro Symphony" (Bitcoin indexer). This audit
 OpenAgents can integrate a Symphony-like system with relatively low protocol risk because key primitives already exist:
 
 - Strong Codex app-server client (`crates/codex-client`)
-- Desktop-side Codex lane lifecycle and command routing (`apps/autopilot-desktop/src/codex_lane.rs`)
+- Desktop-side Codex lane lifecycle and command routing (`apps/autopilot-deprecated/src/codex_lane.rs`)
 - Existing runtime lane pattern with explicit command/result semantics (`runtime_lanes.rs`)
 
 Main gaps are not Codex protocol. Main gaps are orchestration domain pieces:
@@ -128,7 +128,7 @@ Implication:
 - `crates/project-tracker-linear`
   - Linear GraphQL adapter implementation.
 
-2. App ownership (`apps/autopilot-desktop`)
+2. App ownership (`apps/autopilot-deprecated`)
 - Orchestrator runtime wiring (threads/tasks/timers).
 - UI panes/actions for operator control and status.
 - Integration with existing Codex lane and mission control UX.

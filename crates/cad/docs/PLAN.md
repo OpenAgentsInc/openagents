@@ -12,7 +12,7 @@ Add serious CAD capability to OpenAgents with a first demo that proves:
 4. AI-assisted engineering decisions
 5. Native desktop UX through WGPUI
 
-This plan starts in `crates/cad/` and integrates with `apps/autopilot-desktop`.
+This plan starts in `crates/cad/` and integrates with `apps/autopilot-deprecated`.
 
 ## 2) Definition of Success
 
@@ -43,7 +43,7 @@ Demo success is not replacement success.
 
 From `docs/MVP.md` and `docs/OWNERSHIP.md`:
 
-- Product behavior stays in `apps/autopilot-desktop`.
+- Product behavior stays in `apps/autopilot-deprecated`.
 - Reusable primitives stay in crates.
 - `crates/wgpui*` remains product-agnostic.
 - Prefer small, verifiable increments over platform expansion.
@@ -51,7 +51,7 @@ From `docs/MVP.md` and `docs/OWNERSHIP.md`:
 Implication for CAD:
 
 - `crates/cad` owns model/feature/query/eval/analysis/export logic.
-- `apps/autopilot-desktop` owns pane UX, orchestration, and Codex chat integration.
+- `apps/autopilot-deprecated` owns pane UX, orchestration, and Codex chat integration.
 - `crates/wgpui` only gets generic rendering/input primitives needed by any app.
 
 ## 3.1) CAD Code Health Runbook
@@ -132,7 +132,7 @@ Planned modules:
 - `export`: STEP writer facade
 - `compact`: compact CAD text format parser/serializer for AI/tool calls
 
-## `apps/autopilot-desktop` integration
+## `apps/autopilot-deprecated` integration
 
 - Add `PaneKind::CadDemo` and a CAD pane renderer module.
 - Add CAD pane state in `app_state.rs` and reducers/events.

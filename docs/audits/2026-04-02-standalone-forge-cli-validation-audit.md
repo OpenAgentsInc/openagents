@@ -69,7 +69,7 @@ internal Probe subcommands that `autopilot-desktop` accepts.
 ### Fix
 
 Updated
-`apps/autopilot-desktop/src/bin/autopilot_headless_forge.rs`
+`apps/autopilot-deprecated/src/bin/autopilot_headless_forge.rs`
 to accept:
 
 - `__internal-probe-server`

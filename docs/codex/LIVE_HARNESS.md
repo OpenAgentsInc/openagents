@@ -14,7 +14,7 @@ The harness runs against the user’s real local Codex installation and account/
 
 ## Location
 
-- Binary: `apps/autopilot-desktop/src/bin/codex_live_harness.rs`
+- Binary: `apps/autopilot-deprecated/src/bin/codex_live_harness.rs`
 - Target: `cargo run -p autopilot-desktop --bin codex-live-harness`
 
 ## Current Model Policy
@@ -185,7 +185,7 @@ Use `spark-wallet-cli` to verify Spark funds and to fund Spark before paying fre
 
 Binary location:
 
-- `apps/autopilot-desktop/src/bin/spark_wallet_cli.rs`
+- `apps/autopilot-deprecated/src/bin/spark_wallet_cli.rs`
 - `cargo run -p autopilot-desktop --bin spark-wallet-cli -- ...`
 
 Check Spark balance and connectivity:

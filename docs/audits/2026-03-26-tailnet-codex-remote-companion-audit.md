@@ -17,14 +17,14 @@ Reviewed against:
 
 Reviewed implementation surfaces:
 
-- `apps/autopilot-desktop/src/codex_remote.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/panes/codex.rs`
-- `apps/autopilot-desktop/src/app_state_domains.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/codex_lane.rs`
-- `apps/autopilot-desktop/src/codex_exec.rs`
+- `apps/autopilot-deprecated/src/codex_remote.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/panes/codex.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/codex_lane.rs`
+- `apps/autopilot-deprecated/src/codex_exec.rs`
 
 ## Bottom Line
 
@@ -49,7 +49,7 @@ recovered without depending on chat-only commands or manual network knowledge."
 
 ### 1. Tailnet-safe bind validation already exists
 
-`apps/autopilot-desktop/src/codex_remote.rs` explicitly rejects public bind
+`apps/autopilot-deprecated/src/codex_remote.rs` explicitly rejects public bind
 addresses and allows:
 
 - loopback
@@ -68,7 +68,7 @@ The current design is consistent with `docs/MVP.md` and
 - the main machine remains the machine with the repo, local files, Codex auth,
   wallet, and provider runtime
 - the browser is only a control and observation surface
-- the remote surface lives in `apps/autopilot-desktop`, which is the correct
+- the remote surface lives in `apps/autopilot-deprecated`, which is the correct
   owner for app behavior, workspace state, and UX
 
 No Psionic-side transport or runtime changes are required for this product
@@ -146,13 +146,13 @@ This is the biggest practical gap.
 
 The Codex remote companion is currently controlled from:
 
-- chat commands in `apps/autopilot-desktop/src/input/actions.rs`
+- chat commands in `apps/autopilot-deprecated/src/input/actions.rs`
 - readback in the Codex Labs pane
 
 But it is not exposed through:
 
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
 
 That means:
 
@@ -340,9 +340,9 @@ This work belongs in `openagents`, not `psionic`.
 Why:
 
 - `docs/OWNERSHIP.md` already assigns app wiring, product behavior, snapshots,
-  and provider orchestration to `apps/autopilot-desktop`
+  and provider orchestration to `apps/autopilot-deprecated`
 - `docs/codex/ROADMAP_CODEX.md` already says remote access, workspace state,
-  and terminal/git product behavior belong in `apps/autopilot-desktop`
+  and terminal/git product behavior belong in `apps/autopilot-deprecated`
 - the current remote companion is already implemented there
 
 The only cross-repo dependency is documentation/runbook alignment in the root

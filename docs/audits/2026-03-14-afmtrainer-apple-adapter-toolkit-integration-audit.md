@@ -72,10 +72,10 @@ OpenAgents sources reviewed:
 - `crates/psionic/psionic-apple-fm/src/*`
 - `crates/psionic/psionic-adapters/src/lib.rs`
 - `crates/psionic/psionic-train/src/model_io.rs`
-- `apps/autopilot-desktop/src/apple_fm_bridge.rs`
-- `apps/autopilot-desktop/src/local_inference_runtime.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/state/operations.rs`
+- `apps/autopilot-deprecated/src/apple_fm_bridge.rs`
+- `apps/autopilot-deprecated/src/local_inference_runtime.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/state/operations.rs`
 - `swift/foundation-bridge/README.md`
 - `swift/foundation-bridge/Sources/foundation-bridge/*`
 
@@ -148,7 +148,7 @@ The integration requirement should be stated plainly.
 - no `python -m examples.train_adapter`
 - no `python -m export.export_fmadapter`
 - no Tk sidecar
-- no Python subprocess launched by `apps/autopilot-desktop`
+- no Python subprocess launched by `apps/autopilot-deprecated`
 - no Python hidden inside `psionic-train`
 - no Python in operator CLI flows
 - no repo feature whose truthful use requires users to install Python
@@ -362,7 +362,7 @@ So we need a Rust-plus-Swift serving extension:
   - typed contract and client additions
 - `swift/foundation-bridge`
   - actual adapter load/attach behavior against Apple runtime APIs
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
   - operator UX, picker, health, and workbench integration
 
 This is not optional. If OpenAgents cannot attach the artifact, then OpenAgents
@@ -399,7 +399,7 @@ We need to port AFMTrainer's UX into our own app surfaces.
 
 Likely owner:
 
-- `apps/autopilot-desktop`
+- `apps/autopilot-deprecated`
 
 Required surfaces:
 
@@ -435,7 +435,7 @@ Those repos should instead function as:
 
 | Surface | Correct owner in the zero-Python plan | Must not own |
 | --- | --- | --- |
-| Apple operator flow, panes, logs, job orchestration | `apps/autopilot-desktop` | Generic train substrate, canonical settlement |
+| Apple operator flow, panes, logs, job orchestration | `apps/autopilot-deprecated` | Generic train substrate, canonical settlement |
 | Apple adapter package identity, manifest, digest, hosted lineage | `psionic-adapters` | UI, Python bridge logic, Nexus authority |
 | Apple FM request/session/adapter contract | `psionic-apple-fm` | Process supervision, pane UX |
 | Apple runtime sidecar behavior | `swift/foundation-bridge` | Economic truth, product workflow |
@@ -461,7 +461,7 @@ sheet.
 - `swift/foundation-bridge` already mirrors that contract in
   `Types.swift`/`ChatHandler.swift`, but it currently has no adapter inventory,
   compatibility, attach, detach, or capability-reporting path.
-- `apps/autopilot-desktop` already has `apple_fm_bridge.rs`, the Apple FM
+- `apps/autopilot-deprecated` already has `apple_fm_bridge.rs`, the Apple FM
   workbench pane, `desktop_control` Apple FM status, `autopilotctl apple-fm`
   status and smoke flows, and authority-projected training status. The operator
   work is therefore mostly about extending existing surfaces, not inventing a
@@ -774,7 +774,7 @@ It is the cleaner long-term move.
 
 ## What We Should Not Do
 
-- Do not shell out to the Apple Python toolkit from `apps/autopilot-desktop`.
+- Do not shell out to the Apple Python toolkit from `apps/autopilot-deprecated`.
 - Do not add a `uv` or Python prerequisite to the supported OpenAgents flow.
 - Do not vendor AFMTrainer into the repo as a side app.
 - Do not hide Python calls behind Rust wrappers and call that Psionic.
@@ -876,7 +876,7 @@ repo. The concrete issue program should be:
   `desktop_control.rs`, and `autopilotctl apple-fm`, but none of them can list,
   load, attach, detach, or inspect adapters.
 - Primary owners:
-  `apps/autopilot-desktop`.
+  `apps/autopilot-deprecated`.
 - Deliverables:
   Apple workbench adapter controls, bridge-side adapter inventory in
   desktop-control snapshots, `autopilotctl apple-fm` subcommands for adapter
@@ -1006,7 +1006,7 @@ repo. The concrete issue program should be:
 ### 12. `Nexus: persist, project, and receipt Apple adapter training runs and accepted outcomes through the existing training authority`
 
 - Why this is more than “add an endpoint”:
-  the generic training authority already exists, and `apps/autopilot-desktop`
+  the generic training authority already exists, and `apps/autopilot-deprecated`
   already projects it through `desktop_control` training status. The missing
   work is the Apple-specific create/finalize/publication discipline on top of
   those existing surfaces.
@@ -1052,7 +1052,7 @@ repo. The concrete issue program should be:
   local research state in `research_control.rs`, but no integrated Apple
   adapter operator flow.
 - Primary owners:
-  `apps/autopilot-desktop`.
+  `apps/autopilot-deprecated`.
 - Deliverables:
   WGPUI setup/training/export/monitoring panes, desktop-control mutations beyond
   plain `GetTrainingStatus`, `autopilotctl` subcommands for train/export/accept

@@ -3,7 +3,7 @@
 Last verified: 2026-02-26  
 Owner lane: `owner:runtime`
 
-`wgpui` is the GPU UI crate used by the desktop MVP (`apps/autopilot-desktop`).
+`wgpui` is the GPU UI crate used by the desktop MVP (`apps/autopilot-deprecated`).
 In this pruned repository, the primary implementation lane is desktop-first MVP work,
 with optional web/ios support kept behind feature gates.
 

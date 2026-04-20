@@ -15,7 +15,7 @@ Agent execution instruction: implement this roadmap one slice at a time in the
 recommended dependency order below. Keep protocol types and app-server
 compatibility in `crates/codex-client`. Keep Codex product workflows, remote
 access control, workspace state, plan artifacts, and diff artifacts in
-`apps/autopilot-desktop`. Do not move product-specific orchestration into
+`apps/autopilot-deprecated`. Do not move product-specific orchestration into
 `crates/wgpui`.
 
 Roadmap hygiene rule: after each shipped roadmap slice, update this document so
@@ -25,7 +25,7 @@ This document is the roadmap for the current Codex-backed implementation lane.
 It is not a claim that Codex is the final runtime. Autopilot is the product
 shell. Future Probe work should replace or supplement the engine without moving
 workspace/project/thread/artifact/remote truth out of
-`apps/autopilot-desktop`.
+`apps/autopilot-deprecated`.
 
 Primary reference: the comparison basis for this roadmap is
 `docs/audits/2026-03-10-t3code-codex-wrapper-gap-audit.md`.
@@ -57,7 +57,7 @@ This roadmap must keep `docs/OWNERSHIP.md` intact:
 
 - `crates/codex-client` owns reusable Codex protocol types, method coverage,
   normalization, and conformance truth.
-- `apps/autopilot-desktop` owns Codex product behavior, workspace identity,
+- `apps/autopilot-deprecated` owns Codex product behavior, workspace identity,
   plan/diff persistence, remote access, terminal/git orchestration if added,
   and final UX wiring.
 - `crates/wgpui` owns product-agnostic UI primitives only.
@@ -156,7 +156,7 @@ than replace:
 
 - broad Codex app-server method coverage in `crates/codex-client`
 - protocol-conformance coverage in `crates/codex-client/tests`
-- a wide desktop lane in `apps/autopilot-desktop/src/codex_lane.rs`
+- a wide desktop lane in `apps/autopilot-deprecated/src/codex_lane.rs`
 - dedicated Codex panes for account, models, config, MCP, apps, labs, and
   diagnostics
 - explicit handling for approvals, tool calls, tool user input, and auth
@@ -580,7 +580,7 @@ Status:
 
 - shipped on `main`
 - desktop now owns an opt-in authenticated Codex remote companion listener in
-  `apps/autopilot-desktop`, with safe bind validation for loopback, RFC1918
+  `apps/autopilot-deprecated`, with safe bind validation for loopback, RFC1918
   LAN, Tailnet-style CGNAT, and IPv6 ULA targets
 - `/remote`, `/remote enable [ip:port]`, `/remote disable`, and
   `/remote rotate-token` now manage the listener from the main chat surface,
@@ -632,7 +632,7 @@ Implementation note:
 
 - do not block remote-v1 on a large new web-stack commitment
 - the first version can be a narrow served web bundle owned by
-  `apps/autopilot-desktop`
+  `apps/autopilot-deprecated`
 - if a separate companion web app later becomes justified, it must remain a thin
   client over desktop-owned truth
 

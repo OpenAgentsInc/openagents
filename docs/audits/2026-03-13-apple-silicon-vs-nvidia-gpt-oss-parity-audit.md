@@ -9,21 +9,21 @@
 - `README.md`
 - `AGENTS.md`
 - `docs/headless-compute.md`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/pane_registry.rs`
-- `apps/autopilot-desktop/src/pane_renderer.rs`
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/input/actions.rs`
-- `apps/autopilot-desktop/src/input/reducers/jobs.rs`
-- `apps/autopilot-desktop/src/input/reducers/local_inference.rs`
-- `apps/autopilot-desktop/src/local_inference_runtime.rs`
-- `apps/autopilot-desktop/src/apple_fm_bridge.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/kernel_control.rs`
-- `apps/autopilot-desktop/src/state/provider_runtime.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/pane_registry.rs`
+- `apps/autopilot-deprecated/src/pane_renderer.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
+- `apps/autopilot-deprecated/src/input/reducers/local_inference.rs`
+- `apps/autopilot-deprecated/src/local_inference_runtime.rs`
+- `apps/autopilot-deprecated/src/apple_fm_bridge.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/kernel_control.rs`
+- `apps/autopilot-deprecated/src/state/provider_runtime.rs`
 - `crates/openagents-provider-substrate/src/lib.rs`
 - `swift/foundation-bridge/README.md`
 - `crates/psionic/docs/FM_BRIDGE_CONSIDERATIONS.md`
@@ -65,9 +65,9 @@ Until those identities collapse into one truthful runtime model, Mission Control
 
 The right plan is not to resurrect archived code. The retained tree already has the right starting seams:
 
-- `apps/autopilot-desktop/src/local_inference_runtime.rs`
-- `apps/autopilot-desktop/src/panes/local_inference.rs`
-- `apps/autopilot-desktop/src/apple_fm_bridge.rs`
+- `apps/autopilot-deprecated/src/local_inference_runtime.rs`
+- `apps/autopilot-deprecated/src/panes/local_inference.rs`
+- `apps/autopilot-deprecated/src/apple_fm_bridge.rs`
 - `crates/openagents-provider-substrate/src/lib.rs`
 
 Parity work should build on those retained seams and change product policy, naming, control-plane support, and Mission Control rendering around them.

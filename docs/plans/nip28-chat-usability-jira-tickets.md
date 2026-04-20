@@ -24,8 +24,8 @@ Use this as the issue breakdown for the second NIP-28 chat milestone.
 - If no kind-40 has arrived yet, fall back to truncated ID (existing behavior).
 
 **Files:**
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs` — kind-40/41 handler (~lines 843–862)
-- `apps/autopilot-desktop/src/panes/chat.rs` — `managed_channel_label()` (~lines 1106–1114)
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs` — kind-40/41 handler (~lines 843–862)
+- `apps/autopilot-deprecated/src/panes/chat.rs` — `managed_channel_label()` (~lines 1106–1114)
 - `crates/nostr/core/src/nip28.rs` — `ChannelMetadata` struct
 
 **Notes:**
@@ -56,9 +56,9 @@ Use this as the issue breakdown for the second NIP-28 chat milestone.
 - A new NIP-28 channel must be created (kind-40 published to the relay) to obtain the default `chat_channel_id` value.
 
 **Files:**
-- `apps/autopilot-desktop/src/app_state.rs` — `DefaultNip28ChannelConfig`: add `chat_channel_id` field, new env var constant `OA_DEFAULT_NIP28_CHAT_CHANNEL_ID`, default value
-- `apps/autopilot-desktop/src/nip28_chat_lane.rs` — use `config.chat_channel_id` for subscription filters and outbound publish
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs` — no change needed (lane feeds the same projection)
+- `apps/autopilot-deprecated/src/app_state.rs` — `DefaultNip28ChannelConfig`: add `chat_channel_id` field, new env var constant `OA_DEFAULT_NIP28_CHAT_CHANNEL_ID`, default value
+- `apps/autopilot-deprecated/src/nip28_chat_lane.rs` — use `config.chat_channel_id` for subscription filters and outbound publish
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs` — no change needed (lane feeds the same projection)
 
 **Notes:**
 - Presence channel subscription can be reintroduced later (separate lane or config flag) to power a "who's online" indicator without polluting the transcript.
@@ -79,10 +79,10 @@ Use this as the issue breakdown for the second NIP-28 chat milestone.
 - Pubkeys already in cache are not re-fetched within the same session.
 
 **Files:**
-- `apps/autopilot-desktop/src/nip28_chat_lane.rs` — reference pattern for the new lane
-- `apps/autopilot-desktop/src/app_state.rs` — add `user_metadata_cache: UserMetadataCache` to `RenderState`
-- `apps/autopilot-desktop/src/render.rs` — spawn `Kind0FetchLaneWorker` at startup
-- `apps/autopilot-desktop/src/input/reducers/mod.rs` — drain kind-0 updates into cache; enqueue new pubkeys on kind-42 ingestion
+- `apps/autopilot-deprecated/src/nip28_chat_lane.rs` — reference pattern for the new lane
+- `apps/autopilot-deprecated/src/app_state.rs` — add `user_metadata_cache: UserMetadataCache` to `RenderState`
+- `apps/autopilot-deprecated/src/render.rs` — spawn `Kind0FetchLaneWorker` at startup
+- `apps/autopilot-deprecated/src/input/reducers/mod.rs` — drain kind-0 updates into cache; enqueue new pubkeys on kind-42 ingestion
 
 **Notes:**
 - Model the lane after `nip28_chat_lane.rs`: background thread, tokio runtime, mpsc channels.
@@ -105,8 +105,8 @@ Use this as the issue breakdown for the second NIP-28 chat milestone.
 - Same resolution applies to DM message rows.
 
 **Files:**
-- `apps/autopilot-desktop/src/panes/chat.rs` — `managed_message_role_label()` (~lines 1174–1189)
-- `apps/autopilot-desktop/src/panes/chat.rs` — `direct_message_role_label()` (~lines 1333–1357)
+- `apps/autopilot-deprecated/src/panes/chat.rs` — `managed_message_role_label()` (~lines 1174–1189)
+- `apps/autopilot-deprecated/src/panes/chat.rs` — `direct_message_role_label()` (~lines 1333–1357)
 
 **Notes:**
 - Depends on Ticket H (cache must exist before this can render names).
@@ -127,8 +127,8 @@ Use this as the issue breakdown for the second NIP-28 chat milestone.
 - Delivery state indicator (`[sending]`, `[failed]`) moves to end of content, not on the header line.
 
 **Files:**
-- `apps/autopilot-desktop/src/panes/chat.rs` — message rendering loop (~lines 3274–3332); add `format_message_timestamp()` helper
-- `apps/autopilot-desktop/src/panes/chat.rs` — `managed_message_role_label()` (~lines 1174–1189); restructure into separate header components
+- `apps/autopilot-deprecated/src/panes/chat.rs` — message rendering loop (~lines 3274–3332); add `format_message_timestamp()` helper
+- `apps/autopilot-deprecated/src/panes/chat.rs` — `managed_message_role_label()` (~lines 1174–1189); restructure into separate header components
 
 **Notes:**
 - Use `std::time::SystemTime` / `UNIX_EPOCH` for current time comparison against `created_at`.

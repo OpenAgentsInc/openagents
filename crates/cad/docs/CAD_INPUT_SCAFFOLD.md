@@ -4,9 +4,9 @@ This document captures the MVP CAD reducer/action scaffold in desktop input rout
 
 ## Location
 
-- `apps/autopilot-desktop/src/pane_system.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/input/reducers/cad.rs`
+- `apps/autopilot-deprecated/src/pane_system.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/input/reducers/cad.rs`
 
 ## Actions
 

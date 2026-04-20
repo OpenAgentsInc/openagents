@@ -1,7 +1,7 @@
 # Cross-Machine Seller Nonpayment Audit
 
 Date: March 12, 2026
-Scope: `apps/autopilot-desktop`
+Scope: `apps/autopilot-deprecated`
 Related issues: `#3414`, `#3422`, `#3423`, `#3424`, `#3425`, `#3426`, `#3427`, `#3428`
 
 ## Executive Summary
@@ -32,13 +32,13 @@ Buyer-side evidence came from local desktop session logs on this machine:
 
 Relevant code paths reviewed:
 
-- [jobs.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/jobs.rs)
-- [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/state/job_inbox.rs)
-- [provider_nip90_lane.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/provider_nip90_lane.rs)
-- [operations.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/state/operations.rs)
-- [wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/wallet.rs)
-- [actions.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/actions.rs)
-- [nip90_compute_flow.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/nip90_compute_flow.rs)
+- [jobs.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/jobs.rs)
+- [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/state/job_inbox.rs)
+- [provider_nip90_lane.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/provider_nip90_lane.rs)
+- [operations.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/state/operations.rs)
+- [wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/wallet.rs)
+- [actions.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/actions.rs)
+- [nip90_compute_flow.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/nip90_compute_flow.rs)
 
 ## Incident A: Request `44392bc2...` Was Real Unpaid Seller Work
 
@@ -171,9 +171,9 @@ Some of the failure chain is already addressed on current `main`, but those fixe
 
 Landed in:
 
-- [jobs.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/jobs.rs)
-- [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/state/job_inbox.rs)
-- [provider_nip90_lane.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/provider_nip90_lane.rs)
+- [jobs.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/jobs.rs)
+- [job_inbox.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/state/job_inbox.rs)
+- [provider_nip90_lane.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/provider_nip90_lane.rs)
 
 Current main now stores:
 
@@ -190,8 +190,8 @@ This should prevent the exact `44392...` class of stale-targeted execution once 
 
 Landed in:
 
-- [app_state.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/app_state.rs)
-- [pane_renderer.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/pane_renderer.rs)
+- [app_state.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/app_state.rs)
+- [pane_renderer.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/pane_renderer.rs)
 
 Current main now carries request freshness metadata into:
 
@@ -205,10 +205,10 @@ That makes it much easier to audit whether a request was stale when accepted.
 
 Landed in:
 
-- [operations.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/state/operations.rs)
-- [actions.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/actions.rs)
-- [wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input/reducers/wallet.rs)
-- [input.rs](/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/input.rs)
+- [operations.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/state/operations.rs)
+- [actions.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/actions.rs)
+- [wallet.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input/reducers/wallet.rs)
+- [input.rs](/Users/christopherdavid/code/openagents/apps/autopilot-deprecated/src/input.rs)
 
 Current main now has:
 

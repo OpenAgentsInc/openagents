@@ -18,7 +18,7 @@ The subscription in `nip28_chat_lane.rs` fetches all historical kind-42 events w
 
 ### File
 
-`apps/autopilot-desktop/src/nip28_chat_lane.rs` — `build_filters` (line 84)
+`apps/autopilot-deprecated/src/nip28_chat_lane.rs` — `build_filters` (line 84)
 
 ### Current behavior
 
@@ -60,8 +60,8 @@ No `since` field. Relay delivers entire channel history on every connect.
 
 ### Files
 
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs` — `record_relay_events` (line 340), `refresh_projection` (line 639)
-- `apps/autopilot-desktop/src/input/reducers/mod.rs` — `drain_runtime_lane_updates` (line 204)
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs` — `record_relay_events` (line 340), `refresh_projection` (line 639)
+- `apps/autopilot-deprecated/src/input/reducers/mod.rs` — `drain_runtime_lane_updates` (line 204)
 
 ### Current behavior
 
@@ -94,7 +94,7 @@ No `since` field. Relay delivers entire channel history on every connect.
 
 ### File
 
-`apps/autopilot-desktop/src/app_state/chat_projection.rs` — `refresh_projection` (line 639)
+`apps/autopilot-deprecated/src/app_state/chat_projection.rs` — `refresh_projection` (line 639)
 
 ### Required change
 
@@ -124,7 +124,7 @@ No `since` field. Relay delivers entire channel history on every connect.
 
 ### File
 
-`apps/autopilot-desktop/src/app_state/chat_projection.rs` — `refresh_projection` (line 660)
+`apps/autopilot-deprecated/src/app_state/chat_projection.rs` — `refresh_projection` (line 660)
 
 ### Required change
 
@@ -154,7 +154,7 @@ After each event drain the reducer collects author pubkeys by walking all `snaps
 
 ### File
 
-`apps/autopilot-desktop/src/input/reducers/mod.rs` — lines 251–259
+`apps/autopilot-deprecated/src/input/reducers/mod.rs` — lines 251–259
 
 ### Current behavior
 
@@ -206,8 +206,8 @@ The lane worker's `fetched_kind0_pubkeys` set ensures no duplicate kind-0 subscr
 
 ### Files
 
-- `apps/autopilot-desktop/src/app_state.rs` — call to `build_autopilot_peer_presence_index` (line 10118)
-- `apps/autopilot-desktop/src/app_state/chat_projection.rs` or `AutopilotChatState` — wherever the cached index is stored
+- `apps/autopilot-deprecated/src/app_state.rs` — call to `build_autopilot_peer_presence_index` (line 10118)
+- `apps/autopilot-deprecated/src/app_state/chat_projection.rs` or `AutopilotChatState` — wherever the cached index is stored
 
 ### Required change
 

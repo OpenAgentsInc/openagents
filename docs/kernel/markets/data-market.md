@@ -124,8 +124,8 @@ The generated outputs map directly into the current seller flow:
 
 The repo now also includes a real shell-first control path:
 
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/bin/autopilot_headless_data_market.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/bin/autopilot_headless_data_market.rs`
 - `skills/autopilot-data-seller-cli/`
 - `docs/headless-data-market.md`
 
@@ -184,10 +184,10 @@ The current buyer-side consume step is local by design:
 
 - `crates/nostr/core/src/nip_ds.rs`
 - `crates/openagents-kernel-core/src/data.rs`
-- `apps/autopilot-desktop/src/data_market_control.rs`
-- `apps/autopilot-desktop/src/data_seller_control.rs`
-- `apps/autopilot-desktop/src/data_buyer_control.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/data_market_control.rs`
+- `apps/autopilot-deprecated/src/data_seller_control.rs`
+- `apps/autopilot-deprecated/src/data_buyer_control.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
 - [../economy-kernel.md](../economy-kernel.md)
 - [../economy-kernel-proto.md](../economy-kernel-proto.md)
 

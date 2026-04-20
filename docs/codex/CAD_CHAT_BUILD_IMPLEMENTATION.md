@@ -16,7 +16,7 @@ It covers:
 
 Primary ownership:
 
-- `apps/autopilot-desktop`: orchestration, chat UX, pane control, tool execution, progress surfacing.
+- `apps/autopilot-deprecated`: orchestration, chat UX, pane control, tool execution, progress surfacing.
 - `crates/cad`: typed intent translation/dispatch/eval/validity/material analysis primitives.
 
 ## Delivered Capabilities
@@ -38,19 +38,19 @@ Primary ownership:
 
 ### Chat turn routing + skill policy
 
-- `apps/autopilot-desktop/src/input/actions.rs`
+- `apps/autopilot-deprecated/src/input/actions.rs`
   - `run_chat_submit_action`
   - `assemble_chat_turn_input`
   - `cad_policy_skill_candidates_for_turn`
-- `apps/autopilot-desktop/src/input/cad_turn_classifier.rs`
+- `apps/autopilot-deprecated/src/input/cad_turn_classifier.rs`
   - `classify_chat_prompt`
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
   - `AutopilotTurnMetadata`
   - `record_turn_submission_metadata`
 
 ### Tool bridge and CAD tool responses
 
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
   - `OPENAGENTS_TOOL_NAMES`
   - `execute_cad_intent`
   - `execute_cad_action`
@@ -59,7 +59,7 @@ Primary ownership:
 
 ### CAD reducer orchestration + rebuild coupling
 
-- `apps/autopilot-desktop/src/input/reducers/cad.rs`
+- `apps/autopilot-deprecated/src/input/reducers/cad.rs`
   - `apply_chat_prompt_to_cad_session_with_trigger_outcome`
   - `CadChatPromptApplyOutcome`
   - `enqueue_rebuild_cycle_with_retry`
@@ -67,14 +67,14 @@ Primary ownership:
 
 ### Tool-call auto execution and transport retries
 
-- `apps/autopilot-desktop/src/input/reducers/codex.rs`
+- `apps/autopilot-deprecated/src/input/reducers/codex.rs`
   - `queue_cad_tool_response_with_retry`
   - failure class extraction + remediation mapping from tool responses
   - CAD build-session lifecycle integration during tool-call handling
 
 ### CAD build session + failure metrics state
 
-- `apps/autopilot-desktop/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
   - `CadBuildSessionPhase`
   - `CadBuildFailureClass`
   - `CadBuildFailureMetricsState`
@@ -154,25 +154,25 @@ E2E harness snapshots normalize non-deterministic timing fields (`duration_ms`, 
 
 ### Unit/integration test anchors
 
-- `apps/autopilot-desktop/src/input/tool_bridge.rs` tests:
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs` tests:
   - decode/shape validation
   - cad checkpoint contract fields
   - parse retry extraction
   - env flag parser behavior
-- `apps/autopilot-desktop/src/input/reducers/cad.rs` tests:
+- `apps/autopilot-deprecated/src/input/reducers/cad.rs` tests:
   - `cad_chat_build_e2e_harness_success_matches_golden`
   - `cad_chat_build_e2e_harness_failure_matches_golden`
   - release-gate canonical script reliability
 
 ### Script fixtures
 
-- `apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_success_script.json`
-- `apps/autopilot-desktop/tests/scripts/cad_chat_build_e2e_failure_script.json`
+- `apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_success_script.json`
+- `apps/autopilot-deprecated/tests/scripts/cad_chat_build_e2e_failure_script.json`
 
 ### Golden snapshots
 
-- `apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_success_snapshot.json`
-- `apps/autopilot-desktop/tests/goldens/cad_chat_build_e2e_failure_snapshot.json`
+- `apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_success_snapshot.json`
+- `apps/autopilot-deprecated/tests/goldens/cad_chat_build_e2e_failure_snapshot.json`
 
 ### CI/release scripts
 

@@ -46,9 +46,9 @@ OpenAgents:
 - `docs/OWNERSHIP.md`
 - `docs/attnres-lab.md`
 - `docs/audits/2026-03-17-attnres-openagents-wgpui-port-audit.md`
-- `apps/autopilot-desktop/src/panes/attnres_lab.rs`
-- `apps/autopilot-desktop/src/attnres_lab_control.rs`
-- `apps/autopilot-desktop/src/app_state_domains.rs`
+- `apps/autopilot-deprecated/src/panes/attnres_lab.rs`
+- `apps/autopilot-deprecated/src/attnres_lab_control.rs`
+- `apps/autopilot-deprecated/src/app_state_domains.rs`
 
 Official Moonshot AttnRes repo:
 
@@ -194,7 +194,7 @@ For the requested product bar, `demo_tui.rs` is the binding parity reference.
 
 ### Implemented
 
-- real desktop pane shell in `apps/autopilot-desktop`
+- real desktop pane shell in `apps/autopilot-deprecated`
 - real Psionic-backed AttnRes controller and persisted pane state
 - real two-phase parity checks
 - real per-sublayer routing diagnostics

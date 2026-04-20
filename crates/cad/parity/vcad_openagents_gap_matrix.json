@@ -856,7 +856,7 @@
         "reference_label": "vcad-desktop (crates/vcad-desktop)",
         "reference_status": "app",
         "openagents_key": "autopilot-desktop",
-        "openagents_label": "autopilot-desktop (apps/autopilot-desktop)",
+        "openagents_label": "autopilot-desktop (apps/autopilot-deprecated)",
         "openagents_status": "cad-app",
         "score": 0.6666666666666666,
         "state": "matched"

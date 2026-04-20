@@ -3,7 +3,7 @@
 ## Scope
 
 This audit covers whole-app desktop performance for the retained MVP shell in
-`apps/autopilot-desktop`, with emphasis on:
+`apps/autopilot-deprecated`, with emphasis on:
 
 - startup stalls and beachballs,
 - background work that runs even while the UI looks idle,
@@ -24,14 +24,14 @@ Product / ownership:
 
 Desktop runtime / control plane:
 
-- `apps/autopilot-desktop/src/desktop_control.rs`
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/input.rs`
-- `apps/autopilot-desktop/src/render.rs`
-- `apps/autopilot-desktop/src/spark_wallet.rs`
-- `apps/autopilot-desktop/src/app_state.rs`
-- `apps/autopilot-desktop/src/autopilot_peer_roster.rs`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/input.rs`
+- `apps/autopilot-deprecated/src/render.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
+- `apps/autopilot-deprecated/src/autopilot_peer_roster.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
 
 ## Test Setup
 
@@ -92,11 +92,11 @@ This happened within the initial startup window without user interaction.
 
 Relevant paths:
 
-- `apps/autopilot-desktop/src/render.rs`
+- `apps/autopilot-deprecated/src/render.rs`
   - `open_startup_pane(...)` queues initial `SparkWalletCommand::Refresh`
-- `apps/autopilot-desktop/src/input.rs`
+- `apps/autopilot-deprecated/src/input.rs`
   - `run_startup_spark_wallet_convergence_tick(...)` queues follow-up refreshes
-- `apps/autopilot-desktop/src/spark_wallet.rs`
+- `apps/autopilot-deprecated/src/spark_wallet.rs`
   - `begin_startup_convergence(...)`
   - `startup_convergence_refresh_due(...)`
   - `note_startup_convergence_refresh_queued(...)`
@@ -139,16 +139,16 @@ Measured idle snapshot HTTP latency was about `23.9ms` for a `22 KB` payload.
 
 Relevant paths:
 
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
   - `sync_runtime_snapshot(...)`
   - `snapshot_for_state(...)`
   - `snapshot_sync_signature(...)`
   - `desktop_control_nip28_status(...)`
-- `apps/autopilot-desktop/src/app_state.rs`
+- `apps/autopilot-deprecated/src/app_state.rs`
   - `active_managed_chat_messages(...)`
   - `autopilot_peer_roster(...)`
   - `select_autopilot_buy_mode_target(...)`
-- `apps/autopilot-desktop/src/autopilot_peer_roster.rs`
+- `apps/autopilot-deprecated/src/autopilot_peer_roster.rs`
   - `build_autopilot_peer_roster(...)`
   - `select_autopilot_buy_mode_target_with_policy(...)`
   - `parse_autopilot_compute_presence_message(...)`
@@ -193,12 +193,12 @@ It does not currently cover:
 
 Relevant paths:
 
-- `apps/autopilot-desktop/src/bin/autopilotctl.rs`
-- `apps/autopilot-desktop/src/desktop_control.rs`
+- `apps/autopilot-deprecated/src/bin/autopilotctl.rs`
+- `apps/autopilot-deprecated/src/desktop_control.rs`
 
 But the app already has a typed pane lifecycle bridge:
 
-- `apps/autopilot-desktop/src/input/tool_bridge.rs`
+- `apps/autopilot-deprecated/src/input/tool_bridge.rs`
   - `execute_pane_list(...)`
   - `execute_pane_open(...)`
   - `execute_pane_focus(...)`
@@ -238,7 +238,7 @@ The key observation was not just “JSON parse is expensive.” It was:
 
 Relevant paths:
 
-- `apps/autopilot-desktop/src/state/nip90_payment_facts.rs`
+- `apps/autopilot-deprecated/src/state/nip90_payment_facts.rs`
   - `sync_from_background_tick(...)`
   - `sync_from_current_truth_with_session_log_dir(...)`
   - `refresh_log_backfill_cache(...)`

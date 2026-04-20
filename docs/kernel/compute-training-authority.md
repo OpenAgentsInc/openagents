@@ -526,7 +526,7 @@ In practice that means:
 ## Current Apple Operator Path
 
 The retained Apple adapter path now has a concrete operator-to-authority flow
-in `apps/autopilot-desktop`:
+in `apps/autopilot-deprecated`:
 
 1. desktop control or `autopilotctl` launches an Apple adapter run under
    repo-owned operator orchestration

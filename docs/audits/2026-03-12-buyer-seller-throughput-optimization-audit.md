@@ -15,7 +15,7 @@ This audit documents:
 
 ## Scope
 
-This work stayed inside `apps/autopilot-desktop`, which is the correct owner for:
+This work stayed inside `apps/autopilot-deprecated`, which is the correct owner for:
 
 - Mission Control buy-mode scheduling
 - app-owned NIP-28 peer selection
@@ -47,8 +47,8 @@ This means the benchmark measures **Autopilot throughput**, not full internet-to
 
 I added a dedicated relay-backed benchmark binary:
 
-- `apps/autopilot-desktop/src/bin/autopilot_throughput_bench.rs`
-- `apps/autopilot-desktop/src/throughput_bench.rs`
+- `apps/autopilot-deprecated/src/bin/autopilot_throughput_bench.rs`
+- `apps/autopilot-deprecated/src/throughput_bench.rs`
 
 The harness uses real app paths instead of fake shortcuts:
 
