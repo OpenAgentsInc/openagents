@@ -43,6 +43,9 @@ The script:
 - runs focused treasury recovery comparison/cutover tests
 - runs the homework accepted-work payout integration test
 - rebuilds the real `oa` and `nexus-relay` binaries separately
+- runs the local post-deploy smoke simulation for the exact Nexus failure
+  shape: zero fresh completed sends, nonzero inference-ready payout targets,
+  and `treasury_funding_target_timeout:*` wallet status
 - runs the local replacement-attempt proof lane
 - runs the local stale-recovery proof lane with worker and validator
 - copies `run-report.json`, `authority-state-trace.json`, and
@@ -58,6 +61,8 @@ Local closure proof is green only if:
 - stale-recovery closeout is `rewarded`
 - stale-recovery caveat count is `0`
 - stale-recovery accepted contribution count is at least `1`
+- post-deploy smoke simulation reports `decision=rollback` and
+  `reproduced_current_failure=true`
 
 This local artifact is the fast iteration target. It is not a substitute for
 live settlement proof, but it is the primary evidence that the CS336 homework

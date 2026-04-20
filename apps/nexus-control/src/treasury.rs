@@ -116,6 +116,7 @@ const TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES: usize = 8;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_EARLY_SLACK_MS: u64 = 5 * 60_000;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_WINDOW_MS: u64 = 30 * 60_000;
 const TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL: &str = "nexus_control";
+const TREASURY_FUNDING_TARGET_TIMEOUT_PREFIX: &str = "treasury_funding_target_timeout:";
 const TREASURY_MIN_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 1_000;
 const TREASURY_MAX_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 1_800_000;
 const TREASURY_STATE_RECOVERY_DROP_FIELD_SETS: &[&[&str]] = &[
@@ -2432,6 +2433,25 @@ impl TreasuryState {
                 .is_some_and(|detail| detail.starts_with("wallet_refresh_timeout:"));
         if timeout_only_error && recent_wallet_activity {
             return (Some("connected".to_string()), None);
+        }
+        let funding_target_timeout = matches!(self.wallet_runtime_status.as_deref(), Some("error"))
+            && self
+                .wallet_last_error
+                .as_deref()
+                .is_some_and(|detail| detail.starts_with(TREASURY_FUNDING_TARGET_TIMEOUT_PREFIX));
+        if funding_target_timeout {
+            if self.wallet_balance_updated_at_unix_ms.is_some()
+                || self.wallet_balance_sats > 0
+                || self
+                    .last_wallet_recovery_report
+                    .as_ref()
+                    .is_some_and(|summary| {
+                        summary.validation_passed && !summary.major_divergence_detected
+                    })
+            {
+                return (Some("connected".to_string()), None);
+            }
+            return (None, None);
         }
         (
             self.wallet_runtime_status.clone(),
@@ -8642,6 +8662,25 @@ mod tests {
         assert_eq!(stats.wallet_last_error, None);
         assert_eq!(stats.wallet_sync_lag_ms, Some(5_000));
         assert_eq!(stats.degraded_reason, None);
+    }
+
+    #[test]
+    fn funding_target_timeout_does_not_poison_cached_wallet_status() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        state.wallet_runtime_status = Some("error".to_string());
+        state.wallet_last_error = Some("treasury_funding_target_timeout:10000".to_string());
+        state.wallet_balance_sats = 80;
+        state.wallet_balance_updated_at_unix_ms = Some(1_000);
+
+        let stats = state.public_stats(&config, 100_000);
+        assert_eq!(stats.wallet_runtime_status.as_deref(), Some("connected"));
+        assert_eq!(stats.wallet_last_error, None);
+        assert_eq!(stats.wallet_balance_sats, 80);
+        assert_eq!(
+            stats.degraded_reason.as_deref(),
+            Some("wallet_snapshot_stale:99000")
+        );
     }
 
     #[test]

@@ -31,6 +31,10 @@ Funding target creation is a bounded wallet operation. Hosted Nexus uses
 `NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS` and defaults to `10000` ms.
 If the Spark wallet path is unhealthy, the endpoint must fail with
 `treasury_funding_target_timeout:<ms>` instead of hanging the operator surface.
+That timeout is an operator funding-target failure, not by itself proof that the
+payout wallet is unusable. It must not overwrite a usable cached wallet balance
+or poison post-deploy payout smoke as `wallet_runtime_status=error`; the wallet
+refresh and payout dispatch loops own payout-wallet health.
 Do not retry production funding-target calls as a debugging loop; reproduce the
 wallet/funding behavior locally or in the private treasury runner first, then
 use hosted Nexus only as the live confirmation surface.
