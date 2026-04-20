@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.nexus.deploy_attempt.v1",
+  "attempted_at_utc": "2026-04-20T06:12:21Z",
+  "issue": 4368,
+  "candidate": {
+    "git_sha": "d64697e38f3bb2cfb7ef755419d61de9cb56a0da",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:d64697e38f3b",
+    "build_receipt": "docs/reports/nexus/20260420-060409-cloudbuild-image-d64697e38f3b.json"
+  },
+  "deploy_command": "DEPLOY_IMAGE=us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:d64697e38f3b bash scripts/deploy/nexus/03-configure-and-start.sh",
+  "result": "rolled_back",
+  "post_restart_smoke": {
+    "result": "failed",
+    "service_state": "active",
+    "observed_recent_completed": 0,
+    "observed_inference_ready": "unknown",
+    "observed_wallet_runtime_status": "unknown",
+    "observed_last_dispatch_at_unix_ms": 0,
+    "reason": "no fresh completed payout evidence appeared after the configured post-restart warmup/smoke window"
+  },
+  "rollback": {
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:da7491d28e3e",
+    "completed": true,
+    "active_image_verified_after_rollback": true
+  },
+  "post_rollback_public_probe": {
+    "healthz": "ok",
+    "active_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:da7491d28e3e",
+    "public_stats_http_status": 200,
+    "public_stats_time_total_seconds": 2.585309,
+    "public_stats_age_ms": 92,
+    "training_nodes_online": 3,
+    "training_admitted_nodes_online": 3,
+    "training_runs_active": 38,
+    "treasury": {
+      "wallet_runtime_status": "connected",
+      "wallet_balance_sats": 80,
+      "wallet_sync_lag_ms": 397834724,
+      "payout_loop_health": "degraded",
+      "payout_loop_runtime_status": "degraded",
+      "payouts_dispatched_24h": 0,
+      "payouts_confirmed_24h": 0,
+      "payouts_failed_24h": 312,
+      "payouts_skipped_24h": 76,
+      "backlog_retryable": 5093,
+      "backlog_total": 5536,
+      "active_continuity_alerts": [
+        "confirmations_stalled",
+        "snapshot_stale"
+      ]
+    }
+  },
+  "closure_assessment": "issue_4368_not_complete_live_treasury_and_payout_evidence_still_blocking"
+}
