@@ -85,6 +85,9 @@ fn run() -> Result<(), String> {
         )?,
         ["wait", condition, rest @ ..] => wait_condition(&target, condition, rest)?,
         ["smoke", rest @ ..] => run_smoke(&target, rest)?,
+        ["homework", "matrix", rest @ ..] | ["proof", "matrix", rest @ ..] => {
+            run_homework_matrix(&target, rest)?
+        }
         other => return Err(format!("unsupported command: {}", other.join(" "))),
     };
 
@@ -218,6 +221,51 @@ struct ProofRunArgs {
     validators: Option<u32>,
     timeout_seconds: Option<u64>,
 }
+
+#[derive(Debug, Clone, Copy)]
+struct HomeworkLaneSpec {
+    lane: &'static str,
+    namespace_suffix: &'static str,
+    workers: u32,
+    validators: u32,
+    timeout_seconds: u64,
+    min_workers: usize,
+    min_validators: usize,
+    expected_closeout_stage: Option<&'static str>,
+}
+
+const HOMEWORK_LANES: &[HomeworkLaneSpec] = &[
+    HomeworkLaneSpec {
+        lane: "cs336-a1",
+        namespace_suffix: "clean",
+        workers: 1,
+        validators: 1,
+        timeout_seconds: 180,
+        min_workers: 1,
+        min_validators: 1,
+        expected_closeout_stage: Some("rewarded"),
+    },
+    HomeworkLaneSpec {
+        lane: "cs336-a1-replacement-attempt",
+        namespace_suffix: "replacement",
+        workers: 0,
+        validators: 0,
+        timeout_seconds: 90,
+        min_workers: 0,
+        min_validators: 0,
+        expected_closeout_stage: None,
+    },
+    HomeworkLaneSpec {
+        lane: "cs336-a1-stale-recovery",
+        namespace_suffix: "stale",
+        workers: 1,
+        validators: 1,
+        timeout_seconds: 180,
+        min_workers: 1,
+        min_validators: 1,
+        expected_closeout_stage: Some("rewarded"),
+    },
+];
 
 impl ProofRunArgs {
     fn parse(lane: &str, args: &[&str]) -> Result<Self, String> {
@@ -410,6 +458,240 @@ fn run_smoke(target: &ControlTarget, args: &[&str]) -> Result<Value, String> {
     }))
 }
 
+fn run_homework_matrix(target: &ControlTarget, args: &[&str]) -> Result<Value, String> {
+    let namespace_prefix = option_value(args, "--namespace-prefix")
+        .or_else(|| option_value(args, "--namespace"))
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("proof.autopilot.homework.{}", epoch_seconds()));
+    let timeout_ms = option_value(args, "--timeout-ms")
+        .map(parse_u64)
+        .transpose()?
+        .unwrap_or(240_000);
+    let poll_ms = option_value(args, "--poll-ms")
+        .map(parse_u64)
+        .transpose()?
+        .unwrap_or(1_000);
+    let keep_pylon_running = flag_present(args, "--keep-pylon-running");
+    let mut steps = Vec::new();
+    let mut lanes = Vec::new();
+    let mut matrix_ok = true;
+
+    push_step(
+        &mut steps,
+        "control_status",
+        request_json(target, "GET", "/v1/status", None)?,
+    );
+    push_step(
+        &mut steps,
+        "pylon_status",
+        request_json(target, "GET", "/v1/pylon/status", None)?,
+    );
+    push_step(
+        &mut steps,
+        "pylon_start",
+        request_json(target, "POST", "/v1/pylon/start", Some(json!({})))?,
+    );
+    push_step(
+        &mut steps,
+        "pylon_mode_offline",
+        request_json(
+            target,
+            "POST",
+            "/v1/pylon/mode",
+            Some(json!({ "mode": "offline" })),
+        )?,
+    );
+
+    for spec in HOMEWORK_LANES {
+        let namespace = format!("{}.{}", namespace_prefix, spec.namespace_suffix);
+        let run = request_json(
+            target,
+            "POST",
+            "/v1/proof/run",
+            Some(json!({
+                "lane": spec.lane,
+                "namespace": namespace.clone(),
+                "workers": spec.workers,
+                "validators": spec.validators,
+                "timeoutSeconds": spec.timeout_seconds,
+            })),
+        )?;
+        let timeout = timeout_ms.to_string();
+        let poll = poll_ms.to_string();
+        let wait_args = [
+            "--namespace",
+            namespace.as_str(),
+            "--timeout-ms",
+            timeout.as_str(),
+            "--poll-ms",
+            poll.as_str(),
+        ];
+        let completed = wait_condition(target, "proof-completed", &wait_args)?;
+        let doctor = request_json(
+            target,
+            "POST",
+            "/v1/proof/doctor",
+            Some(json!({ "namespace": namespace.clone() })),
+        )?;
+        let validation = validate_homework_lane(*spec, &completed, &doctor);
+        let lane_ok = validation
+            .get("ok")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        matrix_ok &= lane_ok;
+        let stop = request_json(
+            target,
+            "POST",
+            "/v1/proof/stop",
+            Some(json!({ "namespace": namespace.clone() })),
+        )?;
+        lanes.push(json!({
+            "lane": spec.lane,
+            "namespace": namespace,
+            "run": run,
+            "completed": completed,
+            "doctor": doctor,
+            "stop": stop,
+            "validation": validation,
+        }));
+    }
+
+    if !keep_pylon_running {
+        push_step(
+            &mut steps,
+            "pylon_stop",
+            request_json(target, "POST", "/v1/pylon/stop", Some(json!({})))?,
+        );
+    }
+
+    let result = json!({
+        "ok": matrix_ok,
+        "kind": "homework-proof-matrix",
+        "namespacePrefix": namespace_prefix,
+        "target": target.base_url,
+        "lanes": lanes,
+        "steps": steps,
+    });
+    if !matrix_ok {
+        return Err(format!(
+            "homework proof matrix failed validation: {}",
+            serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
+        ));
+    }
+    Ok(result)
+}
+
+fn validate_homework_lane(spec: HomeworkLaneSpec, completed: &Value, doctor: &Value) -> Value {
+    let mut checks = Vec::new();
+    push_check(
+        &mut checks,
+        "completed",
+        completed
+            .get("status")
+            .and_then(Value::as_str)
+            .map(|status| status == "completed")
+            .unwrap_or(false),
+        str_field(completed, "status"),
+    );
+    push_check(
+        &mut checks,
+        "lane",
+        completed
+            .get("lane")
+            .and_then(Value::as_str)
+            .map(|lane| lane == spec.lane)
+            .unwrap_or(false),
+        str_field(completed, "lane"),
+    );
+    push_check(
+        &mut checks,
+        "workers",
+        array_len(completed, "workers") >= spec.min_workers,
+        &format!(
+            "{} >= {}",
+            array_len(completed, "workers"),
+            spec.min_workers
+        ),
+    );
+    push_check(
+        &mut checks,
+        "validators",
+        array_len(completed, "validators") >= spec.min_validators,
+        &format!(
+            "{} >= {}",
+            array_len(completed, "validators"),
+            spec.min_validators
+        ),
+    );
+    push_check(
+        &mut checks,
+        "run_report_artifact",
+        artifact_exists(completed, "runReportPath"),
+        "runReportPath exists",
+    );
+    push_check(
+        &mut checks,
+        "authority_trace_artifact",
+        artifact_exists(completed, "authorityTracePath"),
+        "authorityTracePath exists",
+    );
+    push_check(
+        &mut checks,
+        "proof_summary_artifact",
+        artifact_exists(completed, "summaryPath"),
+        "summaryPath exists",
+    );
+    push_check(
+        &mut checks,
+        "object_trace_artifact",
+        artifact_exists(completed, "artifactTracePath"),
+        "artifactTracePath exists",
+    );
+    push_check(
+        &mut checks,
+        "transport_split",
+        transport_ok(completed),
+        "authority/relay/artifact-store/node-surfaces all ok",
+    );
+    push_check(
+        &mut checks,
+        "doctor_transport_split",
+        transport_ok(doctor),
+        "doctor authority/relay/artifact-store/node-surfaces all ok",
+    );
+    if let Some(expected) = spec.expected_closeout_stage {
+        let stage = completed
+            .get("closeoutStage")
+            .and_then(Value::as_str)
+            .unwrap_or("none");
+        let detail = completed
+            .get("detail")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        push_check(
+            &mut checks,
+            "closeout_stage",
+            stage == expected || detail.contains(&format!("closeout={expected}")),
+            &format!("stage={stage} detail={detail}"),
+        );
+    }
+    let ok = checks
+        .iter()
+        .all(|check| check.get("ok").and_then(Value::as_bool).unwrap_or(false));
+    json!({
+        "ok": ok,
+        "checks": checks,
+    })
+}
+
+fn push_check(checks: &mut Vec<Value>, name: &str, ok: bool, detail: &str) {
+    checks.push(json!({
+        "name": name,
+        "ok": ok,
+        "detail": detail,
+    }));
+}
+
 fn push_step(steps: &mut Vec<Value>, name: &str, value: Value) {
     steps.push(json!({
         "name": name,
@@ -529,6 +811,40 @@ fn str_field<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or("none")
 }
 
+fn array_len(value: &Value, key: &str) -> usize {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0)
+}
+
+fn artifact_exists(value: &Value, key: &str) -> bool {
+    let Some(path) = value
+        .get("artifacts")
+        .and_then(|artifacts| artifacts.get(key))
+        .and_then(Value::as_str)
+    else {
+        return false;
+    };
+    fs::metadata(path).is_ok()
+}
+
+fn transport_ok(value: &Value) -> bool {
+    let Some(transport) = value.get("transport") else {
+        return false;
+    };
+    ["authority", "relay", "artifactStore", "nodeSurfaces"]
+        .iter()
+        .all(|key| {
+            transport
+                .get(key)
+                .and_then(Value::as_str)
+                .map(|status| status == "ok")
+                .unwrap_or(false)
+        })
+}
+
 fn wait_condition_for_smoke(
     target: &ControlTarget,
     namespace: &str,
@@ -552,6 +868,10 @@ fn option_value<'a>(args: &'a [&str], flag: &str) -> Option<&'a str> {
         .copied()
 }
 
+fn flag_present(args: &[&str], flag: &str) -> bool {
+    args.iter().any(|value| *value == flag)
+}
+
 fn parse_u32(value: &str) -> Result<u32, String> {
     value
         .parse::<u32>()
@@ -573,7 +893,7 @@ fn epoch_seconds() -> u64 {
 
 fn print_usage() {
     println!(
-        "Usage: autopilotctl-tauri [--manifest <path>|--base-url <url> --auth-token <token>] [--json] <command>\n\nCommands:\n  status\n  pylon status|start|stop|restart|logs|mode <online|offline|pause|resume>\n  proof status [namespace]\n  proof run <lane> [--namespace <ns>] [--workers <n>] [--validators <n>] [--timeout-seconds <n>]\n  proof doctor|stop|reset|artifacts <namespace>\n  wait proof-completed --namespace <ns> [--timeout-ms <n>] [--poll-ms <n>]\n  wait pylon-running [--timeout-ms <n>] [--poll-ms <n>]\n  smoke [--namespace <ns>] [--timeout-ms <n>]\n\nDefault manifest: {}",
+        "Usage: autopilotctl-tauri [--manifest <path>|--base-url <url> --auth-token <token>] [--json] <command>\n\nCommands:\n  status\n  pylon status|start|stop|restart|logs|mode <online|offline|pause|resume>\n  proof status [namespace]\n  proof run <lane> [--namespace <ns>] [--workers <n>] [--validators <n>] [--timeout-seconds <n>]\n  proof matrix [--namespace-prefix <ns>] [--timeout-ms <n>] [--poll-ms <n>]\n  proof doctor|stop|reset|artifacts <namespace>\n  homework matrix [--namespace-prefix <ns>] [--timeout-ms <n>] [--poll-ms <n>]\n  wait proof-completed --namespace <ns> [--timeout-ms <n>] [--poll-ms <n>]\n  wait pylon-running [--timeout-ms <n>] [--poll-ms <n>]\n  smoke [--namespace <ns>] [--timeout-ms <n>]\n\nDefault manifest: {}",
         control_manifest_path().display()
     );
 }

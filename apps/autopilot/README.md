@@ -73,6 +73,24 @@ That smoke launches the real Tauri app and uses deterministic fake `pylon` and
 `oa` binaries by default so the control flow is not blocked by local provider
 configuration. Use `--real-binaries` to drive the installed local stack.
 
+For homework-run changes, use the full matrix:
+
+```bash
+scripts/autopilot/tauri-homework-matrix.sh
+```
+
+That launches the Tauri app and drives `autopilotctl-tauri homework matrix`
+through the app-owned control plane. It runs and validates:
+
+- `cs336-a1`
+- `cs336-a1-replacement-attempt`
+- `cs336-a1-stale-recovery`
+
+The matrix checks status, authority trace, proof summary, object trace,
+transport split, worker/validator projections, and closeout signals. Add
+`--real-binaries` when the installed local `oa proof` stack is the thing under
+test.
+
 The full runbook lives in
 `../../docs/codex/AUTOPILOT_TAURI_CONTROL.md`.
 

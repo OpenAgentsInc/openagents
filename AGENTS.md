@@ -183,6 +183,13 @@ Default to:
   routes; add `--real-binaries` when the task specifically requires the local
   installed Pylon/proof stack. If `--real-binaries` is blocked by local
   provider prerequisites, document the blocker and still run the default smoke.
+- For CS336/Ep224 homework-run work, `#4368` follow-up work, or changes that
+  affect clean, replacement-attempt, or stale-retained-state proof lanes, run
+  `scripts/autopilot/tauri-homework-matrix.sh`. That is the
+  updated-autopilotctl-style gate for the Tauri shell: it launches the running
+  app, drives `homework matrix` through `autopilotctl-tauri`, and verifies the
+  clean CS336, replacement-attempt, and stale-recovery lanes plus authority
+  trace, proof summary, object trace, transport split, and closure signals.
 - The legacy WGPUI desktop app also has an app-owned control plane plus a thin
   CLI:
   - implementation: `apps/autopilot-deprecated/src/desktop_control.rs`

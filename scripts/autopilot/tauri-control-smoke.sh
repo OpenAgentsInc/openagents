@@ -21,6 +21,7 @@ TIMEOUT_MS="${OPENAGENTS_AUTOPILOT_TAURI_SMOKE_TIMEOUT_MS:-180000}"
 START_TIMEOUT_SECONDS="${OPENAGENTS_AUTOPILOT_TAURI_START_TIMEOUT_SECONDS:-90}"
 KEEP_RUNNING=0
 STATUS_ONLY=0
+HOMEWORK_MATRIX=0
 USE_FAKE_BINARIES=1
 TAURI_DEV_PID=""
 APP_PID=""
@@ -33,10 +34,11 @@ Launch the Autopilot Tauri dev app and drive the same Rust command flow through
 autopilotctl-tauri.
 
 Options:
-  --namespace <value>   Proof namespace for the smoke run.
+  --namespace <value>   Proof namespace or namespace prefix for the run.
   --timeout-ms <value>  Proof wait timeout. Default: $TIMEOUT_MS.
   --manifest <path>     Control manifest path. Default: $MANIFEST.
   --status-only         Launch and verify control status only.
+  --homework-matrix     Run clean, replacement, and stale homework proof lanes.
   --real-binaries       Use the machine's real pylon and oa binaries.
   --keep-running        Leave the Tauri app running after the command completes.
   -h, --help            Show this help.
@@ -59,6 +61,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --status-only)
       STATUS_ONLY=1
+      ;;
+    --homework-matrix)
+      HOMEWORK_MATRIX=1
       ;;
     --real-binaries)
       USE_FAKE_BINARIES=0
@@ -216,6 +221,12 @@ arg_value() {
 write_artifacts() {
   local lane="$1"
   local namespace="$2"
+  local detail="fake Autopilot Tauri control smoke completed"
+  local closeout_stage="rewarded"
+  if [[ "$lane" == "cs336-a1-replacement-attempt" ]]; then
+    detail="fake replacement attempt sealed and reconciled locally"
+    closeout_stage="delivered"
+  fi
   local root="$PROOF_ROOT/$namespace"
   local fleet="$root/fleet"
   local artifacts="$root/artifacts"
@@ -224,7 +235,7 @@ write_artifacts() {
 {
   "lane": "$lane",
   "status": "completed",
-  "detail": "fake Autopilot Tauri control smoke completed",
+  "detail": "$detail",
   "observed_run": {
     "run": {
       "training_run_id": "fake-run-$namespace"
@@ -276,12 +287,12 @@ JSON
 {
   "lane": "$lane",
   "status": "completed",
-  "detail": "fake replacement attempt sealed and reconciled locally",
+  "detail": "$detail",
   "window_id": "fake-window",
   "assignment_id": "fake-assignment",
   "lease_id": "fake-lease",
   "membership_revision": "fake-membership",
-  "closeout_stage": "delivered",
+  "closeout_stage": "$closeout_stage",
   "closeout_next_action": "none",
   "closeout_last_error": null
 }
@@ -384,14 +395,27 @@ if [[ "$STATUS_ONLY" == "1" ]]; then
   exit 0
 fi
 
-cargo run -p autopilot --bin autopilotctl-tauri -- \
-  --manifest "$MANIFEST" \
-  --json \
-  smoke \
-  --namespace "$NAMESPACE" \
-  --timeout-ms "$TIMEOUT_MS" | tee "$SMOKE_JSON"
+if [[ "$HOMEWORK_MATRIX" == "1" ]]; then
+  cargo run -p autopilot --bin autopilotctl-tauri -- \
+    --manifest "$MANIFEST" \
+    --json \
+    homework matrix \
+    --namespace-prefix "$NAMESPACE" \
+    --timeout-ms "$TIMEOUT_MS" | tee "$SMOKE_JSON"
+else
+  cargo run -p autopilot --bin autopilotctl-tauri -- \
+    --manifest "$MANIFEST" \
+    --json \
+    smoke \
+    --namespace "$NAMESPACE" \
+    --timeout-ms "$TIMEOUT_MS" | tee "$SMOKE_JSON"
+fi
 
-echo "Autopilot Tauri control smoke complete"
+if [[ "$HOMEWORK_MATRIX" == "1" ]]; then
+  echo "Autopilot Tauri homework proof matrix complete"
+else
+  echo "Autopilot Tauri control smoke complete"
+fi
 if [[ "$USE_FAKE_BINARIES" == "1" ]]; then
   echo "binaries: fake deterministic pylon/oa"
 else
@@ -399,5 +423,5 @@ else
 fi
 echo "manifest: $MANIFEST"
 echo "status: $STATUS_JSON"
-echo "smoke: $SMOKE_JSON"
+echo "result: $SMOKE_JSON"
 echo "log: $LOG"
