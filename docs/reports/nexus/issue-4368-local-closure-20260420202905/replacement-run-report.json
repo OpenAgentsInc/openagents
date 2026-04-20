@@ -1,0 +1,203 @@
+{
+  "namespace": "proof.4368.local.20260420202905.replace",
+  "lane": "cs336-a1-replacement-attempt",
+  "generated_at_ms": 1776716970054,
+  "timeout_seconds": 180,
+  "status": "completed",
+  "detail": "replacement attempt assign.run.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace.window.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace.0001.worker.1.attempt2 for window.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace.0001 sealed and reconciled locally",
+  "fleet": {
+    "configured": true,
+    "namespace": "proof.4368.local.20260420202905.replace",
+    "mode": "prod_shaped",
+    "network_id": "trainnet.proof.proof.4368.local.20260420202905.replace",
+    "run_slug": "proof.proof.4368.local.20260420202905.replace",
+    "paths": {
+      "namespace_root": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace",
+      "fleet_root": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/fleet",
+      "fleet_state_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/fleet/fleet-state.json",
+      "run_report_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/fleet/run-report.json",
+      "trace_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/fleet/authority-state-trace.json",
+      "summary_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/fleet/proof-summary.json"
+    },
+    "authority": {
+      "configured": true,
+      "namespace": "proof.4368.local.20260420202905.replace",
+      "mode": "prod_shaped",
+      "started_at_ms": 1776716969871,
+      "admin_auth_configured": true,
+      "treasury_enabled": true,
+      "ports": {
+        "relay_http": 52820,
+        "relay_upstream": 52821,
+        "control_http": 52822,
+        "artifact_store": 52823
+      },
+      "paths": {
+        "namespace_root": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace",
+        "authority_env_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/authority/authority.env",
+        "relay_data_dir": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/authority/relay-data",
+        "receipt_log_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/state/receipts.jsonl",
+        "kernel_state_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/state/kernel-state.json",
+        "treasury_state_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/state/treasury-state.json",
+        "treasury_wallet_dir": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/state/treasury-wallet",
+        "treasury_wallet_mnemonic_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/state/treasury.mnemonic",
+        "training_trn_identity_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/state/training-trn-identity.mnemonic",
+        "signer_credentials_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/artifacts/gcs-signer.json",
+        "artifact_store_root": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/artifacts/store",
+        "artifact_trace_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/artifacts/object-trace.jsonl"
+      },
+      "urls": {
+        "authority_base_url": "http://127.0.0.1:52820",
+        "artifact_store_base_url": "http://127.0.0.1:52823/upload",
+        "relay_ws_url": "ws://127.0.0.1:52820/"
+      },
+      "authority_process": {
+        "binary": "/Users/christopherdavid/work/openagents/target/debug/nexus-relay",
+        "pid": 25165,
+        "running": true,
+        "log_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/logs/authority.log"
+      },
+      "artifact_store_process": {
+        "binary": "/Users/christopherdavid/work/openagents/target/debug/oa",
+        "pid": 25164,
+        "running": true,
+        "log_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420202905.replace/logs/artifact-store.log"
+      },
+      "probes": [
+        {
+          "route_id": "healthz",
+          "url": "http://127.0.0.1:52820/healthz",
+          "ok": true,
+          "status": 200,
+          "detail": "route reachable with 200"
+        },
+        {
+          "route_id": "training_artifact_layout",
+          "url": "http://127.0.0.1:52820/v1/kernel/compute/training/artifact-storage-layout",
+          "ok": true,
+          "status": 200,
+          "detail": "route reachable with 200"
+        },
+        {
+          "route_id": "treasury_status",
+          "url": "http://127.0.0.1:52820/v1/treasury/status",
+          "ok": true,
+          "status": 200,
+          "detail": "route reachable with 200"
+        },
+        {
+          "route_id": "admin_demo_launch_route",
+          "url": "http://127.0.0.1:52820/v1/admin/training/demo-runs/cs336-a1/launch",
+          "ok": true,
+          "status": 405,
+          "detail": "route reachable with 405"
+        },
+        {
+          "route_id": "artifact_store_healthz",
+          "url": "http://127.0.0.1:52823/healthz",
+          "ok": true,
+          "status": 200,
+          "detail": "route reachable with 200"
+        }
+      ],
+      "artifact_smoke": {
+        "artifact_id": "oa.train_artifact.v1~kind~local_update~network~trainnet.proof.4368.local.20260420202905.replace~run~run.proof.4368.local.20260420202905.replace~window~window.proof.4368.local.20260420202905.replace.0001~assignment~assign.proof.4368.local.20260420202905.replace.worker.1.attempt1",
+        "relative_object_path": "windows/window.proof.4368.local.20260420202905.replace.0001/contributions/assign.proof.4368.local.20260420202905.replace.worker.1.attempt1/adapter_delta_bundle.json",
+        "expected_digest": "sha256:193f702487549130a10e06e2d8689580e027597f32fa487802a1f3945c9bb026",
+        "payload_size_bytes": 441,
+        "trace_entry_count": 2,
+        "verified_at_ms": 1776716969875
+      }
+    },
+    "launched_run": {
+      "launched_at_unix_ms": 1776716970001,
+      "launch_state": "created",
+      "launch_phase": "leaseable",
+      "training_run_id": "run.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace",
+      "lane_id": "psion_cs336_a1_demo_v1",
+      "training_policy_ref": "policy://training/cs336/a1-demo/v1",
+      "environment_ref": "psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1",
+      "network_id": "trainnet.proof.proof.4368.local.20260420202905.replace",
+      "worker_target_count": 1,
+      "run_detail": {
+        "training_run_id": "run.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace",
+        "run": {
+          "training_run_id": "run.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace",
+          "run_status": "running",
+          "current_window_id": "window.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace.0001",
+          "active_window_count": 1,
+          "pending_validation_window_count": 0,
+          "validator_challenges_open": 0,
+          "validator_challenges_queued": 0
+        },
+        "windows": [
+          {
+            "window_id": "window.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace.0001",
+            "status": "active",
+            "accepted_contributions": 0,
+            "validator_challenges_open": 0,
+            "validator_challenges_queued": 0
+          }
+        ]
+      }
+    }
+  },
+  "launch": {
+    "launched_at_unix_ms": 1776716970001,
+    "launch_state": "created",
+    "launch_phase": "leaseable",
+    "training_run_id": "run.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace",
+    "lane_id": "psion_cs336_a1_demo_v1",
+    "training_policy_ref": "policy://training/cs336/a1-demo/v1",
+    "environment_ref": "psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1",
+    "network_id": "trainnet.proof.proof.4368.local.20260420202905.replace",
+    "worker_target_count": 1,
+    "run_detail": {
+      "training_run_id": "run.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace",
+      "run": {
+        "training_run_id": "run.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace",
+        "run_status": "running",
+        "current_window_id": "window.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace.0001",
+        "active_window_count": 1,
+        "pending_validation_window_count": 0,
+        "validator_challenges_open": 0,
+        "validator_challenges_queued": 0
+      },
+      "windows": [
+        {
+          "window_id": "window.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace.0001",
+          "status": "active",
+          "accepted_contributions": 0,
+          "validator_challenges_open": 0,
+          "validator_challenges_queued": 0
+        }
+      ]
+    }
+  },
+  "observed_run": {
+    "training_run_id": "run.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace",
+    "run": {
+      "training_run_id": "run.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace",
+      "run_status": "running",
+      "current_window_id": "window.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace.0002",
+      "active_window_count": 0,
+      "pending_validation_window_count": 0,
+      "validator_challenges_open": 0,
+      "validator_challenges_queued": 0,
+      "latest_closeout_status": "refused"
+    },
+    "windows": [
+      {
+        "window_id": "window.cs336.a1.proof.replace.proof.4368.local.20260420202905.replace.0001",
+        "status": "reconciled",
+        "closeout_status": "refused",
+        "accepted_contributions": 1,
+        "validator_challenges_open": 0,
+        "validator_challenges_queued": 0
+      }
+    ],
+    "contribution_count": 1,
+    "node_count": 1,
+    "caveat_count": 0
+  }
+}
