@@ -146,6 +146,68 @@ The smoke command covers:
 - proof doctor
 - proof stop
 
+## Homework Proof Matrix
+
+Issue `#4385` closed only after the local proof runtime gained the proof lanes
+needed to shorten `#4368`-class debugging: clean CS336, replacement-attempt,
+stale retained-state recovery, authority-state trace, transport split view,
+proof doctor, and closure-oriented proof summary.
+
+Issue `#4368` remains live-proof-gated. Its latest comments say local proof is
+green for scheduler/artifact/validator/closeout behavior, while remaining
+closure depends on live-only Nexus deployment, public stats latency, and
+treasury/funding continuity. The Tauri test surface should therefore prove the
+local proof matrix from the running app before anyone uses production as a
+confirmation surface.
+
+Run the full homework matrix:
+
+```bash
+scripts/autopilot/tauri-homework-matrix.sh
+```
+
+Equivalent direct CLI command against an already-running Tauri app:
+
+```bash
+cargo run -p autopilot --bin autopilotctl-tauri -- --json homework matrix \
+  --namespace-prefix proof.autopilot.homework.manual \
+  --timeout-ms 240000
+```
+
+The matrix drives these lanes through the running Tauri app:
+
+| Lane | Workers | Validators | Why It Exists |
+| --- | ---: | ---: | --- |
+| `cs336-a1` | 1 | 1 | Clean homework run with accepted contribution and rewarded closeout. |
+| `cs336-a1-replacement-attempt` | 0 | 0 | Reproduces the 4368 replacement assignment/window-seal class without starting worker/validator nodes. |
+| `cs336-a1-stale-recovery` | 1 | 1 | Reproduces stale retained worker/validator state and verifies fresh claim/reconcile recovery. |
+
+For each lane, `autopilotctl-tauri homework matrix` verifies:
+
+- `status == completed`
+- projected lane matches the requested lane
+- worker and validator projections meet the lane expectation
+- `run-report.json` exists
+- `authority-state-trace.json` exists
+- `proof-summary.json` exists
+- `object-trace.jsonl` exists
+- authority, relay, artifact-store, and node-surface transport projections are
+  `ok`
+- `proof doctor` returns an `ok` transport split
+- clean and stale lanes reach a rewarded closeout signal
+
+The default wrapper uses deterministic fake `pylon` and `oa` binaries to prove
+the Autopilot/Tauri control path and projection validation. Use real local
+binaries when the installed proof runtime itself is under test:
+
+```bash
+scripts/autopilot/tauri-homework-matrix.sh --real-binaries
+```
+
+If `--real-binaries` fails because the local provider or proof prerequisites
+are missing, keep the failure output as the honest blocker and still run the
+default matrix so the app-owned control path is verified.
+
 ## One-Command Tauri Smoke
 
 Use this when an agent needs to prove the actual Tauri app can be launched and
@@ -172,6 +234,7 @@ scripts/autopilot/tauri-control-smoke.sh --status-only
 scripts/autopilot/tauri-control-smoke.sh --keep-running
 scripts/autopilot/tauri-control-smoke.sh --namespace proof.autopilot.ctl.manual
 scripts/autopilot/tauri-control-smoke.sh --timeout-ms 240000
+scripts/autopilot/tauri-control-smoke.sh --homework-matrix
 scripts/autopilot/tauri-control-smoke.sh --real-binaries
 ```
 
@@ -221,6 +284,13 @@ handling, or command-dialog commands that trigger runtime work, run the full:
 
 ```bash
 scripts/autopilot/tauri-control-smoke.sh
+```
+
+When changing homework-run behavior, `#4368` proof behavior, or the retained
+state/replacement lanes from `#4385`, run:
+
+```bash
+scripts/autopilot/tauri-homework-matrix.sh
 ```
 
 If the full smoke cannot run because local Pylon/proof prerequisites are

@@ -63,6 +63,39 @@ Use the installed local stack explicitly when that is the thing under test:
 scripts/autopilot/tauri-control-smoke.sh --real-binaries
 ```
 
+## Homework Proof Matrix
+
+Use this gate for CS336/Ep224 homework-run work, `#4368` follow-ups, and proof
+runtime changes that affect clean, replacement-attempt, or stale-retained-state
+lanes:
+
+```bash
+scripts/autopilot/tauri-homework-matrix.sh
+```
+
+Expected result:
+
+- The actual Tauri app starts and writes a control manifest.
+- `autopilotctl-tauri homework matrix` runs through that manifest.
+- The matrix covers:
+  - `cs336-a1`
+  - `cs336-a1-replacement-attempt`
+  - `cs336-a1-stale-recovery`
+- Each lane reaches `completed`.
+- Clean and stale lanes expose a rewarded closeout signal.
+- Each lane projects the authority-state trace, proof summary, run report, and
+  object trace artifacts.
+- Each lane projects authority, relay, artifact-store, and node-surface
+  transport as `ok`, including the `proof doctor` refresh.
+
+The default script uses deterministic fake `pylon` and `oa` binaries so this is
+always an Autopilot/Tauri regression gate. Add `--real-binaries` to make it a
+local installed proof-runtime gate:
+
+```bash
+scripts/autopilot/tauri-homework-matrix.sh --real-binaries
+```
+
 ## Pylon Status Projection
 
 ```bash

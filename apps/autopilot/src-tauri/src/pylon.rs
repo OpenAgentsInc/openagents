@@ -442,6 +442,14 @@ pub fn proof_run(
 #[tauri::command]
 pub fn proof_get(state: tauri::State<'_, PylonManager>, namespace: String) -> ProofRunProjection {
     let projection = proof_get_projection(&namespace, "cs336-a1", None);
+    if projection.status == "idle" {
+        if let Some(snapshot) = state
+            .proof_snapshot()
+            .filter(|snapshot| snapshot.namespace == namespace)
+        {
+            return snapshot;
+        }
+    }
     state.store_proof(projection.clone());
     projection
 }
