@@ -21,7 +21,7 @@ use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, RwLock, RwLockReadGuard, TryLockError};
 use std::time::{Duration, UNIX_EPOCH};
 
 use axum::extract::{Path, Query, State};
@@ -8085,6 +8085,29 @@ impl IntoResponse for ApiError {
     }
 }
 
+fn store_lock_error(reason: &str) -> ApiError {
+    ApiError {
+        status: StatusCode::SERVICE_UNAVAILABLE,
+        error: "service_unavailable",
+        reason: reason.to_string(),
+    }
+}
+
+fn try_read_store<'a>(
+    state: &'a AppState,
+    busy_reason: &'static str,
+) -> Result<RwLockReadGuard<'a, ControlStore>, ApiError> {
+    match state.store.try_read() {
+        Ok(store) => Ok(store),
+        Err(TryLockError::WouldBlock) => Err(store_lock_error(busy_reason)),
+        Err(TryLockError::Poisoned(_)) => Err(ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        }),
+    }
+}
+
 pub fn build_router(config: ServiceConfig) -> Router {
     build_router_with_state(build_app_state(config))
 }
@@ -8554,16 +8577,16 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
-    if let Some(mut stats) = cached_public_stats_snapshot(&state) {
-        apply_public_stats_cache_context(&mut stats, now, "cached");
-        return Ok(Json(stats));
+    match try_cached_public_stats_snapshot(&state) {
+        Ok(Some(mut stats)) => {
+            apply_public_stats_cache_context(&mut stats, now, "cached");
+            return Ok(Json(stats));
+        }
+        Ok(None) => {}
+        Err(error) => return Err(error),
     }
 
-    let store = state.store.read().map_err(|_| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "session_store_poisoned".to_string(),
-    })?;
+    let store = try_read_store(&state, "public_stats_live_store_busy")?;
     let launch_metrics = training_launch_live_metrics_snapshot(&state);
     let mut stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
     apply_public_stats_cache_context(&mut stats, now, "live");
@@ -8642,11 +8665,17 @@ async fn get_training_run_detail(
     {
         return Ok(Json(snapshot));
     }
-    let store = state.store.read().map_err(|_| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "session_store_poisoned".to_string(),
-    })?;
+    let store = match try_read_store(&state, "training_run_detail_live_store_busy") {
+        Ok(store) => store,
+        Err(error) => {
+            if let Some(snapshot) =
+                cached_training_run_detail_snapshot_any_age(&state, training_run_id.as_str())
+            {
+                return Ok(Json(snapshot));
+            }
+            return Err(error);
+        }
+    };
     let summary = training_operator_summary_snapshot(&store, now);
     let visualization = training_visualization_snapshot_with_summary(&store, now, summary.clone());
     let launch_metrics = training_launch_live_metrics_snapshot(&state);
@@ -24132,7 +24161,7 @@ fn cached_training_run_detail_snapshot(
 ) -> Option<PublicTrainingRunDetailSnapshot> {
     let snapshot = state
         .training_run_detail_cache
-        .read()
+        .try_read()
         .ok()?
         .get(training_run_id)
         .cloned()?;
@@ -24142,6 +24171,18 @@ fn cached_training_run_detail_snapshot(
         return None;
     }
     Some(snapshot)
+}
+
+fn cached_training_run_detail_snapshot_any_age(
+    state: &AppState,
+    training_run_id: &str,
+) -> Option<PublicTrainingRunDetailSnapshot> {
+    state
+        .training_run_detail_cache
+        .try_read()
+        .ok()?
+        .get(training_run_id)
+        .cloned()
 }
 
 fn record_training_launch_latency_sample(
@@ -24370,6 +24411,20 @@ fn cached_public_stats_snapshot(state: &AppState) -> Option<PublicStatsSnapshot>
         .read()
         .ok()
         .map(|snapshot| snapshot.clone())
+}
+
+fn try_cached_public_stats_snapshot(
+    state: &AppState,
+) -> Result<Option<PublicStatsSnapshot>, ApiError> {
+    match state.public_stats_cache.try_read() {
+        Ok(snapshot) => Ok(Some(snapshot.clone())),
+        Err(TryLockError::WouldBlock) => Err(store_lock_error("public_stats_cache_busy")),
+        Err(TryLockError::Poisoned(_)) => Err(ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "public_stats_cache_poisoned".to_string(),
+        }),
+    }
 }
 
 fn refresh_public_stats_cache(state: &AppState, now_unix_ms: u64) -> Option<PublicStatsSnapshot> {
@@ -24680,12 +24735,12 @@ mod tests {
     const TEST_GCS_SERVICE_ACCOUNT_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC9YHg+P4UZig1h\nzoW/m8IbzylR9O6/9xrqmIzlSfA2S1Cz7w0P+viRoyzLBmYhTmI0p3RmNAMKWwph\nly6a0UkdsGbWsoKoWt8r+gB1zUyP+1tG4A7HDTcTnxG+T2dtJcwE/A0Y8rF4PKEt\nV0qTdHYjRZrEorBYKJdgUbdv1Pgkw0U9SuCJciRLs3SI3PPrKNhNyWERS5Ta0Hnr\nXtwzZ7e44KNJ8F8iMOgh70p0nLN/KtKl+2Gb/CuJh3Mfodkoc+sADKoofBXZct2+\nsGSw66S08q7WfuPkseaqxDlOgSfaHEjzTIMyoxvjyjRWjulVbUIz8i+JWSZUglfP\nIBsQcN1pAgMBAAECggEAAR3yRH5byNkVX4mXVscdkaBZQ35/6qLkz5cZ/3+VeXrA\nUP8uPYGoXQMOEfuoyfFhTZ0OTxRz0lVpmNX63oZ72kWS+jIPUqqeDt/YNwVeQIrp\nCAYGEwV8I+K+Si69sIm9kf2dYEJndw4Zd/QtYGrC+8R+vBaXRagvV2k0wggXVdzx\n7Wq5zqOz9QkeoG11hTkYAgTmVl5PBnAoRE/sNMtYUOf6JnQWmFpEwOTdTf+F8NL1\nFg+ecNH7tjoqsTBjD/lMSaA/kr10fUw4KoITkn2IvtuF2ZFZp2R/Viy9KnfsLyF7\nyb1NJSP2cn3gYp4+BEe5wOdQNO2+lZN7EQKmRzS7uwKBgQD7dtqD6pAw9VFSiLWN\nW8EcDevKOP48lOP++2esUCsXfip3Omn0lmyb+8i11GRz0QwiMywQ21p7sEUwn9HE\nTk2ZjPnaNdPN+i/vZ+RgcmHVeEzeTPNAXeAQ5zAlrJ8Ibh3239BeWHLxCa/p2nsD\nPL3dPXg/CQm68Ph/UjG9XiXSbwKBgQDAyuzEzrqgdc51x2Z40lcQ56zUZVVtW+A8\n485dS5VQMdwFglXzC5QTQ4T3zI1qT+Dd5ATtCkyMNpL07nC/9rQhI0+HTsRZE8P+\nKeSGIFOSvkA2ZwHWKKcctO8n1vOlAwJnjqYEJAZMIg01MtpOFRN0qrDd/9BDUbHi\nHO2smCRZpwKBgAn28r/Jer9F6VwQ6MjaOvPGpXJVAdYavFItWjVc0+hRapNg8DPu\nBg3EU3bJHNXuEcIFLxjX6GUAXi2IF8Lkq3SLPpdkDKmb4WxmPImJ3tCbvMgOWpFR\nZwCkeKb1iTPHUU6oHdSvQpbEoIDu1HMTZB6xQeOVkxoiVGaPNkNfyLXnAoGAeEXg\nQcNKUFJOM9HqzpNCN8ygWHzDN48qrDHeCvvdMYN5ZIJ0BkUB4qarrD+TNXCRszvO\nCuby7EIbmeuqsUdCBq5Vre7otT2MduJBq589I/3GZ2oJjkYcQt9pl2wU4aun81zd\nmxWyTAquPLL11+J0GcNmxYgSr/ymQY6Ug6kCfF8CgYEA2fSIcskydJ94TpX8Dpqm\nBwDXhRIZo6hkLjAqt6hHa7Fs/2qZXAeeX7/oxxfHBWqtPcTnp3N91xgfkPjarPeM\nth0qg1Cu4Y4ZyQfpaVaZB3aWIJB0PdWdMBZa/EUZDu9kFoaExF3BdzA2j7pmMDj4\nOZi9gzTa10z894ZuBJJkMPA=\n-----END PRIVATE KEY-----\n";
 
     use super::{
-        ClaimTrainingValidatorChallengeRequest, FinalizeTrainingValidatorChallengeRequest,
-        PublishTrainingTrnStateRequest, RetryTrainingValidatorChallengeRequest,
-        ScheduledTrainingRun, TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS,
-        TRN_TRAINING_ARTIFACT_LOCATOR_KIND, TRN_TRAINING_CLOSEOUT_KIND,
-        TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND, TRN_TRAINING_WINDOW_KIND,
-        TrainingFleetAbuseNodeSnapshot, TrainingFleetAbuseSnapshot,
+        ClaimTrainingValidatorChallengeRequest, ErrorResponse,
+        FinalizeTrainingValidatorChallengeRequest, PublishTrainingTrnStateRequest,
+        RetryTrainingValidatorChallengeRequest, ScheduledTrainingRun,
+        TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS, TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
+        TRN_TRAINING_CLOSEOUT_KIND, TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND,
+        TRN_TRAINING_WINDOW_KIND, TrainingFleetAbuseNodeSnapshot, TrainingFleetAbuseSnapshot,
         TrainingOperatorSummaryResponse, TrainingRolloutAbuseControls, TrainingRolloutChannel,
         TrainingRolloutCohort, TrainingRolloutGate, TrainingRolloutPolicyResponse,
         TrainingRolloutPolicyUpdateRequest, TrainingRolloutTargetKind,
@@ -30792,6 +30847,34 @@ mod tests {
                 .public_snapshot_source,
             "cached"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_fails_fast_when_stats_cache_is_busy() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+        let _cache_guard = state
+            .public_stats_cache
+            .write()
+            .expect("hold stats cache write lock");
+
+        let stats_response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("/api/stats should fail fast while cache is busy")?;
+
+        assert_eq!(stats_response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let error: ErrorResponse = response_json(stats_response).await?;
+        assert_eq!(error.reason, "public_stats_cache_busy");
 
         Ok(())
     }
@@ -41216,6 +41299,39 @@ mod tests {
         assert_eq!(cached_detail.training_run_id, training_run_id);
         assert_eq!(
             cached_detail.featured_window_id.as_deref(),
+            Some("window.0001")
+        );
+
+        {
+            let mut cache = state
+                .training_run_detail_cache
+                .write()
+                .expect("write training run detail cache");
+            let stale_detail = cache
+                .get_mut(training_run_id)
+                .expect("cached training run detail");
+            stale_detail.generated_at_unix_ms = super::now_unix_ms()
+                .saturating_sub(super::TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS + 1);
+        }
+        let store_guard = state.store.write().expect("hold live store write lock");
+        let stale_detail_response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.clone().oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}"))
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("stale training run detail cache should return without live store")?;
+        drop(store_guard);
+        assert_eq!(stale_detail_response.status(), StatusCode::OK);
+        let stale_detail =
+            response_json::<PublicTrainingRunDetailSnapshot>(stale_detail_response).await?;
+        assert_eq!(stale_detail.training_run_id, training_run_id);
+        assert_eq!(
+            stale_detail.featured_window_id.as_deref(),
             Some("window.0001")
         );
 
