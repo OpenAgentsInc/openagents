@@ -3079,6 +3079,7 @@ fn standard_proof_lane_completion_detail(
         || observed.run.pending_validation_window_count != 0
         || observed.run.validator_challenges_open != 0
         || observed.run.validator_challenges_queued != 0
+        || observed.caveat_count != 0
     {
         return None;
     }
@@ -3112,17 +3113,25 @@ fn proof_quiesced_node_count(fleet: &ProofFleetStatusReport, role: ProofFleetNod
         .filter(|node| {
             node.role == role
                 && node.process.running
-                && node.training.as_ref().is_some_and(|training| {
-                    training.load_error.is_none()
-                        && training.last_failure_reason.is_none()
-                        && training.recent_issue_count == 0
-                        && training.pending_closeout_count == 0
-                        && training.active_runtime_process_state.as_deref() == Some("stopped")
-                        && training.current_run_id.is_some()
-                        && training.active_window_id.is_some()
-                })
+                && node
+                    .training
+                    .as_ref()
+                    .is_some_and(proof_node_training_is_quiesced)
         })
         .count()
+}
+
+fn proof_node_training_is_quiesced(training: &ProofFleetNodeTrainingStatus) -> bool {
+    training.load_error.is_none()
+        && training.last_failure_reason.is_none()
+        && training.recent_issue_count == 0
+        && training.pending_closeout_count == 0
+        && matches!(
+            training.active_runtime_process_state.as_deref(),
+            Some("stopped") | None
+        )
+        && training.current_run_id.is_some()
+        && training.active_window_id.is_some()
 }
 
 fn proof_psionic_repo_root() -> Option<PathBuf> {
@@ -5564,6 +5573,94 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
+    fn proof_test_authority_status(namespace: &str) -> super::ProofAuthorityStatusReport {
+        super::ProofAuthorityStatusReport {
+            configured: true,
+            namespace: namespace.to_string(),
+            mode: Some(super::ProofAuthorityMode::ProdShaped),
+            started_at_ms: None,
+            admin_auth_configured: true,
+            treasury_enabled: true,
+            ports: None,
+            paths: None,
+            urls: None,
+            authority_process: None,
+            artifact_store_process: None,
+            probes: Vec::new(),
+            artifact_smoke: None,
+        }
+    }
+
+    fn proof_test_process_status(running: bool) -> super::ProofProcessStatus {
+        super::ProofProcessStatus {
+            binary: "target/debug/oa".to_string(),
+            pid: running.then_some(1234),
+            running,
+            log_path: "proof.log".to_string(),
+        }
+    }
+
+    fn proof_test_node_status(
+        role: super::ProofFleetNodeRole,
+        runtime_state: Option<&str>,
+    ) -> super::ProofFleetNodeStatus {
+        super::ProofFleetNodeStatus {
+            role,
+            index: 1,
+            node_label: format!("proof-{}", role.label()),
+            payout_destination: format!("lnbc1proof{}", role.label()),
+            home_dir: format!("/tmp/proof/{}", role.label()),
+            config_path: format!("/tmp/proof/{}/config.json", role.label()),
+            run_root: format!("/tmp/proof/{}/training", role.label()),
+            admin_url: "http://127.0.0.1:1".to_string(),
+            checkpoint_serve_url: "http://127.0.0.1:2".to_string(),
+            stale_retained_state_injected: false,
+            retained_state_fixture_id: None,
+            process: proof_test_process_status(true),
+            training: Some(super::ProofFleetNodeTrainingStatus {
+                current_run_id: Some("run.proof".to_string()),
+                active_window_id: Some("window.proof.0001".to_string()),
+                active_runtime_process_state: runtime_state.map(ToString::to_string),
+                last_failure_reason: None,
+                recent_issue_count: 0,
+                first_issue_reason: None,
+                pending_closeout_count: 0,
+                load_error: None,
+            }),
+        }
+    }
+
+    fn proof_test_completed_observation() -> super::ProofObservedTrainingRunDetail {
+        super::ProofObservedTrainingRunDetail {
+            training_run_id: "run.proof".to_string(),
+            run: super::ProofObservedRunState {
+                training_run_id: "run.proof".to_string(),
+                run_status: "running".to_string(),
+                current_window_id: "window.proof.0002".to_string(),
+                active_window_count: 0,
+                pending_validation_window_count: 0,
+                validator_challenges_open: 0,
+                validator_challenges_queued: 0,
+                latest_closeout_status: Some("rewarded".to_string()),
+            },
+            windows: vec![super::ProofObservedWindowState {
+                window_id: "window.proof.0001".to_string(),
+                status: "reconciled".to_string(),
+                closeout_status: Some("rewarded".to_string()),
+                accepted_contributions: 1,
+                validator_challenges_open: 0,
+                validator_challenges_queued: 0,
+            }],
+            contribution_count: 1,
+            node_count: 1,
+            caveat_count: 0,
+            first_caveat_id: None,
+            first_caveat_severity: None,
+            first_caveat_title: None,
+            first_caveat_detail: None,
+        }
+    }
+
     #[test]
     fn namespace_ports_are_stable() {
         let left = proof_namespace_ports("authority");
@@ -5810,6 +5907,87 @@ mod tests {
             .expect("accepted-work payout caveat should surface as blocker");
         assert_eq!(blocker.0, "authority_run_caveat");
         assert!(blocker.1.contains("Payout attention required"));
+    }
+
+    #[test]
+    fn standard_proof_lane_completion_accepts_cleared_worker_runtime() {
+        let fleet = super::ProofFleetStatusReport {
+            configured: true,
+            namespace: "proof.complete".to_string(),
+            mode: Some(super::ProofAuthorityMode::ProdShaped),
+            network_id: Some("trainnet.proof.complete".to_string()),
+            run_slug: Some("proof.complete".to_string()),
+            paths: None,
+            authority: proof_test_authority_status("proof.complete"),
+            nodes: vec![
+                proof_test_node_status(super::ProofFleetNodeRole::Worker, None),
+                proof_test_node_status(super::ProofFleetNodeRole::Validator, Some("stopped")),
+            ],
+            launched_run: None,
+        };
+        let observed = proof_test_completed_observation();
+
+        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1)
+            .expect("cleared worker runtime should count as quiesced after rewarded closeout");
+
+        assert!(detail.contains("window.proof.0001 reconciled"));
+        assert!(detail.contains("workers_quiesced=1"));
+        assert!(detail.contains("validators_quiesced=1"));
+    }
+
+    #[test]
+    fn standard_proof_lane_completion_rejects_running_worker_runtime() {
+        let fleet = super::ProofFleetStatusReport {
+            configured: true,
+            namespace: "proof.running-worker".to_string(),
+            mode: Some(super::ProofAuthorityMode::ProdShaped),
+            network_id: Some("trainnet.proof.running-worker".to_string()),
+            run_slug: Some("proof.running-worker".to_string()),
+            paths: None,
+            authority: proof_test_authority_status("proof.running-worker"),
+            nodes: vec![
+                proof_test_node_status(super::ProofFleetNodeRole::Worker, Some("running")),
+                proof_test_node_status(super::ProofFleetNodeRole::Validator, Some("stopped")),
+            ],
+            launched_run: None,
+        };
+        let observed = proof_test_completed_observation();
+
+        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1);
+
+        assert!(
+            detail.is_none(),
+            "running worker runtime must not be treated as quiesced"
+        );
+    }
+
+    #[test]
+    fn standard_proof_lane_completion_waits_for_caveats_to_clear() {
+        let fleet = super::ProofFleetStatusReport {
+            configured: true,
+            namespace: "proof.caveat-clearance".to_string(),
+            mode: Some(super::ProofAuthorityMode::ProdShaped),
+            network_id: Some("trainnet.proof.caveat-clearance".to_string()),
+            run_slug: Some("proof.caveat-clearance".to_string()),
+            paths: None,
+            authority: proof_test_authority_status("proof.caveat-clearance"),
+            nodes: vec![
+                proof_test_node_status(super::ProofFleetNodeRole::Worker, None),
+                proof_test_node_status(super::ProofFleetNodeRole::Validator, Some("stopped")),
+            ],
+            launched_run: None,
+        };
+        let mut observed = proof_test_completed_observation();
+        observed.caveat_count = 1;
+        observed.first_caveat_id = Some("payout_pending".to_string());
+        observed.first_caveat_severity = Some("warning".to_string());
+
+        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1);
+
+        assert!(
+            detail.is_none(),
+            "proof completion must wait until payout and other caveats clear"
+        );
     }
 
     #[test]

@@ -44,6 +44,8 @@ const ENV_TREASURY_WALLET_MNEMONIC_PATH: &str = "NEXUS_CONTROL_TREASURY_WALLET_M
 const ENV_TREASURY_WALLET_STORAGE_DIR: &str = "NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR";
 const ENV_TREASURY_WALLET_NETWORK: &str = "NEXUS_CONTROL_TREASURY_WALLET_NETWORK";
 const ENV_TREASURY_WALLET_API_KEY_ENV: &str = "NEXUS_CONTROL_TREASURY_WALLET_API_KEY_ENV";
+const ENV_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED: &str =
+    "NEXUS_CONTROL_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED";
 const ENV_TREASURY_WALLET_STATUS_REFRESH_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS";
 const ENV_TREASURY_FUNDING_TARGET_TIMEOUT_MS: &str =
@@ -78,6 +80,7 @@ const DEFAULT_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS: Option<u64> = None;
 const DEFAULT_TREASURY_WALLET_MNEMONIC_PATH: &str = "var/nexus-control/treasury.mnemonic";
 const DEFAULT_TREASURY_WALLET_STORAGE_DIR: &str = "var/nexus-control/treasury-wallet";
 const DEFAULT_TREASURY_WALLET_NETWORK: &str = "mainnet";
+const DEFAULT_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED: bool = false;
 const DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS: u64 = 3;
 const DEFAULT_TREASURY_FUNDING_TARGET_TIMEOUT_MS: u64 = 10_000;
 const DEFAULT_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS: u64 = 120_000;
@@ -192,6 +195,7 @@ pub struct TreasuryConfig {
     pub wallet_storage_dir: PathBuf,
     pub wallet_network: String,
     pub wallet_api_key_env: Option<String>,
+    pub wallet_real_time_sync_enabled: bool,
     pub wallet_status_refresh_seconds: u64,
     pub funding_target_timeout_ms: u64,
     pub wallet_recovery_inspection_timeout_ms: u64,
@@ -257,6 +261,10 @@ impl TreasuryConfig {
             DEFAULT_TREASURY_WALLET_STATUS_REFRESH_SECONDS,
         )?
         .max(1);
+        let wallet_real_time_sync_enabled = parse_bool_env(
+            ENV_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED,
+            DEFAULT_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED,
+        )?;
         let funding_target_timeout_ms = parse_u64_env(
             ENV_TREASURY_FUNDING_TARGET_TIMEOUT_MS,
             DEFAULT_TREASURY_FUNDING_TARGET_TIMEOUT_MS,
@@ -342,6 +350,7 @@ impl TreasuryConfig {
                 .ok()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
+            wallet_real_time_sync_enabled,
             wallet_status_refresh_seconds,
             funding_target_timeout_ms,
             wallet_recovery_inspection_timeout_ms,
@@ -6296,6 +6305,7 @@ fn treasury_wallet_config(config: &TreasuryConfig, storage_dir: PathBuf) -> Resu
         storage_dir,
         deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
         background_processing: false,
+        real_time_sync_enabled: config.wallet_real_time_sync_enabled,
     })
 }
 
@@ -6862,6 +6872,7 @@ mod tests {
             wallet_storage_dir: PathBuf::from("/tmp/test-nexus-treasury-wallet"),
             wallet_network: "regtest".to_string(),
             wallet_api_key_env: None,
+            wallet_real_time_sync_enabled: false,
             wallet_status_refresh_seconds: 30,
             funding_target_timeout_ms: 10_000,
             wallet_recovery_inspection_timeout_ms: 120_000,
@@ -6901,6 +6912,27 @@ mod tests {
             super::treasury_wallet_config(&config, config.wallet_storage_dir.clone())
                 .expect("wallet config");
         assert!(!wallet_config.background_processing);
+    }
+
+    #[test]
+    fn treasury_wallet_config_keeps_realtime_sync_disabled_by_default() {
+        let config = test_treasury_config();
+        let wallet_config =
+            super::treasury_wallet_config(&config, config.wallet_storage_dir.clone())
+                .expect("wallet config");
+
+        assert!(!wallet_config.real_time_sync_enabled);
+    }
+
+    #[test]
+    fn treasury_wallet_config_can_reenable_realtime_sync() {
+        let mut config = test_treasury_config();
+        config.wallet_real_time_sync_enabled = true;
+        let wallet_config =
+            super::treasury_wallet_config(&config, config.wallet_storage_dir.clone())
+                .expect("wallet config");
+
+        assert!(wallet_config.real_time_sync_enabled);
     }
 
     #[test]

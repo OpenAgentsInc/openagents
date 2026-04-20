@@ -115,3 +115,12 @@ owned by the refresh loop and should not block target creation. If the service
 can return funding material but the refresh loop still times out, fund the
 treasury first and keep `#4368` open until a fresh post-restart send is
 confirmed from the integrated image.
+
+The hosted treasury wallet now disables the Breez real-time data-sync
+subscription by default with
+`NEXUS_CONTROL_TREASURY_WALLET_REAL_TIME_SYNC_ENABLED=false`. Keep the Spark API
+key configured for mainnet operations, but do not re-enable real-time sync
+during recovery unless a dedicated recovery report proves that the data-sync
+path is healthy for the production wallet. Repeated `datasync.breez.technology`
+/ Fly `502` or h2 errors are evidence to leave this disabled and keep using
+bounded wallet refresh/reconciliation instead.

@@ -25249,6 +25249,7 @@ mod tests {
                 )),
                 wallet_network: "regtest".to_string(),
                 wallet_api_key_env: None,
+                wallet_real_time_sync_enabled: false,
                 wallet_status_refresh_seconds: 30,
                 funding_target_timeout_ms: 10_000,
                 wallet_recovery_inspection_timeout_ms: 120_000,
