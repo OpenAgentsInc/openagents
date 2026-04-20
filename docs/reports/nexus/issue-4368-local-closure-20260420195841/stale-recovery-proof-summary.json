@@ -1,0 +1,97 @@
+{
+  "schema_version": "openagents.proof.summary.v1",
+  "namespace": "proof.4368.local.20260420195841.stale",
+  "lane": "cs336-a1-stale-recovery",
+  "generated_at_ms": 1776715204948,
+  "status": "completed",
+  "detail": "window window.cs336.a1.proof.stale.proof.4368.local.20260420195841.stale.0001 reconciled with 1 accepted contribution(s), closeout=rewarded, workers_quiesced=1, validators_quiesced=1",
+  "first_red_stage": "completed",
+  "first_red_subject": "proof.4368.local.20260420195841.stale",
+  "window_id": "window.cs336.a1.proof.stale.proof.4368.local.20260420195841.stale.0002",
+  "trace_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420195841.stale/fleet/authority-state-trace.json",
+  "transport": {
+    "authority_front_door": [
+      {
+        "route_id": "authority_healthz",
+        "url": "http://127.0.0.1:56390/healthz",
+        "ok": true,
+        "status": 200,
+        "detail": "route reachable with 200"
+      },
+      {
+        "route_id": "authority_stats",
+        "url": "http://127.0.0.1:56390/api/stats",
+        "ok": true,
+        "status": 200,
+        "detail": "route reachable with 200"
+      },
+      {
+        "route_id": "authority_demo_launch_route",
+        "url": "http://127.0.0.1:56390/v1/admin/training/demo-runs/cs336-a1/launch",
+        "ok": true,
+        "status": 405,
+        "detail": "route reachable with 405"
+      },
+      {
+        "route_id": "authority_training_run_detail",
+        "url": "http://127.0.0.1:56390/api/training/runs/run.cs336.a1.proof.stale.proof.4368.local.20260420195841.stale",
+        "ok": true,
+        "status": 200,
+        "detail": "route reachable with 200"
+      }
+    ],
+    "artifact_store": [
+      {
+        "route_id": "artifact_store_healthz",
+        "url": "http://127.0.0.1:56393/healthz",
+        "ok": true,
+        "status": 200,
+        "detail": "route reachable with 200"
+      }
+    ],
+    "relay": {
+      "relay_ws_url": "ws://127.0.0.1:56390/",
+      "relay_data_dir": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420195841.stale/authority/relay-data",
+      "authority_running": true,
+      "detail": "relay-facing authority process is running"
+    },
+    "node_surfaces": [
+      {
+        "role": "worker",
+        "index": 1,
+        "node_label": "proof-proof.4368.local.20260420195841.stale-worker-1",
+        "admin": {
+          "route_id": "worker_1_admin",
+          "url": "http://127.0.0.1:62000/v1/training/status",
+          "ok": true,
+          "status": 200,
+          "detail": "route reachable with 200"
+        },
+        "checkpoint": {
+          "route_id": "worker_1_checkpoint",
+          "url": "http://127.0.0.1:62001/runs/run.cs336.a1.proof.stale.proof.4368.local.20260420195841.stale/checkpoints/latest_pointer.json",
+          "ok": false,
+          "detail": "error sending request for url (http://127.0.0.1:62001/runs/run.cs336.a1.proof.stale.proof.4368.local.20260420195841.stale/checkpoints/latest_pointer.json)"
+        }
+      },
+      {
+        "role": "validator",
+        "index": 1,
+        "node_label": "proof-proof.4368.local.20260420195841.stale-validator-1",
+        "admin": {
+          "route_id": "validator_1_admin",
+          "url": "http://127.0.0.1:56520/v1/training/status",
+          "ok": true,
+          "status": 200,
+          "detail": "route reachable with 200"
+        },
+        "checkpoint": {
+          "route_id": "validator_1_checkpoint",
+          "url": "http://127.0.0.1:56521/runs/run.cs336.a1.proof.stale.proof.4368.local.20260420195841.stale/checkpoints/latest_pointer.json",
+          "ok": false,
+          "detail": "error sending request for url (http://127.0.0.1:56521/runs/run.cs336.a1.proof.stale.proof.4368.local.20260420195841.stale/checkpoints/latest_pointer.json)"
+        }
+      }
+    ]
+  }
+}
