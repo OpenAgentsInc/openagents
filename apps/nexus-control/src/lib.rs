@@ -4979,8 +4979,28 @@ fn training_window_requests_checkpoint_promotion(window: &ComputeAdapterTraining
             .is_some_and(|pointer| pointer.checkpoint_ref != window.base_checkpoint_ref)
 }
 
+fn training_assignment_targets_validator(
+    assignment_plans: &[TrainingWindowAssignmentPlan],
+    scheduled_run: Option<&ScheduledTrainingRun>,
+    assignment_id: &str,
+    validator_id: &str,
+) -> bool {
+    if let Ok(plan) = training_window_assignment_plan(assignment_plans, assignment_id) {
+        return plan.node_pubkey_hex == validator_id || plan.contributor_node_id == validator_id;
+    }
+    scheduled_run
+        .and_then(|run| {
+            run.assignments
+                .iter()
+                .find(|assignment| assignment.assignment_id == assignment_id)
+        })
+        .and_then(|assignment| assignment.node_pubkey_hex.as_deref())
+        .is_some_and(|node_pubkey_hex| node_pubkey_hex == validator_id)
+}
+
 fn training_validator_targets_own_assignments(
     assignment_plans: &[TrainingWindowAssignmentPlan],
+    scheduled_run: Option<&ScheduledTrainingRun>,
     challenge_plan: &TrainingWindowValidationChallengePlan,
     validator_id: &str,
 ) -> bool {
@@ -4988,13 +5008,12 @@ fn training_validator_targets_own_assignments(
         .target_assignment_ids
         .iter()
         .any(|assignment_id| {
-            assignment_plans
-                .iter()
-                .find(|assignment| assignment.assignment_id == *assignment_id)
-                .is_some_and(|assignment| {
-                    assignment.node_pubkey_hex == validator_id
-                        || assignment.contributor_node_id == validator_id
-                })
+            training_assignment_targets_validator(
+                assignment_plans,
+                scheduled_run,
+                assignment_id,
+                validator_id,
+            )
         })
 }
 
@@ -5015,12 +5034,35 @@ fn training_window_recovery_source_node_ids(
 
 fn training_window_contributor_node_ids(
     assignment_plans: &[TrainingWindowAssignmentPlan],
+    scheduled_run: Option<&ScheduledTrainingRun>,
+    contribution_outcomes: &[ComputeAdapterContributionOutcome],
 ) -> BTreeSet<String> {
-    assignment_plans
+    let contributor_node_ids = contribution_outcomes
+        .iter()
+        .map(|outcome| outcome.contributor_node_id.clone())
+        .filter(|value| !value.trim().is_empty())
+        .collect::<BTreeSet<_>>();
+    if !contributor_node_ids.is_empty() {
+        return contributor_node_ids;
+    }
+    let contributor_node_ids = assignment_plans
         .iter()
         .map(|assignment| assignment.contributor_node_id.clone())
         .filter(|value| !value.trim().is_empty())
-        .collect()
+        .collect::<BTreeSet<_>>();
+    if !contributor_node_ids.is_empty() {
+        return contributor_node_ids;
+    }
+    scheduled_run
+        .map(|run| {
+            run.assignments
+                .iter()
+                .filter(|assignment| assignment.role == TrainingNodeRoleClaim::Worker)
+                .filter_map(|assignment| assignment.node_pubkey_hex.clone())
+                .filter(|value| !value.trim().is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn training_window_assignment_plans(
@@ -5468,6 +5510,10 @@ fn training_window_defensibility_audit(
         .iter()
         .map(|outcome| (outcome.assignment_id.as_str(), outcome))
         .collect::<HashMap<_, _>>();
+    let contribution_by_worker_id = contribution_outcomes
+        .iter()
+        .map(|outcome| (outcome.worker_id.as_str(), outcome))
+        .collect::<HashMap<_, _>>();
     let retained_homework_checkpoint_bridge =
         training_retained_homework_checkpoint_bridge_satisfies_closeout_proof(
             contribution_outcomes,
@@ -5483,14 +5529,25 @@ fn training_window_defensibility_audit(
     for plan in assignment_plans {
         let contribution = contribution_by_assignment
             .get(plan.assignment_id.as_str())
-            .copied();
+            .copied()
+            .or_else(|| {
+                contribution_by_worker_id
+                    .get(plan.worker_id.as_str())
+                    .copied()
+            });
+        let audited_assignment_id = contribution
+            .map(|value| value.assignment_id.as_str())
+            .unwrap_or(plan.assignment_id.as_str());
+        let audited_node_pubkey_hex = contribution
+            .map(|value| value.contributor_node_id.as_str())
+            .unwrap_or(plan.node_pubkey_hex.as_str());
         let scheduled_assignment = scheduled_run.and_then(|run| {
             run.assignments
                 .iter()
-                .find(|assignment| assignment.assignment_id == plan.assignment_id)
+                .find(|assignment| assignment.assignment_id == audited_assignment_id)
         });
         let admitted_node =
-            kernel.get_admitted_training_node(plan.node_pubkey_hex.as_str(), None, recorded_at_ms);
+            kernel.get_admitted_training_node(audited_node_pubkey_hex, None, recorded_at_ms);
         let hard_gate_reason = admitted_node.as_ref().and_then(|node| {
             (!node.eligible).then(|| {
                 pylon_training_hard_gate_reason(&node.active_reputation_labels)
@@ -5529,7 +5586,7 @@ fn training_window_defensibility_audit(
                     PylonTrainingRefusalCode::StaleAssignment,
                 );
                 node_identities.push(TrainingWindowDefensibilityNodeIdentity {
-                    node_pubkey_hex: plan.node_pubkey_hex.clone(),
+                    node_pubkey_hex: audited_node_pubkey_hex.to_string(),
                     release_id: String::new(),
                     build_digest: String::new(),
                     eligible: false,
@@ -5585,8 +5642,8 @@ fn training_window_defensibility_audit(
                     );
                 }
                 assignment_trail.push(TrainingWindowDefensibilityAssignmentAudit {
-                    assignment_id: assignment.assignment_id.clone(),
-                    node_pubkey_hex: plan.node_pubkey_hex.clone(),
+                    assignment_id: audited_assignment_id.to_string(),
+                    node_pubkey_hex: audited_node_pubkey_hex.to_string(),
                     state: Some(assignment.state.label().to_string()),
                     lease_id: assignment.lease_id.clone(),
                     expires_at_ms: assignment.expires_at_ms,
@@ -5601,8 +5658,8 @@ fn training_window_defensibility_audit(
                     PylonTrainingRefusalCode::StaleAssignment,
                 );
                 assignment_trail.push(TrainingWindowDefensibilityAssignmentAudit {
-                    assignment_id: plan.assignment_id.clone(),
-                    node_pubkey_hex: plan.node_pubkey_hex.clone(),
+                    assignment_id: audited_assignment_id.to_string(),
+                    node_pubkey_hex: audited_node_pubkey_hex.to_string(),
                     state: None,
                     lease_id: None,
                     expires_at_ms: None,
@@ -5797,7 +5854,11 @@ fn training_window_defensibility_audit(
         .iter()
         .map(|source| source.node_pubkey_hex.clone())
         .collect::<BTreeSet<_>>();
-    let contributor_node_ids = training_window_contributor_node_ids(assignment_plans);
+    let contributor_node_ids = training_window_contributor_node_ids(
+        assignment_plans,
+        scheduled_run,
+        contribution_outcomes,
+    );
     let recovery_source_node_ids = training_window_recovery_source_node_ids(scheduled_run);
     let self_validation_validator_ids = challenge_finalizations
         .iter()
@@ -5808,6 +5869,7 @@ fn training_window_defensibility_audit(
                 .find(|challenge| challenge.challenge_id == source.challenge_id)?;
             training_validator_targets_own_assignments(
                 assignment_plans,
+                scheduled_run,
                 challenge_plan,
                 source.node_pubkey_hex.as_str(),
             )
@@ -12893,6 +12955,10 @@ async fn claim_training_validator_challenge(
             for challenge_plan in &validation.challenges {
                 if training_validator_targets_own_assignments(
                     metadata.assignment_plans.as_slice(),
+                    store
+                        .training_scheduler
+                        .runs_by_training_run_id
+                        .get(window.training_run_id.as_str()),
                     challenge_plan,
                     node.node_pubkey_hex.as_str(),
                 ) {
@@ -37000,6 +37066,672 @@ mod tests {
                 .dataset_slice
                 .slice_id,
             "slice://replacement-0001"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_validator_claim_refuses_self_validation_for_replacement_assignment()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_500_900u64;
+        let training_run_id = "run.window.replacement.self_validation";
+        let window_id = "window.0001";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut node_beta = training_node_admission_request(
+                "node-beta",
+                "sha256:build-beta",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_beta.requested_at_ms = created_at_ms as i64 + 800;
+            node_beta.role_claims = vec![
+                TrainingNodeRoleClaim::Worker,
+                TrainingNodeRoleClaim::Validator,
+            ];
+            node_beta.capability_tier =
+                training_capability_tier_profile(node_beta.role_claims.as_slice(), Some(512));
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 800),
+                    node_beta,
+                )
+                .expect("admit node beta");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.recorded_at_ms = created_at_ms as i64 + 850;
+            heartbeat_beta.last_heartbeat_at_ms = Some(created_at_ms as i64 + 850);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 850),
+                    heartbeat_beta,
+                )
+                .expect("heartbeat node beta");
+        }
+
+        let claim_requested_at_ms = created_at_ms as i64 + 1_000;
+        let first_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.self_validation.alpha",
+                            claim_requested_at_ms,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_lease_response.status(), StatusCode::OK);
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.replacement.self_validation",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://replacement-self-validation-0001",
+                                "sha256:slice-replacement-self-validation-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/activate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.replacement.self_validation",
+                            created_at_ms as i64 + 1_200,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let replacement_requested_at_ms =
+            claim_requested_at_ms + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 1;
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.idempotency_key =
+                "idemp.training.heartbeat.replacement.self_validation.beta".to_string();
+            heartbeat_beta.recorded_at_ms = replacement_requested_at_ms;
+            heartbeat_beta.last_heartbeat_at_ms = Some(replacement_requested_at_ms);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "node-beta",
+                        replacement_requested_at_ms as u64,
+                    ),
+                    heartbeat_beta,
+                )
+                .expect("refresh heartbeat beta");
+        }
+
+        let replacement_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.self_validation.beta",
+                            replacement_requested_at_ms,
+                            "node-beta",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(replacement_response.status(), StatusCode::OK);
+        let replacement_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(replacement_response).await?;
+
+        let sealed =
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/api/training/windows/{window_id}/seal"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(
+                            &SealTrainingWindowRequest {
+                                idempotency_key:
+                                    "idemp.training.window.seal.replacement.self_validation"
+                                        .to_string(),
+                                recorded_at_ms: replacement_requested_at_ms + 100,
+                                window_id: window_id.to_string(),
+                                contribution_outcomes: vec![
+                                    training_window_contribution_input_for_lease(
+                                        "contrib.window.replacement.self_validation",
+                                        &replacement_lease,
+                                        "sha256:validator-pending-replacement-self-validation",
+                                        None,
+                                    ),
+                                ],
+                            },
+                        )?))?,
+                )
+                .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let validator_claim = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.replacement.self_validation",
+                            replacement_requested_at_ms + 110,
+                            "node-beta",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(validator_claim.status(), StatusCode::CONFLICT);
+        let error = response_json::<serde_json::Value>(validator_claim).await?;
+        assert_eq!(
+            error.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_validator_challenge_unavailable")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_window_reconcile_rewards_replacement_assignment_attempts() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_501_200u64;
+        let training_run_id = "run.window.replacement.reconcile";
+        let window_id = "window.0001";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            "node-alpha",
+            "sha256:build-alpha",
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut node_beta = training_node_admission_request(
+                "node-beta",
+                "sha256:build-beta",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_beta.requested_at_ms = created_at_ms as i64 + 800;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 800),
+                    node_beta,
+                )
+                .expect("admit node beta");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.recorded_at_ms = created_at_ms as i64 + 850;
+            heartbeat_beta.last_heartbeat_at_ms = Some(created_at_ms as i64 + 850);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta", created_at_ms + 850),
+                    heartbeat_beta,
+                )
+                .expect("heartbeat node beta");
+
+            let mut validator_gamma = training_node_admission_request(
+                "validator-gamma",
+                "sha256:build-validator-gamma",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            validator_gamma.idempotency_key =
+                "idemp.training.admission.validator-gamma".to_string();
+            validator_gamma.requested_at_ms = created_at_ms as i64 + 860;
+            validator_gamma.role_claims = vec![TrainingNodeRoleClaim::Validator];
+            validator_gamma.capability_tier =
+                training_capability_tier_profile(validator_gamma.role_claims.as_slice(), Some(512));
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("validator-gamma", created_at_ms + 860),
+                    validator_gamma,
+                )
+                .expect("admit validator gamma");
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-gamma", "sha256:build-validator-gamma");
+            validator_heartbeat.idempotency_key =
+                "idemp.training.heartbeat.validator-gamma".to_string();
+            validator_heartbeat.recorded_at_ms = created_at_ms as i64 + 870;
+            validator_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 870);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("validator-gamma", created_at_ms + 870),
+                    validator_heartbeat,
+                )
+                .expect("heartbeat validator gamma");
+        }
+
+        let claim_requested_at_ms = created_at_ms as i64 + 1_000;
+        let first_lease_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.reconcile.alpha",
+                            claim_requested_at_ms,
+                            "node-alpha",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_lease_response.status(), StatusCode::OK);
+
+        let planned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/windows/plan")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &plan_training_window_request(
+                            "idemp.training.window.plan.replacement.reconcile",
+                            created_at_ms as i64 + 1_100,
+                            training_run_id,
+                            vec![training_window_dataset_slice(
+                                "slice://replacement-reconcile-0001",
+                                "sha256:slice-replacement-reconcile-0001",
+                            )],
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(planned.status(), StatusCode::OK);
+
+        let activated = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/activate"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &transition_training_window_request(
+                            "idemp.training.window.activate.replacement.reconcile",
+                            created_at_ms as i64 + 1_200,
+                            window_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(activated.status(), StatusCode::OK);
+
+        let replacement_requested_at_ms =
+            claim_requested_at_ms + PYLON_TRAINING_LEASE_DURATION_MS as i64 + 1;
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta", "sha256:build-beta");
+            heartbeat_beta.idempotency_key =
+                "idemp.training.heartbeat.replacement.reconcile.beta".to_string();
+            heartbeat_beta.recorded_at_ms = replacement_requested_at_ms;
+            heartbeat_beta.last_heartbeat_at_ms = Some(replacement_requested_at_ms);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            heartbeat_beta.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "node-beta",
+                        replacement_requested_at_ms as u64,
+                    ),
+                    heartbeat_beta,
+                )
+                .expect("refresh heartbeat beta");
+
+            let mut validator_heartbeat =
+                training_node_heartbeat_request("validator-gamma", "sha256:build-validator-gamma");
+            validator_heartbeat.idempotency_key =
+                "idemp.training.heartbeat.validator-gamma.reconcile".to_string();
+            validator_heartbeat.recorded_at_ms = replacement_requested_at_ms;
+            validator_heartbeat.last_heartbeat_at_ms = Some(replacement_requested_at_ms);
+            validator_heartbeat.training_run_id = training_run_id.to_string();
+            validator_heartbeat.window_id = window_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context(
+                        "validator-gamma",
+                        replacement_requested_at_ms as u64,
+                    ),
+                    validator_heartbeat,
+                )
+                .expect("refresh heartbeat validator gamma");
+        }
+
+        let replacement_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.replacement.reconcile.beta",
+                            replacement_requested_at_ms,
+                            "node-beta",
+                            training_run_id,
+                            "trainnet.alpha",
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(replacement_response.status(), StatusCode::OK);
+        let replacement_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(replacement_response).await?;
+
+        let sealed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/seal"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &SealTrainingWindowRequest {
+                            idempotency_key: "idemp.training.window.seal.replacement.reconcile"
+                                .to_string(),
+                            recorded_at_ms: replacement_requested_at_ms + 100,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.replacement.reconcile",
+                                    &replacement_lease,
+                                    "sha256:validator-pending-replacement-reconcile",
+                                    None,
+                                ),
+                            ],
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(sealed.status(), StatusCode::OK);
+
+        let claimed_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.replacement.reconcile.1",
+                            replacement_requested_at_ms + 110,
+                            "validator-gamma",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_one.status(), StatusCode::OK);
+        let claimed_one =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_one).await?;
+        let finalized_one = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        claimed_one.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.replacement.reconcile.1",
+                            replacement_requested_at_ms + 120,
+                            "validator-gamma",
+                            claimed_one.lease.clone().expect("first claim lease"),
+                            claimed_one
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            claimed_one.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-replacement-reconcile-one",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_one.status(), StatusCode::OK);
+
+        let claimed_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/validator-challenges/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_claim_request(
+                            "idemp.training.validator.claim.replacement.reconcile.2",
+                            replacement_requested_at_ms + 130,
+                            "validator-gamma",
+                            training_run_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(claimed_two.status(), StatusCode::OK);
+        let claimed_two =
+            response_json::<TrainingValidatorChallengeCoordinatorResponse>(claimed_two).await?;
+        let finalized_two = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/training/validator-challenges/{}/finalize",
+                        claimed_two.challenge_id
+                    ))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_validator_finalize_request(
+                            "idemp.training.validator.finalize.replacement.reconcile.2",
+                            replacement_requested_at_ms + 140,
+                            "validator-gamma",
+                            claimed_two.lease.clone().expect("second claim lease"),
+                            claimed_two
+                                .challenge
+                                .request
+                                .context
+                                .proof_bundle_digest
+                                .as_str(),
+                            claimed_two.challenge_id.as_str(),
+                            ComputeValidatorChallengeStatus::Verified,
+                            ComputeValidatorChallengeVerdict::Verified,
+                            "sha256:validator-result-replacement-reconcile-two",
+                            Some(ComputeAdapterContributionDisposition::Accepted),
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(finalized_two.status(), StatusCode::OK);
+
+        let reconciled = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/training/windows/{window_id}/reconcile"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &ReconcileTrainingWindowRequest {
+                            idempotency_key:
+                                "idemp.training.window.reconcile.replacement.reconcile".to_string(),
+                            recorded_at_ms: replacement_requested_at_ms + 200,
+                            window_id: window_id.to_string(),
+                            contribution_outcomes: vec![
+                                training_window_contribution_input_for_lease(
+                                    "contrib.window.replacement.reconcile",
+                                    &replacement_lease,
+                                    "sha256:validator-final-replacement-reconcile",
+                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                ),
+                            ],
+                            held_out_average_score_bps: Some(9_500),
+                            benchmark_pass_rate_bps: Some(9_700),
+                            runtime_smoke_passed: Some(true),
+                            aggregated_delta_digest: Some(
+                                "sha256:aggregate-window-replacement-reconcile".to_string(),
+                            ),
+                            accepted_aggregate_id: Some(
+                                "aggregate.window.replacement.reconcile".to_string(),
+                            ),
+                            promoted_checkpoint_ref: None,
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(reconciled.status(), StatusCode::OK);
+        let reconciled_window =
+            response_json::<TrainingWindowCoordinatorResponse>(reconciled).await?;
+        assert_eq!(
+            reconciled_window.window.status,
+            ComputeAdapterWindowStatus::Reconciled
+        );
+        assert_eq!(reconciled_window.window.accepted_contributions, 1);
+        assert!(reconciled_window.window.promotion_ready);
+        assert_eq!(
+            reconciled_window.window.accepted_outcome_id.as_deref(),
+            Some("accepted.training_window.window.0001")
+        );
+
+        let store = state.store.read().expect("read store");
+        let closeout = store
+            .kernel
+            .get_compute_accepted_outcome("accepted.training_window.window.0001")
+            .expect("rewarded closeout");
+        assert_eq!(
+            closeout
+                .metadata
+                .get("closeout_status")
+                .and_then(serde_json::Value::as_str),
+            Some("rewarded")
+        );
+        let defensibility = closeout
+            .metadata
+            .get("defensibility")
+            .expect("defensibility metadata");
+        assert_eq!(
+            defensibility
+                .get("status")
+                .and_then(serde_json::Value::as_str),
+            Some("satisfied")
+        );
+        let refusal_codes = defensibility
+            .get("refusal_codes")
+            .and_then(serde_json::Value::as_array)
+            .expect("refusal codes");
+        assert!(refusal_codes.is_empty());
+        let assignment_trail = defensibility
+            .get("assignment_trail")
+            .and_then(serde_json::Value::as_array)
+            .expect("assignment trail");
+        assert!(assignment_trail.iter().any(|value| {
+            value
+                .get("assignment_id")
+                .and_then(serde_json::Value::as_str)
+                == Some(replacement_lease.assignment_id.as_str())
+        }));
+        assert!(assignment_trail.iter().all(|value| {
+            value
+                .get("refusal_code")
+                .and_then(serde_json::Value::as_str)
+                .is_none()
+        }));
+        assert_eq!(
+            store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run")
+                .window_state,
+            TrainingSchedulerWindowState::Accepted
         );
 
         Ok(())
