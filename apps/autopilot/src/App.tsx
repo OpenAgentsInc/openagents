@@ -39,7 +39,7 @@ function App() {
   const [activeView, setActiveView] = React.useState<DemoView>("runtime");
   const [commandOpen, setCommandOpen] = React.useState(false);
 
-  usePreferredThemeClass();
+  useDarkThemeClass();
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -178,24 +178,11 @@ function EvidenceDemoCard() {
   );
 }
 
-function usePreferredThemeClass() {
+function useDarkThemeClass() {
   React.useLayoutEffect(() => {
     const root = document.documentElement;
-    const preference = window.matchMedia("(prefers-color-scheme: dark)");
-
-    const applyPreference = () => {
-      root.classList.toggle("dark", preference.matches);
-      root.style.colorScheme = preference.matches ? "dark" : "light";
-    };
-
-    applyPreference();
-    preference.addEventListener("change", applyPreference);
-
-    return () => {
-      preference.removeEventListener("change", applyPreference);
-      root.classList.remove("dark");
-      root.style.removeProperty("color-scheme");
-    };
+    root.classList.add("dark");
+    root.style.colorScheme = "dark";
   }, []);
 }
 
