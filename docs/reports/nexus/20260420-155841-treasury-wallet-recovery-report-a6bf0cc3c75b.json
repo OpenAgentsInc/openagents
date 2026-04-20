@@ -1,0 +1,69 @@
+{
+  "authority": "openagents-hosted-nexus",
+  "generated_at_unix_ms": 1776700749898,
+  "source_wallet_storage_dir": "/var/lib/nexus-relay/treasury/wallet",
+  "backup_root_dir": "/var/lib/nexus-relay/treasury/treasury-wallet-recovery-20260420-155841/backup",
+  "current_storage_backup_dir": "/var/lib/nexus-relay/treasury/treasury-wallet-recovery-20260420-155841/backup/current-storage",
+  "rebuilt_storage_dir": "/var/lib/nexus-relay/treasury/treasury-wallet-recovery-20260420-155841/rebuilt-storage",
+  "report_path": "/var/lib/nexus-relay/treasury/treasury-wallet-recovery-20260420-155841/recovery-report.json",
+  "mnemonic_backup_path": "/var/lib/nexus-relay/treasury/treasury-wallet-recovery-20260420-155841/backup/treasury.mnemonic",
+  "state_backup_path": "/var/lib/nexus-relay/treasury/treasury-wallet-recovery-20260420-155841/backup/treasury-state.json",
+  "current_storage": {
+    "wallet_identity_pubkey": "03183c5bcce9cf88299a7f50f4bcaddd2b1928436a763ead6e4adf89cc8162e034",
+    "inspected_storage_dir": "/var/lib/nexus-relay/treasury/treasury-wallet-recovery-20260420-155841/backup/current-storage",
+    "inspection_timeout_ms": 120000,
+    "runtime_status": "cached_after_sync_timeout",
+    "runtime_detail": "timed out after 120000 ms while syncing treasury Spark wallet; using cached local balance only. This validates identity/balance comparison for report-only recovery but is not cutover-safe.",
+    "balance_sats": 130,
+    "payment_totals": {
+      "total_payments": 0,
+      "completed_receive_count": 0,
+      "completed_receive_total_sats": 0,
+      "completed_send_count": 0,
+      "completed_send_total_sats": 0,
+      "max_completed_send_sats": 0,
+      "pending_send_count": 0,
+      "pending_send_total_sats": 0,
+      "failed_send_count": 0,
+      "failed_send_total_sats": 0
+    },
+    "unclaimed_deposit_totals": {
+      "count": 0,
+      "total_sats": 0,
+      "with_claim_error_count": 0
+    }
+  },
+  "rebuilt_storage": {
+    "wallet_identity_pubkey": "03183c5bcce9cf88299a7f50f4bcaddd2b1928436a763ead6e4adf89cc8162e034",
+    "inspected_storage_dir": "/var/lib/nexus-relay/treasury/treasury-wallet-recovery-20260420-155841/rebuilt-storage",
+    "inspection_timeout_ms": 120000,
+    "runtime_status": "cached_after_sync_timeout",
+    "runtime_detail": "timed out after 120000 ms while syncing treasury Spark wallet; using cached local balance only. This validates identity/balance comparison for report-only recovery but is not cutover-safe.",
+    "balance_sats": 130,
+    "payment_totals": {
+      "total_payments": 0,
+      "completed_receive_count": 0,
+      "completed_receive_total_sats": 0,
+      "completed_send_count": 0,
+      "completed_send_total_sats": 0,
+      "max_completed_send_sats": 0,
+      "pending_send_count": 0,
+      "pending_send_total_sats": 0,
+      "failed_send_count": 0,
+      "failed_send_total_sats": 0
+    },
+    "unclaimed_deposit_totals": {
+      "count": 0,
+      "total_sats": 0,
+      "with_claim_error_count": 0
+    }
+  },
+  "comparison": {
+    "wallet_identity_pubkey_match": true,
+    "rebuilt_minus_current_balance_sats": 0,
+    "current_zero_with_receive_history": false,
+    "major_divergence_detected": false,
+    "validation_passed": true,
+    "recommended_action": "no_cutover_needed_sync_timeout_cached"
+  }
+}
