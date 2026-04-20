@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-20T19:24:54Z",
+  "generated_at": "2026-04-20T19:28:57Z",
   "issue": 4368,
   "scenario": "nexus_post_deploy_payout_smoke_failure",
   "deployed_image": "local:nexus-relay-under-test",
