@@ -1,0 +1,59 @@
+{
+  "schema_version": "openagents.proof.summary.v1",
+  "namespace": "proof.4368.local.20260420195841.replace",
+  "lane": "cs336-a1-replacement-attempt",
+  "generated_at_ms": 1776715129958,
+  "status": "completed",
+  "detail": "replacement attempt assign.run.cs336.a1.proof.replace.proof.4368.local.20260420195841.replace.window.cs336.a1.proof.replace.proof.4368.local.20260420195841.replace.0001.worker.1.attempt2 for window.cs336.a1.proof.replace.proof.4368.local.20260420195841.replace.0001 sealed and reconciled locally",
+  "first_red_stage": "completed",
+  "first_red_subject": "proof.4368.local.20260420195841.replace",
+  "window_id": "window.cs336.a1.proof.replace.proof.4368.local.20260420195841.replace.0002",
+  "trace_path": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420195841.replace/fleet/authority-state-trace.json",
+  "transport": {
+    "authority_front_door": [
+      {
+        "route_id": "authority_healthz",
+        "url": "http://127.0.0.1:61200/healthz",
+        "ok": true,
+        "status": 200,
+        "detail": "route reachable with 200"
+      },
+      {
+        "route_id": "authority_stats",
+        "url": "http://127.0.0.1:61200/api/stats",
+        "ok": true,
+        "status": 200,
+        "detail": "route reachable with 200"
+      },
+      {
+        "route_id": "authority_demo_launch_route",
+        "url": "http://127.0.0.1:61200/v1/admin/training/demo-runs/cs336-a1/launch",
+        "ok": true,
+        "status": 405,
+        "detail": "route reachable with 405"
+      },
+      {
+        "route_id": "authority_training_run_detail",
+        "url": "http://127.0.0.1:61200/api/training/runs/run.cs336.a1.proof.replace.proof.4368.local.20260420195841.replace",
+        "ok": true,
+        "status": 200,
+        "detail": "route reachable with 200"
+      }
+    ],
+    "artifact_store": [
+      {
+        "route_id": "artifact_store_healthz",
+        "url": "http://127.0.0.1:61203/healthz",
+        "ok": true,
+        "status": 200,
+        "detail": "route reachable with 200"
+      }
+    ],
+    "relay": {
+      "relay_ws_url": "ws://127.0.0.1:61200/",
+      "relay_data_dir": "/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4368.local.20260420195841.replace/authority/relay-data",
+      "authority_running": true,
+      "detail": "relay-facing authority process is running"
+    }
+  }
+}
