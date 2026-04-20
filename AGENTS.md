@@ -40,7 +40,13 @@ Default to:
 
 ## Current Working Set
 
-- Active implementation focus is `crates/wgpui/`.
+- The current shipped desktop implementation still uses the existing
+  `apps/autopilot-desktop` and WGPUI paths.
+- The current refactor plan for the next Autopilot desktop shell is a Tauri app
+  in `apps/autopilot`, not `apps/autopilot-tauri` and not a separate repo by
+  default.
+- Keep WGPUI as retained infrastructure and specialized rendering unless the
+  user asks to remove it.
 - Keep `docs/MVP.md` as the product/spec authority.
 - Architecture ownership boundaries are defined in `docs/OWNERSHIP.md`.
 

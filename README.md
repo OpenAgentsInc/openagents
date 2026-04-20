@@ -17,6 +17,16 @@ The OpenAgents marketplace has five interlocking markets:
 - `Liquidity`
 - `Risk`
 
+This repo also owns several key shipped and planned product surfaces:
+
+- the `Autopilot` desktop product
+- the planned Tauri `Autopilot` shell at `apps/autopilot`
+- the `Pylon` provider connector
+- the `Nexus` hosted coordination and authority slice
+- the `wgpui` product UI stack
+- starter kernel and proto authority surfaces
+- the current secondary Data Market slice
+
 Our sharpest direct answers to the two problems above are the `Risk Market` and
 the `Compute Market`, while the other three markets complete the broader
 machine-work economy.
@@ -42,6 +52,15 @@ In parallel, the repo now also ships a starter Data Market slice: a dedicated `D
 The market is still called the OpenAgents Compute Market. At launch, the first live compute product families are `inference` and `embeddings`. That is an umbrella compute market with standardized launch products inside it, not a claim that raw accelerator spot or futures trading is already live.
 
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast, hardware-accelerated desktop experience with a game-like HUD feel.
+
+The current refactor plan keeps the next Tauri implementation in this monorepo:
+
+```text
+apps/autopilot
+```
+
+Do not call that app `autopilot-tauri`. The product name is `Autopilot`; Tauri
+is the desktop shell implementation.
 
 ## Marketplace
 
