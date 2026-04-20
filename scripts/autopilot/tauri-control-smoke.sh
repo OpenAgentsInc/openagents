@@ -11,11 +11,10 @@ SMOKE_JSON="$RUN_ROOT/smoke.json"
 FAKE_BIN_DIR="$RUN_ROOT/bin"
 FAKE_STATE_DIR="$RUN_ROOT/fake-state"
 PYLON_HOME="$RUN_ROOT/pylon-home"
-PROOF_ROOT="$RUN_ROOT/proof/namespaces"
-FAKE_BIN_DIR="$RUN_ROOT/bin"
-FAKE_STATE_DIR="$RUN_ROOT/fake-state"
-PYLON_HOME="$RUN_ROOT/pylon-home"
-PROOF_ROOT="$RUN_ROOT/proof/namespaces"
+PYLON_CONFIG_PATH="${OPENAGENTS_AUTOPILOT_TAURI_PYLON_CONFIG_PATH:-$PYLON_HOME/config.json}"
+PYLON_CONFIG_DIR="$(dirname "$PYLON_CONFIG_PATH")"
+PROOF_ROOT="${OPENAGENTS_AUTOPILOT_PROOF_ROOT:-$PYLON_CONFIG_DIR/proof/namespaces}"
+PYLON_ADMIN_LISTEN_ADDR="${OPENAGENTS_AUTOPILOT_TAURI_PYLON_ADMIN_LISTEN_ADDR:-}"
 NAMESPACE="${OPENAGENTS_AUTOPILOT_TAURI_SMOKE_NAMESPACE:-proof.autopilot.ctl.smoke.$(date +%s)}"
 TIMEOUT_MS="${OPENAGENTS_AUTOPILOT_TAURI_SMOKE_TIMEOUT_MS:-180000}"
 START_TIMEOUT_SECONDS="${OPENAGENTS_AUTOPILOT_TAURI_START_TIMEOUT_SECONDS:-90}"
@@ -23,6 +22,8 @@ KEEP_RUNNING=0
 STATUS_ONLY=0
 HOMEWORK_MATRIX=0
 USE_FAKE_BINARIES=1
+REAL_PYLON_BINARY=""
+REAL_OA_BINARY=""
 TAURI_DEV_PID=""
 APP_PID=""
 
@@ -89,6 +90,13 @@ RUN_ROOT="$(cd "$(dirname "$MANIFEST")" && pwd)"
 LOG="$RUN_ROOT/tauri-dev.log"
 STATUS_JSON="$RUN_ROOT/status.json"
 SMOKE_JSON="$RUN_ROOT/smoke.json"
+FAKE_BIN_DIR="$RUN_ROOT/bin"
+FAKE_STATE_DIR="$RUN_ROOT/fake-state"
+PYLON_HOME="$RUN_ROOT/pylon-home"
+PYLON_CONFIG_PATH="${OPENAGENTS_AUTOPILOT_TAURI_PYLON_CONFIG_PATH:-$PYLON_HOME/config.json}"
+PYLON_CONFIG_DIR="$(dirname "$PYLON_CONFIG_PATH")"
+PROOF_ROOT="${OPENAGENTS_AUTOPILOT_PROOF_ROOT:-$PYLON_CONFIG_DIR/proof/namespaces}"
+PYLON_ADMIN_LISTEN_ADDR="${OPENAGENTS_AUTOPILOT_TAURI_PYLON_ADMIN_LISTEN_ADDR:-}"
 
 manifest_pid() {
   if [[ -s "$MANIFEST" ]]; then
@@ -96,10 +104,31 @@ manifest_pid() {
   fi
 }
 
+autopilotctl_tauri() {
+  if [[ -x "$ROOT/target/debug/autopilotctl-tauri" ]]; then
+    "$ROOT/target/debug/autopilotctl-tauri" "$@"
+  else
+    cargo run -p autopilot --bin autopilotctl-tauri -- "$@"
+  fi
+}
+
+stop_control_runtime() {
+  [[ -s "$MANIFEST" ]] || return
+  if [[ "$HOMEWORK_MATRIX" == "1" ]]; then
+    for suffix in clean replacement stale; do
+      autopilotctl_tauri --manifest "$MANIFEST" proof stop "$NAMESPACE.$suffix" >/dev/null 2>&1 || true
+    done
+  else
+    autopilotctl_tauri --manifest "$MANIFEST" proof stop "$NAMESPACE" >/dev/null 2>&1 || true
+  fi
+  autopilotctl_tauri --manifest "$MANIFEST" pylon stop >/dev/null 2>&1 || true
+}
+
 cleanup() {
   if [[ "$KEEP_RUNNING" == "1" ]]; then
     return
   fi
+  stop_control_runtime
   APP_PID="$(manifest_pid || true)"
   if [[ -n "$APP_PID" ]]; then
     kill "$APP_PID" 2>/dev/null || true
@@ -109,10 +138,76 @@ cleanup() {
     kill "$TAURI_DEV_PID" 2>/dev/null || true
     wait "$TAURI_DEV_PID" 2>/dev/null || true
   fi
+  if [[ "$USE_FAKE_BINARIES" != "1" && -n "$PYLON_CONFIG_PATH" ]]; then
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] || continue
+      [[ "$pid" == "$$" ]] && continue
+      kill "$pid" 2>/dev/null || true
+    done < <(pgrep -f "$PYLON_CONFIG_PATH" 2>/dev/null || true)
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] || continue
+      [[ "$pid" == "$$" ]] && continue
+      kill "$pid" 2>/dev/null || true
+    done < <(pgrep -f "$RUN_ROOT" 2>/dev/null || true)
+  fi
 }
 trap cleanup EXIT
 
 rm -f "$MANIFEST" "$STATUS_JSON" "$SMOKE_JSON"
+
+resolve_real_binary() {
+  local env_var="$1"
+  local name="$2"
+  local package="$3"
+  local configured="${!env_var:-}"
+  if [[ -n "$configured" ]]; then
+    if [[ -x "$configured" ]]; then
+      printf '%s' "$configured"
+      return 0
+    fi
+    echo "$env_var points at a non-executable path: $configured" >&2
+    exit 1
+  fi
+
+  local candidate="$ROOT/target/debug/$name"
+  cargo build -p "$package" --bin "$name" >/dev/null
+  if [[ ! -x "$candidate" ]]; then
+    echo "failed to build or locate $name at $candidate" >&2
+    exit 1
+  fi
+  printf '%s' "$candidate"
+}
+
+choose_loopback_listen_addr() {
+  python3 - <<'PY'
+import socket
+
+sock = socket.socket()
+sock.bind(("127.0.0.1", 0))
+host, port = sock.getsockname()
+sock.close()
+print(f"{host}:{port}")
+PY
+}
+
+bootstrap_real_pylon_config() {
+  mkdir -p "$PYLON_HOME" "$PYLON_CONFIG_DIR" "$PROOF_ROOT"
+  REAL_PYLON_BINARY="$(resolve_real_binary OPENAGENTS_PYLON_BINARY pylon pylon)"
+  REAL_OA_BINARY="$(resolve_real_binary OPENAGENTS_OA_BINARY oa pylon)"
+  cargo build -p nexus-relay --bin nexus-relay >/dev/null
+  if [[ -z "$PYLON_ADMIN_LISTEN_ADDR" ]]; then
+    PYLON_ADMIN_LISTEN_ADDR="$(choose_loopback_listen_addr)"
+  fi
+
+  OPENAGENTS_PYLON_HOME="$PYLON_HOME" \
+    "$REAL_PYLON_BINARY" --config-path "$PYLON_CONFIG_PATH" init >/dev/null
+  OPENAGENTS_PYLON_HOME="$PYLON_HOME" \
+    "$REAL_PYLON_BINARY" --config-path "$PYLON_CONFIG_PATH" config set admin_listen_addr "$PYLON_ADMIN_LISTEN_ADDR" >/dev/null
+  OPENAGENTS_PYLON_HOME="$PYLON_HOME" \
+    "$REAL_PYLON_BINARY" --config-path "$PYLON_CONFIG_PATH" config set local_gemma_base_url http://127.0.0.1:9 >/dev/null
+  OPENAGENTS_PYLON_HOME="$PYLON_HOME" \
+    "$REAL_PYLON_BINARY" --config-path "$PYLON_CONFIG_PATH" config set training.run_root "$PYLON_CONFIG_DIR/training" >/dev/null
+}
 
 if [[ "$USE_FAKE_BINARIES" == "1" ]]; then
   mkdir -p "$FAKE_BIN_DIR" "$FAKE_STATE_DIR" "$PYLON_HOME" "$PROOF_ROOT"
@@ -349,6 +444,8 @@ esac
 OA
 
   chmod +x "$FAKE_BIN_DIR/pylon" "$FAKE_BIN_DIR/oa"
+else
+  bootstrap_real_pylon_config
 fi
 
 (
@@ -358,13 +455,23 @@ fi
       OPENAGENTS_AUTOPILOT_CONTROL_BIND="${OPENAGENTS_AUTOPILOT_CONTROL_BIND:-127.0.0.1:0}" \
       OPENAGENTS_AUTOPILOT_FAKE_PYLON_STATE="$FAKE_STATE_DIR/pylon-mode" \
       OPENAGENTS_AUTOPILOT_PYLON_HOME="$PYLON_HOME" \
+      OPENAGENTS_AUTOPILOT_PYLON_CONFIG_PATH="$PYLON_CONFIG_PATH" \
       OPENAGENTS_AUTOPILOT_PROOF_ROOT="$PROOF_ROOT" \
+      OPENAGENTS_PYLON_HOME="$PYLON_HOME" \
+      OPENAGENTS_PYLON_CONFIG_PATH="$PYLON_CONFIG_PATH" \
       OPENAGENTS_PYLON_BINARY="$FAKE_BIN_DIR/pylon" \
       OPENAGENTS_OA_BINARY="$FAKE_BIN_DIR/oa" \
       bun run tauri dev
   else
     OPENAGENTS_AUTOPILOT_CONTROL_MANIFEST="$MANIFEST" \
       OPENAGENTS_AUTOPILOT_CONTROL_BIND="${OPENAGENTS_AUTOPILOT_CONTROL_BIND:-127.0.0.1:0}" \
+      OPENAGENTS_AUTOPILOT_PYLON_HOME="$PYLON_HOME" \
+      OPENAGENTS_AUTOPILOT_PYLON_CONFIG_PATH="$PYLON_CONFIG_PATH" \
+      OPENAGENTS_AUTOPILOT_PROOF_ROOT="$PROOF_ROOT" \
+      OPENAGENTS_PYLON_HOME="$PYLON_HOME" \
+      OPENAGENTS_PYLON_CONFIG_PATH="$PYLON_CONFIG_PATH" \
+      OPENAGENTS_PYLON_BINARY="$REAL_PYLON_BINARY" \
+      OPENAGENTS_OA_BINARY="$REAL_OA_BINARY" \
       bun run tauri dev
   fi
 ) >"$LOG" 2>&1 &
@@ -422,6 +529,9 @@ else
   echo "binaries: machine real pylon/oa"
 fi
 echo "manifest: $MANIFEST"
+echo "pylon_config: $PYLON_CONFIG_PATH"
+echo "pylon_home: $PYLON_HOME"
+echo "pylon_admin: ${PYLON_ADMIN_LISTEN_ADDR:-fake}"
 echo "status: $STATUS_JSON"
 echo "result: $SMOKE_JSON"
 echo "log: $LOG"

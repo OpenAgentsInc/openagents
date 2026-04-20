@@ -316,19 +316,25 @@ pub fn pylon_set_mode(
     let action = normalize_provider_mode(&mode)?;
     let binary = resolve_binary_path(BinaryKind::Pylon)?;
     let config_path = current_config_path(Some(&state));
-    let output = run_command_with_timeout(
-        &binary,
-        &[
-            OsString::from("--config-path"),
-            config_path.as_os_str().to_os_string(),
-            OsString::from(action),
-        ],
-        DEFAULT_COMMAND_TIMEOUT,
-    )?;
-    if !output.status.success() {
-        return Err(command_failure("pylon mode command", &output));
+    let args = [
+        OsString::from("--config-path"),
+        config_path.as_os_str().to_os_string(),
+        OsString::from(action),
+    ];
+    let mut last_failure = None;
+    for attempt in 0..10 {
+        let output = run_command_with_timeout(&binary, &args, DEFAULT_COMMAND_TIMEOUT)?;
+        if output.status.success() {
+            return Ok(pylon_status_projection(Some(&state), Some("running"), None));
+        }
+        let failure = command_failure("pylon mode command", &output);
+        if !failure.contains("database is locked") || attempt == 9 {
+            return Err(failure);
+        }
+        last_failure = Some(failure);
+        thread::sleep(Duration::from_millis(500));
     }
-    Ok(pylon_status_projection(Some(&state), Some("running"), None))
+    Err(last_failure.unwrap_or_else(|| "pylon mode command failed".to_string()))
 }
 
 #[tauri::command]

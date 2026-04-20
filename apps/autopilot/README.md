@@ -89,7 +89,10 @@ through the app-owned control plane. It runs and validates:
 The matrix checks status, authority trace, proof summary, object trace,
 transport split, worker/validator projections, and closeout signals. Add
 `--real-binaries` when the installed local `oa proof` stack is the thing under
-test.
+test. In real-binaries mode the wrapper creates a disposable app-owned Pylon
+home, config, identity, and loopback admin port under
+`target/autopilot-tauri-control-smoke/`, so the test does not depend on the
+operator's personal `~/.openagents/pylon` state.
 
 The full runbook lives in
 `../../docs/codex/AUTOPILOT_TAURI_CONTROL.md`.

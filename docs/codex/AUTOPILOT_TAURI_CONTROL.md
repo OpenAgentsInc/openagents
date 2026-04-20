@@ -171,7 +171,7 @@ Equivalent direct CLI command against an already-running Tauri app:
 ```bash
 cargo run -p autopilot --bin autopilotctl-tauri -- --json homework matrix \
   --namespace-prefix proof.autopilot.homework.manual \
-  --timeout-ms 240000
+  --timeout-ms 600000
 ```
 
 The matrix drives these lanes through the running Tauri app:
@@ -191,9 +191,12 @@ For each lane, `autopilotctl-tauri homework matrix` verifies:
 - `authority-state-trace.json` exists
 - `proof-summary.json` exists
 - `object-trace.jsonl` exists
-- authority, relay, artifact-store, and node-surface transport projections are
-  `ok`
-- `proof doctor` returns an `ok` transport split
+- authority, relay, and artifact-store transport projections are `ok`
+- node-surface transport is `ok` while nodes are active, `down` after clean or
+  stale lanes quiesce workers/validators during rewarded closeout, or
+  `unknown` for the zero-node replacement-attempt lane
+- `proof doctor` returns the enriched authority trace, worker/validator
+  projection, and transport split after the completion snapshot
 - clean and stale lanes reach a rewarded closeout signal
 
 The default wrapper uses deterministic fake `pylon` and `oa` binaries to prove
@@ -203,6 +206,14 @@ binaries when the installed proof runtime itself is under test:
 ```bash
 scripts/autopilot/tauri-homework-matrix.sh --real-binaries
 ```
+
+In real-binaries mode the wrapper resolves or builds the workspace `pylon` and
+`oa` binaries, creates a disposable app-owned Pylon home under
+`target/autopilot-tauri-control-smoke/pylon-home`, runs `pylon init`, generates
+an identity, assigns an ephemeral loopback admin port, and exports both
+`OPENAGENTS_PYLON_CONFIG_PATH` and `OPENAGENTS_AUTOPILOT_PYLON_CONFIG_PATH`
+before launching Tauri. A `CONFIG_MISSING` or `IDENTITY_MISSING` result in
+this path means the harness regressed.
 
 If `--real-binaries` fails because the local provider or proof prerequisites
 are missing, keep the failure output as the honest blocker and still run the

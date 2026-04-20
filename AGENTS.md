@@ -190,6 +190,11 @@ Default to:
   app, drives `homework matrix` through `autopilotctl-tauri`, and verifies the
   clean CS336, replacement-attempt, and stale-recovery lanes plus authority
   trace, proof summary, object trace, transport split, and closure signals.
+  For work that changes the real Pylon/proof stack, also run
+  `scripts/autopilot/tauri-homework-matrix.sh --real-binaries` before calling
+  the work complete. The real-binaries harness bootstraps an isolated app-owned
+  Pylon config and identity; `CONFIG_MISSING` or `IDENTITY_MISSING` there is a
+  harness regression, not an acceptable final blocker.
 - The legacy WGPUI desktop app also has an app-owned control plane plus a thin
   CLI:
   - implementation: `apps/autopilot-deprecated/src/desktop_control.rs`
