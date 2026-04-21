@@ -31,6 +31,7 @@ pub const PYLON_TRAINING_GCS_PUBLIC_VERIFICATION_GC_AFTER_SECONDS: u64 = 90 * 24
 pub const PYLON_TRAINING_GCS_EPHEMERAL_TRANSPORT_GC_AFTER_SECONDS: u64 = 24 * 60 * 60;
 pub const PYLON_TRAINING_EXECUTION_BACKEND_PSIONIC_TRAIN: &str = "psionic_train";
 pub const PYLON_TRAINING_GCS_CREDENTIAL_SOURCE: &str = "google_application_default_credentials";
+pub const PYLON_TRAINING_NEXUS_SIGNED_URL_CREDENTIAL_SOURCE: &str = "nexus_signed_url";
 pub const PYLON_TRAINING_TRN_ASSIGNMENT_RECEIPT_KIND: u32 = 39_511;
 pub const PYLON_TRAINING_TRN_ARTIFACT_LOCATOR_KIND: u32 = 39_520;
 pub const PYLON_TRAINING_MVP_SETTLEMENT_TRIGGER: &str = "accepted_sealed_window";
@@ -1733,7 +1734,9 @@ impl PylonTrainingArtifacts {
             return Err("pylon_training_window_prefix_invalid".to_string());
         }
         require_non_empty(self.local_run_root.as_str(), "local_run_root")?;
-        if self.credential_source != PYLON_TRAINING_GCS_CREDENTIAL_SOURCE {
+        if self.credential_source != PYLON_TRAINING_GCS_CREDENTIAL_SOURCE
+            && self.credential_source != PYLON_TRAINING_NEXUS_SIGNED_URL_CREDENTIAL_SOURCE
+        {
             return Err("pylon_training_credential_source_invalid".to_string());
         }
         Ok(())

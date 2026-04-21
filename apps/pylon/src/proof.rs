@@ -2819,17 +2819,6 @@ async fn spawn_proof_fleet_node(
     config.wallet_api_key_env = None;
     config.training.allowed_networks = vec![network_id.to_string()];
     config.training.role_claims = vec![role.role_claim()];
-    if !config
-        .training
-        .artifact_credential_source_names
-        .iter()
-        .any(|value| value == super::PYLON_TRAINING_GCS_CREDENTIAL_SOURCE)
-    {
-        config
-            .training
-            .artifact_credential_source_names
-            .push(super::PYLON_TRAINING_GCS_CREDENTIAL_SOURCE.to_string());
-    }
     config.training.run_root = node_root.join("training");
     config.training.checkpoint_serve_addr = format!("127.0.0.1:{}", ports.checkpoint);
     config.training.nexus_authority_base_url = authority.urls.authority_base_url.clone();
@@ -2850,14 +2839,6 @@ async fn spawn_proof_fleet_node(
         (
             super::ENV_TRAINING_NEXUS_BEARER_TOKEN.to_string(),
             authority.admin_bearer_token.clone(),
-        ),
-        (
-            super::ENV_TRAINING_GCS_ENDPOINT.to_string(),
-            authority.urls.artifact_store_base_url.clone(),
-        ),
-        (
-            super::ENV_TRAINING_GCS_BEARER_TOKEN.to_string(),
-            "proof-local-artifact-store-token".to_string(),
         ),
     ];
     if let Some(psionic_repo_root) = psionic_repo_root {
