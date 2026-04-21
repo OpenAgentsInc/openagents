@@ -1004,6 +1004,8 @@ pub struct HomeworkLaunchTargetRequest {
     #[serde(default = "homework_launch_only_online_default")]
     pub only_online: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_pubkey_hex: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_pylon_version: Option<String>,
     #[serde(default = "homework_launch_require_updated_build_default")]
     pub require_updated_build: bool,
@@ -1017,6 +1019,7 @@ impl Default for HomeworkLaunchTargetRequest {
     fn default() -> Self {
         Self {
             only_online: homework_launch_only_online_default(),
+            node_pubkey_hex: None,
             min_pylon_version: None,
             require_updated_build: homework_launch_require_updated_build_default(),
             tags_any: Vec::new(),
@@ -8872,6 +8875,13 @@ fn homework_launch_node_target_mismatch_reason(
     payout: &HomeworkLaunchPayoutRequest,
     minimum_version: Option<&Version>,
 ) -> Option<&'static str> {
+    if target
+        .node_pubkey_hex
+        .as_deref()
+        .is_some_and(|target_pubkey| target_pubkey != node.node_pubkey_hex)
+    {
+        return Some("homework_launch_target_node_mismatch");
+    }
     if target.only_online && !node.online {
         return Some("homework_launch_target_offline");
     }
@@ -12195,6 +12205,11 @@ async fn claim_training_run_lease(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
+    if training_lease_claim_should_try_hosted_cs336_starter_work(&request) {
+        let starter = ensure_hosted_cs336_starter_work_for_lease_claim(&state, &request).await?;
+        request.requested_training_run_id = Some(starter.training_run_id);
+    }
+
     let first_attempt = execute_training_run_lease_claim(&state, request.clone()).await;
     let response = match first_attempt {
         Ok(response) => response,
@@ -12223,9 +12238,12 @@ fn training_lease_claim_should_try_hosted_cs336_starter_work(
 }
 
 fn hosted_cs336_starter_work_launch_request(
-    requested_network_id: Option<&str>,
+    request: &RecordTrainingRunLeaseRequest,
 ) -> LaunchHomeworkRunRequest {
-    let network_id = requested_network_id.unwrap_or(EPISODE_224_CS336_A1_DEMO_NETWORK_ID);
+    let network_id = request
+        .requested_network_id
+        .as_deref()
+        .unwrap_or(EPISODE_224_CS336_A1_DEMO_NETWORK_ID);
     LaunchHomeworkRunRequest {
         course_id: "cs336".to_string(),
         homework_id: "a1".to_string(),
@@ -12237,7 +12255,10 @@ fn hosted_cs336_starter_work_launch_request(
         run_kind: Some("hosted_starter".to_string()),
         assignment_family: Some("cs336.assignment1".to_string()),
         artifact_prefix: None,
-        target: HomeworkLaunchTargetRequest::default(),
+        target: HomeworkLaunchTargetRequest {
+            node_pubkey_hex: Some(request.node_pubkey_hex.clone()),
+            ..HomeworkLaunchTargetRequest::default()
+        },
         assignment: HomeworkLaunchAssignmentRequest {
             max_contributors: Some(EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT),
             ..HomeworkLaunchAssignmentRequest::default()
@@ -12260,12 +12281,7 @@ async fn ensure_hosted_cs336_starter_work_for_lease_claim(
         requested_network_id = ?request.requested_network_id,
         "auto-launching hosted CS336 A1 starter work for eligible default Pylon lease claim"
     );
-    match execute_homework_launch(
-        state,
-        hosted_cs336_starter_work_launch_request(request.requested_network_id.as_deref()),
-    )
-    .await
-    {
+    match execute_homework_launch(state, hosted_cs336_starter_work_launch_request(request)).await {
         Ok(response) => Ok(response),
         Err(error) if error.reason == "homework_launch_no_eligible_pylons" => Err(
             kernel_api_error("training_scheduler_starter_work_unavailable".to_string()),
@@ -42773,6 +42789,7 @@ mod tests {
                     artifact_prefix: None,
                     target: super::HomeworkLaunchTargetRequest {
                         only_online: true,
+                        node_pubkey_hex: None,
                         min_pylon_version: None,
                         require_updated_build: true,
                         tags_any: Vec::new(),
@@ -42928,6 +42945,7 @@ mod tests {
                     artifact_prefix: None,
                     target: super::HomeworkLaunchTargetRequest {
                         only_online: true,
+                        node_pubkey_hex: None,
                         min_pylon_version: None,
                         require_updated_build: true,
                         tags_any: Vec::new(),
@@ -43056,6 +43074,7 @@ mod tests {
                         artifact_prefix: Some(artifact_prefix.clone()),
                         target: super::HomeworkLaunchTargetRequest {
                             only_online: true,
+                            node_pubkey_hex: None,
                             min_pylon_version: None,
                             require_updated_build: true,
                             tags_any: Vec::new(),
@@ -43706,6 +43725,7 @@ mod tests {
                         artifact_prefix: Some(artifact_prefix),
                         target: super::HomeworkLaunchTargetRequest {
                             only_online: true,
+                            node_pubkey_hex: None,
                             min_pylon_version: None,
                             require_updated_build: true,
                             tags_any: Vec::new(),
