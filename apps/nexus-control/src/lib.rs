@@ -8858,6 +8858,7 @@ struct HomeworkLaunchPrepared {
 }
 
 const HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.4";
 
 fn current_homework_launch_pylon_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0))
@@ -12267,8 +12268,12 @@ fn hosted_cs336_starter_work_launch_request(
         assignment_family: Some("cs336.assignment1".to_string()),
         artifact_prefix: None,
         target: HomeworkLaunchTargetRequest {
+            only_online: true,
             node_pubkey_hex: Some(request.node_pubkey_hex.clone()),
-            ..HomeworkLaunchTargetRequest::default()
+            min_pylon_version: Some(MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string()),
+            require_updated_build: false,
+            tags_any: Vec::new(),
+            tags_all: Vec::new(),
         },
         assignment: HomeworkLaunchAssignmentRequest {
             max_contributors: Some(EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT),
@@ -42575,8 +42580,8 @@ mod tests {
         config.treasury.payout_sats_per_window = 120;
         let state = build_app_state(config);
         let app = build_api_router_with_state(state.clone());
-        let current_release_id = current_homework_launch_release_id_for_test();
-        let current_build_version = current_homework_launch_build_version_for_test();
+        let public_release_id = "openagents.pylon@0.1.99";
+        let public_build_version = "0.1.99";
         let recorded_at_ms = now_unix_ms();
 
         seed_homework_launch_node(
@@ -42585,8 +42590,8 @@ mod tests {
             "node-starter-alpha",
             "sha256:build-starter-alpha",
             super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
-            current_release_id.as_str(),
-            current_build_version.as_str(),
+            public_release_id,
+            public_build_version,
             vec![TrainingNodeRoleClaim::Worker],
             Some("lnbc1nodestarteralpha"),
         );
@@ -42663,6 +42668,18 @@ mod tests {
                     .pointer("/homework_launch/payout/amount_sats")
                     .and_then(Value::as_u64),
                 Some(120)
+            );
+            assert_eq!(
+                run.metadata
+                    .pointer("/homework_launch/target/min_pylon_version")
+                    .and_then(Value::as_str),
+                Some(super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION)
+            );
+            assert_eq!(
+                run.metadata
+                    .pointer("/homework_launch/target/require_updated_build")
+                    .and_then(Value::as_bool),
+                Some(false)
             );
             let launch = store
                 .training_scheduler
