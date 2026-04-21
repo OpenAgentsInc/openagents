@@ -30,6 +30,7 @@ const PROOF_ROUTE_TIMEOUT: Duration = Duration::from_secs(10);
 const PROOF_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const PROOF_ARTIFACT_BUCKET: &str = "gs://proof-local-artifacts";
 const PROOF_ARTIFACT_UPLOAD_PREFIX: &str = "/upload";
+const HOSTED_CS336_A1_STARTER_NETWORK_ID: &str = "trainnet.cs336.a1.demo";
 const TEST_GCS_SERVICE_ACCOUNT_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC9YHg+P4UZig1h\nzoW/m8IbzylR9O6/9xrqmIzlSfA2S1Cz7w0P+viRoyzLBmYhTmI0p3RmNAMKWwph\nly6a0UkdsGbWsoKoWt8r+gB1zUyP+1tG4A7HDTcTnxG+T2dtJcwE/A0Y8rF4PKEt\nV0qTdHYjRZrEorBYKJdgUbdv1Pgkw0U9SuCJciRLs3SI3PPrKNhNyWERS5Ta0Hnr\nXtwzZ7e44KNJ8F8iMOgh70p0nLN/KtKl+2Gb/CuJh3Mfodkoc+sADKoofBXZct2+\nsGSw66S08q7WfuPkseaqxDlOgSfaHEjzTIMyoxvjyjRWjulVbUIz8i+JWSZUglfP\nIBsQcN1pAgMBAAECggEAAR3yRH5byNkVX4mXVscdkaBZQ35/6qLkz5cZ/3+VeXrA\nUP8uPYGoXQMOEfuoyfFhTZ0OTxRz0lVpmNX63oZ72kWS+jIPUqqeDt/YNwVeQIrp\nCAYGEwV8I+K+Si69sIm9kf2dYEJndw4Zd/QtYGrC+8R+vBaXRagvV2k0wggXVdzx\n7Wq5zqOz9QkeoG11hTkYAgTmVl5PBnAoRE/sNMtYUOf6JnQWmFpEwOTdTf+F8NL1\nFg+ecNH7tjoqsTBjD/lMSaA/kr10fUw4KoITkn2IvtuF2ZFZp2R/Viy9KnfsLyF7\nyb1NJSP2cn3gYp4+BEe5wOdQNO2+lZN7EQKmRzS7uwKBgQD7dtqD6pAw9VFSiLWN\nW8EcDevKOP48lOP++2esUCsXfip3Omn0lmyb+8i11GRz0QwiMywQ21p7sEUwn9HE\nTk2ZjPnaNdPN+i/vZ+RgcmHVeEzeTPNAXeAQ5zAlrJ8Ibh3239BeWHLxCa/p2nsD\nPL3dPXg/CQm68Ph/UjG9XiXSbwKBgQDAyuzEzrqgdc51x2Z40lcQ56zUZVVtW+A8\n485dS5VQMdwFglXzC5QTQ4T3zI1qT+Dd5ATtCkyMNpL07nC/9rQhI0+HTsRZE8P+\nKeSGIFOSvkA2ZwHWKKcctO8n1vOlAwJnjqYEJAZMIg01MtpOFRN0qrDd/9BDUbHi\nHO2smCRZpwKBgAn28r/Jer9F6VwQ6MjaOvPGpXJVAdYavFItWjVc0+hRapNg8DPu\nBg3EU3bJHNXuEcIFLxjX6GUAXi2IF8Lkq3SLPpdkDKmb4WxmPImJ3tCbvMgOWpFR\nZwCkeKb1iTPHUU6oHdSvQpbEoIDu1HMTZB6xQeOVkxoiVGaPNkNfyLXnAoGAeEXg\nQcNKUFJOM9HqzpNCN8ygWHzDN48qrDHeCvvdMYN5ZIJ0BkUB4qarrD+TNXCRszvO\nCuby7EIbmeuqsUdCBq5Vre7otT2MduJBq589I/3GZ2oJjkYcQt9pl2wU4aun81zd\nmxWyTAquPLL11+J0GcNmxYgSr/ymQY6Ug6kCfF8CgYEA2fSIcskydJ94TpX8Dpqm\nBwDXhRIZo6hkLjAqt6hHa7Fs/2qZXAeeX7/oxxfHBWqtPcTnp3N91xgfkPjarPeM\nth0qg1Cu4Y4ZyQfpaVaZB3aWIJB0PdWdMBZa/EUZDu9kFoaExF3BdzA2j7pmMDj4\nOZi9gzTa10z894ZuBJJkMPA=\n-----END PRIVATE KEY-----\n";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -146,6 +147,7 @@ impl ProofAuthorityMode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProofLane {
     Cs336A1,
+    Cs336A1HostedStarter,
     Cs336A1StaleRecovery,
     Cs336A1ReplacementAttempt,
 }
@@ -154,6 +156,7 @@ impl ProofLane {
     fn label(self) -> &'static str {
         match self {
             Self::Cs336A1 => "cs336-a1",
+            Self::Cs336A1HostedStarter => "cs336-a1-hosted-starter",
             Self::Cs336A1StaleRecovery => "cs336-a1-stale-recovery",
             Self::Cs336A1ReplacementAttempt => "cs336-a1-replacement-attempt",
         }
@@ -162,6 +165,7 @@ impl ProofLane {
     fn run_prefix(self) -> &'static str {
         match self {
             Self::Cs336A1 => "run.cs336.a1.proof",
+            Self::Cs336A1HostedStarter => "run.cs336.a1.proof.hosted.starter",
             Self::Cs336A1StaleRecovery => "run.cs336.a1.proof.stale",
             Self::Cs336A1ReplacementAttempt => "run.cs336.a1.proof.replace",
         }
@@ -170,6 +174,7 @@ impl ProofLane {
     fn display_name_prefix(self) -> &'static str {
         match self {
             Self::Cs336A1 => "Proof CS336 A1",
+            Self::Cs336A1HostedStarter => "Proof CS336 A1 Hosted Starter",
             Self::Cs336A1StaleRecovery => "Proof CS336 A1 Stale Recovery",
             Self::Cs336A1ReplacementAttempt => "Proof CS336 A1 Replacement Attempt",
         }
@@ -177,7 +182,7 @@ impl ProofLane {
 
     const fn default_workers(self) -> usize {
         match self {
-            Self::Cs336A1 => 2,
+            Self::Cs336A1 | Self::Cs336A1HostedStarter => 2,
             Self::Cs336A1StaleRecovery => 1,
             Self::Cs336A1ReplacementAttempt => 0,
         }
@@ -185,7 +190,7 @@ impl ProofLane {
 
     const fn default_validators(self) -> usize {
         match self {
-            Self::Cs336A1 => 1,
+            Self::Cs336A1 | Self::Cs336A1HostedStarter => 1,
             Self::Cs336A1StaleRecovery => 1,
             Self::Cs336A1ReplacementAttempt => 0,
         }
@@ -193,21 +198,21 @@ impl ProofLane {
 
     const fn minimum_workers(self) -> usize {
         match self {
-            Self::Cs336A1 | Self::Cs336A1StaleRecovery => 1,
+            Self::Cs336A1 | Self::Cs336A1HostedStarter | Self::Cs336A1StaleRecovery => 1,
             Self::Cs336A1ReplacementAttempt => 0,
         }
     }
 
     const fn minimum_validators(self) -> usize {
         match self {
-            Self::Cs336A1 | Self::Cs336A1StaleRecovery => 1,
+            Self::Cs336A1 | Self::Cs336A1HostedStarter | Self::Cs336A1StaleRecovery => 1,
             Self::Cs336A1ReplacementAttempt => 0,
         }
     }
 
     const fn worker_fixture(self) -> Option<ProofNodeRuntimeFixture> {
         match self {
-            Self::Cs336A1 => None,
+            Self::Cs336A1 | Self::Cs336A1HostedStarter => None,
             Self::Cs336A1StaleRecovery => Some(ProofNodeRuntimeFixture::StaleWorkerLease),
             Self::Cs336A1ReplacementAttempt => None,
         }
@@ -215,7 +220,7 @@ impl ProofLane {
 
     const fn validator_fixture(self) -> Option<ProofNodeRuntimeFixture> {
         match self {
-            Self::Cs336A1 => None,
+            Self::Cs336A1 | Self::Cs336A1HostedStarter => None,
             Self::Cs336A1StaleRecovery => Some(ProofNodeRuntimeFixture::StaleValidatorLease),
             Self::Cs336A1ReplacementAttempt => None,
         }
@@ -223,6 +228,10 @@ impl ProofLane {
 
     const fn uses_manual_authority_scenario(self) -> bool {
         matches!(self, Self::Cs336A1ReplacementAttempt)
+    }
+
+    const fn uses_hosted_starter_autolaunch(self) -> bool {
+        matches!(self, Self::Cs336A1HostedStarter)
     }
 }
 
@@ -1436,6 +1445,9 @@ fn parse_proof_authority_mode(value: &str) -> Result<ProofAuthorityMode> {
 fn parse_proof_lane(value: &str) -> Result<ProofLane> {
     match value {
         "cs336-a1" | "cs336_a1" | "cs336/a1" => Ok(ProofLane::Cs336A1),
+        "cs336-a1-hosted-starter" | "cs336_a1_hosted_starter" | "cs336/a1/hosted-starter" => {
+            Ok(ProofLane::Cs336A1HostedStarter)
+        }
         "cs336-a1-stale-recovery" | "cs336_a1_stale_recovery" | "cs336/a1/stale-recovery" => {
             Ok(ProofLane::Cs336A1StaleRecovery)
         }
@@ -1907,7 +1919,11 @@ async fn run_standard_proof_lane(
     command: &ProofRunCommand,
     namespace: String,
 ) -> Result<ProofRunReport> {
-    let lane_network_id = proof_fleet_network_id(namespace.as_str());
+    let lane_network_id = if command.lane.uses_hosted_starter_autolaunch() {
+        HOSTED_CS336_A1_STARTER_NETWORK_ID.to_string()
+    } else {
+        proof_fleet_network_id(namespace.as_str())
+    };
     let _fleet = ensure_proof_fleet_up(
         config_path,
         namespace.as_str(),
@@ -1926,21 +1942,38 @@ async fn run_standard_proof_lane(
         load_runtime_state(layout.runtime_state_path.as_path())?.ok_or_else(|| {
             anyhow!("proof authority runtime state missing for namespace {namespace}")
         })?;
-    let training_run_id = proof_lane_training_run_id(command.lane, namespace.as_str());
     let mut first_failed_authority_write = None;
-    let launch = launch_proof_lane(
-        command.lane,
-        authority_state.urls.authority_base_url.as_str(),
-        authority_state.admin_bearer_token.as_str(),
-        namespace.as_str(),
-        lane_network_id.as_str(),
-        training_run_id.as_str(),
-        &mut first_failed_authority_write,
-    )
-    .await?;
-    save_fleet_launch_record(config_path, namespace.as_str(), &launch)?;
+    let (training_run_id, launch, launch_detail) = if command.lane.uses_hosted_starter_autolaunch()
+    {
+        let training_run_id = wait_for_proof_hosted_starter_training_run_id(
+            authority_state.urls.authority_base_url.as_str(),
+            command.timeout_seconds,
+        )
+        .await?;
+        let launch_detail = wait_for_proof_training_run_detail(
+            authority_state.urls.authority_base_url.as_str(),
+            training_run_id.as_str(),
+            command.timeout_seconds,
+        )
+        .await?;
+        (training_run_id, None, launch_detail)
+    } else {
+        let training_run_id = proof_lane_training_run_id(command.lane, namespace.as_str());
+        let launch = launch_proof_lane(
+            command.lane,
+            authority_state.urls.authority_base_url.as_str(),
+            authority_state.admin_bearer_token.as_str(),
+            namespace.as_str(),
+            lane_network_id.as_str(),
+            training_run_id.as_str(),
+            &mut first_failed_authority_write,
+        )
+        .await?;
+        save_fleet_launch_record(config_path, namespace.as_str(), &launch)?;
+        let launch_detail = summarize_training_run_detail_response(&launch.run_detail);
+        (training_run_id, Some(launch), launch_detail)
+    };
     let mut fleet_status = collect_proof_fleet_status(config_path, namespace.as_str()).await?;
-    let launch_detail = summarize_training_run_detail_response(&launch.run_detail);
     if proof_run_status_is_terminal(&launch_detail.run) {
         let report = ProofRunReport {
             namespace,
@@ -1954,7 +1987,7 @@ async fn run_standard_proof_lane(
             ),
             blocker_id: None,
             fleet: fleet_status,
-            launch: Some(launch),
+            launch,
             observed_run: Some(launch_detail),
             first_failed_authority_write,
         };
@@ -1981,7 +2014,7 @@ async fn run_standard_proof_lane(
                     detail: format!("run reached terminal status {}", detail.run.run_status),
                     blocker_id: None,
                     fleet: fleet_status,
-                    launch: Some(launch.clone()),
+                    launch: launch.clone(),
                     observed_run: Some(detail),
                     first_failed_authority_write: first_failed_authority_write.clone(),
                 };
@@ -2002,7 +2035,7 @@ async fn run_standard_proof_lane(
                 detail,
                 blocker_id: Some(blocker_id),
                 fleet: fleet_status,
-                launch: Some(launch.clone()),
+                launch: launch.clone(),
                 observed_run: last_detail,
                 first_failed_authority_write: first_failed_authority_write.clone(),
             };
@@ -2025,7 +2058,7 @@ async fn run_standard_proof_lane(
                     detail: completion_detail,
                     blocker_id: None,
                     fleet: fleet_status,
-                    launch: Some(launch.clone()),
+                    launch: launch.clone(),
                     observed_run: last_detail,
                     first_failed_authority_write: first_failed_authority_write.clone(),
                 };
@@ -2046,7 +2079,7 @@ async fn run_standard_proof_lane(
                 ),
                 blocker_id: Some("proof_run_timeout".to_string()),
                 fleet: fleet_status,
-                launch: Some(launch),
+                launch: launch.clone(),
                 observed_run: last_detail,
                 first_failed_authority_write,
             };
@@ -3304,6 +3337,88 @@ async fn fetch_proof_stats(authority_base_url: &str) -> Result<Option<ProofStats
     ))
 }
 
+async fn fetch_proof_stats_value(authority_base_url: &str) -> Result<Option<Value>> {
+    let url = format!("{authority_base_url}/api/stats");
+    let response = reqwest::Client::new()
+        .get(url.as_str())
+        .send()
+        .await
+        .with_context(|| format!("failed to fetch proof stats from {url}"))?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let response = response
+        .error_for_status()
+        .with_context(|| format!("proof stats route returned failure status for {}", url))?;
+    Ok(Some(
+        response
+            .json::<Value>()
+            .await
+            .context("failed to decode proof stats value")?,
+    ))
+}
+
+fn proof_stats_hosted_starter_training_run_id(stats: &Value) -> Option<String> {
+    [
+        "/training_public_state/active_run_id",
+        "/training_public_state/default_run_id",
+    ]
+    .iter()
+    .filter_map(|pointer| stats.pointer(pointer).and_then(Value::as_str))
+    .find(|training_run_id| training_run_id.contains("run.cs336.a1.starter."))
+    .map(str::to_string)
+    .or_else(|| {
+        stats
+            .pointer("/training_public_state/runs")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|run| run.get("training_run_id").and_then(Value::as_str))
+            .find(|training_run_id| training_run_id.contains("run.cs336.a1.starter."))
+            .map(str::to_string)
+    })
+}
+
+async fn wait_for_proof_hosted_starter_training_run_id(
+    authority_base_url: &str,
+    timeout_seconds: u64,
+) -> Result<String> {
+    let deadline = Instant::now() + Duration::from_secs(timeout_seconds.max(10));
+    let mut last_stats = None::<Value>;
+    while Instant::now() < deadline {
+        if let Some(stats) = fetch_proof_stats_value(authority_base_url).await? {
+            if let Some(training_run_id) = proof_stats_hosted_starter_training_run_id(&stats) {
+                return Ok(training_run_id);
+            }
+            last_stats = Some(stats);
+        }
+        tokio::time::sleep(PROOF_POLL_INTERVAL).await;
+    }
+    bail!(
+        "timed out waiting for hosted CS336 starter run to auto-launch; last stats={}",
+        last_stats
+            .map(|stats| stats.to_string())
+            .unwrap_or_else(|| "none".to_string())
+    )
+}
+
+async fn wait_for_proof_training_run_detail(
+    authority_base_url: &str,
+    training_run_id: &str,
+    timeout_seconds: u64,
+) -> Result<ProofObservedTrainingRunDetail> {
+    let deadline = Instant::now() + Duration::from_secs(timeout_seconds.max(10));
+    while Instant::now() < deadline {
+        if let Some(detail) =
+            fetch_proof_training_run_detail(authority_base_url, training_run_id).await?
+        {
+            return Ok(detail);
+        }
+        tokio::time::sleep(PROOF_POLL_INTERVAL).await;
+    }
+    bail!("timed out waiting for proof training run detail for {training_run_id}")
+}
+
 async fn launch_proof_lane(
     lane: ProofLane,
     authority_base_url: &str,
@@ -3315,6 +3430,7 @@ async fn launch_proof_lane(
 ) -> Result<ProofRunLaunchResponse> {
     match lane {
         ProofLane::Cs336A1
+        | ProofLane::Cs336A1HostedStarter
         | ProofLane::Cs336A1StaleRecovery
         | ProofLane::Cs336A1ReplacementAttempt => {
             let url = format!("{authority_base_url}/v1/admin/training/demo-runs/cs336-a1/launch");
@@ -4355,10 +4471,6 @@ fn current_executable_path() -> Result<PathBuf> {
 }
 
 fn resolve_workspace_binary(binary: &str, package: &str) -> Result<PathBuf> {
-    if let Some(existing) = locate_workspace_binary(binary)? {
-        return Ok(existing.clone());
-    }
-
     let status = StdCommand::new("cargo")
         .current_dir(workspace_root())
         .args(["build", "-p", package, "--bin", binary])
@@ -6023,6 +6135,10 @@ mod tests {
         assert_eq!(
             parse_proof_lane("cs336-a1-stale-recovery").expect("stale-recovery lane"),
             ProofLane::Cs336A1StaleRecovery
+        );
+        assert_eq!(
+            parse_proof_lane("cs336-a1-hosted-starter").expect("hosted starter lane"),
+            ProofLane::Cs336A1HostedStarter
         );
         assert_eq!(
             parse_proof_lane("cs336/a1/replacement-attempt").expect("replacement-attempt lane"),

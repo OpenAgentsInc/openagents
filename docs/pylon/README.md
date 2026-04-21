@@ -420,7 +420,20 @@ At launch, the first standalone `Pylon` sellable lane is:
 
 - `psionic.local.inference.gemma.single_node`
 
-The broader market direction still includes `inference`, `embeddings`, and later bounded execution. The current operator bring-up in this repo is narrower on purpose: get one honest local Gemma inference lane online first.
+The first bounded hosted training starter lane is:
+
+- `psion_cs336_a1_demo_v1` on the hosted CS336 Assignment 1 starter network
+
+Users do not choose a CS336-specific command. A paid-training-capable Pylon
+running the default `pylon` loop admits its local capabilities and payout
+target, asks Nexus for available work, and receives CS336 Assignment 1 starter
+work when that is the currently hosted starter lane available to the node.
+
+The broader market direction still includes `inference`, `embeddings`, broader
+training lanes, and later bounded execution. The current operator bring-up in
+this repo is narrower on purpose: get one honest local Gemma inference lane
+online first, then prove the bounded accepted-work training starter lane without
+claiming an open-ended training marketplace.
 
 Do not describe launch as raw GPU or raw accelerator trading. Accelerator, memory, and platform facts remain capability-envelope qualifiers that refine supply rather than replace product identity.
 
@@ -431,9 +444,10 @@ Current planned-but-not-live surfaces:
 - broad wallet-shell UX
 - sandbox execution as a generally released family
 
-Training remains a planned surface rather than a launched product family, but
-`pylon status --json` now projects a bounded `adapter_training_contributor`
-capability envelope when the machine can actually prove the local prerequisites:
+Training remains bounded starter work rather than a broad launched product
+family, but `pylon status --json` now projects a bounded
+`adapter_training_contributor` capability envelope when the machine can actually
+prove the local prerequisites:
 
 - a sibling `Psionic` checkout with the machine `psionic-train` surface present
 - NVIDIA CUDA telemetry visible to the node
@@ -451,7 +465,7 @@ heartbeat files under the assigned run root, refuse conflicting assignments,
 persist exit state and machine-readable failure receipts, and rotate preserved
 attempt history across drain and restart. That foundation is intentionally
 internal for now, but it is no longer isolated from the live coordinator path.
-When `pylon serve` is online, the retained training state now also drives an
+When bare `pylon` is online, the retained training state now also drives an
 automatic `Nexus` intake pass: `Pylon` admits the node, claims one compatible
 lease, acknowledges the assignment, and persists the leased window state into
 `training/state/runtime-state.json` without requiring an operator-crafted
@@ -495,6 +509,19 @@ into `PylonConfig` or the retained runtime-state store. `pylon serve` now calls
 that same client automatically on a short interval whenever the provider is in
 `online` mode, so training assignment discovery and acceptance use the existing
 retained Pylon process instead of a second launcher or a manual operator loop.
+The default bare `pylon` command sets that desired mode to `online` before
+entering the same service loop.
+
+The #4385 local proof runtime includes a hosted-starter model for this path:
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1-hosted-starter --workers 1 --validators 1 --json
+```
+
+That proof lane starts default Pylon nodes, lets their normal lease request
+auto-launch the hosted CS336 A1 starter run, then waits for accepted work and
+accepted-work payout closeout. The older `cs336-a1` proof lane remains the
+explicit admin-launch proof path.
 
 `Pylon` now also carries the first retained training artifact courier and
 checkpoint-serving foundation. `apps/pylon/src/lib.rs` can now:

@@ -7570,6 +7570,7 @@ Commands:\n\
   proof fleet down --namespace <ns> [--json]\n\
   proof fleet reset --namespace <ns> [--json]\n\
   proof run <lane> [--namespace <ns>] [--workers <n>] [--validators <n>] [--timeout-seconds <n>] [--mode prod-shaped|debug-authority] [--stale-worker-state] [--stale-validator-state] [--json]\n\
+    lanes: cs336-a1, cs336-a1-hosted-starter, cs336-a1-stale-recovery, cs336-a1-replacement-attempt\n\
   proof doctor [--namespace <ns>] [--json]\n\
   serve\n\
   account link --base-url <url> --token <one_time_token> [--json]\n\
@@ -10186,6 +10187,7 @@ fn training_retained_assignment_authority_error_is_stale(error: &str) -> bool {
 
 fn training_lease_claim_error_is_nonfatal(error: &str) -> bool {
     error.contains("training_scheduler_assignment_unavailable")
+        || error.contains("training_scheduler_starter_work_unavailable")
         || error.contains("training_node_not_eligible")
         || error.contains("training_scheduler_role_overlap_forbidden")
 }
