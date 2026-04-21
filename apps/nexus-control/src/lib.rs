@@ -85,8 +85,8 @@ use openagents_kernel_core::data_contracts;
 use openagents_kernel_core::ids::sha256_prefixed_bytes;
 use openagents_kernel_core::pylon_training::{
     PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
-    PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PYLON_TRAINING_GCS_CREDENTIAL_SOURCE,
-    PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
+    PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PYLON_TRAINING_LEASE_DURATION_MS,
+    PYLON_TRAINING_NEXUS_SIGNED_URL_CREDENTIAL_SOURCE, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
     PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
     PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactKind,
     PylonTrainingArtifactResolverResponse, PylonTrainingArtifactScope,
@@ -10635,7 +10635,7 @@ fn build_cs336_a1_demo_bootstrap_artifacts(
                 "networks/{network_id}/runs/{training_run_id}/windows/{window_id}"
             ),
             local_run_root: cs336_a1_demo_bootstrap_placeholder_run_root(training_run_id),
-            credential_source: PYLON_TRAINING_GCS_CREDENTIAL_SOURCE.to_string(),
+            credential_source: PYLON_TRAINING_NEXUS_SIGNED_URL_CREDENTIAL_SOURCE.to_string(),
         },
         PylonTrainingTrn {
             network_coordinate: format!("39500:{coordinator_pubkey}:{network_id}"),

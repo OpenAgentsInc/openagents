@@ -526,8 +526,9 @@ explicit admin-launch proof path.
 `Pylon` now also carries the first retained training artifact courier and
 checkpoint-serving foundation. `apps/pylon/src/lib.rs` can now:
 
-- upload checkpoint, contribution-proof, and score bundles to the frozen
-  `gs://` layout with retry and digest verification
+- upload checkpoint, contribution-proof, and score bundles through
+  Nexus-brokered temporary signed artifact URLs with retry and digest
+  verification
 - resolve retained training run bootstrap artifacts through Nexus-issued signed
   read URLs and materialize `run_manifest.json`, `latest_pointer.json`, and the
   current `checkpoint_manifest.json` into the run-scoped local filesystem shape
@@ -539,18 +540,39 @@ checkpoint-serving foundation. `apps/pylon/src/lib.rs` can now:
 - garbage-collect stale downloaded artifacts through
   `pylon training artifacts gc`
 
-The transport credentials still stay env-only at runtime. `Pylon` resolves the
-persisted credential-source name through Application Default Credentials and
-can mint GCS bearer tokens from either `GOOGLE_APPLICATION_CREDENTIALS` or
-instance metadata without writing raw secrets into retained state.
+Public Pylon operators should not need `GOOGLE_APPLICATION_CREDENTIALS`,
+`OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN`, or direct bucket credentials for
+the default starter training path. The default persisted artifact credential
+source is now `nexus_signed_url`: Pylon asks Nexus for short-lived read or
+write authorization for the exact retained artifact object, then uploads or
+downloads through the returned URL and re-verifies the digest and byte length
+when authority metadata is available. Direct GCS credentials remain an
+operator-only fallback for local tests, private deployments, and emergency
+debugging; setting a direct GCS bearer token or ADC file explicitly opts into
+that older courier path.
+
+If the signed artifact broker fails, the failure is intentionally surfaced in
+local operator status instead of being hidden behind a generic closeout stall.
+`pylon training status`, `pylon status`, and their JSON variants classify
+temporary signed URL failures as `artifact_authorization`, object transfer
+failures as `artifact_transfer`, funding shortages as `treasury_balance`, and
+payout send or confirmation failures as payout-specific blockers.
+
+Accepted-work payout projection is also intentionally separate from liveness
+or placeholder payout records. Pylon only treats a treasury ledger entry as
+the payout for accepted homework work when it is tied to the accepted outcome
+id for that window. Status output now carries the accepted outcome id,
+accepted-work payout id, payment id, and payout reconciliation state so an
+operator can distinguish "work accepted but payout pending" from "a different
+heartbeat or placeholder payment happened."
 
 `Pylon` now also has the first retained training TRN publication lane. The
 same `apps/pylon/src/lib.rs` surface can now:
 
 - publish `kind:39501` training node records from retained run-manifest state
 - publish `kind:39511` assignment-accepted and artifact-uploaded receipts
-- publish `kind:39520` staged artifact locators after the retained GCS courier
-  uploads and re-verifies the underlying objects
+- publish `kind:39520` staged artifact locators after the retained Nexus
+  signed-artifact courier uploads and re-verifies the underlying objects
 - persist event ids and `a` references into the retained training runtime
   state for later operator/admin projection through
   `pylon training publish [--manifest <path>]`

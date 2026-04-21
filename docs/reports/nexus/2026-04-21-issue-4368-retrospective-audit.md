@@ -604,6 +604,20 @@ on the current line, reserve `pylon-v0.1.2` as that minimum. If the release
 number changes before these issues are created, update the issue bodies to name
 the actual first paid-training-capable GitHub release tag.
 
+The #4412 implementation tightens that release requirement rather than
+changing the user-facing command. A public paid-training Pylon must be on the
+first release that includes Nexus-brokered signed artifact access
+(`nexus_signed_url`), accepted-outcome-bound payout matching, and status fields
+for accepted outcome id, accepted-work payout id, payment id, and payout
+reconciliation state. `pylon-v0.1.1` does not contain those paid-training
+public-safety guarantees. Until a new release is cut, source builds from
+`main` after #4412 are the implementation truth; after the release is cut, the
+minimum install/update instruction should name that exact GitHub tag. If the
+next tag is still `pylon-v0.1.2`, that is the expected paid-training minimum.
+If the release manager uses a different tag, replace every provisional
+`pylon-v0.1.2` reference in the issues and public instructions with the actual
+first tag containing #4410, #4411, and #4412.
+
 When the paid-training release exists, the `openagents.com` instructions need
 an explicit branch in the agent prompt. For ordinary local bring-up, they can
 continue to say that `npx @openagentsinc/pylon` and `pylon gemma diagnose
@@ -618,6 +632,22 @@ necessary for the current inference lane but not sufficient evidence that the
 node is earning from CS336 training work. CS336 earning requires the node to be
 online for available hosted jobs and then reach admission, assignment, accepted
 outcome, and accepted-work payout state.
+
+The current "OpenAgents Pylon for Agents" prompt should therefore remain
+accurate for Gemma/local bring-up only if it continues to treat `docs/pylon/README.md`
+as source of truth and does not imply that Gemma diagnosis proves paid-training
+earning. For the paid-training branch it must add three constraints. First,
+verify the installed Pylon is at least the first paid-training-capable release
+tag, or use a source build from `main` while the release is not cut. Second,
+tell the operator to run only `pylon` after install or update; the node should
+stay online for all currently relevant hosted work and should not require a
+CS336-specific opt-in command. Third, do not ask public users to configure
+`GOOGLE_APPLICATION_CREDENTIALS` or
+`OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN`. Those remain operator-only
+fallback/test credentials. The public artifact path is Nexus-signed temporary
+read/write authorization, surfaced by the `nexus_signed_url` credential source,
+with failures reported as `artifact_authorization` or `artifact_transfer` in
+Pylon status.
 
 ### Created issue 1: [#4410](https://github.com/OpenAgentsInc/openagents/issues/4410)
 
@@ -828,6 +858,56 @@ treasury debugging to complete a paid CS336 Assignment 1 job.
   credential behavior cannot be modeled locally.
 - Clean Pylon status output with payout id and settlement state.
 ```
+
+Implementation note for #4412: the public path now defaults artifact transfer
+to Nexus-brokered signed read/write URLs through `nexus_signed_url`. A public
+node without `GOOGLE_APPLICATION_CREDENTIALS` or
+`OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN` can upload and download retained
+training artifacts through Nexus, and Pylon re-verifies object digest and byte
+length after transfer. Direct GCS credentials still exist, but only as an
+explicit operator/test fallback when those env vars are intentionally set. The
+status path now separates artifact authorization blockers from artifact
+transfer blockers, treasury-balance blockers, payout-dispatch blockers, and
+settlement blockers. It also projects accepted outcome id, accepted-work payout
+id, payment id, and payout reconciliation state in both human and JSON training
+status. Accepted-work payout matching now requires the accepted outcome id, so
+placeholder or liveness payment records cannot satisfy the homework payout
+state.
+
+The local #4385 proof for this implementation was:
+
+```bash
+cargo run -p pylon --bin oa -- proof run cs336-a1-hosted-starter \
+  --namespace proof.4412.public-artifact-payout.20260421T041736Z \
+  --workers 1 \
+  --validators 1 \
+  --timeout-seconds 180 \
+  --json
+```
+
+It completed with
+`window.cs336.a1.starter.20260421041832.eae260e9.0001` reconciled, one
+accepted contribution, `closeout=rewarded`, one quiesced worker, and one
+quiesced validator. Evidence files:
+
+- `/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4412.public-artifact-payout.20260421T041736Z/fleet/run-report.json`
+- `/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4412.public-artifact-payout.20260421T041736Z/fleet/authority-state-trace.json`
+- `/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4412.public-artifact-payout.20260421T041736Z/fleet/proof-summary.json`
+- `/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4412.public-artifact-payout.20260421T041736Z/artifacts/object-trace.jsonl`
+- `/Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.4412.public-artifact-payout.20260421T041736Z/state/treasury-state.json`
+
+The proof treasury state contains exactly one accepted-work payout record for
+the accepted outcome:
+`accepted.training_window.window.cs336.a1.starter.20260421041832.eae260e9.0001`,
+status `confirmed`, payment id
+`simulated:6ba3ffb5867f97ab8597f73838c346122a5db24c0608aa8a04e50bd786dcb7f3`.
+The validator's `pylon training status` output shows the same accepted outcome,
+accepted-work payout id, payment id, and `payout reconciliation: settled`.
+The local proof runtime still models artifact failure primarily through
+unit-level signed-access and blocking-class tests rather than a separate
+fleet-level forced-denial lane; if the final production proof in #4413 exposes
+a live-only signed URL failure, that proof gap should become a narrow follow-up
+instead of reopening production as the general debugger.
 
 ### Created issue 4: [#4413](https://github.com/OpenAgentsInc/openagents/issues/4413)
 
