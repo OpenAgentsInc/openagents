@@ -5549,6 +5549,45 @@ fn training_validator_cached_target_artifacts_are_current(
     )?)
 }
 
+fn training_validator_cached_target_work_class_is_current(
+    lease: &PylonTrainingLeaseCacheEntry,
+    target: &PylonTrainingValidatorTargetAssignmentBinding,
+) -> Result<bool> {
+    let Some(receipt_path) = lease
+        .validator_target_contribution_receipt_path
+        .as_deref()
+        .map(Path::new)
+    else {
+        return Ok(false);
+    };
+    let Some(manifest_path) = lease
+        .validator_target_contribution_artifact_manifest_path
+        .as_deref()
+        .map(Path::new)
+    else {
+        return Ok(false);
+    };
+    let Some(contribution_receipt) =
+        load_training_json_artifact_value(receipt_path, "validator contribution receipt")?
+    else {
+        return Ok(false);
+    };
+    let Some(artifact_manifest) = load_training_json_artifact_value(
+        manifest_path,
+        "validator contribution artifact manifest",
+    )?
+    else {
+        return Ok(false);
+    };
+
+    Ok(lease.validator_target_work_class
+        == training_validator_replay_target_work_class(
+            target,
+            &contribution_receipt,
+            &artifact_manifest,
+        ))
+}
+
 fn training_validator_runtime_inputs_materialized(
     run_root: &Path,
     lease: &PylonTrainingLeaseCacheEntry,
@@ -5587,7 +5626,10 @@ fn training_validator_runtime_inputs_materialized(
         return Ok(false);
     };
 
-    training_validator_cached_target_artifacts_are_current(run_root, lease, target)
+    Ok(
+        training_validator_cached_target_artifacts_are_current(run_root, lease, target)?
+            && training_validator_cached_target_work_class_is_current(lease, target)?,
+    )
 }
 
 fn training_validator_outcome_metadata_field<'a>(
@@ -5626,6 +5668,24 @@ fn training_validator_metadata_artifact_binding(
         resolver: None,
         metadata: value.clone(),
     })
+}
+
+fn training_work_class_from_artifact_value(value: &Value) -> Option<ComputeTrainingWorkClass> {
+    value
+        .get("work_class")
+        .or_else(|| value.get("runtime_work_class"))
+        .and_then(Value::as_str)
+        .and_then(ComputeTrainingWorkClass::parse)
+}
+
+fn training_validator_replay_target_work_class(
+    target: &PylonTrainingValidatorTargetAssignmentBinding,
+    contribution_receipt: &Value,
+    artifact_manifest: &Value,
+) -> Option<ComputeTrainingWorkClass> {
+    training_work_class_from_artifact_value(contribution_receipt)
+        .or_else(|| training_work_class_from_artifact_value(artifact_manifest))
+        .or_else(|| ComputeTrainingWorkClass::parse(target.work_class.as_str()))
 }
 
 fn training_validator_bridge_artifact_binding(
@@ -5885,6 +5945,7 @@ async fn ensure_training_validator_challenge_materialized(
         .as_deref()
         .is_some_and(|value| !value.trim().is_empty())
         && training_validator_cached_target_artifacts_are_current(run_root, &lease, target)?
+        && training_validator_cached_target_work_class_is_current(&lease, target)?
     {
         return Ok(());
     }
@@ -6124,8 +6185,11 @@ async fn ensure_training_validator_challenge_materialized(
             Some(contribution_receipt_path.display().to_string());
         cached.validator_target_contribution_artifact_manifest_path =
             Some(artifact_manifest_path.display().to_string());
-        cached.validator_target_work_class =
-            ComputeTrainingWorkClass::parse(target.work_class.as_str());
+        cached.validator_target_work_class = training_validator_replay_target_work_class(
+            target,
+            &bridge_contribution_receipt,
+            &bridge_artifact_manifest,
+        );
         cached.updated_at_ms = now_epoch_ms();
     }
 
@@ -6744,6 +6808,7 @@ async fn ensure_training_assignment_runtime_manifest(
         cached.runtime_operation =
             Some(training_psionic_operation_label(manifest.operation).to_string());
         cached.runtime_work_class = Some(manifest.work_class.label().to_string());
+        cached.updated_at_ms = now_epoch_ms();
     }
     Ok(MaterializedPsionicTrainInvocationManifest {
         manifest_path,
@@ -20554,8 +20619,8 @@ fn default_training_config(base_dir: &Path) -> PylonTrainingConfig {
 
 fn default_training_role_claims() -> Vec<PylonTrainingRoleClaim> {
     vec![
-        PylonTrainingRoleClaim::Validator,
         PylonTrainingRoleClaim::Worker,
+        PylonTrainingRoleClaim::Validator,
     ]
 }
 
@@ -28022,10 +28087,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             config.training.role_claims
                 == vec![
-                    PylonTrainingRoleClaim::Validator,
                     PylonTrainingRoleClaim::Worker,
+                    PylonTrainingRoleClaim::Validator,
                 ],
-            "bare pylon should prefer closing validation before opening new worker training",
+            "bare pylon should prefer paid worker training before unrelated validation backlog",
         )
     }
 
@@ -33870,6 +33935,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "schema_version": "psionic.train.contribution_receipt.v1",
             "assignment_id": "assign.alpha",
             "contribution_id": "contrib.alpha",
+            "work_class": "adapter_training",
             "contribution_digest": "receipt.source",
             "artifact_manifest": {
                 "artifact_ref": {
@@ -33968,6 +34034,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 "schema_version": "psionic.train.contribution_receipt.v1",
                 "assignment_id": "assign.alpha",
                 "contribution_id": "contrib.alpha",
+                "work_class": "small_model_local_training",
                 "contribution_digest": "receipt.mutated-after-bridge",
                 "artifact_manifest": {
                     "artifact_ref": {
@@ -34207,12 +34274,37 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             refreshed_receipt == worker_receipt
                 && refreshed_manifest == worker_manifest
+                && state
+                    .lease_cache
+                    .get(lease_id)
+                    .and_then(|lease| lease.validator_target_work_class)
+                    == Some(ComputeTrainingWorkClass::AdapterTraining)
                 && super::training_validator_cached_target_artifacts_are_current(
                     run_root.as_path(),
                     state.lease_cache.get(lease_id).expect("validator lease"),
                     response.target_bindings.first().expect("target binding"),
+                )?
+                && super::training_validator_cached_target_work_class_is_current(
+                    state.lease_cache.get(lease_id).expect("validator lease"),
+                    response.target_bindings.first().expect("target binding"),
                 )?,
-            "rematerializing a validator challenge should replace stale cached target files with the immutable bridge snapshots",
+            "rematerializing a validator challenge should replace stale cached target files and preserve the retained receipt work class",
+        )?;
+        state
+            .lease_cache
+            .get_mut(lease_id)
+            .expect("validator lease")
+            .validator_target_work_class = Some(ComputeTrainingWorkClass::SmallModelLocalTraining);
+        ensure(
+            super::training_validator_cached_target_artifacts_are_current(
+                run_root.as_path(),
+                state.lease_cache.get(lease_id).expect("validator lease"),
+                response.target_bindings.first().expect("target binding"),
+            )? && !super::training_validator_runtime_inputs_materialized(
+                run_root.as_path(),
+                state.lease_cache.get(lease_id).expect("validator lease"),
+            )?,
+            "validator inputs with current files but a stale cached target work class must be rematerialized",
         )
     }
 
