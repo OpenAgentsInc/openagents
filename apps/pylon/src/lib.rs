@@ -2083,6 +2083,7 @@ struct GoogleOAuthTokenResponse {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
+    DefaultOnline,
     Init,
     Doctor,
     Proof {
@@ -7093,10 +7094,6 @@ fn render_byte_size(bytes: u64) -> String {
 }
 
 pub fn parse_args(args: Vec<String>) -> Result<Cli> {
-    if args.is_empty() {
-        return Err(anyhow!("missing command"));
-    }
-
     let mut index = 0usize;
     let mut config_path = default_config_path();
     while index < args.len() {
@@ -7116,7 +7113,11 @@ pub fn parse_args(args: Vec<String>) -> Result<Cli> {
         }
     }
 
-    let command = parse_command(args.as_slice(), index)?;
+    let command = if index == args.len() {
+        Command::DefaultOnline
+    } else {
+        parse_command(args.as_slice(), index)?
+    };
     Ok(Cli {
         command,
         config_path,
@@ -7125,6 +7126,10 @@ pub fn parse_args(args: Vec<String>) -> Result<Cli> {
 
 pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
     match cli.command {
+        Command::DefaultOnline => {
+            run_default_online_earning_loop(cli.config_path.as_path()).await?;
+            Ok(None)
+        }
         Command::Init => {
             let config = load_or_create_config(cli.config_path.as_path())?;
             let identity = ensure_identity(config.identity_path.as_path())?;
@@ -7547,11 +7552,12 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
 
 pub fn usage() -> &'static str {
     "Standalone Pylon CLI.\n\
-Bare `pylon` launches the terminal UI.\n\
-Use the commands below for headless provider control.\n\
+Bare `pylon` initializes the node, marks it online, and runs the default earning loop.\n\
+Use `pylon-tui` or `pylon tui` for the terminal UI.\n\
+Use the commands below for explicit provider control and inspection.\n\
 From this repo, run them with `cargo pylon-headless <command>`, the `pylon` binary directly, or the `oa` binary for proof-runtime commands.\n\
 \n\
-Usage: pylon|oa [--config-path <path>] <command>\n\
+Usage: pylon|oa [--config-path <path>] [command]\n\
 Commands:\n\
   init\n\
   doctor\n\
@@ -8712,6 +8718,21 @@ pub fn ensure_local_setup(config_path: &Path) -> Result<PylonConfig> {
     let _ = ensure_identity(config.identity_path.as_path())?;
     let _ = ensure_local_ledger(config_path)?;
     Ok(config)
+}
+
+async fn run_default_online_earning_loop(config_path: &Path) -> Result<()> {
+    let config = ensure_local_setup(config_path)?;
+    let status = apply_control_locally(&config, ProviderControlAction::Online).await?;
+    let runtime_status = status
+        .snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.runtime.authoritative_status.as_deref())
+        .unwrap_or_else(|| status.desired_mode.label());
+    eprintln!(
+        "pylon: node {} is {}; running default online earning loop",
+        config.node_label, runtime_status
+    );
+    serve(config_path, config).await
 }
 
 fn load_config(path: &Path) -> Result<PylonConfig> {
@@ -27249,6 +27270,23 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             bytes_to_gib_ceil(h100_capacity_bytes) == 80,
             "H100 capacities reported through nvidia-smi MiB units should still satisfy the admitted 80 GiB floor",
+        )
+    }
+
+    #[test]
+    fn parse_args_defaults_to_online_earning_loop() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(Vec::new())?.command == Command::DefaultOnline,
+            "bare pylon should parse into the default online earning loop",
+        )?;
+        ensure(
+            parse_args(vec![
+                "--config-path".to_string(),
+                "/tmp/pylon-default-online.json".to_string(),
+            ])?
+            .command
+                == Command::DefaultOnline,
+            "config-only pylon should still parse into the default online earning loop",
         )
     }
 

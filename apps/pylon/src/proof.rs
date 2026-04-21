@@ -2809,9 +2809,6 @@ async fn spawn_proof_fleet_node(
     } else if stale_retained_state {
         inject_stale_training_runtime_state(&config, role, network_id)?;
     }
-    let _ =
-        super::apply_control_command(config_path.as_path(), super::ProviderControlAction::Online)
-            .await?;
     let mut envs = vec![
         (
             super::ENV_PYLON_HOME.to_string(),
@@ -2839,7 +2836,6 @@ async fn spawn_proof_fleet_node(
     let args = vec![
         "--config-path".to_string(),
         config_path.display().to_string(),
-        "serve".to_string(),
     ];
     let pid = spawn_logged_process(
         current_exe,
