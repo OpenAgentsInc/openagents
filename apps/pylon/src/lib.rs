@@ -10861,7 +10861,7 @@ async fn run_training_assignment_intake_once_with_context(
     for role in supported_roles.clone() {
         let membership_revision = training_cached_membership_revision_for_role(state, role);
         for requested_network_id in training_requested_networks(config) {
-            if role == PylonTrainingRoleClaim::Validator {
+            if role == PylonTrainingRoleClaim::Validator && config.training.validator_enabled {
                 let runtime_surface = runtime_surface.ok_or_else(|| {
                     anyhow!(
                         "psionic-train runtime surface is required to materialize a validator challenge"
@@ -32338,6 +32338,101 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && counts.get("/api/training/validator-challenges/claim") == Some(&1)
                 && counts.get("/api/training/leases/claim") == Some(&1),
             "validator intake should probe the scheduler only after the direct validator challenge path reports training_validator_challenge_unavailable",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_assignment_intake_skips_direct_validator_challenge_until_validator_enabled()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.role_claims = vec![PylonTrainingRoleClaim::Validator];
+        config.training.validator_enabled = false;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        let request_counts = Arc::new(Mutex::new(std::collections::BTreeMap::<String, u64>::new()));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let base_url = start_mock_http_server(move |method, path, _body| {
+            if method != "POST" {
+                return (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed","reason":method}).to_string(),
+                );
+            }
+            let mut counts = request_counts_for_server
+                .lock()
+                .expect("default validator request counts");
+            *counts.entry(path.clone()).or_insert(0) += 1;
+            let response = match path.as_str() {
+                "/api/training/nodes/admission" => (
+                    200,
+                    json!({
+                        "ack": {
+                            "idempotency_key": "idemp.training.validator.default.admission",
+                            "recorded_at_ms": 1_762_491_210_650_i64,
+                            "authority_state": "admitted"
+                        },
+                        "admission_id": "admission.validator",
+                        "admitted": true,
+                        "reason": null
+                    }),
+                ),
+                "/api/training/heartbeats" => (
+                    200,
+                    json!({
+                        "ack": {
+                            "idempotency_key": "idemp.training.validator.default.heartbeat",
+                            "recorded_at_ms": 1_762_491_210_675_i64,
+                            "authority_state": "heartbeat_recorded"
+                        },
+                        "next_heartbeat_due_at_ms": 1_762_491_215_675_i64,
+                        "lease_state": "leased",
+                        "node_status": "online"
+                    }),
+                ),
+                "/api/training/leases/claim" => (
+                    400,
+                    json!({"error":"kernel_error","reason":"training_scheduler_assignment_unavailable"}),
+                ),
+                "/api/training/validator-challenges/claim" => (
+                    500,
+                    json!({"error":"unexpected_direct_validator_claim","reason":"validator_enabled_false"}),
+                ),
+                _ => (404, json!({"error":"unexpected_path","reason":path})),
+            };
+            (response.0, "application/json", response.1.to_string())
+        })
+        .await?;
+        config.training.nexus_authority_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let host = training_host_snapshot(None, None, Some(512), true);
+        let runtime_surface = psionic_train_runtime_surface_fixture();
+        run_training_assignment_intake_once_with_context(
+            &config,
+            &identity,
+            &mut state,
+            &host,
+            Some(&runtime_surface),
+        )
+        .await?;
+
+        ensure(
+            state.lease_cache.is_empty(),
+            "default validator intake without explicit validator enablement should not retain work when scheduler has no lease",
+        )?;
+        let counts = request_counts
+            .lock()
+            .expect("default validator request counts")
+            .clone();
+        ensure(
+            counts.get("/api/training/nodes/admission") == Some(&1)
+                && counts.get("/api/training/heartbeats") == Some(&1)
+                && counts.get("/api/training/leases/claim") == Some(&1)
+                && !counts.contains_key("/api/training/validator-challenges/claim"),
+            "default validator intake should skip direct challenge claim unless training.validator_enabled is true",
         )
     }
 
