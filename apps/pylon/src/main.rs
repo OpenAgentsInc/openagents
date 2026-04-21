@@ -16,26 +16,29 @@ use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
 
-fn should_launch_tui(args: &[String]) -> Result<bool> {
-    if args.is_empty() {
-        return Ok(true);
-    }
-
+fn pylon_tui_args(args: &[String]) -> Result<Option<Vec<String>>> {
     let mut index = 0usize;
+    let mut tui_args = Vec::new();
     while index < args.len() {
         match args[index].as_str() {
             "--config-path" => {
-                index += 1;
-                args.get(index)
+                let value = args
+                    .get(index + 1)
                     .ok_or_else(|| anyhow!("missing value for --config-path"))?;
-                index += 1;
+                tui_args.push(args[index].clone());
+                tui_args.push(value.clone());
+                index += 2;
             }
-            "--help" | "-h" => return Ok(false),
-            _ => return Ok(false),
+            "--help" | "-h" => return Ok(None),
+            "tui" => {
+                tui_args.extend(args.iter().skip(index + 1).cloned());
+                return Ok(Some(tui_args));
+            }
+            _ => return Ok(None),
         }
     }
 
-    Ok(true)
+    Ok(None)
 }
 
 fn resolve_pylon_tui_path() -> PathBuf {
@@ -68,8 +71,8 @@ fn launch_pylon_tui(args: &[String]) -> Result<()> {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let launch_tui = match should_launch_tui(&args) {
-        Ok(launch_tui) => launch_tui,
+    let tui_args = match pylon_tui_args(&args) {
+        Ok(tui_args) => tui_args,
         Err(error) => {
             eprintln!("{error}");
             eprintln!("{}", pylon::usage());
@@ -77,8 +80,8 @@ async fn main() -> Result<()> {
         }
     };
 
-    if launch_tui {
-        if let Err(error) = launch_pylon_tui(&args) {
+    if let Some(tui_args) = tui_args {
+        if let Err(error) = launch_pylon_tui(&tui_args) {
             eprintln!("{error}");
             std::process::exit(1);
         }
@@ -106,36 +109,58 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::should_launch_tui;
+    use super::pylon_tui_args;
 
     #[test]
-    fn bare_pylon_launches_tui() {
-        assert!(should_launch_tui(&[]).expect("no-arg tui launch"));
+    fn bare_pylon_stays_on_cli_path() {
+        assert_eq!(pylon_tui_args(&[]).expect("no-arg path"), None);
     }
 
     #[test]
-    fn config_only_launches_tui() {
-        assert!(
-            should_launch_tui(&["--config-path".into(), "/tmp/pylon.json".into()])
-                .expect("config-only tui launch")
+    fn config_only_stays_on_cli_path() {
+        assert_eq!(
+            pylon_tui_args(&["--config-path".into(), "/tmp/pylon.json".into()])
+                .expect("config-only path"),
+            None
+        );
+    }
+
+    #[test]
+    fn explicit_tui_launches_tui() {
+        assert_eq!(
+            pylon_tui_args(&["tui".into()]).expect("tui launch"),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            pylon_tui_args(&[
+                "--config-path".into(),
+                "/tmp/pylon.json".into(),
+                "tui".into()
+            ])
+            .expect("config tui launch"),
+            Some(vec!["--config-path".into(), "/tmp/pylon.json".into()])
         );
     }
 
     #[test]
     fn explicit_help_stays_on_cli_path() {
-        assert!(!should_launch_tui(&["--help".into()]).expect("help path"));
+        assert_eq!(pylon_tui_args(&["--help".into()]).expect("help path"), None);
     }
 
     #[test]
     fn explicit_subcommands_stay_on_cli_path() {
-        assert!(!should_launch_tui(&["status".into()]).expect("status path"));
-        assert!(
-            !should_launch_tui(&[
+        assert_eq!(
+            pylon_tui_args(&["status".into()]).expect("status path"),
+            None
+        );
+        assert_eq!(
+            pylon_tui_args(&[
                 "--config-path".into(),
                 "/tmp/pylon.json".into(),
                 "status".into()
             ])
-            .expect("status path with config")
+            .expect("status path with config"),
+            None
         );
     }
 }

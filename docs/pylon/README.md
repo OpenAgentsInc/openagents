@@ -34,21 +34,29 @@ The frozen Phase 0 machine-readable contract for that roadmap now lives in:
 
 - `crates/openagents-kernel-core/src/pylon_training.rs`
 
-The default local repo entrypoint is the small terminal shell:
+The default local repo entrypoint is the online earning loop:
 
 ```bash
 cargo pylon
 ```
 
-On first launch, the TUI bootstraps its own local Pylon config and identity under the normal Pylon home path. It does not ask the user to run a manual init step first.
+On first launch, Pylon bootstraps its own local config, identity, and ledger under the normal Pylon home path, marks the node online, starts the admin/status loop, publishes provider presence when possible, and runs automatic provider and training intake while the process stays alive. The operator does not need to run `init`, `online`, or `serve` separately for the default earning path.
 
-The current provider automation stays in the explicit headless CLI:
+The terminal shell is now explicit:
+
+```bash
+cargo pylon-tui
+pylon-tui
+pylon tui
+```
+
+The explicit CLI commands remain available for inspection, debugging, and service-manager installs:
 
 ```bash
 cargo pylon-headless <command>
 ```
 
-It is still a narrow supply connector. It is not a buyer shell, not a labor runtime, and not a raw accelerator exchange.
+Pylon is still a narrow supply connector. It is not a buyer shell, not a labor runtime, and not a raw accelerator exchange.
 
 ## Local Proof Authority Runtime
 
@@ -342,9 +350,10 @@ the operator explicitly wants a separate Windows-native lane.
 
 That launcher checks GitHub for the latest tagged `pylon-v...` release on each default run, or resolves a specific tagged `Pylon` version when `--version` is provided. It then finds the matching release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, runs the `init` / `status --json` / `inventory --json` smoke path, and then drives `pylon gemma diagnose <model>`. It only prefetches the optional Hugging Face GGUF cache when `--download-curated-cache` is set, because the sellable lane still depends on the configured local runtime endpoint rather than the local GGUF cache alone.
 The default no-argument path is the intended onboarding lane: it streams terminal
-status updates during bootstrap and opens `pylon-tui` automatically when the
-smoke path finishes. Use `--no-launch` when you want the same install and
-bootstrap flow without handing the terminal to the TUI.
+status updates during bootstrap and launches the installed `pylon` binary when
+the smoke path finishes. In current releases, bare `pylon` is the online
+earning loop, not the TUI. Use `--no-launch` when you want the same install and
+bootstrap flow without starting the earning loop.
 If the resolved release does not ship a prebuilt archive for the local
 platform, the launcher now falls back to the exact tagged source checkout,
 prompts before installing Rust if `cargo` and `rustc` are missing, and builds
@@ -393,8 +402,9 @@ Use a direct release asset install only when the operator explicitly does not wa
 ./pylon gemma diagnose gemma-4-e2b --max-output-tokens 96 --repeats 3
 ```
 
-Bare `./pylon` now opens the terminal UI. Use `./pylon-tui` only when you want
-to target the shell binary explicitly.
+Bare `./pylon` initializes the node, marks it online, and runs the default
+earning loop. Use `./pylon-tui` or `./pylon tui` only when you want the terminal
+shell instead of the service loop.
 
 Use a source checkout only when:
 
@@ -698,7 +708,7 @@ normal check that the runtime is actually using the GPU.
 
 ## Quick Start
 
-Open the local terminal shell:
+Start the default online earning loop:
 
 ```bash
 cargo pylon
@@ -710,7 +720,21 @@ If you installed from a release asset instead of a source checkout, run:
 ./pylon
 ```
 
-The first cut is intentionally small. It renders one full-screen transcript shell with:
+That command stays in the foreground and is the path a normal provider should
+keep running. It initializes local state, flips desired mode to `online`, starts
+the local admin/status loop, heartbeats provider presence, keeps announcements
+fresh, and performs automatic provider and training intake whenever the node has
+eligible local Gemma supply.
+
+Open the local terminal shell only when you want an interactive operator UI:
+
+```bash
+cargo pylon-tui
+pylon-tui
+pylon tui
+```
+
+The first TUI cut is intentionally small. It renders one full-screen transcript shell with:
 
 - whether a Gemma 4-serving path is visible to the node
 - live host, CPU, memory, swap, uptime, disk, network, thermal, and power-source state
@@ -719,7 +743,7 @@ The first cut is intentionally small. It renders one full-screen transcript shel
 - a retained transcript area for local shell activity
 - a bottom textbox where plain text submits a prompt, `/help` shows the retained shell commands, `/model <model>` targets a Gemma runtime model for future local work, `/uninstall <model>` removes a local Gemma model, and `/download <model>` pulls a curated Gemma GGUF into the local Pylon cache
 
-The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The TUI prepends a plain-terminal system instruction on each local chat request so replies avoid Markdown and LaTeX formatting the transcript cannot render. The right column now shows a curated Hugging Face catalog for `gemma-4-e2b`, `gemma-4-e4b`, `gemma-4-26b-a4b`, and `gemma-4-31b`, with live per-model progress bars while downloads are active. That catalog is intentionally separate from the live runtime truth: the `Gemma Models` panel now shows `runtime ready: ...` from the local backend before listing the optional local GGUF cache rows, so a healthy Ollama-loaded `gemma4:e4b` no longer looks "missing" just because no curated cache file was downloaded. Directly under that catalog, the `Pylon Operator` panel now projects the retained operator truth that matters during bring-up: whether the node is still coming online, idle and ready for jobs, actively running intake, or waiting on settlement, along with the current wallet total, 24-hour found and matching demand counts, 24-hour processed and settled counts, the last job result, and online uptime. The operator header now keeps the desired `mode` separate from the live `runtime`, drops the confusing standalone `state` line, and shows an idle online runtime as `ready` while the detail row explains that automatic intake passes are active. The first visible frame is also now neutral during bring-up: before the first status refresh lands, the shell shows `loading current status` instead of painting an offline-looking default state. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. `/model <model>` persists a preferred Gemma target, maps it to the local runtime naming when possible, and warms that model through the configured local runtime endpoint. `/uninstall <model>` removes the matching cached GGUF and, when `local_gemma_base_url` points at a local Ollama instance, also removes the corresponding local runtime model. The current local chat path accepts the preferred model when it is visible through the configured local runtime endpoint. The `System` block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The normal provider automation now lives in the long-running `cargo pylon-headless serve` path below, while explicit `provider run` remains available as a manual one-shot pass. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The TUI prepends a plain-terminal system instruction on each local chat request so replies avoid Markdown and LaTeX formatting the transcript cannot render. The right column now shows a curated Hugging Face catalog for `gemma-4-e2b`, `gemma-4-e4b`, `gemma-4-26b-a4b`, and `gemma-4-31b`, with live per-model progress bars while downloads are active. That catalog is intentionally separate from the live runtime truth: the `Gemma Models` panel now shows `runtime ready: ...` from the local backend before listing the optional local GGUF cache rows, so a healthy Ollama-loaded `gemma4:e4b` no longer looks "missing" just because no curated cache file was downloaded. Directly under that catalog, the `Pylon Operator` panel now projects the retained operator truth that matters during bring-up: whether the node is still coming online, idle and ready for jobs, actively running intake, or waiting on settlement, along with the current wallet total, 24-hour found and matching demand counts, 24-hour processed and settled counts, the last job result, and online uptime. The operator header now keeps the desired `mode` separate from the live `runtime`, drops the confusing standalone `state` line, and shows an idle online runtime as `ready` while the detail row explains that automatic intake passes are active. The first visible frame is also now neutral during bring-up: before the first status refresh lands, the shell shows `loading current status` instead of painting an offline-looking default state. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. `/model <model>` persists a preferred Gemma target, maps it to the local runtime naming when possible, and warms that model through the configured local runtime endpoint. `/uninstall <model>` removes the matching cached GGUF and, when `local_gemma_base_url` points at a local Ollama instance, also removes the corresponding local runtime model. The current local chat path accepts the preferred model when it is visible through the configured local runtime endpoint. The `System` block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The normal provider automation now lives in the long-running bare `pylon` path, while explicit `provider run` remains available as a manual one-shot pass. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
 
 When a node reports provider presence to `Nexus`, that same heartbeat now also
 carries a private hosting telemetry snapshot alongside the public-safe launch
@@ -764,16 +788,17 @@ The retained provider announcement controls now also exist in both places:
 - headless: `cargo pylon-headless announce`, `cargo pylon-headless announce publish`, `cargo pylon-headless announce refresh`
 
 The current retained announcement scope is one honest local text-generation handler for `kind:5050`. Pylon only publishes it when a local Gemma-backed text-generation path is actually eligible.
-When `cargo pylon-headless serve` is running and the node is `online` with
-eligible local Gemma supply, Pylon now auto-publishes or refreshes that handler
-announcement as part of the normal service loop. `announce publish` remains the
-explicit manual path when you want to force the publish step yourself.
+When bare `pylon` is running, or when `pylon serve` is running with the node
+already marked `online`, eligible local Gemma supply auto-publishes or refreshes
+that handler announcement as part of the normal service loop. `announce publish`
+remains the explicit manual path when you want to force the publish step
+yourself.
 
 The retained provider intake controls also exist in both places:
 - TUI: `/provider scan [--seconds <n>]`, `/provider run [--seconds <n>]`
 - headless: `cargo pylon-headless provider scan [--seconds <n>]`, `cargo pylon-headless provider run [--seconds <n>]`
 
-The current retained execution scope is narrow and honest. Pylon subscribes to retained inbound `kind:5050` requests on the configured relays, filters targeted jobs, and only accepts work when the provider is online and a local Gemma text-generation path is actually ready. When `cargo pylon-headless serve` is running in `online` mode, that service loop now performs short automatic provider-intake passes so the node actually processes eligible work without requiring a separate manual `provider run`. `scan` still records intake decisions without executing, and `run` remains the explicit one-shot operator path for debugging, manual replay, or forcing the next pass immediately. `run` has two honest paths:
+The current retained execution scope is narrow and honest. Pylon subscribes to retained inbound `kind:5050` requests on the configured relays, filters targeted jobs, and only accepts work when the provider is online and a local Gemma text-generation path is actually ready. The default bare `pylon` loop performs short automatic provider-intake passes so the node actually processes eligible work without requiring a separate manual `provider run`. `scan` still records intake decisions without executing, and `run` remains the explicit one-shot operator path for debugging, manual replay, or forcing the next pass immediately. `run` has two honest paths:
 
 - for unpriced local work, it publishes a `kind:7000` processing update, executes accepted jobs locally, publishes the retained `kind:6050` result, and links those published event IDs back into the local ledger
 - for explicit paid requests, it stops at `payment-required`, creates a local Bolt11 invoice through the retained Spark wallet path, publishes that invoice in a `kind:7000` feedback event, and persists the amount plus Bolt11 string in the local ledger
@@ -811,7 +836,7 @@ that cached total until a connected live balance replaces it.
 The `Lifetime earned` and stacker-rank counters stay keyed to retained provider
 settlement history rather than the current wallet balance, so withdrawing sats
 does not reduce the amount the node has already earned.
-When `cargo pylon-headless serve` cannot keep its Nexus heartbeat or payout-
+When the long-running Pylon service loop cannot keep its Nexus heartbeat or payout-
 target sync healthy, the retained runtime snapshot now drops out of `online`
 truth and surfaces that control-plane error instead of continuing to claim a
 healthy online state.
@@ -932,8 +957,11 @@ cargo pylon-headless serve
 
 Important:
 
+- bare `pylon` / `cargo pylon` initializes local state, forces desired mode to
+  `online`, and then enters the same long-running service loop.
 - `pylon serve` does not implicitly force the node online.
-- lifecycle is explicit; use `pylon online` / `offline` / `pause` / `resume`
+- lifecycle is explicit for `serve`; use `pylon online` / `offline` / `pause` /
+  `resume` when you manage `serve` directly under a service manager.
 - status should show `unconfigured`, `ready`, `online`, `paused`, `draining`, `degraded`, `offline`, or `error` truthfully
 - when sandbox supply is declared, `status`, `backends`, `sandbox`, `jobs`, and `receipts` should surface execution classes, profile IDs, termination reasons, and failure reasons without inventing a separate sandbox-only provider model
 - `cargo run -p pylon -- <command>` remains a direct fallback if you do not want the alias
@@ -974,17 +1002,23 @@ The generated config currently includes:
 
 `Pylon` is service-style. The simplest supported operational pattern is:
 
-1. initialize once with `cargo pylon-headless init`
-2. set desired mode explicitly with `cargo pylon-headless online` or `cargo pylon-headless offline`
-3. run `cargo pylon-headless serve` under a local service manager
-4. use `cargo pylon-headless status`, `backends`, `products`, `inventory`, `jobs`, `earnings`, `receipts`, and `activity` for observability
-5. use `cargo pylon-headless sandbox` when you need the declared runtime/profile view for bounded `sandbox_execution`
+1. run `pylon` from an installed binary, or `cargo pylon` from a source checkout
+2. keep that process online for all relevant jobs
+3. use `pylon status`, `backends`, `products`, `inventory`, `jobs`, `earnings`, `receipts`, and `activity` for observability
+4. use `pylon sandbox` when you need the declared runtime/profile view for bounded `sandbox_execution`
 
-While desired mode is `online`, the long-running `serve` loop is the normal
-operator path: it refreshes status, heartbeats provider presence, keeps the
-announcement current, and runs short automatic provider-intake passes against
-the configured relays. `provider run --seconds <n>` remains a manual one-shot
-pass rather than the normal way to keep an online node serving jobs.
+The explicit service-manager pattern remains available for operators who want a
+split lifecycle:
+
+1. initialize once with `pylon init`
+2. set desired mode explicitly with `pylon online` or `pylon offline`
+3. run `pylon serve` under the service manager
+
+While desired mode is `online`, the long-running loop refreshes status,
+heartbeats provider presence, keeps the announcement current, and runs short
+automatic provider and training-intake passes. `provider run --seconds <n>`
+remains a manual one-shot pass rather than the normal way to keep an online
+node serving jobs.
 
 The plain-text `jobs` view is intentionally terminal-oriented: it prints older
 jobs first so the newest completed block lands closest to the shell prompt.
@@ -1003,7 +1037,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/path/to/openagents
 Environment=OPENAGENTS_PYLON_HOME=/var/lib/openagents/pylon
-ExecStart=/usr/bin/env cargo pylon-headless serve
+ExecStart=/usr/bin/env pylon
 Restart=on-failure
 RestartSec=5
 
@@ -1013,7 +1047,7 @@ WantedBy=multi-user.target
 
 ### `launchd` / user-session guidance
 
-On macOS, run the same `cargo pylon-headless serve` command under `launchd`, `tmux`, or another persistent user-session manager. The operational requirement is explicit lifecycle control plus a stable long-running `serve` process, not a specific packaging format.
+On macOS, run the same `pylon` command under `launchd`, `tmux`, or another persistent user-session manager. The operational requirement is a stable long-running online Pylon process, not a specific packaging format. Use the split `pylon online` plus `pylon serve` pattern only when you intentionally want lifecycle control outside the default entrypoint.
 
 The current binary-first distribution lane is GitHub Releases with per-platform archives. Source checkout plus Cargo remains the fallback for unsupported platforms and local development.
 
