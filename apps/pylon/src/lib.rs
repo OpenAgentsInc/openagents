@@ -10319,6 +10319,7 @@ fn training_lease_claim_error_is_nonfatal(error: &str) -> bool {
         || error.contains("training_scheduler_starter_work_unavailable")
         || error.contains("training_node_not_eligible")
         || error.contains("training_scheduler_role_overlap_forbidden")
+        || error.contains("training_scheduler_self_validation_forbidden")
 }
 
 fn retire_stale_retained_training_assignment(
@@ -26154,11 +26155,12 @@ mod tests {
         sync_provider_payout_target_with_report, sync_training_authority_state,
         sync_training_terminal_runtime_once, training_artifact_digest_from_locator_payload,
         training_artifact_resolved_cache_key, training_download_cache_root,
-        training_raw_sha256_hex, training_retained_assignment_authority_error_is_stale,
-        training_run_root_for_id, training_runs_root, training_runtime_manifest_path_for_run,
-        training_runtime_state_path, training_settlement_destination,
-        training_supervisor_pid_is_running, training_validator_challenge_path_segment,
-        training_validator_challenge_root, watch_buyer_jobs, write_training_json_value,
+        training_lease_claim_error_is_nonfatal, training_raw_sha256_hex,
+        training_retained_assignment_authority_error_is_stale, training_run_root_for_id,
+        training_runs_root, training_runtime_manifest_path_for_run, training_runtime_state_path,
+        training_settlement_destination, training_supervisor_pid_is_running,
+        training_validator_challenge_path_segment, training_validator_challenge_root,
+        watch_buyer_jobs, write_training_json_value,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -28091,6 +28093,17 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     PylonTrainingRoleClaim::Validator,
                 ],
             "bare pylon should prefer paid worker training before unrelated validation backlog",
+        )
+    }
+
+    #[test]
+    fn training_lease_claim_error_treats_self_validation_as_nonfatal()
+    -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            training_lease_claim_error_is_nonfatal(
+                r#"{"error":"kernel_error","reason":"training_scheduler_self_validation_forbidden"}"#,
+            ),
+            "validator self-validation rejections should not abort worker assignment intake",
         )
     }
 
