@@ -146,6 +146,17 @@ installed `pylon`, download the matching GitHub release asset, and then run the
 bare `pylon` command. Server-side Nexus changes alone do not prove the public
 onboarding claim.
 
+If `03-configure-and-start.sh` gets stuck in `Waiting for post-deploy payout
+smoke`, do not assume the image failed and do not blindly add funds first.
+Inspect `GET /v1/treasury/status`, especially `active_continuity_alerts`,
+`training_payout_ledger_summary`, and `recent_training_payouts`. During the
+Issue #4413 proof, the service was healthy on the new image but smoke waited
+because an accepted-work payout was still queued. The root cause was not the
+container startup path; it was treasury dispatch accounting that treated
+already confirmed 24-hour payouts as current wallet reservations. Confirmed
+payouts should count against the daily cap, while only `dispatching` and
+`dispatched` payouts should reserve the current wallet balance.
+
 After editing release scripts, run at least:
 
 ```bash

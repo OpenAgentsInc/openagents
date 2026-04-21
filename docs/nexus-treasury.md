@@ -694,6 +694,11 @@ Continuity alerts:
   continuity is judged from payout classes that still matter under the active
   policy, especially `accepted_work`; an accepted-work payout stuck in queued,
   dispatching, or dispatched state still raises the critical alert.
+- Treasury dispatch separates current wallet reservation from daily-budget
+  accounting. `confirmed` payouts from the last 24 hours still count against
+  `daily_budget_cap_sats`, but they do not reserve the wallet's current
+  spendable balance. Only in-flight `dispatching` and `dispatched` records
+  reserve current wallet balance for subsequent dispatch decisions.
 - The deploy verifier treats stale wallet sync as non-fatal only when the
   wallet runtime is connected and there are no accepted-work payouts awaiting
   reconciliation. That matches the runtime loop, which intentionally avoids

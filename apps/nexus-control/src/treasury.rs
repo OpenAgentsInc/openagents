@@ -3472,8 +3472,9 @@ impl TreasuryState {
         &mut self,
         policy: &TreasuryRuntimePolicy,
         now_unix_ms: u64,
-        reserved_budget_sats: &mut u64,
-    ) -> Vec<TreasuryDispatchPlan> {
+        reserved_wallet_sats: &mut u64,
+        committed_daily_budget_sats: &mut u64,
+    ) -> (Vec<TreasuryDispatchPlan>, bool) {
         let mut queued = self
             .payout_records_by_key
             .values()
@@ -3498,6 +3499,7 @@ impl TreasuryState {
         queued.sort();
 
         let mut dispatch_plans = Vec::new();
+        let mut changed = false;
         for (_, _, _, _, payout_key) in queued {
             let Some(record) = self.payout_records_by_key.get_mut(payout_key.as_str()) else {
                 continue;
@@ -3505,7 +3507,11 @@ impl TreasuryState {
             if policy.placeholder_payout_mode == TreasuryPlaceholderPayoutMode::Disabled
                 && !record.classification.accepted_work()
             {
-                record.reason = Some("placeholder_payouts_disabled".to_string());
+                if record.reason.as_deref() != Some("placeholder_payouts_disabled") {
+                    record.reason = Some("placeholder_payouts_disabled".to_string());
+                    record.updated_at_unix_ms = now_unix_ms;
+                    changed = true;
+                }
                 continue;
             }
             let Some(target) = self
@@ -3513,36 +3519,55 @@ impl TreasuryState {
                 .get(record.nostr_pubkey_hex.as_str())
                 .cloned()
             else {
-                record.reason = Some("missing_payout_target".to_string());
+                if record.status != "skipped"
+                    || record.reason.as_deref() != Some("missing_payout_target")
+                {
+                    record.status = "skipped".to_string();
+                    record.reason = Some("missing_payout_target".to_string());
+                    record.updated_at_unix_ms = now_unix_ms;
+                    record.skip_receipt_recorded = true;
+                    changed = true;
+                }
                 continue;
             };
             if record.amount_sats
                 > self
                     .wallet_balance_sats
-                    .saturating_sub(*reserved_budget_sats)
+                    .saturating_sub(*reserved_wallet_sats)
             {
-                record.reason = Some("wallet_balance_insufficient".to_string());
+                if record.reason.as_deref() != Some("wallet_balance_insufficient") {
+                    record.reason = Some("wallet_balance_insufficient".to_string());
+                    record.updated_at_unix_ms = now_unix_ms;
+                    changed = true;
+                }
                 continue;
             }
             if policy.daily_budget_cap_sats > 0
-                && reserved_budget_sats.saturating_add(record.amount_sats)
+                && committed_daily_budget_sats.saturating_add(record.amount_sats)
                     > policy.daily_budget_cap_sats
             {
-                record.reason = Some("daily_budget_cap_reached".to_string());
+                if record.reason.as_deref() != Some("daily_budget_cap_reached") {
+                    record.reason = Some("daily_budget_cap_reached".to_string());
+                    record.updated_at_unix_ms = now_unix_ms;
+                    changed = true;
+                }
                 continue;
             }
-            *reserved_budget_sats = reserved_budget_sats.saturating_add(record.amount_sats);
+            *reserved_wallet_sats = reserved_wallet_sats.saturating_add(record.amount_sats);
+            *committed_daily_budget_sats =
+                committed_daily_budget_sats.saturating_add(record.amount_sats);
             record.payout_target = target.spark_address.clone();
             record.status = "dispatching".to_string();
             record.reason = None;
             record.updated_at_unix_ms = now_unix_ms;
+            changed = true;
             dispatch_plans.push(TreasuryDispatchPlan {
                 payout_key,
                 payment_request: target.spark_address,
                 amount_sats: record.amount_sats,
             });
         }
-        dispatch_plans
+        (dispatch_plans, changed)
     }
 
     pub fn prepare_due_payouts(
@@ -3564,10 +3589,16 @@ impl TreasuryState {
             };
         }
 
-        let mut reserved_budget_sats = self.reserved_budget_last_24h(now_unix_ms);
-        let mut dispatch_plans =
-            self.claim_queued_payouts_for_dispatch(&policy, now_unix_ms, &mut reserved_budget_sats);
-        changed |= !dispatch_plans.is_empty();
+        let mut reserved_wallet_sats = self.reserved_wallet_outstanding_sats();
+        let mut committed_daily_budget_sats =
+            self.committed_daily_budget_sats_last_24h(now_unix_ms);
+        let (mut dispatch_plans, queued_claim_changed) = self.claim_queued_payouts_for_dispatch(
+            &policy,
+            now_unix_ms,
+            &mut reserved_wallet_sats,
+            &mut committed_daily_budget_sats,
+        );
+        changed |= queued_claim_changed;
         if online_identities.is_empty() {
             if changed {
                 self.refresh_public_snapshot(config, now_unix_ms);
@@ -3774,7 +3805,7 @@ impl TreasuryState {
                     }
 
                     if policy.daily_budget_cap_sats > 0
-                        && reserved_budget_sats.saturating_add(policy.payout_sats_per_window)
+                        && committed_daily_budget_sats.saturating_add(policy.payout_sats_per_window)
                             > policy.daily_budget_cap_sats
                     {
                         let record = TreasuryPayoutRecord {
@@ -3809,8 +3840,8 @@ impl TreasuryState {
                         continue;
                     }
 
-                    reserved_budget_sats =
-                        reserved_budget_sats.saturating_add(policy.payout_sats_per_window);
+                    committed_daily_budget_sats =
+                        committed_daily_budget_sats.saturating_add(policy.payout_sats_per_window);
                     self.payout_records_by_key.insert(
                         payout_key.clone(),
                         TreasuryPayoutRecord {
@@ -4162,7 +4193,16 @@ impl TreasuryState {
         self.last_persistence_error.clone()
     }
 
-    fn reserved_budget_last_24h(&self, now_unix_ms: u64) -> u64 {
+    fn reserved_wallet_outstanding_sats(&self) -> u64 {
+        self.payout_records_by_key
+            .values()
+            .filter(|record| matches!(record.status.as_str(), "dispatching" | "dispatched"))
+            .fold(0u64, |total, record| {
+                total.saturating_add(record.amount_sats)
+            })
+    }
+
+    fn committed_daily_budget_sats_last_24h(&self, now_unix_ms: u64) -> u64 {
         let cutoff = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
         self.payout_records_by_key
             .values()
@@ -7834,6 +7874,89 @@ mod tests {
         assert_eq!(accepted_work.status, "dispatching");
         assert!(accepted_work.classification.accepted_work());
         assert_eq!(state.payout_records_by_key.len(), 1);
+    }
+
+    #[test]
+    fn accepted_work_wallet_reservation_ignores_already_confirmed_spend() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
+        config.daily_budget_cap_sats = 1_000_000;
+        state.wallet_balance_sats = 3;
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let now_unix_ms = super::now_unix_ms();
+        state.payout_records_by_key.insert(
+            "accepted-work:already-confirmed".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "accepted-work:already-confirmed".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 10,
+                status: "confirmed".to_string(),
+                reason: None,
+                payment_id: Some("payment-already-confirmed".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(1_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(999),
+                created_at_unix_ms: now_unix_ms.saturating_sub(1_000),
+                updated_at_unix_ms: now_unix_ms.saturating_sub(1_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: true,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: true,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("accepted.already-confirmed".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+        state.queue_payout_requests(
+            &config,
+            &[TreasuryQueuedPayoutRequest {
+                payout_key: "accepted-work:new-one-sat".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                amount_sats: 1,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms.saturating_add(1),
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("accepted.new-one-sat".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+                queue_block_reason: None,
+            }],
+            now_unix_ms,
+        );
+
+        let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms.saturating_add(1));
+
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(
+            prepared.dispatch_plans[0].payout_key,
+            "accepted-work:new-one-sat"
+        );
+        assert_eq!(prepared.dispatch_plans[0].amount_sats, 1);
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:alice");
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get("accepted-work:new-one-sat")
+                .map(|record| (record.status.as_str(), record.reason.as_deref())),
+            Some(("dispatching", None))
+        );
     }
 
     #[test]
