@@ -3,7 +3,7 @@
 Bootstrap the latest tagged standalone `Pylon` release asset from GitHub
 Releases, fall back to a deterministic source build when no matching asset
 exists for the local platform, stream first-run status updates in the terminal,
-and open the Pylon terminal UI without Cargo when prebuilt binaries are
+and start the Pylon default earning loop without Cargo when prebuilt binaries are
 available.
 
 ## Usage
@@ -51,7 +51,8 @@ The launcher:
   itself
 - falls back to `curl` for release metadata and asset downloads when the Node
   fetch path fails in constrained network contexts
-- opens `pylon-tui` by default after the smoke path unless `--no-launch` is set
+- starts the installed `pylon` earning loop by default after the smoke path
+  unless `--no-launch` is set
 - does not try to install or register a local runtime automatically; the
   bootstrap stays honest about the separate Ollama-compatible runtime
   prerequisite instead of mutating the host behind the user's back

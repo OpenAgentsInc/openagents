@@ -72,7 +72,7 @@ async function withCapturedConsole(run) {
   return { ...result, logs, errors };
 }
 
-test("parseArgs defaults to launching the TUI", () => {
+test("parseArgs defaults to launching pylon", () => {
   const options = parseArgs([]);
 
   expect(options.help).toBe(false);
@@ -92,7 +92,7 @@ test("parseArgs supports explicit cache download and verbose network flags", () 
   expect(options.verbose).toBe(true);
 });
 
-test("main launches pylon-tui by default after bootstrap", async () => {
+test("main launches pylon by default after bootstrap", async () => {
   const calls = [];
   const telemetry = createTelemetryRecorder();
 
@@ -123,7 +123,7 @@ test("main launches pylon-tui by default after bootstrap", async () => {
         });
         return BASE_SUMMARY;
       },
-      launchInstalledPylonTuiImpl: async (options) => {
+      launchInstalledPylonImpl: async (options) => {
         calls.push({
           step: "launch",
           options,
@@ -175,7 +175,7 @@ test("main prints a warning verdict when bootstrap completes without a usable ru
           },
         },
       }),
-      launchInstalledPylonTuiImpl: async () => {
+      launchInstalledPylonImpl: async () => {
         throw new Error("launch should be skipped");
       },
     }),
@@ -186,7 +186,7 @@ test("main prints a warning verdict when bootstrap completes without a usable ru
   );
 });
 
-test("main skips TUI launch when --no-launch is set", async () => {
+test("main skips pylon launch when --no-launch is set", async () => {
   const calls = [];
   const telemetry = createTelemetryRecorder();
 
@@ -195,7 +195,7 @@ test("main skips TUI launch when --no-launch is set", async () => {
       telemetryClient: telemetry.client,
       ensureReleaseInstallImpl: async () => BASE_INSTALL,
       bootstrapInstalledPylonImpl: async () => BASE_SUMMARY,
-      launchInstalledPylonTuiImpl: async () => {
+      launchInstalledPylonImpl: async () => {
         calls.push("launch");
         return { stdout: "", stderr: "" };
       },
@@ -203,7 +203,7 @@ test("main skips TUI launch when --no-launch is set", async () => {
   );
 
   expect(calls).toEqual([]);
-  expect(logs.some((line) => line.includes("Skipped Pylon terminal UI launch"))).toBe(
+  expect(logs.some((line) => line.includes("Skipped Pylon launch"))).toBe(
     true,
   );
 });

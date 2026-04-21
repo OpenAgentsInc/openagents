@@ -6,7 +6,7 @@ import {
   DEFAULT_RELEASE_REPO,
   bootstrapInstalledPylon,
   ensureReleaseInstall,
-  launchInstalledPylonTui,
+  launchInstalledPylon,
   resolveBootstrapOutcome,
   resolvePlatformTarget,
   renderBootstrapSummary,
@@ -83,7 +83,7 @@ Description:
   or a specific tagged Pylon version when --version is set. If no matching
   asset exists for the local platform, fetch the exact tagged source checkout
   and build it locally instead. Cache the binaries, run the first-run smoke
-  path, and then open the Pylon terminal UI by default with live status
+  path, and then start the Pylon default earning loop by default with live status
   updates. The launcher checks GitHub for newer tagged pylon-v... releases on
   each default run, but only caches the standalone binaries under the local
   bootstrap root; it does not replace your global npm or bun pylon command.
@@ -97,14 +97,14 @@ Options:
                                        prefetch into the local GGUF cache.
                                        Default: ${DEFAULT_MODEL_ID}
   --download-curated-cache             Prefetch the optional Hugging Face GGUF
-                                       cache before opening the TUI.
+                                       cache before launching pylon.
   --diagnostic-repeats <n>             Repeat count for pylon gemma diagnose.
                                        Default: ${DEFAULT_DIAGNOSTIC_REPEATS}
   --diagnostic-max-output-tokens <n>   Max output tokens for diagnostics.
                                        Default: ${DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS}
   --skip-model-download                Keep the curated GGUF cache skipped.
   --skip-diagnostics                   Skip pylon gemma diagnose.
-  --no-launch                          Do not open pylon-tui after bootstrap.
+  --no-launch                          Do not start pylon after bootstrap.
   --verbose                            Print extra network and recovery detail.
   --debug-network                      Alias for --verbose.
   --json                               Emit a machine-readable JSON summary.
@@ -227,7 +227,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   const {
     ensureReleaseInstallImpl = ensureReleaseInstall,
     bootstrapInstalledPylonImpl = bootstrapInstalledPylon,
-    launchInstalledPylonTuiImpl = launchInstalledPylonTui,
+    launchInstalledPylonImpl = launchInstalledPylon,
     createTelemetryClientImpl = createTelemetryClient,
   } = dependencies;
   const options = parseArgs(argv);
@@ -308,7 +308,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
       }
       console.log(renderBootstrapSummary(summary));
       if (!options.noLaunch) {
-        await launchInstalledPylonTuiImpl(
+        await launchInstalledPylonImpl(
           {
             ...options,
             ...install,
@@ -321,8 +321,8 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
         );
       } else {
         reporter?.warning(
-          "Skipped Pylon terminal UI launch",
-          "pass no flag to open pylon-tui by default",
+          "Skipped Pylon launch",
+          "pass no flag to start the default earning loop",
         );
       }
     }

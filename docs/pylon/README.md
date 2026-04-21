@@ -340,7 +340,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.1.4
+npx @openagentsinc/pylon --version 0.1.5
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
@@ -430,25 +430,31 @@ target, asks Nexus for available work, and receives CS336 Assignment 1 starter
 work when that is the currently hosted starter lane available to the node.
 
 The minimum public paid-training Pylon release for this path is
-`pylon-v0.1.4`, exposed through `@openagentsinc/pylon` `0.1.4`. That release
-contains the bare `pylon` online earning loop, the public-safe signed-artifact
-path, accepted-work payout projection, and the nonfatal self-validation lease
-handling needed for a normal node that advertises both worker and validator
-roles. Older releases may still bring up local Gemma inference, but they are
-not sufficient proof for hosted CS336 earning. If `npx @openagentsinc/pylon`
-resolves an older version, update before testing paid training. If a platform
-does not yet have a matching `pylon-v0.1.4` release asset, use the npm
-bootstrap source fallback or a newer official release that includes these same
-paid-training guarantees.
+`pylon-v0.1.5`, exposed through `@openagentsinc/pylon` `0.1.5`. That release
+contains the bare `pylon` online earning loop, the package bootstrap behavior
+that launches that earning loop instead of dropping into the TUI, the
+public-safe signed-artifact path, accepted-work payout projection, validator
+intake enabled by default, validator-first/worker-second default role claims,
+and the nonfatal scheduler-error handling needed for a normal node that
+advertises both worker and validator roles. Older releases may still bring up
+local Gemma inference, and `pylon-v0.1.4` proved public install plus worker
+artifact sealing, but they are not sufficient proof for hosted CS336 earning
+because they can leave validator challenges queued or route npm users into the
+TUI instead of the earning loop. If `npx @openagentsinc/pylon` resolves an
+older version, update before testing paid training. If a platform does not yet
+have a matching `pylon-v0.1.5` release asset, use the npm bootstrap source
+fallback or a newer official release that includes these same paid-training
+guarantees.
 
 That Pylon version is necessary but not sufficient. Hosted starter work also
-requires production Nexus to run `da4ef2961` or a later commit with the hosted
-starter targeting fix: the auto-launched starter lane must target online Pylons
-by `min_pylon_version=0.1.4` and must not require the provider's build digest
-to match the Nexus service build. If Nexus is older, a public `pylon-v0.1.4`
-node can come online correctly and still see
-`training_scheduler_starter_work_unavailable` instead of receiving work.
-Treat that as a Nexus deployment/readiness problem, not a user opt-in problem.
+requires production Nexus to run the corresponding hosted-starter fix set: the
+auto-launched starter lane must target online Pylons by
+`min_pylon_version=0.1.5`, must not require the provider's build digest to
+match the Nexus service build, and must skip exhausted or sealed starter runs
+instead of returning `training_scheduler_run_not_schedulable` to the default
+Pylon loop. If Nexus is older, a public `pylon-v0.1.5` node can come online
+correctly and still fail to receive fresh starter work. Treat that as a Nexus
+deployment/readiness problem, not a user opt-in problem.
 
 For public paid-training onboarding, the user command remains only `pylon`.
 Do not ask the user to run a CS336-specific opt-in command, do not ask for
@@ -576,7 +582,7 @@ wants duplicated starter work. It still pays only accepted homework closeouts:
 launching a run does not send sats, and periodic placeholder or liveness
 payouts must remain disabled for this claim. The default pacing contract is one
 fresh run, one contributor per run, one sat per accepted contribution, online
-nodes only, `min_pylon_version=0.1.4`, and no active-run reuse. Operators can
+nodes only, `min_pylon_version=0.1.5`, and no active-run reuse. Operators can
 raise `run_count`, `max_contributors_per_run`, or `amount_sats` in cron while
 using `total_budget_sats` as a per-call cap.
 

@@ -68,7 +68,7 @@ by the default hosted Pylon starter lane. Defaults are conservative:
 - `amount_sats=1`
 - `reuse_existing_run=false`
 - `only_online=true`
-- `min_pylon_version=0.1.4`
+- `min_pylon_version=0.1.5`
 - `require_updated_build=false`
 - `window_duration_seconds=1800`
 
