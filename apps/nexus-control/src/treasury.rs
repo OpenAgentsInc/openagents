@@ -4196,7 +4196,7 @@ impl TreasuryState {
     fn reserved_wallet_outstanding_sats(&self) -> u64 {
         self.payout_records_by_key
             .values()
-            .filter(|record| matches!(record.status.as_str(), "dispatching" | "dispatched"))
+            .filter(|record| record.status == "dispatching")
             .fold(0u64, |total, record| {
                 total.saturating_add(record.amount_sats)
             })
@@ -7877,7 +7877,7 @@ mod tests {
     }
 
     #[test]
-    fn accepted_work_wallet_reservation_ignores_already_confirmed_spend() {
+    fn accepted_work_wallet_reservation_ignores_confirmed_and_dispatched_spend() {
         let mut state = TreasuryState::default();
         let mut config = test_treasury_config();
         config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
@@ -7921,6 +7921,29 @@ mod tests {
                     accepted_outcome_id: Some("accepted.already-confirmed".to_string()),
                     ..TreasuryPayoutClassification::default()
                 },
+            },
+        );
+        state.payout_records_by_key.insert(
+            "placeholder:already-dispatched".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "placeholder:already-dispatched".to_string(),
+                nostr_pubkey_hex: "pubkey-placeholder".to_string(),
+                payout_target: "spark:placeholder".to_string(),
+                amount_sats: 48,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("payment-already-dispatched".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(500),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(499),
+                created_at_unix_ms: now_unix_ms.saturating_sub(500),
+                updated_at_unix_ms: now_unix_ms.saturating_sub(500),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
             },
         );
         state.queue_payout_requests(

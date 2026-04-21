@@ -153,9 +153,10 @@ Inspect `GET /v1/treasury/status`, especially `active_continuity_alerts`,
 Issue #4413 proof, the service was healthy on the new image but smoke waited
 because an accepted-work payout was still queued. The root cause was not the
 container startup path; it was treasury dispatch accounting that treated
-already confirmed 24-hour payouts as current wallet reservations. Confirmed
-payouts should count against the daily cap, while only `dispatching` and
-`dispatched` payouts should reserve the current wallet balance.
+already confirmed 24-hour payouts and old `dispatched` rows as current wallet
+reservations. Confirmed and already-`dispatched` payouts should count against
+the daily cap and reconciliation surfaces, while only `dispatching` payouts
+should reserve the current wallet balance.
 
 After editing release scripts, run at least:
 
@@ -180,6 +181,120 @@ PATH="$old_path"
 
 Never paste raw bearer tokens, wallet mnemonics, or API keys into runbooks,
 issue comments, receipts, or normal terminal output.
+
+### 3.2) Issue #4413 live proof checklist
+
+This checklist captures the operational mistakes and recovery path from the
+Issue #4413 Pylon public-onboarding and CS336 homework payout proof. Use it
+before handing future agents a live Nexus deploy or issue-closeout thread.
+
+Start from the ownership rule, not from whatever worktree happens to be open.
+Issue #4413 touched public Pylon onboarding, Nexus training dispatch, and live
+treasury payout continuity, so the closeout required all of these to be true at
+the same time:
+
+- the public Pylon version was released as both GitHub release assets and an
+  npm bootstrap version
+- the exact code being deployed was pushed to `origin/main`
+- the Nexus image was built from that pushed commit
+- the production service was restarted onto that exact image
+- a user-style `pylon` invocation, not a source-tree shortcut, claimed and
+  completed real homework work against production
+- the accepted-work payout reached live treasury dispatch and reconciliation
+  surfaces
+
+Do not close the issue from a feature branch, detached worktree, or local-only
+proof. Branch work is evidence, not completion.
+
+Keep the Pylon proof public-style. The proof command should be as close as
+possible to what a real user runs: install via `npx @openagentsinc/pylon` or
+the already-installed `pylon`, then run bare `pylon`. Avoid proving success
+with `cargo run`, repo-local aliases, or manually seeded state unless the issue
+explicitly asks for a source-developer lane. For the `0.1.6` release proof, the
+minimum acceptable public binary version was `0.1.6`; older binaries lacked the
+worker-first retained-training behavior needed to accept hosted homework jobs
+by default.
+
+If the live service has a wallet balance but accepted-work payouts remain
+queued, inspect the payout record classes before assuming the wallet needs more
+funding. In Issue #4413 the wallet had enough sats for the next 1-sat homework
+payout, but old rows made the dispatcher believe the spendable balance was
+already reserved. The correct split is:
+
+- `dispatching` rows reserve current wallet balance because the send is still
+  actively in flight
+- `dispatched` rows are reconciliation work and should not reserve spendable
+  balance forever
+- `confirmed` rows count against the daily budget cap but do not reserve
+  current spendable balance
+
+When `03-configure-and-start.sh` waits on payout smoke, check these live fields
+before changing code or adding funds:
+
+```bash
+old_path="$PATH"
+set -a
+source /Users/christopherdavid/work/.secrets/nexus-admin.env
+set +a
+PATH="$old_path"
+
+token="${NEXUS_ADMIN_BEARER_TOKEN:-${NEXUS_CONTROL_ADMIN_BEARER_TOKEN:-}}"
+curl -fsS -H "Authorization: Bearer ${token}" \
+  https://nexus.openagents.com/v1/treasury/status |
+  jq '{
+    wallet_balance_sats,
+    wallet_runtime_status,
+    placeholder_payout_mode,
+    accepted: .training_payout_ledger_summary.accepted_work,
+    alerts: .active_continuity_alerts,
+    recent_training_payouts
+  }'
+```
+
+On the VM, inspect only summary state by default. Do not dump secrets or full
+wallet material:
+
+```bash
+gcloud compute ssh nexus-mainnet-1 \
+  --tunnel-through-iap \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --command 'systemctl is-active nexus-relay; sudo docker ps --filter name=nexus-relay --format "{{.Image}} {{.Status}}"'
+```
+
+If the deploy wrapper is about to roll back but the service is known-good and
+the remaining problem is a diagnosed treasury logic bug or data-state blocker,
+stop and fix the bug rather than letting an unrelated rollback obscure the
+active image. Record the active image digest and service state in the issue
+comment or proof report before proceeding.
+
+For final proof, prefer a fresh isolated proof root so stale local Pylon state
+cannot satisfy the run accidentally:
+
+```bash
+PROOF_ROOT="var/proof/issue-4413-public-prod-016-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "${PROOF_ROOT}/logs"
+HOME="${PWD}/${PROOF_ROOT}/home" \
+OPENAGENTS_DISABLE_TELEMETRY=1 \
+npx --yes @openagentsinc/pylon@0.1.6 --version 0.1.6 \
+  --pylon-home "${PWD}/${PROOF_ROOT}/home/.openagents/pylon" \
+  --install-root "${PWD}/${PROOF_ROOT}/install" \
+  --skip-diagnostics \
+  --no-launch \
+  --json | tee "${PROOF_ROOT}/bootstrap.json"
+
+PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.6-darwin-arm64"
+HOME="${PWD}/${PROOF_ROOT}/home" \
+OPENAGENTS_DISABLE_TELEMETRY=1 \
+PATH="${PYLON_DIR}:${PATH}" \
+pylon 2>&1 | tee "${PROOF_ROOT}/logs/pylon-bare.log"
+```
+
+The final issue-closeout comment should name the deployed commit, image tag or
+digest, Pylon version, training run id, node pubkey, accepted outcome, payout
+record or payment id when available, and the verification commands or receipts
+that prove those facts. If any of those are missing, the issue is not honestly
+closed yet.
 
 `sccache` remains optional. The current fallback path leaves it off until the
 Cloud Build image lane is proven stable with it enabled:
