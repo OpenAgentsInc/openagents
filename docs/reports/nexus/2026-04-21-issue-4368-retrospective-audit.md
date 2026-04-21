@@ -1629,3 +1629,73 @@ confirmed": a pushed `main` commit, a registry image built from that commit, a
 scripted production deploy, passing gates without hot state rewrites, a fresh
 public-style Pylon run from the minimum public release, accepted homework work,
 and a confirmed accepted-work payout.
+
+## Addendum: issue 4413 public Pylon earning proof completed
+
+Date: 2026-04-21
+
+The final production closeout used the pushed `main` commit
+`2a7986b42d77e9210bbb873d6df550ebbaee02e8` and the production image
+`us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:2a7986b42d77`.
+That image was built by the canonical Cloud Build script, deployed through the
+canonical Nexus deploy script, and verified by the canonical deploy gates. The
+tracked receipts are
+`docs/reports/nexus/20260421-220923-cloudbuild-image-2a7986b42d77.json` and
+`docs/reports/nexus/20260421-221747-deploy-receipt.json`. After the deploy,
+the treasury state file remained compact, the hot write loop stopped after
+startup compaction, and the gate script passed instead of hiding the issue by
+relaxing latency thresholds.
+
+The public Pylon proof used the shipped public package
+`@openagentsinc/pylon@0.1.7`, resolving tag `pylon-v0.1.7` with
+`installMethod=release_asset` and `cached=false`. The first proof attempt
+intentionally isolated `HOME` as well as Pylon state, which exposed a useful
+operator lesson: a synthetic `HOME` also hides the user's Rust toolchain from
+`rustup`, so `psionic-train` exits before doing any work even though Pylon can
+discover the sibling `psionic` checkout from the workspace. The successful
+proof kept Pylon state isolated with `OPENAGENTS_PYLON_HOME` and
+`OPENAGENTS_PYLON_CONFIG_PATH` but used the normal user `HOME`, matching the
+way a real local user has Rust and the local training runtime installed. The
+user-facing command after bootstrap was still bare `pylon`; there was no
+CS336-specific command, direct GCS credential, or operator-only Nexus credential
+in the worker Pylon environment.
+
+The worker Pylon came online from fresh state, created a local Spark payout
+destination, and the admin-paced homework dispatch endpoint was also exercised
+against production. Nexus matched the online Pylon at pubkey
+`8cf8a9a1878a6db868d8f9be4bc623c4617ecd9ccab915b3b4db3f4d1763651d`. Because
+the production starter path also auto-launched work for online
+paid-training-capable Pylons, the worker produced several sealed homework
+windows. A second fresh public Pylon was run as validator-only on distinct
+local ports (`127.0.0.1:9469` for admin and `127.0.0.1:9571` for checkpoint
+serving) so pending validation windows could close without relying on a hidden
+manual operator reconcile. The validator reached `validator_finalized`, Nexus
+reconciled accepted outcomes, and Treasury created accepted-work payouts only
+after accepted closeout.
+
+The final payment proof is stronger than "Nexus says dispatched." Treasury
+status showed zero accepted-work payouts pending, zero accepted-work payouts
+needing attention, no active continuity alerts, and confirmed settled payout
+records for the worker's accepted outcomes. The worker's own Pylon wallet then
+showed `100` sats total and four completed receive records of `25` sats each:
+`019db229-bb3f-79b1-b38b-6f00c21a7b24`,
+`019db229-4c39-7ea1-aa56-c9abf26c7672`,
+`019db228-cd41-7262-bf84-8e5b93afa2f6`, and
+`019db228-52ba-7a42-be79-a394ef5838e9`. The corresponding Treasury records
+were `confirmed` with `reconciliation_status=settled` and payout class
+`accepted_work`, not placeholder or liveness payment. The tracked proof receipt
+with the exact run ids, accepted outcome ids, contribution ids, and payment ids
+is `docs/reports/nexus/20260421-223232-issue-4413-public-pylon-proof.json`.
+
+This closes the narrow original launch claim in the form that is currently
+true: a local operator can install/update to Pylon `0.1.7`, run `pylon`, stay
+online for available hosted starter training work, complete accepted homework
+work, and receive Bitcoin in the Pylon wallet. It does not prove a broad
+permissionless training marketplace, arbitrary assignments, GPU rental, or a
+dashboard-login flow. It also does not remove the operational prerequisite that
+this local training lane needs an installed Rust toolchain and a discoverable
+compatible `psionic` runtime checkout until that runtime is bundled into the
+standalone release. Future product/docs work should make that prerequisite
+explicit or eliminate it, but it no longer blocks the issue 4413 proof because
+the system paid a fresh public Pylon for real accepted hosted training work in
+production.

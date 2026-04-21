@@ -140,6 +140,8 @@ Default to:
   documented funding-target endpoint instead of touching wallet files directly:
   `POST https://nexus.openagents.com/v1/treasury/funding-target` with JSON such
   as `{"amount_sats":50000,"description":"OpenAgents Nexus treasury funding","expiry_seconds":3600}`.
+  The detailed future-agent runbook is
+  `docs/deploy/NEXUS_TREASURY_FUNDING_INVOICE_RUNBOOK.md`.
   The response field `bolt11_invoice` is the invoice to give the payer. Do not
   treat invoice creation, a funding-target HTTP 504, or a small cached balance
   movement as proof that the invoice was paid. Payment proof requires
