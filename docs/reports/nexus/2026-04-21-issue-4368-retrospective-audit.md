@@ -291,6 +291,160 @@ ledger of what has been proven. `main` is the only branch that counts for
 completion. Production Nexus is the final settlement confirmation surface, not
 the general-purpose test harness.
 
+## Transcript 221-225 comparison
+
+After re-reading `docs/transcripts/221.md` through `docs/transcripts/225.md`,
+the public claim sequence is clear. Episode 221 introduced Pylon as a compute
+miner that sits on a user's computer, talks to Nexus, participates in a
+Nostr/NIP-90-style open network, and lets the user sell a subset of local
+compute for Bitcoin. Episode 222 moved that from generic compute into the
+distributed-training launch story: the existing online/liveness payouts were
+described as a placeholder used to line up supply, and the next step was to
+send real pieces of a decentralized training run to Pylons. Episode 223 made
+the same economic argument more directly: pay the people, use Bitcoin, use
+consumer Macs and GPUs instead of only datacenter-class hardware, and build
+the revenue-sharing path that large AI labs had failed to deliver. Episode 224
+is the specific homework episode. It says the network is no longer paying for
+being online, describes the Stanford "language models from scratch" assignment
+flow, says Assignment 1 was ported into Psionic, and promises that the new
+Pylon binary will give nodes small pieces of that homework. Episode 225 then
+widens the same payment thesis into developer and product bounties, Psionic
+work, Probe, Forge, Autopilot, and future revenue share from products built on
+the compute network.
+
+The implementation, issue naming, and final proof are all `CS336 A1`, matching
+Stanford's public language-models-from-scratch lane as it was encoded in the
+repo. The proven lane is `run.cs336.a1...`, Assignment 1, Psionic-backed, with
+one worker contribution accepted and one accepted-work payout settled. That
+distinction matters because a precise public claim needs to bind to a run id,
+assignment id, work-class, accepted outcome, and payout id rather than to loose
+course shorthand.
+
+The strongest thing that now works compared to the videos is the core
+mechanism behind the homework promise. A Pylon can be admitted to Nexus for a
+specific homework training network. Nexus can launch a bounded Assignment 1
+run with pay-on-accept semantics. A clean worker Pylon can claim the lease,
+run the Psionic homework runtime, produce checkpoint and closeout artifacts,
+and upload terminal receipts. A separate validator Pylon can claim the
+challenge, stage the worker artifacts, replay and score the work, finalize the
+verdict, and cause Nexus to record an accepted outcome. Treasury can then pay
+that accepted work exactly once over Spark, and the payment can reach
+`confirmed` and `settled`. That is the minimum real version of "we pay for
+useful homework work, not just online presence." It is materially different
+from a dashboard counter, a placeholder heartbeat, or a manual statement that
+the system should work.
+
+The second thing that works is the public-state model needed to make those
+claims honest. Nexus now has concrete fields and reports for training run
+state, window state, accepted outcomes, accepted-work payouts, placeholder
+payouts, weak-device/supporting-work counters, and strong-lane/progress-work
+counters. The `transcript-222-launch-truth-contract.md` file is important
+because it prevents the public narrative from collapsing presence, assignment,
+acceptance, model progress, and payout totals into one vague "contributors"
+number. That was one of the hidden risks in the video sequence. The videos
+move quickly from "many Pylons are online" to "largest decentralized training
+run" to "we are going to pay people for real work." The current system can
+support honest narrower statements, but only when the statement names the
+right count family: online, admitted, assigned, accepted, or model-progress
+contributors. The #4368 proof satisfies accepted homework work for one clean
+worker and one validator path. It does not justify using online Pylon counts
+as accepted training contributors.
+
+The third thing that works is the separation between placeholder payouts and
+accepted-work payouts. Episode 224 explicitly says the network should stop
+paying people merely for being online and should pay for the work sent to the
+Pylon. That is now the right rule in code and operations for this lane. The
+final proof used `pay_only_on_accept: true`, paid `1` sat for the accepted
+work, left placeholder payouts disabled, and recorded a matching payment id
+for the accepted contribution. This directly addresses the confusion around
+periodic 600-sat/liveness payouts. Those payments may have served an early
+bootstrap or supply-discovery purpose, but they are not the homework claim and
+must not be used as evidence that the homework system works. Homework proof is
+accepted-work proof.
+
+The fourth thing that works is that the local proof runtime now exists for the
+parts of the system that should not require slow production iteration. The
+videos describe a fast public build-and-learn posture. The actual #4368
+process showed that the old way was too slow because live Nexus, live Pylons,
+artifact credentials, wallet health, VM deploys, and GitHub comments were all
+mixed into one debugging loop. The #4385 proof runtime gives us a better
+engineering implementation of the same "do it live, learn fast" posture: model
+the scheduler, stale state, replacement attempts, accepted closeout, simulated
+treasury, and payout eligibility locally first; then use production Nexus only
+for the facts a simulator cannot honestly prove, especially real Spark
+settlement and public deployment state.
+
+What does not work yet is the broad public version implied by the videos. The
+videos make it sound like a normal outside user can install or update Pylon,
+join the network, receive homework pieces, contribute meaningful work, and get
+paid without operator involvement. The #4368 proof did not reach that standard.
+It used controlled local Pylon homes, explicit network configuration, explicit
+worker and validator role separation, operator-managed launch, operator
+polling, and a Google artifact bearer-token path. That is valid production
+proof of the underlying machine path, but it is not yet a self-serve public
+earner loop. A public user should not have to understand `training intake`,
+`pylon serve`, `training sync`, Nexus run ids, retained closeout caches, GCS
+credential fallback, or Treasury polling before the product can claim the
+video-level experience is fully shipped.
+
+What also does not work yet is the scale claim in the strong sense. The videos
+talk about surpassing the 70-participant Bittensor/Templar reference and about
+hundreds, thousands, or more Pylons contributing compute. The current proof is
+not that. It is a single accepted worker contribution plus validator replay in
+a fresh production run. It proves the path, not the scale. Public statements
+can say the network has online Pylons if the presence counters support that.
+They can say Nexus has paid accepted homework work when the accepted-work
+ledger supports that. They cannot honestly say all online Pylons are doing the
+homework, all online Pylons are training, or the homework run is largest by
+accepted/model-progress contributors unless the admitted, assigned, accepted,
+and model-progress count fields demonstrate that exact claim.
+
+What does not work yet is broad assignment coverage across the Stanford course
+sequence. Episode 224 describes a plan to work through the assignments over
+days or weeks, starting with Assignment 1 and later expanding into Flash
+Attention, distributed data parallelism, optimizer sharding, scaling laws, and
+other later-course work. #4368 proves only the bounded Assignment 1 path that
+was ported into Psionic and wrapped in the current Nexus/Pylon closeout
+protocol. It does not prove Assignment 2, full DiLoCo-scale training,
+multi-window training across heterogeneous public devices, arbitrary course
+homework, human homework submissions, or a generalized assignment marketplace.
+Those may be natural next steps, but they should be tracked as separate
+implementation and proof issues rather than implied by #4368 closure.
+
+What does not work yet is polished payout reliability as a user-facing product
+surface. The accepted-work payout path worked in reality, but Treasury health
+still reported degraded wallet sync with cached balance fallback. That was not
+a blocker for #4368 because the exact accepted-work payout settled. It remains
+a blocker for the broader video promise if the product wants ordinary users to
+trust a wallet-balance UI without operator interpretation. A public earner
+loop needs a clean wallet funding story, clear payout-class counters, explicit
+failure messages, and no reliance on humans reading raw treasury status to
+decide whether the system is healthy enough. The proof shows money can move.
+It does not show the full user-facing money experience is smooth.
+
+What does not work yet is the contributor/bounty process from Episode 225 as a
+unified system connected to the homework lane. Episode 225 promises developer
+and product bounties, Psionic help, and eventual product revenue share. That is
+related to the same "pay people in Bitcoin" thesis, but it is a different
+mechanism from Pylon accepted-work payouts. The homework lane pays a node for
+accepted compute or validation work. Developer bounties pay humans for
+accepted code or product contributions. Future revenue share pays compute,
+data, model, or software contributors from product revenue. Those should share
+wallet, ledger, and public-truth discipline where possible, but evidence for
+one must not be substituted for evidence for another.
+
+The honest comparison is therefore: the videos were directionally correct
+about the architecture and economics, but ahead of the productized operational
+state. We now have a real end-to-end proof that the Nexus/Pylon/Psionic/
+Treasury/Spark path can pay accepted CS336 Assignment 1 homework work. We do
+not yet have a broadly usable public system where arbitrary people can update
+Pylon, receive CS336 homework pieces, know what they are earning, and withdraw
+without operator help. #4368 closed the first statement, not the second. Future
+work should make that boundary explicit in public copy, stats pages, issue
+comments, and demos: "accepted CS336 A1 homework payout proven" is true;
+"public self-serve homework marketplace fully works for everyone" is not yet
+true.
+
 Several practical rules follow from this audit. Use unique networks for
 production proof runs so matching is deterministic. Use clean Pylon homes for
 fresh proof unless the test is explicitly about stale retained state. Separate
