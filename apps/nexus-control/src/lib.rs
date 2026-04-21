@@ -11885,10 +11885,18 @@ async fn register_provider_payout_target(
             error: "bad_request",
             reason: error.to_string(),
         })?;
-    store
-        .treasury
-        .refresh_public_snapshot(&state.config.treasury, now);
+    if receipt_events.is_empty() {
+        store
+            .treasury
+            .refresh_public_snapshot_in_memory(&state.config.treasury, now);
+    } else {
+        store
+            .treasury
+            .refresh_public_snapshot(&state.config.treasury, now);
+    }
     record_treasury_receipt_events(&mut store, receipt_events, now);
+    drop(store);
+    let _ = force_refresh_public_stats_cache(&state, now);
     Ok(Json(response))
 }
 

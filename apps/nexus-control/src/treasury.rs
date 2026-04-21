@@ -3390,7 +3390,6 @@ impl TreasuryState {
             registration_challenge_key(nostr_pubkey_hex, session_id),
             challenge.clone(),
         );
-        self.persist();
         ProviderPayoutTargetChallengeResponse {
             authority: "openagents-hosted-nexus".to_string(),
             nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
@@ -3413,7 +3412,7 @@ impl TreasuryState {
             request.nostr_pubkey_hex.as_str(),
             request.session_id.as_str(),
         );
-        let Some(challenge) = self.registration_challenges_by_key.get_mut(&challenge_key) else {
+        let Some(challenge) = self.registration_challenges_by_key.get(&challenge_key) else {
             bail!("provider_payout_target_challenge_missing");
         };
         if challenge.consumed {
@@ -3433,7 +3432,30 @@ impl TreasuryState {
             request.challenge_signature_hex.as_str(),
         )
         .map_err(anyhow::Error::msg)?;
-        challenge.consumed = true;
+        self.registration_challenges_by_key.remove(&challenge_key);
+
+        if let Some(existing) = self
+            .payout_targets_by_identity
+            .get_mut(request.nostr_pubkey_hex.as_str())
+            .filter(|existing| {
+                existing.spark_address == request.spark_address
+                    && existing.bitcoin_address == request.bitcoin_address
+            })
+        {
+            existing.source_session_id = request.session_id.clone();
+            existing.last_verified_at_unix_ms = now_unix_ms;
+            return Ok((
+                ProviderPayoutTargetRegistrationResponse {
+                    authority: "openagents-hosted-nexus".to_string(),
+                    nostr_pubkey_hex: request.nostr_pubkey_hex.clone(),
+                    session_id: request.session_id.clone(),
+                    spark_address: request.spark_address.clone(),
+                    bitcoin_address: request.bitcoin_address.clone(),
+                    registered_at_unix_ms: existing.registered_at_unix_ms,
+                },
+                Vec::new(),
+            ));
+        }
 
         let target = RegisteredPayoutTarget {
             nostr_pubkey_hex: request.nostr_pubkey_hex.clone(),
@@ -7232,6 +7254,92 @@ mod tests {
             signature.as_str(),
         )
         .expect("signature should verify");
+    }
+
+    #[test]
+    fn payout_target_challenge_issue_does_not_rewrite_treasury_state() {
+        let path = unique_treasury_state_path("challenge-noop");
+        std::fs::write(path.as_path(), "sentinel\n").expect("write sentinel");
+
+        let mut config = test_treasury_config();
+        config.state_path = path.clone();
+        let mut state = TreasuryState::default();
+        state.next_challenge_nonce = 1;
+        state.state_path = Some(path.clone());
+
+        let challenge = state.issue_registration_challenge(&config, "pubkey-a", "session-a", 1_000);
+
+        assert!(challenge.challenge.contains("pubkey-a:session-a:1000"));
+        assert_eq!(
+            std::fs::read_to_string(path.as_path()).expect("read sentinel"),
+            "sentinel\n"
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn idempotent_payout_target_registration_does_not_rewrite_treasury_state() {
+        let path = unique_treasury_state_path("register-noop");
+        std::fs::write(path.as_path(), "sentinel\n").expect("write sentinel");
+
+        let private_key_hex = "1111111111111111111111111111111111111111111111111111111111111111";
+        let nostr_pubkey_hex = "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa";
+        let mut config = test_treasury_config();
+        config.state_path = path.clone();
+        let mut state = TreasuryState::default();
+        state.next_challenge_nonce = 1;
+        state.state_path = Some(path.clone());
+        state.payout_targets_by_identity.insert(
+            nostr_pubkey_hex.to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                source_session_id: "session-old".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: Some("bc1qalice".to_string()),
+                registered_at_unix_ms: 500,
+                last_verified_at_unix_ms: 500,
+            },
+        );
+
+        let challenge =
+            state.issue_registration_challenge(&config, nostr_pubkey_hex, "session-a", 1_000);
+        let signature = sign_provider_payout_target_registration(
+            private_key_hex,
+            nostr_pubkey_hex,
+            "session-a",
+            challenge.challenge.as_str(),
+            "spark:alice",
+        )
+        .expect("signature should build");
+        let (response, receipt_events) = state
+            .register_payout_target(
+                &super::ProviderPayoutTargetRegistrationRequest {
+                    nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                    session_id: "session-a".to_string(),
+                    spark_address: "spark:alice".to_string(),
+                    bitcoin_address: Some("bc1qalice".to_string()),
+                    challenge: challenge.challenge,
+                    challenge_signature_hex: signature,
+                },
+                2_000,
+            )
+            .expect("idempotent registration");
+
+        assert!(receipt_events.is_empty());
+        assert_eq!(response.registered_at_unix_ms, 500);
+        let target = state
+            .payout_targets_by_identity
+            .get(nostr_pubkey_hex)
+            .expect("payout target");
+        assert_eq!(target.source_session_id, "session-a");
+        assert_eq!(target.last_verified_at_unix_ms, 2_000);
+        assert_eq!(
+            std::fs::read_to_string(path.as_path()).expect("read sentinel"),
+            "sentinel\n"
+        );
+
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

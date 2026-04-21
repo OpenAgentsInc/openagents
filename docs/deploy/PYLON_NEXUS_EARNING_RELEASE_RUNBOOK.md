@@ -268,6 +268,15 @@ reintroduces repeated writes of `treasury-state.tmp` followed by rename to
 persistence or retention. Do not call the issue complete by relaxing deploy
 latency gates.
 
+One common source of repeated treasury writes is payout-target registration
+traffic from online Pylons after a restart. Challenge issuance should be
+in-memory, and registering the same Spark/Bitcoin target for the same node
+identity should be an idempotent verification, not a fresh persistent receipt
+on every heartbeat. If `strace` shows `treasury.payout_target.registered`
+receipts or `treasury-state.tmp` writes at provider heartbeat pace while the
+target address is unchanged, fix the idempotency path before rerunning deploy
+gates.
+
 ## Treasury Funding Invoices
 
 When the production treasury wallet is underfunded, generate a fresh Lightning
