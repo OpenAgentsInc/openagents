@@ -94,6 +94,82 @@ Successful fallback runs now emit a JSON receipt under:
 
 - `docs/reports/nexus/*-cloudbuild-image-<git_short_sha>.json`
 
+### 3.1) Image build mistakes to avoid
+
+These notes came from the `2026-04-21` Pylon `0.1.5` and `0.1.6` / CS336 homework payout
+deploy. Keep them in this runbook so future agents do not rediscover the same
+failures in production.
+
+Build from an integrated commit. The image tag defaults to the current Git
+short SHA. If you build from a detached temporary worktree that has local
+commits not pushed to `main`, the image may be technically buildable but the
+issue is not closeable. Push the exact commit to `origin/main` before treating
+the image as a release candidate.
+
+The staged Nexus build context uses `apps/nexus-relay/deploy/Cargo.nexus.lock`,
+not only the repo-root `Cargo.lock`. When workspace package versions change,
+especially for Pylon releases, refresh and commit this deploy lockfile before
+Cloud Build. A stale deploy lock fails in the dependency layer with:
+
+```text
+cargo fetch --locked
+error: the lock file /work/Cargo.lock needs to be updated but --locked was passed
+```
+
+Do not fix that by blindly running `cargo generate-lockfile` in the staged
+context. The Spark SDK tree currently depends on a yanked but already-locked
+transitive crate, so a fresh resolver pass can fail on
+`frost-secp256k1-tr-unofficial = "^2.2.0"` even when the committed lockfile is
+still valid for builds. The safe repair path is:
+
+```bash
+tmp_context="$(mktemp -d /tmp/openagents-nexus-lock-check.XXXXXX)"
+scripts/deploy/nexus/stage-build-context.sh "$tmp_context"
+cp Cargo.lock "$tmp_context/Cargo.lock"
+(cd "$tmp_context" && cargo fetch --offline)
+cp "$tmp_context/Cargo.lock" apps/nexus-relay/deploy/Cargo.nexus.lock
+
+verify_context="$(mktemp -d /tmp/openagents-nexus-lock-verify.XXXXXX)"
+scripts/deploy/nexus/stage-build-context.sh "$verify_context"
+(cd "$verify_context" && cargo fetch --locked)
+```
+
+Review the resulting deploy-lock diff before committing it. A normal version
+bump should show only owned workspace packages moving to the new version. If
+the diff rewrites large dependency sections, stop and understand why before
+deploying.
+
+For Pylon releases, publish the CLI release and npm bootstrap before using a
+production Nexus image as final proof. The end-to-end closeout path depends on
+public users being able to run `npx @openagentsinc/pylon` or an already
+installed `pylon`, download the matching GitHub release asset, and then run the
+bare `pylon` command. Server-side Nexus changes alone do not prove the public
+onboarding claim.
+
+After editing release scripts, run at least:
+
+```bash
+bash -n scripts/release/pylon-binary-release.sh
+```
+
+The stable-tag release path must tolerate an empty release-flag array. Do not
+use an unguarded `${RELEASE_FLAGS[@]}` expansion with `set -u`.
+
+When sourcing workspace-local secret files for live checks, preserve `PATH`
+first. Some local env files are intended for operator credentials, not as full
+shell profiles:
+
+```bash
+old_path="$PATH"
+set -a
+source /Users/christopherdavid/work/.secrets/nexus-admin.env
+set +a
+PATH="$old_path"
+```
+
+Never paste raw bearer tokens, wallet mnemonics, or API keys into runbooks,
+issue comments, receipts, or normal terminal output.
+
 `sccache` remains optional. The current fallback path leaves it off until the
 Cloud Build image lane is proven stable with it enabled:
 

@@ -1438,3 +1438,52 @@ accepted homework contribution, accepted outcome, exactly one accepted-work
 payout queued for that outcome, and a confirmed or settled Spark payment. The
 0.1.5 changes are about making that proof reachable from the public default
 path, not about weakening the accepted-work-only payout rule.
+
+## Addendum: why the public earning floor moved from 0.1.5 to 0.1.6
+
+Date: 2026-04-21
+
+The public `pylon-v0.1.5` proof attempt exposed one more client-side problem
+that the local simulation suite had not made painful enough. The fresh public
+Pylon home installed the real `pylon-v0.1.5` GitHub release asset through the
+npm bootstrap path, verified the checksum, created a real local Spark payout
+destination, came online against production Nexus, and advertised both worker
+and validator roles. That was progress over the earlier attempts, but the
+default intake loop then found older validator challenge work before the fresh
+targeted one-sat homework run. The local Psionic subprocess for that retained
+validator challenge failed, and the retained lease stayed in the local cache as
+`acked` rather than becoming terminal. Because `acked` leases are intentionally
+reused across restarts, later intake passes kept reusing the failed retained
+validator lease instead of requesting the newly launched paid worker
+assignment. From the user's perspective, that violates the only acceptable
+onboarding claim: install Pylon, run `pylon`, and get paid for accepted hosted
+training work without knowing about CS336-specific commands or operator-only
+control surfaces.
+
+The fix is deliberately narrow. `pylon-v0.1.6` keeps validator support enabled
+by default, because the system still needs public nodes to help close the
+validation loop, but it changes the default role order back to worker first and
+validator second. A public node should claim fresh paid homework worker slots
+before it tries to drain arbitrary validator backlog. The validator path still
+runs when no paid worker assignment is available, so the node remains online
+for the relevant hosted jobs. The second `0.1.6` fix marks a retained lease
+terminal when the active Psionic runtime has failed locally. That prevents a
+failed `acked` validator or worker lease from indefinitely blocking subsequent
+intake passes. The corresponding regression test constructs a failed active
+runtime with an `acked` retained validator lease and verifies that the lease is
+converted to `failed`, making `newest_pending_training_work_offer` empty so a
+fresh scheduler claim can proceed.
+
+That means the minimum public paid-training release is now `pylon-v0.1.6` /
+`@openagentsinc/pylon` `0.1.6`, not `0.1.5`. The production Nexus floor must
+also require `min_pylon_version=0.1.6` for the default hosted starter and admin
+paced homework dispatch paths. The older `0.1.4` and `0.1.5` artifacts remain
+useful historical evidence: `0.1.4` proved public install, worker execution,
+artifact upload, and sealed windows; `0.1.5` proved the package-managed bare
+earning-loop launch and validator-capable default. They should not be used as
+the closeout floor for #4413 because they can still fail to progress from
+public onboarding to an accepted-work payout without manual operator
+intervention. Future agents should not try to rescue #4413 by manually claiming
+a specific run through an admin API and calling that equivalent to a public
+Pylon user. The proof has to use a fresh Pylon home, the public `0.1.6` package
+or matching release asset, and then the bare `pylon` command.
