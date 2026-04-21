@@ -1099,3 +1099,184 @@ payout for that accepted outcome. Poll until the Spark payment is at least
 push it to `main`, comment the issue with run id, node id, accepted outcome id,
 payout id, payment state, release/version, Nexus commit/image, and proof paths,
 and close #4413.
+
+## Addendum: follow-up implementation ledger and next actions
+
+Date: 2026-04-21
+
+After the original #4368 retrospective and the first #4413 addendum, the
+remaining work was split into a concrete implementation sequence: make the
+bare `pylon` command the earning loop, make Nexus offer hosted starter work to
+default online Pylons, remove public-user artifact and payout blockers, cut a
+public Pylon release, then prove the public-style flow end to end. The first
+three implementation issues are now complete. #4410 landed in `21a7a968f`,
+making no-argument `pylon` and config-only `pylon --config-path <path>` enter
+the default online earning loop instead of the TUI. That change also moved the
+TUI behind explicit commands (`pylon-tui`, `pylon tui`, or `cargo pylon-tui`)
+and updated the proof fleet so local proof nodes start through the same
+default Pylon entrypoint that a real provider would use. The important product
+effect is that a user no longer has to learn the internal sequence of
+`training intake`, `pylon serve`, and `training sync` before the node can
+begin earning-loop work.
+
+#4411 landed in `6b60639c1`, adding the hosted CS336 A1 starter-work lane to
+the normal Nexus training lease-claim path. When an eligible default worker
+Pylon asks for work and no explicit run has been selected, Nexus can now
+auto-launch or reuse the bounded `starter` run on the hosted CS336 A1 starter
+network. The lane is accepted-work-only and does not require a CS336-specific
+user opt-in command. It also added the `cs336-a1-hosted-starter` local proof
+lane so the behavior can be tested in the #4385 proof runtime before touching
+production. That proof lane starts default Pylons, lets their normal lease
+request create the hosted starter demand, and waits for accepted contribution
+and closeout instead of using the old admin-launch-only path.
+
+#4412 landed in `06aa89c50`, closing the biggest public-user blockers. Pylon
+now defaults retained training artifact transfer to Nexus-brokered signed
+read/write URLs through `nexus_signed_url` when the operator has not supplied
+direct GCS credentials. That means a public Pylon should not need
+`GOOGLE_APPLICATION_CREDENTIALS` or
+`OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN`; those remain operator/test
+fallbacks only. The same work separated artifact authorization failures from
+artifact transfer failures, made terminal sync persist publication errors into
+closeout progress, and changed payout matching so accepted-work payout state
+must bind to the accepted outcome id. This prevents placeholder or liveness
+payout records from satisfying the homework payout proof. Pylon status now
+projects accepted outcome id, accepted-work payout id, payment id, and payout
+reconciliation state in the user-visible training status path. The local proof
+for this issue used namespace
+`proof.4412.public-artifact-payout.20260421T041736Z` and completed with one
+rewarded closeout and one simulated accepted-work payout settled.
+
+The next implementation step was to cut a real public Pylon release. That
+became `pylon-v0.1.4`, published from
+`401bb2accdb1449e99ff5c703842605c22603ac1` with npm package
+`@openagentsinc/pylon` `0.1.4`. That release includes the #4410 default
+earning loop, the #4412 public-safe artifact and payout projection path, and a
+client-side #4413 fix that treats
+`training_scheduler_self_validation_forbidden` as nonfatal during lease claim.
+That nonfatal handling matters for a normal single Pylon that advertises both
+worker and validator roles: after it asks for worker work, it may also ask for
+validator work, and Nexus should be allowed to reject self-validation without
+making the entire training intake look failed. The release artifact proven in
+the first public-style attempt was
+`pylon-v0.1.4-darwin-arm64.tar.gz`, archive digest
+`sha256:72d49f2fba8bdcfea45a177509974c42f079e99d112161f3ed2ee8a5a566a2c1`,
+resolved through the public npm bootstrap with `cached=false`.
+
+The first public-style install proof showed that the user-side release works
+as far as it can without the updated server. A fresh proof home under
+`var/proof/issue-4413-public-v014-live-20260421T112546Z` installed
+`@openagentsinc/pylon@0.1.4`, resolved `pylon-v0.1.4` from the GitHub release
+asset, created a local Spark payout destination, and ran only the bare
+`pylon` command. The transcript showed the intended user-facing behavior:
+`pylon: created local Spark payout destination for paid training work` and
+`pylon: node pylon is online; running default online earning loop`. Production
+Nexus saw the node as online, eligible, build version `0.1.4`, release id
+`openagents.pylon@0.1.4`, with worker and validator role claims and a Spark
+settlement destination. That proves the install/update and "run only `pylon`"
+half of the video-level claim. It does not prove assignment or payment yet.
+
+The reason it did not prove assignment or payment is now understood and fixed
+in source. The live production server still required the public Pylon build to
+look like the current Nexus service build for hosted starter targeting. That
+is the wrong rule for a public release: a released `pylon-v0.1.4` binary should
+not have to share a build digest with the server it talks to. Commit
+`da4ef29613ce39bee381ae03ca0d1fefcf999b12` changed the hosted starter request
+to target online Pylons by `min_pylon_version=0.1.4`, set
+`require_updated_build=false`, and keep the starter lane bound to the actual
+node that requested work. The corresponding Nexus test,
+`default_pylon_lease_claim_auto_launches_hosted_cs336_starter_work`, now seeds
+a forward public Pylon version and asserts that the auto-launched starter
+request uses minimum-version targeting instead of digest coupling. The live
+failure `training_scheduler_starter_work_unavailable` from the first public
+attempt is therefore a server-deploy blocker, not a missing user command and
+not a reason to introduce a CS336 opt-in.
+
+The audit and operator docs were then updated in `d5e3aa0bc`. `docs/pylon/README.md`
+now states that the minimum public paid-training Pylon release is
+`pylon-v0.1.4` / npm `0.1.4`, that Nexus must be on `da4ef2961` or later for
+automatic hosted starter assignment, that users should run only `pylon`, that
+CS336-specific opt-in commands should not be introduced, and that public users
+should not be asked for OpenAgents operator bearer tokens or direct GCS
+credentials. This retrospective was also updated to replace the earlier
+provisional `pylon-v0.1.2` release-floor language with the real `pylon-v0.1.4`
+floor. The open #4413 issue body was edited to match those facts, and #4413
+received status comments recording both the public install proof and the
+remaining Nexus deployment blocker.
+
+A fresh local closure gate was rerun from current pushed `main@d5e3aa0bc` so
+the latest docs commit also has a current proof baseline. The command was
+`ISSUE_4368_PROOF_STAMP=20260421T115658Z ISSUE_4368_PROOF_OUT_DIR=var/proof/issue-4413-local-gate-20260421T115658Z scripts/pylon/issue-4368-local-closure.sh`.
+It completed successfully. The summary at
+`var/proof/issue-4413-local-gate-20260421T115658Z/closure-summary.json` reports
+`status=completed`; the replacement-attempt lane completed with closeout
+`refused` and `caveat_count=0`; the stale-recovery lane completed with closeout
+`rewarded`, `accepted_contributions=1`, and `caveat_count=0`; and the three
+post-deploy smoke simulations covered funding-target timeout rollback,
+connected-wallet insufficient balance against the old 600-sat policy
+rollback, and homework-only placeholder-disabled pass. That keeps the
+simulation-first requirement green for current `main`, but it still does not
+replace production proof for #4413.
+
+The honest current issue status is therefore split. #4412 is fully complete
+and closed because the public-safe artifact path, accepted-work-bound payout
+projection, and local proof evidence landed and were pushed. #4413 is not
+complete and should not be closed yet. The user-side Pylon release exists and
+the local proof gate is green, but production Nexus still needs the
+`da4ef2961` or later server change deployed before the hosted starter lane can
+assign work to a public `pylon-v0.1.4` node through the default lease path.
+The active local gcloud service account
+`nexus-mainnet@openagentsgemini.iam.gserviceaccount.com` still lacks Compute
+and Cloud Build authority, and the cached `chris@openagents.com` credential
+still cannot refresh non-interactively. A browser-based `gcloud auth login
+--no-launch-browser --update-adc` flow is the current route to unblock the
+safe deploy scripts.
+
+The next operator should do five things, in order. First, authenticate gcloud
+as an account with Cloud Build and Compute/IAP authority, then confirm with
+`gcloud config get-value account`, `gcloud compute instances describe
+nexus-mainnet-1 --project openagentsgemini --zone us-central1-a`, and
+`gcloud builds list --project openagentsgemini --limit 1` that the credential
+can actually deploy. Second, build and deploy Nexus from current `main`
+through the repo scripts rather than ad hoc VM mutation. The expected safe path
+is `scripts/deploy/nexus/01-build-and-push-image.sh`, then
+`DEPLOY_IMAGE=<built image> scripts/deploy/nexus/03-configure-and-start.sh`,
+then `DEPLOY_IMAGE=<built image> scripts/deploy/nexus/04-verify-gates.sh`.
+The deployment must leave production Nexus running `da4ef2961` or later and
+must preserve the homework-only payout policy with placeholder/liveness
+payouts disabled. If the deploy gate rolls back, do not force it; record the
+failure and add the missing failure shape to the local proof runtime if it is
+not already modeled.
+
+Third, run a fresh public-style #4413 proof from a new Pylon home after the
+deploy is verified. The proof should use the documented public path,
+`npx --yes @openagentsinc/pylon@0.1.4 --version 0.1.4`, and then the only
+online earning command should be bare `pylon`. Do not manually launch the
+homework run as the primary proof, do not ask the user to run a CS336-specific
+command, and do not provide operator GCS credentials to the public Pylon. The
+proof must show that the node comes online, that Nexus admits it for the
+hosted starter lane, that the default lease path assigns worker or validator
+work, that Pylon completes the work without manual internal subcommand
+sequencing, and that Nexus records accepted work.
+
+Fourth, prove payment with the accepted-work ledger, not with placeholder
+payments or broad treasury counters. The final #4413 evidence must include the
+production run id, network id, node pubkey, role, assignment id, contribution
+id when applicable, accepted outcome id, accepted-work payout id, Spark
+payment id, payment status, and reconciliation status. Treasury must record
+exactly one accepted-work payout for the accepted outcome. The payment must be
+at least `confirmed`, preferably `settled`. If the wallet has insufficient
+funds, hydrate the Nexus wallet through the documented treasury path and rerun
+the payment proof; do not revive the old 600-sat placeholder policy and do not
+claim issue completion from a dispatching-but-unconfirmed payment.
+
+Fifth, write the final #4413 closure report under `docs/reports/nexus/`, push
+it to `main`, comment #4413 with the report path and all required identifiers,
+and close #4413 only after that commit is on `main`. The closure comment
+should be terse and factual: commit, Nexus image or release, Pylon release,
+run id, node id, accepted outcome id, payout id, payment state, and proof
+paths. If any caveat remains, state it directly and leave #4413 open unless
+the caveat is explicitly outside the issue acceptance criteria. The main rule
+from #4368 still applies: local proof is necessary, production proof is
+required for the public earning claim, and a GitHub issue is not complete until
+the integrated system has produced the exact evidence the issue asks for.
