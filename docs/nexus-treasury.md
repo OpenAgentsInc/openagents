@@ -28,6 +28,29 @@ HTTP:
 current treasury Spark receive address, Bitcoin receive address, and an optional
 Bolt11 invoice when an amount is requested.
 
+To create a live Lightning invoice for operator funding, call:
+
+```bash
+curl -fsS -X POST "https://nexus.openagents.com/v1/treasury/funding-target" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "amount_sats": 50000,
+    "description": "OpenAgents Nexus treasury funding",
+    "expiry_seconds": 3600
+  }' |
+  jq -r '.bolt11_invoice // empty'
+```
+
+Only a positive `amount_sats` produces a Bolt11 invoice. A no-amount request is
+useful for receive addresses, not for a Lightning payer. The returned invoice is
+the payment request to give the operator. It is not proof of payment.
+
+After the payer sends funds, verify the result with `/v1/treasury/status`.
+Treat the invoice as paid only after the status surface shows the receive in
+wallet state, a higher spendable balance, or subsequent accepted-work payout
+dispatch/confirmation. Do not mistake funding-target creation, an HTTP `504`,
+or an unrelated cached-balance refresh for payment confirmation.
+
 Funding target creation is a bounded wallet operation. Hosted Nexus uses
 `NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS` and defaults to `10000` ms.
 If the Spark wallet path is unhealthy, the endpoint must fail with
