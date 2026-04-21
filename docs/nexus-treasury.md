@@ -22,6 +22,7 @@ HTTP:
 - `POST /v1/treasury/funding-target`
 - `GET /v1/treasury/integration/export`
 - `POST /v1/treasury/integration/public-snapshot`
+- `POST /v1/admin/homework/cs336-a1/dispatch`
 
 `treasury funding-target` uses the repo-owned Spark integration and returns the
 current treasury Spark receive address, Bitcoin receive address, and an optional
@@ -38,6 +39,51 @@ refresh and payout dispatch loops own payout-wallet health.
 Do not retry production funding-target calls as a debugging loop; reproduce the
 wallet/funding behavior locally or in the private treasury runner first, then
 use hosted Nexus only as the live confirmation surface.
+
+## Paced Homework Dispatch
+
+Admins can pace accepted-work payouts by launching bounded batches of homework
+runs instead of relying on a single always-reused run. The cron-safe surface is:
+
+```bash
+curl -X POST "$NEXUS_BASE_URL/v1/admin/homework/cs336-a1/dispatch" \
+  -H "Authorization: Bearer $NEXUS_CONTROL_ADMIN_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "run_count": 3,
+    "max_contributors_per_run": 1,
+    "amount_sats": 7,
+    "total_budget_sats": 21,
+    "run_slug_prefix": "cron.hourly",
+    "reuse_existing_run": false
+  }'
+```
+
+The endpoint is intentionally narrow: it dispatches CS336 A1 homework through
+the same launch, window, validation, accepted-outcome, and treasury paths used
+by the default hosted Pylon starter lane. Defaults are conservative:
+
+- `run_count=1`
+- `max_contributors_per_run=1`
+- `amount_sats=1`
+- `reuse_existing_run=false`
+- `only_online=true`
+- `min_pylon_version=0.1.4`
+- `require_updated_build=false`
+- `window_duration_seconds=1800`
+
+`reuse_existing_run=false` is the important cron default. Each call creates
+fresh run slugs and training run ids, so work may be duplicated intentionally
+across intervals while the operator controls spend by call frequency, run
+count, contributor count, and sats per accepted contribution. `total_budget_sats`
+is a per-call guardrail: Nexus rejects the request when
+`run_count * max_contributors_per_run * amount_sats` exceeds that cap.
+
+Dispatch does not pay at launch time. It records a Lightning payout policy on
+each homework run with `pay_only_on_accept=true`; payouts are queued only after
+homework contributions are accepted during window reconciliation and are then
+drained by the existing treasury dispatch loop. Do not use placeholder,
+liveness, or every-four-hours payments as evidence for this lane.
 
 ## Private Treasury Integration
 

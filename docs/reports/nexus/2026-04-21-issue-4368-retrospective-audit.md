@@ -1280,3 +1280,44 @@ the caveat is explicitly outside the issue acceptance criteria. The main rule
 from #4368 still applies: local proof is necessary, production proof is
 required for the public earning claim, and a GitHub issue is not complete until
 the integrated system has produced the exact evidence the issue asks for.
+
+## Addendum: paced homework dispatch recommendation implemented
+
+Date: 2026-04-21
+
+The most relevant remaining operational recommendation was to stop treating
+homework launch as an ad hoc one-off operator action and give Nexus a narrow,
+repeatable admin surface that can intentionally meter work and accepted-work
+payout exposure. That surface now exists as
+`POST /v1/admin/homework/cs336-a1/dispatch`, with the legacy internal
+`/api/admin/homework/cs336-a1/dispatch` alias for the same handler. The endpoint
+does not change the public Pylon contract: users still run only `pylon`, stay
+online, and receive whichever bounded starter homework work Nexus offers. The
+new control is for the admin side, where a cron job can decide how many fresh
+homework runs to launch, how many contributors each run may assign, how many
+sats each accepted contribution is worth, and what per-call maximum payout
+exposure is allowed.
+
+The important design decision is that the endpoint defaults to fresh,
+non-reused runs. `reuse_existing_run=false` means every cron call generates a
+new batch id, new run slugs, and new training run ids, so the system can
+deliberately duplicate CS336 A1 starter work across intervals while still
+using the same scheduler, artifact, validation, accepted-outcome, and treasury
+rails as the hosted starter path. The default request is conservative:
+`run_count=1`, `max_contributors_per_run=1`, `amount_sats=1`,
+`only_online=true`, `min_pylon_version=0.1.4`, `require_updated_build=false`,
+and a 30-minute homework window. Operators can raise `run_count`,
+`max_contributors_per_run`, or `amount_sats` to increase throughput, and can
+set `total_budget_sats` so Nexus rejects any request whose maximum possible
+accepted-work payout exceeds the intended per-call cap.
+
+This is still accepted-work-only. The dispatch endpoint creates paid homework
+runs with a Lightning payout policy and `pay_only_on_accept=true`; it does not
+send sats at launch time, does not revive placeholder/liveness payments, and
+does not use the old every-four-hours 600-sat mechanism as evidence for the
+training claim. Payouts are only queued after the training window reconciles
+accepted homework contributions, and the existing treasury dispatch loop is
+still responsible for sending and reconciling those payments. The new endpoint
+therefore gives the admin the pacing knob the system was missing without
+weakening the core audit rule from #4368: the earning claim is only satisfied
+by accepted homework and accepted-work-bound payout records.
