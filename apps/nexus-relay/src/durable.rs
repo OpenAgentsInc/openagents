@@ -357,12 +357,12 @@ async fn proxy_websocket(socket: WebSocket, upstream_ws_url: String) {
     tokio::select! {
         result = client_to_upstream => {
             if let Err(error) = result {
-                tracing::warn!("client->upstream websocket proxy ended with error: {error}");
+                tracing::debug!("client->upstream websocket proxy ended with error: {error}");
             }
         }
         result = upstream_to_client => {
             if let Err(error) = result {
-                tracing::warn!("upstream->client websocket proxy ended with error: {error}");
+                tracing::debug!("upstream->client websocket proxy ended with error: {error}");
             }
         }
     }
