@@ -4873,6 +4873,17 @@ fn training_validator_node_matches_window(
     )
 }
 
+fn training_validator_claim_window_priority(window: &ComputeAdapterTrainingWindow) -> u8 {
+    training_validator_claim_run_priority(window.training_run_id.as_str())
+}
+
+fn training_validator_claim_run_priority(training_run_id: &str) -> u8 {
+    if training_run_id.starts_with("run.cs336.a1.starter.") {
+        return 0;
+    }
+    1
+}
+
 fn normalize_required_training_string(value: &str, reason: &str) -> Result<String, String> {
     let normalized = value.trim();
     if normalized.is_empty() {
@@ -13161,8 +13172,9 @@ async fn claim_training_validator_challenge(
             .kernel
             .list_compute_adapter_training_windows(None, None);
         windows.sort_by(|left, right| {
-            left.recorded_at_ms
-                .cmp(&right.recorded_at_ms)
+            training_validator_claim_window_priority(left)
+                .cmp(&training_validator_claim_window_priority(right))
+                .then_with(|| right.recorded_at_ms.cmp(&left.recorded_at_ms))
                 .then_with(|| left.window_id.cmp(&right.window_id))
         });
         let mut selected = None::<(
@@ -37102,6 +37114,24 @@ mod tests {
             assert_eq!(abuse_snapshot.nodes_over_recent_expired_lease_limit, 1);
         }
         Ok(())
+    }
+
+    #[test]
+    fn training_validator_claim_run_priority_prefers_hosted_starter_backlog() {
+        assert_eq!(
+            super::training_validator_claim_run_priority(
+                "run.cs336.a1.starter.20260421063347.69e88ef6"
+            ),
+            0
+        );
+        assert_eq!(
+            super::training_validator_claim_run_priority("run.cs336.a1.iso.20260417104257"),
+            1
+        );
+        assert_eq!(
+            super::training_validator_claim_run_priority("run.cs336.a1.issue4368.20260420092016"),
+            1
+        );
     }
 
     #[tokio::test]
