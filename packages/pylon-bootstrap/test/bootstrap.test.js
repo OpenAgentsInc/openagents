@@ -9,7 +9,7 @@ import {
   buildAssetNames,
   createTelemetryClient,
   ensureReleaseInstall,
-  launchInstalledPylonTui,
+  launchInstalledPylon,
   parseSha256File,
   renderBootstrapSummary,
   resolvePlatformTarget,
@@ -1127,12 +1127,12 @@ describe("@openagentsinc/pylon bootstrap", () => {
     ]);
   });
 
-  test("launchInstalledPylonTui inherits stdio for the interactive shell", async () => {
+  test("launchInstalledPylon starts the default earning loop with inherited stdio", async () => {
     const calls = [];
 
-    await launchInstalledPylonTui(
+    await launchInstalledPylon(
       {
-        pylonTuiPath: "/tmp/pylon-tui",
+        pylonPath: "/tmp/pylon",
         pylonHome: "/tmp/pylon-home",
         configPath: "/tmp/pylon-config.json",
       },
@@ -1146,7 +1146,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual({
-      command: "/tmp/pylon-tui",
+      command: "/tmp/pylon",
       args: [],
       options: {
         env: expect.objectContaining({

@@ -1910,20 +1910,22 @@ export async function bootstrapInstalledPylon(
   }
 }
 
-export async function launchInstalledPylonTui(
+export async function launchInstalledPylon(
   options,
   {
     runProcessImpl = runProcess,
     onStatus = null,
   } = {},
 ) {
-  const pylonTuiPath = path.resolve(options.pylonTuiPath);
-  emitStatus(onStatus, "Opening Pylon terminal UI", path.basename(pylonTuiPath));
-  return runProcessImpl(pylonTuiPath, [], {
+  const pylonPath = path.resolve(options.pylonPath);
+  emitStatus(onStatus, "Starting Pylon default earning loop", path.basename(pylonPath));
+  return runProcessImpl(pylonPath, [], {
     env: buildPylonEnv(options),
     stdio: "inherit",
   });
 }
+
+export const launchInstalledPylonTui = launchInstalledPylon;
 
 export function resolveBootstrapOutcome(summary) {
   const runtimeState =
@@ -1987,7 +1989,7 @@ function renderBootstrapNextSteps(summary, outcome) {
   ];
 
   if (outcome.verdict === "fully online" || outcome.verdict === "runtime ready") {
-    lines.push("Next step: open the TUI with `pylon`, or keep using the package-managed launcher.");
+    lines.push("Next step: run `pylon`; it starts the default online earning loop.");
     return lines;
   }
 

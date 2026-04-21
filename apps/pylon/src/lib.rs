@@ -10317,6 +10317,8 @@ fn training_retained_assignment_authority_error_is_stale(error: &str) -> bool {
 fn training_lease_claim_error_is_nonfatal(error: &str) -> bool {
     error.contains("training_scheduler_assignment_unavailable")
         || error.contains("training_scheduler_starter_work_unavailable")
+        || error.contains("training_scheduler_run_not_schedulable")
+        || error.contains("training_scheduler_run_not_found")
         || error.contains("training_node_not_eligible")
         || error.contains("training_scheduler_role_overlap_forbidden")
         || error.contains("training_scheduler_self_validation_forbidden")
@@ -20612,7 +20614,7 @@ fn default_training_config(base_dir: &Path) -> PylonTrainingConfig {
         checkpoint_serve_addr: default_training_checkpoint_serve_addr(),
         nexus_authority_base_url: default_nexus_control_base_url(),
         relay_urls: default_relay_urls(),
-        validator_enabled: false,
+        validator_enabled: true,
         disk_quota_gb: default_training_disk_quota_gb(),
         retention_limit_gb: default_training_retention_limit_gb(),
     }
@@ -20620,8 +20622,8 @@ fn default_training_config(base_dir: &Path) -> PylonTrainingConfig {
 
 fn default_training_role_claims() -> Vec<PylonTrainingRoleClaim> {
     vec![
-        PylonTrainingRoleClaim::Worker,
         PylonTrainingRoleClaim::Validator,
+        PylonTrainingRoleClaim::Worker,
     ]
 }
 
@@ -28089,10 +28091,14 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             config.training.role_claims
                 == vec![
-                    PylonTrainingRoleClaim::Worker,
                     PylonTrainingRoleClaim::Validator,
+                    PylonTrainingRoleClaim::Worker,
                 ],
-            "bare pylon should prefer paid worker training before unrelated validation backlog",
+            "bare pylon should clear validation backlog before requesting more paid worker training",
+        )?;
+        ensure(
+            config.training.validator_enabled,
+            "bare pylon should be online for validator work by default",
         )
     }
 
@@ -28104,6 +28110,12 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 r#"{"error":"kernel_error","reason":"training_scheduler_self_validation_forbidden"}"#,
             ),
             "validator self-validation rejections should not abort worker assignment intake",
+        )?;
+        ensure(
+            training_lease_claim_error_is_nonfatal(
+                r#"{"error":"kernel_error","reason":"training_scheduler_run_not_schedulable"}"#,
+            ),
+            "stale or sealed scheduler runs should not abort the whole training intake pass",
         )
     }
 

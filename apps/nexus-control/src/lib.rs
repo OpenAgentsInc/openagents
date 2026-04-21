@@ -4117,6 +4117,28 @@ impl ScheduledTrainingRun {
             })
     }
 
+    fn has_claimable_or_replaceable_assignment(&self, role: TrainingNodeRoleClaim) -> bool {
+        if self.next_available_assignment_index(role).is_some() {
+            return true;
+        }
+        (1..=self.role_plan.target_count(role)).any(|slot_ordinal| {
+            self.assignments
+                .iter()
+                .filter(|assignment| {
+                    assignment.role == role && assignment.slot_ordinal == slot_ordinal
+                })
+                .max_by(|left, right| left.attempt.cmp(&right.attempt))
+                .is_some_and(|assignment| {
+                    matches!(
+                        assignment.state,
+                        TrainingAssignmentState::Expired
+                            | TrainingAssignmentState::Failed
+                            | TrainingAssignmentState::Drained
+                    )
+                })
+        })
+    }
+
     fn plan_replacement_assignment(&mut self, role: TrainingNodeRoleClaim) -> Option<usize> {
         for slot_ordinal in 1..=self.role_plan.target_count(role) {
             let latest = self
@@ -8971,7 +8993,7 @@ struct HomeworkLaunchPrepared {
 }
 
 const HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
-const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.4";
+const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.5";
 
 fn current_homework_launch_pylon_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0))
@@ -10118,48 +10140,56 @@ fn prepare_homework_launch(
                 .runs_by_training_run_id
                 .get(existing_run.training_run_id.as_str())
             {
-                let node_lookup = training_authority_freshest_node_view_lookup(
-                    training_authority_refresh_node_views(
-                        &store.kernel,
-                        store.kernel.list_admitted_training_nodes(
-                            &TrainingNodeQuery {
-                                network_id: None,
-                                requested_network_id: None,
-                                role: None,
-                                online_only: false,
-                                eligible_only: false,
-                            },
+                if scheduled_run.window_state.permits_assignment_claims()
+                    && scheduled_run
+                        .has_claimable_or_replaceable_assignment(TrainingNodeRoleClaim::Worker)
+                {
+                    let node_lookup = training_authority_freshest_node_view_lookup(
+                        training_authority_refresh_node_views(
+                            &store.kernel,
+                            store.kernel.list_admitted_training_nodes(
+                                &TrainingNodeQuery {
+                                    network_id: None,
+                                    requested_network_id: None,
+                                    role: None,
+                                    online_only: false,
+                                    eligible_only: false,
+                                },
+                                now_unix_ms as i64,
+                            ),
                             now_unix_ms as i64,
+                        )
+                        .map_err(kernel_api_error)?,
+                    );
+                    return Ok(HomeworkLaunchPrepared {
+                        training_run_id: existing_run.training_run_id.clone(),
+                        network_id: scheduled_run.network_id.clone(),
+                        current_window_id: scheduled_run.current_window_id.clone(),
+                        launch_state: "reused_active_run".to_string(),
+                        run_status: existing_run.status.label().to_string(),
+                        launch_receipt_id: None,
+                        lane_contract,
+                        matched_pylons,
+                        artifact_bucket_uri: scheduled_run.artifact_bucket_uri.clone(),
+                        assigned_pylons: homework_launch_assigned_pylons(
+                            scheduled_run,
+                            &node_lookup,
                         ),
-                        now_unix_ms as i64,
-                    )
-                    .map_err(kernel_api_error)?,
-                );
-                return Ok(HomeworkLaunchPrepared {
-                    training_run_id: existing_run.training_run_id.clone(),
-                    network_id: scheduled_run.network_id.clone(),
-                    current_window_id: scheduled_run.current_window_id.clone(),
-                    launch_state: "reused_active_run".to_string(),
-                    run_status: existing_run.status.label().to_string(),
-                    launch_receipt_id: None,
-                    lane_contract,
-                    matched_pylons,
-                    artifact_bucket_uri: scheduled_run.artifact_bucket_uri.clone(),
-                    assigned_pylons: homework_launch_assigned_pylons(scheduled_run, &node_lookup),
-                    assigned_nodes: Vec::new(),
-                    artifact_prefix: homework_artifact_prefix(
-                        scheduled_run.artifact_bucket_uri.as_str(),
-                        scheduled_run.network_id.as_str(),
-                        existing_run.training_run_id.as_str(),
-                    ),
-                    course_id,
-                    homework_id,
-                    assignment_family,
-                    run_kind,
-                    needs_window_materialization: false,
-                    receipt_event: None,
-                    snapshot_event: None,
-                });
+                        assigned_nodes: Vec::new(),
+                        artifact_prefix: homework_artifact_prefix(
+                            scheduled_run.artifact_bucket_uri.as_str(),
+                            scheduled_run.network_id.as_str(),
+                            existing_run.training_run_id.as_str(),
+                        ),
+                        course_id,
+                        homework_id,
+                        assignment_family,
+                        run_kind,
+                        needs_window_materialization: false,
+                        receipt_event: None,
+                        snapshot_event: None,
+                    });
+                }
             }
         }
     }
@@ -42981,6 +43011,155 @@ mod tests {
             stats.training_public_state.active_run_id.as_deref(),
             Some(claim.training_run_id.as_str())
         );
+
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn default_pylon_lease_claim_creates_fresh_starter_when_prior_run_is_exhausted()
+    -> Result<()> {
+        let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink("gs://starter-refresh-training-bucket").await?;
+        let mut config = test_config()?;
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = 120;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let public_release_id = "openagents.pylon@0.1.99";
+        let public_build_version = "0.1.99";
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-starter-refresh-alpha",
+            "sha256:build-starter-refresh-alpha",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            public_release_id,
+            public_build_version,
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodestarterrefreshalpha"),
+        );
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-starter-refresh-beta",
+            "sha256:build-starter-refresh-beta",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            public_release_id,
+            public_build_version,
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodestarterrefreshbeta"),
+        );
+
+        let alpha_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.hosted.starter.refresh.alpha",
+                            recorded_at_ms as i64 + 1_000,
+                            "node-starter-refresh-alpha",
+                            TrainingNodeRoleClaim::Worker,
+                            None,
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        let alpha_status = alpha_response.status();
+        let alpha_bytes = to_bytes(alpha_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            alpha_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(alpha_bytes.as_ref())
+        );
+        let alpha_claim =
+            serde_json::from_slice::<RecordTrainingRunLeaseResponse>(alpha_bytes.as_ref())?;
+
+        let beta_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.hosted.starter.refresh.beta",
+                            recorded_at_ms as i64 + 2_000,
+                            "node-starter-refresh-beta",
+                            TrainingNodeRoleClaim::Worker,
+                            None,
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        let beta_status = beta_response.status();
+        let beta_bytes = to_bytes(beta_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            beta_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(beta_bytes.as_ref())
+        );
+        let beta_claim =
+            serde_json::from_slice::<RecordTrainingRunLeaseResponse>(beta_bytes.as_ref())?;
+
+        assert_ne!(alpha_claim.training_run_id, beta_claim.training_run_id);
+        assert!(
+            alpha_claim
+                .training_run_id
+                .starts_with("run.cs336.a1.starter."),
+            "{}",
+            alpha_claim.training_run_id
+        );
+        assert!(
+            beta_claim
+                .training_run_id
+                .starts_with("run.cs336.a1.starter."),
+            "{}",
+            beta_claim.training_run_id
+        );
+        assert_eq!(alpha_claim.assignment_state.as_deref(), Some("leased"));
+        assert_eq!(beta_claim.assignment_state.as_deref(), Some("leased"));
+
+        {
+            let store = state.store.read().expect("read store");
+            let alpha_scheduled = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(alpha_claim.training_run_id.as_str())
+                .expect("alpha starter run");
+            assert!(
+                !alpha_scheduled
+                    .has_claimable_or_replaceable_assignment(TrainingNodeRoleClaim::Worker)
+            );
+            let beta_scheduled = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(beta_claim.training_run_id.as_str())
+                .expect("beta starter run");
+            assert!(beta_scheduled.assignments.iter().any(|assignment| {
+                assignment.assignment_id == beta_claim.assignment_id
+                    && assignment.node_pubkey_hex.as_deref() == Some("node-starter-refresh-beta")
+                    && assignment.state == TrainingAssignmentState::Leased
+            }));
+        }
+
+        let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
+        let unique_uploaded_paths = uploaded_paths
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<String>>();
+        assert_eq!(unique_uploaded_paths.len(), 6, "{uploaded_paths:?}");
 
         upload_server.abort();
         Ok(())
