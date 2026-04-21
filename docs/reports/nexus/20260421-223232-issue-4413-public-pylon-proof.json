@@ -1,0 +1,119 @@
+{
+  "reported_at_utc": "2026-04-21T22:32:32Z",
+  "issue": 4413,
+  "status": "completed",
+  "git_commit": "2a7986b42d77e9210bbb873d6df550ebbaee02e8",
+  "deployed_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:2a7986b42d77",
+  "deployment_receipts": [
+    "docs/reports/nexus/20260421-220923-cloudbuild-image-2a7986b42d77.json",
+    "docs/reports/nexus/20260421-221747-deploy-receipt.json"
+  ],
+  "public_pylon_release": {
+    "npm_package": "@openagentsinc/pylon",
+    "version": "0.1.7",
+    "tag": "pylon-v0.1.7",
+    "install_method": "release_asset",
+    "cached": false
+  },
+  "proof_roots_local_untracked": {
+    "worker": "var/proof/issue-4413-public-prod-017-rust-20260421T222406Z",
+    "validator": "var/proof/issue-4413-public-prod-017-validator-20260421T222630Z"
+  },
+  "worker_pylon": {
+    "node_pubkey_hex": "8cf8a9a1878a6db868d8f9be4bc623c4617ecd9ccab915b3b4db3f4d1763651d",
+    "command": "pylon",
+    "local_runtime_context": "fresh OPENAGENTS_PYLON_HOME with normal user HOME so the installed Rust toolchain and sibling psionic checkout are discoverable",
+    "wallet_balance_final_sats": 100,
+    "wallet_completed_receives": [
+      {
+        "payment_id": "019db229-bb3f-79b1-b38b-6f00c21a7b24",
+        "amount_sats": 25,
+        "status": "completed"
+      },
+      {
+        "payment_id": "019db229-4c39-7ea1-aa56-c9abf26c7672",
+        "amount_sats": 25,
+        "status": "completed"
+      },
+      {
+        "payment_id": "019db228-cd41-7262-bf84-8e5b93afa2f6",
+        "amount_sats": 25,
+        "status": "completed"
+      },
+      {
+        "payment_id": "019db228-52ba-7a42-be79-a394ef5838e9",
+        "amount_sats": 25,
+        "status": "completed"
+      }
+    ]
+  },
+  "validator_pylon": {
+    "command": "pylon",
+    "role_claims": [
+      "validator"
+    ],
+    "admin_listen_addr": "127.0.0.1:9469",
+    "checkpoint_serve_addr": "127.0.0.1:9571"
+  },
+  "accepted_work_payouts": [
+    {
+      "training_run_id": "run.cs336.a1.starter.20260421222827.336f556c",
+      "window_id": "window.cs336.a1.starter.20260421222827.336f556c.0001",
+      "assignment_id": "assign.run.cs336.a1.starter.20260421222827.336f556c.window.cs336.a1.starter.20260421222827.336f556c.0001.worker.1.attempt1",
+      "accepted_outcome_id": "accepted.training_window.window.cs336.a1.starter.20260421222827.336f556c.0001",
+      "contribution_id": "1e694657d4c338af8f1bd295f97ee467b158693d2a87685fdb407d4bdcf670d3",
+      "amount_sats": 25,
+      "payment_id": "019db229-bb3f-79b1-b38b-6f00c21a7b24",
+      "treasury_status": "confirmed",
+      "treasury_reconciliation_status": "settled"
+    },
+    {
+      "training_run_id": "run.cs336.a1.starter.20260421222803.4282557b",
+      "window_id": "window.cs336.a1.starter.20260421222803.4282557b.0001",
+      "assignment_id": "assign.run.cs336.a1.starter.20260421222803.4282557b.window.cs336.a1.starter.20260421222803.4282557b.0001.worker.1.attempt1",
+      "accepted_outcome_id": "accepted.training_window.window.cs336.a1.starter.20260421222803.4282557b.0001",
+      "contribution_id": "e34d6f24082c7ce16eb682c56c466b5e4cfa0cb339940ff6c57f60b11622f09a",
+      "amount_sats": 25,
+      "payment_id": "019db229-4c39-7ea1-aa56-c9abf26c7672",
+      "treasury_status": "confirmed",
+      "treasury_reconciliation_status": "settled"
+    },
+    {
+      "training_run_id": "run.cs336.a1.starter.20260421222741.76b5d9b2",
+      "window_id": "window.cs336.a1.starter.20260421222741.76b5d9b2.0001",
+      "assignment_id": "assign.run.cs336.a1.starter.20260421222741.76b5d9b2.window.cs336.a1.starter.20260421222741.76b5d9b2.0001.worker.1.attempt1",
+      "accepted_outcome_id": "accepted.training_window.window.cs336.a1.starter.20260421222741.76b5d9b2.0001",
+      "contribution_id": "080d8a0c97d4ad8ab7f8fb08e8215fbf43c46bd7f055b56cd5fc7a0f2743c858",
+      "amount_sats": 25,
+      "payment_id": "019db228-cd41-7262-bf84-8e5b93afa2f6",
+      "treasury_status": "confirmed",
+      "treasury_reconciliation_status": "settled"
+    },
+    {
+      "training_run_id": "run.cs336.a1.starter.20260421222717.495c4459",
+      "window_id": "window.cs336.a1.starter.20260421222717.495c4459.0001",
+      "assignment_id": "assign.run.cs336.a1.starter.20260421222717.495c4459.window.cs336.a1.starter.20260421222717.495c4459.0001.worker.1.attempt1",
+      "accepted_outcome_id": "accepted.training_window.window.cs336.a1.starter.20260421222717.495c4459.0001",
+      "contribution_id": "732c2c721d65fb9ce1097423bbbf3433a97606b38bae8d62f915d3add2e32b7f",
+      "amount_sats": 25,
+      "payment_id": "019db228-52ba-7a42-be79-a394ef5838e9",
+      "treasury_status": "confirmed",
+      "treasury_reconciliation_status": "settled"
+    }
+  ],
+  "treasury_final": {
+    "wallet_runtime_status": "connected",
+    "wallet_balance_sats": 49783,
+    "accepted_work_pending_payout_count": 0,
+    "accepted_work_attention_payout_count": 0,
+    "payouts_dispatched_24h": 0,
+    "payouts_confirmed_24h": 13,
+    "active_continuity_alerts": null
+  },
+  "notes": [
+    "The first fresh proof attempt used a fully isolated HOME and failed because rustup had no default toolchain under that synthetic HOME. The successful proof kept Pylon state isolated with OPENAGENTS_PYLON_HOME while using the normal user HOME so the installed Rust toolchain and sibling psionic checkout were discoverable.",
+    "The public user-facing command remained bare pylon. No CS336-specific command, direct GCS credential, or operator-only Nexus credential was used by the worker Pylon.",
+    "The admin-paced dispatch endpoint was exercised during the proof, and production also auto-launched starter work for online paid-training-capable Pylons.",
+    "The worker Pylon wallet history is the local user-facing payment proof: four completed 25-sat receives, 100 sats total."
+  ]
+}

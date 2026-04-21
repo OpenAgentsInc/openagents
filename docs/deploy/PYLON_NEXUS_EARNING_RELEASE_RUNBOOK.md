@@ -160,14 +160,42 @@ npx --yes @openagentsinc/pylon@0.1.7 --version 0.1.7 \
   --json | tee "${PROOF_ROOT}/bootstrap.json"
 
 PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.7-darwin-arm64"
-HOME="${PWD}/${PROOF_ROOT}/home" \
+PYLON_HOME="${PWD}/${PROOF_ROOT}/home/.openagents/pylon"
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${PYLON_HOME}" \
+OPENAGENTS_PYLON_CONFIG_PATH="${PYLON_HOME}/config.json" \
 OPENAGENTS_DISABLE_TELEMETRY=1 \
 PATH="${PYLON_DIR}:${PATH}" \
 pylon 2>&1 | tee "${PROOF_ROOT}/logs/pylon-bare.log"
 ```
 
-For a validator proof, use a second fresh `PYLON_HOME` and distinct admin,
-serving, and checkpoint ports. Do not reuse the worker proof root.
+Do not isolate the entire process `HOME` while running the actual earning loop
+unless you also provide `CARGO_HOME` and `RUSTUP_HOME`. The `0.1.7` public
+proof failed once because synthetic `HOME` hid the installed Rust toolchain
+from `rustup`; the correct isolation boundary is fresh Pylon state via
+`OPENAGENTS_PYLON_HOME`, while preserving the normal user runtime prerequisites.
+
+For a validator proof, use a second fresh `PYLON_HOME` and distinct admin and
+checkpoint ports. Do not reuse the worker proof root:
+
+```bash
+pylon config set admin_listen_addr 127.0.0.1:9469
+pylon config set training.checkpoint_serve_addr 127.0.0.1:9571
+pylon config set training.role_claims validator
+pylon
+```
+
+After accepted work appears, stop the proof Pylons so automatic starter work
+does not keep generating extra accepted-work payouts. Then verify the worker
+wallet directly:
+
+```bash
+pylon wallet balance --json
+pylon wallet history --limit 20 --json
+```
+
+The strongest public-user proof is the worker Pylon wallet showing completed
+receives whose payment ids match confirmed `accepted_work` Treasury records.
 
 ## Secret Handling
 
@@ -284,10 +312,14 @@ invoice through the hosted funding-target path. Do not inspect or copy the
 treasury mnemonic, do not manually edit wallet files, and do not infer payment
 from invoice creation.
 
+The detailed funding-invoice runbook is
+`docs/deploy/NEXUS_TREASURY_FUNDING_INVOICE_RUNBOOK.md`.
+
 For a `50,000` sat invoice:
 
 ```bash
 curl -fsS -X POST "https://nexus.openagents.com/v1/treasury/funding-target" \
+  -H "Authorization: Bearer ${token}" \
   -H "Content-Type: application/json" \
   --data '{
     "amount_sats": 50000,

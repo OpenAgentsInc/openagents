@@ -142,6 +142,7 @@ __pycache__/
 
 # Local harness artifacts
 artifacts/
+var/
 
 # Test artifacts
 regex.txt

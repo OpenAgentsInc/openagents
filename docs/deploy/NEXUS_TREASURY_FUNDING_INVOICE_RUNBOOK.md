@@ -1,0 +1,102 @@
+# Nexus Treasury Funding Invoice Runbook
+
+Use this when Nexus needs more spendable sats for accepted-work payouts.
+This runbook is for hosted production treasury funding invoices only. It is
+not a Pylon user wallet invoice flow and it is not payout proof by itself.
+
+## Preconditions
+
+- Work from the `openagents` repo.
+- Read the workspace `.secrets/nexus-admin.env` file for the admin bearer
+  token. Do not print the token.
+- Use the hosted funding-target endpoint; do not inspect or mutate treasury
+  wallet files to create an invoice.
+- Treat the generated Bolt11 invoice as a live payment request. It is safe to
+  hand to the payer, but do not commit it, paste it into issue comments after
+  use, or treat it as a secret-bearing receipt.
+
+## Create The Invoice
+
+Preserve `PATH` before sourcing the secret file because the secret file is not
+a complete shell profile:
+
+```bash
+old_path="$PATH"
+set -a
+source /Users/christopherdavid/work/.secrets/nexus-admin.env
+set +a
+PATH="$old_path"
+
+token="${NEXUS_ADMIN_BEARER_TOKEN:-${NEXUS_CONTROL_ADMIN_BEARER_TOKEN:-}}"
+
+curl -fsS -X POST https://nexus.openagents.com/v1/treasury/funding-target \
+  -H "Authorization: Bearer ${token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount_sats": 50000,
+    "description": "OpenAgents Nexus treasury funding",
+    "expiry_seconds": 3600
+  }' | jq .
+```
+
+The response field to give the payer is `bolt11_invoice`.
+
+If the payer needs a different amount, change only `amount_sats`,
+`description`, and `expiry_seconds`. Keep `amount_sats` positive. A request
+without a positive amount may return receive addresses without a Bolt11
+invoice.
+
+## Confirm Payment
+
+Invoice creation is not payment. A `504` from the endpoint is also not payment
+or non-payment; it usually means the bounded wallet operation timed out during
+restart, sync, or wallet load.
+
+After the payer says it is paid, verify with treasury status:
+
+```bash
+curl -fsS -H "Authorization: Bearer ${token}" \
+  https://nexus.openagents.com/v1/treasury/status | jq '{
+    wallet_balance_sats,
+    wallet_runtime_status,
+    wallet_balance_updated_at_unix_ms,
+    accepted_pending: .training_payout_ledger_summary.accepted_work_pending_payout_count,
+    accepted_attention: .training_payout_ledger_summary.accepted_work_attention_payout_count,
+    payouts_dispatched_24h,
+    payouts_confirmed_24h,
+    last_dispatch_at_unix_ms,
+    last_confirmed_payout_at_unix_ms,
+    active_continuity_alerts,
+    recent_training_payouts: [.recent_training_payouts[]? | {
+      status,
+      reconciliation_status,
+      amount_sats,
+      payment_id,
+      classification
+    }] | .[0:8]
+  }'
+```
+
+Acceptable funding proof is one of:
+
+- `wallet_balance_sats` increases enough to cover the queued accepted-work
+  payouts.
+- Accepted-work payouts move from `queued` or `dispatching` to `confirmed` and
+  `reconciliation_status=settled`.
+- A later wallet/payment scan shows the receive in wallet history.
+
+Do not use a small cached balance change by itself as proof. Do not redeploy or
+roll back images to solve an underfunded-wallet error; fund the wallet, verify
+status, then rerun the same deploy gate if the image was otherwise correct.
+
+## Closeout Notes
+
+When funding was used during the issue 4368 / 4413 closeout, the invoice
+payment cleared the insufficient-funds blocker, but the deploy still failed
+until the treasury state hot-write loop was fixed. Future agents should keep
+these concerns separate:
+
+- Funding solves wallet insufficiency.
+- Deploy gates prove the image is healthy.
+- Public Pylon proof proves a user can run `pylon`, complete hosted training
+  work, and receive completed payments in the Pylon wallet.
