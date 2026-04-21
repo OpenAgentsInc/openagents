@@ -493,3 +493,288 @@ completion, and it should not be hidden. It should be handled as a separate
 Treasury continuity/hydration concern if the operator wants a fully green
 Treasury health indicator. The closure of #4368 was justified because the
 homework system, as scoped, worked in reality.
+
+## Addendum: scope to make the initial video claim true
+
+Date: 2026-04-21
+
+The next target is narrower than the full OpenAgents economy and broader than
+#4368. The target is the initial video-level Pylon claim: a normal motivated
+user can run Pylon, connect to the hosted Nexus, receive CS336 Assignment 1
+training-network work, complete that work through the normal Pylon runtime
+loop, and receive a real Bitcoin payout for accepted training work. This is
+not the claim that every online Pylon is training, that the system is the
+largest run by accepted contributors, that all Stanford assignments are
+implemented, that arbitrary third-party buyers can self-serve runs, or that
+Autopilot has a polished consumer UI. This addendum defines the minimum work
+needed to move from the #4368 controlled production proof to that public
+operator/user claim.
+
+The definition of done for this target should be concrete. A fresh machine or
+fresh user-home equivalent starts from public install/update instructions, not
+from a hand-built local checkout with hidden operator context. The user runs
+one Pylon command or one clearly documented two-command sequence. Pylon creates
+or loads its wallet and node identity, joins the hosted Nexus, advertises the
+right CS336 capability, receives a real Assignment 1 worker or validator lease,
+drives runtime execution without the operator manually sequencing `training
+intake`, `pylon serve`, and `training sync`, uploads required artifacts through
+a credential path that does not require the user to hold OpenAgents operator
+secrets, reports accepted or rejected status clearly, and shows the matching
+accepted-work payout as confirmed or settled. The final proof must use code
+merged to and pushed on `main`, must run against production Nexus only after
+the local proof lane is green, and must produce a report with run id, node id,
+assignment id, accepted outcome id, payout id, payment state, and the exact
+user-facing command sequence.
+
+The minimum path has four work packages. First, Pylon needs a self-serve CS336
+earner mode so the user does not need to understand internal training
+subcommands. Second, Nexus needs a hosted CS336 starter-work lane that can
+assign and pay accepted work to self-serve Pylons without a bespoke operator
+launch each time. Third, artifact and payout plumbing need to be safe for a
+public Pylon: no ADC surprise, no operator bearer token requirement, no
+placeholder payout ambiguity, and no raw treasury interpretation required by
+the user. Fourth, the team needs one final public-style proof run from a clean
+machine profile that demonstrates the exact video claim and records it in a
+single closure report. The issues below are drafted for review before creating
+them with `gh issue create`.
+
+### Draft issue 1
+
+Title: `Ship self-serve Pylon CS336 earner mode`
+
+Body:
+
+```markdown
+## Goal
+
+Make Pylon capable of running the CS336 Assignment 1 earner loop through a
+single public-facing command or a very small documented command sequence. A
+normal user should not need to know the internal operator sequence of
+`training intake`, `pylon serve`, and `training sync`.
+
+## Scope
+
+- Add a public Pylon mode such as `pylon earn cs336-a1` or equivalent.
+- Default that mode to the hosted Nexus endpoint and the current public CS336
+  Assignment 1 training network policy.
+- Create or load the node identity and payout wallet through the normal Pylon
+  path.
+- Advertise the correct worker and/or validator capability claims for the
+  hosted CS336 lane.
+- Keep the node online and drive intake, lease claim, runtime execution,
+  terminal receipt sync, and status projection without manual operator
+  sequencing.
+- Show clear terminal status for: connected, admitted, waiting for work,
+  assigned, running, uploading artifacts, validating or awaiting validation,
+  accepted, paid, rejected, and failed.
+- Preserve the lower-level commands for operators, but make them unnecessary
+  for the initial user claim.
+
+## Out of scope
+
+- Autopilot GUI polish.
+- Later CS336 assignments.
+- Arbitrary third-party training jobs.
+- Claims about largest decentralized training run.
+- Non-CS336 marketplace lanes.
+
+## Acceptance criteria
+
+- A fresh Pylon home can run the new mode against the local #4385 proof runtime
+  and complete at least one accepted Assignment 1 worker or validator path.
+- The same mode can run against production Nexus after local proof passes.
+- The user-facing command emits enough status to understand whether the node is
+  waiting, working, accepted, paid, or blocked.
+- The command does not require an OpenAgents operator bearer token or manual
+  GCS credential export by the public user.
+- Documentation includes the exact install/update and run command.
+- Completion is committed and pushed to `main`; branch-only work does not close
+  this issue.
+
+## Required proof
+
+- Local proof command and artifact path.
+- Clean Pylon-home transcript showing the user-facing command.
+- Production run id or explicit statement that production proof is delegated to
+  the final public-style proof issue.
+```
+
+### Draft issue 2
+
+Title: `Create hosted CS336 starter-work lane for self-serve Pylons`
+
+Body:
+
+```markdown
+## Goal
+
+Make hosted Nexus provide enough CS336 Assignment 1 work for self-serve Pylons
+to receive real training-network assignments and earn accepted-work payouts
+without a bespoke manual launch for every proof.
+
+## Scope
+
+- Define the hosted CS336 Assignment 1 starter-work policy.
+- Keep payout basis accepted-work only; placeholder/liveness payouts must stay
+  disabled for this lane.
+- Make the lane discoverable to self-serve Pylons that advertise the expected
+  capability and payout target.
+- Ensure Nexus can admit, assign, close out, validate, reconcile, and pay at
+  least one fresh external-like Pylon without custom per-node operator state.
+- Add guardrails for limited treasury balance: tiny payout amounts are fine,
+  but insufficient-funds failures must be explicit and must not look like
+  training failures.
+- Expose the lane state in existing admin/public stats fields without
+  overstating participation.
+
+## Out of scope
+
+- Fully open third-party buyer launch.
+- Dynamic market pricing.
+- Later assignments or arbitrary training tasks.
+- Any return of periodic online/liveness payouts.
+
+## Acceptance criteria
+
+- Local proof runtime models the hosted starter-work lane and covers admitted,
+  assigned, accepted, paid, rejected, and insufficient-funds cases.
+- Production Nexus can make at least one starter Assignment 1 lease available
+  to a clean self-serve Pylon.
+- Accepted work produces exactly one accepted-work payout record.
+- Public/admin stats distinguish online, admitted, assigned, accepted, and
+  paid states for this lane.
+- Documentation states what the hosted lane does and does not prove.
+- Completion is committed and pushed to `main`.
+
+## Required proof
+
+- Local proof report path.
+- Production Nexus run id and training network id.
+- Accepted outcome id.
+- Matching payout id and final payment state.
+```
+
+### Draft issue 3
+
+Title: `Remove public-user blockers from CS336 artifact and payout plumbing`
+
+Body:
+
+```markdown
+## Goal
+
+Remove the operational blockers that made #4368 require expert intervention:
+artifact credentials, payout ambiguity, and raw treasury interpretation. A
+public Pylon user should not need OpenAgents operator secrets or direct
+treasury debugging to complete a paid CS336 Assignment 1 job.
+
+## Scope
+
+- Replace or wrap the current production artifact upload credential path with a
+  public-safe mechanism for self-serve CS336 Pylons.
+- If Nexus must broker upload credentials, make those credentials scoped,
+  temporary, run-bound, and non-secret in user docs.
+- Ensure Pylon status surfaces artifact credential failures as actionable user
+  errors instead of internal ADC/GCS language.
+- Keep placeholder/liveness payout records separate from accepted-work payout
+  records in every user-facing status path.
+- Make Pylon show the accepted-work payout id and payment state when available.
+- Make insufficient treasury balance, payout dispatch failure, and payout
+  settlement delay visible as payout states rather than generic training
+  failures.
+- Document any remaining live-only Spark/Treasury limits.
+
+## Out of scope
+
+- Rebuilding Treasury.
+- Supporting arbitrary object stores.
+- Supporting external user-provided payout rails beyond the current Pylon
+  wallet path.
+- Polished Autopilot wallet UI.
+
+## Acceptance criteria
+
+- A public self-serve Pylon does not need `GOOGLE_APPLICATION_CREDENTIALS` or
+  `OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN` supplied by an operator.
+- Artifact upload failures are reproduced in local proof and reported with a
+  user-facing reason.
+- Accepted-work payout state is visible from Pylon without querying raw Nexus
+  or Treasury endpoints manually.
+- Placeholder payout totals cannot be mistaken for CS336 accepted-work payouts
+  in the Pylon status path.
+- Completion is committed and pushed to `main`.
+
+## Required proof
+
+- Local proof covering artifact success and artifact failure.
+- Local proof or production proof covering accepted-work payout projection.
+- Clean Pylon status output with payout id and settlement state.
+```
+
+### Draft issue 4
+
+Title: `Prove public-style CS336 Pylon earning end to end`
+
+Body:
+
+```markdown
+## Goal
+
+Close the initial video claim with a clean public-style proof: a fresh Pylon
+user runs the documented command, receives CS336 Assignment 1 training-network
+work, completes it, and gets paid Bitcoin for accepted work.
+
+## Scope
+
+- Start from `main` after the self-serve Pylon mode, hosted starter-work lane,
+  and public-safe artifact/payout changes are merged and pushed.
+- Use a fresh machine profile or fresh user-home equivalent with no retained
+  Pylon state.
+- Install or update Pylon using the documented public instructions.
+- Run only the documented public command sequence.
+- Use production Nexus as the final confirmation surface after local proof is
+  green.
+- Record all evidence in a report under `docs/reports/nexus/`.
+- Only close this issue after the report proves the full user-facing loop.
+
+## Out of scope
+
+- Proving scale beyond one or a small bounded beta set of Pylons.
+- Proving later CS336 assignments.
+- Proving arbitrary third-party buyers.
+- Proving the largest decentralized training run claim.
+- Proving Autopilot GUI onboarding.
+
+## Acceptance criteria
+
+- Fresh Pylon identity connects to hosted Nexus from the documented public
+  command path.
+- The node is admitted for the CS336 Assignment 1 lane.
+- The node receives a worker or validator assignment.
+- Pylon completes the assignment without manual internal subcommand sequencing.
+- Nexus records accepted work.
+- Treasury records exactly one accepted-work payout for that accepted outcome.
+- Spark payment reaches `confirmed` or `settled`.
+- Pylon displays the accepted/payout state in user-facing output.
+- The final report records command transcript, run id, node id, accepted
+  outcome id, payout id, payment state, commit, and any remaining caveats.
+- The issue is closed only after the report commit is pushed to `main`.
+
+## Required proof
+
+- Local proof runtime report from the exact shipped commit.
+- Production Nexus run id.
+- Pylon command transcript from fresh state.
+- Accepted outcome id.
+- Payout id and settled or confirmed payment state.
+- Report path committed to `main`.
+```
+
+These four issues are intentionally ordered. Issue 1 makes Pylon usable as an
+earner. Issue 2 ensures hosted Nexus has real accepted-work demand for that
+earner. Issue 3 removes the operator-only artifact and payout interpretation
+blockers. Issue 4 is the public-style proof and should be the only issue that
+claims the initial video promise is complete. If the first three issues reveal
+that the scope can be collapsed, the proof issue can absorb the smaller
+remaining work. If any issue grows beyond the CS336 Assignment 1 user-earning
+loop, split it rather than weakening the definition of done.
