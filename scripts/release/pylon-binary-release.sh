@@ -250,7 +250,7 @@ if [[ "$PUBLISH" == true ]]; then
       --repo "$REPO_SLUG" \
       --clobber
   else
-    RELEASE_FLAGS=()
+    declare -a RELEASE_FLAGS=()
     if [[ "$VERSION" == *-* ]]; then
       RELEASE_FLAGS+=(--prerelease)
     fi
@@ -264,7 +264,7 @@ if [[ "$PUBLISH" == true ]]; then
       --target "$(git rev-parse HEAD)" \
       --title "Pylon v${VERSION}" \
       --notes-file "$NOTES_FILE" \
-      "${RELEASE_FLAGS[@]}"
+      "${RELEASE_FLAGS[@]+"${RELEASE_FLAGS[@]}"}"
   fi
 
   log "Published release: $TAG"
