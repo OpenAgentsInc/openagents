@@ -104,18 +104,18 @@ Version: ${VERSION}
 Platform: $(host_os)-$(host_arch)
 
 This archive contains:
-- pylon: the terminal UI launcher plus headless provider CLI
+- pylon: the default online earning loop plus headless provider CLI
 - pylon-tui: the terminal UI shell
 
 Quick start:
   cd ${archive_dir}
-  ./pylon
+  ./pylon --help
   ./pylon init
   ./pylon status --json
   ./pylon inventory --json
   ./pylon config show
-  ./pylon online
-  ./pylon serve
+  ./pylon
+  # Use ./pylon-tui only when you want the terminal UI shell.
   # Sellable Gemma supply still requires a local runtime at 127.0.0.1:11434.
   # On macOS the shortest path today is:
   #   brew install ollama
@@ -156,8 +156,8 @@ cd pylon-v${VERSION}-$(host_os)-$(host_arch)
 ./pylon status --json
 ./pylon inventory --json
 ./pylon config show
-./pylon online
-./pylon serve
+./pylon
+# Use ./pylon-tui only when you want the terminal UI shell.
 # Sellable Gemma supply still requires a local runtime at 127.0.0.1:11434.
 # On macOS the shortest path today is:
 #   brew install ollama
@@ -169,6 +169,7 @@ cd pylon-v${VERSION}-$(host_os)-$(host_arch)
 Notes:
 - This release is unsigned and not notarized.
 - The current standalone sellable lane is \`psionic.local.inference.gemma.single_node\`.
+- Bare \`pylon\` starts the default online earning loop; use \`pylon-tui\` for the terminal UI shell.
 - Curated GGUF downloads are optional local cache only; they do not make the sellable lane ready by themselves.
 - First-run diagnostics persist to \`~/.openagents/pylon/diagnostics/gemma/latest.json\`.
 - When the node is online and eligible, the long-lived \`serve\` loop auto-publishes or refreshes the current handler announcement.
