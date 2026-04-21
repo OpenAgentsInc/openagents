@@ -512,31 +512,36 @@ operator/user claim.
 
 The definition of done for this target should be concrete. A fresh machine or
 fresh user-home equivalent starts from public install/update instructions, not
-from a hand-built local checkout with hidden operator context. The user runs
-one Pylon command or one clearly documented two-command sequence. Pylon creates
-or loads its wallet and node identity, joins the hosted Nexus, advertises the
-right CS336 capability, receives a real Assignment 1 worker or validator lease,
-drives runtime execution without the operator manually sequencing `training
-intake`, `pylon serve`, and `training sync`, uploads required artifacts through
-a credential path that does not require the user to hold OpenAgents operator
-secrets, reports accepted or rejected status clearly, and shows the matching
+from a hand-built local checkout with hidden operator context. After Pylon is
+installed or the npm bootstrap has resolved the binary, the user runs exactly
+`pylon`. That command should create or load the wallet and node identity, join
+the hosted Nexus, go online for all currently relevant hosted jobs, advertise
+the machine's capabilities, and accept available work without a CS336-specific
+opt-in. If CS336 Assignment 1 is the hosted work currently available, an
+eligible online Pylon should receive that work as part of normal operation.
+Pylon should then receive a real Assignment 1 worker or validator lease, drive
+runtime execution without the operator manually sequencing `training intake`,
+`pylon serve`, and `training sync`, upload required artifacts through a
+credential path that does not require the user to hold OpenAgents operator
+secrets, report accepted or rejected status clearly, and show the matching
 accepted-work payout as confirmed or settled. The final proof must use code
 merged to and pushed on `main`, must run against production Nexus only after
 the local proof lane is green, and must produce a report with run id, node id,
 assignment id, accepted outcome id, payout id, payment state, and the exact
-user-facing command sequence.
+`pylon` command transcript.
 
-The minimum path has four work packages. First, Pylon needs a self-serve CS336
-earner mode so the user does not need to understand internal training
-subcommands. Second, Nexus needs a hosted CS336 starter-work lane that can
-assign and pay accepted work to self-serve Pylons without a bespoke operator
-launch each time. Third, artifact and payout plumbing need to be safe for a
-public Pylon: no ADC surprise, no operator bearer token requirement, no
-placeholder payout ambiguity, and no raw treasury interpretation required by
-the user. Fourth, the team needs one final public-style proof run from a clean
-machine profile that demonstrates the exact video claim and records it in a
-single closure report. The issues below are drafted for review before creating
-them with `gh issue create`.
+The minimum path has four work packages. First, the bare `pylon` command needs
+to become the default online earning loop so the user does not need to
+understand internal training subcommands or explicitly choose CS336. Second,
+Nexus needs a hosted CS336 starter-work lane that can assign and pay accepted
+work to eligible online Pylons without a bespoke operator launch each time.
+Third, artifact and payout plumbing need to be safe for a public Pylon: no ADC
+surprise, no operator bearer token requirement, no placeholder payout
+ambiguity, and no raw treasury interpretation required by the user. Fourth,
+the team needs one final public-style proof run from a clean machine profile
+that demonstrates the exact video claim and records it in a single closure
+report. The issues below are drafted for review before creating them with
+`gh issue create`.
 
 The current public install instructions are the `PYLON_AGENT_INSTRUCTIONS`
 string in the `openagents.com` repo at `resources/js/pages/welcome.tsx`. Those
@@ -547,8 +552,8 @@ account linking by default; and treat local Gemma inference as a complete
 local bring-up. They are not sufficient for the initial video claim. They do
 not currently tell a user how to join a hosted CS336 Assignment 1 training
 lane, how to require a paid-training-capable Pylon release, how to run the
-future self-serve earner command, or how to distinguish Gemma-only readiness
-from CS336 accepted-work earning readiness.
+future default online earning loop from the bare `pylon` command, or how to
+distinguish Gemma-only readiness from CS336 accepted-work earning readiness.
 
 The latest Pylon binary release at the time of this addendum is
 `pylon-v0.1.1`, published on 2026-04-17 from commit
@@ -560,11 +565,11 @@ resolve the newest tagged `pylon-v...` GitHub release unless a specific
 minimum release for the current Gemma-local bring-up, not as the minimum
 release for CS336 paid training. The planned minimum release for the public
 CS336 earning claim should be the first tagged Pylon release that contains the
-self-serve CS336 earner mode, hosted-lane compatibility, public-safe artifact
-path, and accepted-work payout projection. If release numbering stays on the
-current line, reserve `pylon-v0.1.2` as that minimum. If the release number
-changes before these issues are created, update the issue bodies to name the
-actual first paid-training-capable GitHub release tag.
+default `pylon` online earning loop, hosted-lane compatibility, public-safe
+artifact path, and accepted-work payout projection. If release numbering stays
+on the current line, reserve `pylon-v0.1.2` as that minimum. If the release
+number changes before these issues are created, update the issue bodies to name
+the actual first paid-training-capable GitHub release tag.
 
 When the paid-training release exists, the `openagents.com` instructions need
 an explicit branch in the agent prompt. For ordinary local bring-up, they can
@@ -573,34 +578,38 @@ gemma-4-e4b` are the right default path. For CS336 earning, they should require
 `pylon --version` or equivalent release metadata to prove the installed binary
 is at least the paid-training minimum release, instruct the agent to update via
 the npm bootstrap or direct GitHub release asset if the installed version is
-older, and then run the self-serve command such as `pylon earn cs336-a1`
-rather than stopping at `pylon gemma`, `pylon online`, or `pylon serve`. The
-instructions should say plainly that Gemma readiness is necessary for the
-current inference lane but not sufficient evidence that the node is earning
-from CS336 training work. CS336 earning requires admission, assignment,
-accepted outcome, and accepted-work payout state.
+older, and then run only `pylon` after install or bootstrap. The instructions
+should not introduce `pylon earn cs336-a1`, because users should not have to
+opt into CS336 specifically. They should say plainly that Gemma readiness is
+necessary for the current inference lane but not sufficient evidence that the
+node is earning from CS336 training work. CS336 earning requires the node to be
+online for available hosted jobs and then reach admission, assignment, accepted
+outcome, and accepted-work payout state.
 
 ### Draft issue 1
 
-Title: `Ship self-serve Pylon CS336 earner mode`
+Title: `Make pylon run the default online earning loop`
 
 Body:
 
 ```markdown
 ## Goal
 
-Make Pylon capable of running the CS336 Assignment 1 earner loop through a
-single public-facing command or a very small documented command sequence. A
-normal user should not need to know the internal operator sequence of
-`training intake`, `pylon serve`, and `training sync`.
+Make the bare `pylon` command run the public online earning loop. A normal user
+should not need to choose a CS336-specific command or know the internal
+operator sequence of `training intake`, `pylon serve`, and `training sync`.
+When the hosted Nexus has CS336 Assignment 1 work available, an eligible online
+Pylon should receive it through the default `pylon` flow.
 
 ## Scope
 
-- Add a public Pylon mode such as `pylon earn cs336-a1` or equivalent.
+- Make `pylon` itself enter the default online earning flow after install or
+  bootstrap. Do not require a user-facing `pylon earn cs336-a1` opt-in.
 - Set the planned paid-training minimum release to `pylon-v0.1.2` unless the
-  first shipped self-serve CS336 release uses a different tag.
-- Default that mode to the hosted Nexus endpoint and the current public CS336
-  Assignment 1 training network policy.
+  first shipped default online earning release uses a different tag.
+- Default that flow to the hosted Nexus endpoint and all currently relevant
+  hosted work classes, including the public CS336 Assignment 1 lane when it is
+  available.
 - Create or load the node identity and payout wallet through the normal Pylon
   path.
 - Advertise the correct worker and/or validator capability claims for the
@@ -624,25 +633,29 @@ normal user should not need to know the internal operator sequence of
 
 ## Acceptance criteria
 
-- A fresh Pylon home can run the new mode against the local #4385 proof runtime
-  and complete at least one accepted Assignment 1 worker or validator path.
-- The same mode can run against production Nexus after local proof passes.
-- The user-facing command emits enough status to understand whether the node is
+- A fresh Pylon home can run bare `pylon` against the local #4385 proof runtime
+  and complete at least one accepted Assignment 1 worker or validator path
+  when that work is available.
+- The same bare `pylon` command can run against production Nexus after local
+  proof passes.
+- The `pylon` command emits enough status to understand whether the node is
   waiting, working, accepted, paid, or blocked.
 - The command does not require an OpenAgents operator bearer token or manual
   GCS credential export by the public user.
-- Documentation includes the exact install/update and run command.
+- Documentation includes the exact install/update path and states that `pylon`
+  is the only command the user should need to run for online earning.
 - The `openagents.com` `PYLON_AGENT_INSTRUCTIONS` draft is updated or a
   companion patch is prepared so agents know that local Gemma bring-up remains
-  valid but CS336 earning requires the paid-training-capable Pylon release and
-  the new self-serve command.
+  valid but online earning requires the paid-training-capable Pylon release and
+  the bare `pylon` flow.
 - Completion is committed and pushed to `main`; branch-only work does not close
   this issue.
 
 ## Required proof
 
 - Local proof command and artifact path.
-- Clean Pylon-home transcript showing the user-facing command.
+- Clean Pylon-home transcript showing `pylon` as the only user command for the
+  earning loop.
 - Output proving the installed Pylon release is at or above the paid-training
   minimum release.
 - Production run id or explicit statement that production proof is delegated to
@@ -651,24 +664,25 @@ normal user should not need to know the internal operator sequence of
 
 ### Draft issue 2
 
-Title: `Create hosted CS336 starter-work lane for self-serve Pylons`
+Title: `Create hosted CS336 starter-work lane for default online Pylons`
 
 Body:
 
 ```markdown
 ## Goal
 
-Make hosted Nexus provide enough CS336 Assignment 1 work for self-serve Pylons
-to receive real training-network assignments and earn accepted-work payouts
-without a bespoke manual launch for every proof.
+Make hosted Nexus provide enough CS336 Assignment 1 work for eligible Pylons
+running the default `pylon` flow to receive real training-network assignments
+and earn accepted-work payouts without a bespoke manual launch for every proof.
 
 ## Scope
 
 - Define the hosted CS336 Assignment 1 starter-work policy.
 - Keep payout basis accepted-work only; placeholder/liveness payouts must stay
   disabled for this lane.
-- Make the lane discoverable to self-serve Pylons that advertise the expected
-  capability and payout target.
+- Make the lane available to eligible online Pylons that advertise the expected
+  capability and payout target. Do not require users to opt into CS336
+  specifically.
 - Ensure Nexus can admit, assign, close out, validate, reconcile, and pay at
   least one fresh external-like Pylon without custom per-node operator state.
 - Add guardrails for limited treasury balance: tiny payout amounts are fine,
@@ -689,7 +703,7 @@ without a bespoke manual launch for every proof.
 - Local proof runtime models the hosted starter-work lane and covers admitted,
   assigned, accepted, paid, rejected, and insufficient-funds cases.
 - Production Nexus can make at least one starter Assignment 1 lease available
-  to a clean self-serve Pylon.
+  to a clean Pylon running the default `pylon` flow.
 - Accepted work produces exactly one accepted-work payout record.
 - Public/admin stats distinguish online, admitted, assigned, accepted, and
   paid states for this lane.
@@ -721,7 +735,7 @@ treasury debugging to complete a paid CS336 Assignment 1 job.
 ## Scope
 
 - Replace or wrap the current production artifact upload credential path with a
-  public-safe mechanism for self-serve CS336 Pylons.
+  public-safe mechanism for default online Pylons.
 - If Nexus must broker upload credentials, make those credentials scoped,
   temporary, run-bound, and non-secret in user docs.
 - Ensure Pylon status surfaces artifact credential failures as actionable user
@@ -744,7 +758,7 @@ treasury debugging to complete a paid CS336 Assignment 1 job.
 
 ## Acceptance criteria
 
-- A public self-serve Pylon does not need `GOOGLE_APPLICATION_CREDENTIALS` or
+- A public Pylon does not need `GOOGLE_APPLICATION_CREDENTIALS` or
   `OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN` supplied by an operator.
 - Artifact upload failures are reproduced in local proof and reported with a
   user-facing reason.
@@ -771,19 +785,20 @@ Body:
 ## Goal
 
 Close the initial video claim with a clean public-style proof: a fresh Pylon
-user runs the documented command, receives CS336 Assignment 1 training-network
+user runs `pylon`, receives CS336 Assignment 1 training-network
 work, completes it, and gets paid Bitcoin for accepted work.
 
 ## Scope
 
-- Start from `main` after the self-serve Pylon mode, hosted starter-work lane,
-  and public-safe artifact/payout changes are merged and pushed.
+- Start from `main` after the default `pylon` online earning loop, hosted
+  starter-work lane, and public-safe artifact/payout changes are merged and
+  pushed.
 - Use a fresh machine profile or fresh user-home equivalent with no retained
   Pylon state.
 - Install or update Pylon using the documented public instructions and verify
   that the resolved binary is at least the paid-training minimum release
-  (`pylon-v0.1.2` if that remains the first self-serve CS336 release).
-- Run only the documented public command sequence.
+  (`pylon-v0.1.2` if that remains the first default online earning release).
+- Run only `pylon` for online earning after install/bootstrap.
 - Use production Nexus as the final confirmation surface after local proof is
   green.
 - Record all evidence in a report under `docs/reports/nexus/`.
@@ -800,8 +815,10 @@ work, completes it, and gets paid Bitcoin for accepted work.
 ## Acceptance criteria
 
 - Fresh Pylon identity connects to hosted Nexus from the documented public
-  command path.
-- The node is admitted for the CS336 Assignment 1 lane.
+  `pylon` command path.
+- The node goes online for all currently relevant hosted jobs.
+- The node is admitted for the CS336 Assignment 1 lane without a
+  CS336-specific user opt-in.
 - The node receives a worker or validator assignment.
 - Pylon completes the assignment without manual internal subcommand sequencing.
 - Nexus records accepted work.
@@ -816,20 +833,21 @@ work, completes it, and gets paid Bitcoin for accepted work.
 
 - Local proof runtime report from the exact shipped commit.
 - Production Nexus run id.
-- Pylon command transcript from fresh state.
+- Pylon command transcript from fresh state showing `pylon` as the only online
+  earning command.
 - Accepted outcome id.
 - Payout id and settled or confirmed payment state.
 - Report path committed to `main`.
 ```
 
-These four issues are intentionally ordered. Issue 1 makes Pylon usable as an
-earner and defines the release floor. Issue 2 ensures hosted Nexus has real
-accepted-work demand for that earner. Issue 3 removes the operator-only
-artifact and payout interpretation blockers. Issue 4 is the public-style proof
-and should be the only issue that claims the initial video promise is complete.
-If the first three issues reveal that the scope can be collapsed, the proof
-issue can absorb the smaller remaining work. If any issue grows beyond the
-CS336 Assignment 1 user-earning loop, split it rather than weakening the
-definition of done. Before creating the issues with `gh issue create`, replace
-`pylon-v0.1.2` if necessary with the actual first GitHub release tag that
-contains the self-serve CS336 earning path.
+These four issues are intentionally ordered. Issue 1 makes `pylon` itself the
+default online earner and defines the release floor. Issue 2 ensures hosted
+Nexus has real accepted-work demand for that default online earner. Issue 3
+removes the operator-only artifact and payout interpretation blockers. Issue 4
+is the public-style proof and should be the only issue that claims the initial
+video promise is complete. If the first three issues reveal that the scope can
+be collapsed, the proof issue can absorb the smaller remaining work. If any
+issue grows beyond the CS336 Assignment 1 user-earning loop, split it rather
+than weakening the definition of done. Before creating the issues with
+`gh issue create`, replace `pylon-v0.1.2` if necessary with the actual first
+GitHub release tag that contains the default `pylon` online earning path.
