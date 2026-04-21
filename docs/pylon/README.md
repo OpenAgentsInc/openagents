@@ -340,7 +340,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.0.1-rc10
+npx @openagentsinc/pylon --version 0.1.4
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
@@ -428,6 +428,36 @@ Users do not choose a CS336-specific command. A paid-training-capable Pylon
 running the default `pylon` loop admits its local capabilities and payout
 target, asks Nexus for available work, and receives CS336 Assignment 1 starter
 work when that is the currently hosted starter lane available to the node.
+
+The minimum public paid-training Pylon release for this path is
+`pylon-v0.1.4`, exposed through `@openagentsinc/pylon` `0.1.4`. That release
+contains the bare `pylon` online earning loop, the public-safe signed-artifact
+path, accepted-work payout projection, and the nonfatal self-validation lease
+handling needed for a normal node that advertises both worker and validator
+roles. Older releases may still bring up local Gemma inference, but they are
+not sufficient proof for hosted CS336 earning. If `npx @openagentsinc/pylon`
+resolves an older version, update before testing paid training. If a platform
+does not yet have a matching `pylon-v0.1.4` release asset, use the npm
+bootstrap source fallback or a newer official release that includes these same
+paid-training guarantees.
+
+That Pylon version is necessary but not sufficient. Hosted starter work also
+requires production Nexus to run `da4ef2961` or a later commit with the hosted
+starter targeting fix: the auto-launched starter lane must target online Pylons
+by `min_pylon_version=0.1.4` and must not require the provider's build digest
+to match the Nexus service build. If Nexus is older, a public `pylon-v0.1.4`
+node can come online correctly and still see
+`training_scheduler_starter_work_unavailable` instead of receiving work.
+Treat that as a Nexus deployment/readiness problem, not a user opt-in problem.
+
+For public paid-training onboarding, the user command remains only `pylon`.
+Do not ask the user to run a CS336-specific opt-in command, do not ask for
+OpenAgents operator bearer tokens, and do not ask for
+`GOOGLE_APPLICATION_CREDENTIALS` or
+`OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN`. Public artifact transfer should
+use Nexus-brokered signed URLs. Public payment proof should be accepted-work
+only; periodic placeholder or liveness payouts are not evidence for the
+homework earning claim.
 
 The broader market direction still includes `inference`, `embeddings`, broader
 training lanes, and later bounded execution. The current operator bring-up in
@@ -773,7 +803,8 @@ That command stays in the foreground and is the path a normal provider should
 keep running. It initializes local state, flips desired mode to `online`, starts
 the local admin/status loop, heartbeats provider presence, keeps announcements
 fresh, and performs automatic provider and training intake whenever the node has
-eligible local Gemma supply.
+eligible local supply or hosted training capability for currently available
+jobs.
 
 Open the local terminal shell only when you want an interactive operator UI:
 
