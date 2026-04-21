@@ -688,6 +688,18 @@ Continuity alerts:
   breakage such as dispatch stalls, confirmation stalls, budget-cap exhaustion,
   policy-runtime blocking, or stale treasury snapshots.
 - `treasury.alert.cleared` receipts fire when that condition recovers.
+- When `placeholder_payout_mode=disabled`, legacy
+  `placeholder_liveness` payout records are not allowed to keep the service in
+  `dispatch_stalled` or `confirmations_stalled`. Homework-only production
+  continuity is judged from payout classes that still matter under the active
+  policy, especially `accepted_work`; an accepted-work payout stuck in queued,
+  dispatching, or dispatched state still raises the critical alert.
+- The deploy verifier treats stale wallet sync as non-fatal only when the
+  wallet runtime is connected and there are no accepted-work payouts awaiting
+  reconciliation. That matches the runtime loop, which intentionally avoids
+  expensive wallet refreshes when there is no dispatched accepted-work payment
+  to reconcile. During or after a real accepted-work payout, wallet freshness
+  remains a hard verification input.
 - dispatch and confirmation stall detection now keys off the oldest still-
   pending payout work and is recomputed live from current treasury state, so a
   hung dispatch cycle still surfaces a critical alert through
