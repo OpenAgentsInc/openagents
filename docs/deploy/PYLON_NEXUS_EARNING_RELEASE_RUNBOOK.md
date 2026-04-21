@@ -270,6 +270,12 @@ Important operational details:
   after the payer pays showing the funded balance or receive evidence, and the
   real closeout proof requires queued accepted-work payouts to dispatch or
   confirm.
+- If a paid invoice does not appear while accepted-work payouts are queued with
+  `wallet_balance_insufficient`, verify the live image includes the wallet
+  refresh fix that treats those queued payouts as reconciliation work. Older
+  images can record a cached funding-target balance and then skip later wallet
+  refreshes because no payment has reached `dispatched` yet. That stale state
+  keeps the wallet looking underfunded even after the invoice is paid.
 - If deploy smoke rolls back because the wallet was underfunded, fund the
   wallet first, confirm `/v1/treasury/status`, and then redeploy the exact
   image. Do not treat rollback to an older image as a fix for insufficient

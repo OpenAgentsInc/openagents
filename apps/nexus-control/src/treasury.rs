@@ -2041,6 +2041,9 @@ impl TreasuryState {
             record.status == "dispatched"
                 && !record.counted_in_paid_total
                 && record.payment_id.is_some()
+        }) || self.payout_records_by_key.values().any(|record| {
+            record.status == "queued"
+                && record.reason.as_deref() == Some("wallet_balance_insufficient")
         })
     }
 
@@ -8875,6 +8878,53 @@ mod tests {
         );
         assert!(!state.wallet_refresh_due(&config, now_unix_ms + 29_999));
         assert!(state.wallet_refresh_due(&config, now_unix_ms + 30_000));
+    }
+
+    #[test]
+    fn wallet_refresh_reconciles_balance_blocked_queued_payouts() {
+        let mut state = TreasuryState::default();
+        let now_unix_ms = 1_000_000;
+        let payout_key = "accepted-work:balance-blocked".to_string();
+
+        assert!(!state.due_wallet_refresh_requires_reconciliation());
+
+        state.payout_records_by_key.insert(
+            payout_key.clone(),
+            TreasuryPayoutRecord {
+                payout_key: payout_key.clone(),
+                nostr_pubkey_hex: "pubkey-balance-blocked".to_string(),
+                payout_target: "spark:balance-blocked".to_string(),
+                amount_sats: 25,
+                status: "queued".to_string(),
+                reason: Some("wallet_balance_insufficient".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms.saturating_add(1),
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("homework_acceptance".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        assert!(state.due_wallet_refresh_requires_reconciliation());
+
+        state
+            .payout_records_by_key
+            .get_mut(payout_key.as_str())
+            .expect("queued payout")
+            .reason = Some("missing_payout_target".to_string());
+
+        assert!(!state.due_wallet_refresh_requires_reconciliation());
     }
 
     #[test]

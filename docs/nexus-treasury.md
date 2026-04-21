@@ -51,6 +51,13 @@ wallet state, a higher spendable balance, or subsequent accepted-work payout
 dispatch/confirmation. Do not mistake funding-target creation, an HTTP `504`,
 or an unrelated cached-balance refresh for payment confirmation.
 
+If accepted-work payouts are queued with `wallet_balance_insufficient`, the
+wallet refresh loop must keep reconciling even when no payout has dispatched
+yet. Without that behavior, a paid funding invoice can remain invisible because
+the cached funding-target snapshot looks fresh enough to skip refresh. Current
+Nexus images should treat balance-blocked queued payouts as wallet
+reconciliation work.
+
 Funding target creation is a bounded wallet operation. Hosted Nexus uses
 `NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS` and defaults to `10000` ms.
 If the Spark wallet path is unhealthy, the endpoint must fail with
