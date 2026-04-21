@@ -22,7 +22,15 @@ closeout. Issue #4409 became related because it tracked the production Nexus
 payout smoke path that had to prove the accepted-work payment was real after
 service start. Issue #4385 was related because it created the local proof
 runtime that should have been used as the primary development loop rather than
-using production Nexus as the debugger.
+using production Nexus as the debugger. Re-reading the closed #4385 thread and
+its child issues makes the follow-up rule sharper: #4386, #4389, #4388, and
+#4387 landed the prod-shaped authority runtime, isolated proof namespaces,
+fleet orchestration, proof doctor, authority-state traces, transport split
+view, closure summaries, and 4368-class retained-state fixtures. Issue #4400
+then added a local simulation for the exact post-deploy payout-smoke failure
+shape that blocked production. Future CS336 work should therefore extend and
+run that proof system before using live Nexus as anything more than final
+confirmation.
 
 The final state is complete. The final production proof ran on
 `nexus.openagents.com` with clean local Pylon nodes and a unique training
@@ -80,7 +88,13 @@ can create stale worker state, replacement attempts, simulated payout policy,
 placeholder disabled mode, accepted-work payout records, and proof summaries
 without waiting on live wallet sync or poll intervals. When that local runtime
 does not model a blocker, the correct response is to improve the proof runtime
-or document the deliberate modeling gap before returning to production.
+or document the deliberate modeling gap before returning to production. The
+concrete gate from #4385 and #4400 is now: run the relevant local proof lane
+from `main`, retain the proof namespace, `run-report.json`,
+`authority-state-trace.json`, `proof-summary.json`, and the first red stage if
+there is one. A production run can confirm a locally green result, but it
+should not be the first place a CS336 scheduler, artifact, closeout, or payout
+seam is discovered.
 
 One of the major reasons #4368 took so long was that this operating rule was
 not followed strictly enough at the beginning. Production Nexus was repeatedly
@@ -543,6 +557,17 @@ that demonstrates the exact video claim and records it in a single closure
 report. The issues below are drafted for review before creating them with
 `gh issue create`.
 
+All four proposed issues must preserve the #4385 simulation-first operating
+rule. Before any live Nexus, live Treasury, or live Spark proof is attempted,
+the issue must either pass an appropriate local proof lane from `main` or land
+the missing proof-runtime extension that models the relevant gap. The required
+local evidence is the exact command, namespace, `run-report.json`,
+`authority-state-trace.json`, `proof-summary.json`, and first-red-stage
+summary if the lane blocks. If a behavior is genuinely live-only, the issue
+must say why the local runtime cannot model it, must narrow the production
+confirmation to that live-only seam, and must not use production as the
+general debugger again.
+
 The current public install instructions are the `PYLON_AGENT_INSTRUCTIONS`
 string in the `openagents.com` repo at `resources/js/pages/welcome.tsx`. Those
 instructions are still accurate for the current standalone onboarding truth:
@@ -634,8 +659,12 @@ Pylon should receive it through the default `pylon` flow.
 ## Acceptance criteria
 
 - A fresh Pylon home can run bare `pylon` against the local #4385 proof runtime
-  and complete at least one accepted Assignment 1 worker or validator path
-  when that work is available.
+  from `main` and complete at least one accepted Assignment 1 worker or
+  validator path when that work is available.
+- The local proof lane models the bare `pylon` default online loop before any
+  production Nexus confirmation is attempted. If the existing runtime cannot
+  model the blocker, this issue first extends the #4385 proof runtime rather
+  than skipping straight to production.
 - The same bare `pylon` command can run against production Nexus after local
   proof passes.
 - The `pylon` command emits enough status to understand whether the node is
@@ -653,7 +682,9 @@ Pylon should receive it through the default `pylon` flow.
 
 ## Required proof
 
-- Local proof command and artifact path.
+- Local #4385 proof command, namespace, and artifact paths for
+  `run-report.json`, `authority-state-trace.json`, and `proof-summary.json`.
+- First red stage and proof-runtime gap, if the local lane blocks.
 - Clean Pylon-home transcript showing `pylon` as the only user command for the
   earning loop.
 - Output proving the installed Pylon release is at or above the paid-training
@@ -700,8 +731,12 @@ and earn accepted-work payouts without a bespoke manual launch for every proof.
 
 ## Acceptance criteria
 
-- Local proof runtime models the hosted starter-work lane and covers admitted,
-  assigned, accepted, paid, rejected, and insufficient-funds cases.
+- Local #4385 proof runtime models the hosted starter-work lane from `main`
+  and covers admitted, assigned, accepted, paid, rejected, and
+  insufficient-funds cases before any production Nexus launch.
+- The insufficient-funds and post-deploy-smoke shapes are covered by simulated
+  treasury / #4400-style proof behavior instead of discovered first through a
+  live wallet failure.
 - Production Nexus can make at least one starter Assignment 1 lease available
   to a clean Pylon running the default `pylon` flow.
 - Accepted work produces exactly one accepted-work payout record.
@@ -712,7 +747,9 @@ and earn accepted-work payouts without a bespoke manual launch for every proof.
 
 ## Required proof
 
-- Local proof report path.
+- Local #4385 proof command, namespace, and artifact paths for
+  `run-report.json`, `authority-state-trace.json`, and `proof-summary.json`.
+- First red stage and proof-runtime gap, if the local lane blocks.
 - Production Nexus run id and training network id.
 - Accepted outcome id.
 - Matching payout id and final payment state.
@@ -760,8 +797,12 @@ treasury debugging to complete a paid CS336 Assignment 1 job.
 
 - A public Pylon does not need `GOOGLE_APPLICATION_CREDENTIALS` or
   `OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN` supplied by an operator.
-- Artifact upload failures are reproduced in local proof and reported with a
-  user-facing reason.
+- Artifact upload success and failure are reproduced in local #4385 proof and
+  reported with a user-facing reason before production is used for
+  confirmation.
+- Accepted-work payout projection, insufficient balance, dispatch delay, and
+  settlement-delay states are modeled through simulated treasury proof behavior
+  before a live Spark/Treasury confirmation.
 - Accepted-work payout state is visible from Pylon without querying raw Nexus
   or Treasury endpoints manually.
 - Placeholder payout totals cannot be mistaken for CS336 accepted-work payouts
@@ -770,8 +811,13 @@ treasury debugging to complete a paid CS336 Assignment 1 job.
 
 ## Required proof
 
-- Local proof covering artifact success and artifact failure.
-- Local proof or production proof covering accepted-work payout projection.
+- Local #4385 proof command, namespace, and artifact paths for artifact success
+  and artifact failure, including `run-report.json`,
+  `authority-state-trace.json`, and `proof-summary.json`.
+- Local proof covering accepted-work payout projection and payout-state
+  reporting before production proof.
+- Explicit proof-runtime extension or documented live-only gap if any artifact
+  credential behavior cannot be modeled locally.
 - Clean Pylon status output with payout id and settlement state.
 ```
 
@@ -793,6 +839,8 @@ work, completes it, and gets paid Bitcoin for accepted work.
 - Start from `main` after the default `pylon` online earning loop, hosted
   starter-work lane, and public-safe artifact/payout changes are merged and
   pushed.
+- Run the #4385 local proof lanes and any #4400-style post-deploy smoke
+  simulation from the exact shipped commit before touching production Nexus.
 - Use a fresh machine profile or fresh user-home equivalent with no retained
   Pylon state.
 - Install or update Pylon using the documented public instructions and verify
@@ -814,6 +862,8 @@ work, completes it, and gets paid Bitcoin for accepted work.
 
 ## Acceptance criteria
 
+- The local proof gates are green from the exact shipped commit before the
+  production proof starts.
 - Fresh Pylon identity connects to hosted Nexus from the documented public
   `pylon` command path.
 - The node goes online for all currently relevant hosted jobs.
@@ -831,7 +881,13 @@ work, completes it, and gets paid Bitcoin for accepted work.
 
 ## Required proof
 
-- Local proof runtime report from the exact shipped commit.
+- Local #4385 proof command, namespace, and artifact paths from the exact
+  shipped commit, including `run-report.json`, `authority-state-trace.json`,
+  and `proof-summary.json`.
+- #4400-style post-deploy smoke simulation output if deployment or live payout
+  smoke is part of the proof path.
+- Statement that production Nexus was used only after the local proof gates
+  were green, or a documented live-only gap explaining the narrow exception.
 - Production Nexus run id.
 - Pylon command transcript from fresh state showing `pylon` as the only online
   earning command.
@@ -848,6 +904,8 @@ is the public-style proof and should be the only issue that claims the initial
 video promise is complete. If the first three issues reveal that the scope can
 be collapsed, the proof issue can absorb the smaller remaining work. If any
 issue grows beyond the CS336 Assignment 1 user-earning loop, split it rather
-than weakening the definition of done. Before creating the issues with
-`gh issue create`, replace `pylon-v0.1.2` if necessary with the actual first
-GitHub release tag that contains the default `pylon` online earning path.
+than weakening the definition of done. Do not create issue bodies that omit
+the #4385 simulation-first gate; that gate is the main lesson of #4385, #4400,
+#4409, and #4368. Before creating the issues with `gh issue create`, replace
+`pylon-v0.1.2` if necessary with the actual first GitHub release tag that
+contains the default `pylon` online earning path.
