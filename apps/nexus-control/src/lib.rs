@@ -9970,6 +9970,9 @@ fn prepare_homework_launch(
                         == Some(homework_id.as_str())
                     && run.metadata.get("run_slug").and_then(Value::as_str)
                         == Some(run_slug.as_str())
+                    && training_scheduler_metadata_from_run(run)
+                        .ok()
+                        .is_some_and(|metadata| metadata.network_id == network_id)
             })
         {
             store
@@ -12192,68 +12195,147 @@ async fn claim_training_run_lease(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
-    let response = {
-        let mut store = state.store.write().map_err(|_| ApiError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            error: "internal_error",
-            reason: "session_store_poisoned".to_string(),
-        })?;
-        let node = store
-            .kernel
-            .get_admitted_training_node(
-                request.node_pubkey_hex.as_str(),
-                request.requested_network_id.as_deref(),
-                request.requested_at_ms,
-            )
-            .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
-        let node =
-            training_authority_refresh_node_view(&store.kernel, node, request.requested_at_ms)
-                .map_err(kernel_api_error)?;
-        if !node.eligible {
-            let reason = pylon_training_hard_gate_reason(&node.active_reputation_labels)
-                .unwrap_or_else(|| "training_node_not_eligible".to_string());
-            tracing::warn!(
-                node_pubkey_hex = request.node_pubkey_hex.as_str(),
-                requested_training_run_id = ?request.requested_training_run_id,
-                requested_network_id = ?request.requested_network_id,
-                active_reputation_labels = ?node.active_reputation_labels,
-                hard_gate_reason = reason.as_str(),
-                "training lease claim hard gated"
-            );
-            return Err(kernel_api_error(reason));
+    let first_attempt = execute_training_run_lease_claim(&state, request.clone()).await;
+    let response = match first_attempt {
+        Ok(response) => response,
+        Err(error)
+            if error.reason == "training_scheduler_run_not_found"
+                && training_lease_claim_should_try_hosted_cs336_starter_work(&request) =>
+        {
+            ensure_hosted_cs336_starter_work_for_lease_claim(&state, &request).await?;
+            execute_training_run_lease_claim(&state, request).await?
         }
-        let candidate_runs = store.kernel.list_compute_training_runs(None, None, None);
-        let run_definitions_by_training_run_id = candidate_runs
-            .iter()
-            .filter_map(|run| {
-                training_scheduler_run_definition(&store.kernel, run)
-                    .ok()
-                    .map(|definition| (run.training_run_id.clone(), definition))
-            })
-            .collect::<HashMap<_, _>>();
-        let abuse_snapshot = training_fleet_abuse_snapshot(
-            &store.kernel,
-            &store.training_scheduler,
-            &store.training_scheduler.rollout_policy().abuse_controls,
-            request.requested_at_ms as u64,
-        );
-        let response = store
-            .training_scheduler
-            .claim_lease(
-                node,
-                candidate_runs,
-                &run_definitions_by_training_run_id,
-                &abuse_snapshot,
-                &request,
-                request.requested_at_ms,
-            )
-            .map_err(kernel_api_error)?;
-        store
-            .persist_training_scheduler_state()
-            .map_err(kernel_api_error)?;
-        response
+        Err(error) => return Err(error),
     };
+    invalidate_public_stats_cache(&state, now_unix_ms());
     Ok(Json(response))
+}
+
+fn training_lease_claim_should_try_hosted_cs336_starter_work(
+    request: &RecordTrainingRunLeaseRequest,
+) -> bool {
+    request.role == TrainingNodeRoleClaim::Worker
+        && request.requested_training_run_id.is_none()
+        && request
+            .requested_network_id
+            .as_deref()
+            .is_none_or(|network_id| network_id == EPISODE_224_CS336_A1_DEMO_NETWORK_ID)
+}
+
+fn hosted_cs336_starter_work_launch_request(
+    requested_network_id: Option<&str>,
+) -> LaunchHomeworkRunRequest {
+    let network_id = requested_network_id.unwrap_or(EPISODE_224_CS336_A1_DEMO_NETWORK_ID);
+    LaunchHomeworkRunRequest {
+        course_id: "cs336".to_string(),
+        homework_id: "a1".to_string(),
+        run_slug: "starter".to_string(),
+        training_run_id: None,
+        display_name: Some("CS336 A1 Hosted Starter Work".to_string()),
+        reuse_existing_run: true,
+        network_id: Some(network_id.to_string()),
+        run_kind: Some("hosted_starter".to_string()),
+        assignment_family: Some("cs336.assignment1".to_string()),
+        artifact_prefix: None,
+        target: HomeworkLaunchTargetRequest::default(),
+        assignment: HomeworkLaunchAssignmentRequest {
+            max_contributors: Some(EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT),
+            ..HomeworkLaunchAssignmentRequest::default()
+        },
+        payout: HomeworkLaunchPayoutRequest {
+            enabled: true,
+            rail: Some("bitcoin_lightning".to_string()),
+            amount_sats: None,
+            pay_only_on_accept: true,
+        },
+    }
+}
+
+async fn ensure_hosted_cs336_starter_work_for_lease_claim(
+    state: &AppState,
+    request: &RecordTrainingRunLeaseRequest,
+) -> Result<LaunchHomeworkRunResponse, ApiError> {
+    tracing::info!(
+        node_pubkey_hex = request.node_pubkey_hex.as_str(),
+        requested_network_id = ?request.requested_network_id,
+        "auto-launching hosted CS336 A1 starter work for eligible default Pylon lease claim"
+    );
+    match execute_homework_launch(
+        state,
+        hosted_cs336_starter_work_launch_request(request.requested_network_id.as_deref()),
+    )
+    .await
+    {
+        Ok(response) => Ok(response),
+        Err(error) if error.reason == "homework_launch_no_eligible_pylons" => Err(
+            kernel_api_error("training_scheduler_starter_work_unavailable".to_string()),
+        ),
+        Err(error) => Err(error),
+    }
+}
+
+async fn execute_training_run_lease_claim(
+    state: &AppState,
+    request: RecordTrainingRunLeaseRequest,
+) -> Result<RecordTrainingRunLeaseResponse, ApiError> {
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let node = store
+        .kernel
+        .get_admitted_training_node(
+            request.node_pubkey_hex.as_str(),
+            request.requested_network_id.as_deref(),
+            request.requested_at_ms,
+        )
+        .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
+    let node = training_authority_refresh_node_view(&store.kernel, node, request.requested_at_ms)
+        .map_err(kernel_api_error)?;
+    if !node.eligible {
+        let reason = pylon_training_hard_gate_reason(&node.active_reputation_labels)
+            .unwrap_or_else(|| "training_node_not_eligible".to_string());
+        tracing::warn!(
+            node_pubkey_hex = request.node_pubkey_hex.as_str(),
+            requested_training_run_id = ?request.requested_training_run_id,
+            requested_network_id = ?request.requested_network_id,
+            active_reputation_labels = ?node.active_reputation_labels,
+            hard_gate_reason = reason.as_str(),
+            "training lease claim hard gated"
+        );
+        return Err(kernel_api_error(reason));
+    }
+    let candidate_runs = store.kernel.list_compute_training_runs(None, None, None);
+    let run_definitions_by_training_run_id = candidate_runs
+        .iter()
+        .filter_map(|run| {
+            training_scheduler_run_definition(&store.kernel, run)
+                .ok()
+                .map(|definition| (run.training_run_id.clone(), definition))
+        })
+        .collect::<HashMap<_, _>>();
+    let abuse_snapshot = training_fleet_abuse_snapshot(
+        &store.kernel,
+        &store.training_scheduler,
+        &store.training_scheduler.rollout_policy().abuse_controls,
+        request.requested_at_ms as u64,
+    );
+    let response = store
+        .training_scheduler
+        .claim_lease(
+            node,
+            candidate_runs,
+            &run_definitions_by_training_run_id,
+            &abuse_snapshot,
+            &request,
+            request.requested_at_ms,
+        )
+        .map_err(kernel_api_error)?;
+    store
+        .persist_training_scheduler_state()
+        .map_err(kernel_api_error)?;
+    Ok(response)
 }
 
 async fn plan_training_window(
@@ -20263,6 +20345,7 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "coverage_binding_not_found"
         | "training_node_not_found"
         | "training_scheduler_run_not_found"
+        | "training_scheduler_starter_work_unavailable"
         | "training_window_scheduler_run_not_found"
         | "training_window_not_found"
         | "training_validator_challenge_not_found"
@@ -42430,6 +42513,146 @@ mod tests {
         assert_eq!(
             cached_detail.run.display_name.as_deref(),
             Some("Episode 224 Operator Demo")
+        );
+
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn default_pylon_lease_claim_auto_launches_hosted_cs336_starter_work() -> Result<()> {
+        let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink("gs://starter-training-bucket").await?;
+        let mut config = test_config()?;
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = 120;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-starter-alpha",
+            "sha256:build-starter-alpha",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodestarteralpha"),
+        );
+
+        let claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.hosted.starter.alpha",
+                            recorded_at_ms as i64 + 1_000,
+                            "node-starter-alpha",
+                            TrainingNodeRoleClaim::Worker,
+                            None,
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        let claim_status = claim_response.status();
+        let claim_bytes = to_bytes(claim_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            claim_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(claim_bytes.as_ref())
+        );
+        let claim = serde_json::from_slice::<RecordTrainingRunLeaseResponse>(&claim_bytes)?;
+        assert!(
+            claim.training_run_id.starts_with("run.cs336.a1.starter."),
+            "{}",
+            claim.training_run_id
+        );
+        assert_eq!(
+            claim.network_id.as_deref(),
+            Some(super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID)
+        );
+        assert_eq!(claim.role, TrainingNodeRoleClaim::Worker);
+        assert_eq!(claim.assignment_state.as_deref(), Some("leased"));
+
+        let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
+        let unique_uploaded_paths = uploaded_paths
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<String>>();
+        assert_eq!(unique_uploaded_paths.len(), 3, "{uploaded_paths:?}");
+        assert!(unique_uploaded_paths.iter().any(|path| {
+            path.contains("/starter-training-bucket/networks/trainnet.cs336.a1.demo/runs/")
+                && path.ends_with("/manifests/run_manifest.json")
+        }));
+
+        {
+            let store = state.store.read().expect("read store");
+            let run = store
+                .kernel
+                .get_compute_training_run(claim.training_run_id.as_str())
+                .expect("auto-launched hosted starter run");
+            assert_eq!(
+                run.metadata.get("run_kind").and_then(Value::as_str),
+                Some("hosted_starter")
+            );
+            assert_eq!(
+                run.metadata
+                    .pointer("/homework_launch/payout/pay_only_on_accept")
+                    .and_then(Value::as_bool),
+                Some(true)
+            );
+            assert_eq!(
+                run.metadata
+                    .pointer("/homework_launch/payout/amount_sats")
+                    .and_then(Value::as_u64),
+                Some(120)
+            );
+            let launch = store
+                .training_scheduler
+                .launch_coordinators_by_training_run_id
+                .get(claim.training_run_id.as_str())
+                .expect("hosted starter launch coordinator");
+            assert_eq!(launch.phase.label(), "leaseable");
+            let scheduled_run = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(claim.training_run_id.as_str())
+                .expect("hosted starter scheduled run");
+            assert_eq!(scheduled_run.current_window_id, claim.window_id);
+            assert!(scheduled_run.assignments.iter().any(|assignment| {
+                assignment.assignment_id == claim.assignment_id
+                    && assignment.node_pubkey_hex.as_deref() == Some("node-starter-alpha")
+                    && assignment.state == TrainingAssignmentState::Leased
+            }));
+        }
+
+        let stats_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.training_admitted_contributors, 1);
+        assert_eq!(stats.training_assigned_contributors, 1);
+        assert_eq!(stats.training_accepted_contributors, 0);
+        assert_eq!(
+            stats.training_public_state.active_run_id.as_deref(),
+            Some(claim.training_run_id.as_str())
         );
 
         upload_server.abort();
