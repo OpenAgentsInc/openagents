@@ -43036,6 +43036,13 @@ mod tests {
         let artifact_prefix =
             format!("{requested_bucket_uri}/networks/{network_id}/runs/{training_run_id}");
 
+        {
+            let mut store = state.store.write().expect("write store");
+            store.treasury.wallet_balance_sats = 10_000;
+            store.treasury.wallet_balance_updated_at_unix_ms = Some(base_time_ms);
+            store.treasury.last_wallet_sync_at_unix_ms = Some(base_time_ms);
+        }
+
         seed_homework_launch_node(
             &state,
             base_time_ms.saturating_sub(400),
