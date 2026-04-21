@@ -10620,6 +10620,24 @@ fn update_cached_training_lease_state(
     }
 }
 
+fn retire_failed_active_training_runtime_lease(state: &mut PylonTrainingRuntimeState) -> bool {
+    let Some(active) = state.active_runtime.as_ref() else {
+        return false;
+    };
+    if active.process_state != PylonTrainingSupervisorProcessState::Failed {
+        return false;
+    }
+    let Some(lease) = state.lease_cache.get(active.lease_id.as_str()) else {
+        return false;
+    };
+    if training_lease_state_is_terminal(lease.state.as_str()) {
+        return false;
+    }
+    let lease_id = active.lease_id.clone();
+    update_cached_training_lease_state(state, lease_id.as_str(), "failed", now_epoch_ms());
+    true
+}
+
 async fn run_training_assignment_intake_once_with_context(
     config: &PylonConfig,
     identity: &NostrIdentity,
@@ -10640,6 +10658,7 @@ async fn run_training_assignment_intake_once_with_context(
     );
     let supported_roles =
         supported_training_role_claims(config, &contributor_availability, &capability_tier);
+    let failed_retained_lease_retired = retire_failed_active_training_runtime_lease(state);
     if let Some(runtime) = state
         .active_runtime
         .as_ref()
@@ -10692,6 +10711,8 @@ async fn run_training_assignment_intake_once_with_context(
     }
 
     if prune_unrequested_pending_training_leases(config, state) {
+        save_training_runtime_state(config, state)?;
+    } else if failed_retained_lease_retired {
         save_training_runtime_state(config, state)?;
     }
 
@@ -20622,8 +20643,8 @@ fn default_training_config(base_dir: &Path) -> PylonTrainingConfig {
 
 fn default_training_role_claims() -> Vec<PylonTrainingRoleClaim> {
     vec![
-        PylonTrainingRoleClaim::Validator,
         PylonTrainingRoleClaim::Worker,
+        PylonTrainingRoleClaim::Validator,
     ]
 }
 
@@ -26145,9 +26166,9 @@ mod tests {
         render_public_config_json, render_sandbox_report, render_training_status_report,
         report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
-        restart_training_supervisor, retire_stale_retained_training_assignment, run_cli,
-        run_gemma_diagnostic_command, run_local_gemma_chat_messages_stream,
-        run_local_gemma_chat_stream, run_provider_requests,
+        restart_training_supervisor, retire_failed_active_training_runtime_lease,
+        retire_stale_retained_training_assignment, run_cli, run_gemma_diagnostic_command,
+        run_local_gemma_chat_messages_stream, run_local_gemma_chat_stream, run_provider_requests,
         run_training_assignment_intake_once_with_context, save_config,
         save_gemma_diagnostic_report, save_training_runtime_state, scan_provider_requests, serve,
         snapshot_training_retained_artifact_binding, snapshot_training_status_report,
@@ -28091,10 +28112,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             config.training.role_claims
                 == vec![
-                    PylonTrainingRoleClaim::Validator,
                     PylonTrainingRoleClaim::Worker,
+                    PylonTrainingRoleClaim::Validator,
                 ],
-            "bare pylon should clear validation backlog before requesting more paid worker training",
+            "bare pylon should try paid worker training before clearing validator backlog",
         )?;
         ensure(
             config.training.validator_enabled,
@@ -28433,6 +28454,64 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && !state.window_cache.contains_key("window.0001")
                 && newest_pending_training_work_offer(&state).is_none(),
             "stale retained assignment retirement should clear active runtime, cached lease, and cached window so fresh intake can claim new work",
+        )
+    }
+
+    #[test]
+    fn failed_active_runtime_marks_retained_lease_terminal_before_intake_reuse()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut active = training_active_runtime_fixture();
+        active.role = PylonTrainingRoleClaim::Validator;
+        active.process_state = PylonTrainingSupervisorProcessState::Failed;
+        active.last_exit_code = Some(18);
+        active.last_failure_reason = Some("psionic-train exited with code 18".to_string());
+        active.updated_at_ms = 1_762_491_220_000;
+
+        let mut state = PylonTrainingRuntimeState {
+            active_runtime: Some(active.clone()),
+            ..PylonTrainingRuntimeState::default()
+        };
+        state.lease_cache.insert(
+            active.lease_id.clone(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: active.lease_id.clone(),
+                assignment_id: active.assignment_id.clone(),
+                training_run_id: active.training_run_id.clone(),
+                window_id: active.window_id.clone(),
+                membership_revision: active.membership_revision.clone(),
+                role: PylonTrainingRoleClaim::Validator,
+                state: "acked".to_string(),
+                manifest_digest: Some("sha256:manifest-alpha".to_string()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_860_600),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: Some("challenge.alpha".to_string()),
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some("/tmp/run.alpha/manifest.json".to_string()),
+                runtime_manifest_digest: Some("sha256:runtime-manifest".to_string()),
+                runtime_lane_id: Some(PSION_ACTUAL_PRETRAINING_LANE_ID.to_string()),
+                runtime_operation: Some("validate_contribution".to_string()),
+                runtime_work_class: Some("validation_replay".to_string()),
+                updated_at_ms: 1_762_491_210_000,
+            },
+        );
+
+        ensure(
+            retire_failed_active_training_runtime_lease(&mut state),
+            "failed active runtime should retire the retained lease as a state change",
+        )?;
+        ensure(
+            state
+                .lease_cache
+                .get(active.lease_id.as_str())
+                .is_some_and(|lease| lease.state == "failed")
+                && newest_pending_training_work_offer(&state).is_none(),
+            "failed retained leases must become terminal so intake can request fresh paid work",
         )
     }
 
