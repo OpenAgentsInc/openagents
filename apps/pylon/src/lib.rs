@@ -15,6 +15,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 static ATOMIC_REPLACEMENT_TEMP_SEQUENCE: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
+const PYLON_TRAINING_TERMINAL_PUBLICATION_TIMEOUT_SECS: u64 = 30;
+
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
@@ -17717,14 +17719,36 @@ async fn sync_training_terminal_runtime_once(
         return Ok(changed);
     };
 
-    if training_context_has_pending_publication(&state, &context)? {
-        match publish_training_trn_state(config_path, Some(manifest_path.as_path())).await {
-            Ok(report) => {
+    if report_training_terminal_runtime_to_authority(
+        config, identity, &mut state, &active, &context,
+    )
+    .await?
+    {
+        save_training_runtime_state(config, &state)?;
+        changed = true;
+    }
+
+    let state_after_authority = load_or_create_training_runtime_state(config)?;
+    let context_after_authority = training_manifest_context_for_path(
+        config,
+        &state_after_authority,
+        manifest_path.as_path(),
+    )?
+    .unwrap_or(context);
+
+    if training_context_has_pending_publication(&state_after_authority, &context_after_authority)? {
+        match tokio::time::timeout(
+            Duration::from_secs(PYLON_TRAINING_TERMINAL_PUBLICATION_TIMEOUT_SECS),
+            publish_training_trn_state(config_path, Some(manifest_path.as_path())),
+        )
+        .await
+        {
+            Ok(Ok(report)) => {
                 if training_publication_report_has_updates(&report) {
                     changed = true;
                 }
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 let mut state = load_or_create_training_runtime_state(config)?;
                 let last_error = format!("{error:#}");
                 record_training_closeout_progress_stage(
@@ -17742,31 +17766,32 @@ async fn sync_training_terminal_runtime_once(
                     Some(last_error),
                 );
                 save_training_runtime_state(config, &state)?;
-                return Ok(true);
+                changed = true;
+            }
+            Err(_) => {
+                let mut state = load_or_create_training_runtime_state(config)?;
+                let last_error = format!(
+                    "training terminal artifact/TRN publication timed out after {} seconds; direct authority closeout will continue and publication will retry later",
+                    PYLON_TRAINING_TERMINAL_PUBLICATION_TIMEOUT_SECS
+                );
+                record_training_closeout_progress_stage(
+                    &mut state,
+                    active.assignment_id.as_str(),
+                    active.training_run_id.as_str(),
+                    active.window_id.as_str(),
+                    active.role,
+                    PylonTrainingCloseoutStage::WorkerExitedSuccess,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(last_error),
+                );
+                save_training_runtime_state(config, &state)?;
+                changed = true;
             }
         }
-    }
-
-    let mut state = load_or_create_training_runtime_state(config)?;
-    let Some(active) = state.active_runtime.as_ref().cloned() else {
-        return Ok(changed);
-    };
-    if !training_supervision_is_terminal(active.process_state) {
-        return Ok(changed);
-    }
-    let Some(context) =
-        training_manifest_context_for_path(config, &state, manifest_path.as_path())?
-    else {
-        return Ok(changed);
-    };
-
-    if report_training_terminal_runtime_to_authority(
-        config, identity, &mut state, &active, &context,
-    )
-    .await?
-    {
-        save_training_runtime_state(config, &state)?;
-        changed = true;
     }
 
     Ok(changed)
@@ -36877,6 +36902,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 .authority_receipt_records
                 .get("window_seal::window.0001")
                 .is_some_and(|record| !record.pending_retry)
+                && synced_state.active_runtime.is_none()
                 && synced_state
                     .closeout_progress
                     .get("assign.node01.window0001")
@@ -36886,6 +36912,18 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                                 == Some("checkpoint://run.alpha/0042")
                     }),
             "terminal sync should persist both the successful window seal receipt and the closeout progress stage",
+        )?;
+        ensure(
+            !stored_objects
+                .lock()
+                .expect("training seal stored objects")
+                .is_empty(),
+            "terminal sync must still publish retained worker artifacts after retiring the released terminal runtime",
+        )?;
+        let published = relay.wait_for_event_count(1, Duration::from_secs(2));
+        ensure(
+            !published.is_empty(),
+            "terminal sync must still publish retained worker TRN events after retiring the released terminal runtime",
         )?;
 
         let contribution_root = local_run_root

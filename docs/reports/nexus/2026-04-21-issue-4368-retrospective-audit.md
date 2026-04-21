@@ -1487,3 +1487,76 @@ intervention. Future agents should not try to rescue #4413 by manually claiming
 a specific run through an admin API and calling that equivalent to a public
 Pylon user. The proof has to use a fresh Pylon home, the public `0.1.6` package
 or matching release asset, and then the bare `pylon` command.
+
+## Addendum: why the public earning floor moved from 0.1.6 to 0.1.7
+
+Date: 2026-04-21
+
+The public `pylon-v0.1.6` proof attempt got farther than `0.1.5`, but it still
+exposed one more closeout-ordering defect that prevents an honest issue close.
+A fresh public-style Pylon installed through `npx @openagentsinc/pylon@0.1.6`,
+created a local Spark payout destination, came online against production Nexus,
+received the targeted one-sat CS336 A1 homework run, executed the worker side,
+uploaded the worker artifacts, and sealed the window. The run then needed
+validator challenges to move from `replay_required` to accepted. A separate
+fresh validator Pylon also installed through the public `0.1.6` package and
+the bare `pylon` command successfully claimed validator work and ran the local
+Psionic validator replay. That proved the validation compute path was real.
+The failure was after replay: terminal authority reporting was ordered behind
+artifact/TRN publication. During live proof the validator completed replay but
+then blocked in `publish_training_trn_state -> upload_bundle` while trying to
+send retained evidence through the signed artifact path. Because that happened
+before `finalize_validator_challenge`, `reconcile_window`, accepted-outcome
+projection, and payout observation, a slow evidence upload could wedge the
+public earning loop before Nexus ever accepted the work or Treasury ever saw
+an accepted-work payout. That is not a cosmetic bug. It means `0.1.6` can
+leave a real user with completed local work and no payout-producing closeout
+until an operator intervenes.
+
+The trial also exposed an operational mistake future agents must avoid. Do not
+run standalone `pylon training intake` or `pylon training sync` against the
+same Pylon home while a bare `pylon` process is already running. The standalone
+CLI and the long-running process share the same JSON state and artifact
+directories, but they do not share the same in-memory supervisor slot. In the
+`0.1.6` proof that produced confusing validator behavior: one process could
+claim or materialize a challenge while the other process still owned a
+previous supervisor lifecycle, which made stale leases and overwritten
+invocation manifests look like backend bugs. If a live bare Pylon is running,
+inspect it through its admin endpoint or stop it before running standalone
+commands. This is now recorded in the Nexus deploy runbook because otherwise
+future agents will rediscover it under pressure and contaminate their own
+proof.
+
+The `0.1.7` fix is narrow and preserves the product claim. Terminal worker and
+validator status is now reported to Nexus before artifact/TRN publication is
+attempted. That means validator finalization, window reconciliation,
+accepted-outcome projection, and accepted-work payout queuing are no longer
+blocked behind slower evidence publication. Artifact/TRN publication still
+runs afterward and remains important evidence, but it has a bounded terminal
+publication timeout and can retry later instead of wedging the earning loop.
+This keeps the public user path aligned with the video claim: install or
+update Pylon, run only `pylon`, be online for available hosted training work,
+and receive payout only when the homework work is accepted. It does not bring
+back placeholder payments, periodic 600-sat liveness sends, or admin-only
+manual closeout as proof.
+
+The minimum honest public paid-training release is therefore
+`pylon-v0.1.7` / `@openagentsinc/pylon` `0.1.7`, not `0.1.6`. Production Nexus
+must require `min_pylon_version=0.1.7` for newly launched hosted starter and
+admin-paced homework runs once the corresponding release exists. Older
+artifacts remain useful historical evidence for the sequence of bugs: `0.1.4`
+proved public install and worker sealing, `0.1.5` proved package-managed bare
+earning-loop launch, and `0.1.6` proved the worker-first retained lease fixes
+and validator-capable public default. None of those older releases should be
+used as the closeout floor for #4413 because the live proof showed they can
+still fail to progress all the way from public `pylon` to accepted-work payout.
+
+The operational lessons from this sequence have also been extracted into
+`docs/deploy/PYLON_NEXUS_EARNING_RELEASE_RUNBOOK.md` so future agents do not
+need to reconstruct them from this audit. That runbook is the practical
+checklist for the next release attempt: use the local proof runtime first,
+refresh both Cargo locks before Nexus image builds, publish the public Pylon
+release before claiming public onboarding proof, do not mix standalone
+`training sync` commands with a running bare `pylon` over the same home, and
+close issues only after pushed `main`, deployed Nexus, public-style Pylon
+execution, accepted work, and payout evidence all agree.

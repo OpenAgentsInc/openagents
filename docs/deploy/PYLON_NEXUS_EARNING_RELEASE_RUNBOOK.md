@@ -1,0 +1,252 @@
+# Pylon/Nexus Earning Release Runbook
+
+This runbook captures the practical release and proof lessons from the April
+21, 2026 Issue #4413 work. Its purpose is to keep future agents from repeating
+the same build, release, deploy, and proof mistakes when changing the public
+Pylon earning loop or the Nexus hosted-homework payout path.
+
+## Scope
+
+Use this runbook when a change affects any of these paths:
+
+- public `pylon` install or launch behavior
+- `@openagentsinc/pylon` bootstrap releases
+- GitHub `pylon-v*` release assets
+- Nexus hosted starter or homework dispatch
+- training worker or validator closeout
+- accepted-work payout projection or treasury dispatch
+- Issue closeout requiring proof that a normal user can run `pylon` and get
+  paid for available hosted training work
+
+Do not use this as a shortcut around the local proof runtime. For distributed
+training, homework, Nexus authority, Pylon fleet, artifact, validator,
+reconcile, closeout, or payout-proof work, the primary development loop is
+still the local proof runtime from Issue #4385. Production Nexus is final proof,
+not the debugger for ordinary scheduler, artifact, validator, or payout bugs.
+
+## Non-Negotiable Completion Rule
+
+An issue is not complete because a temporary worktree has code, a feature branch
+has a commit, or a live machine happened to pass once. Close an issue only after
+all of these are true:
+
+- the relevant code and docs are committed and pushed to `origin/main`
+- the public Pylon release that users need has been published, if the issue
+  depends on public install behavior
+- the production Nexus image is built from the pushed `main` commit, if Nexus
+  behavior changed
+- the production service is deployed onto that exact image
+- a fresh public-style Pylon home proves the user path by running bare `pylon`
+- hosted work reaches the expected terminal state
+- accepted work creates and dispatches the payout required by the issue
+- proof artifacts, deployment receipts, and issue comments name the exact
+  commit, image, release, run id, contribution id, node id, and payout state
+
+Branch work is evidence. It is not closeout.
+
+## Correct Release Order
+
+Use this sequence for public earning-loop changes:
+
+1. Make the Pylon/Nexus changes in `openagents`.
+2. Run the relevant local proof runtime and focused Rust tests.
+3. Bump the workspace version and `packages/pylon-bootstrap/package.json` when
+   the public Pylon binary behavior changes.
+4. Refresh deploy locks before any Nexus Cloud Build if workspace package
+   versions changed.
+5. Commit and push the exact release candidate to `origin/main`.
+6. Publish the GitHub `pylon-vX.Y.Z` release assets and npm bootstrap package.
+7. Build the Nexus image from the pushed commit.
+8. Deploy the Nexus image through the scripted production path.
+9. Prove the user path from a fresh Pylon home using the public npm/bootstrap
+   lane or already-installed release binary.
+10. Record receipts, update docs, comment on issues, and close only after
+    payout proof is visible.
+
+Do not reverse steps 5 and 7. A Cloud Build image from an unpushed detached
+worktree can run, but it cannot honestly close the issue.
+
+## Version Floor Rules
+
+For the current hosted training earning path, the minimum public Pylon release
+is `pylon-v0.1.7` / `@openagentsinc/pylon` `0.1.7`.
+
+Older versions are useful historical proof points but not sufficient for final
+closeout:
+
+- `0.1.4` proved public install plus worker artifact sealing.
+- `0.1.5` proved the package path could launch the earning loop, but retained
+  failed validator leases could still block fresh worker intake.
+- `0.1.6` fixed the worker-first and validator-default problems, but terminal
+  validator closeout could still block behind artifact/TRN publication.
+- `0.1.7` reports terminal worker and validator authority state before slower
+  artifact/TRN publication and bounds publication attempts, so accepted-work
+  payout projection is not wedged by a slow signed-URL upload.
+
+Nexus must enforce the same floor for new hosted starter runs:
+
+```text
+min_pylon_version=0.1.7
+```
+
+If the code changes the earning-loop behavior again, update this floor, the
+Pylon docs, the Nexus treasury docs, the audit, and the issue comments together.
+
+## Build And Lockfile Pitfalls
+
+The staged Nexus build context does not use only the repo-root `Cargo.lock`.
+It also uses `apps/nexus-relay/deploy/Cargo.nexus.lock`. When the workspace
+package version changes, refresh and verify the deploy lock before building:
+
+```bash
+tmp_context="$(mktemp -d /tmp/openagents-nexus-lock-check.XXXXXX)"
+scripts/deploy/nexus/stage-build-context.sh "$tmp_context"
+cp Cargo.lock "$tmp_context/Cargo.lock"
+(cd "$tmp_context" && cargo fetch --offline)
+cp "$tmp_context/Cargo.lock" apps/nexus-relay/deploy/Cargo.nexus.lock
+
+verify_context="$(mktemp -d /tmp/openagents-nexus-lock-verify.XXXXXX)"
+scripts/deploy/nexus/stage-build-context.sh "$verify_context"
+(cd "$verify_context" && cargo fetch --locked)
+```
+
+Do not run a fresh resolver pass in the staged context as the first repair. The
+Spark SDK dependency tree has included yanked transitive crates that are still
+valid when locked but fail a fresh resolution. If the deploy-lock diff rewrites
+large dependency sections instead of mostly updating owned workspace package
+versions, stop and inspect before deploying.
+
+Before publishing Pylon binaries, run:
+
+```bash
+bash -n scripts/release/pylon-binary-release.sh
+```
+
+The release script must tolerate empty release flag arrays under `set -u`.
+
+## Process And State Pitfalls
+
+Do not run standalone `pylon training intake` or `pylon training sync` against
+the same `PYLON_HOME` while a bare `pylon` process is running. The standalone
+CLI and the long-running process share files but not the in-memory supervisor
+slot. During the `0.1.6` proof this produced confusing validator behavior,
+including overwritten invocation manifests and stale challenge leases.
+
+If a bare `pylon` process is running, inspect and drive it through its admin
+endpoint instead:
+
+```bash
+curl -fsS http://127.0.0.1:9468/v1/training/status | jq .
+curl -fsS -X POST http://127.0.0.1:9468/v1/training/sync | jq .
+```
+
+If explicit standalone commands are required, stop the bare `pylon` process
+first or use a completely separate `PYLON_HOME`.
+
+Use a fresh proof root for public-style proof so stale local state cannot
+satisfy the run accidentally:
+
+```bash
+PROOF_ROOT="var/proof/issue-4413-public-prod-017-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "${PROOF_ROOT}/logs"
+
+HOME="${PWD}/${PROOF_ROOT}/home" \
+OPENAGENTS_DISABLE_TELEMETRY=1 \
+npx --yes @openagentsinc/pylon@0.1.7 --version 0.1.7 \
+  --pylon-home "${PWD}/${PROOF_ROOT}/home/.openagents/pylon" \
+  --install-root "${PWD}/${PROOF_ROOT}/install" \
+  --skip-diagnostics \
+  --no-launch \
+  --json | tee "${PROOF_ROOT}/bootstrap.json"
+
+PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.7-darwin-arm64"
+HOME="${PWD}/${PROOF_ROOT}/home" \
+OPENAGENTS_DISABLE_TELEMETRY=1 \
+PATH="${PYLON_DIR}:${PATH}" \
+pylon 2>&1 | tee "${PROOF_ROOT}/logs/pylon-bare.log"
+```
+
+For a validator proof, use a second fresh `PYLON_HOME` and distinct admin,
+serving, and checkpoint ports. Do not reuse the worker proof root.
+
+## Secret Handling
+
+Workspace-local secret files are operator credentials, not complete shell
+profiles. Preserve `PATH` before sourcing them:
+
+```bash
+old_path="$PATH"
+set -a
+source /Users/christopherdavid/work/.secrets/nexus-admin.env
+set +a
+PATH="$old_path"
+
+token="${NEXUS_ADMIN_BEARER_TOKEN:-${NEXUS_CONTROL_ADMIN_BEARER_TOKEN:-}}"
+```
+
+Never paste raw bearer tokens, wallet mnemonics, or API keys into docs, issue
+comments, receipts, commit messages, or terminal summaries.
+
+## Production Deploy Checks
+
+Use the scripted Nexus path only:
+
+```bash
+bash scripts/deploy/nexus/01-build-and-push-image.sh
+DEPLOY_IMAGE="us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:<git-short-sha>" \
+  bash scripts/deploy/nexus/03-configure-and-start.sh
+DEPLOY_IMAGE="us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:<git-short-sha>" \
+  bash scripts/deploy/nexus/04-verify-gates.sh
+```
+
+If the deploy wrapper waits on post-deploy payout smoke, do not immediately add
+funds or redeploy. Inspect treasury status first. Pay attention to wallet
+balance, wallet runtime status, active continuity alerts, accepted-work ledger
+counts, and recent training payouts:
+
+```bash
+curl -fsS -H "Authorization: Bearer ${token}" \
+  https://nexus.openagents.com/v1/treasury/status |
+  jq '{
+    wallet_balance_sats,
+    wallet_runtime_status,
+    placeholder_payout_mode,
+    accepted: .training_payout_ledger_summary.accepted_work,
+    alerts: .active_continuity_alerts,
+    recent_training_payouts
+  }'
+```
+
+Accepted-work payout accounting must distinguish these states:
+
+- `dispatching` rows reserve current wallet balance because a send is actively
+  in flight.
+- `dispatched` rows are reconciliation work and must not reserve current
+  spendable balance forever.
+- `confirmed` rows count against daily cap and reconciliation surfaces but do
+  not reserve current spendable balance.
+
+Only fund the wallet after the status surfaces prove the wallet is actually
+short. A queued payout can be a dispatcher accounting bug even when the wallet
+has enough sats.
+
+## Final Proof Report
+
+The closeout report and issue comment should include:
+
+- pushed commit SHA
+- Nexus image tag and digest
+- deployed service verification receipt
+- public Pylon release and npm version
+- fresh proof root path
+- worker node pubkey or npub
+- validator node pubkey or npub when validator proof was required
+- training run id
+- window id
+- contribution id
+- final contribution outcome
+- payout id or payment id
+- treasury status showing dispatch or confirmation
+- known gaps, if any remain
+
+If any of these are missing, say that directly. Do not close the issue.

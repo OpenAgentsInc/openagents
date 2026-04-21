@@ -96,9 +96,9 @@ Successful fallback runs now emit a JSON receipt under:
 
 ### 3.1) Image build mistakes to avoid
 
-These notes came from the `2026-04-21` Pylon `0.1.5` and `0.1.6` / CS336 homework payout
-deploy. Keep them in this runbook so future agents do not rediscover the same
-failures in production.
+These notes came from the `2026-04-21` Pylon `0.1.5`, `0.1.6`, and `0.1.7`
+/ CS336 homework payout deploys. Keep them in this runbook so future agents do
+not rediscover the same failures in production.
 
 Build from an integrated commit. The image tag defaults to the current Git
 short SHA. If you build from a detached temporary worktree that has local
@@ -167,6 +167,30 @@ bash -n scripts/release/pylon-binary-release.sh
 The stable-tag release path must tolerate an empty release-flag array. Do not
 use an unguarded `${RELEASE_FLAGS[@]}` expansion with `set -u`.
 
+Do not run standalone `pylon training intake` or `pylon training sync` against
+the same Pylon home while a bare `pylon` process is already running. The
+standalone CLI and the long-running process share the same state directory but
+do not share the in-memory supervisor slot. During the `0.1.6` proof this
+created confusing validator state, including overwritten invocation manifests
+and stale challenge leases. If a bare `pylon` process is running, inspect it
+through its admin endpoint instead:
+
+```bash
+curl -fsS http://127.0.0.1:9468/v1/training/status | jq .
+curl -fsS -X POST http://127.0.0.1:9468/v1/training/sync | jq .
+```
+
+If you need explicit standalone commands, stop the bare `pylon` process first
+or use a completely separate `PYLON_HOME`.
+
+Terminal training closeout must not be blocked behind artifact/TRN
+publication. Direct Nexus authority writes, validator finalization, window
+reconciliation, and accepted-work payout projection are the primary earning
+path. Artifact/TRN publication is evidence and should retry, but a slow signed
+URL upload must not wedge the user-visible earning loop. This is why
+`pylon-v0.1.7` moved terminal authority reporting before artifact publication
+and bounded the terminal publication attempt.
+
 When sourcing workspace-local secret files for live checks, preserve `PATH`
 first. Some local env files are intended for operator credentials, not as full
 shell profiles:
@@ -210,10 +234,10 @@ Keep the Pylon proof public-style. The proof command should be as close as
 possible to what a real user runs: install via `npx @openagentsinc/pylon` or
 the already-installed `pylon`, then run bare `pylon`. Avoid proving success
 with `cargo run`, repo-local aliases, or manually seeded state unless the issue
-explicitly asks for a source-developer lane. For the `0.1.6` release proof, the
-minimum acceptable public binary version was `0.1.6`; older binaries lacked the
-worker-first retained-training behavior needed to accept hosted homework jobs
-by default.
+explicitly asks for a source-developer lane. For the `0.1.7` release proof, the
+minimum acceptable public binary version is `0.1.7`; older binaries either lack
+worker-first retained-training behavior or can block terminal closeout behind
+artifact/TRN publication.
 
 If the live service has a wallet balance but accepted-work payouts remain
 queued, inspect the payout record classes before assuming the wallet needs more
@@ -276,14 +300,14 @@ PROOF_ROOT="var/proof/issue-4413-public-prod-016-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "${PROOF_ROOT}/logs"
 HOME="${PWD}/${PROOF_ROOT}/home" \
 OPENAGENTS_DISABLE_TELEMETRY=1 \
-npx --yes @openagentsinc/pylon@0.1.6 --version 0.1.6 \
+npx --yes @openagentsinc/pylon@0.1.7 --version 0.1.7 \
   --pylon-home "${PWD}/${PROOF_ROOT}/home/.openagents/pylon" \
   --install-root "${PWD}/${PROOF_ROOT}/install" \
   --skip-diagnostics \
   --no-launch \
   --json | tee "${PROOF_ROOT}/bootstrap.json"
 
-PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.6-darwin-arm64"
+PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.7-darwin-arm64"
 HOME="${PWD}/${PROOF_ROOT}/home" \
 OPENAGENTS_DISABLE_TELEMETRY=1 \
 PATH="${PYLON_DIR}:${PATH}" \

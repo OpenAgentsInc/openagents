@@ -2048,6 +2048,7 @@ async fn run_standard_proof_lane(
                 detail,
                 command.workers,
                 command.validators,
+                command.lane.uses_hosted_starter_autolaunch(),
             ) {
                 let report = ProofRunReport {
                     namespace,
@@ -3032,9 +3033,6 @@ fn critical_run_caveat_detail(observed: &ProofObservedTrainingRunDetail) -> Opti
         .first_caveat_id
         .as_deref()
         .is_some_and(|value| value == "validator_backlog")
-        && (observed.run.pending_validation_window_count > 0
-            || observed.run.validator_challenges_open > 0
-            || observed.run.validator_challenges_queued > 0)
     {
         return None;
     }
@@ -3069,6 +3067,30 @@ fn critical_run_caveat_detail(observed: &ProofObservedTrainingRunDetail) -> Opti
     Some(parts.join(": "))
 }
 
+fn proof_observed_caveats_block_completion(observed: &ProofObservedTrainingRunDetail) -> bool {
+    observed.caveat_count != 0 && !proof_observed_first_caveat_is_completion_nonblocking(observed)
+}
+
+fn proof_observed_first_caveat_is_completion_nonblocking(
+    observed: &ProofObservedTrainingRunDetail,
+) -> bool {
+    if observed
+        .first_caveat_id
+        .as_deref()
+        .is_some_and(|value| value == "validator_backlog")
+    {
+        return true;
+    }
+    observed
+        .first_caveat_id
+        .as_deref()
+        .is_some_and(|value| value == "payout_lag")
+        && observed
+            .first_caveat_detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("0 accepted-work payout(s) need attention"))
+}
+
 fn proof_run_status_is_terminal(run: &ProofObservedRunState) -> bool {
     !matches!(
         run.run_status.as_str(),
@@ -3084,12 +3106,13 @@ fn standard_proof_lane_completion_detail(
     observed: &ProofObservedTrainingRunDetail,
     expected_workers: usize,
     expected_validators: usize,
+    allow_continuing_work: bool,
 ) -> Option<String> {
     if observed.run.active_window_count != 0
         || observed.run.pending_validation_window_count != 0
         || observed.run.validator_challenges_open != 0
         || observed.run.validator_challenges_queued != 0
-        || observed.caveat_count != 0
+        || proof_observed_caveats_block_completion(observed)
     {
         return None;
     }
@@ -3101,19 +3124,55 @@ fn standard_proof_lane_completion_detail(
                 Some("rewarded" | "paid" | "confirmed" | "settled")
             )
     })?;
-    let worker_count = proof_quiesced_node_count(fleet, ProofFleetNodeRole::Worker);
-    let validator_count = proof_quiesced_node_count(fleet, ProofFleetNodeRole::Validator);
+    let worker_count =
+        proof_completion_node_count(fleet, ProofFleetNodeRole::Worker, allow_continuing_work);
+    let validator_count =
+        proof_completion_node_count(fleet, ProofFleetNodeRole::Validator, allow_continuing_work);
     if worker_count < expected_workers || validator_count < expected_validators {
         return None;
     }
+    let node_state_label = if allow_continuing_work {
+        "healthy"
+    } else {
+        "quiesced"
+    };
     Some(format!(
-        "window {} reconciled with {} accepted contribution(s), closeout={}, workers_quiesced={}, validators_quiesced={}",
+        "window {} reconciled with {} accepted contribution(s), closeout={}, workers_{}={}, validators_{}={}",
         reconciled_window.window_id,
         reconciled_window.accepted_contributions,
         reconciled_window.closeout_status.as_deref().unwrap_or("-"),
+        node_state_label,
         worker_count,
+        node_state_label,
         validator_count
     ))
+}
+
+fn proof_completion_node_count(
+    fleet: &ProofFleetStatusReport,
+    role: ProofFleetNodeRole,
+    allow_continuing_work: bool,
+) -> usize {
+    if allow_continuing_work {
+        proof_healthy_node_count(fleet, role)
+    } else {
+        proof_quiesced_node_count(fleet, role)
+    }
+}
+
+fn proof_healthy_node_count(fleet: &ProofFleetStatusReport, role: ProofFleetNodeRole) -> usize {
+    fleet
+        .nodes
+        .iter()
+        .filter(|node| {
+            node.role == role
+                && node.process.running
+                && node
+                    .training
+                    .as_ref()
+                    .is_some_and(proof_node_training_is_healthy)
+        })
+        .count()
 }
 
 fn proof_quiesced_node_count(fleet: &ProofFleetStatusReport, role: ProofFleetNodeRole) -> usize {
@@ -3132,14 +3191,18 @@ fn proof_quiesced_node_count(fleet: &ProofFleetStatusReport, role: ProofFleetNod
 }
 
 fn proof_node_training_is_quiesced(training: &ProofFleetNodeTrainingStatus) -> bool {
-    training.load_error.is_none()
-        && training.last_failure_reason.is_none()
-        && training.recent_issue_count == 0
-        && training.pending_closeout_count == 0
+    proof_node_training_is_healthy(training)
         && matches!(
             training.active_runtime_process_state.as_deref(),
             Some("stopped") | None
         )
+}
+
+fn proof_node_training_is_healthy(training: &ProofFleetNodeTrainingStatus) -> bool {
+    training.load_error.is_none()
+        && training.last_failure_reason.is_none()
+        && training.recent_issue_count == 0
+        && training.pending_closeout_count == 0
         && training.current_run_id.is_some()
         && training.active_window_id.is_some()
 }
@@ -5954,6 +6017,37 @@ mod tests {
     }
 
     #[test]
+    fn standard_proof_lane_completion_ignores_global_validator_backlog_after_reward() {
+        let fleet = super::ProofFleetStatusReport {
+            configured: true,
+            namespace: "proof.global-backlog".to_string(),
+            mode: Some(super::ProofAuthorityMode::ProdShaped),
+            network_id: Some("trainnet.proof.global-backlog".to_string()),
+            run_slug: Some("proof.global-backlog".to_string()),
+            paths: None,
+            authority: proof_test_authority_status("proof.global-backlog"),
+            nodes: vec![
+                proof_test_node_status(super::ProofFleetNodeRole::Worker, None),
+                proof_test_node_status(super::ProofFleetNodeRole::Validator, Some("stopped")),
+            ],
+            launched_run: None,
+        };
+        let mut observed = proof_test_completed_observation();
+        observed.caveat_count = 1;
+        observed.first_caveat_id = Some("validator_backlog".to_string());
+        observed.first_caveat_severity = Some("critical".to_string());
+        observed.first_caveat_title = Some("Validator backlog".to_string());
+        observed.first_caveat_detail = Some(
+            "2 pending window(s) // 4 open challenge(s) // 4 queued challenge(s).".to_string(),
+        );
+
+        assert!(detect_proof_run_blocker(&fleet, Some(&observed)).is_none());
+        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1, false)
+            .expect("global validator backlog should not block a rewarded observed proof run");
+        assert!(detail.contains("window.proof.0001 reconciled"));
+    }
+
+    #[test]
     fn detect_proof_run_blocker_surfaces_accepted_work_payout_lag() {
         let fleet = super::ProofFleetStatusReport {
             configured: true,
@@ -6028,7 +6122,7 @@ mod tests {
         };
         let observed = proof_test_completed_observation();
 
-        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1)
+        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1, false)
             .expect("cleared worker runtime should count as quiesced after rewarded closeout");
 
         assert!(detail.contains("window.proof.0001 reconciled"));
@@ -6054,12 +6148,38 @@ mod tests {
         };
         let observed = proof_test_completed_observation();
 
-        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1);
+        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1, false);
 
         assert!(
             detail.is_none(),
             "running worker runtime must not be treated as quiesced"
         );
+    }
+
+    #[test]
+    fn hosted_starter_completion_accepts_healthy_nodes_continuing_work() {
+        let fleet = super::ProofFleetStatusReport {
+            configured: true,
+            namespace: "proof.continuing-work".to_string(),
+            mode: Some(super::ProofAuthorityMode::ProdShaped),
+            network_id: Some("trainnet.proof.continuing-work".to_string()),
+            run_slug: Some("proof.continuing-work".to_string()),
+            paths: None,
+            authority: proof_test_authority_status("proof.continuing-work"),
+            nodes: vec![
+                proof_test_node_status(super::ProofFleetNodeRole::Worker, Some("running")),
+                proof_test_node_status(super::ProofFleetNodeRole::Validator, Some("running")),
+            ],
+            launched_run: None,
+        };
+        let observed = proof_test_completed_observation();
+
+        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1, true)
+            .expect("hosted starter proof should complete after reward while online nodes continue later jobs");
+
+        assert!(detail.contains("window.proof.0001 reconciled"));
+        assert!(detail.contains("workers_healthy=1"));
+        assert!(detail.contains("validators_healthy=1"));
     }
 
     #[test]
@@ -6083,7 +6203,7 @@ mod tests {
         observed.first_caveat_id = Some("payout_pending".to_string());
         observed.first_caveat_severity = Some("warning".to_string());
 
-        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1);
+        let detail = super::standard_proof_lane_completion_detail(&fleet, &observed, 1, 1, false);
 
         assert!(
             detail.is_none(),
