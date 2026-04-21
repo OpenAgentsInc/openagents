@@ -1168,6 +1168,79 @@ pub struct LaunchCs336A1DemoRunResponse {
     pub run_detail: PublicTrainingRunDetailSnapshot,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DispatchCs336A1HomeworkRunsRequest {
+    #[serde(default = "cs336_a1_homework_dispatch_run_count_default")]
+    pub run_count: u32,
+    #[serde(default = "cs336_a1_homework_dispatch_max_contributors_default")]
+    pub max_contributors_per_run: u32,
+    #[serde(default = "cs336_a1_homework_dispatch_amount_sats_default")]
+    pub amount_sats: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_budget_sats: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_slug_prefix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name_prefix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_id: Option<String>,
+    #[serde(default = "cs336_a1_homework_dispatch_reuse_existing_default")]
+    pub reuse_existing_run: bool,
+    #[serde(default = "cs336_a1_homework_dispatch_only_online_default")]
+    pub only_online: bool,
+    #[serde(default = "cs336_a1_homework_dispatch_min_pylon_version_default")]
+    pub min_pylon_version: Option<String>,
+    #[serde(default = "cs336_a1_homework_dispatch_require_updated_build_default")]
+    pub require_updated_build: bool,
+    #[serde(default = "homework_launch_window_duration_seconds_default")]
+    pub window_duration_seconds: u64,
+    #[serde(default = "cs336_a1_homework_dispatch_continue_on_error_default")]
+    pub continue_on_error: bool,
+}
+
+impl Default for DispatchCs336A1HomeworkRunsRequest {
+    fn default() -> Self {
+        Self {
+            run_count: cs336_a1_homework_dispatch_run_count_default(),
+            max_contributors_per_run: cs336_a1_homework_dispatch_max_contributors_default(),
+            amount_sats: cs336_a1_homework_dispatch_amount_sats_default(),
+            total_budget_sats: None,
+            run_slug_prefix: None,
+            display_name_prefix: None,
+            network_id: None,
+            reuse_existing_run: cs336_a1_homework_dispatch_reuse_existing_default(),
+            only_online: cs336_a1_homework_dispatch_only_online_default(),
+            min_pylon_version: cs336_a1_homework_dispatch_min_pylon_version_default(),
+            require_updated_build: cs336_a1_homework_dispatch_require_updated_build_default(),
+            window_duration_seconds: homework_launch_window_duration_seconds_default(),
+            continue_on_error: cs336_a1_homework_dispatch_continue_on_error_default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DispatchCs336A1HomeworkRunError {
+    pub ordinal: u32,
+    pub run_slug: String,
+    pub error: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DispatchCs336A1HomeworkRunsResponse {
+    pub dispatched_at_unix_ms: u64,
+    pub batch_id: String,
+    pub requested_run_count: u32,
+    pub launched_run_count: u32,
+    pub failed_run_count: u32,
+    pub max_contributors_per_run: u32,
+    pub amount_sats: u64,
+    pub max_payout_sats: u64,
+    pub duplicate_work_allowed: bool,
+    pub launches: Vec<LaunchHomeworkRunResponse>,
+    pub errors: Vec<DispatchCs336A1HomeworkRunError>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 struct TrainingRunDetailQuery {
     #[serde(default)]
@@ -1176,6 +1249,38 @@ struct TrainingRunDetailQuery {
 
 const fn launch_cs336_a1_demo_reuse_existing_default() -> bool {
     true
+}
+
+const fn cs336_a1_homework_dispatch_run_count_default() -> u32 {
+    1
+}
+
+const fn cs336_a1_homework_dispatch_max_contributors_default() -> u32 {
+    1
+}
+
+const fn cs336_a1_homework_dispatch_amount_sats_default() -> u64 {
+    1
+}
+
+const fn cs336_a1_homework_dispatch_reuse_existing_default() -> bool {
+    false
+}
+
+const fn cs336_a1_homework_dispatch_only_online_default() -> bool {
+    true
+}
+
+fn cs336_a1_homework_dispatch_min_pylon_version_default() -> Option<String> {
+    Some(MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string())
+}
+
+const fn cs336_a1_homework_dispatch_require_updated_build_default() -> bool {
+    false
+}
+
+const fn cs336_a1_homework_dispatch_continue_on_error_default() -> bool {
+    false
 }
 
 const fn launch_homework_reuse_existing_default() -> bool {
@@ -8350,6 +8455,14 @@ fn build_api_router_with_state(state: AppState) -> Router {
         .route("/api/admin/homework/launch", post(launch_homework_run))
         .route("/v1/admin/homework/launch", post(launch_homework_run))
         .route(
+            "/api/admin/homework/cs336-a1/dispatch",
+            post(dispatch_cs336_a1_homework_runs),
+        )
+        .route(
+            "/v1/admin/homework/cs336-a1/dispatch",
+            post(dispatch_cs336_a1_homework_runs),
+        )
+        .route(
             "/v1/admin/training/demo-runs/cs336-a1/launch",
             post(launch_cs336_a1_demo_run),
         )
@@ -10232,6 +10345,157 @@ async fn execute_homework_launch(
         artifact_prefix: prepared.artifact_prefix,
         launch_receipt_id: prepared.launch_receipt_id,
         run_detail,
+    })
+}
+
+async fn dispatch_cs336_a1_homework_runs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<DispatchCs336A1HomeworkRunsRequest>,
+) -> Result<Json<DispatchCs336A1HomeworkRunsResponse>, ApiError> {
+    authenticate_admin_bearer_token(&state, &headers)?;
+    Ok(Json(
+        execute_cs336_a1_homework_dispatch(&state, request).await?,
+    ))
+}
+
+async fn execute_cs336_a1_homework_dispatch(
+    state: &AppState,
+    request: DispatchCs336A1HomeworkRunsRequest,
+) -> Result<DispatchCs336A1HomeworkRunsResponse, ApiError> {
+    const MAX_DISPATCH_RUNS: u32 = 64;
+    const MAX_CONTRIBUTORS_PER_RUN: u32 = 256;
+
+    if request.run_count == 0 || request.run_count > MAX_DISPATCH_RUNS {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "cs336_a1_homework_dispatch_run_count_invalid".to_string(),
+        });
+    }
+    if request.max_contributors_per_run == 0
+        || request.max_contributors_per_run > MAX_CONTRIBUTORS_PER_RUN
+    {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "cs336_a1_homework_dispatch_max_contributors_invalid".to_string(),
+        });
+    }
+    if request.amount_sats == 0 {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "cs336_a1_homework_dispatch_amount_sats_invalid".to_string(),
+        });
+    }
+    if request.window_duration_seconds == 0 {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "cs336_a1_homework_dispatch_window_duration_invalid".to_string(),
+        });
+    }
+
+    let max_payout_sats = u64::from(request.run_count)
+        .checked_mul(u64::from(request.max_contributors_per_run))
+        .and_then(|value| value.checked_mul(request.amount_sats))
+        .ok_or_else(|| ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "cs336_a1_homework_dispatch_budget_overflow".to_string(),
+        })?;
+    if request
+        .total_budget_sats
+        .is_some_and(|budget| max_payout_sats > budget)
+    {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: "cs336_a1_homework_dispatch_budget_exceeded".to_string(),
+        });
+    }
+
+    let dispatched_at_unix_ms = now_unix_ms();
+    let timestamp = Utc
+        .timestamp_millis_opt(dispatched_at_unix_ms as i64)
+        .single()
+        .map(|value| value.format("%Y%m%d%H%M%S").to_string())
+        .unwrap_or_else(|| dispatched_at_unix_ms.to_string());
+    let batch_suffix = random_token().chars().take(8).collect::<String>();
+    let batch_id = format!("dispatch.cs336.a1.{timestamp}.{batch_suffix}");
+    let run_slug_prefix = normalize_optional_field(request.run_slug_prefix.as_deref())
+        .map(|value| sanitize_identifier(value.as_str()))
+        .unwrap_or_else(|| "cron".to_string());
+    let display_name_prefix = normalize_optional_field(request.display_name_prefix.as_deref())
+        .unwrap_or_else(|| "CS336 A1 Homework Dispatch".to_string());
+    let network_id = normalize_optional_field(request.network_id.as_deref())
+        .unwrap_or_else(|| EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string());
+    let min_pylon_version = normalize_optional_field(request.min_pylon_version.as_deref());
+
+    let mut launches = Vec::new();
+    let mut errors = Vec::new();
+    for ordinal in 1..=request.run_count {
+        let run_slug = format!("{run_slug_prefix}.{timestamp}.{batch_suffix}.{ordinal:04}");
+        let display_name = format!("{display_name_prefix} {timestamp} #{ordinal:04}");
+        let launch_request = LaunchHomeworkRunRequest {
+            course_id: "cs336".to_string(),
+            homework_id: "a1".to_string(),
+            run_slug: run_slug.clone(),
+            training_run_id: None,
+            display_name: Some(display_name),
+            reuse_existing_run: request.reuse_existing_run,
+            network_id: Some(network_id.clone()),
+            run_kind: Some("homework_dispatch".to_string()),
+            assignment_family: Some("cs336.assignment1".to_string()),
+            artifact_prefix: None,
+            target: HomeworkLaunchTargetRequest {
+                only_online: request.only_online,
+                node_pubkey_hex: None,
+                min_pylon_version: min_pylon_version.clone(),
+                require_updated_build: request.require_updated_build,
+                tags_any: Vec::new(),
+                tags_all: Vec::new(),
+            },
+            assignment: HomeworkLaunchAssignmentRequest {
+                mode: HomeworkAssignmentMode::AllMatchingPylons,
+                max_contributors: Some(request.max_contributors_per_run),
+                window_duration_seconds: request.window_duration_seconds,
+            },
+            payout: HomeworkLaunchPayoutRequest {
+                enabled: true,
+                rail: Some("bitcoin_lightning".to_string()),
+                amount_sats: Some(request.amount_sats),
+                pay_only_on_accept: true,
+            },
+        };
+
+        match execute_homework_launch(state, launch_request).await {
+            Ok(response) => launches.push(response),
+            Err(error) if request.continue_on_error => {
+                errors.push(DispatchCs336A1HomeworkRunError {
+                    ordinal,
+                    run_slug,
+                    error: error.error.to_string(),
+                    reason: error.reason,
+                });
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    Ok(DispatchCs336A1HomeworkRunsResponse {
+        dispatched_at_unix_ms,
+        batch_id,
+        requested_run_count: request.run_count,
+        launched_run_count: u32::try_from(launches.len()).unwrap_or(u32::MAX),
+        failed_run_count: u32::try_from(errors.len()).unwrap_or(u32::MAX),
+        max_contributors_per_run: request.max_contributors_per_run,
+        amount_sats: request.amount_sats,
+        max_payout_sats,
+        duplicate_work_allowed: !request.reuse_existing_run,
+        launches,
+        errors,
     })
 }
 
@@ -42790,6 +43054,182 @@ mod tests {
         );
 
         upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_cs336_homework_dispatch_route_creates_fresh_paid_runs_for_cron() -> Result<()> {
+        let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink("gs://dispatch-training-bucket").await?;
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = 600;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let public_release_id = "openagents.pylon@0.1.99";
+        let public_build_version = "0.1.99";
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-dispatch-alpha",
+            "sha256:build-dispatch-alpha",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            public_release_id,
+            public_build_version,
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodedispatchalpha"),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/homework/cs336-a1/dispatch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &super::DispatchCs336A1HomeworkRunsRequest {
+                            run_count: 2,
+                            max_contributors_per_run: 1,
+                            amount_sats: 7,
+                            total_budget_sats: Some(14),
+                            run_slug_prefix: Some("cron.hourly".to_string()),
+                            display_name_prefix: Some("Cron CS336 A1".to_string()),
+                            ..super::DispatchCs336A1HomeworkRunsRequest::default()
+                        },
+                    )?))?,
+            )
+            .await?;
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(bytes.as_ref())
+        );
+        let dispatch =
+            serde_json::from_slice::<super::DispatchCs336A1HomeworkRunsResponse>(bytes.as_ref())?;
+        assert_eq!(dispatch.requested_run_count, 2);
+        assert_eq!(dispatch.launched_run_count, 2);
+        assert_eq!(dispatch.failed_run_count, 0);
+        assert_eq!(dispatch.max_contributors_per_run, 1);
+        assert_eq!(dispatch.amount_sats, 7);
+        assert_eq!(dispatch.max_payout_sats, 14);
+        assert!(dispatch.duplicate_work_allowed);
+        assert!(dispatch.errors.is_empty());
+        assert_eq!(dispatch.launches.len(), 2);
+
+        let run_ids = dispatch
+            .launches
+            .iter()
+            .map(|launch| launch.training_run_id.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(run_ids.len(), 2);
+        assert!(
+            run_ids
+                .iter()
+                .all(|run_id| run_id.starts_with("run.cs336.a1.cron_hourly_"))
+        );
+        assert!(run_ids.iter().any(|run_id| run_id.contains("_0001.")));
+        assert!(run_ids.iter().any(|run_id| run_id.contains("_0002.")));
+        assert!(dispatch.launches.iter().all(|launch| {
+            launch.launch_state == "created"
+                && launch.launch_phase.as_deref() == Some("leaseable")
+                && launch.assigned_pylons.len() == 1
+                && launch.assigned_pylons[0].node.node_pubkey_hex == "node-dispatch-alpha"
+        }));
+
+        let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
+        let unique_uploaded_paths = uploaded_paths
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<String>>();
+        assert_eq!(unique_uploaded_paths.len(), 6, "{uploaded_paths:?}");
+
+        {
+            let store = state.store.read().expect("read store");
+            for run_id in run_ids {
+                let run = store
+                    .kernel
+                    .get_compute_training_run(run_id.as_str())
+                    .expect("dispatched homework run");
+                assert_eq!(
+                    run.metadata.get("run_kind").and_then(Value::as_str),
+                    Some("homework_dispatch")
+                );
+                assert_eq!(
+                    run.metadata
+                        .pointer("/homework_launch/payout/enabled")
+                        .and_then(Value::as_bool),
+                    Some(true)
+                );
+                assert_eq!(
+                    run.metadata
+                        .pointer("/homework_launch/payout/amount_sats")
+                        .and_then(Value::as_u64),
+                    Some(7)
+                );
+                assert_eq!(
+                    run.metadata
+                        .pointer("/homework_launch/payout/pay_only_on_accept")
+                        .and_then(Value::as_bool),
+                    Some(true)
+                );
+                assert_eq!(
+                    run.metadata
+                        .pointer("/homework_launch/target/min_pylon_version")
+                        .and_then(Value::as_str),
+                    Some(super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION)
+                );
+                assert_eq!(
+                    run.metadata
+                        .pointer("/homework_launch/target/require_updated_build")
+                        .and_then(Value::as_bool),
+                    Some(false)
+                );
+            }
+        }
+
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_cs336_homework_dispatch_rejects_over_budget_batches() -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        let app = build_api_router_with_state(build_app_state(config));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/admin/homework/cs336-a1/dispatch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &super::DispatchCs336A1HomeworkRunsRequest {
+                            run_count: 2,
+                            max_contributors_per_run: 2,
+                            amount_sats: 10,
+                            total_budget_sats: Some(39),
+                            ..super::DispatchCs336A1HomeworkRunsRequest::default()
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json::<serde_json::Value>(response).await?;
+        assert_eq!(
+            body.get("reason").and_then(serde_json::Value::as_str),
+            Some("cs336_a1_homework_dispatch_budget_exceeded")
+        );
+
         Ok(())
     }
 

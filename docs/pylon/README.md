@@ -553,6 +553,33 @@ auto-launch the hosted CS336 A1 starter run, then waits for accepted work and
 accepted-work payout closeout. The older `cs336-a1` proof lane remains the
 explicit admin-launch proof path.
 
+Admins can also pace the amount of homework work offered to online Pylons
+without changing the public user command. The cron-safe endpoint is:
+
+```bash
+curl -X POST "$NEXUS_BASE_URL/v1/admin/homework/cs336-a1/dispatch" \
+  -H "Authorization: Bearer $NEXUS_CONTROL_ADMIN_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "run_count": 3,
+    "max_contributors_per_run": 1,
+    "amount_sats": 7,
+    "total_budget_sats": 21,
+    "run_slug_prefix": "cron.hourly",
+    "reuse_existing_run": false
+  }'
+```
+
+That endpoint creates fresh CS336 A1 homework runs by default, so the same
+assignment can be offered again across intervals when the operator intentionally
+wants duplicated starter work. It still pays only accepted homework closeouts:
+launching a run does not send sats, and periodic placeholder or liveness
+payouts must remain disabled for this claim. The default pacing contract is one
+fresh run, one contributor per run, one sat per accepted contribution, online
+nodes only, `min_pylon_version=0.1.4`, and no active-run reuse. Operators can
+raise `run_count`, `max_contributors_per_run`, or `amount_sats` in cron while
+using `total_budget_sats` as a per-call cap.
+
 `Pylon` now also carries the first retained training artifact courier and
 checkpoint-serving foundation. `apps/pylon/src/lib.rs` can now:
 
