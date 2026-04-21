@@ -230,6 +230,51 @@ Only fund the wallet after the status surfaces prove the wallet is actually
 short. A queued payout can be a dispatcher accounting bug even when the wallet
 has enough sats.
 
+## Treasury Funding Invoices
+
+When the production treasury wallet is underfunded, generate a fresh Lightning
+invoice through the hosted funding-target path. Do not inspect or copy the
+treasury mnemonic, do not manually edit wallet files, and do not infer payment
+from invoice creation.
+
+For a `50,000` sat invoice:
+
+```bash
+curl -fsS -X POST "https://nexus.openagents.com/v1/treasury/funding-target" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "amount_sats": 50000,
+    "description": "OpenAgents Nexus treasury funding",
+    "expiry_seconds": 3600
+  }' |
+  jq -r '.bolt11_invoice // empty'
+```
+
+The returned `bolt11_invoice` is safe to hand to the payer. It is not a secret,
+but it should still be handled as a live payment request rather than checked
+into docs, commits, or issue comments after use.
+
+Important operational details:
+
+- Include a positive `amount_sats` when the payer needs a Bolt11 invoice.
+  Calling the endpoint without an amount can return Spark and Bitcoin receive
+  addresses without a Lightning invoice.
+- A `504` from this endpoint means the bounded funding-target wallet operation
+  timed out, often because the service just restarted or the wallet is busy. It
+  is not proof that the wallet is unusable and it is not proof the invoice was
+  paid. Wait for the service to settle, retry once, or use the private treasury
+  runner if production keeps timing out.
+- Do not claim an invoice was paid because `wallet_balance_sats` moved by a
+  small amount during refresh. Balance refresh, cached wallet state, and old
+  receives can change independently. Payment proof requires a status snapshot
+  after the payer pays showing the funded balance or receive evidence, and the
+  real closeout proof requires queued accepted-work payouts to dispatch or
+  confirm.
+- If deploy smoke rolls back because the wallet was underfunded, fund the
+  wallet first, confirm `/v1/treasury/status`, and then redeploy the exact
+  image. Do not treat rollback to an older image as a fix for insufficient
+  funds.
+
 ## Final Proof Report
 
 The closeout report and issue comment should include:

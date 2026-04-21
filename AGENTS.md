@@ -136,6 +136,18 @@ Default to:
   `DEPLOY_IMAGE=... bash scripts/deploy/nexus/04-verify-gates.sh`
 - After deploy, also verify `https://nexus.openagents.com/v1/treasury/status`
   and any task-specific payout or receipt checks required by the change.
+- To generate a hosted Nexus treasury Lightning funding invoice, use the
+  documented funding-target endpoint instead of touching wallet files directly:
+  `POST https://nexus.openagents.com/v1/treasury/funding-target` with JSON such
+  as `{"amount_sats":50000,"description":"OpenAgents Nexus treasury funding","expiry_seconds":3600}`.
+  The response field `bolt11_invoice` is the invoice to give the payer. Do not
+  treat invoice creation, a funding-target HTTP 504, or a small cached balance
+  movement as proof that the invoice was paid. Payment proof requires
+  `/v1/treasury/status` to show the receive in wallet state, a higher spendable
+  balance, or subsequent payout dispatch/confirmation.
+- If post-restart payout smoke fails only because the treasury wallet is
+  underfunded, fund the wallet first and then redeploy the exact image. Do not
+  keep redeploying or rolling back images to solve a balance problem.
 - If post-restart payout smoke fails with wallet errors after the local proof
   runtime is green, use the explicit treasury recovery path instead of blind
   redeploys. Build a main image that contains both `nexus-relay` and
