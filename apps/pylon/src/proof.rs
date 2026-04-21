@@ -3466,7 +3466,8 @@ async fn fetch_proof_training_run_detail(
         .send()
         .await
         .with_context(|| format!("failed to fetch proof training run detail from {url}"))?;
-    if response.status() == StatusCode::NOT_FOUND {
+    let status = response.status();
+    if status == StatusCode::NOT_FOUND || proof_training_run_detail_status_is_retryable(status) {
         return Ok(None);
     }
     let response = response.error_for_status().with_context(|| {
@@ -3480,6 +3481,16 @@ async fn fetch_proof_training_run_detail(
         .await
         .context("failed to decode proof training run detail response")?;
     Ok(Some(summarize_training_run_detail_response(&detail)))
+}
+
+fn proof_training_run_detail_status_is_retryable(status: StatusCode) -> bool {
+    matches!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS
+            | StatusCode::BAD_GATEWAY
+            | StatusCode::SERVICE_UNAVAILABLE
+            | StatusCode::GATEWAY_TIMEOUT
+    )
 }
 
 fn summarize_training_run_detail_response(
@@ -5653,7 +5664,8 @@ mod tests {
         PROOF_ARTIFACT_UPLOAD_PREFIX, ProofLane, ProofNodeRuntimeFixture, detect_proof_run_blocker,
         load_proof_node_runtime_fixture, load_proof_replacement_contribution_template,
         parse_proof_command, parse_proof_lane, parse_status_body_from_reason,
-        proof_namespace_ports, render_proof_status_report, run_artifact_store_server,
+        proof_namespace_ports, proof_training_run_detail_status_is_retryable,
+        render_proof_status_report, run_artifact_store_server,
     };
 
     use anyhow::{Result, anyhow};
@@ -6125,6 +6137,28 @@ mod tests {
             parse_proof_lane("cs336/a1/replacement-attempt").expect("replacement-attempt lane"),
             ProofLane::Cs336A1ReplacementAttempt
         );
+    }
+
+    #[test]
+    fn proof_training_run_detail_retry_statuses_do_not_abort_gate() {
+        assert!(proof_training_run_detail_status_is_retryable(
+            StatusCode::SERVICE_UNAVAILABLE
+        ));
+        assert!(proof_training_run_detail_status_is_retryable(
+            StatusCode::BAD_GATEWAY
+        ));
+        assert!(proof_training_run_detail_status_is_retryable(
+            StatusCode::GATEWAY_TIMEOUT
+        ));
+        assert!(proof_training_run_detail_status_is_retryable(
+            StatusCode::TOO_MANY_REQUESTS
+        ));
+        assert!(!proof_training_run_detail_status_is_retryable(
+            StatusCode::INTERNAL_SERVER_ERROR
+        ));
+        assert!(!proof_training_run_detail_status_is_retryable(
+            StatusCode::OK
+        ));
     }
 
     #[test]
