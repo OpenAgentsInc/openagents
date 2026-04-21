@@ -446,6 +446,7 @@ preserve_remote_runtime_env
 : "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_PYLON_VERSION:=}"
 : "${NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS:=}"
 : "${TOKIO_WORKER_THREADS:=16}"
+: "${RUST_LOG:=warn,nexus_relay=info,nexus_control=info}"
 
 set_default_runtime_env
 preserve_or_validate_persisted_treasury_policy
@@ -467,7 +468,7 @@ cp "$UPSTREAM_CONFIG_SOURCE" "$TMP_UPSTREAM_CONFIG"
 
 cat >"$TMP_ENV" <<ENV
 # Managed by scripts/deploy/nexus/03-configure-and-start.sh
-RUST_LOG=info
+RUST_LOG=${RUST_LOG}
 TOKIO_WORKER_THREADS=${TOKIO_WORKER_THREADS}
 NEXUS_RELAY_LISTEN_ADDR=${NEXUS_LISTEN_ADDR}
 NEXUS_RELAY_UPSTREAM_LISTEN_ADDR=${NEXUS_UPSTREAM_LISTEN_ADDR}
