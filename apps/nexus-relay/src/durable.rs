@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::mpsc::{self, Sender as SyncSender};
 use std::time::Duration;
 
@@ -15,6 +16,7 @@ use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use reqwest::Url;
 use serde::Serialize;
+use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
@@ -26,9 +28,11 @@ const ENV_DATA_DIR: &str = "NEXUS_RELAY_DATA_DIR";
 const ENV_PUBLIC_WS_URL: &str = "NEXUS_RELAY_PUBLIC_WS_URL";
 const ENV_UPSTREAM_CONFIG_FILE: &str = "NEXUS_RELAY_UPSTREAM_CONFIG_FILE";
 const ENV_ENABLE_NIP42_AUTH: &str = "NEXUS_RELAY_ENABLE_NIP42_AUTH";
+const ENV_MAX_WEBSOCKETS: &str = "NEXUS_RELAY_MAX_WEBSOCKETS";
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42110";
 const DEFAULT_UPSTREAM_LISTEN_ADDR: &str = "127.0.0.1:42111";
 const DEFAULT_DATA_DIR: &str = ".nexus-relay-data";
+const DEFAULT_MAX_WEBSOCKETS: usize = 128;
 const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 const NEXUS_PRODUCT_NAME: &str = "OpenAgents Nexus";
 const NEXUS_PRODUCT_DESCRIPTION: &str = "The OpenAgents relay and authority host for Autopilot.";
@@ -43,6 +47,7 @@ pub struct DurableRelayConfig {
     pub public_ws_url: String,
     pub upstream_config_file: Option<PathBuf>,
     pub enable_nip42_auth: bool,
+    pub max_websockets: usize,
 }
 
 impl DurableRelayConfig {
@@ -79,6 +84,7 @@ impl DurableRelayConfig {
             .map_or(Ok(true), |value| {
                 parse_bool_env(ENV_ENABLE_NIP42_AUTH, &value)
             })?;
+        let max_websockets = parse_usize_env(ENV_MAX_WEBSOCKETS, DEFAULT_MAX_WEBSOCKETS)?;
 
         Ok(Self {
             listen_addr,
@@ -87,6 +93,7 @@ impl DurableRelayConfig {
             public_ws_url,
             upstream_config_file,
             enable_nip42_auth,
+            max_websockets,
         })
     }
 
@@ -156,6 +163,7 @@ pub struct HealthResponse {
 struct AppState {
     config: DurableRelayConfig,
     http_client: reqwest::Client,
+    websocket_slots: Arc<Semaphore>,
 }
 
 pub async fn run_server(config: DurableRelayConfig) -> Result<(), anyhow::Error> {
@@ -176,6 +184,7 @@ fn build_router(
 ) -> Router {
     let state = AppState {
         http_client: reqwest::Client::new(),
+        websocket_slots: Arc::new(Semaphore::new(config.max_websockets)),
         config,
     };
     let shell_router = Router::new()
@@ -303,9 +312,22 @@ async fn upgrade_websocket(state: AppState, request: Request) -> Response {
     let (mut parts, _body) = request.into_parts();
     match WebSocketUpgrade::from_request_parts(&mut parts, &state).await {
         Ok(ws) => {
+            let permit = match state.websocket_slots.clone().try_acquire_owned() {
+                Ok(permit) => permit,
+                Err(_) => {
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "nexus relay websocket capacity exhausted",
+                    )
+                        .into_response();
+                }
+            };
             let upstream_ws_url = state.config.upstream_ws_url();
-            ws.on_upgrade(move |socket| proxy_websocket(socket, upstream_ws_url))
-                .into_response()
+            ws.on_upgrade(move |socket| async move {
+                let _permit = permit;
+                proxy_websocket(socket, upstream_ws_url).await;
+            })
+            .into_response()
         }
         Err(rejection) => rejection.into_response(),
     }
@@ -461,6 +483,23 @@ fn parse_bool_env(name: &str, value: &str) -> Result<bool, String> {
     }
 }
 
+fn parse_usize_env(name: &str, default: usize) -> Result<usize, String> {
+    let Some(raw) = std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(default);
+    };
+    let parsed = raw
+        .parse::<usize>()
+        .map_err(|error| format!("invalid {name}: {error}"))?;
+    if parsed == 0 {
+        return Err(format!("invalid {name}: expected value greater than zero"));
+    }
+    Ok(parsed)
+}
+
 fn build_authority_config(
     config: &DurableRelayConfig,
 ) -> Result<nexus_control::ServiceConfig, anyhow::Error> {
@@ -546,6 +585,7 @@ mod tests {
             public_ws_url: format!("ws://{listen_addr}/"),
             upstream_config_file: None,
             enable_nip42_auth: false,
+            max_websockets: super::DEFAULT_MAX_WEBSOCKETS,
         })
     }
 
