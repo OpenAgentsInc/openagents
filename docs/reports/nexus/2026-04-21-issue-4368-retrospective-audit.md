@@ -1605,6 +1605,20 @@ placeholder history is pruned without dropping accepted homework records, and
 the earlier wallet-refresh reconciliation path for balance-blocked accepted
 payouts still works.
 
+The first deployed version of that fix reduced the file from roughly eighty
+megabytes to under one megabyte, but a short `strace` still showed repeated
+`treasury-state.tmp` writes at provider heartbeat pace. That remaining churn
+came from public Pylons reissuing payout-target challenges and registering the
+same Spark/Bitcoin payout target after the relay restarted. The system was
+treating every unchanged verification as a new durable registration receipt.
+That was unnecessary and expensive. Challenge issuance is now in-memory, and
+registering an unchanged target consumes the live challenge, refreshes the
+last-verified timestamp in memory, and returns without persistent state
+rewrite or receipt emission. A real target change still persists and emits the
+registration receipt. The endpoint also refreshes the public stats cache after
+the mutation so the UI and `/api/stats` reflect newly registered targets
+without depending on persistent treasury snapshot churn.
+
 Future agents should treat this as a distinct class of production failure. A
 paid treasury invoice can clear the funding blocker while a state-persistence
 bug still prevents deploy acceptance. If deploy gates fail on latency after
