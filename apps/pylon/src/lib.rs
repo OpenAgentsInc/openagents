@@ -8755,7 +8755,10 @@ pub fn ensure_local_setup(config_path: &Path) -> Result<PylonConfig> {
 }
 
 async fn run_default_online_earning_loop(config_path: &Path) -> Result<()> {
-    let config = ensure_local_setup(config_path)?;
+    let mut config = ensure_local_setup(config_path)?;
+    if ensure_default_payout_destination(config_path, &mut config).await? {
+        eprintln!("pylon: created local Spark payout destination for paid training work");
+    }
     let status = apply_control_locally(&config, ProviderControlAction::Online).await?;
     let runtime_status = status
         .snapshot
@@ -8767,6 +8770,31 @@ async fn run_default_online_earning_loop(config_path: &Path) -> Result<()> {
         config.node_label, runtime_status
     );
     serve(config_path, config).await
+}
+
+async fn ensure_default_payout_destination(
+    config_path: &Path,
+    config: &mut PylonConfig,
+) -> Result<bool> {
+    if training_settlement_destination(config).is_some() {
+        return Ok(false);
+    }
+    let address_report = create_wallet_address_report(config_path).await?;
+    apply_default_payout_destination(config, address_report.spark_address.as_str())?;
+    save_config(config_path, config)?;
+    Ok(true)
+}
+
+fn apply_default_payout_destination(config: &mut PylonConfig, spark_address: &str) -> Result<bool> {
+    if training_settlement_destination(config).is_some() {
+        return Ok(false);
+    }
+    let spark_address = spark_address.trim();
+    if spark_address.is_empty() {
+        bail!("wallet returned an empty Spark payout destination");
+    }
+    config.payout_destination = Some(spark_address.to_string());
+    Ok(true)
 }
 
 fn load_config(path: &Path) -> Result<PylonConfig> {
@@ -20525,7 +20553,10 @@ fn default_training_config(base_dir: &Path) -> PylonTrainingConfig {
 }
 
 fn default_training_role_claims() -> Vec<PylonTrainingRoleClaim> {
-    vec![PylonTrainingRoleClaim::Worker]
+    vec![
+        PylonTrainingRoleClaim::Validator,
+        PylonTrainingRoleClaim::Worker,
+    ]
 }
 
 const fn default_training_role_claim() -> PylonTrainingRoleClaim {
@@ -26018,16 +26049,16 @@ mod tests {
         TrainingManifestInspectionContext, TrainingOperatorStatusReport,
         TrainingTrnPublicationReport, WalletAddressReport, WalletInvoiceReport,
         WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
-        apply_control_command, apply_training_reputation_gate_to_availability,
-        build_psionic_train_invocation_manifest, build_pylon_training_admin_router,
-        build_snapshot_from_availability, bytes_to_gib_ceil, default_config,
-        derive_adapter_training_contributor_availability, derive_training_capability_tier_profile,
-        detect_availability, download_gemma_model_from_base_url,
-        download_gemma_model_from_base_url_with_transport, drain_training_supervisor,
-        drive_training_supervisor_once, ensure_identity, ensure_no_conflicting_training_assignment,
-        ensure_training_contribution_bridge_bundles, garbage_collect_training_download_cache,
-        gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
-        inspect_psionic_train_runtime_surface_at,
+        apply_control_command, apply_default_payout_destination,
+        apply_training_reputation_gate_to_availability, build_psionic_train_invocation_manifest,
+        build_pylon_training_admin_router, build_snapshot_from_availability, bytes_to_gib_ceil,
+        default_config, derive_adapter_training_contributor_availability,
+        derive_training_capability_tier_profile, detect_availability,
+        download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
+        drain_training_supervisor, drive_training_supervisor_once, ensure_identity,
+        ensure_no_conflicting_training_assignment, ensure_training_contribution_bridge_bundles,
+        garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
+        gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
         inspect_psionic_train_runtime_surface_from_candidates,
         inspect_training_retained_contribution_artifacts, inventory_rows, load_backend_report,
         load_earnings_report, load_inventory_report, load_jobs_report,
@@ -27981,6 +28012,48 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             config.payout_destination.as_deref() == Some("lnurlp:alice"),
             "config set should update payout destination",
+        )
+    }
+
+    #[test]
+    fn default_training_roles_cover_worker_and_validator_jobs()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        ensure(
+            config.training.role_claims
+                == vec![
+                    PylonTrainingRoleClaim::Validator,
+                    PylonTrainingRoleClaim::Worker,
+                ],
+            "bare pylon should prefer closing validation before opening new worker training",
+        )
+    }
+
+    #[test]
+    fn default_payout_destination_uses_wallet_spark_address()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        let changed = apply_default_payout_destination(&mut config, "  spark:local-provider  ")?;
+        ensure(changed, "missing payout destination should be populated")?;
+        ensure(
+            config.payout_destination.as_deref() == Some("spark:local-provider"),
+            "default payout destination should use the trimmed Spark address",
+        )
+    }
+
+    #[test]
+    fn default_payout_destination_preserves_explicit_config()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
+        config.payout_destination = Some("lnurlp:alice".to_string());
+        let changed = apply_default_payout_destination(&mut config, "spark:local-provider")?;
+        ensure(
+            !changed,
+            "explicit payout destination should not be replaced",
+        )?;
+        ensure(
+            config.payout_destination.as_deref() == Some("lnurlp:alice"),
+            "explicit payout destination should be preserved",
         )
     }
 
