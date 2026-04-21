@@ -554,10 +554,18 @@ surprise, no operator bearer token requirement, no placeholder payout
 ambiguity, and no raw treasury interpretation required by the user. Fourth,
 the team needs one final public-style proof run from a clean machine profile
 that demonstrates the exact video claim and records it in a single closure
-report. The issues below are drafted for review before creating them with
-`gh issue create`.
+report. The issues below were created with expanded bodies through `gh issue
+create` on 2026-04-21:
 
-All four proposed issues must preserve the #4385 simulation-first operating
+- [#4410 Make pylon run the default online earning loop](https://github.com/OpenAgentsInc/openagents/issues/4410)
+- [#4411 Create hosted CS336 starter-work lane for default online Pylons](https://github.com/OpenAgentsInc/openagents/issues/4411)
+- [#4412 Remove public-user blockers from CS336 artifact and payout plumbing](https://github.com/OpenAgentsInc/openagents/issues/4412)
+- [#4413 Prove public-style CS336 Pylon earning end to end](https://github.com/OpenAgentsInc/openagents/issues/4413)
+
+The issue bodies on GitHub are the canonical, expanded working versions. The
+snapshots below preserve the audit-level scope and ordering.
+
+All four created issues must preserve the #4385 simulation-first operating
 rule. Before any live Nexus, live Treasury, or live Spark proof is attempted,
 the issue must either pass an appropriate local proof lane from `main` or land
 the missing proof-runtime extension that models the relevant gap. The required
@@ -611,7 +619,7 @@ node is earning from CS336 training work. CS336 earning requires the node to be
 online for available hosted jobs and then reach admission, assignment, accepted
 outcome, and accepted-work payout state.
 
-### Draft issue 1
+### Created issue 1: [#4410](https://github.com/OpenAgentsInc/openagents/issues/4410)
 
 Title: `Make pylon run the default online earning loop`
 
@@ -693,7 +701,7 @@ Pylon should receive it through the default `pylon` flow.
   the final public-style proof issue.
 ```
 
-### Draft issue 2
+### Created issue 2: [#4411](https://github.com/OpenAgentsInc/openagents/issues/4411)
 
 Title: `Create hosted CS336 starter-work lane for default online Pylons`
 
@@ -755,7 +763,7 @@ and earn accepted-work payouts without a bespoke manual launch for every proof.
 - Matching payout id and final payment state.
 ```
 
-### Draft issue 3
+### Created issue 3: [#4412](https://github.com/OpenAgentsInc/openagents/issues/4412)
 
 Title: `Remove public-user blockers from CS336 artifact and payout plumbing`
 
@@ -821,7 +829,7 @@ treasury debugging to complete a paid CS336 Assignment 1 job.
 - Clean Pylon status output with payout id and settlement state.
 ```
 
-### Draft issue 4
+### Created issue 4: [#4413](https://github.com/OpenAgentsInc/openagents/issues/4413)
 
 Title: `Prove public-style CS336 Pylon earning end to end`
 
@@ -906,6 +914,7 @@ be collapsed, the proof issue can absorb the smaller remaining work. If any
 issue grows beyond the CS336 Assignment 1 user-earning loop, split it rather
 than weakening the definition of done. Do not create issue bodies that omit
 the #4385 simulation-first gate; that gate is the main lesson of #4385, #4400,
-#4409, and #4368. Before creating the issues with `gh issue create`, replace
-`pylon-v0.1.2` if necessary with the actual first GitHub release tag that
-contains the default `pylon` online earning path.
+#4409, and #4368. The created issue bodies currently reserve `pylon-v0.1.2`
+as the likely release floor. If the actual first paid-training-capable GitHub
+release tag differs, update #4410 through #4413 with the real tag before
+closing any of them.
