@@ -97,6 +97,7 @@ const TREASURY_PAYOUT_TARGET_DOMAIN: &str = "openagents:nexus-treasury-payout-ta
 const TREASURY_POLICY_SCHEMA_VERSION: u32 = 3;
 const TREASURY_STATE_RETENTION_WINDOW_MS: u64 = 30 * 86_400_000;
 const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 60_000;
+const TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS: u64 = TREASURY_DISPATCH_RESULT_TIMEOUT_MS;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
 const TREASURY_PAYOUT_LIMIT: usize = 262_144;
 const TREASURY_RECEIVE_LIMIT: usize = 16_384;
@@ -1789,6 +1790,20 @@ fn recovered_treasury_state_from_payload(
     state
 }
 
+fn retryable_failed_accepted_work_payout_is_due(
+    record: &TreasuryPayoutRecord,
+    now_unix_ms: u64,
+) -> bool {
+    record.status == "failed"
+        && record.payment_id.is_none()
+        && record.classification.accepted_work()
+        && !record.payout_target.trim().is_empty()
+        && now_unix_ms
+            >= record
+                .updated_at_unix_ms
+                .saturating_add(TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS)
+}
+
 impl TreasuryState {
     pub fn new(state_path: PathBuf) -> Self {
         let mut loaded = match fs::read_to_string(state_path.as_path()) {
@@ -3442,11 +3457,20 @@ impl TreasuryState {
         let mut queued = self
             .payout_records_by_key
             .values()
-            .filter(|record| record.status == "queued")
+            .filter(|record| {
+                record.status == "queued"
+                    || retryable_failed_accepted_work_payout_is_due(record, now_unix_ms)
+            })
             .map(|record| {
                 (
-                    record.created_at_unix_ms,
+                    if record.classification.accepted_work() {
+                        0u8
+                    } else {
+                        1u8
+                    },
+                    record.amount_sats,
                     record.updated_at_unix_ms,
+                    record.created_at_unix_ms,
                     record.payout_key.clone(),
                 )
             })
@@ -3454,10 +3478,16 @@ impl TreasuryState {
         queued.sort();
 
         let mut dispatch_plans = Vec::new();
-        for (_, _, payout_key) in queued {
+        for (_, _, _, _, payout_key) in queued {
             let Some(record) = self.payout_records_by_key.get_mut(payout_key.as_str()) else {
                 continue;
             };
+            if policy.placeholder_payout_mode == TreasuryPlaceholderPayoutMode::Disabled
+                && !record.classification.accepted_work()
+            {
+                record.reason = Some("placeholder_payouts_disabled".to_string());
+                continue;
+            }
             let Some(target) = self
                 .payout_targets_by_identity
                 .get(record.nostr_pubkey_hex.as_str())
@@ -3466,6 +3496,14 @@ impl TreasuryState {
                 record.reason = Some("missing_payout_target".to_string());
                 continue;
             };
+            if record.amount_sats
+                > self
+                    .wallet_balance_sats
+                    .saturating_sub(*reserved_budget_sats)
+            {
+                record.reason = Some("wallet_balance_insufficient".to_string());
+                continue;
+            }
             if policy.daily_budget_cap_sats > 0
                 && reserved_budget_sats.saturating_add(record.amount_sats)
                     > policy.daily_budget_cap_sats
@@ -8891,6 +8929,152 @@ mod tests {
         assert_eq!(
             status.training_payout_ledger_summary.reconciliation_status,
             "attention_required"
+        );
+    }
+
+    #[test]
+    fn failed_accepted_work_retry_claim_respects_wallet_balance_and_placeholder_disable() {
+        let mut config = test_treasury_config();
+        config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
+        config.daily_budget_cap_sats = 1_000_000;
+        let mut state = TreasuryState::default();
+        state.wallet_balance_sats = 4;
+        let now_unix_ms = super::now_unix_ms();
+        let retry_due_updated_at = now_unix_ms
+            .saturating_sub(super::TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS)
+            .saturating_sub(1);
+
+        for (pubkey, target) in [
+            ("pubkey-one", "spark:one"),
+            ("pubkey-old", "spark:old"),
+            ("pubkey-placeholder", "spark:placeholder"),
+        ] {
+            state.payout_targets_by_identity.insert(
+                pubkey.to_string(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: pubkey.to_string(),
+                    source_session_id: format!("session-{pubkey}"),
+                    spark_address: target.to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+        }
+
+        state.payout_records_by_key.insert(
+            "accepted-work:one".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "accepted-work:one".to_string(),
+                nostr_pubkey_hex: "pubkey-one".to_string(),
+                payout_target: "spark:one".to_string(),
+                amount_sats: 1,
+                status: "failed".to_string(),
+                reason: Some("wallet_send_timeout:60000".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: retry_due_updated_at,
+                updated_at_unix_ms: retry_due_updated_at,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("accepted.one".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+        state.payout_records_by_key.insert(
+            "accepted-work:old".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "accepted-work:old".to_string(),
+                nostr_pubkey_hex: "pubkey-old".to_string(),
+                payout_target: "spark:old".to_string(),
+                amount_sats: 25,
+                status: "failed".to_string(),
+                reason: Some("insufficient_funds".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: retry_due_updated_at.saturating_sub(50),
+                updated_at_unix_ms: retry_due_updated_at,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("accepted.old".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+        state.payout_records_by_key.insert(
+            "placeholder:old".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "placeholder:old".to_string(),
+                nostr_pubkey_hex: "pubkey-placeholder".to_string(),
+                payout_target: "spark:placeholder".to_string(),
+                amount_sats: 1,
+                status: "queued".to_string(),
+                reason: None,
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: retry_due_updated_at.saturating_sub(100),
+                updated_at_unix_ms: retry_due_updated_at,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        assert!(state.treasury_enabled(&config));
+        assert!(super::retryable_failed_accepted_work_payout_is_due(
+            state
+                .payout_records_by_key
+                .get("accepted-work:one")
+                .expect("one-sat failed accepted-work record"),
+            now_unix_ms
+        ));
+
+        let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms);
+
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(prepared.dispatch_plans[0].payout_key, "accepted-work:one");
+        assert_eq!(prepared.dispatch_plans[0].amount_sats, 1);
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:one");
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get("accepted-work:one")
+                .map(|record| (record.status.as_str(), record.reason.as_deref())),
+            Some(("dispatching", None))
+        );
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get("accepted-work:old")
+                .map(|record| (record.status.as_str(), record.reason.as_deref())),
+            Some(("failed", Some("wallet_balance_insufficient")))
+        );
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get("placeholder:old")
+                .map(|record| (record.status.as_str(), record.reason.as_deref())),
+            Some(("queued", Some("placeholder_payouts_disabled")))
         );
     }
 
