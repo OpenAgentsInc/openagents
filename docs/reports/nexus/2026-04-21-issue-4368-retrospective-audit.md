@@ -1321,3 +1321,55 @@ still responsible for sending and reconciling those payments. The new endpoint
 therefore gives the admin the pacing knob the system was missing without
 weakening the core audit rule from #4368: the earning claim is only satisfied
 by accepted homework and accepted-work-bound payout records.
+
+## Addendum: production deploy cleanup after authenticated Google access
+
+Date: 2026-04-21
+
+After Google access was refreshed, the current `main` image was built and
+deployed to production Nexus as
+`us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:62d21b6338b1`.
+The first deploy attempt did not replace the running service because the
+production VM root disk was full under `/var/lib/docker`; the service remained
+on the prior image during that failure. We recovered the host by pruning stale
+Docker images and temporary Docker pull state, vacuuming oversized journals,
+and rerunning the scripted deploy path. The second deploy completed and left
+`nexus-relay` active on the registry image tagged from `62d21b6338b1`, with
+placeholder payouts still disabled and the paced homework dispatch endpoint
+available in production.
+
+That deploy exposed two separate operational facts that matter for #4413 and
+for future agents. First, the old placeholder-liveness payout backlog from
+earlier experiments was still present in treasury state. Those rows were not
+accepted homework and should not have blocked the homework-only system after
+the policy was changed to `placeholder_payout_mode=disabled`. The treasury
+continuity logic now filters stalled-payout alerts by the active payout policy:
+legacy `placeholder_liveness` rows no longer raise `dispatch_stalled` or
+`confirmations_stalled` when placeholder payout mode is disabled, while
+`accepted_work` and `beta_bonus` rows remain alert-relevant. Targeted tests
+prove both sides: disabled placeholder backlog does not raise a stale critical
+alert, and disabled placeholder mode still raises a critical confirmation
+alert for a stuck accepted-work payout.
+
+Second, the deploy verifier itself had two mismatches with the live production
+runtime. Its treasury-enabled path attempted to read
+`/etc/nexus-relay/nexus-relay.env` without sudo, so the gate failed before it
+could reach the service assertions. It also treated any stale wallet-sync age
+as a hard deploy failure, even though the service intentionally avoids
+expensive wallet refreshes when there is no accepted-work payout requiring
+reconciliation. The verifier now reads the service env with sudo and treats
+stale wallet sync as acceptable only when the wallet runtime is connected and
+`accepted_work_pending_payout_count` is zero. During a real payout, or any time
+accepted-work reconciliation is pending, wallet freshness remains a hard gate.
+
+The remaining production proof step for #4413 is not to revive liveness
+payments or to count historical placeholder rows. The next run must use a
+fresh public-style Pylon home, the public `pylon-v0.1.4` bootstrap, and then
+only the bare `pylon` command for earning. An admin may pace work with
+`POST /v1/admin/homework/cs336-a1/dispatch` and a one-sat proof amount if the
+wallet remains nearly empty, but the issue can only close when Nexus records
+accepted work and Treasury records exactly one accepted-work payout for that
+accepted outcome with a confirmed or settled Spark payment. If the Nexus wallet
+cannot fund even that bounded accepted-work payout, the correct next action is
+wallet hydration through the documented treasury funding path, not another
+server-side workaround.

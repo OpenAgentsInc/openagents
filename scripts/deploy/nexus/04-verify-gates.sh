@@ -252,7 +252,7 @@ EOF
 
 fetch_treasury_env_json() {
   ssh_vm "$(cat <<'EOF'
-python3 - <<'PY'
+sudo python3 - <<'PY'
 import json
 from pathlib import Path
 
@@ -502,6 +502,13 @@ jq -n \
       public_snapshot_generated_at_unix_ms: $treasury_result.body.public_snapshot_generated_at_unix_ms,
       wallet_balance_updated_at_unix_ms: $treasury_result.body.wallet_balance_updated_at_unix_ms
     } end;
+  def accepted_work_pending_reconciliation:
+    (($treasury_result.body.training_payout_ledger_summary.accepted_work_pending_payout_count // 0) > 0);
+  def wallet_refresh_intentionally_idle:
+    (
+      ($treasury_result.body.wallet_runtime_status // "") == "connected" and
+      (accepted_work_pending_reconciliation | not)
+    );
   def gates:
     [
       gate(
@@ -718,10 +725,14 @@ jq -n \
         "treasury_snapshot_freshness";
         (
           (($treasury_result.body.snapshot_age_ms // 0) <= $verify_treasury_snapshot_max_age_ms) and
-          (($treasury_result.body.wallet_sync_lag_ms // 0) <= $verify_treasury_wallet_sync_max_lag_ms)
+          (
+            (($treasury_result.body.wallet_sync_lag_ms // 0) <= $verify_treasury_wallet_sync_max_lag_ms) or
+            wallet_refresh_intentionally_idle
+          )
         );
         (
           if (($treasury_result.body.snapshot_age_ms // 0) > $verify_treasury_snapshot_max_age_ms) then "snapshot_age_exceeded"
+          elif (($treasury_result.body.wallet_sync_lag_ms // 0) > $verify_treasury_wallet_sync_max_lag_ms) and wallet_refresh_intentionally_idle then null
           elif (($treasury_result.body.wallet_sync_lag_ms // 0) > $verify_treasury_wallet_sync_max_lag_ms) then "wallet_sync_lag_exceeded"
           else null end
         );
@@ -729,7 +740,9 @@ jq -n \
           snapshot_age_ms: $treasury_result.body.snapshot_age_ms,
           max_snapshot_age_ms: $verify_treasury_snapshot_max_age_ms,
           wallet_sync_lag_ms: $treasury_result.body.wallet_sync_lag_ms,
-          max_wallet_sync_lag_ms: $verify_treasury_wallet_sync_max_lag_ms
+          max_wallet_sync_lag_ms: $verify_treasury_wallet_sync_max_lag_ms,
+          wallet_refresh_intentionally_idle: wallet_refresh_intentionally_idle,
+          accepted_work_pending_payout_count: ($treasury_result.body.training_payout_ledger_summary.accepted_work_pending_payout_count // 0)
         }
       ),
       gate(

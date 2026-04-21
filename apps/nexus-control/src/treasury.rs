@@ -1366,6 +1366,15 @@ impl TreasuryPayoutClassification {
         self.payout_class == TreasuryPayoutClass::AcceptedWork
     }
 
+    fn continuity_alert_relevant(&self, policy: &TreasuryRuntimePolicy) -> bool {
+        match self.payout_class {
+            TreasuryPayoutClass::PlaceholderLiveness => {
+                policy.placeholder_payout_mode != TreasuryPlaceholderPayoutMode::Disabled
+            }
+            TreasuryPayoutClass::AcceptedWork | TreasuryPayoutClass::BetaBonus => true,
+        }
+    }
+
     fn weak_device_accepted_work(&self) -> bool {
         self.accepted_work() && self.weak_device_bearing
     }
@@ -2226,11 +2235,17 @@ impl TreasuryState {
         let mut active_alerts = Vec::new();
         let latest_eligible_window_started_at_unix_ms =
             self.latest_eligible_window_started_at_unix_ms;
-        let oldest_dispatch_pending_at_unix_ms =
-            self.oldest_pending_payout_updated_at_unix_ms(&["queued", "dispatching"]);
-        let oldest_confirmation_pending_at_unix_ms =
-            self.oldest_pending_payout_updated_at_unix_ms(&["queued", "dispatching", "dispatched"]);
         let policy = self.active_policy(config);
+        let oldest_dispatch_pending_at_unix_ms = self
+            .oldest_continuity_relevant_pending_payout_updated_at_unix_ms(
+                &["queued", "dispatching"],
+                &policy,
+            );
+        let oldest_confirmation_pending_at_unix_ms = self
+            .oldest_continuity_relevant_pending_payout_updated_at_unix_ms(
+                &["queued", "dispatching", "dispatched"],
+                &policy,
+            );
 
         if policy.treasury_enabled {
             if oldest_dispatch_pending_at_unix_ms.is_some_and(|pending_since_unix_ms| {
@@ -2379,10 +2394,15 @@ impl TreasuryState {
         receipts
     }
 
-    fn oldest_pending_payout_updated_at_unix_ms(&self, statuses: &[&str]) -> Option<u64> {
+    fn oldest_continuity_relevant_pending_payout_updated_at_unix_ms(
+        &self,
+        statuses: &[&str],
+        policy: &TreasuryRuntimePolicy,
+    ) -> Option<u64> {
         self.payout_records_by_key
             .values()
             .filter(|record| statuses.contains(&record.status.as_str()))
+            .filter(|record| record.classification.continuity_alert_relevant(policy))
             .map(|record| record.updated_at_unix_ms)
             .min()
     }
@@ -9338,6 +9358,92 @@ mod tests {
                     && alert.reason == "pending_payouts_not_confirming"
             }),
             "confirmation backlog should raise a critical continuity alert"
+        );
+    }
+
+    #[test]
+    fn disabled_placeholder_payouts_do_not_raise_stalled_alerts_for_legacy_liveness_records() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
+        let now_unix_ms = 2_000_000u64;
+
+        state.payout_records_by_key.insert(
+            "legacy-placeholder-dispatched".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "legacy-placeholder-dispatched".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 2,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("legacy-payment-a".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                created_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
+                updated_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        let receipts = state.sync_continuity_alerts(&config, now_unix_ms);
+        assert!(receipts.is_empty());
+        assert!(state.active_continuity_alerts.is_empty());
+    }
+
+    #[test]
+    fn disabled_placeholder_payouts_still_raise_stalled_alerts_for_accepted_work() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
+        let now_unix_ms = 2_000_000u64;
+
+        state.payout_records_by_key.insert(
+            "accepted-work-dispatched".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "accepted-work-dispatched".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 2,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("accepted-payment-a".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                created_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
+                updated_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("outcome-a".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let receipts = state.sync_continuity_alerts(&config, now_unix_ms);
+        assert_eq!(receipts.len(), 1);
+        assert!(
+            state.active_continuity_alerts.iter().any(|alert| {
+                alert.alert_id == "confirmations_stalled"
+                    && alert.reason == "pending_payouts_not_confirming"
+            }),
+            "accepted-work backlog must still raise a critical continuity alert"
         );
     }
 
