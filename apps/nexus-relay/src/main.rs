@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail};
 
 const ENV_TOKIO_WORKER_THREADS: &str = "TOKIO_WORKER_THREADS";
 const DEFAULT_SERVER_TOKIO_WORKER_THREADS: usize = 16;
+const DEFAULT_LOG_FILTER: &str = "warn,nexus_relay=info,nexus_control=info";
 
 fn main() -> Result<()> {
     let worker_threads = configured_tokio_worker_threads()?;
@@ -12,7 +13,7 @@ async fn async_main(worker_threads: usize) -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(DEFAULT_LOG_FILTER)),
         )
         .with_target(false)
         .compact()
