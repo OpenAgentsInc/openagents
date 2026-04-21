@@ -230,6 +230,44 @@ Only fund the wallet after the status surfaces prove the wallet is actually
 short. A queued payout can be a dispatcher accounting bug even when the wallet
 has enough sats.
 
+## Production Latency And Treasury State Churn
+
+If `04-verify-gates.sh` fails only on latency after a successful deploy and
+treasury status shows the paid funding invoice has landed, inspect live disk
+write churn before changing latency thresholds or redeploying blindly. A Nexus
+relay that repeatedly rewrites a large treasury state file can make health,
+stats, provider, and training rollout probes miss the gate even when CPU and
+memory look healthy.
+
+Use the VM-local process I/O counters and state-file size as the first check:
+
+```bash
+gcloud compute ssh nexus-mainnet-1 \
+  --tunnel-through-iap \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --command 'pid=$(pgrep -f /usr/local/bin/nexus-relay | head -n1); sudo awk "/write_bytes|wchar|syscw/ {print}" /proc/$pid/io; sleep 10; sudo awk "/write_bytes|wchar|syscw/ {print}" /proc/$pid/io; sudo ls -lh /var/lib/nexus-relay/treasury/treasury-state.json'
+```
+
+If writes grow by hundreds of megabytes or gigabytes over seconds, inspect the
+hot file path with a bounded `strace`:
+
+```bash
+gcloud compute ssh nexus-mainnet-1 \
+  --tunnel-through-iap \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --command 'pid=$(pgrep -f /usr/local/bin/nexus-relay | head -n1); sudo timeout 5 strace -ff -tt -T -e trace=pwrite64,write,writev,openat,rename,fsync,fdatasync -p $pid -o /tmp/nexus-relay-strace; sudo grep -hE "treasury-state|pwrite64|write\\(|openat|rename|fsync|fdatasync" /tmp/nexus-relay-strace* | head -n 120'
+```
+
+The expected fixed behavior is that no-op payout queue refreshes do not rewrite
+`treasury-state.json`, stale compactable `placeholder_liveness` payout records
+are pruned, and accepted-work homework records are retained. If a future image
+reintroduces repeated writes of `treasury-state.tmp` followed by rename to
+`treasury-state.json`, treat it as a production bug in treasury state
+persistence or retention. Do not call the issue complete by relaxing deploy
+latency gates.
+
 ## Treasury Funding Invoices
 
 When the production treasury wallet is underfunded, generate a fresh Lightning

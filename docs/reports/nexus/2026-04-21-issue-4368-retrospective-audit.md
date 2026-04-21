@@ -1560,3 +1560,58 @@ release before claiming public onboarding proof, do not mix standalone
 `training sync` commands with a running bare `pylon` over the same home, and
 close issues only after pushed `main`, deployed Nexus, public-style Pylon
 execution, accepted work, and payout evidence all agree.
+
+## Addendum: paid funding did not end the closeout because treasury persistence was hot-looping
+
+Date: 2026-04-21
+
+After the `0.1.7` release and the first production deploy, the next apparent
+blocker was an underfunded Nexus treasury wallet. A 50,000 sat Lightning
+invoice was generated through the hosted funding-target endpoint and paid.
+That did solve the funding side: treasury status showed a spendable balance
+near the invoice amount, and fresh accepted-work homework payouts began
+dispatching and confirming. The lesson is that invoice payment has to be
+verified from treasury status or payout movement, not from invoice creation,
+not from a `504`, and not from a small cached balance movement. Once the paid
+invoice was visible, insufficient funds was no longer the active blocker.
+
+The deploy still could not be honestly accepted because the production gate
+then failed on latency. Health, stats, provider scan, and training rollout
+probes were slow even though CPU and memory were not saturated. The decisive
+production clue was the Linux process I/O counter for `nexus-relay`: write
+bytes increased by roughly gigabytes over seconds. A bounded `strace` showed
+the service repeatedly writing `/var/lib/nexus-relay/treasury/treasury-state.tmp`
+at roughly eighty megabytes and renaming it to `treasury-state.json`. The hot
+file was not large because of current homework evidence. It was large because
+the treasury state still contained tens of thousands of historical
+`placeholder_liveness` payout records from the earlier system. Those rows were
+no longer payable after placeholder/liveness payments were disabled, but they
+still lived in the persistent payout map. No-op queue refreshes also persisted
+the whole state file, so harmless repeated scheduling passes became repeated
+eighty-megabyte disk writes.
+
+The fix keeps the accepted-work payout contract intact. No-op payout queue
+refreshes now refresh only the in-memory public snapshot instead of rewriting
+the treasury file. Placeholder-liveness records that are already confirmed,
+failed, skipped, or queued only because placeholder payouts are disabled are
+compactable; retention now prunes old compactable placeholder records and caps
+the remaining compactable placeholder set while retaining accepted homework
+and beta-bonus records. When placeholder payout mode is disabled, attempted
+non-accepted-work records are marked `skipped` with
+`placeholder_payouts_disabled` so they can be compacted later instead of
+staying in a misleading queued state. The tests added for this bug prove that
+duplicate queue requests do not rewrite the treasury file, compactable
+placeholder history is pruned without dropping accepted homework records, and
+the earlier wallet-refresh reconciliation path for balance-blocked accepted
+payouts still works.
+
+Future agents should treat this as a distinct class of production failure. A
+paid treasury invoice can clear the funding blocker while a state-persistence
+bug still prevents deploy acceptance. If deploy gates fail on latency after
+funding is confirmed, check `/proc/<pid>/io`, state-file size, and a short
+`strace` before changing gate thresholds or redeploying the same image. The
+correct closeout proof remains stricter than "wallet funded" or "some payouts
+confirmed": a pushed `main` commit, a registry image built from that commit, a
+scripted production deploy, passing gates without hot state rewrites, a fresh
+public-style Pylon run from the minimum public release, accepted homework work,
+and a confirmed accepted-work payout.

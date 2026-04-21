@@ -100,6 +100,8 @@ const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 60_000;
 const TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS: u64 = TREASURY_DISPATCH_RESULT_TIMEOUT_MS;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
 const TREASURY_PAYOUT_LIMIT: usize = 262_144;
+const TREASURY_PLACEHOLDER_PAYOUT_RECORD_LIMIT: usize = 1_024;
+const TREASURY_PLACEHOLDER_PAYOUT_RECORD_RETENTION_WINDOW_MS: u64 = 86_400_000;
 const TREASURY_RECEIVE_LIMIT: usize = 16_384;
 const TREASURY_POLICY_CHANGE_LIMIT: usize = 64;
 const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
@@ -1813,6 +1815,19 @@ fn retryable_failed_accepted_work_payout_is_due(
                 .saturating_add(TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS)
 }
 
+fn placeholder_liveness_record_can_compact(record: &TreasuryPayoutRecord) -> bool {
+    if record.classification.payout_class != TreasuryPayoutClass::PlaceholderLiveness {
+        return false;
+    }
+
+    match record.status.as_str() {
+        "confirmed" => record.counted_in_paid_total,
+        "failed" | "skipped" => true,
+        "queued" => record.reason.as_deref() == Some("placeholder_payouts_disabled"),
+        _ => false,
+    }
+}
+
 impl TreasuryState {
     pub fn new(state_path: PathBuf) -> Self {
         let mut loaded = match fs::read_to_string(state_path.as_path()) {
@@ -1941,7 +1956,7 @@ impl TreasuryState {
         if inserted {
             self.refresh_public_snapshot(config, now_unix_ms);
         } else {
-            self.persist();
+            self.refresh_public_snapshot_in_memory(config, now_unix_ms);
         }
     }
 
@@ -3510,9 +3525,13 @@ impl TreasuryState {
             if policy.placeholder_payout_mode == TreasuryPlaceholderPayoutMode::Disabled
                 && !record.classification.accepted_work()
             {
-                if record.reason.as_deref() != Some("placeholder_payouts_disabled") {
+                if record.status != "skipped"
+                    || record.reason.as_deref() != Some("placeholder_payouts_disabled")
+                {
+                    record.status = "skipped".to_string();
                     record.reason = Some("placeholder_payouts_disabled".to_string());
                     record.updated_at_unix_ms = now_unix_ms;
+                    record.skip_receipt_recorded = true;
                     changed = true;
                 }
                 continue;
@@ -4297,6 +4316,7 @@ impl TreasuryState {
 
     fn trim_retention(&mut self) -> bool {
         let mut changed = false;
+        let now_unix_ms = now_unix_ms();
         if self.next_challenge_nonce == 0 {
             self.next_challenge_nonce = 1;
             changed = true;
@@ -4345,7 +4365,31 @@ impl TreasuryState {
             }
             changed = true;
         }
-        let now_unix_ms = now_unix_ms();
+        let placeholder_oldest_allowed =
+            now_unix_ms.saturating_sub(TREASURY_PLACEHOLDER_PAYOUT_RECORD_RETENTION_WINDOW_MS);
+        let placeholder_records_before = self.payout_records_by_key.len();
+        self.payout_records_by_key.retain(|_, record| {
+            !placeholder_liveness_record_can_compact(record)
+                || record.updated_at_unix_ms >= placeholder_oldest_allowed
+        });
+        changed |= self.payout_records_by_key.len() != placeholder_records_before;
+        let mut compactable_placeholder_records = self
+            .payout_records_by_key
+            .values()
+            .filter(|record| placeholder_liveness_record_can_compact(record))
+            .map(|record| (record.updated_at_unix_ms, record.payout_key.clone()))
+            .collect::<Vec<_>>();
+        if compactable_placeholder_records.len() > TREASURY_PLACEHOLDER_PAYOUT_RECORD_LIMIT {
+            compactable_placeholder_records.sort();
+            let overflow = compactable_placeholder_records
+                .len()
+                .saturating_sub(TREASURY_PLACEHOLDER_PAYOUT_RECORD_LIMIT);
+            for (_, payout_key) in compactable_placeholder_records.into_iter().take(overflow) {
+                self.payout_records_by_key.remove(payout_key.as_str());
+            }
+            changed = true;
+        }
+
         let oldest_allowed = now_unix_ms.saturating_sub(TREASURY_STATE_RETENTION_WINDOW_MS);
         let payout_records_before = self.payout_records_by_key.len();
         self.payout_records_by_key
@@ -7568,6 +7612,67 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_queued_payout_request_does_not_rewrite_treasury_state() {
+        let path = unique_treasury_state_path("duplicate-queue-noop");
+        std::fs::write(path.as_path(), "sentinel\n").expect("write sentinel");
+
+        let mut state = TreasuryState::default();
+        state.next_challenge_nonce = 1;
+        state.state_path = Some(path.clone());
+        let payout_key = "window.existing:pubkey-a".to_string();
+        state.payout_records_by_key.insert(
+            payout_key.clone(),
+            TreasuryPayoutRecord {
+                payout_key: payout_key.clone(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 25,
+                status: "queued".to_string(),
+                reason: None,
+                payment_id: None,
+                window_started_at_unix_ms: 1_000,
+                window_ends_at_unix_ms: 2_000,
+                created_at_unix_ms: 1_000,
+                updated_at_unix_ms: 1_000,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        state.queue_payout_requests(
+            &test_treasury_config(),
+            &[TreasuryQueuedPayoutRequest {
+                payout_key,
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                amount_sats: 25,
+                window_started_at_unix_ms: 1_000,
+                window_ends_at_unix_ms: 2_000,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    ..TreasuryPayoutClassification::default()
+                },
+                queue_block_reason: None,
+            }],
+            3_000,
+        );
+
+        assert_eq!(
+            std::fs::read_to_string(path.as_path()).expect("read sentinel"),
+            "sentinel\n"
+        );
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn wallet_snapshot_without_ledger_changes_does_not_rewrite_treasury_state() {
         let path = unique_treasury_state_path("wallet-refresh-noop");
         let mut state = TreasuryState::default();
@@ -7595,6 +7700,86 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn placeholder_liveness_records_compact_without_dropping_homework_records() {
+        let mut state = TreasuryState::default();
+        state.next_challenge_nonce = 1;
+        let now_unix_ms = super::now_unix_ms();
+        for index in 0..(super::TREASURY_PLACEHOLDER_PAYOUT_RECORD_LIMIT + 10) {
+            let payout_key = format!("placeholder.{index:04}:pubkey-{index:04}");
+            let updated_at_unix_ms = now_unix_ms.saturating_sub(index as u64);
+            state.payout_records_by_key.insert(
+                payout_key.clone(),
+                TreasuryPayoutRecord {
+                    payout_key,
+                    nostr_pubkey_hex: format!("pubkey-{index:04}"),
+                    payout_target: format!("spark:{index:04}"),
+                    amount_sats: 1,
+                    status: "confirmed".to_string(),
+                    reason: None,
+                    payment_id: Some(format!("payment-placeholder-{index:04}")),
+                    window_started_at_unix_ms: updated_at_unix_ms,
+                    window_ends_at_unix_ms: updated_at_unix_ms.saturating_add(1),
+                    created_at_unix_ms: updated_at_unix_ms,
+                    updated_at_unix_ms,
+                    sellable_at_window_open: true,
+                    dispatch_receipt_recorded: true,
+                    confirm_receipt_recorded: true,
+                    fail_receipt_recorded: false,
+                    skip_receipt_recorded: false,
+                    counted_in_paid_total: true,
+                    classification: TreasuryPayoutClassification::default(),
+                },
+            );
+        }
+        state.payout_records_by_key.insert(
+            "homework.accepted:pubkey-homework".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "homework.accepted:pubkey-homework".to_string(),
+                nostr_pubkey_hex: "pubkey-homework".to_string(),
+                payout_target: "spark:homework".to_string(),
+                amount_sats: 25,
+                status: "confirmed".to_string(),
+                reason: None,
+                payment_id: Some("payment-homework".to_string()),
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms.saturating_add(1),
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: true,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: true,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    training_run_id: Some("run.cs336.a1.demo".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        assert!(state.trim_retention());
+
+        let placeholder_count = state
+            .payout_records_by_key
+            .values()
+            .filter(|record| {
+                record.classification.payout_class == TreasuryPayoutClass::PlaceholderLiveness
+            })
+            .count();
+        assert_eq!(
+            placeholder_count,
+            super::TREASURY_PLACEHOLDER_PAYOUT_RECORD_LIMIT
+        );
+        assert!(
+            state
+                .payout_records_by_key
+                .contains_key("homework.accepted:pubkey-homework")
+        );
     }
 
     #[test]
