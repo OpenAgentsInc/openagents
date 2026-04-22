@@ -7,6 +7,11 @@ Use it when changing the Tauri Pylon card, proof card, command-dialog command
 set, or Rust command handlers. Manual clicking is useful for final visual
 inspection, but it is not sufficient proof that the app flow works.
 
+The default UI opens on the homework Mission Control screen. Its primary user
+control is the large `GO ONLINE` button, which starts Pylon if needed, requests
+provider online mode, and refreshes the homework projection so eligibility for
+jobs is visible in the app.
+
 ## What Exists
 
 The Tauri app starts a local app-owned HTTP control plane from the same Rust

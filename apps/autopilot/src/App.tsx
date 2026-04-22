@@ -95,7 +95,7 @@ type MenuBranch = {
 };
 
 function App() {
-  const [activeView, setActiveView] = React.useState<ActiveView>("workbench");
+  const [activeView, setActiveView] = React.useState<ActiveView>("homework");
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [commandText, setCommandText] = React.useState("");
   const [consoleMessage, setConsoleMessage] = React.useState(
@@ -196,6 +196,52 @@ function App() {
     },
     [activeView, runPylonControl],
   );
+
+  const refreshHomeworkProjection = React.useCallback(async () => {
+    const snapshot = await pylonHomeworkGet();
+    setHomeworkSnapshot(snapshot);
+    setPylonStatus(snapshot.pylon);
+    if (snapshot.proof) {
+      setProofStatus(snapshot.proof);
+    }
+    return snapshot;
+  }, []);
+
+  const goOnline = React.useCallback(async () => {
+    setBusy("pylon.go-online");
+    setActiveView("homework");
+    try {
+      if (pylonStatus?.processState !== "running") {
+        const starting = await pylonStart();
+        setPylonStatus(starting);
+      }
+      const online = await pylonSetMode("online");
+      setPylonStatus(online);
+      await refreshHomeworkProjection();
+      setConsoleMessage("Pylon is online and eligible for homework jobs.");
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatError(error));
+    } finally {
+      setBusy(null);
+    }
+  }, [pylonStatus?.processState, refreshHomeworkProjection]);
+
+  const goOffline = React.useCallback(async () => {
+    setBusy("pylon.go-offline");
+    setActiveView("homework");
+    try {
+      const offline = await pylonSetMode("offline");
+      setPylonStatus(offline);
+      await refreshHomeworkProjection();
+      setConsoleMessage("Pylon is offline and no longer eligible for jobs.");
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatError(error));
+    } finally {
+      setBusy(null);
+    }
+  }, [refreshHomeworkProjection]);
 
   const runProofLane = React.useCallback(async (lane: ProofLane) => {
     const namespace = makeProofNamespace(lane);
@@ -545,6 +591,7 @@ function App() {
     refresh: requireAction(actionById, "homework.refresh"),
     start: requireAction(actionById, "pylon.serve.start"),
     online: requireAction(actionById, "pylon.provider.online"),
+    offline: requireAction(actionById, "pylon.provider.offline"),
     pause: requireAction(actionById, "pylon.provider.pause"),
     stop: requireAction(actionById, "pylon.serve.stop"),
     runProof: requireAction(actionById, "proof.run.cs336-a1"),
@@ -612,6 +659,9 @@ function App() {
           ) : activeView === "homework" ? (
             <HomeworkPylonScreen
               actions={homeworkActions}
+              busy={busy}
+              onGoOffline={goOffline}
+              onGoOnline={goOnline}
               onAction={executeAction}
               snapshot={homeworkSnapshot}
             />
@@ -871,6 +921,9 @@ function WorkbenchList({
 
 function HomeworkPylonScreen({
   actions,
+  busy,
+  onGoOffline,
+  onGoOnline,
   onAction,
   snapshot,
 }: {
@@ -878,12 +931,16 @@ function HomeworkPylonScreen({
     refresh: AutopilotAction;
     start: AutopilotAction;
     online: AutopilotAction;
+    offline: AutopilotAction;
     pause: AutopilotAction;
     stop: AutopilotAction;
     runProof: AutopilotAction;
     doctor: AutopilotAction;
     artifacts: AutopilotAction;
   };
+  busy: string | null;
+  onGoOffline: () => Promise<void>;
+  onGoOnline: () => Promise<void>;
   onAction: ActionRunner;
   snapshot: HomeworkSnapshotProjection | null;
 }) {
@@ -935,6 +992,35 @@ function HomeworkPylonScreen({
   const assignmentRows = activeAssignment
     ? homeworkAssignmentRows(activeAssignment)
     : [["assignment", "waiting for admin-launched homework"]] satisfies RegisterRow[];
+  const isOnline = snapshot.pylon.providerState === "online";
+  const isGoOnlineBusy = busy === "pylon.go-online";
+  const isGoOfflineBusy = busy === "pylon.go-offline";
+  const goOnlineDisabledReason = isOnline
+    ? actions.offline.disabledReason
+    : actions.start.disabledReason ?? actions.online.disabledReason;
+  const goOnlineButtonDisabled = Boolean(
+    goOnlineDisabledReason || isGoOnlineBusy || isGoOfflineBusy,
+  );
+  const goOnlineButtonLabel = isOnline
+    ? isGoOfflineBusy
+      ? "GOING OFFLINE"
+      : "GO OFFLINE"
+    : isGoOnlineBusy || snapshot.pylon.processState === "starting"
+      ? "STARTING"
+      : "GO ONLINE";
+  const goOnlineButtonDetail = isOnline
+    ? "Eligible for admin-launched homework jobs now."
+    : snapshot.pylon.processState === "running"
+      ? "Runtime is running. Click to become eligible for jobs."
+      : "Starts Pylon and marks this machine eligible for jobs.";
+  const missionStats: RegisterRow[] = [
+    ["status", snapshot.status],
+    ["process", snapshot.pylon.processState],
+    ["provider", snapshot.pylon.providerState],
+    ["offers", training?.workOfferCount ?? 0],
+    ["assignment", activeAssignment?.assignmentId ?? "waiting"],
+    ["payout", closeout?.payoutState ?? snapshot.proof?.status ?? "waiting"],
+  ];
   const payoutRows: RegisterRow[] = [
     ["policy", snapshot.payoutPolicy],
     ["stage", closeout?.stage ?? snapshot.proof?.closeoutStage ?? "waiting"],
@@ -949,18 +1035,43 @@ function HomeworkPylonScreen({
   return (
     <section className="homework-screen" aria-label="Pylon homework control">
       <Card className="homework-hero">
-        <CardHeader className="workbench-panel__header">
-          <div>
-            <CardTitle>{snapshot.assignmentLabel}</CardTitle>
-            <p>{snapshot.detail}</p>
-          </div>
-          <StateBadge value={snapshot.status} />
-        </CardHeader>
         <CardContent className="homework-hero__content">
-          <div className="homework-actions">
+          <div className="mission-control-hero">
+            <div className="mission-control-copy">
+              <span className="mission-control-kicker">Autopilot - Mission Control</span>
+              <h1>{isOnline ? "Online for jobs" : "Ready to earn"}</h1>
+              <span className="mission-control-assignment">
+                {snapshot.assignmentLabel}
+              </span>
+              <p>{snapshot.detail}</p>
+              <div className="status-strip">
+                <StateBadge value={snapshot.status} />
+                <StateBadge value={snapshot.pylon.providerState} />
+                <StateBadge value={snapshot.pylon.processState} />
+              </div>
+            </div>
+            <button
+              className="go-online-button"
+              data-state={isOnline ? "online" : "offline"}
+              disabled={goOnlineButtonDisabled}
+              title={goOnlineDisabledReason ?? goOnlineButtonDetail}
+              type="button"
+              onClick={() => void (isOnline ? onGoOffline() : onGoOnline())}
+            >
+              <span className="go-online-button__label">{goOnlineButtonLabel}</span>
+              <span className="go-online-button__detail">{goOnlineButtonDetail}</span>
+            </button>
+          </div>
+
+          <div className="mission-control-register">
+            <RegisterGrid rows={missionStats} />
+          </div>
+
+          <div className="homework-actions" aria-label="Secondary homework controls">
             <ActionButton action={actions.refresh} onAction={onAction} />
-            <ActionButton action={actions.start} onAction={onAction} variant="default" />
+            <ActionButton action={actions.start} onAction={onAction} />
             <ActionButton action={actions.online} onAction={onAction} />
+            <ActionButton action={actions.offline} onAction={onAction} />
             <ActionButton action={actions.pause} onAction={onAction} />
             <ActionButton action={actions.stop} onAction={onAction} />
             <ActionButton action={actions.runProof} onAction={onAction} variant="default" />
