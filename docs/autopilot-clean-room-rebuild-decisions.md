@@ -110,6 +110,11 @@ The first implementation target is:
   internal rename can happen after the workbench-to-engine contract is real.
 - Tightened the diagnostics accessibility label so the visible shell no longer
   describes that panel as proof-first.
+- Follow-up UI pass: made the first-run workbench more minimal and
+  black-centric. The default screen now suppresses earn/diagnostics status
+  pills unless the user opens those views, removes the extra object-contract
+  panel, moves snapshot refresh into the workspace header, and uses flatter
+  near-black panels with low-contrast hairlines.
 
 Verification run:
 
