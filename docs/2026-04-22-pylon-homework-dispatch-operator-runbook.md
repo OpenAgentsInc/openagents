@@ -12,7 +12,8 @@ The target user story is:
 ```text
 npx installs Pylon -> pylon stays online -> admin dispatch creates homework
 work -> Pylon claims the work -> work closes out -> validation accepts it ->
-treasury pays -> Pylon wallet history shows the receive
+treasury pays -> Pylon wallet balance increases and treasury records a settled
+accepted-work payout
 ```
 
 ## Preconditions
@@ -119,21 +120,61 @@ PROOF_ROOT="/private/tmp/pylon-npm-e2e-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "${PROOF_ROOT}/logs"
 printf '%s\n' "${PROOF_ROOT}" > /private/tmp/pylon-npm-e2e-latest-root
 
+NETWORK_ID="trainnet.cs336.a1.$(date -u +%Y%m%dT%H%M%SZ)"
+printf '%s\n' "${NETWORK_ID}" > "${PROOF_ROOT}/network-id.txt"
+
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
 npx --yes @openagentsinc/pylon \
   --version 0.1.8 \
   --pylon-home "${PROOF_ROOT}/pylon-home" \
+  --config-path "${PROOF_ROOT}/pylon-home/config.json" \
   --install-root "${PROOF_ROOT}/install" \
   --skip-diagnostics \
-  2>&1 | tee "${PROOF_ROOT}/logs/npm-pylon.log"
+  --no-launch \
+  2>&1 | tee "${PROOF_ROOT}/logs/npm-worker-bootstrap.log"
 ```
 
-The bootstrap should report a fresh prebuilt release asset, checksum
-verification, `runtime ready` or `fully online`, and then:
+The bootstrap should report a fresh prebuilt release asset and checksum
+verification. In a noninteractive operator shell, do not let the npm launcher
+start the default TUI. The launcher opens `pylon-tui` by default, and a
+noninteractive shell can fail with `Device not configured`. Use `--no-launch`
+for the bootstrap, then run the installed `pylon` binary directly.
+
+Configure the worker:
+
+```bash
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
+
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${PROOF_ROOT}/pylon-home/config.json" \
+"${PYLON_BIN}" config set training.allowed_networks "${NETWORK_ID}"
+
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${PROOF_ROOT}/pylon-home/config.json" \
+"${PYLON_BIN}" config set training.role_claims worker
+
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${PROOF_ROOT}/pylon-home/config.json" \
+"${PYLON_BIN}" config set training.relay_urls "wss://nexus.openagents.com/"
+```
+
+Run the worker:
+
+```bash
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${PROOF_ROOT}/pylon-home/config.json" \
+OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
+"${PYLON_BIN}" 2>&1 | tee "${PROOF_ROOT}/logs/pylon-worker.log"
+```
+
+The worker log should report a payout destination and then:
 
 ```text
-Starting Pylon default earning loop pylon
 pylon: node pylon is online; running default online earning loop
 ```
 
@@ -177,6 +218,7 @@ Configure validator-only role claims:
 
 ```bash
 VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
+NETWORK_ID="$(cat "${PROOF_ROOT}/network-id.txt")"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
@@ -192,6 +234,16 @@ HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
 OPENAGENTS_PYLON_CONFIG_PATH="${VAL_ROOT}/pylon-home/config.json" \
 "${VAL_BIN}" config set training.role_claims validator
+
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${VAL_ROOT}/pylon-home/config.json" \
+"${VAL_BIN}" config set training.allowed_networks "${NETWORK_ID}"
+
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${VAL_ROOT}/pylon-home/config.json" \
+"${VAL_BIN}" config set training.relay_urls "wss://nexus.openagents.com/"
 ```
 
 Run the validator:
@@ -217,12 +269,14 @@ zsh because `status` is read-only.
 
 ```bash
 PROOF_ROOT="$(cat /private/tmp/pylon-npm-e2e-latest-root)"
+NETWORK_ID="$(cat "${PROOF_ROOT}/network-id.txt")"
 RUN_PREFIX="codex-npm-e2e-$(date -u +%Y%m%d%H%M%S)"
 printf '%s\n' "${RUN_PREFIX}" > "${PROOF_ROOT}/run-prefix.txt"
 
 payload="$(jq -nc \
   --arg prefix "${RUN_PREFIX}" \
   --arg min_version "0.1.8" \
+  --arg network_id "${NETWORK_ID}" \
   '{
     run_count: 1,
     max_contributors_per_run: 1,
@@ -233,6 +287,7 @@ payload="$(jq -nc \
     only_online: true,
     min_pylon_version: $min_version,
     require_updated_build: false,
+    network_id: $network_id,
     window_duration_seconds: 600
   }')"
 printf '%s\n' "${payload}" > "${PROOF_ROOT}/dispatch-request.json"
@@ -241,7 +296,7 @@ http_status="$(curl -sS \
   -o "${PROOF_ROOT}/dispatch-response.json" \
   -w '%{http_code}' \
   -X POST "${NEXUS_BASE_URL}/v1/admin/homework/cs336-a1/dispatch" \
-  -H "Authorization: Bearer ${NEXUS_CONTROL_ADMIN_BEARER_TOKEN}" \
+  -H "Authorization: Bearer ${token}" \
   -H "Content-Type: application/json" \
   -d "${payload}")"
 echo "HTTP_STATUS=${http_status}"
@@ -360,6 +415,28 @@ For current homework-dispatch runs, expect one aggregate validator challenge and
 no contribution-sample challenge. If a proof run shows a sample challenge for a
 `homework_dispatch` run, the deployed Nexus build is stale.
 
+If local Pylon status shows that the worker sealed the window but the hosted run
+detail still shows `total_contributions: 0`, force the worker-side publication
+path once:
+
+```bash
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
+
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${PROOF_ROOT}/pylon-home/config.json" \
+"${PYLON_BIN}" training sync --json | tee "${PROOF_ROOT}/training-sync-worker.json"
+
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${PROOF_ROOT}/pylon-home/config.json" \
+"${PYLON_BIN}" training refresh --json | tee "${PROOF_ROOT}/training-refresh-worker.json"
+```
+
+This is a publication/relay catch-up step, not a replacement for the normal
+background worker loop. Use it when the worker log shows relay-connectivity
+retries or the local admin status is ahead of Nexus.
+
 ## Wait For Validation And Payout
 
 After the optional validator is running, poll the run until the window is
@@ -388,15 +465,22 @@ jq '{
 }' "${PROOF_ROOT}/run-detail-accepted.json"
 ```
 
-Then confirm the worker wallet saw the receive:
+If the validator is online but the window does not move out of `sealed`, force
+validator intake and sync once:
 
 ```bash
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
+VAL_ROOT="${PROOF_ROOT}/validator"
+VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
-OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
-OPENAGENTS_PYLON_CONFIG_PATH="${PROOF_ROOT}/pylon-home/config.json" \
-"${PYLON_BIN}" wallet history --limit 20 --json | jq .
+OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${VAL_ROOT}/pylon-home/config.json" \
+"${VAL_BIN}" training intake --json | tee "${VAL_ROOT}/training-intake-validator.json"
+
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${VAL_ROOT}/pylon-home/config.json" \
+"${VAL_BIN}" training sync --json | tee "${VAL_ROOT}/training-sync-validator.json"
 ```
 
 Stop the proof Pylon processes after the evidence has been captured:
@@ -448,6 +532,15 @@ target bytes, the validator is running an older Pylon release. Upgrade to
 `pylon-v0.1.8` or newer and retry the run. `0.1.8` repairs stale retained target
 artifact ids and falls back away from mismatched local same-host target files.
 
+If the validator finalizes as verified but the hosted window stays
+`replay_required` or `refused` instead of `rewarded`, production Nexus is
+missing the aggregate-only closeout reward fix. The broken behavior is: Nexus
+accepts the aggregate challenge, but reconciliation has no per-sample
+contribution disposition to map back onto the contribution, so accepted work is
+treated as refused. The fixed behavior is deployed from `fb60b9167` or newer:
+for homework-dispatch aggregate-only validation, Nexus applies the aggregate
+terminal disposition to the contribution outcome.
+
 ## Verify Accepted-Work Payment
 
 After the run has accepted work, check treasury:
@@ -481,9 +574,12 @@ OPENAGENTS_PYLON_CONFIG_PATH="${PROOF_ROOT}/pylon-home/config.json" \
 "${PYLON_BIN}" wallet history --limit 20 --json
 ```
 
-The proof is complete only when wallet history shows a completed receive whose
-amount and payment id match a confirmed accepted-work treasury record for the
-triggered run.
+The proof is complete when treasury shows a confirmed and settled
+`accepted_work` payout for the triggered run, contribution, and worker payout
+target, and the worker wallet balance reflects the paid sats. Current Spark
+wallet history can return an empty `payments` list for this internal Spark
+receive even when the balance increased, so do not fail an otherwise complete
+proof only because wallet history omitted the receive.
 
 ## Evidence To Record
 
@@ -501,9 +597,13 @@ Record these fields in the issue comment or proof receipt:
 - payout amount
 - treasury payment id
 - treasury status and reconciliation status
-- worker wallet balance and wallet history receive
+- worker wallet balance and wallet history observation
 - any validator process used for proof
 - any treasury snapshot or validator backlog warnings observed
+- proof receipt path under `docs/reports/nexus/`
 
 Do not record raw bearer tokens, wallet mnemonics, Spark API keys, or private
 GCP credentials.
+
+The first successful npm Pylon end-to-end proof for this path is recorded in
+`docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json`.
