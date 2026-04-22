@@ -6083,7 +6083,11 @@ fn training_window_defensibility_audit(
             }
         }
     }
-    if aggregate_challenge_count == 0 || sample_challenge_count == 0 {
+    let aggregate_only_validation = kernel
+        .get_compute_training_run(window.training_run_id.as_str())
+        .is_some_and(|run| training_run_is_homework_dispatch(&run));
+    if aggregate_challenge_count == 0 || (!aggregate_only_validation && sample_challenge_count == 0)
+    {
         push_training_defensibility_refusal_code(
             &mut refusal_codes,
             PylonTrainingRefusalCode::ValidatorDisagreement,
@@ -9012,7 +9016,7 @@ struct HomeworkLaunchPrepared {
 }
 
 const HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
-const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.7";
+const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.8";
 
 fn current_homework_launch_pylon_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0))

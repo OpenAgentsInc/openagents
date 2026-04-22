@@ -23,13 +23,17 @@ ordinary scheduler and payout bugs.
 
 Minimum runtime requirements:
 
-- public Pylon `0.1.7` or newer
+- public Pylon release asset `pylon-v0.1.8` or newer. The npm bootstrap
+  package may still be invoked as `npx @openagentsinc/pylon`; the important
+  version for earning and validation is the resolved standalone Pylon binary.
 - production Nexus running the lease-priority fix that tries existing
   schedulable runs before auto-launching fresh hosted starter work
 - production Nexus running the validator-priority fix that validates
   admin-dispatched homework before draining hosted starter backlog
 - production Nexus running the homework validation-policy fix that validates
   homework-dispatch windows with the aggregate challenge only
+- production Nexus running the closeout fix that treats aggregate-only
+  homework validation as defensible for payout
 - a normal user `HOME` for the running Pylon process so Rust and Psionic
   discovery work
 - an isolated `OPENAGENTS_PYLON_HOME` for the proof
@@ -63,12 +67,13 @@ cargo test -p nexus-control validation_policy
 ```
 
 The homework validation-policy test must show that `homework_dispatch` keeps the
-aggregate validator challenge and skips per-contribution sample challenges. The
-released `@openagentsinc/pylon@0.1.7` validator path can validate the aggregate
-homework challenge end-to-end, but the per-contribution sample replay path can
-produce a local artifact-manifest digest drift against the retained homework
-artifact bundle. Do not re-enable sample challenges for homework dispatch until
-that released-Pylon replay path is fixed and proven with npm Pylon.
+aggregate validator challenge and skips per-contribution sample challenges. Use
+Pylon `0.1.8` or newer for npm proofs. `0.1.8` fixes the validator replay case
+where a retained claim can point at stale same-host local target bytes: Pylon now
+falls back to the bridge-inline payload or rewrites the target artifact id to
+match the materialized digest. Do not re-enable sample challenges for homework
+dispatch until the per-contribution sample replay path is separately fixed and
+proven with npm Pylon.
 
 ## Check Treasury Before Dispatch
 
@@ -116,8 +121,8 @@ printf '%s\n' "${PROOF_ROOT}" > /private/tmp/pylon-npm-e2e-latest-root
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
-npx --yes @openagentsinc/pylon@0.1.7 \
-  --version 0.1.7 \
+npx --yes @openagentsinc/pylon \
+  --version 0.1.8 \
   --pylon-home "${PROOF_ROOT}/pylon-home" \
   --install-root "${PROOF_ROOT}/install" \
   --skip-diagnostics \
@@ -159,8 +164,8 @@ mkdir -p "${VAL_ROOT}/logs"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
-npx --yes @openagentsinc/pylon@0.1.7 \
-  --version 0.1.7 \
+npx --yes @openagentsinc/pylon \
+  --version 0.1.8 \
   --pylon-home "${VAL_ROOT}/pylon-home" \
   --install-root "${VAL_ROOT}/install" \
   --skip-diagnostics \
@@ -171,7 +176,7 @@ npx --yes @openagentsinc/pylon@0.1.7 \
 Configure validator-only role claims:
 
 ```bash
-VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.7-darwin-arm64/pylon"
+VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
@@ -217,13 +222,18 @@ printf '%s\n' "${RUN_PREFIX}" > "${PROOF_ROOT}/run-prefix.txt"
 
 payload="$(jq -nc \
   --arg prefix "${RUN_PREFIX}" \
+  --arg min_version "0.1.8" \
   '{
     run_count: 1,
     max_contributors_per_run: 1,
     amount_sats: 25,
     total_budget_sats: 25,
     run_slug_prefix: $prefix,
-    reuse_existing_run: false
+    reuse_existing_run: false,
+    only_online: true,
+    min_pylon_version: $min_version,
+    require_updated_build: false,
+    window_duration_seconds: 600
   }')"
 printf '%s\n' "${payload}" > "${PROOF_ROOT}/dispatch-request.json"
 
@@ -251,6 +261,72 @@ Record the run id:
 jq -r '.launches[0].training_run_id' "${PROOF_ROOT}/dispatch-response.json" \
   > "${PROOF_ROOT}/triggered-run-id.txt"
 ```
+
+## Cron-Compatible Dispatch
+
+The same endpoint is the operator pacing control for paid homework. Put the
+dispatch call in cron or another scheduler, and control payout rate with
+`run_count`, `max_contributors_per_run`, `amount_sats`, and
+`total_budget_sats`.
+
+This example dispatches at most four paid workers per interval, paying 25 sats
+only for accepted work. Duplicate work across intervals is allowed by design
+because every invocation creates a fresh run slug.
+
+```bash
+old_path="$PATH"
+set -a
+source /Users/christopherdavid/work/.secrets/nexus-admin.env
+set +a
+PATH="$old_path"
+token="${NEXUS_CONTROL_ADMIN_BEARER_TOKEN:-${NEXUS_ADMIN_BEARER_TOKEN:-}}"
+
+batch_slug="cron.cs336.a1.$(date -u +%Y%m%d%H%M%S)"
+payload="$(jq -nc \
+  --arg prefix "${batch_slug}" \
+  --arg min_version "0.1.8" \
+  '{
+    run_count: 4,
+    max_contributors_per_run: 1,
+    amount_sats: 25,
+    total_budget_sats: 100,
+    run_slug_prefix: $prefix,
+    reuse_existing_run: false,
+    only_online: true,
+    min_pylon_version: $min_version,
+    require_updated_build: false,
+    window_duration_seconds: 900,
+    continue_on_error: false
+  }')"
+
+curl -fsS \
+  -X POST "${NEXUS_BASE_URL}/v1/admin/homework/cs336-a1/dispatch" \
+  -H "Authorization: Bearer ${token}" \
+  -H "Content-Type: application/json" \
+  -d "${payload}" |
+  jq '{
+    batch_id,
+    requested_run_count,
+    launched_run_count,
+    failed_run_count,
+    max_payout_sats,
+    duplicate_work_allowed,
+    runs: [.launches[] | {
+      training_run_id,
+      launch_state,
+      launch_phase,
+      assigned_pylons
+    }],
+    errors
+  }'
+```
+
+For live payout pacing, keep `total_budget_sats` equal to or lower than
+`run_count * max_contributors_per_run * amount_sats`. The API rejects overbudget
+payloads before creating runs. Use `only_online: true` for the current public
+earning path so dispatches target Pylons that are actually online for relevant
+jobs. Do not require a user to opt into CS336 homework manually; running
+`pylon` and staying online is the operator-facing contract.
 
 ## Wait For Worker Contribution
 
@@ -315,7 +391,7 @@ jq '{
 Then confirm the worker wallet saw the receive:
 
 ```bash
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.7-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
@@ -366,6 +442,12 @@ validation-policy fix. The fixed behavior is: homework-dispatch windows use the
 aggregate challenge only until the released npm Pylon contribution-sample
 replay path stops producing artifact-manifest digest drift.
 
+If the validator log reports an `artifact_digest_mismatch` where the target
+`contribution_artifact_manifest` artifact id digest differs from the materialized
+target bytes, the validator is running an older Pylon release. Upgrade to
+`pylon-v0.1.8` or newer and retry the run. `0.1.8` repairs stale retained target
+artifact ids and falls back away from mismatched local same-host target files.
+
 ## Verify Accepted-Work Payment
 
 After the run has accepted work, check treasury:
@@ -386,7 +468,7 @@ Verify the worker wallet directly:
 
 ```bash
 PROOF_ROOT="$(cat /private/tmp/pylon-npm-e2e-latest-root)"
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.7-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
