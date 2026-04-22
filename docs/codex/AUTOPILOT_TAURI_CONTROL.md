@@ -93,6 +93,7 @@ Status:
 ```bash
 cargo run -p autopilot --bin autopilotctl-tauri -- --json status
 cargo run -p autopilot --bin autopilotctl-tauri -- --json pylon status
+cargo run -p autopilot --bin autopilotctl-tauri -- --json homework status
 cargo run -p autopilot --bin autopilotctl-tauri -- --json proof status
 ```
 
@@ -145,6 +146,45 @@ The smoke command covers:
 - proof completion polling
 - proof doctor
 - proof stop
+
+## Homework Nexus/Pylon Handshake
+
+Use the handshake command when changing the homework screen or the Pylon/Nexus
+projection that feeds it:
+
+```bash
+cargo run -p autopilot --bin autopilotctl-tauri -- --json homework handshake \
+  --namespace proof.autopilot.homework.handshake.manual \
+  --timeout-ms 600000
+```
+
+The command uses only the running Tauri app's control plane. It does not shell
+around the app to mutate Pylon directly. The flow is:
+
+- read the homework projection exposed to the UI
+- start Pylon through the app
+- wait for Pylon to be running
+- put Pylon online through the app
+- verify the homework projection becomes online/ready
+- run the clean `cs336-a1` proof lane through the app
+- wait for completion and run `proof doctor`
+- fetch proof artifacts through the app
+- read the final homework projection and verify paid/closeout/payout state
+- reject visible homework text that leaks internal sync-stale or
+  treasury-degraded operator wording
+
+For a one-command launcher that starts Tauri, runs the handshake, stores JSON,
+and tears the app down:
+
+```bash
+scripts/autopilot/tauri-control-smoke.sh --homework-handshake
+```
+
+The default wrapper uses deterministic fake `pylon` and `oa` binaries. The fake
+Pylon now implements both `status --json` and `training status --json`, so the
+homework screen projection is tested rather than only the older Pylon/proof
+diagnostic projections. Add `--real-binaries` only when validating the local
+installed stack itself.
 
 ## Homework Proof Matrix
 
@@ -245,6 +285,7 @@ scripts/autopilot/tauri-control-smoke.sh --status-only
 scripts/autopilot/tauri-control-smoke.sh --keep-running
 scripts/autopilot/tauri-control-smoke.sh --namespace proof.autopilot.ctl.manual
 scripts/autopilot/tauri-control-smoke.sh --timeout-ms 240000
+scripts/autopilot/tauri-control-smoke.sh --homework-handshake
 scripts/autopilot/tauri-control-smoke.sh --homework-matrix
 scripts/autopilot/tauri-control-smoke.sh --real-binaries
 ```

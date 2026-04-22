@@ -1131,6 +1131,26 @@ fn homework_status_and_detail(
         }
     }
 
+    if !pylon.installed {
+        return (
+            "Pylon missing".to_string(),
+            "Install or select a Pylon binary before homework work can run.".to_string(),
+        );
+    }
+
+    if pylon.provider_state != "online" {
+        if pylon.process_state == "running" || pylon.process_state == "starting" {
+            return (
+                "Starting Pylon".to_string(),
+                "Pylon is running; set it online to receive homework work.".to_string(),
+            );
+        }
+        return (
+            "Offline".to_string(),
+            "Start Pylon and set provider mode online to wait for homework work.".to_string(),
+        );
+    }
+
     if let Some(training) = training {
         if !training.blocked_label_keys.is_empty() || !training.recent_issues.is_empty() {
             return (
@@ -1190,18 +1210,6 @@ fn homework_status_and_detail(
         return (
             "Ready for homework".to_string(),
             "Pylon is online; waiting for homework work.".to_string(),
-        );
-    }
-    if pylon.process_state == "running" || pylon.process_state == "starting" {
-        return (
-            "Starting Pylon".to_string(),
-            "Pylon is running; waiting for online homework eligibility.".to_string(),
-        );
-    }
-    if !pylon.installed {
-        return (
-            "Pylon missing".to_string(),
-            "Install or select a Pylon binary before homework work can run.".to_string(),
         );
     }
     (
@@ -1394,6 +1402,7 @@ fn project_homework_training_status(value: &Value) -> HomeworkTrainingProjection
             .and_then(project_homework_runtime),
         leased_assignment: value
             .get("leased_assignment")
+            .filter(|entry| !entry.is_null())
             .map(|entry| project_homework_assignment("leased", entry)),
         recent_work_offers,
         recent_closeout_progress,
@@ -2353,6 +2362,37 @@ mod tests {
     }
 
     #[test]
+    fn homework_projection_treats_null_assignment_as_absent_and_requires_online() {
+        let value = serde_json::json!({
+            "node_label": "pylon.local",
+            "checkpoint_serve_url": "http://127.0.0.1:43000",
+            "runtime_surface_detected": true,
+            "contributor_supported": true,
+            "leased_assignment": null,
+            "recent_work_offers": [{
+                "state": "available",
+                "training_run_id": "run.cs336.a1.waiting",
+                "window_id": "window.cs336.a1.waiting",
+                "assignment_id": "assign.waiting",
+                "runtime_work_class": "homework"
+            }]
+        });
+
+        let training = project_homework_training_status(&value);
+
+        assert!(training.leased_assignment.is_none());
+        assert_eq!(training.work_offer_count, 1);
+
+        let offline = test_pylon_status("stopped", "offline");
+        let (offline_status, _) = homework_status_and_detail(&offline, Some(&training), None, None);
+        assert_eq!(offline_status, "Offline");
+
+        let online = test_pylon_status("running", "online");
+        let (online_status, _) = homework_status_and_detail(&online, Some(&training), None, None);
+        assert_eq!(online_status, "Ready for homework");
+    }
+
+    #[test]
     fn rejects_unknown_provider_mode() {
         assert!(normalize_provider_mode("destroy").is_err());
     }
@@ -2420,5 +2460,31 @@ mod tests {
         assert_eq!(proof.validators.len(), 1);
         assert!(proof.local_simulation);
         assert!(proof.simulated_treasury);
+    }
+
+    fn test_pylon_status(process_state: &str, provider_state: &str) -> PylonStatusProjection {
+        PylonStatusProjection {
+            installed: true,
+            configured: true,
+            process_state: process_state.to_string(),
+            provider_state: provider_state.to_string(),
+            desired_mode: Some(provider_state.to_string()),
+            pid: None,
+            listen_addr: Some("127.0.0.1:9468".to_string()),
+            binary_path: Some("/tmp/pylon".to_string()),
+            config_path: Some("/tmp/config.json".to_string()),
+            pylon_home: Some("/tmp/pylon-home".to_string()),
+            execution_backend: Some("test".to_string()),
+            ready_model: Some("fake:gemma".to_string()),
+            products_visible: Some(1),
+            products_eligible: Some(1),
+            queue_depth: Some(0),
+            uptime_seconds: Some(0),
+            blocker_codes: Vec::new(),
+            last_action: None,
+            last_error: None,
+            last_exit_code: None,
+            last_updated_at: "0".to_string(),
+        }
     }
 }

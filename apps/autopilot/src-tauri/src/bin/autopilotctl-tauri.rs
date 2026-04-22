@@ -33,6 +33,7 @@ fn run() -> Result<(), String> {
     let value = match command.as_slice() {
         ["status"] => request_json(&target, "GET", "/v1/status", None)?,
         ["pylon", "status"] => request_json(&target, "GET", "/v1/pylon/status", None)?,
+        ["homework", "status"] => request_json(&target, "GET", "/v1/homework/status", None)?,
         ["pylon", "start"] => request_json(&target, "POST", "/v1/pylon/start", Some(json!({})))?,
         ["pylon", "stop"] => request_json(&target, "POST", "/v1/pylon/stop", Some(json!({})))?,
         ["pylon", "restart"] => {
@@ -88,6 +89,7 @@ fn run() -> Result<(), String> {
         ["homework", "matrix", rest @ ..] | ["proof", "matrix", rest @ ..] => {
             run_homework_matrix(&target, rest)?
         }
+        ["homework", "handshake", rest @ ..] => run_homework_handshake(&target, rest)?,
         other => return Err(format!("unsupported command: {}", other.join(" "))),
     };
 
@@ -594,6 +596,154 @@ fn run_homework_matrix(target: &ControlTarget, args: &[&str]) -> Result<Value, S
     Ok(result)
 }
 
+fn run_homework_handshake(target: &ControlTarget, args: &[&str]) -> Result<Value, String> {
+    let namespace = option_value(args, "--namespace")
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("proof.autopilot.homework.handshake.{}", epoch_seconds()));
+    let timeout_ms = option_value(args, "--timeout-ms")
+        .map(parse_u64)
+        .transpose()?
+        .unwrap_or(240_000);
+    let poll_ms = option_value(args, "--poll-ms")
+        .map(parse_u64)
+        .transpose()?
+        .unwrap_or(1_000);
+    let keep_pylon_running = flag_present(args, "--keep-pylon-running");
+    let mut steps = Vec::new();
+    let mut validations = Vec::new();
+
+    let control_status = request_json(target, "GET", "/v1/status", None)?;
+    push_step(&mut steps, "control_status", control_status);
+
+    let initial_homework = request_json(target, "GET", "/v1/homework/status", None)?;
+    let initial_validation = validate_homework_snapshot("initial", &initial_homework);
+    push_validation(
+        &mut validations,
+        "homework_initial_projection",
+        initial_validation.clone(),
+    );
+    push_step(&mut steps, "homework_initial", initial_homework);
+
+    push_step(
+        &mut steps,
+        "pylon_start",
+        request_json(target, "POST", "/v1/pylon/start", Some(json!({})))?,
+    );
+    let timeout = timeout_ms.to_string();
+    let poll = poll_ms.to_string();
+    let pylon_wait_args = ["--timeout-ms", timeout.as_str(), "--poll-ms", poll.as_str()];
+    push_step(
+        &mut steps,
+        "pylon_wait_running",
+        wait_condition(target, "pylon-running", &pylon_wait_args)?,
+    );
+    let pylon_online = request_json(
+        target,
+        "POST",
+        "/v1/pylon/mode",
+        Some(json!({ "mode": "online" })),
+    )?;
+    let pylon_validation = validate_pylon_online(&pylon_online);
+    push_validation(&mut validations, "pylon_online", pylon_validation.clone());
+    push_step(&mut steps, "pylon_mode_online", pylon_online);
+
+    let online_homework = request_json(target, "GET", "/v1/homework/status", None)?;
+    let online_validation = validate_homework_online_projection(&online_homework);
+    push_validation(
+        &mut validations,
+        "homework_online_projection",
+        online_validation.clone(),
+    );
+    push_step(&mut steps, "homework_online", online_homework);
+
+    let run = request_json(
+        target,
+        "POST",
+        "/v1/proof/run",
+        Some(json!({
+            "lane": "cs336-a1",
+            "namespace": namespace.clone(),
+            "workers": 1,
+            "validators": 1,
+            "timeoutSeconds": timeout_ms / 1_000,
+        })),
+    )?;
+    push_step(&mut steps, "proof_run", run);
+
+    let wait_args = [
+        "--namespace",
+        namespace.as_str(),
+        "--timeout-ms",
+        timeout.as_str(),
+        "--poll-ms",
+        poll.as_str(),
+    ];
+    let completed = wait_condition(target, "proof-completed", &wait_args)?;
+    push_step(&mut steps, "proof_wait_completed", completed.clone());
+    let doctor = request_json(
+        target,
+        "POST",
+        "/v1/proof/doctor",
+        Some(json!({ "namespace": namespace.clone() })),
+    )?;
+    push_step(&mut steps, "proof_doctor", doctor.clone());
+    let proof_validation = validate_homework_lane(HOMEWORK_LANES[0], &completed, &doctor);
+    push_validation(&mut validations, "proof_lane", proof_validation.clone());
+
+    let artifacts = request_json(
+        target,
+        "POST",
+        "/v1/proof/artifacts",
+        Some(json!({ "namespace": namespace.clone() })),
+    )?;
+    push_step(&mut steps, "proof_artifacts", artifacts);
+
+    let final_homework = request_json(target, "GET", "/v1/homework/status", None)?;
+    let final_validation = validate_homework_final_projection(&final_homework);
+    push_validation(
+        &mut validations,
+        "homework_final_projection",
+        final_validation.clone(),
+    );
+    push_step(&mut steps, "homework_final", final_homework);
+
+    push_step(
+        &mut steps,
+        "proof_stop",
+        request_json(
+            target,
+            "POST",
+            "/v1/proof/stop",
+            Some(json!({ "namespace": namespace.clone() })),
+        )?,
+    );
+
+    if !keep_pylon_running {
+        push_step(
+            &mut steps,
+            "pylon_stop",
+            request_json(target, "POST", "/v1/pylon/stop", Some(json!({})))?,
+        );
+    }
+
+    let ok = validations.iter().all(validation_ok);
+    let result = json!({
+        "ok": ok,
+        "kind": "homework-nexus-pylon-handshake",
+        "namespace": namespace,
+        "target": target.base_url,
+        "validations": validations,
+        "steps": steps,
+    });
+    if !ok {
+        return Err(format!(
+            "homework Nexus/Pylon handshake failed validation: {}",
+            serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
+        ));
+    }
+    Ok(result)
+}
+
 fn validate_homework_lane(spec: HomeworkLaneSpec, completed: &Value, doctor: &Value) -> Value {
     let mut checks = Vec::new();
     push_check(
@@ -692,6 +842,183 @@ fn validate_homework_lane(spec: HomeworkLaneSpec, completed: &Value, doctor: &Va
     })
 }
 
+fn validate_homework_snapshot(phase: &str, snapshot: &Value) -> Value {
+    let mut checks = Vec::new();
+    push_check(
+        &mut checks,
+        "assignment_label",
+        str_field(snapshot, "assignmentLabel") == "CS336 Assignment 1 homework",
+        str_field(snapshot, "assignmentLabel"),
+    );
+    push_check(
+        &mut checks,
+        "payout_policy",
+        str_field(snapshot, "payoutPolicy").contains("accepted homework work")
+            && str_field(snapshot, "payoutPolicy").contains("no recurring liveness payouts"),
+        str_field(snapshot, "payoutPolicy"),
+    );
+    for stage in [
+        "online",
+        "intake",
+        "assignment",
+        "runtime",
+        "closeout",
+        "payout",
+    ] {
+        push_check(
+            &mut checks,
+            &format!("stage_{stage}"),
+            homework_stage(snapshot, stage).is_some(),
+            stage,
+        );
+    }
+    let visible_text = homework_visible_text(snapshot);
+    for forbidden in [
+        "sync stale",
+        "nexus treasury degraded",
+        "treasury degraded",
+        "payouts paused",
+        "nexus degraded",
+    ] {
+        push_check(
+            &mut checks,
+            &format!("no_visible_{}", forbidden.replace(' ', "_")),
+            !visible_text.to_lowercase().contains(forbidden),
+            forbidden,
+        );
+    }
+    let ok = checks
+        .iter()
+        .all(|check| check.get("ok").and_then(Value::as_bool).unwrap_or(false));
+    json!({
+        "phase": phase,
+        "ok": ok,
+        "checks": checks,
+    })
+}
+
+fn validate_homework_online_projection(snapshot: &Value) -> Value {
+    let mut validation = validate_homework_snapshot("online", snapshot);
+    let mut checks = validation
+        .get("checks")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let provider = snapshot
+        .get("pylon")
+        .and_then(|pylon| pylon.get("providerState"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    push_check(
+        &mut checks,
+        "provider_online",
+        provider == "online",
+        provider,
+    );
+    let status = str_field(snapshot, "status");
+    push_check(
+        &mut checks,
+        "homework_ready_status",
+        matches!(
+            status,
+            "Ready for homework" | "Preparing homework" | "Starting Pylon" | "Testing homework"
+        ),
+        status,
+    );
+    let ok = checks
+        .iter()
+        .all(|check| check.get("ok").and_then(Value::as_bool).unwrap_or(false));
+    validation["ok"] = Value::Bool(ok);
+    validation["checks"] = Value::Array(checks);
+    validation
+}
+
+fn validate_homework_final_projection(snapshot: &Value) -> Value {
+    let mut validation = validate_homework_snapshot("final", snapshot);
+    let mut checks = validation
+        .get("checks")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let status = str_field(snapshot, "status");
+    push_check(
+        &mut checks,
+        "homework_paid_status",
+        status == "Homework paid",
+        status,
+    );
+    let proof_status = snapshot
+        .get("proof")
+        .and_then(|proof| proof.get("status"))
+        .and_then(Value::as_str)
+        .unwrap_or("none");
+    push_check(
+        &mut checks,
+        "proof_terminal",
+        matches!(proof_status, "completed" | "accepted" | "paid"),
+        proof_status,
+    );
+    let closeout_state = homework_stage_state(snapshot, "closeout");
+    push_check(
+        &mut checks,
+        "closeout_terminal",
+        matches!(
+            closeout_state.as_str(),
+            "rewarded" | "accepted" | "paid" | "confirmed" | "delivered"
+        ),
+        closeout_state.as_str(),
+    );
+    let payout_state = homework_stage_state(snapshot, "payout");
+    push_check(
+        &mut checks,
+        "payout_terminal_or_accepted",
+        matches!(
+            payout_state.as_str(),
+            "confirmed" | "accepted" | "paid" | "settled" | "rewarded"
+        ),
+        payout_state.as_str(),
+    );
+    let ok = checks
+        .iter()
+        .all(|check| check.get("ok").and_then(Value::as_bool).unwrap_or(false));
+    validation["ok"] = Value::Bool(ok);
+    validation["checks"] = Value::Array(checks);
+    validation
+}
+
+fn validate_pylon_online(status: &Value) -> Value {
+    let mut checks = Vec::new();
+    push_check(
+        &mut checks,
+        "process_running",
+        str_field(status, "processState") == "running",
+        str_field(status, "processState"),
+    );
+    push_check(
+        &mut checks,
+        "provider_online",
+        str_field(status, "providerState") == "online",
+        str_field(status, "providerState"),
+    );
+    let configured = status
+        .get("configured")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    push_check(
+        &mut checks,
+        "configured",
+        configured,
+        if configured { "true" } else { "false" },
+    );
+    let ok = checks
+        .iter()
+        .all(|check| check.get("ok").and_then(Value::as_bool).unwrap_or(false));
+    json!({
+        "ok": ok,
+        "checks": checks,
+    })
+}
+
 fn validate_pylon_configured(status: &Value) -> Value {
     let blockers = status
         .get("blockerCodes")
@@ -735,6 +1062,18 @@ fn push_step(steps: &mut Vec<Value>, name: &str, value: Value) {
         "name": name,
         "result": value,
     }));
+}
+
+fn push_validation(validations: &mut Vec<Value>, name: &str, value: Value) {
+    validations.push(json!({
+        "name": name,
+        "ok": validation_ok(&value),
+        "result": value,
+    }));
+}
+
+fn validation_ok(value: &Value) -> bool {
+    value.get("ok").and_then(Value::as_bool).unwrap_or(false)
 }
 
 fn request_json(
@@ -814,6 +1153,8 @@ fn print_value(value: &Value, json_output: bool) {
         print_pylon_status(status);
     } else if value.get("processState").is_some() || value.get("providerState").is_some() {
         print_pylon_status(value);
+    } else if value.get("assignmentLabel").is_some() && value.get("stages").is_some() {
+        print_homework_status(value);
     } else if value.get("namespace").is_some() && value.get("status").is_some() {
         print_proof_status(value);
     } else {
@@ -822,6 +1163,24 @@ fn print_value(value: &Value, json_output: bool) {
             serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
         );
     }
+}
+
+fn print_homework_status(value: &Value) {
+    println!(
+        "homework status={} detail={} provider={} proof={}",
+        str_field(value, "status"),
+        str_field(value, "detail"),
+        value
+            .get("pylon")
+            .and_then(|pylon| pylon.get("providerState"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown"),
+        value
+            .get("proof")
+            .and_then(|proof| proof.get("status"))
+            .and_then(Value::as_str)
+            .unwrap_or("none")
+    );
 }
 
 fn print_pylon_status(value: &Value) {
@@ -935,6 +1294,41 @@ fn transport_acceptable(
     )
 }
 
+fn homework_stage<'a>(snapshot: &'a Value, id: &str) -> Option<&'a Value> {
+    snapshot
+        .get("stages")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|stage| stage.get("id").and_then(Value::as_str) == Some(id))
+}
+
+fn homework_stage_state(snapshot: &Value, id: &str) -> String {
+    homework_stage(snapshot, id)
+        .and_then(|stage| stage.get("state"))
+        .and_then(Value::as_str)
+        .unwrap_or("none")
+        .to_string()
+}
+
+fn homework_visible_text(snapshot: &Value) -> String {
+    let mut parts = vec![
+        str_field(snapshot, "assignmentLabel").to_string(),
+        str_field(snapshot, "status").to_string(),
+        str_field(snapshot, "detail").to_string(),
+        str_field(snapshot, "payoutPolicy").to_string(),
+    ];
+    if let Some(stages) = snapshot.get("stages").and_then(Value::as_array) {
+        for stage in stages {
+            for key in ["label", "state", "detail"] {
+                if let Some(value) = stage.get(key).and_then(Value::as_str) {
+                    parts.push(value.to_string());
+                }
+            }
+        }
+    }
+    parts.join("\n")
+}
+
 fn wait_condition_for_smoke(
     target: &ControlTarget,
     namespace: &str,
@@ -983,7 +1377,7 @@ fn epoch_seconds() -> u64 {
 
 fn print_usage() {
     println!(
-        "Usage: autopilotctl-tauri [--manifest <path>|--base-url <url> --auth-token <token>] [--json] <command>\n\nCommands:\n  status\n  pylon status|start|stop|restart|logs|mode <online|offline|pause|resume>\n  proof status [namespace]\n  proof run <lane> [--namespace <ns>] [--workers <n>] [--validators <n>] [--timeout-seconds <n>]\n  proof matrix [--namespace-prefix <ns>] [--timeout-ms <n>] [--poll-ms <n>]\n  proof doctor|stop|reset|artifacts <namespace>\n  homework matrix [--namespace-prefix <ns>] [--timeout-ms <n>] [--poll-ms <n>]\n  wait proof-completed --namespace <ns> [--timeout-ms <n>] [--poll-ms <n>]\n  wait pylon-running [--timeout-ms <n>] [--poll-ms <n>]\n  smoke [--namespace <ns>] [--timeout-ms <n>]\n\nDefault manifest: {}",
+        "Usage: autopilotctl-tauri [--manifest <path>|--base-url <url> --auth-token <token>] [--json] <command>\n\nCommands:\n  status\n  pylon status|start|stop|restart|logs|mode <online|offline|pause|resume>\n  proof status [namespace]\n  proof run <lane> [--namespace <ns>] [--workers <n>] [--validators <n>] [--timeout-seconds <n>]\n  proof matrix [--namespace-prefix <ns>] [--timeout-ms <n>] [--poll-ms <n>]\n  proof doctor|stop|reset|artifacts <namespace>\n  homework status\n  homework handshake [--namespace <ns>] [--timeout-ms <n>] [--poll-ms <n>] [--keep-pylon-running]\n  homework matrix [--namespace-prefix <ns>] [--timeout-ms <n>] [--poll-ms <n>]\n  wait proof-completed --namespace <ns> [--timeout-ms <n>] [--poll-ms <n>]\n  wait pylon-running [--timeout-ms <n>] [--poll-ms <n>]\n  smoke [--namespace <ns>] [--timeout-ms <n>]\n\nDefault manifest: {}",
         control_manifest_path().display()
     );
 }

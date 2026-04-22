@@ -63,6 +63,34 @@ Use the installed local stack explicitly when that is the thing under test:
 scripts/autopilot/tauri-control-smoke.sh --real-binaries
 ```
 
+## Homework Handshake
+
+Use this gate when changing the homework-only Autopilot screen or the control
+projection that feeds it:
+
+```bash
+scripts/autopilot/tauri-control-smoke.sh --homework-handshake
+```
+
+Expected result:
+
+- The actual Tauri app starts and writes a control manifest.
+- `autopilotctl-tauri homework status` can read the same homework projection
+  that the React screen consumes.
+- `autopilotctl-tauri homework handshake` starts Pylon, waits for it to run,
+  puts it online, runs the clean `cs336-a1` proof lane, waits for completion,
+  runs `proof doctor`, opens artifacts, and then re-reads the final homework
+  projection.
+- The final homework projection reports accepted homework through closeout and
+  payout state rather than recurring liveness payouts.
+- The visible homework projection rejects internal wording such as sync-stale,
+  Nexus-degraded, treasury-degraded, or payouts-paused status text.
+
+The default fake Pylon implements `training status --json` so this validates
+the new homework screen projection, not just the older Pylon/proof diagnostic
+surface. Add `--real-binaries` only when the machine-local installed Pylon and
+`oa proof` stack are the thing under test.
+
 ## Homework Proof Matrix
 
 Use this gate for CS336/Ep224 homework-run work, `#4368` follow-ups, and proof
