@@ -1,11 +1,28 @@
 :root {
-  --bg-app: var(--background);
+  --bg-app: #050505;
+  --panel-black: #090909;
+  --panel-black-raised: #0d0d0d;
+  --hairline: color-mix(in oklch, var(--foreground) 9%, transparent);
+  --hairline-strong: color-mix(in oklch, var(--foreground) 14%, transparent);
+  --text-dim: color-mix(in oklch, var(--foreground) 54%, transparent);
+  --text-faint: color-mix(in oklch, var(--foreground) 38%, transparent);
   background: var(--bg-app);
+  color-scheme: dark;
+}
+
+:root.light {
+  --bg-app: var(--background);
+  --panel-black: var(--card);
+  --panel-black-raised: color-mix(in oklch, var(--card) 94%, var(--foreground) 6%);
+  --hairline: color-mix(in oklch, var(--foreground) 12%, transparent);
+  --hairline-strong: color-mix(in oklch, var(--foreground) 18%, transparent);
+  --text-dim: color-mix(in oklch, var(--foreground) 58%, transparent);
+  --text-faint: color-mix(in oklch, var(--foreground) 42%, transparent);
   color-scheme: light;
 }
 
 :root.dark {
-  --bg-app: #08090a;
+  --bg-app: #050505;
   color-scheme: dark;
 }
 
@@ -51,14 +68,14 @@ body,
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 16%, transparent);
-  background: color-mix(in oklch, var(--card) 92%, var(--foreground) 8%);
-  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-app);
+  padding: 0.2rem 0.5rem;
 }
 
 .system-title {
-  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
-  padding: 0.2rem 0.45rem;
+  border: 0;
+  padding: 0.2rem 0.2rem 0.2rem 0;
   color: var(--foreground);
   font-size: 0.6875rem;
   font-weight: 600;
@@ -96,14 +113,14 @@ body,
   justify-content: space-between;
   gap: 0.75rem;
   min-width: 0;
-  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background: color-mix(in oklch, var(--background) 88%, var(--foreground) 12%);
-  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-app);
+  padding: 0.25rem 0.5rem;
 }
 
 .system-status-copy {
   overflow: hidden;
-  color: color-mix(in oklch, var(--foreground) 52%, transparent);
+  color: var(--text-faint);
   font-size: 0.6875rem;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -142,7 +159,7 @@ body,
   display: grid;
   min-height: 0;
   overflow: hidden;
-  padding: 0.75rem;
+  padding: 0.5rem;
 }
 
 .command-home {
@@ -204,6 +221,8 @@ body,
   min-height: 0;
   overflow: hidden;
   border-radius: 0;
+  background: var(--panel-black);
+  box-shadow: none;
 }
 
 .operator-card__header {
@@ -227,8 +246,8 @@ body,
 
 .workbench {
   display: grid;
-  grid-template-columns: minmax(15rem, 0.85fr) minmax(26rem, 1.6fr) minmax(18rem, 1fr);
-  gap: 0.75rem;
+  grid-template-columns: minmax(13rem, 0.65fr) minmax(26rem, 1.7fr) minmax(17rem, 0.95fr);
+  gap: 0.5rem;
   min-height: 0;
   overflow: hidden;
 }
@@ -238,7 +257,7 @@ body,
 .workbench-inspector {
   display: grid;
   align-content: start;
-  gap: 0.75rem;
+  gap: 0.5rem;
   min-height: 0;
   overflow: auto;
 }
@@ -251,7 +270,10 @@ body,
   display: grid;
   min-width: 0;
   overflow: hidden;
+  border: 1px solid var(--hairline);
   border-radius: 0;
+  background: var(--panel-black);
+  box-shadow: none;
 }
 
 .workbench-panel__header {
@@ -259,27 +281,28 @@ body,
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.625rem;
   min-width: 0;
-  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+  padding: 0.55rem 0.625rem;
 }
 
 .workbench-panel__header svg {
-  color: color-mix(in oklch, var(--foreground) 54%, transparent);
+  display: none;
 }
 
 .workbench-panel__header p {
   margin: 0.25rem 0 0;
-  color: color-mix(in oklch, var(--foreground) 56%, transparent);
+  color: var(--text-dim);
   font-size: 0.6875rem;
   line-height: 1.35;
 }
 
 .workbench-panel__content {
   display: grid;
-  gap: 0.625rem;
+  gap: 0.5rem;
   min-height: 0;
-  padding: 0 0.75rem 0.75rem;
+  padding: 0.625rem;
 }
 
 .workbench-session {
@@ -299,9 +322,9 @@ body,
 
 .workbench-empty,
 .workbench-note {
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-  color: color-mix(in oklch, var(--foreground) 58%, transparent);
+  border: 1px solid var(--hairline);
+  background: var(--panel-black-raised);
+  color: var(--text-dim);
   font-size: 0.6875rem;
   line-height: 1.35;
   padding: 0.625rem;
@@ -310,23 +333,24 @@ body,
 .score-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
+  gap: 0.375rem;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .metric-cell {
   display: grid;
   gap: 0.25rem;
   min-width: 0;
-  background: var(--card);
+  border: 1px solid var(--hairline);
+  background: var(--panel-black-raised);
   padding: 0.625rem;
 }
 
 .metric-cell span {
   overflow: hidden;
-  color: color-mix(in oklch, var(--foreground) 48%, transparent);
+  color: var(--text-faint);
   font-size: 0.625rem;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -347,36 +371,37 @@ body,
 .timeline {
   display: grid;
   align-content: start;
-  gap: 1px;
+  gap: 0.375rem;
   min-height: 0;
   overflow: auto;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .timeline-event {
   display: grid;
   grid-template-columns: 4.25rem minmax(0, 1fr);
   min-width: 0;
-  background: var(--card);
+  border: 1px solid var(--hairline);
+  background: var(--panel-black-raised);
 }
 
 .timeline-event[data-state="ok"] {
-  border-left: 2px solid #00c853;
+  border-left: 2px solid #7adf8a;
 }
 
 .timeline-event[data-state="active"] {
-  border-left: 2px solid #ffb400;
+  border-left: 2px solid #d5b35f;
 }
 
 .timeline-event[data-state="warn"],
 .timeline-event[data-state="bad"] {
-  border-left: 2px solid #ff6f00;
+  border-left: 2px solid #d88d5a;
 }
 
 .timeline-event__time {
-  border-right: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  color: color-mix(in oklch, var(--foreground) 48%, transparent);
+  border-right: 1px solid var(--hairline);
+  color: var(--text-faint);
   font-size: 0.6875rem;
   line-height: 1.2;
   padding: 0.75rem 0.625rem;
@@ -414,13 +439,13 @@ body,
 .timeline-event p,
 .workbench-list-item p {
   margin: 0;
-  color: color-mix(in oklch, var(--foreground) 62%, transparent);
+  color: var(--text-dim);
   font-size: 0.6875rem;
   line-height: 1.35;
 }
 
 .timeline-event__meta {
-  color: color-mix(in oklch, var(--foreground) 42%, transparent);
+  color: var(--text-faint);
   font-size: 0.625rem;
   line-height: 1.2;
   text-transform: uppercase;
@@ -435,22 +460,23 @@ body,
 
 .workbench-list {
   display: grid;
-  gap: 1px;
+  gap: 0.375rem;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .workbench-list-item {
   display: grid;
   gap: 0.45rem;
   min-width: 0;
-  background: var(--card);
+  border: 1px solid var(--hairline);
+  background: var(--panel-black-raised);
   padding: 0.625rem;
 }
 
 .workbench-list-item span {
-  color: color-mix(in oklch, var(--foreground) 42%, transparent);
+  color: var(--text-faint);
   font-size: 0.625rem;
   line-height: 1.2;
   text-transform: uppercase;
@@ -462,17 +488,18 @@ body,
 
 .register-grid {
   display: grid;
-  gap: 1px;
+  gap: 0.375rem;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .register-grid > div {
   display: grid;
   grid-template-columns: minmax(8.5rem, 28%) minmax(0, 1fr);
   min-width: 0;
-  background: var(--card);
+  border: 1px solid var(--hairline);
+  background: var(--panel-black-raised);
 }
 
 .register-grid dt,
@@ -485,7 +512,7 @@ body,
 }
 
 .register-grid dt {
-  color: color-mix(in oklch, var(--foreground) 48%, transparent);
+  color: var(--text-faint);
   text-transform: uppercase;
 }
 
@@ -499,23 +526,24 @@ body,
 .proof-stage-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
+  gap: 0.375rem;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .proof-stage {
   display: grid;
   min-width: 0;
   gap: 0.25rem;
-  background: var(--card);
+  border: 1px solid var(--hairline);
+  background: var(--panel-black-raised);
   padding: 0.625rem;
 }
 
 .proof-stage span,
 .node-table__title {
-  color: color-mix(in oklch, var(--foreground) 48%, transparent);
+  color: var(--text-faint);
   font-size: 0.6875rem;
   line-height: 1.2;
   text-transform: uppercase;
@@ -532,22 +560,22 @@ body,
 
 .proof-stage[data-state="ok"],
 .state-badge[data-state="ok"] {
-  color: #00c853;
+  color: #7adf8a;
 }
 
 .proof-stage[data-state="bad"],
 .state-badge[data-state="bad"] {
-  color: #d32f2f;
+  color: #ef7676;
 }
 
 .proof-stage[data-state="warn"],
 .state-badge[data-state="warn"] {
-  color: #ff6f00;
+  color: #d88d5a;
 }
 
 .proof-stage[data-state="active"],
 .state-badge[data-state="active"] {
-  color: #ffb400;
+  color: #d5b35f;
 }
 
 .node-table {
@@ -557,17 +585,18 @@ body,
 
 .node-table__grid {
   display: grid;
-  gap: 1px;
+  gap: 0.375rem;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .node-table__grid > div {
   display: grid;
   grid-template-columns: 1.2fr 0.7fr 1.2fr 1.2fr 1.2fr;
   min-width: 42rem;
-  background: var(--card);
+  border: 1px solid var(--hairline);
+  background: var(--panel-black-raised);
 }
 
 .node-table__grid span {
@@ -580,7 +609,7 @@ body,
 }
 
 .node-table__grid [role="columnheader"] {
-  color: color-mix(in oklch, var(--foreground) 48%, transparent);
+  color: var(--text-faint);
   text-transform: uppercase;
 }
 

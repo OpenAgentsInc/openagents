@@ -6,7 +6,6 @@ import {
   Command as CommandIcon,
   Coins,
   FileCode,
-  GitBranch,
   Moon,
   Pulse,
   ShieldCheck,
@@ -504,10 +503,16 @@ function App() {
 
         <div className="system-status-row">
           <div className="status-strip">
-            <Badge variant="outline">ACTIVE: {viewLabels[activeView]}</Badge>
-            <StateBadge value={pylonStatus?.processState ?? "unknown"} />
-            <StateBadge value={pylonStatus?.providerState ?? "unknown"} />
-            <StateBadge value={proofStatus?.status ?? "no diagnostics"} />
+            <Badge variant="outline">{viewLabels[activeView]}</Badge>
+            {activeView === "pylon" ? (
+              <>
+                <StateBadge value={pylonStatus?.processState ?? "unknown"} />
+                <StateBadge value={pylonStatus?.providerState ?? "unknown"} />
+              </>
+            ) : null}
+            {activeView === "proof" ? (
+              <StateBadge value={proofStatus?.status ?? "no diagnostics"} />
+            ) : null}
           </div>
           <div className="system-status-copy">
             {busy ? `busy ${busy}` : "ready"}
@@ -592,22 +597,21 @@ function AutopilotWorkbench({
     );
   }
 
-  const objectRows: RegisterRow[] = [
-    ["workspace", snapshot.workspace.id],
-    ["session", snapshot.session.id],
-    ["permission", snapshot.session.permissionMode],
-    ["resume", snapshot.session.resumeState],
-    ["engine", snapshot.session.engine],
-    ["generated", formatTimestamp(String(snapshot.generatedAtUnixMs))],
-  ];
-
   return (
     <section className="workbench" aria-label="Autopilot workbench">
       <aside className="workbench-rail">
         <Card className="workbench-panel">
           <CardHeader className="workbench-panel__header">
             <CardTitle>Workspace</CardTitle>
-            <GitBranch aria-hidden="true" />
+            <Button
+              disabled={busy === "autopilot.workbench"}
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={() => void onRefresh()}
+            >
+              Refresh
+            </Button>
           </CardHeader>
           <CardContent className="workbench-panel__content">
             <div className="workbench-object-title">{snapshot.workspace.name}</div>
@@ -617,6 +621,7 @@ function AutopilotWorkbench({
                 ["branch", snapshot.workspace.branch],
                 ["trust", snapshot.workspace.trust],
                 ["policy", snapshot.workspace.policy],
+                ["updated", formatTimestamp(String(snapshot.generatedAtUnixMs))],
               ]}
             />
           </CardContent>
@@ -649,25 +654,6 @@ function AutopilotWorkbench({
             <div className="workbench-note">
               {snapshot.scorecard.recoveryState}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="workbench-panel">
-          <CardHeader className="workbench-panel__header">
-            <CardTitle>Object Contract</CardTitle>
-            <ShieldCheck aria-hidden="true" />
-          </CardHeader>
-          <CardContent className="workbench-panel__content">
-            <RegisterGrid rows={objectRows} />
-            <Button
-              disabled={busy === "autopilot.workbench"}
-              size="sm"
-              type="button"
-              variant="outline"
-              onClick={() => void onRefresh()}
-            >
-              Refresh Snapshot
-            </Button>
           </CardContent>
         </Card>
       </aside>
