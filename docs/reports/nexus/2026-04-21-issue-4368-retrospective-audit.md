@@ -1699,3 +1699,131 @@ standalone release. Future product/docs work should make that prerequisite
 explicit or eliminate it, but it no longer blocks the issue 4413 proof because
 the system paid a fresh public Pylon for real accepted hosted training work in
 production.
+
+## Addendum: the post-4413 path moved the defensible npm/admin-dispatch floor to 0.1.8
+
+Date: 2026-04-22
+
+After the `0.1.7` public earning proof, the next goal was not merely to show
+that hosted starter work could eventually pay a public Pylon. The stricter goal
+was to make the operator-paced homework path work from npm in the shape we
+actually want to run: one process starts Pylon from the public npm bootstrap,
+a separate admin process triggers bounded homework work, a validator closes the
+work, Treasury pays only accepted homework, and an operator can put that trigger
+behind cron to pace payouts. That exposed several bugs that were hidden by the
+earlier proof. The earlier `0.1.7` floor remains historically important because
+it proved "run Pylon and get paid" for hosted starter training. The current
+floor for the npm proof plus admin-paced homework dispatch is now
+`pylon-v0.1.8` and Nexus `fb60b9167` or newer.
+
+The first set of post-audit changes made dispatch selection deterministic
+enough for operator use. Nexus worker lease claims now prefer existing
+admin-dispatched homework runs before auto-launching fresh hosted starter work.
+Without that fix, a Pylon could be online and eligible while repeatedly taking
+starter jobs, leaving the operator-triggered run unclaimed. Validator claims
+now prioritize `homework_dispatch` windows before draining starter backlog.
+Without that fix, a worker could seal the operator-triggered window while a
+validator spent its time elsewhere. These were not convenience changes; they
+made the admin pacing endpoint useful as a real operations control rather than
+a best-effort debug button. The relevant commits were `8387d22f4` for worker
+lease priority and `58aa9e0b7` for validator claim priority.
+
+The second set of changes narrowed the validation surface to what the current
+homework lane can honestly defend. We disabled per-contribution sample
+challenges for `homework_dispatch` and kept the aggregate validator challenge
+as the live proof gate. That was necessary because the retained
+contribution-sample replay path could still produce artifact-manifest digest
+drift under npm Pylon. Pylon `0.1.8` then fixed the retained validator replay
+case where a same-host local target path or stale retained target artifact id
+could point at bytes whose digest no longer matched the claim. The released
+binary now falls back to the bridge-inline payload or rewrites the target
+artifact id to match the materialized digest. The relevant commits were
+`512b51f4b` for aggregate-only homework validation and `064d64feb` for the
+Pylon `0.1.8` replay stabilization.
+
+The third change fixed the final authority gap in Nexus closeout. Once
+homework validation became aggregate-only, a live window could reach
+validator-finalized and verified but still reconcile as refused, because the
+aggregate verdict was not mapped back onto the contribution outcome in the
+absence of a per-sample contribution disposition. That was the last serious
+"everything succeeded locally but the worker still does not get paid" class of
+bug in this sequence. Nexus now treats aggregate-only homework validation as a
+defensible accepted contribution outcome when the aggregate terminal
+disposition is accepted. The commit was `fb60b9167`, and the focused regression
+was the aggregate-only retained homework closeout test that proves a
+per-sample disposition is not required for reward eligibility in this lane.
+
+The production deploy sequence for those changes created a clear record of
+what did and did not work. We first deployed the `08841d0dc03` image, which
+contained the `0.1.8` release and dispatch/validation-priority fixes, and it
+proved worker contribution plus aggregate validator finalization but still
+exposed the aggregate-only closeout reward bug. After `fb60b9167`, we built
+and deployed
+`us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:fb60b91678ca`.
+The retained receipts are
+`docs/reports/nexus/20260422-031716-cloudbuild-image-08841d0dcc03.json`,
+`docs/reports/nexus/20260422-033200-deploy-receipt.json`,
+`docs/reports/nexus/20260422-034137-cloudbuild-image-fb60b91678ca.json`, and
+`docs/reports/nexus/20260422-034836-deploy-receipt.json`. The important
+discipline was that the failed `08841d0dc03` live proof did not get renamed
+as success. It became evidence for the next local regression and production
+fix.
+
+The final npm end-to-end proof used a fresh proof root at
+`/private/tmp/pylon-npm-e2e-20260422T034929Z`, public package
+`@openagentsinc/pylon`, release `pylon-v0.1.8`, an isolated worker Pylon home,
+and an isolated validator Pylon home on separate local admin/checkpoint ports.
+The operator-triggered run was
+`run.cs336.a1.codex-npm-e2e-20260422035018_20260422035019_b9ece834_0001.20260422035019.6fea0c9f`
+with window
+`window.cs336.a1.codex-npm-e2e-20260422035018_20260422035019_b9ece834_0001.20260422035019.6fea0c9f.0001`.
+The worker contribution
+`b7ec87b71ee077d40eeac38d5801096e8f7993368173310b54799891260b16a6`
+reconciled with `accepted_contributions=1`, `replay_required_contributions=0`,
+`closeout_status=rewarded`, and `payout_eligible=true`. Treasury then recorded
+a confirmed, settled accepted-work payout of `25` sats with payment id
+`019db352-4986-7ff3-8b9a-b3f8f1331cbe` to the worker Spark payout target.
+The worker wallet balance showed `25` sats. The proof receipt is
+`docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json`.
+
+The proof also added two operator lessons that were not obvious from the video
+claim. First, the npm launcher opens `pylon-tui` by default. That is fine for
+interactive onboarding, but it is not safe for noninteractive proof automation:
+in a noninteractive shell it can fail with `Device not configured`. The
+runbook now tells future operators to use `npx @openagentsinc/pylon --no-launch`
+for bootstrap and then run the installed `pylon` binary directly in the worker
+or validator process. Second, Spark wallet history may return an empty
+`payments` list for this internal Spark receive even when the worker balance
+has increased and Treasury has a confirmed settled accepted-work payout. The
+completion criterion is therefore treasury confirmed+settled accepted-work
+record plus worker wallet balance, not wallet history alone.
+
+The admin-facing operator surface is now documented as a pacing mechanism,
+not a one-off rescue path. The endpoint
+`POST /v1/admin/homework/cs336-a1/dispatch` accepts `run_count`,
+`max_contributors_per_run`, `amount_sats`, `total_budget_sats`,
+`window_duration_seconds`, `only_online`, `min_pylon_version`, and optionally
+a `network_id`. That is enough for an operator to run a cron-like loop that
+creates a bounded amount of duplicate-allowed homework work at each interval
+and caps maximum payout exposure per batch. The corresponding runbook is
+`docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md`. The product
+contract remains simple for the provider: install/update Pylon, run `pylon`,
+stay online for relevant paid training jobs, and receive sats only for accepted
+homework work. The provider does not have to opt into the homework assignment
+manually.
+
+Finally, the repo/workspace hygiene problems that made this sequence feel
+untrustworthy were cleaned up. The main `openagents` checkout had broad
+unrelated dirty edits across Autopilot, Data Market, Pylon TUI, Nostr, kernel,
+and generated receipt files. Those were not part of the Nexus/Pylon proof and
+were preserved in a named stash instead of being committed as noise or deleted
+as possible user work. The workspace root and `openagents.com` had unrelated
+dirty files as well, and those were also preserved in named stashes. Stale
+worktrees were removed, merged local branches in sibling repos were deleted,
+and merged remote feature branches in `probe` and `forge` were pruned. After
+that cleanup, `openagents`, `openagents.com`, `psionic`, `psionic-pylon`,
+`probe`, `forge`, `treasury`, `alpha`, `dataroom`, `control`, `backroom`, and
+the workspace root were all back on clean `main` checkouts tracking
+`origin/main`. That matters because the recurring failure mode in this issue
+family was not just code defects; it was the inability to tell which checkout,
+branch, worktree, deploy image, release tag, or proof artifact was authoritative.
