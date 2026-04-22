@@ -7557,6 +7557,7 @@ fn training_window_apply_validation_overrides(
     contribution_outcomes: &mut [ComputeAdapterContributionOutcome],
     validation_summary: &TrainingWindowValidationSummary,
     validator_receipt_digest: &str,
+    aggregate_only_validation: bool,
 ) {
     for contribution in contribution_outcomes {
         if let Some(disposition) = validation_summary
@@ -7569,6 +7570,14 @@ fn training_window_apply_validation_overrides(
                 disposition,
                 validator_receipt_digest,
             );
+        } else if aggregate_only_validation {
+            if let Some(disposition) = validation_summary.aggregate_terminal_disposition {
+                training_window_apply_contribution_disposition(
+                    contribution,
+                    disposition,
+                    validator_receipt_digest,
+                );
+            }
         }
     }
 }
@@ -13189,6 +13198,7 @@ async fn reconcile_training_window(
             contribution_outcomes.as_mut_slice(),
             &validation_summary,
             window.window_summary_digest.as_str(),
+            training_run_is_homework_dispatch(&training_run),
         );
         training_enrich_contribution_outcomes_with_node_tiers(
             &store.kernel,
@@ -14053,6 +14063,10 @@ async fn finalize_training_validator_challenge(
             contribution_outcomes.as_mut_slice(),
             &validation_summary,
             finalize_result.response.receipt.canonical_hash.as_str(),
+            store
+                .kernel
+                .get_compute_training_run(managed.window.training_run_id.as_str())
+                .is_some_and(|run| training_run_is_homework_dispatch(&run)),
         );
         let (
             total_contributions,
@@ -39165,7 +39179,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn training_window_reconcile_rewards_retained_homework_closeout_without_aggregate_delta_digest()
+    async fn training_window_reconcile_rewards_aggregate_only_retained_homework_closeout_without_aggregate_delta_digest()
     -> Result<()> {
         let state = build_app_state(test_config()?);
         let app = build_api_router_with_state(state.clone());
@@ -39199,7 +39213,7 @@ mod tests {
                                     "contrib.window.homework.bridge",
                                     &lease,
                                     "sha256:validator-final-homework-bridge",
-                                    Some(ComputeAdapterContributionDisposition::Accepted),
+                                    None,
                                 ),
                             ],
                             held_out_average_score_bps: Some(9_500),
