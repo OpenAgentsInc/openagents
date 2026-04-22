@@ -12519,25 +12519,33 @@ async fn claim_training_run_lease(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
-    if training_lease_claim_should_try_hosted_cs336_starter_work(&request) {
-        let starter = ensure_hosted_cs336_starter_work_for_lease_claim(&state, &request).await?;
-        request.requested_training_run_id = Some(starter.training_run_id);
-    }
-
     let first_attempt = execute_training_run_lease_claim(&state, request.clone()).await;
     let response = match first_attempt {
         Ok(response) => response,
         Err(error)
-            if error.reason == "training_scheduler_run_not_found"
-                && training_lease_claim_should_try_hosted_cs336_starter_work(&request) =>
+            if training_lease_claim_error_should_auto_launch_hosted_starter(
+                error.reason.as_str(),
+            ) && training_lease_claim_should_try_hosted_cs336_starter_work(&request) =>
         {
-            ensure_hosted_cs336_starter_work_for_lease_claim(&state, &request).await?;
-            execute_training_run_lease_claim(&state, request).await?
+            let starter =
+                ensure_hosted_cs336_starter_work_for_lease_claim(&state, &request).await?;
+            let mut starter_request = request;
+            starter_request.requested_training_run_id = Some(starter.training_run_id);
+            execute_training_run_lease_claim(&state, starter_request).await?
         }
         Err(error) => return Err(error),
     };
     invalidate_public_stats_cache(&state, now_unix_ms());
     Ok(Json(response))
+}
+
+fn training_lease_claim_error_should_auto_launch_hosted_starter(reason: &str) -> bool {
+    matches!(
+        reason,
+        "training_scheduler_assignment_unavailable"
+            | "training_scheduler_run_not_found"
+            | "training_scheduler_run_not_schedulable"
+    )
 }
 
 fn training_lease_claim_should_try_hosted_cs336_starter_work(
@@ -43381,6 +43389,113 @@ mod tests {
                 );
             }
         }
+
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn default_pylon_lease_claim_prefers_admin_dispatched_homework_before_auto_starter()
+    -> Result<()> {
+        let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink("gs://dispatch-priority-training-bucket").await?;
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let public_release_id = "openagents.pylon@0.1.99";
+        let public_build_version = "0.1.99";
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-dispatch-priority",
+            "sha256:build-dispatch-priority",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            public_release_id,
+            public_build_version,
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodedispatchpriority"),
+        );
+
+        let dispatch_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/homework/cs336-a1/dispatch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &super::DispatchCs336A1HomeworkRunsRequest {
+                            run_count: 1,
+                            max_contributors_per_run: 1,
+                            amount_sats: 9,
+                            total_budget_sats: Some(9),
+                            run_slug_prefix: Some("cron.priority".to_string()),
+                            ..super::DispatchCs336A1HomeworkRunsRequest::default()
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(dispatch_response.status(), StatusCode::OK);
+        let dispatch =
+            response_json::<super::DispatchCs336A1HomeworkRunsResponse>(dispatch_response).await?;
+        let dispatched = dispatch.launches.first().expect("dispatched run");
+        let dispatched_assignment = dispatched
+            .assigned_pylons
+            .first()
+            .expect("assigned dispatched pylon");
+
+        let claim_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request_for_scope(
+                            "idemp.training.lease.dispatch.priority",
+                            recorded_at_ms as i64 + 1_000,
+                            "node-dispatch-priority",
+                            TrainingNodeRoleClaim::Worker,
+                            Some(super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID),
+                            None,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        let claim_status = claim_response.status();
+        let claim_bytes = to_bytes(claim_response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            claim_status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(claim_bytes.as_ref())
+        );
+        let claim = serde_json::from_slice::<RecordTrainingRunLeaseResponse>(claim_bytes.as_ref())?;
+
+        assert_eq!(claim.training_run_id, dispatched.training_run_id);
+        assert_eq!(claim.assignment_id, dispatched_assignment.assignment_id);
+        assert_eq!(claim.lease_id, dispatched_assignment.lease_id);
+        assert!(
+            !claim.training_run_id.starts_with("run.cs336.a1.starter."),
+            "default Pylon lease claim should consume admin-dispatched work before auto-launching starter work"
+        );
+
+        let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
+        let unique_uploaded_paths = uploaded_paths
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<String>>();
+        assert_eq!(
+            unique_uploaded_paths.len(),
+            3,
+            "only the admin-dispatched run should upload bootstrap artifacts: {uploaded_paths:?}"
+        );
 
         upload_server.abort();
         Ok(())
