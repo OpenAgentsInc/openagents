@@ -507,6 +507,125 @@ body,
   padding: 0.625rem;
 }
 
+.mission-control-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.42fr);
+  gap: 0.75rem;
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  background:
+    linear-gradient(90deg, rgb(122 223 138 / 0.055), transparent 44%),
+    var(--panel-black-raised);
+  padding: 0.75rem;
+}
+
+.mission-control-copy {
+  display: grid;
+  align-content: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.mission-control-kicker,
+.mission-control-assignment {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mission-control-copy h1 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: clamp(1.55rem, 3.5vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 0.92;
+  text-transform: uppercase;
+}
+
+.mission-control-copy p {
+  max-width: 48rem;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.go-online-button {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 8.5rem;
+  border: 1px solid rgb(122 223 138 / 0.72);
+  border-radius: 0.5rem;
+  background:
+    radial-gradient(circle at 50% 0%, rgb(122 223 138 / 0.24), transparent 58%),
+    rgb(122 223 138 / 0.14);
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  padding: 1rem;
+}
+
+.go-online-button[data-state="online"] {
+  border-color: rgb(239 118 118 / 0.72);
+  background:
+    radial-gradient(circle at 50% 0%, rgb(239 118 118 / 0.22), transparent 58%),
+    rgb(239 118 118 / 0.13);
+}
+
+.go-online-button:hover:not(:disabled) {
+  border-color: rgb(122 223 138 / 0.92);
+  background:
+    radial-gradient(circle at 50% 0%, rgb(122 223 138 / 0.32), transparent 58%),
+    rgb(122 223 138 / 0.2);
+}
+
+.go-online-button[data-state="online"]:hover:not(:disabled) {
+  border-color: rgb(239 118 118 / 0.92);
+  background:
+    radial-gradient(circle at 50% 0%, rgb(239 118 118 / 0.3), transparent 58%),
+    rgb(239 118 118 / 0.19);
+}
+
+.go-online-button:disabled {
+  border-color: var(--hairline-strong);
+  background: rgb(255 255 255 / 0.035);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.go-online-button__label {
+  font-size: clamp(1.45rem, 3.2vw, 2.6rem);
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  line-height: 0.95;
+}
+
+.go-online-button__detail {
+  max-width: 18rem;
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.mission-control-register .register-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mission-control-register .register-grid > div {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+}
+
 .homework-actions {
   display: flex;
   flex-wrap: wrap;
@@ -732,6 +851,11 @@ body,
 
   .homework-stage-grid,
   .homework-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mission-control-hero,
+  .mission-control-register .register-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

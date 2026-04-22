@@ -18,8 +18,11 @@ bun install
 bun run tauri dev
 ```
 
-The first screen is a centered command entry. Press `Command-K` to open the
-command dialog. The command dialog can:
+The first screen is the homework-focused Mission Control surface with a large
+`GO ONLINE` button. Clicking it starts Pylon when needed, requests provider
+online mode, and refreshes the homework projection so the user can see whether
+this machine is eligible for jobs. Press `Command-K` to open the command
+dialog. The command dialog can:
 
 - show the Pylon status card
 - start, stop, restart, and refresh `pylon serve`
