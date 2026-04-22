@@ -9,6 +9,8 @@ This directory is organized around a small number of canonical entry points.
 - `ENGINEERING_GRAPHICS_UI.md`: Autopilot UI style guide for dense,
   explicit, professional operator surfaces.
 - `kernel/README.md`: marketplace and kernel architecture overview.
+- `2026-04-21-run-pylon-get-paid-for-training.md`: public blog post explaining
+  the current Pylon paid-training loop, proof, and operator/admin usage.
 - `kernel/markets/data-market.md`: canonical current Data Market implementation status.
 - `headless-data-market.md`: no-window and `autopilotctl` Data Market runbook.
 - `autopilot-earn/README.md`: consolidated Autopilot Earn docs.
