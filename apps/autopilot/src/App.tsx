@@ -4,9 +4,14 @@ import { listen } from "@tauri-apps/api/event";
 import {
   CheckCircle,
   Command as CommandIcon,
+  Coins,
+  FileCode,
+  GitBranch,
   Moon,
   Pulse,
+  ShieldCheck,
   Sun,
+  TerminalWindow,
 } from "@phosphor-icons/react";
 
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +56,9 @@ import {
   viewLabels,
 } from "@/lib/autopilot-actions";
 import {
+  autopilotWorkbenchSnapshot,
   autopilotStatus,
+  type AutopilotWorkbenchSnapshot,
   type ProviderMode,
   type ProofLane,
   type ProofNodeProjection,
@@ -85,13 +92,15 @@ type MenuBranch = {
 };
 
 function App() {
-  const [activeView, setActiveView] = React.useState<ActiveView>("command");
+  const [activeView, setActiveView] = React.useState<ActiveView>("workbench");
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [commandText, setCommandText] = React.useState("");
   const [consoleMessage, setConsoleMessage] = React.useState(
-    "Select a subsystem from the menu bar, or enter an exact action ID.",
+    "Open the command palette or enter an exact action ID.",
   );
   const [theme, setTheme] = useTheme();
+  const [workbenchSnapshot, setWorkbenchSnapshot] =
+    React.useState<AutopilotWorkbenchSnapshot | null>(null);
   const [pylonBinary, setPylonBinary] =
     React.useState<PylonBinaryStatus | null>(null);
   const [pylonStatus, setPylonStatus] =
@@ -103,6 +112,19 @@ function App() {
   );
   const [busy, setBusy] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+
+  const refreshWorkbench = React.useCallback(async () => {
+    setBusy("autopilot.workbench");
+    try {
+      const snapshot = await autopilotWorkbenchSnapshot();
+      setWorkbenchSnapshot(snapshot);
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatError(error));
+    } finally {
+      setBusy(null);
+    }
+  }, []);
 
   const refreshPylon = React.useCallback(async () => {
     setBusy("pylon.refresh");
@@ -248,7 +270,7 @@ function App() {
   const openPylonLogs = React.useCallback(async () => {
     try {
       const path = await pylonOpenLogs();
-      setConsoleMessage(`Opened Pylon logs: ${path}`);
+      setConsoleMessage(`Opened earn-runtime logs: ${path}`);
       setActionError(null);
     } catch (error) {
       setActionError(formatError(error));
@@ -258,7 +280,7 @@ function App() {
   const openProofArtifacts = React.useCallback(async () => {
     try {
       const path = await proofOpenArtifacts(activeNamespace);
-      setConsoleMessage(`Opened proof artifacts: ${path}`);
+      setConsoleMessage(`Opened diagnostic artifacts: ${path}`);
       setActionError(null);
     } catch (error) {
       setActionError(formatError(error));
@@ -278,6 +300,7 @@ function App() {
         setActiveView,
         setTheme,
         showControlStatus,
+        refreshWorkbench,
         refreshPylon,
         openPylonLogs,
         startPylon: () => runPylonControl("pylon.start", pylonStart),
@@ -303,6 +326,7 @@ function App() {
       openProofArtifacts,
       openPylonLogs,
       pylonInstalled,
+      refreshWorkbench,
       refreshPylon,
       runProofCommand,
       runProofLane,
@@ -379,6 +403,10 @@ function App() {
     },
     [actions, commandText, executeAction],
   );
+
+  React.useEffect(() => {
+    void refreshWorkbench();
+  }, [refreshWorkbench]);
 
   React.useEffect(() => {
     void refreshPylon();
@@ -479,7 +507,7 @@ function App() {
             <Badge variant="outline">ACTIVE: {viewLabels[activeView]}</Badge>
             <StateBadge value={pylonStatus?.processState ?? "unknown"} />
             <StateBadge value={pylonStatus?.providerState ?? "unknown"} />
-            <StateBadge value={proofStatus?.status ?? "no proof"} />
+            <StateBadge value={proofStatus?.status ?? "no diagnostics"} />
           </div>
           <div className="system-status-copy">
             {busy ? `busy ${busy}` : "ready"}
@@ -495,7 +523,13 @@ function App() {
         ) : null}
 
         <div className="operator-stage__content" aria-live="polite">
-          {activeView === "command" ? (
+          {activeView === "workbench" ? (
+            <AutopilotWorkbench
+              busy={busy}
+              onRefresh={refreshWorkbench}
+              snapshot={workbenchSnapshot}
+            />
+          ) : activeView === "command" ? (
             <CommandEntry
               message={consoleMessage}
               value={commandText}
@@ -528,6 +562,243 @@ function App() {
         open={commandOpen}
       />
     </main>
+  );
+}
+
+function AutopilotWorkbench({
+  busy,
+  onRefresh,
+  snapshot,
+}: {
+  busy: string | null;
+  onRefresh: () => Promise<void> | void;
+  snapshot: AutopilotWorkbenchSnapshot | null;
+}) {
+  if (!snapshot) {
+    return (
+      <Card className="operator-card">
+        <CardHeader className="operator-card__header">
+          <CardTitle>Workbench</CardTitle>
+          <Button disabled size="sm" type="button" variant="outline">
+            Loading snapshot
+          </Button>
+        </CardHeader>
+        <CardContent className="operator-card__content">
+          <div className="workbench-empty">
+            Waiting for Rust-owned Autopilot workbench state.
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const objectRows: RegisterRow[] = [
+    ["workspace", snapshot.workspace.id],
+    ["session", snapshot.session.id],
+    ["permission", snapshot.session.permissionMode],
+    ["resume", snapshot.session.resumeState],
+    ["engine", snapshot.session.engine],
+    ["generated", formatTimestamp(String(snapshot.generatedAtUnixMs))],
+  ];
+
+  return (
+    <section className="workbench" aria-label="Autopilot workbench">
+      <aside className="workbench-rail">
+        <Card className="workbench-panel">
+          <CardHeader className="workbench-panel__header">
+            <CardTitle>Workspace</CardTitle>
+            <GitBranch aria-hidden="true" />
+          </CardHeader>
+          <CardContent className="workbench-panel__content">
+            <div className="workbench-object-title">{snapshot.workspace.name}</div>
+            <RegisterGrid
+              rows={[
+                ["path", snapshot.workspace.path],
+                ["branch", snapshot.workspace.branch],
+                ["trust", snapshot.workspace.trust],
+                ["policy", snapshot.workspace.policy],
+              ]}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="workbench-panel">
+          <CardHeader className="workbench-panel__header">
+            <CardTitle>Scorecard</CardTitle>
+            <Coins aria-hidden="true" />
+          </CardHeader>
+          <CardContent className="workbench-panel__content">
+            <div className="score-grid">
+              <MetricCell
+                label="first tool"
+                value={`${snapshot.scorecard.firstToolEventSeconds}s`}
+              />
+              <MetricCell
+                label="verified diff"
+                value={`${snapshot.scorecard.verifiedDiffMinutes}m`}
+              />
+              <MetricCell
+                label="interventions"
+                value={String(snapshot.scorecard.humanInterventions)}
+              />
+              <MetricCell
+                label="earned today"
+                value={`${snapshot.scorecard.satsEarnedToday} sats`}
+              />
+            </div>
+            <div className="workbench-note">
+              {snapshot.scorecard.recoveryState}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="workbench-panel">
+          <CardHeader className="workbench-panel__header">
+            <CardTitle>Object Contract</CardTitle>
+            <ShieldCheck aria-hidden="true" />
+          </CardHeader>
+          <CardContent className="workbench-panel__content">
+            <RegisterGrid rows={objectRows} />
+            <Button
+              disabled={busy === "autopilot.workbench"}
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => void onRefresh()}
+            >
+              Refresh Snapshot
+            </Button>
+          </CardContent>
+        </Card>
+      </aside>
+
+      <section className="workbench-main">
+        <Card className="workbench-panel workbench-session">
+          <CardHeader className="workbench-panel__header">
+            <div>
+              <CardTitle>{snapshot.session.title}</CardTitle>
+              <p>{snapshot.session.goal}</p>
+            </div>
+            <StateBadge value={snapshot.session.state} />
+          </CardHeader>
+          <CardContent className="workbench-panel__content">
+            <div className="timeline" aria-label="Run timeline">
+              {snapshot.timeline.map((event) => (
+                <article className="timeline-event" data-state={stateTone(event.state)} key={event.id}>
+                  <div className="timeline-event__time">{event.time}</div>
+                  <div className="timeline-event__body">
+                    <div className="timeline-event__heading">
+                      <strong>{event.label}</strong>
+                      <StateBadge value={event.state} />
+                    </div>
+                    <p>{event.detail}</p>
+                    <div className="timeline-event__meta">
+                      <span>{event.owner}</span>
+                      <span>{event.evidence}</span>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <aside className="workbench-inspector">
+        <WorkbenchList
+          icon={<ShieldCheck aria-hidden="true" />}
+          items={snapshot.approvals.map((approval) => ({
+            id: approval.id,
+            state: approval.state,
+            title: approval.request,
+            detail: `${approval.risk} risk / ${approval.policy}`,
+            meta: approval.paths.join(", "),
+          }))}
+          title="Approvals"
+        />
+        <WorkbenchList
+          icon={<FileCode aria-hidden="true" />}
+          items={snapshot.diffs.map((diff) => ({
+            id: diff.id,
+            state: diff.state,
+            title: diff.file,
+            detail: diff.summary,
+            meta: `+${diff.additions} / -${diff.deletions}`,
+          }))}
+          title="Diffs"
+        />
+        <WorkbenchList
+          icon={<TerminalWindow aria-hidden="true" />}
+          items={snapshot.verification.map((verification) => ({
+            id: verification.id,
+            state: verification.state,
+            title: verification.command,
+            detail: verification.detail,
+            meta: `${verification.elapsedMs}ms`,
+          }))}
+          title="Verification"
+        />
+        <WorkbenchList
+          icon={<CheckCircle aria-hidden="true" />}
+          items={snapshot.evidence.map((evidence) => ({
+            id: evidence.id,
+            state: evidence.state,
+            title: evidence.location,
+            detail: `${evidence.kind} / ${evidence.owner}`,
+            meta: evidence.id,
+          }))}
+          title="Evidence"
+        />
+      </aside>
+    </section>
+  );
+}
+
+function MetricCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="metric-cell">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function WorkbenchList({
+  icon,
+  items,
+  title,
+}: {
+  icon: React.ReactNode;
+  items: Array<{
+    id: string;
+    state: string;
+    title: string;
+    detail: string;
+    meta: string;
+  }>;
+  title: string;
+}) {
+  return (
+    <Card className="workbench-panel">
+      <CardHeader className="workbench-panel__header">
+        <CardTitle>{title}</CardTitle>
+        {icon}
+      </CardHeader>
+      <CardContent className="workbench-panel__content">
+        <div className="workbench-list">
+          {items.map((item) => (
+            <article className="workbench-list-item" key={item.id}>
+              <div className="workbench-list-item__head">
+                <strong>{item.title}</strong>
+                <StateBadge value={item.state} />
+              </div>
+              <p>{item.detail}</p>
+              <span>{item.meta}</span>
+            </article>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -635,7 +906,7 @@ function AutopilotCommandPalette({
       title="Autopilot Command Menu"
     >
       <Command label="Autopilot commands" loop>
-        <CommandInput placeholder="Search actions by subsystem, authority, or exact ID..." />
+        <CommandInput placeholder="Search actions by workspace, earn state, diagnostics, or exact ID..." />
         <CommandList className="max-h-[30rem]">
           <CommandEmpty>No registered command matched.</CommandEmpty>
           {orderedMenus.map((menu) => {
@@ -714,7 +985,7 @@ function CommandEntry({
               id="autopilot-command"
               value={value}
               onChange={(event) => onChange(event.target.value)}
-              placeholder="action id, for example view.pylon"
+              placeholder="action id, for example view.workbench"
             />
           </Field>
         </FieldGroup>
@@ -748,7 +1019,7 @@ function PylonStatusCard({
     ["binary", binary?.binaryPath ?? status?.binaryPath ?? "not found"],
     ["binary source", binary?.source ?? "unknown"],
     ["config", status?.configPath ?? "not loaded"],
-    ["pylon home", status?.pylonHome ?? "not loaded"],
+    ["runtime home", status?.pylonHome ?? "not loaded"],
     ["process", status?.processState ?? "unknown"],
     ["pid", status?.pid ?? "none"],
     ["provider", status?.providerState ?? "unknown"],
@@ -768,7 +1039,7 @@ function PylonStatusCard({
   return (
     <Card className="operator-card">
       <CardHeader className="operator-card__header">
-        <CardTitle>Pylon</CardTitle>
+        <CardTitle>Earn Runtime</CardTitle>
         <div className="button-row">
           <ActionButton action={actions.refresh} onAction={onAction} />
           <ActionButton action={actions.logs} onAction={onAction} />
@@ -831,7 +1102,7 @@ function ProofRunCard({
   return (
     <Card className="operator-card">
       <CardHeader className="operator-card__header">
-        <CardTitle>Proof Flow</CardTitle>
+        <CardTitle>Diagnostics Flow</CardTitle>
         <div className="button-row">
           <ActionButton action={actions.refresh} onAction={onAction} />
           <ActionButton action={actions.artifacts} onAction={onAction} />
@@ -920,7 +1191,7 @@ function ProofStageGrid({ proof }: { proof: ProofRunProjection | null }) {
   ] as const;
 
   return (
-    <div className="proof-stage-grid" aria-label="Proof stages">
+    <div className="proof-stage-grid" aria-label="Diagnostics stages">
       {stages.map(([label, state]) => (
         <div className="proof-stage" data-state={stateTone(state)} key={label}>
           <span>{label}</span>
@@ -1064,7 +1335,11 @@ function buildMenuBranches(actions: AutopilotAction[], depth = 1): MenuBranch[] 
 
 function orderCommandMenus(activeView: ActiveView) {
   const activeMenu =
-    activeView === "pylon" ? "Pylon" : activeView === "proof" ? "Proof" : "View";
+    activeView === "pylon"
+      ? "Earn"
+      : activeView === "proof"
+        ? "Diagnostics"
+        : "View";
 
   return [
     activeMenu,

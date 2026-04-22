@@ -13,6 +13,91 @@ export interface AutopilotStatus {
   runtimeLane: string;
 }
 
+export interface WorkbenchWorkspace {
+  id: string;
+  name: string;
+  path: string;
+  branch: string;
+  trust: string;
+  policy: string;
+}
+
+export interface WorkbenchSession {
+  id: string;
+  title: string;
+  goal: string;
+  state: string;
+  permissionMode: string;
+  resumeState: string;
+  engine: string;
+}
+
+export interface WorkbenchTimelineEvent {
+  id: string;
+  time: string;
+  state: string;
+  label: string;
+  detail: string;
+  owner: string;
+  evidence: string;
+}
+
+export interface WorkbenchApproval {
+  id: string;
+  state: string;
+  risk: string;
+  request: string;
+  policy: string;
+  paths: string[];
+}
+
+export interface WorkbenchDiff {
+  id: string;
+  state: string;
+  file: string;
+  summary: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface WorkbenchVerification {
+  id: string;
+  state: string;
+  command: string;
+  elapsedMs: number;
+  detail: string;
+}
+
+export interface WorkbenchEvidence {
+  id: string;
+  kind: string;
+  state: string;
+  location: string;
+  owner: string;
+}
+
+export interface WorkbenchScorecard {
+  firstToolEventSeconds: number;
+  verifiedDiffMinutes: number;
+  recoveryState: string;
+  humanInterventions: number;
+  satsEarnedToday: number;
+}
+
+export interface AutopilotWorkbenchSnapshot {
+  product: string;
+  visibleSurface: string;
+  generatedAtUnixMs: number;
+  workspace: WorkbenchWorkspace;
+  session: WorkbenchSession;
+  timeline: WorkbenchTimelineEvent[];
+  approvals: WorkbenchApproval[];
+  diffs: WorkbenchDiff[];
+  verification: WorkbenchVerification[];
+  evidence: WorkbenchEvidence[];
+  scorecard: WorkbenchScorecard;
+}
+
 export interface PylonBinaryStatus {
   installed: boolean;
   binaryName: string;
@@ -126,6 +211,10 @@ export interface ProofRunOptions {
 
 export function autopilotStatus() {
   return invoke<AutopilotStatus>("autopilot_status");
+}
+
+export function autopilotWorkbenchSnapshot() {
+  return invoke<AutopilotWorkbenchSnapshot>("autopilot_workbench_snapshot");
 }
 
 export function pylonDetect() {
