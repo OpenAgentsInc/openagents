@@ -299,6 +299,7 @@ pub fn run() {
             autopilot_workbench_snapshot,
             pylon::pylon_detect,
             pylon::pylon_get_status,
+            pylon::pylon_homework_get,
             pylon::pylon_start,
             pylon::pylon_stop,
             pylon::pylon_restart,

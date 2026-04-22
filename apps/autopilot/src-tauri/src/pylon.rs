@@ -151,6 +151,127 @@ pub struct ProofRuntimeProjection {
     pub updated_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeworkStageProjection {
+    pub id: String,
+    pub label: String,
+    pub state: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeworkAssignmentProjection {
+    pub kind: String,
+    pub state: String,
+    pub training_run_id: Option<String>,
+    pub window_id: Option<String>,
+    pub assignment_id: Option<String>,
+    pub lease_id: Option<String>,
+    pub membership_revision: Option<String>,
+    pub role: Option<String>,
+    pub network_id: Option<String>,
+    pub runtime_lane_id: Option<String>,
+    pub runtime_operation: Option<String>,
+    pub runtime_work_class: Option<String>,
+    pub runtime_manifest_path: Option<String>,
+    pub updated_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeworkRuntimeProjection {
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub lease_id: String,
+    pub role: String,
+    pub desired_state: String,
+    pub process_state: String,
+    pub pid: Option<u32>,
+    pub last_heartbeat_at_ms: Option<i64>,
+    pub last_failure_reason: Option<String>,
+    pub manifest_path: String,
+    pub run_root: String,
+    pub launch_count: u64,
+    pub restart_count: u64,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeworkCloseoutProjection {
+    pub training_run_id: String,
+    pub window_id: String,
+    pub assignment_id: String,
+    pub role: String,
+    pub stage: String,
+    pub next_action: Option<String>,
+    pub challenge_id: Option<String>,
+    pub acceptance_state: Option<String>,
+    pub accepted_outcome_id: Option<String>,
+    pub payout_state: Option<String>,
+    pub payout_id: Option<String>,
+    pub payout_receipt_id: Option<String>,
+    pub payout_reconciliation_status: Option<String>,
+    pub last_error: Option<String>,
+    pub blocking_class: Option<String>,
+    pub updated_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeworkIssueProjection {
+    pub kind: String,
+    pub subject_id: String,
+    pub reason: String,
+    pub blocking_class: Option<String>,
+    pub owner: Option<String>,
+    pub retryable: Option<bool>,
+    pub observed_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeworkTrainingProjection {
+    pub node_label: String,
+    pub provider_pubkey: Option<String>,
+    pub checkpoint_serve_url: String,
+    pub runtime_surface_detected: bool,
+    pub runtime_surface_error: Option<String>,
+    pub contributor_supported: bool,
+    pub current_run_id: Option<String>,
+    pub active_window_id: Option<String>,
+    pub manifest_count: u64,
+    pub work_offer_count: u64,
+    pub pending_publication_count: u64,
+    pub closeout_count: u64,
+    pub validator_queue_count: u64,
+    pub recent_trn_event_count: u64,
+    pub blocked_label_keys: Vec<String>,
+    pub active_runtime: Option<HomeworkRuntimeProjection>,
+    pub leased_assignment: Option<HomeworkAssignmentProjection>,
+    pub recent_work_offers: Vec<HomeworkAssignmentProjection>,
+    pub recent_closeout_progress: Vec<HomeworkCloseoutProjection>,
+    pub recent_issues: Vec<HomeworkIssueProjection>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeworkSnapshotProjection {
+    pub assignment_label: String,
+    pub status: String,
+    pub detail: String,
+    pub payout_policy: String,
+    pub updated_at: String,
+    pub pylon: PylonStatusProjection,
+    pub training: Option<HomeworkTrainingProjection>,
+    pub training_error: Option<String>,
+    pub proof: Option<ProofRunProjection>,
+    pub stages: Vec<HomeworkStageProjection>,
+}
+
 #[derive(Default)]
 pub struct PylonManager {
     child: Mutex<Option<ManagedPylonChild>>,
@@ -190,6 +311,16 @@ pub fn pylon_detect() -> PylonBinaryStatus {
 #[tauri::command]
 pub fn pylon_get_status(state: tauri::State<'_, PylonManager>) -> PylonStatusProjection {
     pylon_status_projection(Some(&state), None, None)
+}
+
+#[tauri::command]
+pub fn pylon_homework_get(state: tauri::State<'_, PylonManager>) -> HomeworkSnapshotProjection {
+    let pylon = pylon_status_projection(Some(&state), None, None);
+    let config_path = current_config_path(Some(&state));
+    let (training, training_error) = load_homework_training_projection(config_path.as_path());
+    let proof = state.proof_snapshot();
+
+    build_homework_snapshot(pylon, training, training_error, proof)
 }
 
 #[tauri::command]
@@ -914,6 +1045,468 @@ fn base_status_projection(
         last_exit_code,
         last_updated_at: now_rfc3339ish(),
     }
+}
+
+fn load_homework_training_projection(
+    config_path: &Path,
+) -> (Option<HomeworkTrainingProjection>, Option<String>) {
+    let binary = match resolve_binary_path(BinaryKind::Pylon) {
+        Ok(binary) => binary,
+        Err(error) => return (None, Some(redact_sensitive(&error))),
+    };
+    let args = vec![
+        OsString::from("--config-path"),
+        config_path.as_os_str().to_os_string(),
+        OsString::from("training"),
+        OsString::from("status"),
+        OsString::from("--json"),
+    ];
+
+    match run_command_with_timeout(&binary, &args, DEFAULT_COMMAND_TIMEOUT) {
+        Ok(output) if output.status.success() => {
+            match serde_json::from_slice::<Value>(&output.stdout) {
+                Ok(value) => (Some(project_homework_training_status(&value)), None),
+                Err(error) => (
+                    None,
+                    Some(format!("failed to decode homework status JSON: {error}")),
+                ),
+            }
+        }
+        Ok(output) => (
+            None,
+            Some(command_failure("pylon training status", &output)),
+        ),
+        Err(error) => (None, Some(redact_sensitive(&error))),
+    }
+}
+
+fn build_homework_snapshot(
+    pylon: PylonStatusProjection,
+    training: Option<HomeworkTrainingProjection>,
+    training_error: Option<String>,
+    proof: Option<ProofRunProjection>,
+) -> HomeworkSnapshotProjection {
+    let (status, detail) = homework_status_and_detail(
+        &pylon,
+        training.as_ref(),
+        training_error.as_deref(),
+        proof.as_ref(),
+    );
+    let stages = homework_stages(&pylon, training.as_ref(), proof.as_ref());
+
+    HomeworkSnapshotProjection {
+        assignment_label: "CS336 Assignment 1 homework".to_string(),
+        status,
+        detail,
+        payout_policy: "pay only accepted homework work; no recurring liveness payouts".to_string(),
+        updated_at: now_rfc3339ish(),
+        pylon,
+        training,
+        training_error,
+        proof,
+        stages,
+    }
+}
+
+fn homework_status_and_detail(
+    pylon: &PylonStatusProjection,
+    training: Option<&HomeworkTrainingProjection>,
+    training_error: Option<&str>,
+    proof: Option<&ProofRunProjection>,
+) -> (String, String) {
+    if let Some(proof) = proof {
+        if proof.status == "accepted" || proof.status == "completed" || proof.status == "paid" {
+            return (
+                "Homework paid".to_string(),
+                proof.detail.clone().unwrap_or_else(|| {
+                    "Latest local homework proof reached accepted work.".to_string()
+                }),
+            );
+        }
+        if proof.status == "running" || proof.status == "starting" {
+            return (
+                "Testing homework".to_string(),
+                "Local homework proof lane is running.".to_string(),
+            );
+        }
+    }
+
+    if let Some(training) = training {
+        if !training.blocked_label_keys.is_empty() || !training.recent_issues.is_empty() {
+            return (
+                "Needs attention".to_string(),
+                first_homework_issue(training).unwrap_or_else(|| {
+                    format!("blocked labels: {}", training.blocked_label_keys.join(", "))
+                }),
+            );
+        }
+        if let Some(runtime) = training.active_runtime.as_ref() {
+            return (
+                "Training homework".to_string(),
+                format!(
+                    "{} {} {}",
+                    runtime.role, runtime.process_state, runtime.assignment_id
+                ),
+            );
+        }
+        if let Some(closeout) = training.recent_closeout_progress.first() {
+            if closeout.stage != "accepted" && closeout.stage != "paid" {
+                return (
+                    "Closing out homework".to_string(),
+                    closeout
+                        .next_action
+                        .clone()
+                        .unwrap_or_else(|| closeout.stage.clone()),
+                );
+            }
+        }
+        if let Some(assignment) = training.leased_assignment.as_ref() {
+            return (
+                "Homework assigned".to_string(),
+                assignment
+                    .assignment_id
+                    .clone()
+                    .unwrap_or_else(|| assignment.state.clone()),
+            );
+        }
+        if !training.recent_work_offers.is_empty() || training.contributor_supported {
+            return (
+                "Ready for homework".to_string(),
+                "Online node can receive homework work when an admin launches a run.".to_string(),
+            );
+        }
+    }
+
+    if let Some(error) = training_error {
+        if pylon.process_state == "running" || pylon.provider_state == "online" {
+            return (
+                "Preparing homework".to_string(),
+                format!("Homework status not available yet: {error}"),
+            );
+        }
+    }
+
+    if pylon.provider_state == "online" {
+        return (
+            "Ready for homework".to_string(),
+            "Pylon is online; waiting for homework work.".to_string(),
+        );
+    }
+    if pylon.process_state == "running" || pylon.process_state == "starting" {
+        return (
+            "Starting Pylon".to_string(),
+            "Pylon is running; waiting for online homework eligibility.".to_string(),
+        );
+    }
+    if !pylon.installed {
+        return (
+            "Pylon missing".to_string(),
+            "Install or select a Pylon binary before homework work can run.".to_string(),
+        );
+    }
+    (
+        "Offline".to_string(),
+        "Start Pylon and set provider mode online to wait for homework work.".to_string(),
+    )
+}
+
+fn first_homework_issue(training: &HomeworkTrainingProjection) -> Option<String> {
+    training
+        .recent_issues
+        .first()
+        .map(|issue| format!("{}: {}", issue.kind, issue.reason))
+}
+
+fn homework_stages(
+    pylon: &PylonStatusProjection,
+    training: Option<&HomeworkTrainingProjection>,
+    proof: Option<&ProofRunProjection>,
+) -> Vec<HomeworkStageProjection> {
+    let online_state = if pylon.provider_state == "online" {
+        "ready"
+    } else if pylon.process_state == "running" || pylon.process_state == "starting" {
+        "starting"
+    } else {
+        "offline"
+    };
+    let intake_state = training
+        .map(|training| {
+            if !training.blocked_label_keys.is_empty() || !training.recent_issues.is_empty() {
+                "attention"
+            } else if training.contributor_supported {
+                "ready"
+            } else {
+                "blocked"
+            }
+        })
+        .unwrap_or("unknown");
+    let assignment_state = training
+        .map(|training| {
+            if training.active_runtime.is_some() || training.leased_assignment.is_some() {
+                "active"
+            } else if !training.recent_work_offers.is_empty() || training.current_run_id.is_some() {
+                "ready"
+            } else {
+                "waiting"
+            }
+        })
+        .unwrap_or("unknown");
+    let runtime_state = training
+        .and_then(|training| training.active_runtime.as_ref())
+        .map(|runtime| runtime.process_state.as_str())
+        .or_else(|| proof.map(|proof| proof.status.as_str()))
+        .unwrap_or("idle");
+    let closeout_state = training
+        .and_then(|training| training.recent_closeout_progress.first())
+        .map(|closeout| closeout.stage.as_str())
+        .or_else(|| proof.and_then(|proof| proof.closeout_stage.as_deref()))
+        .unwrap_or("waiting");
+    let payout_state = training
+        .and_then(|training| {
+            training
+                .recent_closeout_progress
+                .iter()
+                .find_map(|entry| entry.payout_state.as_deref())
+        })
+        .or_else(|| {
+            proof.and_then(|proof| {
+                if proof.status == "accepted" {
+                    Some("accepted")
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or("waiting");
+
+    vec![
+        HomeworkStageProjection {
+            id: "online".to_string(),
+            label: "Online".to_string(),
+            state: online_state.to_string(),
+            detail: format!(
+                "process={} provider={}",
+                pylon.process_state, pylon.provider_state
+            ),
+        },
+        HomeworkStageProjection {
+            id: "intake".to_string(),
+            label: "Homework intake".to_string(),
+            state: intake_state.to_string(),
+            detail: training
+                .map(|training| format!("{} work offer(s)", training.work_offer_count))
+                .unwrap_or_else(|| "training status not loaded".to_string()),
+        },
+        HomeworkStageProjection {
+            id: "assignment".to_string(),
+            label: "Assignment".to_string(),
+            state: assignment_state.to_string(),
+            detail: training
+                .and_then(|training| {
+                    training
+                        .active_runtime
+                        .as_ref()
+                        .map(|runtime| runtime.assignment_id.clone())
+                        .or_else(|| {
+                            training
+                                .leased_assignment
+                                .as_ref()
+                                .and_then(|assignment| assignment.assignment_id.clone())
+                        })
+                })
+                .or_else(|| proof.and_then(|proof| proof.assignment_id.clone()))
+                .unwrap_or_else(|| "waiting for admin-launched homework".to_string()),
+        },
+        HomeworkStageProjection {
+            id: "runtime".to_string(),
+            label: "Runtime".to_string(),
+            state: runtime_state.to_string(),
+            detail: training
+                .and_then(|training| training.active_runtime.as_ref())
+                .map(|runtime| format!("{} pid={:?}", runtime.role, runtime.pid))
+                .unwrap_or_else(|| "no active homework runtime".to_string()),
+        },
+        HomeworkStageProjection {
+            id: "closeout".to_string(),
+            label: "Closeout".to_string(),
+            state: closeout_state.to_string(),
+            detail: training
+                .and_then(|training| training.recent_closeout_progress.first())
+                .and_then(|closeout| closeout.next_action.clone())
+                .unwrap_or_else(|| "no closeout pending".to_string()),
+        },
+        HomeworkStageProjection {
+            id: "payout".to_string(),
+            label: "Payout".to_string(),
+            state: payout_state.to_string(),
+            detail: training
+                .and_then(|training| {
+                    training
+                        .recent_closeout_progress
+                        .iter()
+                        .find_map(|entry| entry.payout_id.clone())
+                })
+                .unwrap_or_else(|| "paid only after accepted homework".to_string()),
+        },
+    ]
+}
+
+fn project_homework_training_status(value: &Value) -> HomeworkTrainingProjection {
+    let recent_work_offers = value_array(value, "recent_work_offers")
+        .iter()
+        .take(6)
+        .map(|entry| project_homework_assignment("offer", entry))
+        .collect::<Vec<_>>();
+    let recent_closeout_progress = value_array(value, "recent_closeout_progress")
+        .iter()
+        .take(8)
+        .map(project_homework_closeout)
+        .collect::<Vec<_>>();
+    let recent_issues = value_array(value, "recent_issues")
+        .iter()
+        .take(8)
+        .map(project_homework_issue)
+        .collect::<Vec<_>>();
+
+    HomeworkTrainingProjection {
+        node_label: value_string(value, "node_label").unwrap_or_else(|| "local pylon".to_string()),
+        provider_pubkey: value_string(value, "provider_pubkey"),
+        checkpoint_serve_url: value_string(value, "checkpoint_serve_url").unwrap_or_default(),
+        runtime_surface_detected: value_bool(value, "runtime_surface_detected").unwrap_or(false),
+        runtime_surface_error: value_string(value, "runtime_surface_error")
+            .map(redact_sensitive_owned),
+        contributor_supported: value_bool(value, "contributor_supported").unwrap_or(false),
+        current_run_id: value_string(value, "current_run_id"),
+        active_window_id: value_string(value, "active_window_id"),
+        manifest_count: value_u64(value, "manifest_count").unwrap_or(0),
+        work_offer_count: recent_work_offers.len() as u64,
+        pending_publication_count: value_u64(value, "pending_publication_count").unwrap_or(0),
+        closeout_count: value_u64(value, "closeout_count").unwrap_or(0),
+        validator_queue_count: value_array(value, "validator_queue").len() as u64,
+        recent_trn_event_count: value_array(value, "recent_trn_events").len() as u64,
+        blocked_label_keys: value_array(value, "blocked_label_keys")
+            .iter()
+            .filter_map(Value::as_str)
+            .map(ToOwned::to_owned)
+            .collect(),
+        active_runtime: value
+            .get("active_runtime")
+            .and_then(project_homework_runtime),
+        leased_assignment: value
+            .get("leased_assignment")
+            .map(|entry| project_homework_assignment("leased", entry)),
+        recent_work_offers,
+        recent_closeout_progress,
+        recent_issues,
+    }
+}
+
+fn project_homework_runtime(value: &Value) -> Option<HomeworkRuntimeProjection> {
+    Some(HomeworkRuntimeProjection {
+        training_run_id: value_string(value, "training_run_id")?,
+        window_id: value_string(value, "window_id")?,
+        assignment_id: value_string(value, "assignment_id")?,
+        lease_id: value_string(value, "lease_id")?,
+        role: value_string(value, "role").unwrap_or_else(|| "worker".to_string()),
+        desired_state: value_string(value, "desired_state")
+            .unwrap_or_else(|| "unknown".to_string()),
+        process_state: value_string(value, "process_state")
+            .unwrap_or_else(|| "unknown".to_string()),
+        pid: value_u64(value, "pid").and_then(|value| u32::try_from(value).ok()),
+        last_heartbeat_at_ms: value_i64(value, "last_heartbeat_at_ms"),
+        last_failure_reason: value_string(value, "last_failure_reason").map(redact_sensitive_owned),
+        manifest_path: value_string(value, "manifest_path").unwrap_or_default(),
+        run_root: value_string(value, "run_root").unwrap_or_default(),
+        launch_count: value_u64(value, "launch_count").unwrap_or(0),
+        restart_count: value_u64(value, "restart_count").unwrap_or(0),
+        updated_at_ms: value_i64(value, "updated_at_ms").unwrap_or(0),
+    })
+}
+
+fn project_homework_assignment(kind: &str, value: &Value) -> HomeworkAssignmentProjection {
+    HomeworkAssignmentProjection {
+        kind: kind.to_string(),
+        state: value_string(value, "state").unwrap_or_else(|| "unknown".to_string()),
+        training_run_id: value_string(value, "training_run_id"),
+        window_id: value_string(value, "window_id"),
+        assignment_id: value_string(value, "assignment_id"),
+        lease_id: value_string(value, "lease_id"),
+        membership_revision: value_string(value, "membership_revision"),
+        role: value_string(value, "role"),
+        network_id: value_string(value, "network_id"),
+        runtime_lane_id: value_string(value, "runtime_lane_id"),
+        runtime_operation: value_string(value, "runtime_operation"),
+        runtime_work_class: value_string(value, "runtime_work_class"),
+        runtime_manifest_path: value_string(value, "runtime_manifest_path"),
+        updated_at_ms: value_i64(value, "updated_at_ms"),
+    }
+}
+
+fn project_homework_closeout(value: &Value) -> HomeworkCloseoutProjection {
+    HomeworkCloseoutProjection {
+        training_run_id: value_string(value, "training_run_id").unwrap_or_default(),
+        window_id: value_string(value, "window_id").unwrap_or_default(),
+        assignment_id: value_string(value, "assignment_id").unwrap_or_default(),
+        role: value_string(value, "role").unwrap_or_default(),
+        stage: value_string(value, "stage").unwrap_or_else(|| "unknown".to_string()),
+        next_action: value_string(value, "next_action"),
+        challenge_id: value_string(value, "challenge_id"),
+        acceptance_state: value_string(value, "acceptance_state"),
+        accepted_outcome_id: value_string(value, "accepted_outcome_id"),
+        payout_state: value_string(value, "payout_state"),
+        payout_id: value_string(value, "payout_id"),
+        payout_receipt_id: value_string(value, "payout_receipt_id"),
+        payout_reconciliation_status: value_string(value, "payout_reconciliation_status"),
+        last_error: value_string(value, "last_error").map(redact_sensitive_owned),
+        blocking_class: value_string(value, "blocking_class"),
+        updated_at_ms: value_i64(value, "updated_at_ms"),
+    }
+}
+
+fn project_homework_issue(value: &Value) -> HomeworkIssueProjection {
+    HomeworkIssueProjection {
+        kind: value_string(value, "kind").unwrap_or_else(|| "issue".to_string()),
+        subject_id: value_string(value, "subject_id").unwrap_or_else(|| "unknown".to_string()),
+        reason: value_string(value, "reason")
+            .map(|value| redact_sensitive(&value))
+            .unwrap_or_else(|| "unknown".to_string()),
+        blocking_class: value_string(value, "blocking_class"),
+        owner: value_string(value, "owner"),
+        retryable: value_bool(value, "retryable"),
+        observed_at_ms: value_i64(value, "observed_at_ms"),
+    }
+}
+
+fn value_array<'a>(value: &'a Value, key: &str) -> &'a [Value] {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+}
+
+fn value_string(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn value_bool(value: &Value, key: &str) -> Option<bool> {
+    value.get(key).and_then(Value::as_bool)
+}
+
+fn value_u64(value: &Value, key: &str) -> Option<u64> {
+    value.get(key).and_then(Value::as_u64)
+}
+
+fn value_i64(value: &Value, key: &str) -> Option<i64> {
+    value.get(key).and_then(Value::as_i64)
+}
+
+fn redact_sensitive_owned(value: String) -> String {
+    redact_sensitive(&value)
 }
 
 #[derive(Clone, Copy)]
@@ -1692,6 +2285,71 @@ mod tests {
         assert_eq!(status.products_visible, Some(2));
         assert_eq!(status.products_eligible, Some(1));
         assert_eq!(status.queue_depth, Some(2));
+    }
+
+    #[test]
+    fn projects_homework_training_status() {
+        let value = serde_json::json!({
+            "node_label": "pylon.local",
+            "checkpoint_serve_url": "http://127.0.0.1:43000",
+            "runtime_surface_detected": true,
+            "contributor_supported": true,
+            "current_run_id": "run.cs336.a1.test",
+            "active_window_id": "window.cs336.a1.test.0001",
+            "manifest_count": 1,
+            "pending_publication_count": 0,
+            "closeout_count": 1,
+            "blocked_label_keys": [],
+            "active_runtime": {
+                "training_run_id": "run.cs336.a1.test",
+                "window_id": "window.cs336.a1.test.0001",
+                "assignment_id": "assign.worker.1",
+                "lease_id": "lease.worker.1",
+                "role": "worker",
+                "desired_state": "running",
+                "process_state": "running",
+                "pid": 1234,
+                "manifest_path": "/tmp/manifest.json",
+                "run_root": "/tmp/run",
+                "launch_count": 1,
+                "restart_count": 0,
+                "updated_at_ms": 42
+            },
+            "recent_closeout_progress": [{
+                "training_run_id": "run.cs336.a1.test",
+                "window_id": "window.cs336.a1.test.0001",
+                "assignment_id": "assign.worker.1",
+                "role": "worker",
+                "stage": "paid",
+                "payout_state": "confirmed",
+                "payout_id": "payout.accepted.1",
+                "payout_receipt_id": "payment.1",
+                "payout_reconciliation_status": "settled",
+                "updated_at_ms": 43
+            }]
+        });
+
+        let training = project_homework_training_status(&value);
+
+        assert!(training.contributor_supported);
+        assert_eq!(
+            training.current_run_id.as_deref(),
+            Some("run.cs336.a1.test")
+        );
+        assert_eq!(
+            training
+                .active_runtime
+                .as_ref()
+                .map(|runtime| runtime.assignment_id.as_str()),
+            Some("assign.worker.1")
+        );
+        assert_eq!(
+            training
+                .recent_closeout_progress
+                .first()
+                .and_then(|closeout| closeout.payout_state.as_deref()),
+            Some("confirmed")
+        );
     }
 
     #[test]

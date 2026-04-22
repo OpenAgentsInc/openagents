@@ -58,12 +58,16 @@ import {
   autopilotWorkbenchSnapshot,
   autopilotStatus,
   type AutopilotWorkbenchSnapshot,
+  type HomeworkAssignmentProjection,
+  type HomeworkRuntimeProjection,
+  type HomeworkSnapshotProjection,
   type ProviderMode,
   type ProofLane,
   type ProofNodeProjection,
   type ProofRunProjection,
   type PylonBinaryStatus,
   type PylonStatusProjection,
+  pylonHomeworkGet,
   proofDoctor,
   proofGet,
   proofOpenArtifacts,
@@ -100,6 +104,8 @@ function App() {
   const [theme, setTheme] = useTheme();
   const [workbenchSnapshot, setWorkbenchSnapshot] =
     React.useState<AutopilotWorkbenchSnapshot | null>(null);
+  const [homeworkSnapshot, setHomeworkSnapshot] =
+    React.useState<HomeworkSnapshotProjection | null>(null);
   const [pylonBinary, setPylonBinary] =
     React.useState<PylonBinaryStatus | null>(null);
   const [pylonStatus, setPylonStatus] =
@@ -142,6 +148,23 @@ function App() {
     }
   }, []);
 
+  const refreshHomework = React.useCallback(async () => {
+    setBusy("homework.refresh");
+    try {
+      const snapshot = await pylonHomeworkGet();
+      setHomeworkSnapshot(snapshot);
+      setPylonStatus(snapshot.pylon);
+      if (snapshot.proof) {
+        setProofStatus(snapshot.proof);
+      }
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatError(error));
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+
   const runPylonControl = React.useCallback(
     async (
       busyKey: string,
@@ -165,15 +188,19 @@ function App() {
 
   const setProviderMode = React.useCallback(
     (mode: ProviderMode) => {
-      void runPylonControl(`pylon.${mode}`, () => pylonSetMode(mode));
+      void runPylonControl(
+        `pylon.${mode}`,
+        () => pylonSetMode(mode),
+        activeView === "homework" ? "homework" : "pylon",
+      );
     },
-    [runPylonControl],
+    [activeView, runPylonControl],
   );
 
   const runProofLane = React.useCallback(async (lane: ProofLane) => {
     const namespace = makeProofNamespace(lane);
     setNamespaceDraft(namespace);
-    setActiveView("proof");
+    setActiveView(activeView === "homework" ? "homework" : "proof");
     setBusy(`proof.${lane}`);
     setProofStatus({
       namespace,
@@ -215,13 +242,26 @@ function App() {
     try {
       const status = await proofRun({ lane, namespace });
       setProofStatus(status);
+      if (activeView === "homework") {
+        setHomeworkSnapshot((current) =>
+          current
+            ? {
+                ...current,
+                proof: status,
+                status: status.status === "accepted" ? "Homework paid" : current.status,
+                detail: status.detail ?? current.detail,
+                updatedAt: String(Date.now()),
+              }
+            : current,
+        );
+      }
       setActionError(null);
     } catch (error) {
       setActionError(formatError(error));
     } finally {
       setBusy(null);
     }
-  }, []);
+  }, [activeView]);
 
   const activeNamespace = proofStatus?.namespace || namespaceDraft;
 
@@ -300,11 +340,27 @@ function App() {
         setTheme,
         showControlStatus,
         refreshWorkbench,
+        refreshHomework,
         refreshPylon,
         openPylonLogs,
-        startPylon: () => runPylonControl("pylon.start", pylonStart),
-        stopPylon: () => runPylonControl("pylon.stop", pylonStop),
-        restartPylon: () => runPylonControl("pylon.restart", pylonRestart),
+        startPylon: () =>
+          runPylonControl(
+            "pylon.start",
+            pylonStart,
+            activeView === "homework" ? "homework" : "pylon",
+          ),
+        stopPylon: () =>
+          runPylonControl(
+            "pylon.stop",
+            pylonStop,
+            activeView === "homework" ? "homework" : "pylon",
+          ),
+        restartPylon: () =>
+          runPylonControl(
+            "pylon.restart",
+            pylonRestart,
+            activeView === "homework" ? "homework" : "pylon",
+          ),
         setProviderMode,
         showProofFlow: () => setActiveView("proof"),
         refreshProof: () =>
@@ -325,6 +381,7 @@ function App() {
       openProofArtifacts,
       openPylonLogs,
       pylonInstalled,
+      refreshHomework,
       refreshWorkbench,
       refreshPylon,
       runProofCommand,
@@ -412,6 +469,10 @@ function App() {
   }, [refreshPylon]);
 
   React.useEffect(() => {
+    void refreshHomework();
+  }, [refreshHomework]);
+
+  React.useEffect(() => {
     const unlisten: Array<() => void> = [];
     let mounted = true;
 
@@ -480,6 +541,17 @@ function App() {
     reset: requireAction(actionById, "proof.namespace.reset"),
   };
 
+  const homeworkActions = {
+    refresh: requireAction(actionById, "homework.refresh"),
+    start: requireAction(actionById, "pylon.serve.start"),
+    online: requireAction(actionById, "pylon.provider.online"),
+    pause: requireAction(actionById, "pylon.provider.pause"),
+    stop: requireAction(actionById, "pylon.serve.stop"),
+    runProof: requireAction(actionById, "proof.run.cs336-a1"),
+    doctor: requireAction(actionById, "proof.namespace.doctor"),
+    artifacts: requireAction(actionById, "proof.artifacts.open"),
+  };
+
   return (
     <main className="shell">
       <section className="operator-stage">
@@ -513,6 +585,9 @@ function App() {
             {activeView === "proof" ? (
               <StateBadge value={proofStatus?.status ?? "no diagnostics"} />
             ) : null}
+            {activeView === "homework" ? (
+              <StateBadge value={homeworkSnapshot?.status ?? "not loaded"} />
+            ) : null}
           </div>
           <div className="system-status-copy">
             {busy ? `busy ${busy}` : "ready"}
@@ -533,6 +608,12 @@ function App() {
               busy={busy}
               onRefresh={refreshWorkbench}
               snapshot={workbenchSnapshot}
+            />
+          ) : activeView === "homework" ? (
+            <HomeworkPylonScreen
+              actions={homeworkActions}
+              onAction={executeAction}
+              snapshot={homeworkSnapshot}
             />
           ) : activeView === "command" ? (
             <CommandEntry
@@ -786,6 +867,273 @@ function WorkbenchList({
       </CardContent>
     </Card>
   );
+}
+
+function HomeworkPylonScreen({
+  actions,
+  onAction,
+  snapshot,
+}: {
+  actions: {
+    refresh: AutopilotAction;
+    start: AutopilotAction;
+    online: AutopilotAction;
+    pause: AutopilotAction;
+    stop: AutopilotAction;
+    runProof: AutopilotAction;
+    doctor: AutopilotAction;
+    artifacts: AutopilotAction;
+  };
+  onAction: ActionRunner;
+  snapshot: HomeworkSnapshotProjection | null;
+}) {
+  if (!snapshot) {
+    return (
+      <Card className="operator-card">
+        <CardHeader className="operator-card__header">
+          <CardTitle>Homework</CardTitle>
+          <ActionButton action={actions.refresh} onAction={onAction} />
+        </CardHeader>
+        <CardContent className="operator-card__content">
+          <div className="workbench-empty">
+            Loading current Pylon homework state.
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const training = snapshot.training;
+  const activeRuntime = training?.activeRuntime ?? null;
+  const activeAssignment = activeRuntime
+    ? runtimeAsAssignment(activeRuntime)
+    : training?.leasedAssignment ?? training?.recentWorkOffers[0] ?? null;
+  const closeout = training?.recentCloseoutProgress[0] ?? null;
+  const pylonRows: RegisterRow[] = [
+    ["process", snapshot.pylon.processState],
+    ["provider", snapshot.pylon.providerState],
+    ["mode", snapshot.pylon.desiredMode ?? "unknown"],
+    ["pid", snapshot.pylon.pid ?? "none"],
+    ["eligible products", formatCountPair(snapshot.pylon.productsEligible, snapshot.pylon.productsVisible)],
+    ["queue", snapshot.pylon.queueDepth ?? "unknown"],
+    ["model", snapshot.pylon.readyModel ?? "none"],
+    ["backend", snapshot.pylon.executionBackend ?? "unknown"],
+    ["config", snapshot.pylon.configPath ?? "not loaded"],
+  ];
+  const trainingRows: RegisterRow[] = [
+    ["node", training?.nodeLabel ?? "not loaded"],
+    ["run", training?.currentRunId ?? snapshot.proof?.runId ?? "waiting"],
+    ["window", training?.activeWindowId ?? snapshot.proof?.windowId ?? "waiting"],
+    ["checkpoint", training?.checkpointServeUrl || "not serving"],
+    ["runtime surface", String(training?.runtimeSurfaceDetected ?? false)],
+    ["contributor", String(training?.contributorSupported ?? false)],
+    ["manifests", training?.manifestCount ?? 0],
+    ["work offers", training?.workOfferCount ?? 0],
+    ["closeouts", training?.closeoutCount ?? 0],
+    ["TRN events", training?.recentTrnEventCount ?? 0],
+  ];
+  const assignmentRows = activeAssignment
+    ? homeworkAssignmentRows(activeAssignment)
+    : [["assignment", "waiting for admin-launched homework"]] satisfies RegisterRow[];
+  const payoutRows: RegisterRow[] = [
+    ["policy", snapshot.payoutPolicy],
+    ["stage", closeout?.stage ?? snapshot.proof?.closeoutStage ?? "waiting"],
+    ["acceptance", closeout?.acceptanceState ?? "none"],
+    ["accepted outcome", closeout?.acceptedOutcomeId ?? "none"],
+    ["payout", closeout?.payoutState ?? snapshot.proof?.status ?? "none"],
+    ["payout id", closeout?.payoutId ?? "none"],
+    ["payment", closeout?.payoutReceiptId ?? "none"],
+    ["reconciliation", closeout?.payoutReconciliationStatus ?? "none"],
+  ];
+
+  return (
+    <section className="homework-screen" aria-label="Pylon homework control">
+      <Card className="homework-hero">
+        <CardHeader className="workbench-panel__header">
+          <div>
+            <CardTitle>{snapshot.assignmentLabel}</CardTitle>
+            <p>{snapshot.detail}</p>
+          </div>
+          <StateBadge value={snapshot.status} />
+        </CardHeader>
+        <CardContent className="homework-hero__content">
+          <div className="homework-actions">
+            <ActionButton action={actions.refresh} onAction={onAction} />
+            <ActionButton action={actions.start} onAction={onAction} variant="default" />
+            <ActionButton action={actions.online} onAction={onAction} />
+            <ActionButton action={actions.pause} onAction={onAction} />
+            <ActionButton action={actions.stop} onAction={onAction} />
+            <ActionButton action={actions.runProof} onAction={onAction} variant="default" />
+            <ActionButton action={actions.doctor} onAction={onAction} />
+            <ActionButton action={actions.artifacts} onAction={onAction} />
+          </div>
+          <div className="homework-stage-grid">
+            {snapshot.stages.map((stage) => (
+              <article className="homework-stage" data-state={stateTone(stage.state)} key={stage.id}>
+                <div className="homework-stage__head">
+                  <span>{stage.label}</span>
+                  <StateBadge value={stage.state} />
+                </div>
+                <p>{stage.detail}</p>
+              </article>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="homework-grid">
+        <Card className="workbench-panel">
+          <CardHeader className="workbench-panel__header">
+            <CardTitle>Current Pylon</CardTitle>
+          </CardHeader>
+          <CardContent className="workbench-panel__content">
+            <RegisterGrid rows={pylonRows} />
+          </CardContent>
+        </Card>
+
+        <Card className="workbench-panel">
+          <CardHeader className="workbench-panel__header">
+            <CardTitle>Homework Training</CardTitle>
+          </CardHeader>
+          <CardContent className="workbench-panel__content">
+            <RegisterGrid rows={trainingRows} />
+            {snapshot.trainingError ? (
+              <div className="workbench-note">{snapshot.trainingError}</div>
+            ) : null}
+            {training?.runtimeSurfaceError ? (
+              <div className="workbench-note">{training.runtimeSurfaceError}</div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="workbench-panel">
+          <CardHeader className="workbench-panel__header">
+            <CardTitle>Assignment</CardTitle>
+          </CardHeader>
+          <CardContent className="workbench-panel__content">
+            <RegisterGrid rows={assignmentRows} />
+          </CardContent>
+        </Card>
+
+        <Card className="workbench-panel">
+          <CardHeader className="workbench-panel__header">
+            <CardTitle>Closeout + Payout</CardTitle>
+          </CardHeader>
+          <CardContent className="workbench-panel__content">
+            <RegisterGrid rows={payoutRows} />
+          </CardContent>
+        </Card>
+
+        <HomeworkListPanel
+          empty="No current homework blockers."
+          items={(training?.recentIssues ?? []).map((issue) => ({
+            id: `${issue.kind}-${issue.subjectId}`,
+            state: issue.blockingClass ?? (issue.retryable ? "retryable" : "issue"),
+            title: `${issue.kind} / ${issue.subjectId}`,
+            detail: issue.reason,
+            meta: issue.owner ?? "homework",
+          }))}
+          title="Issues"
+        />
+
+        <HomeworkListPanel
+          empty="No retained work offers."
+          items={(training?.recentWorkOffers ?? []).map((offer) => ({
+            id: `${offer.kind}-${offer.assignmentId ?? offer.leaseId ?? offer.state}`,
+            state: offer.state,
+            title: offer.assignmentId ?? "assignment pending",
+            detail: `${offer.role ?? "worker"} ${offer.runtimeOperation ?? "homework"}`,
+            meta: offer.networkId ?? offer.trainingRunId ?? "network pending",
+          }))}
+          title="Work Offers"
+        />
+      </div>
+    </section>
+  );
+}
+
+function HomeworkListPanel({
+  empty,
+  items,
+  title,
+}: {
+  empty: string;
+  items: Array<{
+    id: string;
+    state: string;
+    title: string;
+    detail: string;
+    meta: string;
+  }>;
+  title: string;
+}) {
+  return (
+    <Card className="workbench-panel">
+      <CardHeader className="workbench-panel__header">
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="workbench-panel__content">
+        {items.length === 0 ? (
+          <div className="workbench-note">{empty}</div>
+        ) : (
+          <div className="workbench-list">
+            {items.map((item) => (
+              <article className="workbench-list-item" key={item.id}>
+                <div className="workbench-list-item__head">
+                  <strong>{item.title}</strong>
+                  <StateBadge value={item.state} />
+                </div>
+                <p>{item.detail}</p>
+                <span>{item.meta}</span>
+              </article>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function runtimeAsAssignment(
+  runtime: HomeworkRuntimeProjection,
+): HomeworkAssignmentProjection {
+  return {
+    kind: "active",
+    state: runtime.processState,
+    trainingRunId: runtime.trainingRunId,
+    windowId: runtime.windowId,
+    assignmentId: runtime.assignmentId,
+    leaseId: runtime.leaseId,
+    membershipRevision: null,
+    role: runtime.role,
+    networkId: null,
+    runtimeLaneId: null,
+    runtimeOperation: "train",
+    runtimeWorkClass: "homework",
+    runtimeManifestPath: runtime.manifestPath,
+    updatedAtMs: runtime.updatedAtMs,
+  };
+}
+
+function homeworkAssignmentRows(
+  assignment: HomeworkAssignmentProjection | null,
+): RegisterRow[] {
+  if (!assignment) {
+    return [["assignment", "waiting"]];
+  }
+
+  return [
+    ["kind", assignment.kind],
+    ["state", assignment.state],
+    ["role", assignment.role ?? "unknown"],
+    ["run", assignment.trainingRunId ?? "unknown"],
+    ["window", assignment.windowId ?? "unknown"],
+    ["assignment", assignment.assignmentId ?? "unknown"],
+    ["lease", assignment.leaseId ?? "unknown"],
+    ["network", assignment.networkId ?? "unknown"],
+    ["runtime", assignment.runtimeLaneId ?? assignment.runtimeOperation ?? "unknown"],
+    ["manifest", assignment.runtimeManifestPath ?? "not materialized"],
+  ];
 }
 
 function AutopilotMenuBar({
@@ -1323,6 +1671,8 @@ function orderCommandMenus(activeView: ActiveView) {
   const activeMenu =
     activeView === "pylon"
       ? "Earn"
+      : activeView === "homework"
+        ? "Earn"
       : activeView === "proof"
         ? "Diagnostics"
         : "View";
@@ -1418,7 +1768,8 @@ function stateTone(value: string) {
     normalized.includes("online") ||
     normalized.includes("ready") ||
     normalized.includes("completed") ||
-    normalized.includes("accepted")
+    normalized.includes("accepted") ||
+    normalized.includes("paid")
   ) {
     return "ok";
   }
@@ -1436,12 +1787,20 @@ function stateTone(value: string) {
     normalized.includes("warn") ||
     normalized.includes("degraded") ||
     normalized.includes("simulated") ||
-    normalized.includes("unconfigured")
+    normalized.includes("unconfigured") ||
+    normalized.includes("attention") ||
+    normalized.includes("blocked")
   ) {
     return "warn";
   }
 
-  if (normalized.includes("running") || normalized.includes("starting")) {
+  if (
+    normalized.includes("running") ||
+    normalized.includes("starting") ||
+    normalized.includes("active") ||
+    normalized.includes("training") ||
+    normalized.includes("closing")
+  ) {
     return "active";
   }
 

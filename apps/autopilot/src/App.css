@@ -482,6 +482,91 @@ body,
   text-transform: uppercase;
 }
 
+.homework-screen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.homework-hero {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  background: var(--panel-black);
+  box-shadow: none;
+}
+
+.homework-hero__content {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.625rem;
+}
+
+.homework-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.homework-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.homework-stage {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  background: var(--panel-black-raised);
+  padding: 0.625rem;
+}
+
+.homework-stage__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.homework-stage__head span {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.homework-stage p {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.homework-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  min-height: 0;
+  overflow: auto;
+}
+
 .button-row--wrap {
   flex-wrap: wrap;
 }
@@ -643,6 +728,11 @@ body,
   .workbench {
     grid-template-columns: minmax(0, 1fr);
     overflow: auto;
+  }
+
+  .homework-stage-grid,
+  .homework-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .timeline-event {
