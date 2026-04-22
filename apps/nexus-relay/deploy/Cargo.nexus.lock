@@ -470,7 +470,7 @@ version = "0.1.1"
 
 [[package]]
 name = "autopilot-spacetime"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "av-scenechange"
@@ -1232,7 +1232,7 @@ dependencies = [
 
 [[package]]
 name = "codex-client"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "color_quant"
@@ -1680,7 +1680,7 @@ checksum = "f400d0750c0c069e8493f2256cb4da6f604b6d2eeb69a0ca8863acde352f8400"
 
 [[package]]
 name = "deck"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "der"
@@ -3923,7 +3923,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexus-control"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
@@ -3934,7 +3934,7 @@ dependencies = [
  "hex",
  "http 1.4.0",
  "http-body-util",
- "nostr 0.1.7",
+ "nostr 0.1.8",
  "nostr-client",
  "openagents-kernel-core",
  "openagents-kernel-proto",
@@ -3961,14 +3961,14 @@ dependencies = [
 
 [[package]]
 name = "nexus-relay"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
  "futures-util",
  "hex",
  "nexus-control",
- "nostr 0.1.7",
+ "nostr 0.1.8",
  "nostr-client",
  "nostr-rs-relay",
  "reqwest",
@@ -4020,7 +4020,7 @@ checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
 
 [[package]]
 name = "nostr"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "aes",
  "anyhow",
@@ -4071,11 +4071,11 @@ dependencies = [
 
 [[package]]
 name = "nostr-client"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "futures-util",
  "hex",
- "nostr 0.1.7",
+ "nostr 0.1.8",
  "rustls 0.23.37",
  "serde",
  "serde_json",
@@ -4311,15 +4311,15 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "openagents-cad"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "openagents-compiled-agent"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "openagents-ios-domain"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "openagents-kernel-core"
@@ -4345,7 +4345,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-provider-substrate"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "axum 0.8.8",
  "bitcoin 0.32.8",
@@ -4363,7 +4363,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-spark"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "bip39",
  "bitcoin 0.32.8",
@@ -5270,7 +5270,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-train-contract"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "serde",
 ]
@@ -5311,11 +5311,11 @@ checksum = "b5a041e753da8b807c9255f28de81879c78c876392ff2469cde94799b2896b9d"
 
 [[package]]
 name = "pylon"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "pylon-tui"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "qoi"
@@ -8222,15 +8222,15 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 
 [[package]]
 name = "wgpui"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "wgpui-core"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "wgpui-render"
-version = "0.1.7"
+version = "0.1.8"
 
 [[package]]
 name = "which"
