@@ -115,6 +115,17 @@ The first implementation target is:
   pills unless the user opens those views, removes the extra object-contract
   panel, moves snapshot refresh into the workspace header, and uses flatter
   near-black panels with low-contrast hairlines.
+- Added a homework-focused Pylon screen inside Autopilot. This keeps the
+  first-run workbench clean while giving operators and users one screen for the
+  CS336 Assignment 1 homework flow: Pylon online state, homework intake,
+  assignment, runtime, closeout, payout status, work offers, and local proof
+  controls. The screen deliberately translates internal Pylon/Nexus/proof state
+  into homework terms and avoids surfacing raw degraded/sync-stale-style
+  internals as the main user state.
+- Added the Rust/Tauri `pylon_homework_get` projection as the UI authority for
+  that screen. It combines current Pylon status, `pylon training status --json`
+  when available, and the local homework proof snapshot, while preserving the
+  existing lower-level Earn Runtime and Diagnostics controls for debugging.
 
 Verification run:
 
@@ -123,6 +134,7 @@ Verification run:
 - `cargo check -p autopilot`
 - `cargo test -p autopilot --lib`
 - `scripts/autopilot/tauri-control-smoke.sh --status-only`
+- `scripts/autopilot/tauri-homework-matrix.sh`
 
 All verification above passed on this implementation pass. The frontend build
 still emits the existing Vite chunk-size warning; that is not caused by the

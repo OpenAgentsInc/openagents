@@ -1,6 +1,6 @@
 import type { ProviderMode, ProofLane } from "@/lib/autopilot-runtime";
 
-export type ActiveView = "workbench" | "command" | "pylon" | "proof";
+export type ActiveView = "workbench" | "homework" | "command" | "pylon" | "proof";
 export type Theme = "light" | "dark";
 export type ActionKind = "view" | "safe" | "mutating" | "destructive";
 export type ActionScope = "global" | "active-view" | "selection";
@@ -38,6 +38,7 @@ export type BuildAutopilotActionsOptions = {
   setTheme: (theme: Theme) => void;
   showControlStatus: () => Promise<void> | void;
   refreshWorkbench: () => Promise<void> | void;
+  refreshHomework: () => Promise<void> | void;
   refreshPylon: () => Promise<void> | void;
   openPylonLogs: () => Promise<void> | void;
   startPylon: () => Promise<void> | void;
@@ -63,6 +64,7 @@ export const topLevelMenus = [
 
 export const viewLabels: Record<ActiveView, string> = {
   workbench: "Workbench",
+  homework: "Homework",
   command: "Command Console",
   pylon: "Earn Runtime",
   proof: "Diagnostics",
@@ -85,6 +87,7 @@ export function buildAutopilotActions({
   setTheme,
   showControlStatus,
   refreshWorkbench,
+  refreshHomework,
   refreshPylon,
   openPylonLogs,
   startPylon,
@@ -176,6 +179,21 @@ export function buildAutopilotActions({
       evidence: ["active view badge", "workbench object model"],
       active: activeView === "workbench",
       run: () => setActiveView("workbench"),
+    },
+    {
+      id: "view.homework",
+      label: "Homework",
+      menuPath: ["View", "Homework"],
+      paletteKeywords: ["homework", "cs336", "assignment", "pylon", "earn", "payout"],
+      aliases: ["homework", "cs336", "assignment"],
+      shortcut: "homework",
+      scope: "global",
+      kind: "view",
+      authority: "local-tauri",
+      effect: "Shows the Pylon homework control surface.",
+      evidence: ["homework state", "pylon state", "training status", "accepted-work payout"],
+      active: activeView === "homework",
+      run: () => setActiveView("homework"),
     },
     {
       id: "view.command",
@@ -301,6 +319,35 @@ export function buildAutopilotActions({
       evidence: ["earn runtime register grid"],
       active: activeView === "pylon",
       run: () => setActiveView("pylon"),
+    },
+    {
+      id: "homework.status.show",
+      label: "Show Homework",
+      menuPath: ["Earn", "Homework"],
+      paletteKeywords: ["homework", "cs336", "assignment", "training", "payout"],
+      aliases: ["show homework", "homework"],
+      scope: "global",
+      kind: "view",
+      authority: "local-tauri",
+      effect: "Shows the homework-only Pylon operating surface.",
+      evidence: ["homework mission state", "training status", "payout state"],
+      active: activeView === "homework",
+      run: () => setActiveView("homework"),
+    },
+    {
+      id: "homework.refresh",
+      label: "Refresh Homework",
+      menuPath: ["Earn", "Refresh Homework"],
+      paletteKeywords: ["homework", "refresh", "training", "status"],
+      aliases: ["refresh homework"],
+      shortcut: "homework status",
+      scope: "global",
+      kind: "safe",
+      authority: "pylon",
+      effect: "Refreshes Pylon status plus the homework training projection.",
+      evidence: ["homework updated timestamp", "training status"],
+      disabledReason: busyReason,
+      run: refreshHomework,
     },
     {
       id: "pylon.refresh",

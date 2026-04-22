@@ -201,6 +201,113 @@ export interface ProofRuntimeProjection {
   updatedAt: string;
 }
 
+export interface HomeworkStageProjection {
+  id: string;
+  label: string;
+  state: string;
+  detail: string;
+}
+
+export interface HomeworkAssignmentProjection {
+  kind: string;
+  state: string;
+  trainingRunId: string | null;
+  windowId: string | null;
+  assignmentId: string | null;
+  leaseId: string | null;
+  membershipRevision: string | null;
+  role: string | null;
+  networkId: string | null;
+  runtimeLaneId: string | null;
+  runtimeOperation: string | null;
+  runtimeWorkClass: string | null;
+  runtimeManifestPath: string | null;
+  updatedAtMs: number | null;
+}
+
+export interface HomeworkRuntimeProjection {
+  trainingRunId: string;
+  windowId: string;
+  assignmentId: string;
+  leaseId: string;
+  role: string;
+  desiredState: string;
+  processState: string;
+  pid: number | null;
+  lastHeartbeatAtMs: number | null;
+  lastFailureReason: string | null;
+  manifestPath: string;
+  runRoot: string;
+  launchCount: number;
+  restartCount: number;
+  updatedAtMs: number;
+}
+
+export interface HomeworkCloseoutProjection {
+  trainingRunId: string;
+  windowId: string;
+  assignmentId: string;
+  role: string;
+  stage: string;
+  nextAction: string | null;
+  challengeId: string | null;
+  acceptanceState: string | null;
+  acceptedOutcomeId: string | null;
+  payoutState: string | null;
+  payoutId: string | null;
+  payoutReceiptId: string | null;
+  payoutReconciliationStatus: string | null;
+  lastError: string | null;
+  blockingClass: string | null;
+  updatedAtMs: number | null;
+}
+
+export interface HomeworkIssueProjection {
+  kind: string;
+  subjectId: string;
+  reason: string;
+  blockingClass: string | null;
+  owner: string | null;
+  retryable: boolean | null;
+  observedAtMs: number | null;
+}
+
+export interface HomeworkTrainingProjection {
+  nodeLabel: string;
+  providerPubkey: string | null;
+  checkpointServeUrl: string;
+  runtimeSurfaceDetected: boolean;
+  runtimeSurfaceError: string | null;
+  contributorSupported: boolean;
+  currentRunId: string | null;
+  activeWindowId: string | null;
+  manifestCount: number;
+  workOfferCount: number;
+  pendingPublicationCount: number;
+  closeoutCount: number;
+  validatorQueueCount: number;
+  recentTrnEventCount: number;
+  blockedLabelKeys: string[];
+  activeRuntime: HomeworkRuntimeProjection | null;
+  leasedAssignment: HomeworkAssignmentProjection | null;
+  recentWorkOffers: HomeworkAssignmentProjection[];
+  recentCloseoutProgress: HomeworkCloseoutProjection[];
+  recentIssues: HomeworkIssueProjection[];
+}
+
+export interface HomeworkSnapshotProjection {
+  assignmentLabel: string;
+  status: string;
+  detail: string;
+  payoutPolicy: string;
+  updatedAt: string;
+  pylon: PylonStatusProjection;
+  training: HomeworkTrainingProjection | null;
+  trainingError: string | null;
+  proof: ProofRunProjection | null;
+  stages: HomeworkStageProjection[];
+}
+
 export interface ProofRunOptions {
   lane: ProofLane;
   namespace?: string;
@@ -223,6 +330,10 @@ export function pylonDetect() {
 
 export function pylonGetStatus() {
   return invoke<PylonStatusProjection>("pylon_get_status");
+}
+
+export function pylonHomeworkGet() {
+  return invoke<HomeworkSnapshotProjection>("pylon_homework_get");
 }
 
 export function pylonStart() {
