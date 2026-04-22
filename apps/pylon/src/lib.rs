@@ -5894,13 +5894,20 @@ async fn materialize_training_validator_target_json_artifact(
                 let actual_digest = training_json_artifact_digest(&value, label, source_path)?;
                 if actual_digest != expected_digest {
                     training_trace(&format!(
-                        "validator challenge {label} local target digest mismatch for {}: expected {expected_digest}, got {actual_digest}; preserving local target payload instead of bridge-inline fallback",
+                        "validator challenge {label} local target digest mismatch for {}: expected {expected_digest}, got {actual_digest}; falling back to resolver or bridge-inline payload",
                         source_path.display()
                     ));
+                    if binding.resolver.is_none() {
+                        return Ok(None);
+                    }
+                } else {
+                    write_training_json_value(local_path, &value, label)?;
+                    return Ok(Some(value));
                 }
+            } else {
+                write_training_json_value(local_path, &value, label)?;
+                return Ok(Some(value));
             }
-            write_training_json_value(local_path, &value, label)?;
-            return Ok(Some(value));
         }
     }
 
@@ -6511,10 +6518,30 @@ fn psionic_train_validator_target_artifact_binding(
     else {
         return Ok(fallback);
     };
-    let artifact_id = target_artifact
-        .artifact_id
-        .clone()
-        .unwrap_or_else(|| fallback.artifact_ref.artifact_id.clone());
+    let fallback_digest = fallback.artifact_ref.artifact_digest.as_deref();
+    let target_digest_matches = match (
+        target_artifact
+            .digest
+            .as_deref()
+            .map(|digest| digest.trim_start_matches("sha256:")),
+        fallback_digest,
+    ) {
+        (Some(target_digest), Some(fallback_digest)) => target_digest == fallback_digest,
+        (Some(_), None) => false,
+        (None, _) => true,
+    };
+    let artifact_id = if target_digest_matches {
+        target_artifact.artifact_id.clone()
+    } else if let Some(fallback_digest) = fallback_digest {
+        target_artifact
+            .artifact_id
+            .as_deref()
+            .and_then(|artifact_id| artifact_id.rsplit_once('.').map(|(prefix, _)| prefix))
+            .map(|prefix| format!("{}.{}", prefix, fallback_digest))
+    } else {
+        None
+    }
+    .unwrap_or_else(|| fallback.artifact_ref.artifact_id.clone());
     Ok(PsionicTrainArtifactBinding {
         artifact_ref: PsionicTrainArtifactRef {
             artifact_id,
@@ -33385,6 +33412,52 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && validator_manifest.validator_target_work_class
                     == Some(PsionicTrainWorkClass::AdapterTraining),
             "validator leases should preserve canonical replay target artifact identity from the retained claim record",
+        )?;
+
+        let mut stale_claim = super::load_training_validator_claim_record(
+            pylon_run_root.as_path(),
+            "window.0001",
+            "challenge.alpha",
+        )?
+        .ok_or_else(|| std::io::Error::other("missing validator claim"))?;
+        let stale_manifest_digest = "9".repeat(64);
+        let stale_manifest_artifact_id = format!(
+            "psionic.train.artifact.contribution_artifact_manifest.{stale_manifest_digest}"
+        );
+        let stale_artifact = stale_claim
+            .target_bindings
+            .first_mut()
+            .and_then(|target| {
+                target
+                    .artifacts
+                    .iter_mut()
+                    .find(|artifact| artifact.artifact_role == "contribution_artifact_manifest")
+            })
+            .ok_or_else(|| std::io::Error::other("missing manifest artifact binding"))?;
+        stale_artifact.artifact_id = Some(stale_manifest_artifact_id.clone());
+        stale_artifact.digest = Some(format!("sha256:{stale_manifest_digest}"));
+        super::persist_training_validator_claim_record(pylon_run_root.as_path(), &stale_claim)?;
+        let (stale_target_manifest, _) = build_psionic_train_invocation_manifest(
+            &config,
+            &runtime_surface,
+            &training_run_fixture(),
+            &lease,
+            &"11".repeat(32),
+        )?;
+        let repaired_artifact_id = format!(
+            "psionic.train.artifact.contribution_artifact_manifest.{validator_manifest_digest}"
+        );
+        ensure(
+            stale_target_manifest
+                .validator_target_contribution_artifact_manifest
+                .as_ref()
+                .is_some_and(|binding| {
+                    binding.artifact_ref.artifact_id == repaired_artifact_id
+                        && binding.artifact_ref.artifact_id != stale_manifest_artifact_id
+                        && binding.artifact_ref.artifact_digest.as_deref()
+                            == Some(validator_manifest_digest.as_str())
+                }),
+            "validator replay manifests should repair stale target artifact ids to match the materialized target bytes",
         )
     }
 
