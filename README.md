@@ -130,6 +130,80 @@ For setup expectations, current limitations, and source-of-truth behavior, see t
 For canonical implementation status, see: [docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md](docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md).
 The broader Autopilot Earn doc set is consolidated under `docs/autopilot-earn/`.
 
+## Pylon
+
+`Pylon` is the standalone provider node for the current paid training path.
+It is the easiest way to put a machine online for OpenAgents jobs without
+running the full Autopilot desktop app.
+
+Run it once with npm:
+
+```bash
+npx @openagentsinc/pylon
+```
+
+Or install the package-managed launcher and then use the normal provider
+command:
+
+```bash
+npm install -g @openagentsinc/pylon
+pylon
+```
+
+Keep that process running. Pylon creates local node identity and wallet state,
+marks the node online, advertises eligible capabilities to Nexus, asks for
+available work, executes assigned jobs locally, and watches for accepted-work
+payouts. A normal Pylon operator should not need a Nexus admin bearer token,
+a CS336-specific command, a direct artifact-store credential, or a separate
+course opt-in. The user-facing contract is: run `pylon`, stay online, and get
+paid when assigned work closes out as accepted.
+
+Current production truth:
+
+- The minimum current paid-training release is `pylon-v0.1.8` through
+  `@openagentsinc/pylon` `0.1.8` or newer.
+- The live paid work class is bounded hosted homework/training work, currently
+  the CS336 A1 starter lane used to prove the earning loop.
+- Work is not yet a fully open demand marketplace. OpenAgents/Nexus admins
+  currently seed and pace paid homework jobs from the hosted Nexus side.
+- Admins can trigger batches with
+  `POST /v1/admin/homework/cs336-a1/dispatch` and can put that call behind
+  cron to control how many jobs and sats go out per interval.
+- Online eligible Pylons can receive those jobs automatically when work is
+  available. Users do not manually pick the assignment.
+- Treasury pays only accepted homework work. Placeholder/liveness payouts,
+  including the old periodic 600-sat sends, are not part of the current claim.
+- Pylon currently still needs the local training runtime prerequisites for this
+  homework lane. In practice, keep a compatible Psionic checkout discoverable
+  until that runtime is bundled more tightly. `pylon doctor` and
+  `pylon training status --json` report missing runtime prerequisites.
+
+Useful inspection commands:
+
+```bash
+pylon --version
+pylon status --json
+pylon training status --json
+pylon wallet balance --json
+pylon wallet history --limit 20 --json
+```
+
+For noninteractive operator proof, do not let the npm bootstrap launch an
+interactive UI. Bootstrap with `--no-launch`, then run the installed `pylon`
+binary directly from the bootstrap cache or install root.
+
+The latest production proof used `pylon-v0.1.8`, an npm-installed worker, a
+separate validator, and a separately triggered admin homework run. The run
+reconciled with one accepted contribution, `closeout_status=rewarded`, a
+confirmed and settled 25-sat accepted-work Treasury payout, and a 25-sat worker
+wallet balance. The proof receipt is
+[docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json](docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json).
+
+Operator details live in
+[docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md](docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md).
+The retrospective audit is
+[docs/reports/nexus/2026-04-21-issue-4368-retrospective-audit.md](docs/reports/nexus/2026-04-21-issue-4368-retrospective-audit.md).
+
 ## Data Market
 
 The current Data Market is a real secondary MVP slice, not just a spec.
