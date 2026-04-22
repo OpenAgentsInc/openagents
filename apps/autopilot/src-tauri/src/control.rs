@@ -186,6 +186,10 @@ fn route_request(request: HttpRequest, app: tauri::AppHandle) -> Result<Value, S
             .map_err(|error| format!("failed to encode control snapshot: {error}")),
         ("GET", "/v1/pylon/status") => serde_json::to_value(pylon::pylon_get_status(app.state()))
             .map_err(|error| format!("failed to encode pylon status: {error}")),
+        ("GET", "/v1/homework/status") => {
+            serde_json::to_value(pylon::pylon_homework_get(app.state()))
+                .map_err(|error| format!("failed to encode homework status: {error}"))
+        }
         ("POST", "/v1/pylon/start") => {
             serde_json::to_value(pylon::pylon_start(app.clone(), app.state(), None))
                 .map_err(|error| format!("failed to encode pylon start response: {error}"))?

@@ -21,6 +21,7 @@ START_TIMEOUT_SECONDS="${OPENAGENTS_AUTOPILOT_TAURI_START_TIMEOUT_SECONDS:-90}"
 KEEP_RUNNING=0
 STATUS_ONLY=0
 HOMEWORK_MATRIX=0
+HOMEWORK_HANDSHAKE=0
 USE_FAKE_BINARIES=1
 REAL_PYLON_BINARY=""
 REAL_OA_BINARY=""
@@ -39,6 +40,7 @@ Options:
   --timeout-ms <value>  Proof wait timeout. Default: $TIMEOUT_MS.
   --manifest <path>     Control manifest path. Default: $MANIFEST.
   --status-only         Launch and verify control status only.
+  --homework-handshake  Run the single end-to-end homework Nexus/Pylon handshake.
   --homework-matrix     Run clean, replacement, and stale homework proof lanes.
   --real-binaries       Use the machine's real pylon and oa binaries.
   --keep-running        Leave the Tauri app running after the command completes.
@@ -65,6 +67,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --homework-matrix)
       HOMEWORK_MATRIX=1
+      ;;
+    --homework-handshake)
+      HOMEWORK_HANDSHAKE=1
       ;;
     --real-binaries)
       USE_FAKE_BINARIES=0
@@ -211,6 +216,7 @@ bootstrap_real_pylon_config() {
 
 if [[ "$USE_FAKE_BINARIES" == "1" ]]; then
   mkdir -p "$FAKE_BIN_DIR" "$FAKE_STATE_DIR" "$PYLON_HOME" "$PROOF_ROOT"
+  printf 'offline\n' >"$FAKE_STATE_DIR/pylon-mode"
 
   cat >"$FAKE_BIN_DIR/pylon" <<'PYLON'
 #!/usr/bin/env bash
@@ -264,6 +270,156 @@ status_json() {
 JSON
 }
 
+latest_proof_summary() {
+  local root="${OPENAGENTS_AUTOPILOT_PROOF_ROOT:-}"
+  [[ -n "$root" && -d "$root" ]] || return 1
+  local active_namespace="${OPENAGENTS_AUTOPILOT_ACTIVE_PROOF_NAMESPACE:-}"
+  if [[ -n "$active_namespace" && -f "$root/$active_namespace/fleet/proof-summary.json" ]]; then
+    printf '%s\n' "$root/$active_namespace/fleet/proof-summary.json"
+    return 0
+  fi
+  if [[ -n "$active_namespace" ]]; then
+    return 1
+  fi
+  find "$root" -path '*/fleet/proof-summary.json' -type f -print0 2>/dev/null \
+    | xargs -0 ls -t 2>/dev/null \
+    | head -n 1
+}
+
+training_status_json() {
+  local summary=""
+  summary="$(latest_proof_summary || true)"
+  if [[ -n "$summary" ]]; then
+    python3 - "$summary" <<'PY'
+import json
+import pathlib
+import sys
+
+summary_path = pathlib.Path(sys.argv[1])
+summary = json.loads(summary_path.read_text())
+namespace = summary_path.parents[1].name
+assignment_id = summary.get("assignment_id") or "fake-assignment"
+lease_id = summary.get("lease_id") or "fake-lease"
+run_id = summary.get("runId") or summary.get("run_id") or f"fake-run-{namespace}"
+window_id = summary.get("window_id") or "fake-window"
+closeout_stage = summary.get("closeout_stage") or "rewarded"
+payout_state = "confirmed" if closeout_stage in {"rewarded", "accepted", "paid", "delivered"} else "pending"
+payload = {
+    "node_label": "fake-autopilot-worker",
+    "provider_pubkey": "fake-provider-pubkey",
+    "checkpoint_serve_url": "http://127.0.0.1:9468/checkpoints",
+    "runtime_surface_detected": True,
+    "runtime_surface_error": None,
+    "contributor_supported": True,
+    "current_run_id": run_id,
+    "active_window_id": window_id,
+    "manifest_count": 1,
+    "pending_publication_count": 0,
+    "closeout_count": 1,
+    "validator_queue": [],
+    "recent_trn_events": [{"kind": "fake-trn-closeout", "namespace": namespace}],
+    "blocked_label_keys": [],
+    "active_runtime": None,
+    "leased_assignment": {
+        "state": "completed",
+        "training_run_id": run_id,
+        "window_id": window_id,
+        "assignment_id": assignment_id,
+        "lease_id": lease_id,
+        "membership_revision": summary.get("membership_revision") or "fake-membership",
+        "role": "worker",
+        "network_id": "fake-autopilot-network",
+        "runtime_lane_id": "cs336-a1",
+        "runtime_operation": "homework",
+        "runtime_work_class": "homework",
+        "runtime_manifest_path": str(summary_path),
+        "updated_at_ms": 1776872400000,
+    },
+    "recent_work_offers": [
+        {
+            "state": "available",
+            "training_run_id": run_id,
+            "window_id": window_id,
+            "assignment_id": assignment_id,
+            "lease_id": lease_id,
+            "membership_revision": "fake-membership",
+            "role": "worker",
+            "network_id": "fake-autopilot-network",
+            "runtime_lane_id": "cs336-a1",
+            "runtime_operation": "homework",
+            "runtime_work_class": "homework",
+            "runtime_manifest_path": str(summary_path),
+            "updated_at_ms": 1776872400000,
+        }
+    ],
+    "recent_closeout_progress": [
+        {
+            "training_run_id": run_id,
+            "window_id": window_id,
+            "assignment_id": assignment_id,
+            "role": "worker",
+            "stage": closeout_stage,
+            "next_action": "none",
+            "challenge_id": "fake-challenge",
+            "acceptance_state": "accepted",
+            "accepted_outcome_id": f"accepted:{assignment_id}",
+            "payout_state": payout_state,
+            "payout_id": f"accepted-work:{window_id}:{assignment_id}",
+            "payout_receipt_id": f"fake-payment:{assignment_id}",
+            "payout_reconciliation_status": "settled",
+            "last_error": None,
+            "blocking_class": None,
+            "updated_at_ms": 1776872400000,
+        }
+    ],
+    "recent_issues": [],
+}
+print(json.dumps(payload))
+PY
+    return
+  fi
+
+  cat <<JSON
+{
+  "node_label": "fake-autopilot-worker",
+  "provider_pubkey": "fake-provider-pubkey",
+  "checkpoint_serve_url": "http://127.0.0.1:9468/checkpoints",
+  "runtime_surface_detected": true,
+  "runtime_surface_error": null,
+  "contributor_supported": true,
+  "current_run_id": null,
+  "active_window_id": null,
+  "manifest_count": 0,
+  "pending_publication_count": 0,
+  "closeout_count": 0,
+  "validator_queue": [],
+  "recent_trn_events": [],
+  "blocked_label_keys": [],
+  "active_runtime": null,
+  "leased_assignment": null,
+  "recent_work_offers": [
+    {
+      "state": "available",
+      "training_run_id": "fake-run-waiting",
+      "window_id": "fake-window-waiting",
+      "assignment_id": "fake-assignment-waiting",
+      "lease_id": "fake-lease-waiting",
+      "membership_revision": "fake-membership",
+      "role": "worker",
+      "network_id": "fake-autopilot-network",
+      "runtime_lane_id": "cs336-a1",
+      "runtime_operation": "homework",
+      "runtime_work_class": "homework",
+      "runtime_manifest_path": "",
+      "updated_at_ms": 1776872300000
+    }
+  ],
+  "recent_closeout_progress": [],
+  "recent_issues": []
+}
+JSON
+}
+
 case "$COMMAND" in
   serve)
     write_mode "$mode"
@@ -277,6 +433,14 @@ case "$COMMAND" in
   online|offline|pause|resume)
     write_mode "$COMMAND"
     status_json
+    ;;
+  training)
+    if [[ "${2:-}" == "status" ]]; then
+      training_status_json
+    else
+      echo "unsupported fake pylon training command: ${2:-}" >&2
+      exit 2
+    fi
     ;;
   *)
     echo "unsupported fake pylon command: $COMMAND" >&2
@@ -454,6 +618,7 @@ fi
     OPENAGENTS_AUTOPILOT_CONTROL_MANIFEST="$MANIFEST" \
       OPENAGENTS_AUTOPILOT_CONTROL_BIND="${OPENAGENTS_AUTOPILOT_CONTROL_BIND:-127.0.0.1:0}" \
       OPENAGENTS_AUTOPILOT_FAKE_PYLON_STATE="$FAKE_STATE_DIR/pylon-mode" \
+      OPENAGENTS_AUTOPILOT_ACTIVE_PROOF_NAMESPACE="$NAMESPACE" \
       OPENAGENTS_AUTOPILOT_PYLON_HOME="$PYLON_HOME" \
       OPENAGENTS_AUTOPILOT_PYLON_CONFIG_PATH="$PYLON_CONFIG_PATH" \
       OPENAGENTS_AUTOPILOT_PROOF_ROOT="$PROOF_ROOT" \
@@ -465,6 +630,7 @@ fi
   else
     OPENAGENTS_AUTOPILOT_CONTROL_MANIFEST="$MANIFEST" \
       OPENAGENTS_AUTOPILOT_CONTROL_BIND="${OPENAGENTS_AUTOPILOT_CONTROL_BIND:-127.0.0.1:0}" \
+      OPENAGENTS_AUTOPILOT_ACTIVE_PROOF_NAMESPACE="$NAMESPACE" \
       OPENAGENTS_AUTOPILOT_PYLON_HOME="$PYLON_HOME" \
       OPENAGENTS_AUTOPILOT_PYLON_CONFIG_PATH="$PYLON_CONFIG_PATH" \
       OPENAGENTS_AUTOPILOT_PROOF_ROOT="$PROOF_ROOT" \
@@ -502,7 +668,14 @@ if [[ "$STATUS_ONLY" == "1" ]]; then
   exit 0
 fi
 
-if [[ "$HOMEWORK_MATRIX" == "1" ]]; then
+if [[ "$HOMEWORK_HANDSHAKE" == "1" ]]; then
+  cargo run -p autopilot --bin autopilotctl-tauri -- \
+    --manifest "$MANIFEST" \
+    --json \
+    homework handshake \
+    --namespace "$NAMESPACE" \
+    --timeout-ms "$TIMEOUT_MS" | tee "$SMOKE_JSON"
+elif [[ "$HOMEWORK_MATRIX" == "1" ]]; then
   cargo run -p autopilot --bin autopilotctl-tauri -- \
     --manifest "$MANIFEST" \
     --json \
@@ -518,7 +691,9 @@ else
     --timeout-ms "$TIMEOUT_MS" | tee "$SMOKE_JSON"
 fi
 
-if [[ "$HOMEWORK_MATRIX" == "1" ]]; then
+if [[ "$HOMEWORK_HANDSHAKE" == "1" ]]; then
+  echo "Autopilot Tauri homework Nexus/Pylon handshake complete"
+elif [[ "$HOMEWORK_MATRIX" == "1" ]]; then
   echo "Autopilot Tauri homework proof matrix complete"
 else
   echo "Autopilot Tauri control smoke complete"

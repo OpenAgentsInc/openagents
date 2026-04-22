@@ -55,6 +55,7 @@ the React UI:
 
 ```bash
 cargo run -p autopilot --bin autopilotctl-tauri -- --json pylon status
+cargo run -p autopilot --bin autopilotctl-tauri -- --json homework status
 cargo run -p autopilot --bin autopilotctl-tauri -- --json pylon start
 cargo run -p autopilot --bin autopilotctl-tauri -- --json pylon mode offline
 cargo run -p autopilot --bin autopilotctl-tauri -- --json pylon stop
@@ -72,6 +73,19 @@ scripts/autopilot/tauri-control-smoke.sh
 That smoke launches the real Tauri app and uses deterministic fake `pylon` and
 `oa` binaries by default so the control flow is not blocked by local provider
 configuration. Use `--real-binaries` to drive the installed local stack.
+
+For the homework-only screen, run the single Nexus/Pylon handshake:
+
+```bash
+scripts/autopilot/tauri-control-smoke.sh --homework-handshake
+```
+
+That launches the Tauri app and drives `autopilotctl-tauri homework handshake`
+through the app-owned control plane. It starts Pylon, puts it online, runs the
+clean `cs336-a1` proof lane, checks doctor/artifacts, and verifies the final
+homework projection reaches accepted homework closeout/payout state without
+leaking internal sync-stale or treasury-degraded wording into the visible
+homework state.
 
 For homework-run changes, use the full matrix:
 

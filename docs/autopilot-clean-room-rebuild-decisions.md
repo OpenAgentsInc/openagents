@@ -126,6 +126,19 @@ The first implementation target is:
   that screen. It combines current Pylon status, `pylon training status --json`
   when available, and the local homework proof snapshot, while preserving the
   existing lower-level Earn Runtime and Diagnostics controls for debugging.
+- Added the programmatic homework control loop for that screen. The Tauri
+  control plane now exposes `/v1/homework/status`, `autopilotctl-tauri` can run
+  `homework status` and `homework handshake`, and the smoke wrapper can launch
+  the app and run `--homework-handshake`. The handshake drives only the app
+  control plane: it reads the homework projection, starts Pylon, puts it
+  online, runs the clean CS336 A1 proof lane, waits for completion, runs proof
+  doctor/artifact checks, and verifies the final homework projection reaches
+  accepted closeout/payout state without visible sync-stale or degraded
+  treasury wording.
+- Fixed a projection edge case found by the handshake: a JSON
+  `leased_assignment: null` must mean no assignment, not an `unknown` leased
+  assignment. Without that, the homework screen could report `Homework
+  assigned` before any assignment existed.
 
 Verification run:
 
@@ -134,6 +147,7 @@ Verification run:
 - `cargo check -p autopilot`
 - `cargo test -p autopilot --lib`
 - `scripts/autopilot/tauri-control-smoke.sh --status-only`
+- `scripts/autopilot/tauri-control-smoke.sh --homework-handshake --timeout-ms 600000`
 - `scripts/autopilot/tauri-homework-matrix.sh`
 
 All verification above passed on this implementation pass. The frontend build
