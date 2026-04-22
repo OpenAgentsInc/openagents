@@ -5000,13 +5000,26 @@ fn training_validator_node_matches_window(
     )
 }
 
-fn training_validator_claim_window_priority(window: &ComputeAdapterTrainingWindow) -> u8 {
+fn training_validator_claim_window_priority(
+    kernel: &KernelState,
+    window: &ComputeAdapterTrainingWindow,
+) -> u8 {
+    if let Some(run) = kernel.get_compute_training_run(window.training_run_id.as_str()) {
+        if run
+            .metadata
+            .get("run_kind")
+            .and_then(Value::as_str)
+            .is_some_and(|run_kind| run_kind == "homework_dispatch")
+        {
+            return 0;
+        }
+    }
     training_validator_claim_run_priority(window.training_run_id.as_str())
 }
 
 fn training_validator_claim_run_priority(training_run_id: &str) -> u8 {
     if training_run_id.starts_with("run.cs336.a1.starter.") {
-        return 0;
+        return 2;
     }
     1
 }
@@ -13487,8 +13500,8 @@ async fn claim_training_validator_challenge(
             .kernel
             .list_compute_adapter_training_windows(None, None);
         windows.sort_by(|left, right| {
-            training_validator_claim_window_priority(left)
-                .cmp(&training_validator_claim_window_priority(right))
+            training_validator_claim_window_priority(&store.kernel, left)
+                .cmp(&training_validator_claim_window_priority(&store.kernel, right))
                 .then_with(|| right.recorded_at_ms.cmp(&left.recorded_at_ms))
                 .then_with(|| left.window_id.cmp(&right.window_id))
         });
@@ -37432,12 +37445,12 @@ mod tests {
     }
 
     #[test]
-    fn training_validator_claim_run_priority_prefers_hosted_starter_backlog() {
+    fn training_validator_claim_run_priority_deprioritizes_hosted_starter_backlog() {
         assert_eq!(
             super::training_validator_claim_run_priority(
                 "run.cs336.a1.starter.20260421063347.69e88ef6"
             ),
-            0
+            2
         );
         assert_eq!(
             super::training_validator_claim_run_priority("run.cs336.a1.iso.20260417104257"),

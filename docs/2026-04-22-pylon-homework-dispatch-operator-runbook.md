@@ -26,6 +26,8 @@ Minimum runtime requirements:
 - public Pylon `0.1.7` or newer
 - production Nexus running the lease-priority fix that tries existing
   schedulable runs before auto-launching fresh hosted starter work
+- production Nexus running the validator-priority fix that validates
+  admin-dispatched homework before draining hosted starter backlog
 - a normal user `HOME` for the running Pylon process so Rust and Psionic
   discovery work
 - an isolated `OPENAGENTS_PYLON_HOME` for the proof
@@ -45,6 +47,12 @@ That filter must include these passing tests:
 - `default_pylon_lease_claim_prefers_admin_dispatched_homework_before_auto_starter`
 - `default_pylon_lease_claim_auto_launches_hosted_cs336_starter_work`
 - `default_pylon_lease_claim_creates_fresh_starter_when_prior_run_is_exhausted`
+
+Also run:
+
+```bash
+cargo test -p nexus-control training_validator_claim_run_priority_deprioritizes_hosted_starter_backlog
+```
 
 ## Check Treasury Before Dispatch
 
@@ -190,8 +198,8 @@ payload="$(jq -nc \
   '{
     run_count: 1,
     max_contributors_per_run: 1,
-    amount_sats: 11,
-    total_budget_sats: 11,
+    amount_sats: 25,
+    total_budget_sats: 25,
     run_slug_prefix: $prefix,
     reuse_existing_run: false
   }')"
@@ -263,6 +271,13 @@ schedulable runs first and auto-launch hosted starter work only after
 `training_scheduler_run_not_found`,
 `training_scheduler_run_not_schedulable`, or
 `training_scheduler_assignment_unavailable`.
+
+If the triggered run reaches `total_contributions: 1` and `status: "sealed"`
+but stays at `accepted_contributions: 0` while the validator process claims
+`run.cs336.a1.starter.*` challenges first, production Nexus is missing the
+validator-priority fix. The fixed behavior is: validator claims prioritize
+`run_kind: "homework_dispatch"` windows, then normal runs, then hosted starter
+backlog.
 
 ## Verify Accepted-Work Payment
 
