@@ -23,8 +23,13 @@ This is a live production-Nexus test. Keep roles separate:
 The current production earning path is narrow but real:
 
 - `Pylon` is the standalone provider node.
-- The minimum current release for this test is `pylon-v0.1.8` through
-  `@openagentsinc/pylon` `0.1.8` or newer.
+- The minimum current standalone Pylon release for this test is
+  `pylon-v0.1.8` or newer.
+- The npm bootstrap package may lag the standalone release tag. At the time of
+  this proof, npm `@openagentsinc/pylon` latest is `0.1.7`, but that launcher
+  can resolve and install the `pylon-v0.1.8` release asset with
+  `--version 0.1.8`. Do not pin `@openagentsinc/pylon@0.1.8` until that npm
+  package version is actually published.
 - The live paid work class is bounded hosted homework/training work.
 - The specific live starter lane is CS336 A1 homework work.
 - The simulated user does not manually opt into CS336.
@@ -139,7 +144,7 @@ the noninteractive variant of the README path. It still uses the public npm
 package and release asset:
 
 ```bash
-npx --yes @openagentsinc/pylon@0.1.8 \
+npx --yes @openagentsinc/pylon \
   --version 0.1.8 \
   --pylon-home "${OPENAGENTS_PYLON_HOME}" \
   --config-path "${OPENAGENTS_PYLON_CONFIG_PATH}" \
@@ -149,7 +154,9 @@ npx --yes @openagentsinc/pylon@0.1.8 \
   2>&1 | tee "${PROOF_ROOT}/logs/npm-bootstrap.log"
 ```
 
-Find the installed Pylon binary and record its version:
+Find the installed Pylon binary and record release evidence. The standalone
+`pylon-v0.1.8` binary does not expose `--version`; use the npm bootstrap log as
+the release-version evidence and `--help` as the binary smoke check.
 
 ```bash
 export PYLON_BIN="$(find "${OPENAGENTS_PYLON_INSTALL_ROOT}/versions" -type f -name pylon | sort | tail -n 1)"
@@ -158,10 +165,14 @@ if [ -z "${PYLON_BIN}" ]; then
   exit 1
 fi
 
-"${PYLON_BIN}" --version 2>&1 | tee "${PROOF_ROOT}/logs/pylon-version.txt"
+"${PYLON_BIN}" --help 2>&1 | tee "${PROOF_ROOT}/logs/pylon-help.txt" >/dev/null
+grep -E '^(Pylon release|Archive source|Pylon binary):' \
+  "${PROOF_ROOT}/logs/npm-bootstrap.log" \
+  | tee "${PROOF_ROOT}/logs/pylon-version-evidence.txt"
 {
   echo "- pylon_bin: ${PYLON_BIN}"
-  echo "- pylon_version: $(cat "${PROOF_ROOT}/logs/pylon-version.txt")"
+  echo "- pylon_version_evidence:"
+  sed 's/^/  /' "${PROOF_ROOT}/logs/pylon-version-evidence.txt"
 } >> "${LOG_DOC}"
 ```
 
@@ -170,7 +181,7 @@ operator can target this simulated user without accidentally assigning another
 online Pylon. Normal users do not need to set this:
 
 ```bash
-export NETWORK_ID="trainnet.cs336.a1.user-sim.${TEST_ID}"
+export NETWORK_ID="trainnet.cs336.a1.usim.$(date -u +%H%M%S)"
 printf '%s\n' "${NETWORK_ID}" > "${PROOF_ROOT}/network-id.txt"
 
 "${PYLON_BIN}" config set training.allowed_networks "${NETWORK_ID}" \
@@ -200,15 +211,35 @@ Record starting wallet state:
 } >> "${LOG_DOC}"
 ```
 
-Start Pylon in the background and keep it online:
+Start Pylon and keep it online. In a Codex/unified-exec simulation, do not use
+`"${PYLON_BIN}" &` inside a short-lived command: the command returns and the
+exec cleanup can kill the child process. Use a persistent foreground terminal
+or a detached `screen` session. Normal users can simply run `pylon` in their
+terminal and leave it running.
 
 ```bash
-"${PYLON_BIN}" \
-  > "${PROOF_ROOT}/logs/pylon-worker.log" \
-  2>&1 &
-echo $! > "${PROOF_ROOT}/pylon-worker.pid"
+export PYLON_WORKER_SCREEN="pylon_${TEST_ID}"
+export PYLON_WORKER_LOG="${PROOF_ROOT}/logs/pylon-worker.log"
+cat > "${PROOF_ROOT}/run-pylon-worker-screen.sh" <<'SCRIPT'
+#!/bin/zsh
+set -euo pipefail
+echo "screen_start_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${PYLON_WORKER_LOG}"
+echo $$ > "${PROOF_ROOT}/pylon-worker.pid"
+exec env \
+  HOME="${HOME}" \
+  OPENAGENTS_PYLON_HOME="${OPENAGENTS_PYLON_HOME}" \
+  OPENAGENTS_PYLON_CONFIG_PATH="${OPENAGENTS_PYLON_CONFIG_PATH}" \
+  OPENAGENTS_PSIONIC_REPO="${OPENAGENTS_PSIONIC_REPO:-}" \
+  "${PYLON_BIN}" >> "${PYLON_WORKER_LOG}" 2>&1
+SCRIPT
+chmod +x "${PROOF_ROOT}/run-pylon-worker-screen.sh"
+screen -dmS "${PYLON_WORKER_SCREEN}" "${PROOF_ROOT}/run-pylon-worker-screen.sh"
 sleep 8
 ```
+
+If you are not using `screen`, the equivalent requirement is that `pylon` stays
+as the foreground command in a live terminal/session until the coordinator
+confirms the proof is complete.
 
 Record the online status:
 
@@ -277,6 +308,7 @@ After the coordinator confirms the proof is complete, stop the worker:
 
 ```bash
 kill "$(cat "${PROOF_ROOT}/pylon-worker.pid")" 2>/dev/null || true
+screen -S "${PYLON_WORKER_SCREEN}" -X quit 2>/dev/null || true
 ```
 
 ## Coordinator / Operator Instructions
@@ -323,7 +355,7 @@ heartbeat when the operator starts:
 
 ```bash
 for attempt in $(seq 1 5); do
-  RUN_PREFIX="user-sim-${TEST_ID}-$(date -u +%Y%m%d%H%M%S)-a${attempt}"
+  RUN_PREFIX="usim$(date -u +%H%M%S)-a${attempt}"
   payload="$(jq -nc \
     --arg prefix "${RUN_PREFIX}" \
     --arg network_id "${NETWORK_ID}" \
@@ -399,13 +431,14 @@ done
 ```
 
 Start a separate validator from the same public npm package, also isolated to
-the user's test network:
+the user's test network. Use the same persistent-session rule for the validator
+when running under Codex/unified exec.
 
 ```bash
 VAL_ROOT="${USER_PROOF_ROOT}/validator"
 mkdir -p "${VAL_ROOT}/logs"
 
-npx --yes @openagentsinc/pylon@0.1.8 \
+npx --yes @openagentsinc/pylon \
   --version 0.1.8 \
   --pylon-home "${VAL_ROOT}/pylon-home" \
   --config-path "${VAL_ROOT}/pylon-home/config.json" \
@@ -425,8 +458,21 @@ env "${VAL_ENV[@]}" "${VAL_BIN}" config set training.role_claims validator
 env "${VAL_ENV[@]}" "${VAL_BIN}" config set training.allowed_networks "${NETWORK_ID}"
 env "${VAL_ENV[@]}" "${VAL_BIN}" config set training.relay_urls "wss://nexus.openagents.com/"
 
-env "${VAL_ENV[@]}" "${VAL_BIN}" > "${VAL_ROOT}/logs/pylon-validator.log" 2>&1 &
-echo $! > "${VAL_ROOT}/pylon-validator.pid"
+cat > "${VAL_ROOT}/run-pylon-validator-screen.sh" <<'SCRIPT'
+#!/bin/zsh
+set -euo pipefail
+echo "screen_start_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${VAL_ROOT}/logs/pylon-validator.log"
+echo $$ > "${VAL_ROOT}/pylon-validator.pid"
+exec env \
+  HOME="${HOME}" \
+  OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
+  OPENAGENTS_PYLON_CONFIG_PATH="${VAL_ROOT}/pylon-home/config.json" \
+  OPENAGENTS_PSIONIC_REPO="${OPENAGENTS_PSIONIC_REPO:-/Users/christopherdavid/work/psionic}" \
+  "${VAL_BIN}" >> "${VAL_ROOT}/logs/pylon-validator.log" 2>&1
+SCRIPT
+chmod +x "${VAL_ROOT}/run-pylon-validator-screen.sh"
+screen -dmS "pylon_validator_${TEST_ID}" \
+  /bin/zsh -lc "VAL_ROOT='${VAL_ROOT}' VAL_BIN='${VAL_BIN}' exec '${VAL_ROOT}/run-pylon-validator-screen.sh'"
 sleep 8
 ```
 
@@ -492,6 +538,7 @@ Stop the validator after evidence is captured:
 
 ```bash
 kill "$(cat "${VAL_ROOT}/pylon-validator.pid")" 2>/dev/null || true
+screen -S "pylon_validator_${TEST_ID}" -X quit 2>/dev/null || true
 ```
 
 ## Success Criteria
@@ -531,3 +578,143 @@ GCP credentials into this document.
 ## Run Log
 
 Append simulated user and operator entries below this line.
+
+### Simulated User Run pylon-user-sim-20260422T042549Z
+
+- started_at_utc: 2026-04-22T04:25:49Z
+- proof_root: /private/tmp/pylon-user-sim-20260422T042549Z
+- role: simulated_user
+- command_source: root README Pylon section plus this test document
+  - uname: Darwin arm64
+  - node: v25.8.2
+  - npm: 11.11.1
+  - existing_pylon: /Users/christopherdavid/.bun/bin/pylon
+  - rustc: rustc 1.94.1 (e408947bf 2026-03-25)
+  - cargo: cargo 1.94.1 (29ea6fb6a 2026-03-24)
+
+### Simulated User Run Failure pylon-user-sim-20260422T042549Z
+
+- failed_at_utc: 2026-04-22T04:25:50Z
+- phase: npm bootstrap public Pylon package
+- proof_root: /private/tmp/pylon-user-sim-20260422T042549Z
+- exit_status: 1
+
+### Simulated User Continuation pylon-user-sim-20260422T042549Z
+
+- continued_at_utc: 2026-04-22T04:31:43Z
+- proof_root: /private/tmp/pylon-user-sim-20260422T042549Z
+- reason: user instructed continue after @openagentsinc/pylon@0.1.8 npm ETARGET
+- npm_dist_tags:
+  {
+    "latest": "0.1.7"
+  }
+- npm_available_versions:
+  [
+    "0.1.0",
+    "0.1.1",
+    "0.1.2",
+    "0.1.3",
+    "0.1.4",
+    "0.1.5",
+    "0.1.6",
+    "0.1.7"
+  ]
+- continuation_bootstrap: npx --yes @openagentsinc/pylon@0.1.7 --version 0.1.8
+
+### Simulated User Run Failure pylon-user-sim-20260422T042549Z
+
+- failed_at_utc: 2026-04-22T04:31:47Z
+- phase: record Pylon version
+- proof_root: /private/tmp/pylon-user-sim-20260422T042549Z
+- exit_status: 1
+- npm_bootstrap_log_tail:
+  › Checking for newer tagged Pylon releases requested 0.1.8
+  › Fetching release checksum pylon-v0.1.8-darwin-arm64.tar.gz.sha256
+  › Downloading standalone binaries pylon-v0.1.8-darwin-arm64.tar.gz
+  › Extracting standalone binaries /private/tmp/pylon-user-sim-20260422T042549Z/install/versions/pylon-v0.1.8-darwin-arm64
+  › Installed standalone binaries pylon-v0.1.8 for darwin-arm64
+  › Verifying Pylon binary pylon
+  › Bootstrapping local Pylon identity
+  › Checking runtime health
+  › Scanning for local models
+  › Skipping optional curated GGUF cache use --download-curated-cache to prefetch Hugging Face weights
+  › Skipping first-run diagnostic gemma-4-e4b
+  › Bootstrap complete smoke path complete
+  ✓ Pylon runtime ready loaded runtime model gemma4-e4b-local:latest
+  Onboarding verdict: runtime ready
+  Verdict detail: loaded runtime model gemma4-e4b-local:latest
+  Pylon release: 0.1.8 (darwin-arm64)
+  Archive source: pylon-v0.1.8
+  Install source: prebuilt
+  Installed from cache: no
+  Pylon binary: /private/tmp/pylon-user-sim-20260422T042549Z/install/versions/pylon-v0.1.8-darwin-arm64/pylon
+  Pylon TUI: /private/tmp/pylon-user-sim-20260422T042549Z/install/versions/pylon-v0.1.8-darwin-arm64/pylon-tui
+  Config path: /private/tmp/pylon-user-sim-20260422T042549Z/pylon-home/config.json
+  Preferred runtime model name: gemma4:e4b
+  Status state: ready
+  Inventory rows: 2
+  Curated GGUF cache: skipped by default (pass --download-curated-cache to prefetch optional Hugging Face weights)
+  Launcher path: use the same npx/bunx command again, or install globally and run `pylon`.
+  Next step: run `pylon`; it starts the default online earning loop.
+  ! Skipped Pylon launch pass no flag to start the default earning loop
+
+### Simulated User Continuation pylon-user-sim-20260422T042549Z
+
+- continued_at_utc: 2026-04-22T04:32:17Z
+- proof_root: /private/tmp/pylon-user-sim-20260422T042549Z
+- reason: installed pylon binary does not support --version; using bootstrap release evidence
+- pylon_bin: /private/tmp/pylon-user-sim-20260422T042549Z/install/versions/pylon-v0.1.8-darwin-arm64/pylon
+- pylon_version_evidence:
+  Pylon release: 0.1.8 (darwin-arm64)
+  Archive source: pylon-v0.1.8
+  Pylon binary: /private/tmp/pylon-user-sim-20260422T042549Z/install/versions/pylon-v0.1.8-darwin-arm64/pylon
+- network_id: trainnet.cs336.a1.user-sim.pylon-user-sim-20260422T042549Z
+- role_claims: worker
+- wallet_balance_before:
+  {
+    "spark_sats": 0,
+    "lightning_sats": 0,
+    "onchain_sats": 0,
+    "total_sats": 0
+  }
+- pylon_worker_pid: 31579
+- user_ready_for_operator_at_utc: 2026-04-22T04:32:32Z
+- training_status_initial:
+  {"generated_at_ms":1776832352689,"node_label":"pylon","provider_pubkey":"3ab8b2e1453bcfd935b9135151ef81620d549040ff2c44ffcdb1a32e3fe331d4","checkpoint_serve_url":"http://127.0.0.1:9570","runtime_surface_detected":true,"psionic_repo_root":"/Users/christopherdavid/work/psionic","psionic_repo_source":"env_override","contributor_supported":true,"capability_tier":{"tier":"tier3_island","backend_families":["cpu","metal"],"accelerator_inventory":[{"backend_family":"metal","model":"Apple M5 Max","vendor":"sppci_vendor_Apple","accelerator_count":1}],"memory_floor_gb":32,"available_memory_gb":128,"throughput_band":"island","lease_reliability":"steady","replay_capability":"short_window","artifact_upload_latency_class":"unknown"},"capability_envelope_v2":{"schema_version":"provider.training_capability_envelope.v2","tier_profile":{"tier":"tier3_island","backend_families":["cpu","metal"],"accelerator_inventory":[{"backend_family":"metal","model":"Apple M5 Max","vendor":"sppci_vendor_Apple","accelerator_count":1}],"memory_floor_gb":32,"available_memory_gb":128,"throughput_band":"island","lease_reliability":"steady","replay_capability":"short_window","artifact_upload_latency_class":"unknown"},"runtime_surface_detected":true,"contributor_supported":true,"benchmark_lane_available":true,"eligible_work_classes":[{"work_class":"validation_replay","minimum_tier":"tier1_validation","replica_types":["single_node"],"required_backend_families":["cpu","metal"],"required_throughput_band":"unknown","required_replay_capability":"short_window","benchmark_lane_required":true},{"work_class":"evaluation","minimum_tier":"tier1_validation","replica_types":["single_node"],"required_backend_families":["cpu","metal"],"required_throughput_band":"unknown","required_replay_capability":"short_window","benchmark_lane_required":true},{"work_class":"adapter_training","minimum_tier":"tier2_trainer","replica_types":["single_node"],"required_backend_families":["cpu","metal"],"minimum_memory_gb":32,"required_throughput_band":"unknown","required_replay_capability":"none","benchmark_lane_required":true},{"work_class":"small_model_local_training","minimum_tier":"tier2_trainer","replica_types":["single_node"],"required_backend_families":["cpu","metal"],"minimum_memory_gb":32,"required_throughput_band":"unknown","required_replay_capability":"none","benchmark_lane_required":false},{"work_class":"grouped_replica_stage_execution","minimum_tier":"tier2_trainer","replica_types":["grouped_replica"],"required_backend_families":["cpu","metal"],"minimum_memory_gb":32,"required_throughput_band":"unknown","required_replay_capability":"none","benchmark_lane_required":true},{"work_class":"full_island_local_update_training","minimum_tier":"tier3_island","replica_types":["island"],"required_backend_families":["cpu","metal"],"minimum_memory_gb":32,"required_throughput_band":"island","required_replay_capability":"none","benchmark_lane_required":true}],"eligible_replica_types":[{"replica_type":"single_node","minimum_tier":"tier1_validation","required_backend_families":["cpu","metal"]},{"replica_type":"grouped_replica","minimum_tier":"tier2_trainer","required_backend_families":["cpu","metal"],"minimum_memory_gb":32},{"replica_type":"island","minimum_tier":"tier3_island","required_backend_families":["cpu","metal"],"minimum_memory_gb":32}]},"manifest_count":0,"publication_pointer_count":0,"publication_record_count":0,"pending_publication_count":0,"contribution_outcome_count":0,"closeout_count":0,"blocked_label_keys":[]}
+
+### Operator Verification pylon-user-sim-20260422T042549Z
+
+- verified_at_utc: 2026-04-22T04:47:00Z
+- original_user_proof_root: /private/tmp/pylon-user-sim-20260422T042549Z
+- original_worker_pubkey: 3ab8b2e1453bcfd935b9135151ef81620d549040ff2c44ffcdb1a32e3fe331d4
+- original_worker_result: not ready; PID 31579 exited and `127.0.0.1:9468` stopped answering after the short-lived background shell returned.
+- operator_restart_result: first detached restart made the status endpoint answer briefly, then exited when the parent command cleanup ran. The durable fix was to run Pylon under a persistent `screen` session or a true foreground terminal.
+- first_dispatch_result: failed before worker completion because the generated `RUN_PREFIX` included the full test id, producing a local supervisor attempt path that exceeded macOS filename limits.
+- first_dispatch_run_id: run.cs336.a1.user-sim-pylon-user-sim-20260422T042549Z-20260422044002-a1_20260422044003_b2444974_0001.20260422044003.a20744a7
+- first_dispatch_error: `File name too long (os error 63)` while creating the local training supervisor attempt directory.
+- successful_worker_proof_root: /private/tmp/pylon-user-sim-20260422T042549Z/worker-short
+- successful_network_id: trainnet.cs336.a1.usim0422
+- successful_worker_pubkey: 0ce4eb060cbde7098f6e2120d942a583825a67d6911a3f60fb21b69ccb00746c
+- validator_pubkey: e216171dd8d54171cc826b2c888c2fba4d8fc1fa6440c0aeb30c161a5da9e089
+- successful_run_id: run.cs336.a1.usim0422a1_20260422044209_8e216a05_0001.20260422044209.9b363da7
+- successful_window_id: window.cs336.a1.usim0422a1_20260422044209_8e216a05_0001.20260422044209.9b363da7.0001
+- contribution_id: 08ccfb53857e3cd835beaa361b1c65cd1148a04f0a43cbb628b4478f0c0b72dc
+- run_result: `featured_window.status == "reconciled"`, `featured_window.closeout_status == "rewarded"`, `accepted_contributors == 1`, and `accepted_for_aggregation == true`.
+- payout_result: Treasury recorded a confirmed and settled `accepted_work` payout for the successful run.
+- payout_amount_sats: 25
+- payout_payment_id: 019db382-5130-75c2-838e-a8e78bd2b242
+- worker_wallet_balance_after:
+  {
+    "spark_sats": 25,
+    "lightning_sats": 0,
+    "onchain_sats": 0,
+    "total_sats": 25
+  }
+- evidence_files:
+  - /private/tmp/pylon-user-sim-20260422T042549Z/worker-short/dispatch-response.json
+  - /private/tmp/pylon-user-sim-20260422T042549Z/worker-short/logs/run-detail-worker-ready.json
+  - /private/tmp/pylon-user-sim-20260422T042549Z/worker-short/logs/run-detail-accepted.json
+  - /private/tmp/pylon-user-sim-20260422T042549Z/worker-short/logs/operator-treasury-after.json
+  - /private/tmp/pylon-user-sim-20260422T042549Z/worker-short/logs/wallet-balance-after.json
+- cleanup: stopped both proof `screen` sessions after evidence capture.
+- instruction_updates_from_trial: use unpinned `npx --yes @openagentsinc/pylon --version 0.1.8` until npm publishes `@openagentsinc/pylon@0.1.8`; keep Pylon in a persistent foreground terminal or `screen` session during Codex simulation; keep operator dispatch slug prefixes short.
