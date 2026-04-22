@@ -28,6 +28,8 @@ Minimum runtime requirements:
   schedulable runs before auto-launching fresh hosted starter work
 - production Nexus running the validator-priority fix that validates
   admin-dispatched homework before draining hosted starter backlog
+- production Nexus running the homework validation-policy fix that validates
+  homework-dispatch windows with the aggregate challenge only
 - a normal user `HOME` for the running Pylon process so Rust and Psionic
   discovery work
 - an isolated `OPENAGENTS_PYLON_HOME` for the proof
@@ -53,6 +55,20 @@ Also run:
 ```bash
 cargo test -p nexus-control training_validator_claim_run_priority_deprioritizes_hosted_starter_backlog
 ```
+
+And run:
+
+```bash
+cargo test -p nexus-control validation_policy
+```
+
+The homework validation-policy test must show that `homework_dispatch` keeps the
+aggregate validator challenge and skips per-contribution sample challenges. The
+released `@openagentsinc/pylon@0.1.7` validator path can validate the aggregate
+homework challenge end-to-end, but the per-contribution sample replay path can
+produce a local artifact-manifest digest drift against the retained homework
+artifact bundle. Do not re-enable sample challenges for homework dispatch until
+that released-Pylon replay path is fixed and proven with npm Pylon.
 
 ## Check Treasury Before Dispatch
 
@@ -127,6 +143,12 @@ curl -fsS http://127.0.0.1:9468/v1/training/status | jq .
 Use this only when production has a validator backlog or when you need a
 self-contained proof with one worker and one validator on the same machine.
 Use a second Pylon home and distinct ports.
+
+For the npm end-to-end proof, start the worker first, trigger the homework run,
+and wait until the remote run detail shows the target window is `sealed` with
+`total_contributions: 1`. Then start the validator. Starting the validator
+before the worker artifact is visible can lease a challenge against an object
+that has not landed in the artifact bucket yet.
 
 Bootstrap without launching:
 
@@ -218,39 +240,98 @@ cat "${PROOF_ROOT}/dispatch-response.json" | jq .
 
 A successful response has:
 
-- `launched_run_count: 1`
-- `failed_run_count: 0`
-- `amount_sats` equal to the requested amount
-- `launches[0].launch_phase: "leaseable"`
-- `launches[0].assigned_pylons[0].node_pubkey_hex` equal to the npm Pylon worker
-- `launches[0].assigned_pylons[0].release_id: "openagents.pylon@0.1.7"` or newer
+- `launch_state: "created"` or `launch_state: "reused"`
+- `launch_phase: "leaseable"`
+- one `assigned_pylons` entry for the npm Pylon worker
+- `artifact_prefix` under the intended isolated training network
 
-Save the triggered run id:
+Record the run id:
 
 ```bash
-jq -r '.launches[0].training_run_id' \
-  "${PROOF_ROOT}/dispatch-response.json" > "${PROOF_ROOT}/triggered-run-id.txt"
+jq -r '.launches[0].training_run_id' "${PROOF_ROOT}/dispatch-response.json" \
+  > "${PROOF_ROOT}/triggered-run-id.txt"
 ```
 
-## Verify The Triggered Run Is Actually Consumed
+## Wait For Worker Contribution
 
-This is the critical check. The triggered run must move beyond merely
-`assigned_contributors: 1`; it must receive contribution and accepted-work
-state.
+Do not start the optional validator process until the worker contribution has
+materialized remotely.
 
 ```bash
-triggered_run_id="$(cat "${PROOF_ROOT}/triggered-run-id.txt")"
-curl -fsS "${NEXUS_BASE_URL}/api/training/runs/${triggered_run_id}" |
-  tee "${PROOF_ROOT}/triggered-run-status.json" |
-  jq '{
-    run: .run,
-    featured_window: .featured_window,
-    accepted_work: (.accepted_work // .accepted_outcomes // []),
-    payouts: (.payouts // .training_payouts // [])
-  }'
+RUN_ID="$(cat "${PROOF_ROOT}/triggered-run-id.txt")"
+
+until curl -fsS -H "Authorization: Bearer ${token}" \
+  "${NEXUS_BASE_URL}/api/training/runs/${RUN_ID}" \
+  -o "${PROOF_ROOT}/run-detail-worker-ready.json" &&
+  jq -e '
+    .featured_window.status == "sealed" and
+    (.featured_window.total_contributions // 0) >= 1
+  ' "${PROOF_ROOT}/run-detail-worker-ready.json" >/dev/null
+do
+  date -u +"waiting for worker contribution at %Y-%m-%dT%H:%M:%SZ"
+  sleep 10
+done
+
+jq '{
+  run: .run,
+  featured_window: .featured_window,
+  queue_pressure: .queue_pressure,
+  caveats: .caveats
+}' "${PROOF_ROOT}/run-detail-worker-ready.json"
 ```
 
-Also watch the local Pylon training status:
+For current homework-dispatch runs, expect one aggregate validator challenge and
+no contribution-sample challenge. If a proof run shows a sample challenge for a
+`homework_dispatch` run, the deployed Nexus build is stale.
+
+## Wait For Validation And Payout
+
+After the optional validator is running, poll the run until the window is
+reconciled and payout-eligible:
+
+```bash
+RUN_ID="$(cat "${PROOF_ROOT}/triggered-run-id.txt")"
+
+until curl -fsS -H "Authorization: Bearer ${token}" \
+  "${NEXUS_BASE_URL}/api/training/runs/${RUN_ID}" \
+  -o "${PROOF_ROOT}/run-detail-accepted.json" &&
+  jq -e '
+    (.featured_window.status == "reconciled" or .featured_window.payout_eligible == true) and
+    (.run.accepted_contributors // 0) >= 1
+  ' "${PROOF_ROOT}/run-detail-accepted.json" >/dev/null
+do
+  date -u +"waiting for validation/payout at %Y-%m-%dT%H:%M:%SZ"
+  sleep 10
+done
+
+jq '{
+  run: .run,
+  featured_window: .featured_window,
+  treasury: .treasury,
+  caveats: .caveats
+}' "${PROOF_ROOT}/run-detail-accepted.json"
+```
+
+Then confirm the worker wallet saw the receive:
+
+```bash
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.7-darwin-arm64/pylon"
+
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
+OPENAGENTS_PYLON_CONFIG_PATH="${PROOF_ROOT}/pylon-home/config.json" \
+"${PYLON_BIN}" wallet history --limit 20 --json | jq .
+```
+
+Stop the proof Pylon processes after the evidence has been captured:
+
+```bash
+pkill -TERM -f "${PROOF_ROOT}" || true
+```
+
+## Failure Modes
+
+Watch the local Pylon training status while the proof is running:
 
 ```bash
 curl -fsS http://127.0.0.1:9468/v1/training/status |
@@ -279,6 +360,12 @@ validator-priority fix. The fixed behavior is: validator claims prioritize
 `run_kind: "homework_dispatch"` windows, then normal runs, then hosted starter
 backlog.
 
+If a `homework_dispatch` run has one aggregate challenge plus one
+contribution-sample challenge, production Nexus is missing the homework
+validation-policy fix. The fixed behavior is: homework-dispatch windows use the
+aggregate challenge only until the released npm Pylon contribution-sample
+replay path stops producing artifact-manifest digest drift.
+
 ## Verify Accepted-Work Payment
 
 After the run has accepted work, check treasury:
@@ -294,8 +381,6 @@ curl -fsS -H "Authorization: Bearer ${token}" \
     active_continuity_alerts
   }'
 ```
-
-Then stop the proof Pylons so they do not keep generating more work.
 
 Verify the worker wallet directly:
 

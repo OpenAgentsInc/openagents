@@ -5005,12 +5005,7 @@ fn training_validator_claim_window_priority(
     window: &ComputeAdapterTrainingWindow,
 ) -> u8 {
     if let Some(run) = kernel.get_compute_training_run(window.training_run_id.as_str()) {
-        if run
-            .metadata
-            .get("run_kind")
-            .and_then(Value::as_str)
-            .is_some_and(|run_kind| run_kind == "homework_dispatch")
-        {
+        if training_run_is_homework_dispatch(&run) {
             return 0;
         }
     }
@@ -5022,6 +5017,13 @@ fn training_validator_claim_run_priority(training_run_id: &str) -> u8 {
         return 2;
     }
     1
+}
+
+fn training_run_is_homework_dispatch(run: &ComputeTrainingRun) -> bool {
+    run.metadata
+        .get("run_kind")
+        .and_then(Value::as_str)
+        .is_some_and(|run_kind| run_kind == "homework_dispatch")
 }
 
 fn normalize_required_training_string(value: &str, reason: &str) -> Result<String, String> {
@@ -7209,6 +7211,7 @@ fn training_window_validation_state_for_seal(
     product_id: &str,
     validator_pool_ref: &str,
     recorded_at_ms: i64,
+    sample_contributions: bool,
 ) -> Result<
     (
         TrainingWindowValidationState,
@@ -7228,8 +7231,11 @@ fn training_window_validation_state_for_seal(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let sampled_assignment_ids =
-        validator_sample_assignments(window.window_id.as_str(), sample_candidates.as_slice())?;
+    let sampled_assignment_ids = if sample_contributions {
+        validator_sample_assignments(window.window_id.as_str(), sample_candidates.as_slice())?
+    } else {
+        Vec::new()
+    };
     let mut challenges = Vec::new();
     let mut requests = Vec::new();
 
@@ -13018,6 +13024,7 @@ async fn seal_training_window(
             training_run.product_id.as_deref().unwrap_or_default(),
             validator_policy.validator_pool_ref.as_str(),
             request.recorded_at_ms,
+            !training_run_is_homework_dispatch(&training_run),
         )
         .map_err(kernel_api_error)?;
         for schedule_request in schedule_requests {
@@ -13501,7 +13508,10 @@ async fn claim_training_validator_challenge(
             .list_compute_adapter_training_windows(None, None);
         windows.sort_by(|left, right| {
             training_validator_claim_window_priority(&store.kernel, left)
-                .cmp(&training_validator_claim_window_priority(&store.kernel, right))
+                .cmp(&training_validator_claim_window_priority(
+                    &store.kernel,
+                    right,
+                ))
                 .then_with(|| right.recorded_at_ms.cmp(&left.recorded_at_ms))
                 .then_with(|| left.window_id.cmp(&right.window_id))
         });
@@ -28929,6 +28939,76 @@ mod tests {
         assert!(challenge_id.ends_with(".a1"));
         assert!(challenge_id.len() < 160);
         assert!(!challenge_id.contains(assignment_id.as_str()));
+    }
+
+    #[test]
+    fn homework_validation_policy_keeps_aggregate_and_skips_sample_challenges() {
+        let window = compute_adapter_window_request(
+            "idemp.training.challenge.homework.aggregate-only",
+            1_762_491_200_000,
+            None,
+        )
+        .window;
+        let contribution = training_window_contribution_input(
+            "contrib.homework.aggregate-only",
+            "assignment.client.alpha",
+            "sha256:validator-pending-homework",
+            None,
+        );
+
+        let (validation, schedule_requests) = super::training_window_validation_state_for_seal(
+            &window,
+            &[contribution],
+            "product.openagents.homework",
+            "pool://validators/homework",
+            1_762_491_201_000,
+            false,
+        )
+        .expect("homework validation plan");
+
+        assert!(validation.sampled_assignment_ids.is_empty());
+        assert_eq!(validation.challenges.len(), 1);
+        assert_eq!(schedule_requests.len(), 1);
+        assert_eq!(
+            validation.challenges[0].challenge_kind,
+            super::TrainingValidationChallengeKind::Aggregate
+        );
+    }
+
+    #[test]
+    fn standard_validation_policy_keeps_sample_challenges_enabled() {
+        let window = compute_adapter_window_request(
+            "idemp.training.challenge.standard.samples",
+            1_762_491_200_000,
+            None,
+        )
+        .window;
+        let contribution = training_window_contribution_input(
+            "contrib.standard.samples",
+            "assignment.client.alpha",
+            "sha256:validator-pending-standard",
+            None,
+        );
+
+        let (validation, schedule_requests) = super::training_window_validation_state_for_seal(
+            &window,
+            &[contribution],
+            "product.openagents.standard",
+            "pool://validators/standard",
+            1_762_491_201_000,
+            true,
+        )
+        .expect("standard validation plan");
+
+        assert_eq!(
+            validation.sampled_assignment_ids,
+            vec!["assignment.client.alpha"]
+        );
+        assert_eq!(validation.challenges.len(), 2);
+        assert_eq!(schedule_requests.len(), 2);
+        assert!(validation.challenges.iter().any(|challenge| {
+            challenge.challenge_kind == super::TrainingValidationChallengeKind::ContributionSample
+        }));
     }
 
     fn compute_synthetic_data_sample(
