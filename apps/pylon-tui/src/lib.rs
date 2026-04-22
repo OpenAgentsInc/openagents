@@ -2689,7 +2689,6 @@ impl AppShell {
         top_spans.extend(mission_control_signal_spans(
             operator_state.as_str(),
             animation_tick,
-            self.nexus_treasury_degraded(),
         ));
         let top_line = Line::from(top_spans);
 
@@ -2804,7 +2803,7 @@ impl AppShell {
             SidebarView::Operate => vec![
                 ("Ctrl+C", "quit"),
                 ("Tab", "wallet"),
-                ("/provider run", "listen"),
+                ("jobs", "online"),
                 ("/wallet receive", "cash in"),
                 ("PgUp/PgDn", "scroll"),
             ],
@@ -2825,20 +2824,12 @@ impl AppShell {
         }
     }
 
-    fn nexus_treasury_degraded(&self) -> bool {
-        self.nexus_treasury_health
-            .as_ref()
-            .map(|h| h.payout_loop_health != "healthy")
-            .unwrap_or(false)
-    }
-
     fn hero_status_copy(&self) -> String {
         let (state_label, detail) = self.operator_state_label_and_detail();
         match state_label.as_str() {
             "Listening for work" => "Listening across relays for paid work".to_string(),
             "Earning now" => "Local Gemma is actively working a paid request".to_string(),
             "Waiting for payout" => "Work is done. Waiting for sats to settle".to_string(),
-            "Ready to earn" if self.nexus_treasury_degraded() => "Payouts paused — awaiting Nexus recovery.".to_string(),
             "Ready to earn" => "Standing by for the next paid match".to_string(),
             "Preparing to earn" => detail.unwrap_or_else(|| "Booting local earnings lane".to_string()),
             "Needs attention" => detail.unwrap_or_else(|| "A local runtime issue needs attention".to_string()),
@@ -2859,7 +2850,7 @@ impl AppShell {
                 format!("{} retained", format_sats(self.operator_stats.total_earnings_sats))
             }
         } else {
-            "unavailable".to_string()
+            "0 sats".to_string()
         }
     }
 
@@ -3108,14 +3099,6 @@ impl AppShell {
         let animation_phase = self.animation_phase();
         let total_earnings = self.total_earnings_label();
         let mut lines = vec![];
-        if let Some(health) = &self.nexus_treasury_health {
-            if health.payout_loop_health != "healthy" {
-                lines.push(Line::from(Span::styled(
-                    "Nexus treasury degraded — payouts temporarily paused",
-                    warning_accent(),
-                )));
-            }
-        }
         lines.extend(vec![
             Line::from(vec![
                 key_label("Session stack"),
@@ -3520,7 +3503,7 @@ impl AppShell {
                 animated_ready_heartbeat(animation_phase)
             )),
             Line::from(format!("[MARKET] {quiet_detail}{}", animated_quiet_suffix(animation_phase))),
-            Line::from("[TIP] Run /provider run when you want this node actively listening.".to_string()),
+            Line::from("[TIP] Keep Pylon open so starter jobs can land.".to_string()),
         ]
     }
 
@@ -3558,15 +3541,15 @@ impl AppShell {
         match self.operator_stats.runtime_status.as_deref() {
             Some("online") if self.operator_stats.provider_presence_online => (
                 "Ready to earn".to_string(),
-                Some("Run /provider run to start listening for matching work.".to_string()),
+                Some("Online for paid jobs.".to_string()),
             ),
             Some("online") => (
                 "Ready to earn".to_string(),
-                Some("Node is healthy. Finishing provider presence.".to_string()),
+                Some("Connecting provider presence.".to_string()),
             ),
             Some("ready") => (
                 "Ready to earn".to_string(),
-                Some("Run /provider run to start listening for matching work.".to_string()),
+                Some("Online setup is ready.".to_string()),
             ),
             Some("paused") => ("Paused".to_string(), None),
             Some("degraded") => (
@@ -3912,16 +3895,9 @@ fn animated_stack_gain_suffix(phase: usize, active: bool) -> &'static str {
 fn mission_control_signal_spans(
     state_label: &str,
     tick: usize,
-    treasury_degraded: bool,
 ) -> Vec<Span<'static>> {
     let mut spans = vec![Span::raw("  ")];
     match state_label {
-        "Ready to earn" if treasury_degraded => {
-            return vec![
-                Span::raw(" "),
-                Span::styled(animated_boot_spinner(tick), muted_text()),
-            ];
-        }
         "Ready to earn" => {
             spans.push(Span::styled(animated_ready_heartbeat(tick), muted_text()));
         }
@@ -5604,11 +5580,11 @@ mod tests {
 
     #[test]
     fn motion_helpers_match_shell_states() {
-        let ready = mission_control_signal_spans("Ready to earn", 0, false)
+        let ready = mission_control_signal_spans("Ready to earn", 0)
             .iter()
             .map(ToString::to_string)
             .collect::<String>();
-        let listening = mission_control_signal_spans("Listening for work", 1, false)
+        let listening = mission_control_signal_spans("Listening for work", 1)
             .iter()
             .map(ToString::to_string)
             .collect::<String>();
@@ -5847,7 +5823,7 @@ mod tests {
         assert!(
             detail
                 .as_deref()
-                .is_some_and(|value| value.contains("Run /provider run"))
+                .is_some_and(|value| value.contains("Online for paid jobs"))
         );
 
         app.operator_stats = OperatorPanelStats {
@@ -5862,8 +5838,66 @@ mod tests {
         assert!(
             detail
                 .as_deref()
-                .is_some_and(|value| value.contains("Finishing provider presence"))
+                .is_some_and(|value| value.contains("Connecting provider presence"))
         );
+    }
+
+    #[test]
+    fn treasury_warning_does_not_leak_internal_status_to_default_ui() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.last_refresh_at = Some(Instant::now());
+        app.nexus_treasury_health = Some(pylon::NexusTreasuryHealthSnapshot {
+            payout_loop_health: "warning".to_string(),
+            degraded_reason: Some("wallet_snapshot_stale:12345".to_string()),
+        });
+        app.operator_stats = OperatorPanelStats {
+            desired_mode: ProviderDesiredMode::Online,
+            runtime_status: Some("online".to_string()),
+            provider_presence_online: true,
+            wallet_runtime_status: Some("connected".to_string()),
+            ..OperatorPanelStats::default()
+        };
+
+        let header = app
+            .header_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let earnings = app
+            .operator_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let activity = app
+            .activity_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let user_surface = format!("{header}\n{earnings}\n{activity}");
+
+        assert!(user_surface.contains("Ready to earn"));
+        assert!(user_surface.contains("Standing by for the next paid match"));
+        assert!(user_surface.contains("Session stack: 0 sats"));
+        assert!(user_surface.contains("Lifetime stack: 0 sats"));
+        for forbidden in [
+            "Nexus",
+            "treasury",
+            "degraded",
+            "paused",
+            "recovery",
+            "snapshot",
+            "stale",
+            "sync",
+            "/provider run",
+        ] {
+            assert!(
+                !user_surface.contains(forbidden),
+                "default user surface leaked internal text: {forbidden}"
+            );
+        }
     }
 
     #[test]
@@ -5915,7 +5949,7 @@ mod tests {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
 
         let operate = app.footer_segments();
-        assert!(operate.contains(&("/provider run", "listen")));
+        assert!(operate.contains(&("jobs", "online")));
         assert!(operate.contains(&("/wallet receive", "cash in")));
 
         app.sidebar_view = super::SidebarView::Wallet;
