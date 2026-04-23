@@ -199,6 +199,16 @@ confirmed and settled 25-sat accepted-work Treasury payout, and a 25-sat worker
 wallet balance. The proof receipt is
 [docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json](docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json).
 
+The latest Autopilot-controlled production proof used `main` at `96295609b`,
+started the Autopilot-managed Pylon process in `online` mode, dispatched a
+bounded hosted homework run, validated it with a separate validator, and
+verified the worker wallet increased from `0` to `25` sats. That proof is
+recorded in
+[docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md](docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md).
+That source proof is newer than the already published `pylon-v0.1.9` tag; cut
+the next Pylon release from `96295609b` or later before claiming the public
+release asset path contains the exact same Autopilot/Pylon fixes.
+
 Operator details live in
 [docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md](docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md).
 The retrospective audit is

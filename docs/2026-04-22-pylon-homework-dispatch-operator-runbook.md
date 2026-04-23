@@ -607,3 +607,15 @@ GCP credentials.
 
 The first successful npm Pylon end-to-end proof for this path is recorded in
 `docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json`.
+
+The first successful Autopilot-controlled production proof for this path is
+recorded in
+`docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md`.
+That proof used the Autopilot-managed Pylon process on `main` at `96295609b`,
+not the already published `pylon-v0.1.9` release tag. It proved the worker was
+online through Autopilot, received a bounded hosted homework run, completed and
+sealed the work, passed validator closeout, received a confirmed and settled
+25-sat accepted-work Treasury payout, and showed a worker wallet delta from
+`0` to `25` sats. If this exact source behavior must be available through npm
+bootstrap or direct release assets, cut the next Pylon release from `96295609b`
+or later and rerun this runbook from a fresh Pylon home.
