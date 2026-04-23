@@ -581,6 +581,32 @@ seals its contribution, start or confirm a validator and use the same
 "Wait For Validation And Payout" and "Verify Accepted-Work Payment" sections
 below.
 
+The `2026-04-23T10:12:09Z` production proof for this automatic path is tracked
+at
+`docs/reports/nexus/20260423-101209-cs336-auto-dispatch-prod-e2e.json`.
+That proof deployed
+`us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:33ee54cf6c51`,
+started a fresh npm-installed `pylon-v0.1.11` worker, and then started a
+separate `pylon-v0.1.11` validator. Production Nexus created two consecutive
+`run.cs336.a1.auto_10m_*` homework runs at the 10-minute cadence:
+`run.cs336.a1.auto_10m_20260423095802_717db136_0001.20260423095802.d40e370b`
+and
+`run.cs336.a1.auto_10m_20260423100802_031fda4f_0001.20260423100802.b9748594`.
+Both windows reached `reconciled`, both closeouts reached `rewarded`, both runs
+accepted one contribution, the worker wallet moved from `0` to `50` sats, and
+Nexus accepted-work payout stats advanced by `50` sats.
+
+One operational detail from that proof matters for future agents: the worker
+can temporarily show `trn_publish_retry` / `queued_retry` for contribution,
+proof, or sealed-window TRN records after the local homework work is complete.
+Do not treat that as a failed job if the local closeout bundle exists and the
+issue is relay connectivity. Run `pylon training status --json`,
+`pylon training publish --json`, or keep the foreground Pylon loop alive and let
+it retry. In the proof above, the assignment and run metadata published first,
+the contribution/proof/sealed-window records recovered on a later pass, and the
+hosted run then moved from `sealed` with `replay_required=1` to `reconciled` /
+`rewarded` after validator replay.
+
 ## Cron-Compatible Dispatch
 
 The manual endpoint remains the operator override control for paid homework.
