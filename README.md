@@ -205,9 +205,10 @@ bounded hosted homework run, validated it with a separate validator, and
 verified the worker wallet increased from `0` to `25` sats. That proof is
 recorded in
 [docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md](docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md).
-That source proof is newer than the older `pylon-v0.1.9` tag. Public release
-assets must be `pylon-v0.1.10` or newer before claiming the public release
-asset path contains the exact same Autopilot/Pylon fixes.
+That source proof is newer than the older `pylon-v0.1.9` tag. The
+`pylon-v0.1.10` release now carries those Autopilot/Pylon fixes through the
+public release asset and npm bootstrap path. The release receipt is
+[docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json](docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json).
 
 Operator details live in
 [docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md](docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md).

@@ -184,7 +184,7 @@ Do not record bearer tokens, wallet mnemonics, Spark API keys, or raw private se
 
 The system works in production for this bounded proof. The next cleanup is release and projection hardening, not core payout repair:
 
-- Publish and verify `pylon-v0.1.10` or newer if the exact source fixes proven here need to be available through `npx @openagentsinc/pylon --version <new-version>` and direct GitHub release assets.
+- `pylon-v0.1.10` was published from `8b814d800b6f4291892a1bcc835fb34a2b91fee1` as a GitHub release with a `darwin-arm64` archive and as npm package `@openagentsinc/pylon@0.1.10`. A fresh `@openagentsinc/pylon@0.1.10` production proof then ran from a new Pylon home, received hosted homework work, reconciled one accepted contribution, produced payout receipt `019db8c1-6639-7751-a717-cee14dd2012e`, and increased the released worker wallet from `0` to `25` sats. The release receipt is `docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json`.
 - Make worker-local payout projection catch up from completed wallet receive evidence so Autopilot can display `confirmed` instead of only `dispatched` after the wallet has already received the sats.
 - Reduce or repair the Treasury `wallet_snapshot_stale` continuity warning so operator dashboards do not show scary degraded caveats when the wallet runtime is connected and payouts are actually settling.
 - Prefer admin/API or Autopilot control endpoints over standalone `pylon training intake` commands while a long-lived Pylon process is running, to avoid confusing file-backed state with a different in-memory supervisor process.
