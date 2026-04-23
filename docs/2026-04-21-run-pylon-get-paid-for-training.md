@@ -36,19 +36,21 @@ intake running while the process stays alive. The terminal UI is separate:
 `pylon-tui` or `pylon tui`.
 
 Public paid-training onboarding now has a minimum release:
-`pylon-v0.1.7`, exposed through `@openagentsinc/pylon` version `0.1.7`.
-That release is the first public release that has the pieces needed for this
+`pylon-v0.1.10`, exposed through `@openagentsinc/pylon` version `0.1.10`.
+That release is the current public release that has the pieces needed for this
 claim: the bare `pylon` earning loop, npm bootstrap behavior that launches the
 earning loop instead of the TUI, public signed-artifact transfer, accepted-work
 payout projection, validator intake enabled by default, worker-first and
 validator-second role claims, failed retained-runtime lease retirement,
-nonfatal scheduler-error handling, and terminal closeout reporting before slow
-artifact publication can wedge the loop.
+nonfatal scheduler-error handling, default local Spark payout destination
+creation in the long-lived serve path, retained snapshot reuse for validator
+replay retries, Autopilot proof projection fixes, and terminal closeout
+reporting before slow artifact publication can wedge the loop.
 
 Nexus can now offer hosted starter work to online paid-training-capable Pylons
 without asking the user to pick a course, enter a private credential, or run a
 one-off assignment command. The production starter lane targets online Pylons
-by `min_pylon_version=0.1.7`, skips exhausted or sealed starter runs, and does
+by `min_pylon_version=0.1.10`, skips exhausted or sealed starter runs, and does
 not require the provider's build digest to match the Nexus service build.
 
 The payout rule is also concrete. Pylon gets paid for accepted homework work.
@@ -70,7 +72,7 @@ If `pylon` is already installed, check that it is new enough:
 pylon --version
 ```
 
-For paid hosted starter training, use `pylon-v0.1.7` or a newer release with
+For paid hosted starter training, use `pylon-v0.1.10` or a newer release with
 the same paid-training guarantees. Older versions may still bring up local
 Gemma inference, but they are not sufficient proof for the hosted starter
 earning claim.
@@ -87,7 +89,7 @@ installed `pylon` binary by default. To pin the first paid-training release
 explicitly:
 
 ```bash
-npx @openagentsinc/pylon --version 0.1.7
+npx @openagentsinc/pylon --version 0.1.10
 ```
 
 After install, the normal provider command is:
@@ -215,7 +217,7 @@ pylon training status --json
 pylon doctor
 ```
 
-Common causes are straightforward: the Pylon release is older than `0.1.7`, the
+Common causes are straightforward: the Pylon release is older than `0.1.10`, the
 node is not actually online, the local Psionic runtime cannot be found, Nexus
 has no currently available hosted starter work, or production Nexus is not
 running the hosted-starter fix set that matches the public Pylon release.

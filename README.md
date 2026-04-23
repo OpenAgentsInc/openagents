@@ -160,8 +160,8 @@ paid when assigned work closes out as accepted.
 
 Current production truth:
 
-- The minimum current paid-training release is `pylon-v0.1.8` through
-  `@openagentsinc/pylon` `0.1.8` or newer.
+- The minimum current paid-training release is `pylon-v0.1.10` through
+  `@openagentsinc/pylon` `0.1.10` or newer.
 - The live paid work class is bounded hosted homework/training work, currently
   the CS336 A1 starter lane used to prove the earning loop.
 - Work is not yet a fully open demand marketplace. OpenAgents/Nexus admins
@@ -192,11 +192,11 @@ For noninteractive operator proof, do not let the npm bootstrap launch an
 interactive UI. Bootstrap with `--no-launch`, then run the installed `pylon`
 binary directly from the bootstrap cache or install root.
 
-The latest production proof used `pylon-v0.1.8`, an npm-installed worker, a
-separate validator, and a separately triggered admin homework run. The run
-reconciled with one accepted contribution, `closeout_status=rewarded`, a
-confirmed and settled 25-sat accepted-work Treasury payout, and a 25-sat worker
-wallet balance. The proof receipt is
+A prior npm release-asset production proof used `pylon-v0.1.8`, an
+npm-installed worker, a separate validator, and a separately triggered admin
+homework run. The run reconciled with one accepted contribution,
+`closeout_status=rewarded`, a confirmed and settled 25-sat accepted-work
+Treasury payout, and a 25-sat worker wallet balance. The proof receipt is
 [docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json](docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json).
 
 The latest Autopilot-controlled production proof used `main` at `96295609b`,
@@ -205,9 +205,9 @@ bounded hosted homework run, validated it with a separate validator, and
 verified the worker wallet increased from `0` to `25` sats. That proof is
 recorded in
 [docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md](docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md).
-That source proof is newer than the already published `pylon-v0.1.9` tag; cut
-the next Pylon release from `96295609b` or later before claiming the public
-release asset path contains the exact same Autopilot/Pylon fixes.
+That source proof is newer than the older `pylon-v0.1.9` tag. Public release
+assets must be `pylon-v0.1.10` or newer before claiming the public release
+asset path contains the exact same Autopilot/Pylon fixes.
 
 Operator details live in
 [docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md](docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md).
