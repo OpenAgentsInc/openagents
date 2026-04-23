@@ -1,0 +1,116 @@
+{
+  "recorded_at": "2026-04-23T14:28:00Z",
+  "release": "pylon-v0.1.11",
+  "version": "0.1.11",
+  "release_url": "https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.1.11",
+  "target_commitish": "9ec3485e1066e27957bf0bf2eaa20fb3a693ddc9",
+  "purpose": "Add the supported non-mac standalone Pylon release assets to the existing v0.1.11 release so npm bootstrap can install Linux binaries instead of falling back to source builds.",
+  "supported_non_mac_targets": [
+    "linux-x86_64",
+    "linux-arm64"
+  ],
+  "unsupported_targets": [
+    {
+      "target": "windows",
+      "reason": "packages/pylon-bootstrap v0.1.11 only resolves darwin and linux targets; Windows remains on the source-build fallback path rather than an npm-bootstrap release-asset path."
+    }
+  ],
+  "assets_after_upload": [
+    {
+      "name": "pylon-v0.1.11-darwin-arm64.tar.gz",
+      "size": 32604794,
+      "digest": "sha256:623428b6224930fd10014ca67f96c2ae7e4c36432d6009c4371b1d1699f06552"
+    },
+    {
+      "name": "pylon-v0.1.11-darwin-arm64.tar.gz.sha256",
+      "size": 100,
+      "digest": "sha256:5de071b0c3e1ca092e87640076fdad8e5c33c2c916745effee7bc2775bcfd47f"
+    },
+    {
+      "name": "pylon-v0.1.11-linux-arm64.tar.gz",
+      "size": 100721976,
+      "digest": "sha256:edc147dbac0fa02c299450e939a2c3e1bb529dcb5b7ae913e5ef2684342b1e2f",
+      "archive_sha256": "edc147dbac0fa02c299450e939a2c3e1bb529dcb5b7ae913e5ef2684342b1e2f"
+    },
+    {
+      "name": "pylon-v0.1.11-linux-arm64.tar.gz.sha256",
+      "size": 99,
+      "digest": "sha256:6b483428860d1c2bcac19449e28c764b269f781fb3e9f86ce60438706d13f5d6"
+    },
+    {
+      "name": "pylon-v0.1.11-linux-x86_64.tar.gz",
+      "size": 115317518,
+      "digest": "sha256:de44ae6521b402035c5547cff35d2914f42eb7542fc8fcd26d1212c83f5a0714",
+      "archive_sha256": "de44ae6521b402035c5547cff35d2914f42eb7542fc8fcd26d1212c83f5a0714"
+    },
+    {
+      "name": "pylon-v0.1.11-linux-x86_64.tar.gz.sha256",
+      "size": 100,
+      "digest": "sha256:550a5f58f2d4e73be39af98974c211088012b29adfeacc3893fa70cec1efbdda"
+    }
+  ],
+  "builds": [
+    {
+      "target": "linux-x86_64",
+      "builder": "archlinux over Tailnet",
+      "source": "fresh git clone at tag pylon-v0.1.11",
+      "source_commit": "9ec3485e1066e27957bf0bf2eaa20fb3a693ddc9",
+      "command": "bash scripts/release/pylon-binary-release.sh --version 0.1.11",
+      "remote_archive": "/tmp/openagents-pylon-v0.1.11-linux-x86_64/target/pylon-release/pylon-v0.1.11-linux-x86_64.tar.gz",
+      "remote_checksum": "/tmp/openagents-pylon-v0.1.11-linux-x86_64/target/pylon-release/pylon-v0.1.11-linux-x86_64.tar.gz.sha256",
+      "local_uploaded_archive": "/private/tmp/openagents-pylon-v0.1.11-release-assets/pylon-v0.1.11-linux-x86_64.tar.gz",
+      "verification": [
+        "archive checksum verified with sha256sum -c on archlinux",
+        "archive contents verified with tar -tzf",
+        "ELF type verified as x86-64 GNU/Linux",
+        "pylon --help executed successfully on archlinux",
+        "pylon-tui --help executed successfully on archlinux",
+        "pylon init executed successfully with isolated Pylon home on archlinux",
+        "pylon status --json executed successfully with isolated Pylon home on archlinux",
+        "pylon inventory --json executed successfully with isolated Pylon home on archlinux"
+      ],
+      "build_note": "The Arch rustc emitted one transient SIGSEGV during parallel dependency compilation but cargo continued and completed successfully. The final packaged binaries were built, checksummed, extracted, and runtime-smoked on the same Linux host."
+    },
+    {
+      "target": "linux-arm64",
+      "builder": "local macOS arm64 using zig and cargo-zigbuild",
+      "source": "temporary detached worktree at tag pylon-v0.1.11",
+      "source_commit": "9ec3485e1066e27957bf0bf2eaa20fb3a693ddc9",
+      "command": "cargo zigbuild --release --target aarch64-unknown-linux-gnu -p pylon -p pylon-tui",
+      "local_uploaded_archive": "/private/tmp/openagents-pylon-v0.1.11-release-assets/pylon-v0.1.11-linux-arm64.tar.gz",
+      "verification": [
+        "archive checksum verified with shasum -a 256 -c",
+        "archive contents verified with tar -tzf",
+        "ELF type verified as ARM aarch64 GNU/Linux for pylon and pylon-tui"
+      ],
+      "caveat": "No Linux arm64 Tailnet host was available, so this target was not runtime-executed. The npm bootstrap supports the asset name and will fetch it on Linux arm64 hosts."
+    }
+  ],
+  "npm_linux_x86_64_smoke": {
+    "host": "archlinux",
+    "root": "/tmp/pylon-0.1.11-linux-x86_64-npm-smoke-20260423T142637Z",
+    "command": "npx --yes @openagentsinc/pylon@0.1.11 --version 0.1.11 --pylon-home <isolated-home> --install-root <isolated-install> --no-launch --json",
+    "result": "passed",
+    "version": "0.1.11",
+    "tag_name": "pylon-v0.1.11",
+    "target": {
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    "install_method": "release_asset",
+    "cached": false,
+    "status_runtime": "offline",
+    "inventory_state": "ready",
+    "observed": [
+      "npm bootstrap selected the Linux x86_64 release archive",
+      "bootstrap installed pylon and pylon-tui under the isolated install root",
+      "installed pylon --help executed successfully",
+      "installed pylon-tui --help executed successfully"
+    ]
+  },
+  "release_notes": {
+    "updated": true,
+    "path": "/private/tmp/openagents-pylon-v0.1.11-release-assets/release-notes.md",
+    "summary": "Release body now lists darwin-arm64, linux-x86_64, and linux-arm64 archives plus checksums, and explicitly notes that Windows is not a v0.1.11 npm-bootstrap target."
+  }
+}
