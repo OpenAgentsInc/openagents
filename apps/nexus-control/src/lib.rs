@@ -5117,8 +5117,8 @@ fn training_validator_claim_window_priority(
     window: &ComputeAdapterTrainingWindow,
 ) -> u8 {
     if let Some(run) = kernel.get_compute_training_run(window.training_run_id.as_str()) {
-        if training_run_is_homework_dispatch(&run) {
-            return 0;
+        if let Some(priority) = training_run_homework_dispatch_validator_priority(&run) {
+            return priority;
         }
     }
     training_validator_claim_run_priority(window.training_run_id.as_str())
@@ -5126,16 +5126,21 @@ fn training_validator_claim_window_priority(
 
 fn training_validator_claim_run_priority(training_run_id: &str) -> u8 {
     if training_run_id.starts_with("run.cs336.a1.starter.") {
-        return 2;
+        return 3;
     }
-    1
+    2
+}
+
+fn training_run_homework_dispatch_validator_priority(run: &ComputeTrainingRun) -> Option<u8> {
+    match run.metadata.get("run_kind").and_then(Value::as_str) {
+        Some("homework_auto_dispatch") => Some(0),
+        Some("homework_dispatch") => Some(1),
+        _ => None,
+    }
 }
 
 fn training_run_is_homework_dispatch(run: &ComputeTrainingRun) -> bool {
-    run.metadata
-        .get("run_kind")
-        .and_then(Value::as_str)
-        .is_some_and(|run_kind| run_kind == "homework_dispatch")
+    training_run_homework_dispatch_validator_priority(run).is_some()
 }
 
 fn normalize_required_training_string(value: &str, reason: &str) -> Result<String, String> {
@@ -37849,16 +37854,44 @@ mod tests {
             super::training_validator_claim_run_priority(
                 "run.cs336.a1.starter.20260421063347.69e88ef6"
             ),
-            2
+            3
         );
         assert_eq!(
             super::training_validator_claim_run_priority("run.cs336.a1.iso.20260417104257"),
-            1
+            2
         );
         assert_eq!(
             super::training_validator_claim_run_priority("run.cs336.a1.issue4368.20260420092016"),
-            1
+            2
         );
+    }
+
+    #[test]
+    fn training_validator_prioritizes_auto_homework_before_manual_and_generic_backlog() {
+        let mut auto =
+            compute_training_run_request("idemp.priority.auto", 1_762_491_500_000).training_run;
+        auto.metadata = json!({"run_kind": "homework_auto_dispatch"});
+        let mut manual =
+            compute_training_run_request("idemp.priority.manual", 1_762_491_500_000).training_run;
+        manual.metadata = json!({"run_kind": "homework_dispatch"});
+        let generic =
+            compute_training_run_request("idemp.priority.generic", 1_762_491_500_000).training_run;
+
+        assert_eq!(
+            super::training_run_homework_dispatch_validator_priority(&auto),
+            Some(0)
+        );
+        assert_eq!(
+            super::training_run_homework_dispatch_validator_priority(&manual),
+            Some(1)
+        );
+        assert_eq!(
+            super::training_run_homework_dispatch_validator_priority(&generic),
+            None
+        );
+        assert!(super::training_run_is_homework_dispatch(&auto));
+        assert!(super::training_run_is_homework_dispatch(&manual));
+        assert!(!super::training_run_is_homework_dispatch(&generic));
     }
 
     #[tokio::test]

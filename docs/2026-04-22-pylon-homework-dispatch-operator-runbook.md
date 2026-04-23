@@ -29,8 +29,9 @@ Minimum runtime requirements:
   version for earning and validation is the resolved standalone Pylon binary.
 - production Nexus running the lease-priority fix that tries existing
   schedulable runs before auto-launching fresh hosted starter work
-- production Nexus running the validator-priority fix that validates
-  admin-dispatched homework before draining hosted starter backlog
+- production Nexus running the validator-priority fix that validates automatic
+  homework first, manual admin-dispatched homework next, and hosted starter
+  backlog last
 - production Nexus running the homework validation-policy fix that validates
   homework-dispatch windows with the aggregate challenge only
 - production Nexus running the closeout fix that treats aggregate-only
@@ -61,6 +62,7 @@ Also run:
 
 ```bash
 cargo test -p nexus-control training_validator_claim_run_priority_deprioritizes_hosted_starter_backlog
+cargo test -p nexus-control training_validator_prioritizes_auto_homework_before_manual_and_generic_backlog
 ```
 
 And run:
@@ -76,9 +78,10 @@ production loop:
 cargo test -p nexus-control cs336_homework_auto_dispatch_cycle_targets_all_compatible_online_pylons
 ```
 
-The homework validation-policy test must show that `homework_dispatch` keeps the
-aggregate validator challenge and skips per-contribution sample challenges. Use
-Pylon `0.1.11` or newer for current npm proofs. `0.1.8` fixed the validator
+The homework validation-policy test must show that `homework_dispatch` and
+`homework_auto_dispatch` keep the aggregate validator challenge and skip
+per-contribution sample challenges. Use Pylon `0.1.11` or newer for current npm
+proofs. `0.1.8` fixed the validator
 replay case where a retained claim can point at stale same-host local target
 bytes: Pylon falls back to the bridge-inline payload or rewrites the target
 artifact id to match the materialized digest. `0.1.10` adds the
@@ -777,16 +780,17 @@ schedulable runs first and auto-launch hosted starter work only after
 
 If the triggered run reaches `total_contributions: 1` and `status: "sealed"`
 but stays at `accepted_contributions: 0` while the validator process claims
-`run.cs336.a1.starter.*` challenges first, production Nexus is missing the
-validator-priority fix. The fixed behavior is: validator claims prioritize
-`run_kind: "homework_dispatch"` windows, then normal runs, then hosted starter
-backlog.
+old homework or `run.cs336.a1.starter.*` challenges first, production Nexus is
+missing the current validator-priority fix. The fixed behavior is: validator
+claims prioritize `run_kind: "homework_auto_dispatch"` windows first,
+`run_kind: "homework_dispatch"` windows second, normal runs third, and hosted
+starter backlog last.
 
-If a `homework_dispatch` run has one aggregate challenge plus one
-contribution-sample challenge, production Nexus is missing the homework
-validation-policy fix. The fixed behavior is: homework-dispatch windows use the
-aggregate challenge only until the released npm Pylon contribution-sample
-replay path stops producing artifact-manifest digest drift.
+If a `homework_dispatch` or `homework_auto_dispatch` run has one aggregate
+challenge plus one contribution-sample challenge, production Nexus is missing
+the homework validation-policy fix. The fixed behavior is: homework-dispatch
+windows use the aggregate challenge only until the released npm Pylon
+contribution-sample replay path stops producing artifact-manifest digest drift.
 
 If the validator log reports an `artifact_digest_mismatch` where the target
 `contribution_artifact_manifest` artifact id digest differs from the materialized

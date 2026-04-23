@@ -391,6 +391,13 @@ eligible Pylons on the default demo training network, and pays only accepted
 homework closeouts. The manual admin endpoint remains available for bounded
 proofs and temporary pacing overrides.
 
+The validator selection path must treat automatic homework as the freshest paid
+work class. Current ordering is `homework_auto_dispatch`, then manual
+`homework_dispatch`, then normal training runs, then hosted starter backlog.
+Without that ordering a validator can spend time on stale historical homework
+or starter challenges while a fresh automatic paid run is sealed and awaiting
+payout.
+
 4. Verify health and emit a deploy receipt.
 
 ```bash
