@@ -1,0 +1,135 @@
+{
+  "recorded_at": "2026-04-23T10:36:40Z",
+  "proof_root": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z",
+  "purpose": "End-to-end production proof that npm-installed Pylon v0.1.11 can come online, receive CS336 homework, publish accepted work, receive sats, and drive the live openagents.com homepage and stats-page payout counters upward.",
+  "pylon_install": {
+    "source": "npm",
+    "package": "@openagentsinc/pylon",
+    "version": "0.1.11",
+    "binary": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/worker/install/versions/pylon-v0.1.11-darwin-arm64/pylon",
+    "bootstrap_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/logs/npm-worker-bootstrap.json"
+  },
+  "worker": {
+    "node_label": "webstats-proof-worker",
+    "node_pubkey_hex": "a74794047b54b393e0336e29f5bb0a8fcd9c933526cb19894ec8b5a72c718f9c",
+    "role": "worker",
+    "config_path": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/worker/pylon-home/config.json",
+    "wallet_balance_before_sats": 0,
+    "wallet_balance_after_sats": 103,
+    "wallet_history_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/worker/wallet-history-final.json",
+    "received_payments_sats": [
+      1,
+      25,
+      1,
+      25,
+      1,
+      25,
+      25
+    ]
+  },
+  "validator": {
+    "node_label": "webstats-proof-validator",
+    "node_pubkey_hex": "eb7c83081d1a73e7e4360da329ef2936c274ad59726d26cbc39d00af143f36eb",
+    "role": "validator",
+    "config_path": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/validator/pylon-home/config.json",
+    "validator_score_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/validator/pylon-home/training/runs/run.cs336.a1.webstats_proof_20260423102051_20260423102052_54313c97_0001.20260423102052.d1a06ab9/windows/window.cs336.a1.webstats_proof_20260423102051_20260423102052_54313c97_0001.20260423102052.d1a06ab9.0001/validators/challenge.training.run.cs336.a1.webstats_proof_20260423102051_20260423102052_54313c97_0001.20260423102052.d1a06ab9.window.cs336.a1.webstats_proof_20260423102051_20260423102052_54313c97_0001.20260423102052.d1a06ab9.0001.aggregate.a1/validator_score_receipt.json"
+  },
+  "manual_dispatch": {
+    "endpoint": "POST /v1/admin/homework/cs336-a1/dispatch",
+    "request_payload": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/manual-dispatch-payload.json",
+    "response_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/manual-dispatch-response.json",
+    "batch_id": "dispatch.cs336.a1.20260423102052.54313c97",
+    "requested_run_count": 1,
+    "launched_run_count": 1,
+    "amount_sats": 25,
+    "max_payout_sats": 25,
+    "assigned_pylon_release_id": "openagents.pylon@0.1.11"
+  },
+  "target_run": {
+    "training_run_id": "run.cs336.a1.webstats_proof_20260423102051_20260423102052_54313c97_0001.20260423102052.d1a06ab9",
+    "window_id": "window.cs336.a1.webstats_proof_20260423102051_20260423102052_54313c97_0001.20260423102052.d1a06ab9.0001",
+    "final_detail_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/target-run-detail-final.json",
+    "run_status": "running",
+    "scheduler_window_state": "accepted",
+    "latest_window_status": "reconciled",
+    "latest_closeout_status": "rewarded",
+    "accepted_contributors": 1,
+    "model_progress_contributors": 1,
+    "payout_eligible": true,
+    "payout_pending_cleared": true,
+    "remaining_caveats": [
+      "run_backlog",
+      "validator_backlog"
+    ]
+  },
+  "nexus_stats": {
+    "before_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/nexus-stats-before.json",
+    "after_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/nexus-stats-final.json",
+    "before": {
+      "nexus_payout_sats_paid_total": 1077896,
+      "nexus_accepted_work_payout_sats_paid_total": 836,
+      "training_accepted_contributors": 19,
+      "training_accepted_closeouts": 42,
+      "pylons_online_now": 63
+    },
+    "after": {
+      "nexus_payout_sats_paid_total": 1078025,
+      "nexus_accepted_work_payout_sats_paid_total": 965,
+      "training_accepted_contributors": 20,
+      "training_accepted_closeouts": 51,
+      "pylons_online_now": 65
+    },
+    "delta": {
+      "nexus_payout_sats_paid_total": 129,
+      "nexus_accepted_work_payout_sats_paid_total": 129,
+      "training_accepted_contributors": 1,
+      "training_accepted_closeouts": 9
+    }
+  },
+  "openagents_com": {
+    "homepage_live_before": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/openagents-home-live-before-dispatch.json",
+    "homepage_live_after": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/openagents-home-live-after.json",
+    "stats_live_before": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/openagents-stats-live-before-dispatch.json",
+    "stats_live_after": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/openagents-stats-live-after.json",
+    "homepage_html_after": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/openagents-home-after.html",
+    "stats_html_after": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/openagents-stats-after.html",
+    "before": {
+      "homepage_nexus_payout_sats_paid_total": 1077896,
+      "homepage_nexus_accepted_work_payout_sats_paid_total": 836,
+      "stats_nexus_payout_sats_paid_total": 1077896,
+      "stats_nexus_accepted_work_payout_sats_paid_total": 836
+    },
+    "after": {
+      "homepage_nexus_payout_sats_paid_total": 1078025,
+      "homepage_nexus_accepted_work_payout_sats_paid_total": 965,
+      "stats_nexus_payout_sats_paid_total": 1078025,
+      "stats_nexus_accepted_work_payout_sats_paid_total": 965,
+      "status": "live",
+      "available": true,
+      "stale": false
+    }
+  },
+  "post_cleanup_live_check": {
+    "checked_after_stopping_isolated_proof_processes": true,
+    "nexus_stats_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/nexus-stats-post-cleanup.json",
+    "homepage_live_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/openagents-home-live-post-cleanup.json",
+    "stats_live_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/openagents-stats-live-post-cleanup.json",
+    "homepage_html_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/openagents-home-post-cleanup.html",
+    "stats_html_receipt": "/private/tmp/pylon-npm-webstats-prod-20260423T101749Z/openagents-stats-post-cleanup.html",
+    "nexus_payout_sats_paid_total": 1078052,
+    "nexus_accepted_work_payout_sats_paid_total": 992,
+    "training_accepted_contributors": 20,
+    "training_accepted_closeouts": 54,
+    "homepage_matches_nexus": true,
+    "stats_page_matches_nexus": true,
+    "homepage_rendered_payload_matches_nexus": true,
+    "stats_page_rendered_payload_matches_nexus": true
+  },
+  "notes": [
+    "The isolated proof worker was installed through npm and used an isolated Pylon home under /private/tmp so it did not depend on the existing user TUI process.",
+    "The target manual dispatch was a one-run 25 sat CS336 homework dispatch assigned to the v0.1.11 proof worker.",
+    "The worker also received additional live payments while online because automatic and backlog homework flows were active during the proof; that is why the aggregate Nexus and website payout counters increased by 129 sats and the isolated worker balance reached 103 sats rather than exactly 25 sats.",
+    "Both the homepage and /stats rendered HTML payloads were checked after payout propagation; their embedded Inertia JSON contains the final 1078025 total-paid and 965 accepted-work-paid counters from that proof moment.",
+    "A post-cleanup live check after stopping the isolated proof worker and validator showed the counters had advanced again to 1078052 total-paid and 992 accepted-work-paid, and both openagents.com live endpoints matched Nexus."
+  ]
+}
