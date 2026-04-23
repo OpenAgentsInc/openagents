@@ -13,7 +13,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.1.11
+npx @openagentsinc/pylon --version 0.1.12
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache --model gemma-4-e2b --run-diagnostics
 npx @openagentsinc/pylon --verbose
@@ -57,6 +57,10 @@ The launcher:
 - starts the installed `pylon-tui` by default after the smoke path; that TUI
   starts and supervises the earning worker
   unless `--no-launch` is set
+- for hosted homework/training work, use `0.1.12` or newer. That release fixes
+  Mac training-worker launch by preferring a current
+  `target/release/psionic-train` binary and falling back to
+  `cargo run --release` instead of debug `cargo run`
 - does not try to install or register a local runtime automatically; the
   bootstrap stays honest about the separate Ollama-compatible runtime
   prerequisite instead of mutating the host behind the user's back

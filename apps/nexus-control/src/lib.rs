@@ -9178,7 +9178,7 @@ struct HomeworkLaunchPrepared {
 }
 
 const HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
-const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.11";
+const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.12";
 
 fn current_homework_launch_pylon_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0))
@@ -43915,7 +43915,7 @@ mod tests {
                 .node
                 .build_version
                 .as_deref()
-                == Some("0.1.11"))
+                == Some("0.1.12"))
         );
         assert!(launch.training_run_id.starts_with("run.cs336.a1.auto_10m_"));
 

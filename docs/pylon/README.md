@@ -340,7 +340,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.1.11
+npx @openagentsinc/pylon --version 0.1.12
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
@@ -431,10 +431,10 @@ target, asks Nexus for available work, and receives CS336 Assignment 1 starter
 work when that is the currently hosted starter lane available to the node.
 
 The minimum public paid-training Pylon release for this path is
-`pylon-v0.1.11`, exposed through `@openagentsinc/pylon` `0.1.11`. That release
+`pylon-v0.1.12`, exposed through `@openagentsinc/pylon` `0.1.12`. That release
 contains the minimal homework-earning TUI, the TUI-managed worker lifecycle,
 bootstrap behavior that launches the TUI after smoke checks, opt-in-only Gemma
-diagnostics/downloads, the
+diagnostics/downloads, the Mac-safe Psionic training-worker launch path, the
 public-safe signed-artifact path, accepted-work payout projection, validator
 intake enabled by default, worker-first/validator-second default role claims,
 failed retained-runtime lease retirement, nonfatal scheduler-error handling,
@@ -444,9 +444,14 @@ projection fixes needed for a normal node that advertises both worker and
 validator roles. It also reports terminal worker and validator closeout state
 to Nexus before attempting slower artifact/TRN publication, with a bounded
 publication timeout so a slow signed-URL upload cannot wedge the earning loop
-before accepted-work payout. Older releases may still bring up local Gemma
-inference; `pylon-v0.1.10` contains the earlier payout fixes but its TUI did
-not supervise the worker and is not enough for the current user path.
+before accepted-work payout. For Psionic-backed homework/training jobs, it also
+prefers a current `target/release/psionic-train` binary when the operator has
+already built one and otherwise falls back to `cargo run --release`, with
+signal and log-tail details in failure receipts instead of only `code -1`.
+Older releases may still bring up local Gemma inference; `pylon-v0.1.10`
+contains the earlier payout fixes but its TUI did not supervise the worker and
+is not enough for the current user path, and `pylon-v0.1.11` can still launch
+Mac training through debug Cargo in the failure mode tracked by issue #4414.
 `pylon-v0.1.4`
 proved public install plus worker artifact sealing, and `pylon-v0.1.5` proved
 the earning-loop packaging fixes, but neither is sufficient closeout proof for
@@ -454,24 +459,25 @@ hosted CS336 earning because retained failed validator leases can block fresh
 paid worker intake. `pylon-v0.1.6` adds validator defaults but can still block
 terminal closeout behind artifact/TRN publication during the validator path.
 If `npx @openagentsinc/pylon` resolves an older version, update before testing
-paid training. If a platform does not yet have a matching `pylon-v0.1.11`
+paid training. If a platform does not yet have a matching `pylon-v0.1.12`
 release asset, use the npm bootstrap source fallback
 or a newer official release that includes these same paid-training guarantees.
-The `0.1.11` release receipt is
-`docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json`. It proves the
-new user path, release asset, npm bootstrap behavior, TUI-managed worker, no
-default Gemma model download, and production homework lease intake/seal path.
-It is not the full accepted-work payout proof; keep using
+The `0.1.12` release receipt is
+`docs/reports/nexus/20260423-issue-4414-pylon-v0.1.12-release.json`. It proves
+the release assets, npm bootstrap behavior, TUI-managed worker, no default
+Gemma model download, and the issue #4414 Psionic training launch regression.
+The prior `0.1.11` release receipt remains
+`docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json`. Keep using
 `docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json` for the last
 fresh npm-installed public release proof that settled a wallet payout.
 
 That Pylon version is necessary but not sufficient. Hosted starter work also
 requires production Nexus to run the corresponding hosted-starter fix set: the
 auto-launched starter lane must target online Pylons by
-`min_pylon_version=0.1.11`, must not require the provider's build digest to
+`min_pylon_version=0.1.12`, must not require the provider's build digest to
 match the Nexus service build, and must skip exhausted or sealed starter runs
 instead of returning `training_scheduler_run_not_schedulable` to the default
-Pylon loop. If Nexus is older, a public `pylon-v0.1.11` node can come online
+Pylon loop. If Nexus is older, a public `pylon-v0.1.12` node can come online
 correctly and still fail to receive fresh starter work. Treat that as a Nexus
 deployment/readiness problem, not a user opt-in problem.
 
@@ -581,7 +587,7 @@ explicit admin-launch proof path.
 Hosted Nexus now paces homework work automatically without changing the public
 user command. Production runs an internal CS336 A1 homework dispatcher every
 10 minutes. Each cycle creates a fresh homework run, targets online eligible
-Pylons on `pylon-v0.1.11` or newer, allows duplicated starter work across
+Pylons on `pylon-v0.1.12` or newer, allows duplicated starter work across
 cycles, pays 25 sats only for accepted closeouts, and caps the automatic cycle
 at 6,400 sats. The loop intentionally lives in Nexus rather than in each Pylon:
 users only run `pylon` and stay online.
@@ -609,7 +615,7 @@ wants duplicated starter work. It still pays only accepted homework closeouts:
 launching a run does not send sats, and periodic placeholder or liveness
 payouts must remain disabled for this claim. The default pacing contract is one
 fresh run, one contributor per run, one sat per accepted contribution, online
-nodes only, `min_pylon_version=0.1.11`, and no active-run reuse. Operators can
+nodes only, `min_pylon_version=0.1.12`, and no active-run reuse. Operators can
 raise `run_count`, `max_contributors_per_run`, or `amount_sats` in cron while
 using `total_budget_sats` as a per-call cap.
 

@@ -1142,6 +1142,10 @@ pub struct PylonTrainingFailureReceipt {
     pub process_state: PylonTrainingSupervisorProcessState,
     pub exit_code: Option<i32>,
     pub failure_reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stdout_tail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stderr_tail: Option<String>,
     pub recorded_at_ms: i64,
 }
 
@@ -1151,6 +1155,7 @@ struct PylonTrainingSupervisorCommand {
     program: PathBuf,
     args: Vec<String>,
     current_dir: PathBuf,
+    launch_method: &'static str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4687,6 +4692,14 @@ fn inspect_psionic_train_runtime_surface_at(
     }
     let train_runtime_source = std::fs::read_to_string(train_runtime_path.as_path())
         .with_context(|| format!("failed to read {}", train_runtime_path.display()))?;
+    if find_usable_psionic_train_release_binary(repo_root).is_none()
+        && !command_available_on_path("cargo")
+    {
+        bail!(
+            "Psionic checkout at {} has no usable release psionic-train binary and cargo is not on PATH",
+            repo_root.display()
+        );
+    }
     Ok(PsionicTrainRuntimeSurface {
         repo_root: repo_root.to_path_buf(),
         supports_apple_windowed_training: train_runtime_source
@@ -4696,6 +4709,70 @@ fn inspect_psionic_train_runtime_surface_at(
         supports_cs336_a1_demo: train_runtime_source.contains("PSION_CS336_A1_DEMO_LANE_ID")
             && train_runtime_source.contains("PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF"),
     })
+}
+
+fn command_available_on_path(command: &str) -> bool {
+    let Some(paths) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&paths).any(|path| {
+        let candidate = path.join(command);
+        candidate.is_file() && executable_file(&candidate)
+    })
+}
+
+fn psionic_train_binary_filename() -> String {
+    format!("psionic-train{}", std::env::consts::EXE_SUFFIX)
+}
+
+fn psionic_train_release_binary_path(repo_root: &Path) -> PathBuf {
+    repo_root
+        .join("target")
+        .join("release")
+        .join(psionic_train_binary_filename())
+}
+
+fn executable_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path)
+            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn psionic_train_release_binary_is_current(repo_root: &Path, binary_path: &Path) -> bool {
+    let Ok(binary_modified) =
+        std::fs::metadata(binary_path).and_then(|metadata| metadata.modified())
+    else {
+        return false;
+    };
+    [
+        Path::new("Cargo.toml"),
+        Path::new("Cargo.lock"),
+        Path::new("crates/psionic-train/Cargo.toml"),
+        Path::new("crates/psionic-train/src/main.rs"),
+        Path::new("crates/psionic-train/src/train_runtime.rs"),
+    ]
+    .iter()
+    .filter_map(|relative| std::fs::metadata(repo_root.join(relative)).ok())
+    .filter_map(|metadata| metadata.modified().ok())
+    .all(|modified| modified <= binary_modified)
+}
+
+fn find_usable_psionic_train_release_binary(repo_root: &Path) -> Option<PathBuf> {
+    let binary_path = psionic_train_release_binary_path(repo_root);
+    (executable_file(binary_path.as_path())
+        && psionic_train_release_binary_is_current(repo_root, binary_path.as_path()))
+    .then_some(binary_path)
 }
 
 fn git_output(repo_root: &Path, args: &[&str]) -> Result<String> {
@@ -19886,14 +19963,41 @@ fn default_psionic_train_supervisor_command(
                 manifest_path.display().to_string(),
             ],
             current_dir: default_home_dir(),
+            launch_method: "env_binary",
         });
     }
 
     let runtime_surface = inspect_psionic_train_runtime_surface()?;
-    Ok(PylonTrainingSupervisorCommand {
+    Ok(psionic_train_supervisor_command_for_surface(
+        manifest_path,
+        &runtime_surface,
+    ))
+}
+
+fn psionic_train_supervisor_command_for_surface(
+    manifest_path: &Path,
+    runtime_surface: &PsionicTrainRuntimeSurface,
+) -> PylonTrainingSupervisorCommand {
+    if let Some(binary_path) =
+        find_usable_psionic_train_release_binary(runtime_surface.repo_root.as_path())
+    {
+        return PylonTrainingSupervisorCommand {
+            program: binary_path,
+            args: vec![
+                "manifest".to_string(),
+                "--manifest".to_string(),
+                manifest_path.display().to_string(),
+            ],
+            current_dir: runtime_surface.repo_root.clone(),
+            launch_method: "release_binary",
+        };
+    }
+
+    PylonTrainingSupervisorCommand {
         program: PathBuf::from("cargo"),
         args: vec![
             "run".to_string(),
+            "--release".to_string(),
             "-p".to_string(),
             "psionic-train".to_string(),
             "--manifest-path".to_string(),
@@ -19907,8 +20011,9 @@ fn default_psionic_train_supervisor_command(
             "--manifest".to_string(),
             manifest_path.display().to_string(),
         ],
-        current_dir: runtime_surface.repo_root,
-    })
+        current_dir: runtime_surface.repo_root.clone(),
+        launch_method: "cargo_run_release",
+    }
 }
 
 #[allow(dead_code)]
@@ -20517,10 +20622,7 @@ async fn poll_training_supervisor(
             active.process_state = PylonTrainingSupervisorProcessState::Stopped;
             active.last_failure_reason = None;
         } else {
-            let failure_reason = format!(
-                "psionic-train exited with code {}",
-                status.code().unwrap_or(-1)
-            );
+            let failure_reason = training_supervisor_failure_reason(&status, active);
             active.process_state = PylonTrainingSupervisorProcessState::Failed;
             active.last_failure_reason = Some(failure_reason.clone());
             write_training_failure_receipt(active, failure_reason.as_str())?;
@@ -20528,6 +20630,65 @@ async fn poll_training_supervisor(
     }
     save_training_runtime_state(config, state)?;
     Ok(true)
+}
+
+fn training_supervisor_exit_label(status: &std::process::ExitStatus) -> String {
+    if let Some(code) = status.code() {
+        return format!("psionic-train exited with code {code}");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return format!("psionic-train terminated by signal {signal}");
+        }
+    }
+    "psionic-train terminated without an exit code".to_string()
+}
+
+fn training_supervisor_failure_reason(
+    status: &std::process::ExitStatus,
+    active: &PylonTrainingActiveRuntimeState,
+) -> String {
+    let mut reason = training_supervisor_exit_label(status);
+    if let Some(stderr_tail) = training_log_tail(Path::new(active.stderr_log_path.as_str()), 6) {
+        reason.push_str("; stderr tail: ");
+        reason.push_str(&single_line_log_tail(stderr_tail.as_str()));
+    }
+    reason
+}
+
+fn training_log_tail(path: &Path, max_lines: usize) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let mut lines = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        return None;
+    }
+    if lines.len() > max_lines {
+        lines = lines.split_off(lines.len() - max_lines);
+    }
+    Some(lines.join("\n"))
+}
+
+fn single_line_log_tail(value: &str) -> String {
+    const MAX_CHARS: usize = 900;
+    let single_line = value
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    if single_line.chars().count() <= MAX_CHARS {
+        return single_line;
+    }
+    let mut truncated = single_line.chars().take(MAX_CHARS).collect::<String>();
+    truncated.push_str("...");
+    truncated
 }
 
 #[allow(dead_code)]
@@ -20558,6 +20719,8 @@ fn write_training_failure_receipt(
         process_state: active.process_state,
         exit_code: active.last_exit_code,
         failure_reason: failure_reason.to_string(),
+        stdout_tail: training_log_tail(Path::new(active.stdout_log_path.as_str()), 20),
+        stderr_tail: training_log_tail(Path::new(active.stderr_log_path.as_str()), 20),
         recorded_at_ms: now_epoch_ms(),
     };
     std::fs::write(
@@ -26263,6 +26426,7 @@ mod tests {
         parse_args, planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
         provider_control_plane_runtime_error, provider_presence_client,
         psionic_gemma_benchmark_command_args, psionic_repo_root_candidates_with_inputs,
+        psionic_train_release_binary_path, psionic_train_supervisor_command_for_surface,
         publish_announcement_report, publish_training_trn_state, refresh_relay_report,
         remove_configured_relay, render_earnings_report, render_human_status, render_jobs_report,
         render_public_config_json, render_sandbox_report, render_training_status_report,
@@ -26695,6 +26859,7 @@ mod tests {
     fn write_minimal_psionic_train_runtime_layout(root: &Path) -> anyhow::Result<()> {
         std::fs::create_dir_all(root.join("crates/psionic-train/src"))?;
         std::fs::write(root.join("Cargo.toml"), "[workspace]\n")?;
+        std::fs::write(root.join("Cargo.lock"), "# fixture lock\n")?;
         std::fs::write(root.join("TRAIN"), "#!/bin/sh\n")?;
         std::fs::write(
             root.join("crates/psionic-train/src/main.rs"),
@@ -26708,6 +26873,21 @@ pub const PSIONIC_TRAIN_APPLE_WINDOWED_TRAINING_ENVIRONMENT_REF: &str = \"psioni
 pub const PSION_CS336_A1_DEMO_LANE_ID: &str = \"psion_cs336_a1_demo_v1\";\n\
 pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1\";\n",
         )?;
+        Ok(())
+    }
+
+    fn write_fake_executable(path: &Path) -> anyhow::Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, "#!/bin/sh\nexit 0\n")?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(path)?.permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(path, permissions)?;
+        }
         Ok(())
     }
 
@@ -27628,6 +27808,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 process_state: PylonTrainingSupervisorProcessState::Failed,
                 exit_code: Some(exit_code),
                 failure_reason: failure_reason.to_string(),
+                stdout_tail: None,
+                stderr_tail: None,
                 recorded_at_ms: 1_762_491_299_000,
             })?,
         )?;
@@ -27642,6 +27824,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 .parent()
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| std::path::PathBuf::from("/tmp")),
+            launch_method: "test_shell",
         }
     }
 
@@ -27972,6 +28155,53 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && surface.supports_apple_windowed_training
                 && surface.supports_cs336_a1_demo,
             "training surface probe should accept the minimal machine runtime layout and detect the packaged Apple and CS336 A1 lanes when present",
+        )
+    }
+
+    #[test]
+    fn psionic_train_supervisor_command_prefers_current_release_binary()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        write_minimal_psionic_train_runtime_layout(temp_dir.path())?;
+        let release_binary = psionic_train_release_binary_path(temp_dir.path());
+        write_fake_executable(release_binary.as_path())?;
+        let surface = inspect_psionic_train_runtime_surface_at(temp_dir.path())?;
+        let manifest_path = temp_dir.path().join("manifest.json");
+
+        let command =
+            psionic_train_supervisor_command_for_surface(manifest_path.as_path(), &surface);
+
+        ensure(
+            command.program == release_binary
+                && command.launch_method == "release_binary"
+                && command.args
+                    == vec![
+                        "manifest".to_string(),
+                        "--manifest".to_string(),
+                        manifest_path.display().to_string(),
+                    ],
+            "Pylon should use an operator-built release psionic-train binary instead of recompiling through Cargo",
+        )
+    }
+
+    #[test]
+    fn psionic_train_supervisor_command_falls_back_to_cargo_release()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        write_minimal_psionic_train_runtime_layout(temp_dir.path())?;
+        let surface = inspect_psionic_train_runtime_surface_at(temp_dir.path())?;
+        let manifest_path = temp_dir.path().join("manifest.json");
+
+        let command =
+            psionic_train_supervisor_command_for_surface(manifest_path.as_path(), &surface);
+
+        ensure(
+            command.program == Path::new("cargo")
+                && command.launch_method == "cargo_run_release"
+                && command.args.contains(&"--release".to_string())
+                && command.args.contains(&"-p".to_string())
+                && command.args.contains(&"psionic-train".to_string()),
+            "when no current release binary exists, Pylon should build/run psionic-train through the release Cargo profile, not debug cargo run",
         )
     }
 
@@ -28777,8 +29007,10 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             active.process_state == PylonTrainingSupervisorProcessState::Failed
                 && active.last_exit_code == Some(7)
-                && active.last_failure_reason.as_deref()
-                    == Some("psionic-train exited with code 7"),
+                && active.last_failure_reason.as_deref().is_some_and(|reason| {
+                    reason.starts_with("psionic-train exited with code 7")
+                        && reason.contains("stderr tail: stderr: launch")
+                }),
             "failed training exits should preserve terminal state, exit code, and failure reason",
         )?;
         ensure(
@@ -28800,8 +29032,14 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             failure_receipt.schema_version == "openagents.pylon_training_failure_receipt.v1"
                 && failure_receipt.exit_code == Some(7)
-                && failure_receipt.failure_reason == "psionic-train exited with code 7",
-            "failed exits should persist a machine-readable failure receipt beside the attempt logs",
+                && failure_receipt
+                    .failure_reason
+                    .starts_with("psionic-train exited with code 7")
+                && failure_receipt
+                    .stderr_tail
+                    .as_deref()
+                    .is_some_and(|tail| tail.contains("stderr: launch")),
+            "failed exits should persist a machine-readable failure receipt with log tails beside the attempt logs",
         )
     }
 
@@ -41133,6 +41371,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 process_state: PylonTrainingSupervisorProcessState::Failed,
                 exit_code: Some(17),
                 failure_reason: "checkpoint_missing".to_string(),
+                stdout_tail: None,
+                stderr_tail: None,
                 recorded_at_ms: 1_762_491_299_000,
             })?,
         )?;
