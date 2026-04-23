@@ -834,8 +834,11 @@ receipt as the historical proof for the first npm release that settled
 accepted-work sats into the worker wallet.
 
 The current primary public-release proof is
-`docs/reports/nexus/20260423-080422-pylon-v0.1.11-prod-e2e.json`. It proves the
-published `pylon-v0.1.11` GitHub release asset and npm package, the
-TUI-era minimum version floor, the Nexus online-version histogram, the
-admin-triggered 25-sat CS336 homework run, treasury settlement, and the worker
-wallet balance increase.
+`docs/reports/nexus/20260423-084113-pylon-v0.1.11-post-health-prod-e2e.json`.
+It proves the published `pylon-v0.1.11` GitHub release asset and npm package,
+the TUI-era minimum version floor, the Nexus online-version histogram, the
+admin-triggered 25-sat CS336 homework run, treasury settlement, the worker
+wallet balance increase, and the post-health-fix Nexus stats state
+`payout_loop_health: idle` with no treasury degraded reason. The earlier
+`docs/reports/nexus/20260423-080422-pylon-v0.1.11-prod-e2e.json` receipt
+remains the first successful full `0.1.11` production earning proof.

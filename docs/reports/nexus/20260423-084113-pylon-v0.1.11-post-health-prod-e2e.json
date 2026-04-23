@@ -1,0 +1,1805 @@
+{
+  "generated_at": "2026-04-23T08:41:13Z",
+  "release": "pylon-v0.1.11",
+  "version": "0.1.11",
+  "deploy_commit": "adbb68cc72fa2764b4487bf2a523bcacc5a3d2f5",
+  "deployed_nexus_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:bee1c593b9ba",
+  "proof_root": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z",
+  "network_id": "trainnet.cs336.a1.pylon011-health.20260423T083621Z",
+  "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+  "npm_bootstrap": {
+    "worker": {
+      "version": "0.1.11",
+      "tagName": "pylon-v0.1.11",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "cached": false,
+      "installMethod": "release_asset",
+      "binaries": {
+        "pylon": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/worker/install/versions/pylon-v0.1.11-darwin-arm64/pylon",
+        "pylonTui": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/worker/install/versions/pylon-v0.1.11-darwin-arm64/pylon-tui"
+      },
+      "configPath": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/worker/pylon-home/config.json",
+      "pylonHome": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/worker/pylon-home",
+      "init": {
+        "config_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/worker/pylon-home/config.json",
+        "ledger_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/worker/pylon-home/ledger.json",
+        "identity_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/worker/pylon-home/identity.mnemonic",
+        "npub": "npub10wyljzv4xw85pggnh6rxve6m4n73clhzcag00ydkhu352me4ex0sa8kdtf",
+        "payout_destination": null,
+        "admin_listen_addr": "127.0.0.1:9468"
+      },
+      "status": {
+        "listen_addr": "127.0.0.1:9468",
+        "desired_mode": "offline",
+        "snapshot": {
+          "captured_at_ms": 1776933385597,
+          "config_metadata": [
+            {
+              "key": "node_label",
+              "value": "pylon"
+            },
+            {
+              "key": "payout_destination",
+              "value": null
+            },
+            {
+              "key": "local_gemma_base_url",
+              "value": "http://127.0.0.1:11434"
+            },
+            {
+              "key": "local_gemma_preferred_model",
+              "value": null
+            },
+            {
+              "key": "training_operator_status",
+              "value": {
+                "generated_at_ms": 1776933385598,
+                "node_label": "pylon",
+                "provider_pubkey": "7b89f90995338f40a113be8666675bacfd1c7ee2c750f791b6bf23456f35c99f",
+                "checkpoint_serve_url": "http://127.0.0.1:9570",
+                "runtime_surface_detected": true,
+                "psionic_repo_root": "/Users/christopherdavid/work/psionic",
+                "psionic_repo_source": "env_override",
+                "contributor_supported": true,
+                "capability_tier": {
+                  "tier": "tier3_island",
+                  "backend_families": [
+                    "cpu",
+                    "metal"
+                  ],
+                  "accelerator_inventory": [
+                    {
+                      "backend_family": "metal",
+                      "model": "Apple M5 Max",
+                      "vendor": "sppci_vendor_Apple",
+                      "accelerator_count": 1
+                    }
+                  ],
+                  "memory_floor_gb": 32,
+                  "available_memory_gb": 128,
+                  "throughput_band": "island",
+                  "lease_reliability": "steady",
+                  "replay_capability": "full_window",
+                  "artifact_upload_latency_class": "unknown"
+                },
+                "capability_envelope_v2": {
+                  "schema_version": "provider.training_capability_envelope.v2",
+                  "tier_profile": {
+                    "tier": "tier3_island",
+                    "backend_families": [
+                      "cpu",
+                      "metal"
+                    ],
+                    "accelerator_inventory": [
+                      {
+                        "backend_family": "metal",
+                        "model": "Apple M5 Max",
+                        "vendor": "sppci_vendor_Apple",
+                        "accelerator_count": 1
+                      }
+                    ],
+                    "memory_floor_gb": 32,
+                    "available_memory_gb": 128,
+                    "throughput_band": "island",
+                    "lease_reliability": "steady",
+                    "replay_capability": "full_window",
+                    "artifact_upload_latency_class": "unknown"
+                  },
+                  "runtime_surface_detected": true,
+                  "contributor_supported": true,
+                  "benchmark_lane_available": true,
+                  "eligible_work_classes": [
+                    {
+                      "work_class": "validation_replay",
+                      "minimum_tier": "tier1_validation",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "short_window",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "evaluation",
+                      "minimum_tier": "tier1_validation",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "short_window",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "adapter_training",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "small_model_local_training",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": false
+                    },
+                    {
+                      "work_class": "grouped_replica_stage_execution",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "grouped_replica"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "full_island_local_update_training",
+                      "minimum_tier": "tier3_island",
+                      "replica_types": [
+                        "island"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "island",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    }
+                  ],
+                  "eligible_replica_types": [
+                    {
+                      "replica_type": "single_node",
+                      "minimum_tier": "tier1_validation",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ]
+                    },
+                    {
+                      "replica_type": "grouped_replica",
+                      "minimum_tier": "tier2_trainer",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32
+                    },
+                    {
+                      "replica_type": "island",
+                      "minimum_tier": "tier3_island",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32
+                    }
+                  ]
+                },
+                "manifest_count": 0,
+                "publication_pointer_count": 0,
+                "publication_record_count": 0,
+                "pending_publication_count": 0,
+                "contribution_outcome_count": 0,
+                "closeout_count": 0,
+                "blocked_label_keys": []
+              }
+            }
+          ],
+          "identity": {
+            "npub": "npub10wyljzv4xw85pggnh6rxve6m4n73clhzcag00ydkhu352me4ex0sa8kdtf",
+            "public_key_hex": "7b89f90995338f40a113be8666675bacfd1c7ee2c750f791b6bf23456f35c99f",
+            "display_name": "Pylon",
+            "node_label": "pylon"
+          },
+          "runtime": {
+            "mode": "offline",
+            "last_action": "pylon is ready with 2 sellable launch products",
+            "last_error": null,
+            "degraded_reason_code": null,
+            "authoritative_status": "ready",
+            "authoritative_error_class": null,
+            "queue_depth": 0,
+            "online_uptime_seconds": 0,
+            "inventory_session_started_at_ms": null,
+            "last_completed_job_at_epoch_ms": null,
+            "last_authoritative_event_id": null,
+            "execution_backend_label": "local Gemma runtime",
+            "provider_blocker_codes": []
+          },
+          "availability": {
+            "local_gemma": {
+              "reachable": true,
+              "ready": true,
+              "configured_model": "gemma4-e4b-local:latest",
+              "ready_model": "gemma4-e4b-local:latest",
+              "available_models": [
+                "gemma4-e4b-local:latest"
+              ],
+              "last_error": null,
+              "last_action": "health check ready",
+              "availability_message": "gemma_ready",
+              "latency_ms_p50": null
+            },
+            "adapter_training_contributor": {
+              "contributor_supported": true,
+              "coordinator_match_supported": true,
+              "authority_receipt_supported": true,
+              "execution_backends": [
+                "open_adapter_backend"
+              ],
+              "adapter_families": [
+                "openagents.adapter.reference"
+              ],
+              "adapter_formats": [
+                "openagents.adapter.delta.v1"
+              ],
+              "validator_policy_refs": [
+                "policy://validator/mvp/v1"
+              ],
+              "checkpoint_families": [
+                "decoder"
+              ],
+              "environment_refs": [
+                "psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1",
+                "psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1"
+              ],
+              "minimum_memory_gb": 32,
+              "available_memory_gb": 128,
+              "settlement_trigger": "accepted_sealed_window"
+            },
+            "sandbox": {
+              "runtimes": [
+                {
+                  "runtime_kind": "container",
+                  "detected": false,
+                  "ready": false,
+                  "binary_name": null,
+                  "binary_path": null,
+                  "runtime_version": null,
+                  "supported_execution_classes": [
+                    "container_exec"
+                  ],
+                  "last_error": "container runtime not detected on PATH"
+                },
+                {
+                  "runtime_kind": "python",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "python3",
+                  "binary_path": "/usr/bin/python3",
+                  "runtime_version": "Python 3.9.6",
+                  "supported_execution_classes": [
+                    "python_exec"
+                  ],
+                  "last_error": null
+                },
+                {
+                  "runtime_kind": "node",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "node",
+                  "binary_path": "/Users/christopherdavid/.nvm/versions/node/v25.8.2/bin/node",
+                  "runtime_version": "v25.8.2",
+                  "supported_execution_classes": [
+                    "node_exec"
+                  ],
+                  "last_error": null
+                },
+                {
+                  "runtime_kind": "posix",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "bash",
+                  "binary_path": "/bin/bash",
+                  "runtime_version": null,
+                  "supported_execution_classes": [
+                    "posix_exec"
+                  ],
+                  "last_error": null
+                }
+              ],
+              "profiles": [],
+              "last_scan_error": null
+            }
+          },
+          "inventory_rows": [
+            {
+              "target": "psionic.local.inference.gemma.single_node",
+              "enabled": true,
+              "backend_ready": true,
+              "eligible": true,
+              "capability_summary": "backend=local_gemma execution=local_inference family=inference model=gemma4-e4b-local:latest configured_model=gemma4-e4b-local:latest latency_ms_p50=n/a",
+              "market_receipt_class": "accepted_delivery",
+              "earnings_summary": "Earns when local delivery is accepted and wallet settlement is confirmed.",
+              "source_badge": "pylon.local_preview",
+              "capacity_lot_id": null,
+              "total_quantity": 0,
+              "reserved_quantity": 0,
+              "available_quantity": 0,
+              "delivery_state": "offline",
+              "price_floor_sats": 21,
+              "terms_label": "spot session / local best effort",
+              "forward_capacity_lot_id": null,
+              "forward_delivery_window_label": null,
+              "forward_total_quantity": 0,
+              "forward_reserved_quantity": 0,
+              "forward_available_quantity": 0,
+              "forward_terms_label": "forward physical / committed local window"
+            },
+            {
+              "target": "psionic.cluster.training.adapter_contributor.cluster_attached",
+              "enabled": true,
+              "backend_ready": true,
+              "eligible": true,
+              "capability_summary": "backend=psionic_train execution=training family=adapter_training_contributor contributor_supported=true coordinator_match_supported=true authority_receipt_supported=true execution_backends=open_adapter_backend adapter_families=openagents.adapter.reference adapter_formats=openagents.adapter.delta.v1 validator_policy_refs=policy://validator/mvp/v1 available_memory_gb=128 minimum_memory_gb=32 settlement_trigger=accepted_sealed_window",
+              "market_receipt_class": "accepted_window_or_sealed_contribution",
+              "earnings_summary": "Training contributions settle on accepted windows, not immediate inference receipts.",
+              "source_badge": "pylon.local_preview",
+              "capacity_lot_id": null,
+              "total_quantity": 0,
+              "reserved_quantity": 0,
+              "available_quantity": 0,
+              "delivery_state": "offline",
+              "price_floor_sats": 89,
+              "terms_label": "window assignment / accepted contribution or accepted sealed window",
+              "forward_capacity_lot_id": null,
+              "forward_delivery_window_label": null,
+              "forward_total_quantity": 0,
+              "forward_reserved_quantity": 0,
+              "forward_available_quantity": 0,
+              "forward_terms_label": "forward physical / contributor window with authority receipts"
+            }
+          ],
+          "recent_jobs": [],
+          "receipts": [],
+          "payouts": [],
+          "health_events": [],
+          "earnings": {
+            "sats_today": 0,
+            "lifetime_sats": 0,
+            "jobs_today": 0,
+            "online_uptime_seconds": 0,
+            "last_job_result": "none",
+            "first_job_latency_seconds": null,
+            "completion_ratio_bps": null,
+            "payout_success_ratio_bps": null,
+            "avg_wallet_confirmation_latency_seconds": null
+          }
+        }
+      },
+      "inventory": {
+        "context": {
+          "state": "ready",
+          "desired_mode": "offline",
+          "listen_addr": "127.0.0.1:9468"
+        },
+        "rows": [
+          {
+            "target": "psionic.local.inference.gemma.single_node",
+            "enabled": true,
+            "backend_ready": true,
+            "eligible": true,
+            "capability_summary": "backend=local_gemma execution=local_inference family=inference model=gemma4-e4b-local:latest configured_model=gemma4-e4b-local:latest latency_ms_p50=n/a",
+            "market_receipt_class": "accepted_delivery",
+            "earnings_summary": "Earns when local delivery is accepted and wallet settlement is confirmed.",
+            "source_badge": "pylon.local_preview",
+            "capacity_lot_id": null,
+            "total_quantity": 0,
+            "reserved_quantity": 0,
+            "available_quantity": 0,
+            "delivery_state": "offline",
+            "price_floor_sats": 21,
+            "terms_label": "spot session / local best effort",
+            "forward_capacity_lot_id": null,
+            "forward_delivery_window_label": null,
+            "forward_total_quantity": 0,
+            "forward_reserved_quantity": 0,
+            "forward_available_quantity": 0,
+            "forward_terms_label": "forward physical / committed local window"
+          },
+          {
+            "target": "psionic.cluster.training.adapter_contributor.cluster_attached",
+            "enabled": true,
+            "backend_ready": true,
+            "eligible": true,
+            "capability_summary": "backend=psionic_train execution=training family=adapter_training_contributor contributor_supported=true coordinator_match_supported=true authority_receipt_supported=true execution_backends=open_adapter_backend adapter_families=openagents.adapter.reference adapter_formats=openagents.adapter.delta.v1 validator_policy_refs=policy://validator/mvp/v1 available_memory_gb=128 minimum_memory_gb=32 settlement_trigger=accepted_sealed_window",
+            "market_receipt_class": "accepted_window_or_sealed_contribution",
+            "earnings_summary": "Training contributions settle on accepted windows, not immediate inference receipts.",
+            "source_badge": "pylon.local_preview",
+            "capacity_lot_id": null,
+            "total_quantity": 0,
+            "reserved_quantity": 0,
+            "available_quantity": 0,
+            "delivery_state": "offline",
+            "price_floor_sats": 89,
+            "terms_label": "window assignment / accepted contribution or accepted sealed window",
+            "forward_capacity_lot_id": null,
+            "forward_delivery_window_label": null,
+            "forward_total_quantity": 0,
+            "forward_reserved_quantity": 0,
+            "forward_available_quantity": 0,
+            "forward_terms_label": "forward physical / contributor window with authority receipts"
+          }
+        ]
+      },
+      "model": "gemma-4-e4b",
+      "download": null,
+      "diagnostic": null,
+      "diagnosticResult": null
+    },
+    "validator": {
+      "version": "0.1.11",
+      "tagName": "pylon-v0.1.11",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "cached": false,
+      "installMethod": "release_asset",
+      "binaries": {
+        "pylon": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/validator/install/versions/pylon-v0.1.11-darwin-arm64/pylon",
+        "pylonTui": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/validator/install/versions/pylon-v0.1.11-darwin-arm64/pylon-tui"
+      },
+      "configPath": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/validator/pylon-home/config.json",
+      "pylonHome": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/validator/pylon-home",
+      "init": {
+        "config_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/validator/pylon-home/config.json",
+        "ledger_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/validator/pylon-home/ledger.json",
+        "identity_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/validator/pylon-home/identity.mnemonic",
+        "npub": "npub1g6l97sgffyjs4sdn0kwkrzv5zekjkvna84sarz8puhj6pmj06pas8yzpdt",
+        "payout_destination": null,
+        "admin_listen_addr": "127.0.0.1:9468"
+      },
+      "status": {
+        "listen_addr": "127.0.0.1:9468",
+        "desired_mode": "offline",
+        "snapshot": {
+          "captured_at_ms": 1776933534700,
+          "config_metadata": [
+            {
+              "key": "node_label",
+              "value": "pylon"
+            },
+            {
+              "key": "payout_destination",
+              "value": null
+            },
+            {
+              "key": "local_gemma_base_url",
+              "value": "http://127.0.0.1:11434"
+            },
+            {
+              "key": "local_gemma_preferred_model",
+              "value": null
+            },
+            {
+              "key": "training_operator_status",
+              "value": {
+                "generated_at_ms": 1776933534701,
+                "node_label": "pylon",
+                "provider_pubkey": "46be5f410949250ac1b37d9d618994166d2b327d3d61d188e1e5e5a0ee4fd07b",
+                "checkpoint_serve_url": "http://127.0.0.1:9570",
+                "runtime_surface_detected": true,
+                "psionic_repo_root": "/Users/christopherdavid/work/psionic",
+                "psionic_repo_source": "env_override",
+                "contributor_supported": true,
+                "capability_tier": {
+                  "tier": "tier3_island",
+                  "backend_families": [
+                    "cpu",
+                    "metal"
+                  ],
+                  "accelerator_inventory": [
+                    {
+                      "backend_family": "metal",
+                      "model": "Apple M5 Max",
+                      "vendor": "sppci_vendor_Apple",
+                      "accelerator_count": 1
+                    }
+                  ],
+                  "memory_floor_gb": 32,
+                  "available_memory_gb": 128,
+                  "throughput_band": "island",
+                  "lease_reliability": "steady",
+                  "replay_capability": "full_window",
+                  "artifact_upload_latency_class": "unknown"
+                },
+                "capability_envelope_v2": {
+                  "schema_version": "provider.training_capability_envelope.v2",
+                  "tier_profile": {
+                    "tier": "tier3_island",
+                    "backend_families": [
+                      "cpu",
+                      "metal"
+                    ],
+                    "accelerator_inventory": [
+                      {
+                        "backend_family": "metal",
+                        "model": "Apple M5 Max",
+                        "vendor": "sppci_vendor_Apple",
+                        "accelerator_count": 1
+                      }
+                    ],
+                    "memory_floor_gb": 32,
+                    "available_memory_gb": 128,
+                    "throughput_band": "island",
+                    "lease_reliability": "steady",
+                    "replay_capability": "full_window",
+                    "artifact_upload_latency_class": "unknown"
+                  },
+                  "runtime_surface_detected": true,
+                  "contributor_supported": true,
+                  "benchmark_lane_available": true,
+                  "eligible_work_classes": [
+                    {
+                      "work_class": "validation_replay",
+                      "minimum_tier": "tier1_validation",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "short_window",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "evaluation",
+                      "minimum_tier": "tier1_validation",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "short_window",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "adapter_training",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "small_model_local_training",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": false
+                    },
+                    {
+                      "work_class": "grouped_replica_stage_execution",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "grouped_replica"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "full_island_local_update_training",
+                      "minimum_tier": "tier3_island",
+                      "replica_types": [
+                        "island"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "island",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    }
+                  ],
+                  "eligible_replica_types": [
+                    {
+                      "replica_type": "single_node",
+                      "minimum_tier": "tier1_validation",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ]
+                    },
+                    {
+                      "replica_type": "grouped_replica",
+                      "minimum_tier": "tier2_trainer",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32
+                    },
+                    {
+                      "replica_type": "island",
+                      "minimum_tier": "tier3_island",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32
+                    }
+                  ]
+                },
+                "manifest_count": 0,
+                "publication_pointer_count": 0,
+                "publication_record_count": 0,
+                "pending_publication_count": 0,
+                "contribution_outcome_count": 0,
+                "closeout_count": 0,
+                "blocked_label_keys": []
+              }
+            }
+          ],
+          "identity": {
+            "npub": "npub1g6l97sgffyjs4sdn0kwkrzv5zekjkvna84sarz8puhj6pmj06pas8yzpdt",
+            "public_key_hex": "46be5f410949250ac1b37d9d618994166d2b327d3d61d188e1e5e5a0ee4fd07b",
+            "display_name": "Pylon",
+            "node_label": "pylon"
+          },
+          "runtime": {
+            "mode": "offline",
+            "last_action": "pylon is ready with 2 sellable launch products",
+            "last_error": null,
+            "degraded_reason_code": null,
+            "authoritative_status": "ready",
+            "authoritative_error_class": null,
+            "queue_depth": 0,
+            "online_uptime_seconds": 0,
+            "inventory_session_started_at_ms": null,
+            "last_completed_job_at_epoch_ms": null,
+            "last_authoritative_event_id": null,
+            "execution_backend_label": "local Gemma runtime",
+            "provider_blocker_codes": []
+          },
+          "availability": {
+            "local_gemma": {
+              "reachable": true,
+              "ready": true,
+              "configured_model": "gemma4-e4b-local:latest",
+              "ready_model": "gemma4-e4b-local:latest",
+              "available_models": [
+                "gemma4-e4b-local:latest"
+              ],
+              "last_error": null,
+              "last_action": "health check ready",
+              "availability_message": "gemma_ready",
+              "latency_ms_p50": null
+            },
+            "adapter_training_contributor": {
+              "contributor_supported": true,
+              "coordinator_match_supported": true,
+              "authority_receipt_supported": true,
+              "execution_backends": [
+                "open_adapter_backend"
+              ],
+              "adapter_families": [
+                "openagents.adapter.reference"
+              ],
+              "adapter_formats": [
+                "openagents.adapter.delta.v1"
+              ],
+              "validator_policy_refs": [
+                "policy://validator/mvp/v1"
+              ],
+              "checkpoint_families": [
+                "decoder"
+              ],
+              "environment_refs": [
+                "psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1",
+                "psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1"
+              ],
+              "minimum_memory_gb": 32,
+              "available_memory_gb": 128,
+              "settlement_trigger": "accepted_sealed_window"
+            },
+            "sandbox": {
+              "runtimes": [
+                {
+                  "runtime_kind": "container",
+                  "detected": false,
+                  "ready": false,
+                  "binary_name": null,
+                  "binary_path": null,
+                  "runtime_version": null,
+                  "supported_execution_classes": [
+                    "container_exec"
+                  ],
+                  "last_error": "container runtime not detected on PATH"
+                },
+                {
+                  "runtime_kind": "python",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "python3",
+                  "binary_path": "/usr/bin/python3",
+                  "runtime_version": "Python 3.9.6",
+                  "supported_execution_classes": [
+                    "python_exec"
+                  ],
+                  "last_error": null
+                },
+                {
+                  "runtime_kind": "node",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "node",
+                  "binary_path": "/Users/christopherdavid/.nvm/versions/node/v25.8.2/bin/node",
+                  "runtime_version": "v25.8.2",
+                  "supported_execution_classes": [
+                    "node_exec"
+                  ],
+                  "last_error": null
+                },
+                {
+                  "runtime_kind": "posix",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "bash",
+                  "binary_path": "/bin/bash",
+                  "runtime_version": null,
+                  "supported_execution_classes": [
+                    "posix_exec"
+                  ],
+                  "last_error": null
+                }
+              ],
+              "profiles": [],
+              "last_scan_error": null
+            }
+          },
+          "inventory_rows": [
+            {
+              "target": "psionic.local.inference.gemma.single_node",
+              "enabled": true,
+              "backend_ready": true,
+              "eligible": true,
+              "capability_summary": "backend=local_gemma execution=local_inference family=inference model=gemma4-e4b-local:latest configured_model=gemma4-e4b-local:latest latency_ms_p50=n/a",
+              "market_receipt_class": "accepted_delivery",
+              "earnings_summary": "Earns when local delivery is accepted and wallet settlement is confirmed.",
+              "source_badge": "pylon.local_preview",
+              "capacity_lot_id": null,
+              "total_quantity": 0,
+              "reserved_quantity": 0,
+              "available_quantity": 0,
+              "delivery_state": "offline",
+              "price_floor_sats": 21,
+              "terms_label": "spot session / local best effort",
+              "forward_capacity_lot_id": null,
+              "forward_delivery_window_label": null,
+              "forward_total_quantity": 0,
+              "forward_reserved_quantity": 0,
+              "forward_available_quantity": 0,
+              "forward_terms_label": "forward physical / committed local window"
+            },
+            {
+              "target": "psionic.cluster.training.adapter_contributor.cluster_attached",
+              "enabled": true,
+              "backend_ready": true,
+              "eligible": true,
+              "capability_summary": "backend=psionic_train execution=training family=adapter_training_contributor contributor_supported=true coordinator_match_supported=true authority_receipt_supported=true execution_backends=open_adapter_backend adapter_families=openagents.adapter.reference adapter_formats=openagents.adapter.delta.v1 validator_policy_refs=policy://validator/mvp/v1 available_memory_gb=128 minimum_memory_gb=32 settlement_trigger=accepted_sealed_window",
+              "market_receipt_class": "accepted_window_or_sealed_contribution",
+              "earnings_summary": "Training contributions settle on accepted windows, not immediate inference receipts.",
+              "source_badge": "pylon.local_preview",
+              "capacity_lot_id": null,
+              "total_quantity": 0,
+              "reserved_quantity": 0,
+              "available_quantity": 0,
+              "delivery_state": "offline",
+              "price_floor_sats": 89,
+              "terms_label": "window assignment / accepted contribution or accepted sealed window",
+              "forward_capacity_lot_id": null,
+              "forward_delivery_window_label": null,
+              "forward_total_quantity": 0,
+              "forward_reserved_quantity": 0,
+              "forward_available_quantity": 0,
+              "forward_terms_label": "forward physical / contributor window with authority receipts"
+            }
+          ],
+          "recent_jobs": [],
+          "receipts": [],
+          "payouts": [],
+          "health_events": [],
+          "earnings": {
+            "sats_today": 0,
+            "lifetime_sats": 0,
+            "jobs_today": 0,
+            "online_uptime_seconds": 0,
+            "last_job_result": "none",
+            "first_job_latency_seconds": null,
+            "completion_ratio_bps": null,
+            "payout_success_ratio_bps": null,
+            "avg_wallet_confirmation_latency_seconds": null
+          }
+        }
+      },
+      "inventory": {
+        "context": {
+          "state": "ready",
+          "desired_mode": "offline",
+          "listen_addr": "127.0.0.1:9468"
+        },
+        "rows": [
+          {
+            "target": "psionic.local.inference.gemma.single_node",
+            "enabled": true,
+            "backend_ready": true,
+            "eligible": true,
+            "capability_summary": "backend=local_gemma execution=local_inference family=inference model=gemma4-e4b-local:latest configured_model=gemma4-e4b-local:latest latency_ms_p50=n/a",
+            "market_receipt_class": "accepted_delivery",
+            "earnings_summary": "Earns when local delivery is accepted and wallet settlement is confirmed.",
+            "source_badge": "pylon.local_preview",
+            "capacity_lot_id": null,
+            "total_quantity": 0,
+            "reserved_quantity": 0,
+            "available_quantity": 0,
+            "delivery_state": "offline",
+            "price_floor_sats": 21,
+            "terms_label": "spot session / local best effort",
+            "forward_capacity_lot_id": null,
+            "forward_delivery_window_label": null,
+            "forward_total_quantity": 0,
+            "forward_reserved_quantity": 0,
+            "forward_available_quantity": 0,
+            "forward_terms_label": "forward physical / committed local window"
+          },
+          {
+            "target": "psionic.cluster.training.adapter_contributor.cluster_attached",
+            "enabled": true,
+            "backend_ready": true,
+            "eligible": true,
+            "capability_summary": "backend=psionic_train execution=training family=adapter_training_contributor contributor_supported=true coordinator_match_supported=true authority_receipt_supported=true execution_backends=open_adapter_backend adapter_families=openagents.adapter.reference adapter_formats=openagents.adapter.delta.v1 validator_policy_refs=policy://validator/mvp/v1 available_memory_gb=128 minimum_memory_gb=32 settlement_trigger=accepted_sealed_window",
+            "market_receipt_class": "accepted_window_or_sealed_contribution",
+            "earnings_summary": "Training contributions settle on accepted windows, not immediate inference receipts.",
+            "source_badge": "pylon.local_preview",
+            "capacity_lot_id": null,
+            "total_quantity": 0,
+            "reserved_quantity": 0,
+            "available_quantity": 0,
+            "delivery_state": "offline",
+            "price_floor_sats": 89,
+            "terms_label": "window assignment / accepted contribution or accepted sealed window",
+            "forward_capacity_lot_id": null,
+            "forward_delivery_window_label": null,
+            "forward_total_quantity": 0,
+            "forward_reserved_quantity": 0,
+            "forward_available_quantity": 0,
+            "forward_terms_label": "forward physical / contributor window with authority receipts"
+          }
+        ]
+      },
+      "model": "gemma-4-e4b",
+      "download": null,
+      "diagnostic": null,
+      "diagnosticResult": null
+    }
+  },
+  "worker": {
+    "status_before_dispatch": {
+      "generated_at_ms": 1776933388625,
+      "node_label": "pylon",
+      "provider_pubkey": "7b89f90995338f40a113be8666675bacfd1c7ee2c750f791b6bf23456f35c99f",
+      "checkpoint_serve_url": "http://127.0.0.1:55665",
+      "runtime_surface_detected": true,
+      "psionic_repo_root": "/Users/christopherdavid/work/psionic",
+      "psionic_repo_source": "env_override",
+      "contributor_supported": true,
+      "capability_tier": {
+        "tier": "tier3_island",
+        "backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "accelerator_inventory": [
+          {
+            "backend_family": "metal",
+            "model": "Apple M5 Max",
+            "vendor": "sppci_vendor_Apple",
+            "accelerator_count": 1
+          }
+        ],
+        "memory_floor_gb": 32,
+        "available_memory_gb": 128,
+        "throughput_band": "island",
+        "lease_reliability": "steady",
+        "replay_capability": "short_window",
+        "artifact_upload_latency_class": "unknown"
+      },
+      "capability_envelope_v2": {
+        "schema_version": "provider.training_capability_envelope.v2",
+        "tier_profile": {
+          "tier": "tier3_island",
+          "backend_families": [
+            "cpu",
+            "metal"
+          ],
+          "accelerator_inventory": [
+            {
+              "backend_family": "metal",
+              "model": "Apple M5 Max",
+              "vendor": "sppci_vendor_Apple",
+              "accelerator_count": 1
+            }
+          ],
+          "memory_floor_gb": 32,
+          "available_memory_gb": 128,
+          "throughput_band": "island",
+          "lease_reliability": "steady",
+          "replay_capability": "short_window",
+          "artifact_upload_latency_class": "unknown"
+        },
+        "runtime_surface_detected": true,
+        "contributor_supported": true,
+        "benchmark_lane_available": true,
+        "eligible_work_classes": [
+          {
+            "work_class": "validation_replay",
+            "minimum_tier": "tier1_validation",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "short_window",
+            "benchmark_lane_required": true
+          },
+          {
+            "work_class": "evaluation",
+            "minimum_tier": "tier1_validation",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "short_window",
+            "benchmark_lane_required": true
+          },
+          {
+            "work_class": "adapter_training",
+            "minimum_tier": "tier2_trainer",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32,
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "none",
+            "benchmark_lane_required": true
+          },
+          {
+            "work_class": "small_model_local_training",
+            "minimum_tier": "tier2_trainer",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32,
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "none",
+            "benchmark_lane_required": false
+          },
+          {
+            "work_class": "grouped_replica_stage_execution",
+            "minimum_tier": "tier2_trainer",
+            "replica_types": [
+              "grouped_replica"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32,
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "none",
+            "benchmark_lane_required": true
+          },
+          {
+            "work_class": "full_island_local_update_training",
+            "minimum_tier": "tier3_island",
+            "replica_types": [
+              "island"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32,
+            "required_throughput_band": "island",
+            "required_replay_capability": "none",
+            "benchmark_lane_required": true
+          }
+        ],
+        "eligible_replica_types": [
+          {
+            "replica_type": "single_node",
+            "minimum_tier": "tier1_validation",
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ]
+          },
+          {
+            "replica_type": "grouped_replica",
+            "minimum_tier": "tier2_trainer",
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32
+          },
+          {
+            "replica_type": "island",
+            "minimum_tier": "tier3_island",
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32
+          }
+        ]
+      },
+      "manifest_count": 0,
+      "publication_pointer_count": 0,
+      "publication_record_count": 0,
+      "pending_publication_count": 0,
+      "contribution_outcome_count": 0,
+      "closeout_count": 0,
+      "blocked_label_keys": []
+    }
+  },
+  "validator": {
+    "status_ready": {
+      "generated_at_ms": 1776933537726,
+      "node_label": "pylon",
+      "provider_pubkey": "46be5f410949250ac1b37d9d618994166d2b327d3d61d188e1e5e5a0ee4fd07b",
+      "checkpoint_serve_url": "http://127.0.0.1:56155",
+      "runtime_surface_detected": true,
+      "psionic_repo_root": "/Users/christopherdavid/work/psionic",
+      "psionic_repo_source": "env_override",
+      "contributor_supported": true,
+      "capability_tier": {
+        "tier": "tier1_validation",
+        "backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "accelerator_inventory": [
+          {
+            "backend_family": "metal",
+            "model": "Apple M5 Max",
+            "vendor": "sppci_vendor_Apple",
+            "accelerator_count": 1
+          }
+        ],
+        "memory_floor_gb": 32,
+        "available_memory_gb": 128,
+        "throughput_band": "island",
+        "lease_reliability": "steady",
+        "replay_capability": "full_window",
+        "artifact_upload_latency_class": "unknown"
+      },
+      "capability_envelope_v2": {
+        "schema_version": "provider.training_capability_envelope.v2",
+        "tier_profile": {
+          "tier": "tier1_validation",
+          "backend_families": [
+            "cpu",
+            "metal"
+          ],
+          "accelerator_inventory": [
+            {
+              "backend_family": "metal",
+              "model": "Apple M5 Max",
+              "vendor": "sppci_vendor_Apple",
+              "accelerator_count": 1
+            }
+          ],
+          "memory_floor_gb": 32,
+          "available_memory_gb": 128,
+          "throughput_band": "island",
+          "lease_reliability": "steady",
+          "replay_capability": "full_window",
+          "artifact_upload_latency_class": "unknown"
+        },
+        "runtime_surface_detected": true,
+        "contributor_supported": true,
+        "benchmark_lane_available": true,
+        "eligible_work_classes": [
+          {
+            "work_class": "validation_replay",
+            "minimum_tier": "tier1_validation",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "short_window",
+            "benchmark_lane_required": true
+          },
+          {
+            "work_class": "evaluation",
+            "minimum_tier": "tier1_validation",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "short_window",
+            "benchmark_lane_required": true
+          }
+        ],
+        "eligible_replica_types": [
+          {
+            "replica_type": "single_node",
+            "minimum_tier": "tier1_validation",
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ]
+          }
+        ]
+      },
+      "manifest_count": 0,
+      "publication_pointer_count": 0,
+      "publication_record_count": 0,
+      "pending_publication_count": 0,
+      "contribution_outcome_count": 0,
+      "closeout_count": 0,
+      "blocked_label_keys": []
+    }
+  },
+  "dispatch": {
+    "dispatched_at_unix_ms": 1776933405950,
+    "batch_id": "dispatch.cs336.a1.20260423083645.9a472e7c",
+    "requested_run_count": 1,
+    "launched_run_count": 1,
+    "failed_run_count": 0,
+    "max_contributors_per_run": 1,
+    "amount_sats": 25,
+    "max_payout_sats": 25,
+    "duplicate_work_allowed": true,
+    "launches": [
+      {
+        "launched_at_unix_ms": 1776933405950,
+        "launch_state": "created",
+        "launch_phase": "leaseable",
+        "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+        "run_status": "running",
+        "current_window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+        "matched_pylons": [
+          {
+            "node_pubkey_hex": "7b89f90995338f40a113be8666675bacfd1c7ee2c750f791b6bf23456f35c99f",
+            "node_label": "pylon",
+            "release_id": "openagents.pylon@0.1.11",
+            "build_version": "0.1.11",
+            "build_digest": "sha256:bdacf54f7cfe0ea7af0fe03bfd8be174ba74cdc22e77af19c9303dd49ffb2695",
+            "online": true,
+            "eligible": true,
+            "settlement_destination": "spark1pgss8uzm6qw6vu7jh56l8kwtfvh360cj6kkqj3n5hzu2s2ufrtah2uxhz4sw2s"
+          }
+        ],
+        "assigned_pylons": [
+          {
+            "node_pubkey_hex": "7b89f90995338f40a113be8666675bacfd1c7ee2c750f791b6bf23456f35c99f",
+            "node_label": "pylon",
+            "release_id": "openagents.pylon@0.1.11",
+            "build_version": "0.1.11",
+            "build_digest": "sha256:bdacf54f7cfe0ea7af0fe03bfd8be174ba74cdc22e77af19c9303dd49ffb2695",
+            "online": true,
+            "eligible": true,
+            "settlement_destination": "spark1pgss8uzm6qw6vu7jh56l8kwtfvh360cj6kkqj3n5hzu2s2ufrtah2uxhz4sw2s",
+            "assignment_id": "assign.run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001.worker.1.attempt1",
+            "lease_id": "lease.run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001.worker.1.attempt1.rev1",
+            "assignment_state": "leased"
+          }
+        ],
+        "artifact_prefix": "gs://openagentsgemini-openagents-training-prod/networks/trainnet.cs336.a1.pylon011-health.20260423T083621Z/runs/run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+        "launch_receipt_id": "receipt.kernel.compute.training_run.create:sha256:df49cc78d7c1b00f5924e16bae80a4428ba9127d3ccd7865a37a9d38fcf17709",
+        "run_detail": {
+          "generated_at_unix_ms": 1776933407972,
+          "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+          "run": {
+            "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+            "display_name": "CS336 A1 Homework Dispatch 20260423083645 #0001",
+            "network_id": "trainnet.cs336.a1.pylon011-health.20260423T083621Z",
+            "run_status": "running",
+            "scheduler_window_state": "active",
+            "current_window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+            "work_class": "small_model_local_training",
+            "progress_class": "model_update",
+            "replica_type": "single_node",
+            "assigned_contributors": 1,
+            "weak_device_assigned_contributors": 1,
+            "accepted_contributors": 0,
+            "weak_device_accepted_contributors": 0,
+            "model_progress_contributors": 0,
+            "active_window_count": 1,
+            "pending_validation_window_count": 0,
+            "validator_challenges_open": 0,
+            "validator_challenges_queued": 0,
+            "latest_checkpoint_ref": "checkpoint://decoder/base",
+            "latest_checkpoint_age_ms": 2022,
+            "latest_window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+            "latest_window_status": "active"
+          },
+          "featured_window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+          "featured_window": {
+            "window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+            "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+            "network_id": "trainnet.cs336.a1.pylon011-health.20260423T083621Z",
+            "status": "active",
+            "stage_id": "stage.cs336.a1.homework_dispatch",
+            "work_class": "small_model_local_training",
+            "progress_class": "model_update",
+            "replica_type": "single_node",
+            "round_index": 1,
+            "base_checkpoint_ref": "checkpoint://decoder/base",
+            "planned_local_step_count": 64,
+            "total_contributions": 0,
+            "admitted_contributions": 0,
+            "accepted_contributions": 0,
+            "replay_required_contributions": 0,
+            "validator_challenges_open": 0,
+            "validator_challenges_queued": 0,
+            "payout_eligible": false,
+            "weak_device_bearing": false,
+            "lineage_advanced": false,
+            "planned_at_ms": 1776933406756,
+            "activated_at_ms": 1776933406756
+          },
+          "queue_pressure": {
+            "state": "pending_validation",
+            "active_windows": 57,
+            "pending_validation_windows": 34,
+            "validator_challenges_open": 57,
+            "validator_challenges_queued": 33
+          },
+          "launch_health": {
+            "generated_at_unix_ms": 1776933407972,
+            "overall_status": "warn",
+            "public_snapshot_source": "live",
+            "public_stats_age_ms": 0,
+            "public_state_drift_from_kernel_ms": 0,
+            "active_runs": 113,
+            "run_backlog_slots": 30,
+            "pending_validation_windows": 34,
+            "validator_challenges_open": 57,
+            "validator_challenges_queued": 33,
+            "accepted_work_pending_payout_count": 0,
+            "accepted_work_attention_payout_count": 0,
+            "payouts_failed_24h": 0,
+            "payouts_skipped_24h": 0,
+            "resolver_lookup_latency_p95_ms": 0,
+            "resolver_lookup_sample_count": 64,
+            "signed_access_latency_p95_ms": 25,
+            "signed_access_sample_count": 64,
+            "active_alert_count": 2,
+            "critical_alert_count": 0,
+            "alerts": [
+              {
+                "alert_id": "run_backlog",
+                "severity": "warning",
+                "title": "Run backlog",
+                "detail": "30 worker slots remain unfilled across 113 active run(s)."
+              },
+              {
+                "alert_id": "validator_backlog",
+                "severity": "warning",
+                "title": "Validator backlog",
+                "detail": "34 pending window(s) // 57 open challenge(s) // 33 queued challenge(s)."
+              }
+            ]
+          },
+          "treasury": {
+            "payout_loop_health": "idle",
+            "wallet_runtime_status": "connected",
+            "wallet_last_error": "sync_wallet_timeout:20000; using cached balance and bounded payment scan"
+          },
+          "launch": {
+            "launch_id": "launch.run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+            "phase": "leaseable",
+            "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+            "current_window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+            "requested_at_ms": 1776933405950,
+            "updated_at_ms": 1776933406756,
+            "launch_receipt_id": "receipt.kernel.compute.training_run.create:sha256:df49cc78d7c1b00f5924e16bae80a4428ba9127d3ccd7865a37a9d38fcf17709",
+            "bootstrap_uploaded_at_ms": 1776933406756,
+            "bootstrap_verified_at_ms": 1776933406756,
+            "scheduler_materialized_at_ms": 1776933406756,
+            "leaseable_at_ms": 1776933406756
+          },
+          "windows": [
+            {
+              "window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+              "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+              "network_id": "trainnet.cs336.a1.pylon011-health.20260423T083621Z",
+              "status": "active",
+              "stage_id": "stage.cs336.a1.homework_dispatch",
+              "work_class": "small_model_local_training",
+              "progress_class": "model_update",
+              "replica_type": "single_node",
+              "round_index": 1,
+              "base_checkpoint_ref": "checkpoint://decoder/base",
+              "planned_local_step_count": 64,
+              "total_contributions": 0,
+              "admitted_contributions": 0,
+              "accepted_contributions": 0,
+              "replay_required_contributions": 0,
+              "validator_challenges_open": 0,
+              "validator_challenges_queued": 0,
+              "payout_eligible": false,
+              "weak_device_bearing": false,
+              "lineage_advanced": false,
+              "planned_at_ms": 1776933406756,
+              "activated_at_ms": 1776933406756
+            }
+          ],
+          "caveats": [
+            {
+              "caveat_id": "run_backlog",
+              "severity": "warning",
+              "title": "Run backlog",
+              "detail": "30 worker slots remain unfilled across 113 active run(s)."
+            },
+            {
+              "caveat_id": "validator_backlog",
+              "severity": "warning",
+              "title": "Validator backlog",
+              "detail": "34 pending window(s) // 57 open challenge(s) // 33 queued challenge(s)."
+            }
+          ]
+        }
+      }
+    ],
+    "errors": []
+  },
+  "run_detail": {
+    "generated_at_unix_ms": 1776933663650,
+    "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+    "run": {
+      "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+      "display_name": "CS336 A1 Homework Dispatch 20260423083645 #0001",
+      "network_id": "trainnet.cs336.a1.pylon011-health.20260423T083621Z",
+      "run_status": "running",
+      "scheduler_window_state": "accepted",
+      "current_window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0002",
+      "work_class": "small_model_local_training",
+      "progress_class": "model_update",
+      "replica_type": "single_node",
+      "assigned_contributors": 1,
+      "weak_device_assigned_contributors": 1,
+      "accepted_contributors": 1,
+      "weak_device_accepted_contributors": 1,
+      "model_progress_contributors": 1,
+      "active_window_count": 0,
+      "pending_validation_window_count": 0,
+      "validator_challenges_open": 0,
+      "validator_challenges_queued": 0,
+      "latest_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591/step-000004",
+      "latest_checkpoint_age_ms": 93615,
+      "latest_window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+      "latest_window_status": "reconciled",
+      "latest_closeout_status": "rewarded",
+      "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591/step-000004"
+    },
+    "featured_window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+    "featured_window": {
+      "window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+      "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+      "network_id": "trainnet.cs336.a1.pylon011-health.20260423T083621Z",
+      "status": "reconciled",
+      "stage_id": "stage.cs336.a1.homework_dispatch",
+      "work_class": "small_model_local_training",
+      "progress_class": "model_update",
+      "replica_type": "single_node",
+      "round_index": 1,
+      "base_checkpoint_ref": "checkpoint://decoder/base",
+      "planned_local_step_count": 64,
+      "total_contributions": 1,
+      "admitted_contributions": 1,
+      "accepted_contributions": 1,
+      "replay_required_contributions": 0,
+      "validator_challenges_open": 0,
+      "validator_challenges_queued": 0,
+      "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591/step-000004",
+      "promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591/step-000004",
+      "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+      "closeout_status": "rewarded",
+      "payout_eligible": true,
+      "weak_device_bearing": false,
+      "lineage_advanced": true,
+      "planned_at_ms": 1776933406756,
+      "activated_at_ms": 1776933406756,
+      "sealed_at_ms": 1776933435031,
+      "reconciled_at_ms": 1776933570035
+    },
+    "queue_pressure": {
+      "state": "pending_validation",
+      "active_windows": 56,
+      "pending_validation_windows": 34,
+      "validator_challenges_open": 57,
+      "validator_challenges_queued": 33
+    },
+    "launch_health": {
+      "generated_at_unix_ms": 1776933663650,
+      "overall_status": "warn",
+      "public_snapshot_source": "live",
+      "public_stats_age_ms": 0,
+      "public_state_drift_from_kernel_ms": 0,
+      "active_runs": 113,
+      "run_backlog_slots": 30,
+      "pending_validation_windows": 34,
+      "validator_challenges_open": 57,
+      "validator_challenges_queued": 33,
+      "accepted_work_pending_payout_count": 0,
+      "accepted_work_attention_payout_count": 0,
+      "payouts_failed_24h": 0,
+      "payouts_skipped_24h": 0,
+      "resolver_lookup_latency_p95_ms": 38,
+      "resolver_lookup_sample_count": 64,
+      "signed_access_latency_p95_ms": 27,
+      "signed_access_sample_count": 64,
+      "active_alert_count": 2,
+      "critical_alert_count": 0,
+      "alerts": [
+        {
+          "alert_id": "run_backlog",
+          "severity": "warning",
+          "title": "Run backlog",
+          "detail": "30 worker slots remain unfilled across 113 active run(s)."
+        },
+        {
+          "alert_id": "validator_backlog",
+          "severity": "warning",
+          "title": "Validator backlog",
+          "detail": "34 pending window(s) // 57 open challenge(s) // 33 queued challenge(s)."
+        }
+      ]
+    },
+    "treasury": {
+      "payout_loop_health": "idle",
+      "wallet_runtime_status": "connected",
+      "wallet_last_error": "sync_wallet_timeout:20000; using cached balance and bounded payment scan"
+    },
+    "launch": {
+      "launch_id": "launch.run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+      "phase": "leaseable",
+      "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+      "current_window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+      "requested_at_ms": 1776933405950,
+      "updated_at_ms": 1776933406756,
+      "launch_receipt_id": "receipt.kernel.compute.training_run.create:sha256:df49cc78d7c1b00f5924e16bae80a4428ba9127d3ccd7865a37a9d38fcf17709",
+      "bootstrap_uploaded_at_ms": 1776933406756,
+      "bootstrap_verified_at_ms": 1776933406756,
+      "scheduler_materialized_at_ms": 1776933406756,
+      "leaseable_at_ms": 1776933406756
+    },
+    "windows": [
+      {
+        "window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+        "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+        "network_id": "trainnet.cs336.a1.pylon011-health.20260423T083621Z",
+        "status": "reconciled",
+        "stage_id": "stage.cs336.a1.homework_dispatch",
+        "work_class": "small_model_local_training",
+        "progress_class": "model_update",
+        "replica_type": "single_node",
+        "round_index": 1,
+        "base_checkpoint_ref": "checkpoint://decoder/base",
+        "planned_local_step_count": 64,
+        "total_contributions": 1,
+        "admitted_contributions": 1,
+        "accepted_contributions": 1,
+        "replay_required_contributions": 0,
+        "validator_challenges_open": 0,
+        "validator_challenges_queued": 0,
+        "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591/step-000004",
+        "promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591/step-000004",
+        "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+        "closeout_status": "rewarded",
+        "payout_eligible": true,
+        "weak_device_bearing": false,
+        "lineage_advanced": true,
+        "planned_at_ms": 1776933406756,
+        "activated_at_ms": 1776933406756,
+        "sealed_at_ms": 1776933435031,
+        "reconciled_at_ms": 1776933570035
+      }
+    ],
+    "contributions": [
+      {
+        "contribution_id": "316c81236def2aa7a7b8cadaff9290ff3a9de36abf5cf98213ada0f6e391da20",
+        "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+        "window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+        "stage_id": "stage.cs336.a1.homework_dispatch",
+        "assignment_id": "assign.run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001.worker.1.attempt1",
+        "contributor_node_id": "7b89f90995338f40a113be8666675bacfd1c7ee2c750f791b6bf23456f35c99f",
+        "node_label": "pylon",
+        "worker_id": "worker.0001",
+        "validator_disposition": "accepted",
+        "aggregation_eligibility": "eligible",
+        "accepted_for_aggregation": true,
+        "local_step_count": 4,
+        "submission_receipt_digest": "sha256:6b4a369772c4754c7d3f6708bfc090bc4d386c863336a7018a767361c9258b84",
+        "manifest_digest": "sha256:dada8cb475ff742edd7ddca68455ebe36fc81b30981df840e850a263a17a33fb",
+        "object_digest": "sha256:9a3cb5350d878e5dae550af155eb581f224be143aad2f63e043cb95ebf804619",
+        "provenance_bundle_digest": "sha256:f1d081e78d9d4ebc8f90f1e914c57c3dd274e289396aa65b6a725f556c17202a",
+        "validator_receipt_digest": "sha256:1eeba87c5a029f55834f98d1e3b40146f4cbefb83baa3c16ebe3e691d24dbcf1",
+        "recorded_at_ms": 1776933570035
+      }
+    ],
+    "nodes": [
+      {
+        "node_pubkey_hex": "7b89f90995338f40a113be8666675bacfd1c7ee2c750f791b6bf23456f35c99f",
+        "node_label": "pylon",
+        "role_claims": [
+          "worker"
+        ],
+        "allowed_networks": [
+          "trainnet.cs336.a1.pylon011-health.20260423T083621Z"
+        ],
+        "release_id": "openagents.pylon@0.1.11",
+        "build_version": "0.1.11",
+        "build_digest": "sha256:bdacf54f7cfe0ea7af0fe03bfd8be174ba74cdc22e77af19c9303dd49ffb2695",
+        "online": true,
+        "eligible": true,
+        "last_training_run_id": "run.idle",
+        "last_window_id": "window.idle",
+        "last_assignment_id": "assignment.idle.7b89f90995338f40a113be8666675bacfd1c7ee2c750f791b6bf23456f35c99f"
+      }
+    ],
+    "caveats": [
+      {
+        "caveat_id": "run_backlog",
+        "severity": "warning",
+        "title": "Run backlog",
+        "detail": "30 worker slots remain unfilled across 113 active run(s)."
+      },
+      {
+        "caveat_id": "validator_backlog",
+        "severity": "warning",
+        "title": "Validator backlog",
+        "detail": "34 pending window(s) // 57 open challenge(s) // 33 queued challenge(s)."
+      }
+    ]
+  },
+  "treasury_payout": {
+    "payout_key": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001:316c81236def2aa7a7b8cadaff9290ff3a9de36abf5cf98213ada0f6e391da20:7b89f90995338f40a113be8666675bacfd1c7ee2c750f791b6bf23456f35c99f",
+    "nostr_pubkey_hex": "7b89f90995338f40a113be8666675bacfd1c7ee2c750f791b6bf23456f35c99f",
+    "payout_target": "spark1pgss8uzm6qw6vu7jh56l8kwtfvh360cj6kkqj3n5hzu2s2ufrtah2uxhz4sw2s",
+    "amount_sats": 25,
+    "status": "confirmed",
+    "reconciliation_status": "settled",
+    "payment_id": "019db97e-aa96-7031-b549-3eae845be950",
+    "window_started_at_unix_ms": 1776933570035,
+    "window_ends_at_unix_ms": 1776933570035,
+    "created_at_unix_ms": 1776933570035,
+    "updated_at_unix_ms": 1776933579000,
+    "sellable_at_window_open": true,
+    "classification": {
+      "payout_class": "accepted_work",
+      "payout_basis": "aggregation_weight",
+      "work_class": "small_model_local_training",
+      "progress_class": "model_update",
+      "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+      "training_run_id": "run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591",
+      "window_id": "window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001",
+      "contribution_id": "316c81236def2aa7a7b8cadaff9290ff3a9de36abf5cf98213ada0f6e391da20",
+      "assignment_id": "assign.run.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.window.cs336.a1.pylon011-health-20260423T083621Z_20260423083645_9a472e7c_0001.20260423083645.36d35591.0001.worker.1.attempt1",
+      "share_bps": 10000,
+      "weight_basis": "local_steps",
+      "weight_value": 4,
+      "weak_device_bearing": false,
+      "progress_bearing": true
+    }
+  },
+  "treasury_summary": {
+    "wallet_runtime_status": "connected",
+    "wallet_balance_sats": 49408,
+    "payout_loop_health": "idle",
+    "degraded_reason": null,
+    "active_continuity_alerts": null
+  },
+  "wallet": {
+    "before": {
+      "spark_sats": 0,
+      "lightning_sats": 0,
+      "onchain_sats": 0,
+      "total_sats": 0
+    },
+    "after": {
+      "spark_sats": 25,
+      "lightning_sats": 0,
+      "onchain_sats": 0,
+      "total_sats": 25
+    },
+    "delta_total_sats": 25,
+    "history": {
+      "runtime": {
+        "network": "mainnet",
+        "identity_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/worker/pylon-home/identity.mnemonic",
+        "storage_dir": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-post-health-prod-e2e-20260423T083621Z/worker/pylon-home/spark",
+        "api_key_env": "OPENAGENTS_SPARK_API_KEY",
+        "api_key_source": "embedded:openagents-default"
+      },
+      "payments": [
+        {
+          "payment_id": "019db97e-aa96-7031-b549-3eae845be950",
+          "direction": "receive",
+          "status": "completed",
+          "amount_sats": 25,
+          "fees_sats": 0,
+          "method": "spark",
+          "description": null,
+          "invoice": null,
+          "created_at_ms": 1776933579000,
+          "updated_at_ms": 1776933579000
+        }
+      ]
+    }
+  },
+  "stats": {
+    "before": {
+      "pylon_client_version_counts": [
+        {
+          "client_version": "pylon/0.1.1",
+          "online_sessions": 58,
+          "online_pylons": 56
+        },
+        {
+          "client_version": "pylon/0.1.10",
+          "online_sessions": 1,
+          "online_pylons": 1
+        },
+        {
+          "client_version": "pylon/0.1.11",
+          "online_sessions": 1,
+          "online_pylons": 1
+        },
+        {
+          "client_version": "pylon/0.1.9",
+          "online_sessions": 1,
+          "online_pylons": 1
+        }
+      ],
+      "accepted_work_sats_total": 589,
+      "accepted_work_sats_24h": 75,
+      "training_accepted_closeouts": 31,
+      "payout_loop_health": "idle",
+      "degraded_reason": null
+    },
+    "after": {
+      "pylon_client_version_counts": [
+        {
+          "client_version": "pylon/0.1.1",
+          "online_sessions": 58,
+          "online_pylons": 56
+        },
+        {
+          "client_version": "pylon/0.1.11",
+          "online_sessions": 2,
+          "online_pylons": 2
+        },
+        {
+          "client_version": "pylon/0.1.10",
+          "online_sessions": 1,
+          "online_pylons": 1
+        },
+        {
+          "client_version": "pylon/0.1.9",
+          "online_sessions": 1,
+          "online_pylons": 1
+        }
+      ],
+      "accepted_work_sats_total": 614,
+      "accepted_work_sats_24h": 100,
+      "training_accepted_closeouts": 32,
+      "payout_loop_health": "idle",
+      "degraded_reason": null,
+      "wallet_balance_sats": 49408
+    }
+  },
+  "pylon_home_model_file_count": 0,
+  "no_gemma_model_download_observed": true
+}
