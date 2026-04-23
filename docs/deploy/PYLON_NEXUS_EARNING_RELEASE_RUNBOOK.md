@@ -69,7 +69,7 @@ worktree can run, but it cannot honestly close the issue.
 ## Version Floor Rules
 
 For the current hosted training earning path, the minimum public Pylon release
-is `pylon-v0.1.7` / `@openagentsinc/pylon` `0.1.7`.
+is `pylon-v0.1.10` / `@openagentsinc/pylon` `0.1.10`.
 
 Older versions are useful historical proof points but not sufficient for final
 closeout:
@@ -82,11 +82,15 @@ closeout:
 - `0.1.7` reports terminal worker and validator authority state before slower
   artifact/TRN publication and bounds publication attempts, so accepted-work
   payout projection is not wedged by a slow signed-URL upload.
+- `0.1.10` adds the Autopilot-controlled earning proof fixes: default Spark
+  payout destination creation in the long-lived Pylon serve path, retained
+  snapshot reuse for validator replay retries, and stricter Autopilot paid
+  status projection.
 
 Nexus must enforce the same floor for new hosted starter runs:
 
 ```text
-min_pylon_version=0.1.7
+min_pylon_version=0.1.10
 ```
 
 If the code changes the earning-loop behavior again, update this floor, the
@@ -152,14 +156,14 @@ mkdir -p "${PROOF_ROOT}/logs"
 
 HOME="${PWD}/${PROOF_ROOT}/home" \
 OPENAGENTS_DISABLE_TELEMETRY=1 \
-npx --yes @openagentsinc/pylon@0.1.7 --version 0.1.7 \
+npx --yes @openagentsinc/pylon@0.1.10 --version 0.1.10 \
   --pylon-home "${PWD}/${PROOF_ROOT}/home/.openagents/pylon" \
   --install-root "${PWD}/${PROOF_ROOT}/install" \
   --skip-diagnostics \
   --no-launch \
   --json | tee "${PROOF_ROOT}/bootstrap.json"
 
-PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.7-darwin-arm64"
+PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64"
 PYLON_HOME="${PWD}/${PROOF_ROOT}/home/.openagents/pylon"
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PYLON_HOME}" \

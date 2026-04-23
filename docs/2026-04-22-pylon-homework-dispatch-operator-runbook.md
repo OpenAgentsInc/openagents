@@ -24,7 +24,7 @@ ordinary scheduler and payout bugs.
 
 Minimum runtime requirements:
 
-- public Pylon release asset `pylon-v0.1.8` or newer. The npm bootstrap
+- public Pylon release asset `pylon-v0.1.10` or newer. The npm bootstrap
   package may still be invoked as `npx @openagentsinc/pylon`; the important
   version for earning and validation is the resolved standalone Pylon binary.
 - production Nexus running the lease-priority fix that tries existing
@@ -69,12 +69,15 @@ cargo test -p nexus-control validation_policy
 
 The homework validation-policy test must show that `homework_dispatch` keeps the
 aggregate validator challenge and skips per-contribution sample challenges. Use
-Pylon `0.1.8` or newer for npm proofs. `0.1.8` fixes the validator replay case
-where a retained claim can point at stale same-host local target bytes: Pylon now
-falls back to the bridge-inline payload or rewrites the target artifact id to
-match the materialized digest. Do not re-enable sample challenges for homework
-dispatch until the per-contribution sample replay path is separately fixed and
-proven with npm Pylon.
+Pylon `0.1.10` or newer for current npm proofs. `0.1.8` fixed the validator
+replay case where a retained claim can point at stale same-host local target
+bytes: Pylon falls back to the bridge-inline payload or rewrites the target
+artifact id to match the materialized digest. `0.1.10` adds the
+Autopilot-controlled earning proof fixes: default Spark payout destination
+creation in the long-lived serve path, retained snapshot reuse for validator
+replay retries, and stricter Autopilot paid-state projection. Do not re-enable
+sample challenges for homework dispatch until the per-contribution sample
+replay path is separately fixed and proven with npm Pylon.
 
 ## Check Treasury Before Dispatch
 
@@ -126,7 +129,7 @@ printf '%s\n' "${NETWORK_ID}" > "${PROOF_ROOT}/network-id.txt"
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
 npx --yes @openagentsinc/pylon \
-  --version 0.1.8 \
+  --version 0.1.10 \
   --pylon-home "${PROOF_ROOT}/pylon-home" \
   --config-path "${PROOF_ROOT}/pylon-home/config.json" \
   --install-root "${PROOF_ROOT}/install" \
@@ -144,7 +147,7 @@ for the bootstrap, then run the installed `pylon` binary directly.
 Configure the worker:
 
 ```bash
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
@@ -206,7 +209,7 @@ mkdir -p "${VAL_ROOT}/logs"
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
 npx --yes @openagentsinc/pylon \
-  --version 0.1.8 \
+  --version 0.1.10 \
   --pylon-home "${VAL_ROOT}/pylon-home" \
   --install-root "${VAL_ROOT}/install" \
   --skip-diagnostics \
@@ -217,7 +220,7 @@ npx --yes @openagentsinc/pylon \
 Configure validator-only role claims:
 
 ```bash
-VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
+VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64/pylon"
 NETWORK_ID="$(cat "${PROOF_ROOT}/network-id.txt")"
 
 HOME="/Users/christopherdavid" \
@@ -275,7 +278,7 @@ printf '%s\n' "${RUN_PREFIX}" > "${PROOF_ROOT}/run-prefix.txt"
 
 payload="$(jq -nc \
   --arg prefix "${RUN_PREFIX}" \
-  --arg min_version "0.1.8" \
+  --arg min_version "0.1.10" \
   --arg network_id "${NETWORK_ID}" \
   '{
     run_count: 1,
@@ -339,7 +342,7 @@ token="${NEXUS_CONTROL_ADMIN_BEARER_TOKEN:-${NEXUS_ADMIN_BEARER_TOKEN:-}}"
 batch_slug="cron.cs336.a1.$(date -u +%Y%m%d%H%M%S)"
 payload="$(jq -nc \
   --arg prefix "${batch_slug}" \
-  --arg min_version "0.1.8" \
+  --arg min_version "0.1.10" \
   '{
     run_count: 4,
     max_contributors_per_run: 1,
@@ -420,7 +423,7 @@ detail still shows `total_contributions: 0`, force the worker-side publication
 path once:
 
 ```bash
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
@@ -470,7 +473,7 @@ validator intake and sync once:
 
 ```bash
 VAL_ROOT="${PROOF_ROOT}/validator"
-VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
+VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
@@ -529,8 +532,9 @@ replay path stops producing artifact-manifest digest drift.
 If the validator log reports an `artifact_digest_mismatch` where the target
 `contribution_artifact_manifest` artifact id digest differs from the materialized
 target bytes, the validator is running an older Pylon release. Upgrade to
-`pylon-v0.1.8` or newer and retry the run. `0.1.8` repairs stale retained target
-artifact ids and falls back away from mismatched local same-host target files.
+`pylon-v0.1.10` or newer and retry the run. Current releases repair stale
+retained target artifact ids and fall back away from mismatched local same-host
+target files.
 
 If the validator finalizes as verified but the hosted window stays
 `replay_required` or `refused` instead of `rewarded`, production Nexus is
@@ -561,7 +565,7 @@ Verify the worker wallet directly:
 
 ```bash
 PROOF_ROOT="$(cat /private/tmp/pylon-npm-e2e-latest-root)"
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.8-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
@@ -612,10 +616,10 @@ The first successful Autopilot-controlled production proof for this path is
 recorded in
 `docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md`.
 That proof used the Autopilot-managed Pylon process on `main` at `96295609b`,
-not the already published `pylon-v0.1.9` release tag. It proved the worker was
+not the older `pylon-v0.1.9` release tag. It proved the worker was
 online through Autopilot, received a bounded hosted homework run, completed and
 sealed the work, passed validator closeout, received a confirmed and settled
 25-sat accepted-work Treasury payout, and showed a worker wallet delta from
-`0` to `25` sats. If this exact source behavior must be available through npm
-bootstrap or direct release assets, cut the next Pylon release from `96295609b`
-or later and rerun this runbook from a fresh Pylon home.
+`0` to `25` sats. Public release assets for this exact source behavior must be
+`pylon-v0.1.10` or newer; after publishing, rerun this runbook from a fresh
+Pylon home before closing any release-dependent issue.

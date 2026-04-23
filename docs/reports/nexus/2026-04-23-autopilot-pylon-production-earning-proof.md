@@ -30,7 +30,7 @@ The Autopilot-controlled worker used a fresh isolated Pylon home:
 - Eligible products: `2`
 - Ready model: `gemma4-e4b-local:latest`
 
-The source binary was built from `main` at `96295609b`, which is newer than the already published `pylon-v0.1.9` tag. Do not treat the public `pylon-v0.1.9` GitHub release as containing every source fix in this proof. If the exact behavior proven here needs to be available through the public release asset path, cut the next Pylon release from `96295609b` or later, most likely `pylon-v0.1.10`, and then repeat the npm/bootstrap proof from a fresh Pylon home.
+The source binary was built from `main` at `96295609b`, which is newer than the older `pylon-v0.1.9` tag. Do not treat the public `pylon-v0.1.9` GitHub release as containing every source fix in this proof. The release target for the exact behavior proven here is `pylon-v0.1.10` or newer, cut from `96295609b` or later, followed by a fresh npm/bootstrap proof from a fresh Pylon home.
 
 ## Production Dispatch
 
@@ -184,7 +184,7 @@ Do not record bearer tokens, wallet mnemonics, Spark API keys, or raw private se
 
 The system works in production for this bounded proof. The next cleanup is release and projection hardening, not core payout repair:
 
-- Cut the next public Pylon release from `96295609b` or later if the exact source fixes proven here need to be available through `npx @openagentsinc/pylon --version <new-version>` and direct GitHub release assets.
+- Publish and verify `pylon-v0.1.10` or newer if the exact source fixes proven here need to be available through `npx @openagentsinc/pylon --version <new-version>` and direct GitHub release assets.
 - Make worker-local payout projection catch up from completed wallet receive evidence so Autopilot can display `confirmed` instead of only `dispatched` after the wallet has already received the sats.
 - Reduce or repair the Treasury `wallet_snapshot_stale` continuity warning so operator dashboards do not show scary degraded caveats when the wallet runtime is connected and payouts are actually settling.
 - Prefer admin/API or Autopilot control endpoints over standalone `pylon training intake` commands while a long-lived Pylon process is running, to avoid confusing file-backed state with a different in-memory supervisor process.
