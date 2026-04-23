@@ -210,7 +210,9 @@ That source proof is newer than the older `pylon-v0.1.9` tag. The
 release asset and npm bootstrap path. `pylon-v0.1.11` is the current user-path
 floor because it makes `pylon` open the minimal homework dashboard, has the TUI
 start and supervise the earning worker, and keeps Gemma diagnostics/downloads
-opt-in during homework onboarding. The prior release receipt is
+opt-in during homework onboarding. The `0.1.11` release receipt is
+[docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json](docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json).
+The prior full accepted-work payout proof remains
 [docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json](docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json).
 
 Operator details live in

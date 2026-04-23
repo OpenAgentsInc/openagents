@@ -457,6 +457,13 @@ If `npx @openagentsinc/pylon` resolves an older version, update before testing
 paid training. If a platform does not yet have a matching `pylon-v0.1.11`
 release asset, use the npm bootstrap source fallback
 or a newer official release that includes these same paid-training guarantees.
+The `0.1.11` release receipt is
+`docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json`. It proves the
+new user path, release asset, npm bootstrap behavior, TUI-managed worker, no
+default Gemma model download, and production homework lease intake/seal path.
+It is not the full accepted-work payout proof; keep using
+`docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json` for the last
+fresh npm-installed public release proof that settled a wallet payout.
 
 That Pylon version is necessary but not sufficient. Hosted starter work also
 requires production Nexus to run the corresponding hosted-starter fix set: the

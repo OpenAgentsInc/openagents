@@ -132,6 +132,20 @@ the admin listener comes up under that worker, the visible UI contains no
 composer/transcript, and no Gemma model cache is created unless
 `--download-curated-cache` or `--run-diagnostics` is explicitly passed.
 
+The published `0.1.11` release receipt is:
+
+```text
+docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json
+```
+
+That receipt proves the release asset and npm bootstrap path, verifies that the
+dashboard starts the real worker, verifies no default Gemma model cache was
+created, and records a production homework lease that reached released/sealed
+local closeout state. It is intentionally not treated as the full wallet-payout
+proof because publication retries remained pending on the training relay path.
+For a fresh npm-installed release proof that settled accepted-work sats into
+the worker wallet, use the `0.1.10` receipt below.
+
 ## Release `pylon-v0.1.10` Preparation And Proof
 
 The first public release that should be used for the current paid-training

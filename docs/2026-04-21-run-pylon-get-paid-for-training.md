@@ -157,7 +157,21 @@ pays after a contribution closes out as accepted work.
 
 ## The Production Proof
 
-The primary proof for the current minimum public release is checked in at:
+The release receipt for the current user-path floor is checked in at:
+
+```text
+docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json
+```
+
+That receipt proves the `pylon-v0.1.11` release asset, npm bootstrap behavior,
+TUI-managed worker lifecycle, no default Gemma model download, and production
+homework lease intake to released/sealed local closeout state. It is the proof
+that a normal user can run `pylon` and get the simplified dashboard that keeps
+the worker online. It is not the full accepted-work payout proof because the
+smoke had training-relay publication retries pending after local closeout.
+
+The primary fresh npm-installed accepted-work payout proof remains checked in
+at:
 
 ```text
 docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json
