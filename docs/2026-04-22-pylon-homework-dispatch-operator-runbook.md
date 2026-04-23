@@ -71,7 +71,7 @@ cargo test -p nexus-control validation_policy
 
 The homework validation-policy test must show that `homework_dispatch` keeps the
 aggregate validator challenge and skips per-contribution sample challenges. Use
-Pylon `0.1.10` or newer for current npm proofs. `0.1.8` fixed the validator
+Pylon `0.1.11` or newer for current npm proofs. `0.1.8` fixed the validator
 replay case where a retained claim can point at stale same-host local target
 bytes: Pylon falls back to the bridge-inline payload or rewrites the target
 artifact id to match the materialized digest. `0.1.10` adds the
@@ -141,10 +141,21 @@ docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json
 That receipt proves the release asset and npm bootstrap path, verifies that the
 dashboard starts the real worker, verifies no default Gemma model cache was
 created, and records a production homework lease that reached released/sealed
-local closeout state. It is intentionally not treated as the full wallet-payout
-proof because publication retries remained pending on the training relay path.
-For a fresh npm-installed release proof that settled accepted-work sats into
-the worker wallet, use the `0.1.10` receipt below.
+local closeout state.
+
+The full `0.1.11` production earning receipt is:
+
+```text
+docs/reports/nexus/20260423-080422-pylon-v0.1.11-prod-e2e.json
+```
+
+That receipt is the current public-release proof. It used fresh
+npm-installed `0.1.11` worker and validator Pylon homes, dispatched one
+25-sat CS336 homework run with `min_pylon_version=0.1.11`, observed
+`pylon/0.1.11` in the Nexus online-version histogram, reconciled the target
+window as `rewarded`, confirmed and settled the accepted-work treasury payout,
+showed the worker wallet moving from `0` to `25` sats, and verified that no
+Gemma model files were downloaded by default.
 
 ## Release `pylon-v0.1.10` Preparation And Proof
 
@@ -320,7 +331,7 @@ printf '%s\n' "${NETWORK_ID}" > "${PROOF_ROOT}/network-id.txt"
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
 npx --yes @openagentsinc/pylon \
-  --version 0.1.10 \
+  --version 0.1.11 \
   --pylon-home "${PROOF_ROOT}/pylon-home" \
   --config-path "${PROOF_ROOT}/pylon-home/config.json" \
   --install-root "${PROOF_ROOT}/install" \
@@ -338,7 +349,7 @@ for the bootstrap, then run the installed `pylon` binary directly.
 Configure the worker:
 
 ```bash
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.11-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
@@ -400,7 +411,7 @@ mkdir -p "${VAL_ROOT}/logs"
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
 npx --yes @openagentsinc/pylon \
-  --version 0.1.10 \
+  --version 0.1.11 \
   --pylon-home "${VAL_ROOT}/pylon-home" \
   --install-root "${VAL_ROOT}/install" \
   --skip-diagnostics \
@@ -411,7 +422,7 @@ npx --yes @openagentsinc/pylon \
 Configure validator-only role claims:
 
 ```bash
-VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64/pylon"
+VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.11-darwin-arm64/pylon"
 NETWORK_ID="$(cat "${PROOF_ROOT}/network-id.txt")"
 
 HOME="/Users/christopherdavid" \
@@ -469,7 +480,7 @@ printf '%s\n' "${RUN_PREFIX}" > "${PROOF_ROOT}/run-prefix.txt"
 
 payload="$(jq -nc \
   --arg prefix "${RUN_PREFIX}" \
-  --arg min_version "0.1.10" \
+  --arg min_version "0.1.11" \
   --arg network_id "${NETWORK_ID}" \
   '{
     run_count: 1,
@@ -533,7 +544,7 @@ token="${NEXUS_CONTROL_ADMIN_BEARER_TOKEN:-${NEXUS_ADMIN_BEARER_TOKEN:-}}"
 batch_slug="cron.cs336.a1.$(date -u +%Y%m%d%H%M%S)"
 payload="$(jq -nc \
   --arg prefix "${batch_slug}" \
-  --arg min_version "0.1.10" \
+  --arg min_version "0.1.11" \
   '{
     run_count: 4,
     max_contributors_per_run: 1,
@@ -614,7 +625,7 @@ detail still shows `total_contributions: 0`, force the worker-side publication
 path once:
 
 ```bash
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.11-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
@@ -664,7 +675,7 @@ validator intake and sync once:
 
 ```bash
 VAL_ROOT="${PROOF_ROOT}/validator"
-VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64/pylon"
+VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.11-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
@@ -723,7 +734,7 @@ replay path stops producing artifact-manifest digest drift.
 If the validator log reports an `artifact_digest_mismatch` where the target
 `contribution_artifact_manifest` artifact id digest differs from the materialized
 target bytes, the validator is running an older Pylon release. Upgrade to
-`pylon-v0.1.10` or newer and retry the run. Current releases repair stale
+`pylon-v0.1.11` or newer and retry the run. Current releases repair stale
 retained target artifact ids and fall back away from mismatched local same-host
 target files.
 
@@ -756,7 +767,7 @@ Verify the worker wallet directly:
 
 ```bash
 PROOF_ROOT="$(cat /private/tmp/pylon-npm-e2e-latest-root)"
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.10-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.11-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
@@ -817,6 +828,12 @@ Pylon home before closing any release-dependent issue.
 
 The first successful npm-installed `pylon-v0.1.10` release proof is recorded at
 `docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json`. Treat that
-receipt as the primary public-release proof for the current minimum Pylon
-version. It proves the published GitHub release asset and npm package, not only
-an unreleased local build.
+receipt as the historical proof for the first npm release that settled
+accepted-work sats into the worker wallet.
+
+The current primary public-release proof is
+`docs/reports/nexus/20260423-080422-pylon-v0.1.11-prod-e2e.json`. It proves the
+published `pylon-v0.1.11` GitHub release asset and npm package, the
+TUI-era minimum version floor, the Nexus online-version histogram, the
+admin-triggered 25-sat CS336 homework run, treasury settlement, and the worker
+wallet balance increase.
