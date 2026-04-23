@@ -156,35 +156,79 @@ pays after a contribution closes out as accepted work.
 
 ## The Production Proof
 
-The proof receipt is checked in at:
+The primary proof for the current minimum public release is checked in at:
 
 ```text
-docs/reports/nexus/20260421-223232-issue-4413-public-pylon-proof.json
+docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json
 ```
 
-That proof used the public `@openagentsinc/pylon` package at version `0.1.7`,
-resolved the `pylon-v0.1.7` release asset without using a cached binary, and
-ran the worker with the bare command `pylon`. The worker did not use a
-CS336-specific command, a direct GCS credential, or an operator-only Nexus
-credential.
+That receipt proves both publication and runtime behavior for
+`pylon-v0.1.10`. The release was cut from
+`8b814d800b6f4291892a1bcc835fb34a2b91fee1`, published as the GitHub release
+tag `pylon-v0.1.10`, and published to npm as `@openagentsinc/pylon@0.1.10`.
+The Mac release asset used for the proof was
+`pylon-v0.1.10-darwin-arm64.tar.gz` with archive SHA-256
+`a63a9ca8fa32dd05d9815f5087c19faa9a70f250b38a29d193274f07e9149e5d`.
 
-Production Nexus was running:
+The release was not accepted just because a package existed. It had a
+source-gate pass, a release-asset smoke pass, and a production earning pass.
+Before release, the focused source checks covered payout destination creation,
+retained artifact replay, the Pylon build, the Autopilot build, Autopilot unit
+tests, and the Tauri homework handshake control smoke. After release, the npm
+bootstrap resolved the `pylon-v0.1.10` release asset without using a cached
+binary, verified the published checksum, installed `pylon` and `pylon-tui`,
+confirmed both help surfaces, and ran a long-lived `pylon` process that created
+a local Spark payout destination and reported the default online earning loop.
+
+The fresh production earning proof then used `@openagentsinc/pylon@0.1.10`,
+the release asset from `pylon-v0.1.10`, an isolated Pylon home, a normal user
+`HOME` so Rust and Psionic discovery worked, and a separate admin-triggered
+hosted homework run. The worker reported to Nexus as:
 
 ```text
-us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:2a7986b42d77
+release id: openagents.pylon@0.1.10
+build version: 0.1.10
+build digest: sha256:7b1a2e79255ac893cdd6581a771b85293fb8485bde5892f7648ab4f79e6e1d84
 ```
 
-The worker Pylon completed four accepted homework outcomes and received four
-completed 25-sat wallet receives, for 100 sats total in the local Pylon wallet.
-The accepted-work payout records were confirmed and settled by treasury, and
-the final treasury status showed no accepted-work pending payout count and no
-accepted-work attention payout count.
+The dispatch and payout proof recorded:
 
-One operational detail matters for repeatability. The successful public proof
-kept Pylon state isolated with `OPENAGENTS_PYLON_HOME`, but used the normal
-user `HOME` so the installed Rust toolchain and sibling Psionic checkout were
-discoverable. A fully synthetic `HOME` hid `rustup` state and failed before the
-real hosted-work path could prove anything.
+```text
+network id: trainnet.cs336.a1.pylon-0.1.10-release.20260423T050920Z
+training run id: run.cs336.a1.pylon010-prod-20260423051030_20260423051031_fa7d95a2_0001.20260423051031.46951e63
+window id: window.cs336.a1.pylon010-prod-20260423051030_20260423051031_fa7d95a2_0001.20260423051031.46951e63.0001
+latest closeout status: rewarded
+featured window status: reconciled
+accepted contributors: 1
+payout eligible: true
+payout receipt id: 019db8c1-6639-7751-a717-cee14dd2012e
+payout reconciliation status: settled
+treasury payout class: accepted_work
+amount: 25 sats
+worker wallet balance: 0 sats -> 25 sats
+wallet receive status: completed
+```
+
+That is the current proof behind the user-facing claim. A normal operator can
+install the current package, run `pylon`, stay online, receive hosted starter
+training work when an admin dispatches it, and receive sats after the work is
+accepted.
+
+Earlier production receipts still matter as history. The first public package
+proof for this path is
+`docs/reports/nexus/20260421-223232-issue-4413-public-pylon-proof.json`, which
+used `@openagentsinc/pylon@0.1.7` and proved the bare `pylon` command could earn
+across four accepted homework outcomes. A later npm release-asset proof is
+`docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json`, which
+used a newer npm-installed worker and a separate validator. Those receipts
+explain the path to the current release, but `0.1.10` is the minimum public
+release to recommend now.
+
+One operational detail still matters for repeatability. The successful public
+proof kept Pylon state isolated with `OPENAGENTS_PYLON_HOME`, but used the
+normal user `HOME` so the installed Rust toolchain and sibling Psionic checkout
+were discoverable. A fully synthetic `HOME` hid `rustup` state and failed before
+the real hosted-work path could prove anything.
 
 ## What This Does Not Claim Yet
 
