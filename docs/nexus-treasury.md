@@ -737,6 +737,12 @@ Continuity alerts:
   expensive wallet refreshes when there is no dispatched accepted-work payment
   to reconcile. During or after a real accepted-work payout, wallet freshness
   remains a hard verification input.
+- The public continuity signal now follows the same rule. A connected wallet
+  with stale sync metadata does not raise `snapshot_stale` or
+  `wallet_snapshot_stale` by itself while accepted-work payout reconciliation is
+  clean. Stale wallet sync becomes operator-visible again when there is
+  reconciliation-relevant payout work, such as a dispatched payment awaiting
+  confirmation or a balance-blocked queued accepted-work payout.
 - dispatch and confirmation stall detection now keys off the oldest still-
   pending payout work and is recomputed live from current treasury state, so a
   hung dispatch cycle still surfaces a critical alert through
