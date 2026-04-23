@@ -79,6 +79,130 @@ replay retries, and stricter Autopilot paid-state projection. Do not re-enable
 sample challenges for homework dispatch until the per-contribution sample
 replay path is separately fixed and proven with npm Pylon.
 
+## Release `pylon-v0.1.10` Preparation And Proof
+
+The first public release that should be used for the current paid-training
+claim is `pylon-v0.1.10`, published as `@openagentsinc/pylon@0.1.10`.
+Future agents should not reconstruct the release from memory. Use the checked-in
+receipt as source evidence:
+
+```text
+docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json
+```
+
+That release was cut from:
+
+```text
+release tag: pylon-v0.1.10
+version: 0.1.10
+commit: 8b814d800b6f4291892a1bcc835fb34a2b91fee1
+GitHub release: https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.1.10
+npm package: @openagentsinc/pylon@0.1.10
+```
+
+The GitHub release asset used for the Mac proof was:
+
+```text
+pylon-v0.1.10-darwin-arm64.tar.gz
+sha256: a63a9ca8fa32dd05d9815f5087c19faa9a70f250b38a29d193274f07e9149e5d
+```
+
+The npm package metadata recorded in the receipt was:
+
+```text
+latest: 0.1.10
+dist shasum: 1ba6c175fbf4627c8a6dc577dd6cdc3347b5327e
+dist integrity: sha512-rKJq4CrmrwUXE3MhgZgkfqMsWywXGOX816Q2R6clhkc41isDZzU+s6FKpl0KayA5uSj693Mb/aI5InA0Lqx9fA==
+```
+
+The release preparation had two distinct gates.
+
+First, run the source-level and Autopilot-control gates before tagging:
+
+```bash
+cargo test -p pylon config_set_updates_payout_destination
+cargo test -p pylon default_payout_destination_uses_wallet_spark_address
+cargo test -p pylon snapshot_training_retained_artifact_binding
+cargo check -p pylon
+cargo check -p autopilot
+cargo test -p autopilot --lib
+scripts/autopilot/tauri-control-smoke.sh --homework-handshake --timeout-ms 600000
+```
+
+Those gates prove the fixes that made `0.1.10` release-worthy: the long-lived
+serve path creates a local Spark payout destination before advertising paid
+training eligibility, retained artifact replay can reuse an existing
+content-addressed snapshot instead of failing on mutable path drift, and the
+Autopilot paid-state projection reports the current homework/payout state
+instead of stale historical issues.
+
+Second, after publishing the GitHub release and npm package, run the release
+asset smoke from a fresh proof root with `--no-launch`:
+
+```bash
+PROOF_ROOT="/private/tmp/pylon-0.1.10-release-smoke-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "${PROOF_ROOT}/logs"
+
+HOME="/Users/christopherdavid" \
+OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
+npx --yes @openagentsinc/pylon \
+  --version 0.1.10 \
+  --pylon-home "${PROOF_ROOT}/pylon-home" \
+  --config-path "${PROOF_ROOT}/pylon-home/config.json" \
+  --install-root "${PROOF_ROOT}/install" \
+  --skip-diagnostics \
+  --no-launch \
+  2>&1 | tee "${PROOF_ROOT}/logs/npm-bootstrap.log"
+```
+
+The `0.1.10` release smoke recorded `cached: false`, `install_method:
+"release_asset"`, checksum verification against the published archive, working
+`pylon` and `pylon-tui` help output, and a long-lived `pylon` serve log with
+both of these lines:
+
+```text
+pylon: created local Spark payout destination for paid training work
+pylon: node pylon is online; running default online earning loop
+```
+
+The final release proof then ran a fresh npm-installed `0.1.10` worker against
+production Nexus and hosted homework dispatch:
+
+```text
+proof root: /private/tmp/pylon-0.1.10-prod-e2e-20260423T050920Z
+network id: trainnet.cs336.a1.pylon-0.1.10-release.20260423T050920Z
+batch id: dispatch.cs336.a1.20260423051031.fa7d95a2
+training run id: run.cs336.a1.pylon010-prod-20260423051030_20260423051031_fa7d95a2_0001.20260423051031.46951e63
+window id: window.cs336.a1.pylon010-prod-20260423051030_20260423051031_fa7d95a2_0001.20260423051031.46951e63.0001
+worker pubkey: 0faf4e72304ea8ae0f84eb9a60df0b4d4484e3265c89e5e8a4fd332b057be90e
+worker release id: openagents.pylon@0.1.10
+worker build version: 0.1.10
+worker build digest: sha256:7b1a2e79255ac893cdd6581a771b85293fb8485bde5892f7648ab4f79e6e1d84
+```
+
+That production run ended with:
+
+```text
+latest closeout status: rewarded
+featured window status: reconciled
+accepted contributors: 1
+payout eligible: true
+accepted outcome id: accepted.training_window.window.cs336.a1.pylon010-prod-20260423051030_20260423051031_fa7d95a2_0001.20260423051031.46951e63.0001
+payout receipt id: 019db8c1-6639-7751-a717-cee14dd2012e
+payout reconciliation status: settled
+treasury payout class: accepted_work
+treasury payout amount: 25 sats
+worker wallet delta: 0 sats -> 25 sats
+wallet receive status: completed
+```
+
+The proof still observed `run_backlog`, `validator_backlog`, and treasury
+`snapshot_stale` / `wallet_snapshot_stale` warnings. Those were not blockers
+for this proof because the runtime wallet was connected, the accepted-work
+payout was confirmed and settled, and the npm-installed worker wallet balance
+increased by the paid amount. Do not confuse those stale snapshot warnings with
+the earlier insufficient-funds failure mode.
+
 ## Check Treasury Before Dispatch
 
 Load the operator env without printing tokens:
@@ -623,5 +747,9 @@ sealed the work, passed validator closeout, received a confirmed and settled
 `0` to `25` sats. Public release assets for this exact source behavior must be
 `pylon-v0.1.10` or newer; after publishing, rerun this runbook from a fresh
 Pylon home before closing any release-dependent issue.
-The `pylon-v0.1.10` release receipt is recorded at
-`docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json`.
+
+The first successful npm-installed `pylon-v0.1.10` release proof is recorded at
+`docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json`. Treat that
+receipt as the primary public-release proof for the current minimum Pylon
+version. It proves the published GitHub release asset and npm package, not only
+an unreleased local build.
