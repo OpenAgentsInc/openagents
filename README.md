@@ -164,11 +164,15 @@ Current production truth:
   `@openagentsinc/pylon` `0.1.11` or newer.
 - The live paid work class is bounded hosted homework/training work, currently
   the CS336 A1 starter lane used to prove the earning loop.
-- Work is not yet a fully open demand marketplace. OpenAgents/Nexus admins
-  currently seed and pace paid homework jobs from the hosted Nexus side.
-- Admins can trigger batches with
-  `POST /v1/admin/homework/cs336-a1/dispatch` and can put that call behind
-  cron to control how many jobs and sats go out per interval.
+- Work is not yet a fully open demand marketplace. Hosted Nexus currently
+  paces paid homework jobs from the server side.
+- Production Nexus automatically dispatches a fresh CS336 A1 homework run about
+  every 10 minutes for online eligible Pylons. The current automatic pacing
+  target is `pylon-v0.1.11+`, online-only, up to 256 contributors, 25 sats per
+  accepted contribution, and a 6,400-sat cap per automatic cycle.
+- Admins can still trigger override batches with
+  `POST /v1/admin/homework/cs336-a1/dispatch` when they need a bounded proof,
+  faster smoke, or a temporary payout pace different from the automatic loop.
 - Online eligible Pylons can receive those jobs automatically when work is
   available. Users do not manually pick the assignment.
 - Treasury pays only accepted homework work. Placeholder/liveness payouts,
