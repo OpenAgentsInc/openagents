@@ -39,37 +39,34 @@
     },
     {
       "name": "pylon-v0.1.11-linux-x86_64.tar.gz",
-      "size": 115317518,
-      "digest": "sha256:de44ae6521b402035c5547cff35d2914f42eb7542fc8fcd26d1212c83f5a0714",
-      "archive_sha256": "de44ae6521b402035c5547cff35d2914f42eb7542fc8fcd26d1212c83f5a0714"
+      "size": 101666646,
+      "digest": "sha256:f0eacb7e24087ceddfb7700a69c20e174b82ee5423374799d318d75f84f740f2",
+      "archive_sha256": "f0eacb7e24087ceddfb7700a69c20e174b82ee5423374799d318d75f84f740f2"
     },
     {
       "name": "pylon-v0.1.11-linux-x86_64.tar.gz.sha256",
       "size": 100,
-      "digest": "sha256:550a5f58f2d4e73be39af98974c211088012b29adfeacc3893fa70cec1efbdda"
+      "digest": "sha256:fea1f3971aea1113816075c2b90b66908ed82c9c356f2689604b827221fc8897"
     }
   ],
   "builds": [
     {
       "target": "linux-x86_64",
-      "builder": "archlinux over Tailnet",
-      "source": "fresh git clone at tag pylon-v0.1.11",
+      "builder": "local macOS arm64 using zig and cargo-zigbuild",
+      "source": "temporary detached worktree at tag pylon-v0.1.11",
       "source_commit": "9ec3485e1066e27957bf0bf2eaa20fb3a693ddc9",
-      "command": "bash scripts/release/pylon-binary-release.sh --version 0.1.11",
-      "remote_archive": "/tmp/openagents-pylon-v0.1.11-linux-x86_64/target/pylon-release/pylon-v0.1.11-linux-x86_64.tar.gz",
-      "remote_checksum": "/tmp/openagents-pylon-v0.1.11-linux-x86_64/target/pylon-release/pylon-v0.1.11-linux-x86_64.tar.gz.sha256",
+      "command": "cargo zigbuild --release --target x86_64-unknown-linux-gnu -p pylon -p pylon-tui",
       "local_uploaded_archive": "/private/tmp/openagents-pylon-v0.1.11-release-assets/pylon-v0.1.11-linux-x86_64.tar.gz",
       "verification": [
-        "archive checksum verified with sha256sum -c on archlinux",
+        "archive checksum verified with shasum -a 256 -c",
         "archive contents verified with tar -tzf",
-        "ELF type verified as x86-64 GNU/Linux",
-        "pylon --help executed successfully on archlinux",
-        "pylon-tui --help executed successfully on archlinux",
-        "pylon init executed successfully with isolated Pylon home on archlinux",
-        "pylon status --json executed successfully with isolated Pylon home on archlinux",
-        "pylon inventory --json executed successfully with isolated Pylon home on archlinux"
+        "ELF type verified as x86-64 GNU/Linux with GNU/Linux 2.0.0 floor",
+        "uploaded asset was fetched by npm bootstrap and runtime-smoked on archlinux",
+        "installed pylon --help executed successfully on archlinux",
+        "installed pylon-tui --help executed successfully on archlinux",
+        "bootstrap pylon init/status/inventory smoke completed on archlinux"
       ],
-      "build_note": "The Arch rustc emitted one transient SIGSEGV during parallel dependency compilation but cargo continued and completed successfully. The final packaged binaries were built, checksummed, extracted, and runtime-smoked on the same Linux host."
+      "build_note": "An earlier native Arch x86_64 archive was built and runtime-smoked, but it was superseded by this Zig-built archive to avoid baking in rolling-Arch glibc requirements. The release asset was clobbered with the Zig-built archive and then npm-smoked on Arch."
     },
     {
       "target": "linux-arm64",
@@ -88,7 +85,7 @@
   ],
   "npm_linux_x86_64_smoke": {
     "host": "archlinux",
-    "root": "/tmp/pylon-0.1.11-linux-x86_64-npm-smoke-20260423T142637Z",
+    "root": "/tmp/pylon-0.1.11-linux-x86_64-zigasset-npm-smoke-20260423T144037Z",
     "command": "npx --yes @openagentsinc/pylon@0.1.11 --version 0.1.11 --pylon-home <isolated-home> --install-root <isolated-install> --no-launch --json",
     "result": "passed",
     "version": "0.1.11",
