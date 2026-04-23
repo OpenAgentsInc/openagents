@@ -135,12 +135,13 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::economy::{
-    AuthorityReceiptContext, PublicRecentPylon, PublicRecentPylonDiagnostic, PublicRuntimeSnapshot,
-    PublicStatsSnapshot, PublicTrainingLaunchAlert, PublicTrainingLaunchHealthSnapshot,
-    PublicTrainingLaunchState, PublicTrainingQueuePressure, PublicTrainingRunCaveat,
-    PublicTrainingRunContributionRow, PublicTrainingRunDetailSnapshot, PublicTrainingRunNodeRow,
-    PublicTrainingRunState, PublicTrainingRunTreasuryStatus, PublicTrainingStatsSnapshot,
-    PublicTrainingWindowState, PublicTrainingWorkClassState, ReceiptLedger,
+    AuthorityReceiptContext, PublicPylonClientVersionCount, PublicRecentPylon,
+    PublicRecentPylonDiagnostic, PublicRuntimeSnapshot, PublicStatsSnapshot,
+    PublicTrainingLaunchAlert, PublicTrainingLaunchHealthSnapshot, PublicTrainingLaunchState,
+    PublicTrainingQueuePressure, PublicTrainingRunCaveat, PublicTrainingRunContributionRow,
+    PublicTrainingRunDetailSnapshot, PublicTrainingRunNodeRow, PublicTrainingRunState,
+    PublicTrainingRunTreasuryStatus, PublicTrainingStatsSnapshot, PublicTrainingWindowState,
+    PublicTrainingWorkClassState, ReceiptLedger,
 };
 use crate::kernel::{
     AdmittedTrainingNodeView, ComputeAcceptedOutcomePublicationSource,
@@ -7900,6 +7901,7 @@ struct ProviderPresenceMetrics {
     likely_same_host_pylon_sessions_online_now: u64,
     likely_same_host_pylons_online_now: u64,
     recent_pylons: Vec<PublicRecentPylon>,
+    pylon_client_version_counts: Vec<PublicPylonClientVersionCount>,
     recent_pylon_diagnostics: Vec<PublicRecentPylonDiagnostic>,
 }
 
@@ -8220,6 +8222,8 @@ impl ProviderPresenceState {
         let mut pylon_sessions_missing_host_fingerprint_online_now = 0u64;
         let mut host_session_counts = BTreeMap::<String, u64>::new();
         let mut host_identity_sets = BTreeMap::<String, BTreeSet<String>>::new();
+        let mut client_version_session_counts = BTreeMap::<String, u64>::new();
+        let mut client_version_identity_sets = BTreeMap::<String, BTreeSet<String>>::new();
 
         for record in self.rows_by_key.values() {
             if record.last_seen_at_unix_ms >= seen_cutoff {
@@ -8230,6 +8234,17 @@ impl ProviderPresenceState {
                 let host_fingerprint = provider_presence_host_fingerprint(record);
                 online_identities.insert(record.nostr_pubkey_hex.clone());
                 pylon_sessions_online_now = pylon_sessions_online_now.saturating_add(1);
+                let client_version = record
+                    .client_version
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string());
+                *client_version_session_counts
+                    .entry(client_version.clone())
+                    .or_default() += 1;
+                client_version_identity_sets
+                    .entry(client_version)
+                    .or_default()
+                    .insert(record.nostr_pubkey_hex.clone());
                 if record.eligible_product_count > 0 {
                     sellable_identities.insert(record.nostr_pubkey_hex.clone());
                 }
@@ -8260,6 +8275,25 @@ impl ProviderPresenceState {
             .values()
             .map(|identities| identities.len().saturating_sub(1) as u64)
             .sum::<u64>();
+        let mut pylon_client_version_counts = client_version_session_counts
+            .into_iter()
+            .map(|(client_version, online_sessions)| {
+                let online_pylons = client_version_identity_sets
+                    .get(&client_version)
+                    .map_or(0, |identities| identities.len() as u64);
+                PublicPylonClientVersionCount {
+                    client_version,
+                    online_sessions,
+                    online_pylons,
+                }
+            })
+            .collect::<Vec<_>>();
+        pylon_client_version_counts.sort_by(|left, right| {
+            right
+                .online_sessions
+                .cmp(&left.online_sessions)
+                .then_with(|| left.client_version.cmp(&right.client_version))
+        });
 
         let mut recent_pylons = self.rows_by_key.values().cloned().collect::<Vec<_>>();
         recent_pylons.sort_by(|left, right| {
@@ -8334,6 +8368,7 @@ impl ProviderPresenceState {
             pylon_sessions_missing_host_fingerprint_online_now,
             likely_same_host_pylon_sessions_online_now,
             likely_same_host_pylons_online_now,
+            pylon_client_version_counts,
             recent_pylon_diagnostics,
         }
     }
@@ -9025,7 +9060,7 @@ struct HomeworkLaunchPrepared {
 }
 
 const HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
-const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.10";
+const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.11";
 
 fn current_homework_launch_pylon_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0))
@@ -11795,6 +11830,8 @@ async fn record_provider_presence_heartbeat(
     let record = store
         .provider_presence
         .record_heartbeat(normalized_request, now);
+    drop(store);
+    invalidate_public_stats_cache(&state, now);
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
         session_id: record.session_id,
@@ -11824,6 +11861,8 @@ async fn record_provider_presence_offline(
     let record = store
         .provider_presence
         .record_offline(nostr_pubkey_hex, session_id, now);
+    drop(store);
+    invalidate_public_stats_cache(&state, now);
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
         session_id: record.session_id,
@@ -22116,6 +22155,7 @@ fn runtime_snapshot(
         risk_calibration_score: risk_metrics.risk_calibration_score,
         risk_coverage_concentration_hhi: risk_metrics.risk_coverage_concentration_hhi,
         recent_pylons: provider_presence_metrics.recent_pylons,
+        pylon_client_version_counts: provider_presence_metrics.pylon_client_version_counts,
         recent_pylon_diagnostics: provider_presence_metrics.recent_pylon_diagnostics,
     }
 }
@@ -25590,7 +25630,8 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::economy::{
-        AuthorityReceipt, AuthorityReceiptContext, PublicTrainingRunDetailSnapshot,
+        AuthorityReceipt, AuthorityReceiptContext, PublicPylonClientVersionCount,
+        PublicTrainingRunDetailSnapshot,
     };
     use crate::kernel::{
         RecordTrainingNodeAdmissionRequest, RecordTrainingNodeAdmissionResponse,
@@ -30454,6 +30495,7 @@ mod tests {
         )];
         let mut beta =
             provider_presence_request("bbccddee11223344", "session-b-1", "beta", 2, "online");
+        beta.client_version = Some("pylon/0.1.10".to_string());
         beta.ready_model = None;
         beta.hosting_telemetry.availability.local_gemma.ready = false;
         beta.hosting_telemetry.availability.local_gemma.ready_model = None;
@@ -30498,6 +30540,19 @@ mod tests {
         assert_eq!(stats.pylon_sessions_missing_host_fingerprint_online_now, 0);
         assert_eq!(stats.likely_same_host_pylon_sessions_online_now, 2);
         assert_eq!(stats.likely_same_host_pylons_online_now, 1);
+        assert_eq!(stats.pylon_client_version_counts.len(), 2);
+        assert_eq!(
+            stats.pylon_client_version_counts[0].client_version,
+            "pylon/0.1.0"
+        );
+        assert_eq!(stats.pylon_client_version_counts[0].online_sessions, 2);
+        assert_eq!(stats.pylon_client_version_counts[0].online_pylons, 1);
+        assert_eq!(
+            stats.pylon_client_version_counts[1].client_version,
+            "pylon/0.1.10"
+        );
+        assert_eq!(stats.pylon_client_version_counts[1].online_sessions, 1);
+        assert_eq!(stats.pylon_client_version_counts[1].online_pylons, 1);
         assert_eq!(
             stats.pylon_presence_stale_after_ms,
             DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS
@@ -30768,6 +30823,15 @@ mod tests {
         assert_eq!(fresh.pylon_sessions_missing_host_fingerprint_online_now, 0);
         assert_eq!(fresh.likely_same_host_pylon_sessions_online_now, 2);
         assert_eq!(fresh.likely_same_host_pylons_online_now, 1);
+        assert_eq!(fresh.pylon_client_version_counts.len(), 1);
+        assert_eq!(
+            fresh.pylon_client_version_counts[0],
+            PublicPylonClientVersionCount {
+                client_version: "pylon/0.1.0".to_string(),
+                online_sessions: 3,
+                online_pylons: 2,
+            }
+        );
         assert_eq!(
             fresh.recent_pylons[0]
                 .training_capability_envelope_v2

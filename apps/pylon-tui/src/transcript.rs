@@ -150,7 +150,12 @@ impl TranscriptEntry {
     }
 
     fn render_lines(&self) -> Vec<Line<'static>> {
-        let mut lines = vec![render_transcript_header(self.role, self.title.as_str(), false, 0)];
+        let mut lines = vec![render_transcript_header(
+            self.role,
+            self.title.as_str(),
+            false,
+            0,
+        )];
         for line in &self.body {
             lines.push(render_transcript_body_line(
                 self.role,
@@ -190,7 +195,12 @@ impl ActiveTurn {
     }
 
     fn render_lines(&self, phase: usize) -> Vec<Line<'static>> {
-        let mut lines = vec![render_transcript_header(self.role, self.title.as_str(), true, phase)];
+        let mut lines = vec![render_transcript_header(
+            self.role,
+            self.title.as_str(),
+            true,
+            phase,
+        )];
         for (index, line) in self.body.iter().enumerate() {
             let is_last_line = index + 1 == self.body.len();
             lines.push(render_transcript_body_line(
@@ -395,7 +405,11 @@ mod tests {
         };
 
         let rendered = lines_to_text(&transcript);
-        assert!(rendered.contains("[assistant] Local Gemma gemma4:e4b  ttft 0.42s  total 3.18s  27.6 tok/s"));
+        assert!(
+            rendered.contains(
+                "[assistant] Local Gemma gemma4:e4b  ttft 0.42s  total 3.18s  27.6 tok/s"
+            )
+        );
         assert!(rendered.contains("  hello world"));
     }
 }

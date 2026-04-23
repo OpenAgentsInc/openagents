@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::slash_commands::{self, SlashCommandSpec};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Frame;
@@ -6,7 +8,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 
-const PLACEHOLDER: &str = "Ask Gemma or type /help";
+const PLACEHOLDER: &str = "Pylon keeps this node online for homework jobs";
 const MAX_VISIBLE_COMPOSER_LINES: usize = 4;
 const MAX_HISTORY_ENTRIES: usize = 24;
 
@@ -34,7 +36,8 @@ struct SlashPaletteState {
 
 impl SlashPaletteState {
     fn sync_with_composer(&mut self, composer: &ComposerState) {
-        let Some(context) = slash_commands::active_slash_query(composer.text.as_str(), composer.cursor)
+        let Some(context) =
+            slash_commands::active_slash_query(composer.text.as_str(), composer.cursor)
         else {
             self.open = false;
             self.query.clear();
@@ -410,7 +413,8 @@ impl BottomPane {
             format!("{metadata}  {helper_copy}")
         };
         frame.render_widget(
-            Paragraph::new(Line::from(helper_line)).style(Style::default().fg(Color::Rgb(0x8b, 0xc7, 0xff))),
+            Paragraph::new(Line::from(helper_line))
+                .style(Style::default().fg(Color::Rgb(0x8b, 0xc7, 0xff))),
             rows[0],
         );
 
@@ -467,7 +471,12 @@ impl BottomPane {
                 .map(|(index, spec)| {
                     let absolute_index = start + index;
                     let prefix = if absolute_index == self.slash_palette.selected_index {
-                        Span::styled("> ", Style::default().fg(Color::Rgb(0xf8, 0xf4, 0xe3)).add_modifier(Modifier::BOLD))
+                        Span::styled(
+                            "> ",
+                            Style::default()
+                                .fg(Color::Rgb(0xf8, 0xf4, 0xe3))
+                                .add_modifier(Modifier::BOLD),
+                        )
                     } else {
                         Span::raw("  ")
                     };
@@ -526,9 +535,10 @@ impl BottomPane {
         };
         let insertion = slash_commands::insertion_text(spec);
         self.composer.prepare_for_edit();
-        self.composer
-            .text
-            .replace_range(self.slash_palette.replace_start..self.slash_palette.replace_end, insertion.as_str());
+        self.composer.text.replace_range(
+            self.slash_palette.replace_start..self.slash_palette.replace_end,
+            insertion.as_str(),
+        );
         self.composer.cursor = self.slash_palette.replace_start + insertion.len();
         self.slash_palette.dismissed_query = None;
         self.sync_palette();
@@ -622,7 +632,10 @@ mod tests {
         pane.handle_key(key(KeyCode::Char('p')));
         assert!(pane.slash_palette.open);
         assert_eq!(pane.slash_palette.query, "p");
-        assert_eq!(pane.slash_palette.selected().map(|spec| spec.name), Some("provider"));
+        assert_eq!(
+            pane.slash_palette.selected().map(|spec| spec.name),
+            Some("provider")
+        );
     }
 
     #[test]

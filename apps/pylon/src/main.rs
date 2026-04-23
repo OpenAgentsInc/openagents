@@ -11,12 +11,21 @@
     reason = "CLI utility intentionally writes usage/errors to stderr."
 )]
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
 
 fn pylon_tui_args(args: &[String]) -> Result<Option<Vec<String>>> {
+    pylon_tui_args_with_terminal(args, std::io::stdout().is_terminal())
+}
+
+fn pylon_tui_args_with_terminal(args: &[String], is_terminal: bool) -> Result<Option<Vec<String>>> {
+    if args.is_empty() && is_terminal {
+        return Ok(Some(Vec::new()));
+    }
+
     let mut index = 0usize;
     let mut tui_args = Vec::new();
     while index < args.len() {
@@ -71,6 +80,11 @@ fn launch_pylon_tui(args: &[String]) -> Result<()> {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if matches!(args.as_slice(), [flag] if flag == "--version" || flag == "-V") {
+        println!("pylon {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     let tui_args = match pylon_tui_args(&args) {
         Ok(tui_args) => tui_args,
         Err(error) => {
@@ -109,11 +123,22 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::pylon_tui_args;
+    use super::{pylon_tui_args, pylon_tui_args_with_terminal};
 
     #[test]
-    fn bare_pylon_stays_on_cli_path() {
-        assert_eq!(pylon_tui_args(&[]).expect("no-arg path"), None);
+    fn bare_interactive_pylon_launches_tui() {
+        assert_eq!(
+            pylon_tui_args_with_terminal(&[], true).expect("interactive no-arg path"),
+            Some(Vec::new())
+        );
+    }
+
+    #[test]
+    fn bare_noninteractive_pylon_stays_on_cli_path() {
+        assert_eq!(
+            pylon_tui_args_with_terminal(&[], false).expect("noninteractive no-arg path"),
+            None
+        );
     }
 
     #[test]

@@ -1,11 +1,15 @@
+#![allow(dead_code)]
+
 mod bottom_pane;
 mod slash_commands;
 mod transcript;
 
 use std::collections::BTreeMap;
+use std::fs::{self, OpenOptions};
 use std::io::{self, Stdout};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -14,7 +18,7 @@ use bottom_pane::{BottomPane, ComposerSubmission};
 use crossterm::event::{
     self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
 };
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture, MouseEvent, MouseEventKind};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture, MouseEvent};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -37,6 +41,8 @@ use unicode_width::UnicodeWidthStr;
 const TICK_RATE: Duration = Duration::from_millis(50);
 const REFRESH_RATE: Duration = Duration::from_secs(10);
 const GPU_REFRESH_RATE: Duration = Duration::from_secs(300);
+const MANAGED_WORKER_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
+const MANAGED_WORKER_LOG_FILE: &str = "pylon-tui-managed-worker.log";
 const LOOKBACK_WINDOW_24H_MS: u64 = 86_400_000;
 const LOCAL_CHAT_PLAIN_TEXT_POLICY: &str = "Reply in plain terminal text only. Do not use Markdown, LaTeX, HTML, tables, or code fences. For math, use plain text or simple Unicode, not TeX commands or delimiters.";
 
@@ -197,6 +203,25 @@ struct WalletSurfaceState {
     last_error: Option<String>,
 }
 
+#[derive(Debug)]
+struct ManagedPylonWorker {
+    child: Child,
+    log_path: PathBuf,
+}
+
+impl Drop for ManagedPylonWorker {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[derive(Debug)]
+enum ManagedPylonWorkerLaunch {
+    Existing { listen_addr: String },
+    Started(ManagedPylonWorker),
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct StackerRank {
     name: &'static str,
@@ -331,6 +356,7 @@ enum WorkerEvent {
     RefreshCompleted {
         loaded: Option<LoadedState>,
         installed_gemma_models: BTreeMap<String, u64>,
+        training_status_lines: Vec<String>,
         operator_stats: OperatorPanelStats,
         wallet_surface: WalletSurfaceState,
         last_error: Option<String>,
@@ -479,6 +505,7 @@ struct AppShell {
     gemma_downloads: BTreeMap<String, GemmaDownloadProgressState>,
     operator_stats: OperatorPanelStats,
     wallet_surface: WalletSurfaceState,
+    training_status_lines: Vec<String>,
     provider_command_in_flight: Option<ProviderCommandInFlight>,
     sidebar_view: SidebarView,
     transcript_follow_latest: bool,
@@ -493,6 +520,8 @@ struct AppShell {
     latest_rank_up_moment: Option<(String, String, Instant)>,
     nexus_treasury_health: Option<pylon::NexusTreasuryHealthSnapshot>,
     next_nexus_treasury_refresh_at: Instant,
+    managed_worker: Option<ManagedPylonWorker>,
+    worker_runtime_issue: Option<String>,
 }
 
 impl AppShell {
@@ -507,7 +536,7 @@ impl AppShell {
         transcript.push_entry(TranscriptEntry::new(
             TranscriptRole::System,
             "Shell Ready",
-            vec![String::from("Ask Gemma or type /help.")],
+            vec![String::from("Pylon is preparing the earning node.")],
         ));
         Self {
             installed_gemma_models: installed_gemma_models(config_path.as_path()),
@@ -541,6 +570,7 @@ impl AppShell {
             gemma_downloads: BTreeMap::new(),
             operator_stats: OperatorPanelStats::default(),
             wallet_surface: WalletSurfaceState::default(),
+            training_status_lines: Vec::new(),
             provider_command_in_flight: None,
             sidebar_view: SidebarView::Operate,
             transcript_follow_latest: true,
@@ -555,6 +585,8 @@ impl AppShell {
             latest_rank_up_moment: None,
             nexus_treasury_health: None,
             next_nexus_treasury_refresh_at: Instant::now(),
+            managed_worker: None,
+            worker_runtime_issue: None,
         }
     }
 
@@ -570,6 +602,56 @@ impl AppShell {
         self.next_refresh_at = Instant::now();
     }
 
+    fn attach_managed_worker_launch(&mut self, launch: ManagedPylonWorkerLaunch) {
+        match launch {
+            ManagedPylonWorkerLaunch::Existing { listen_addr } => {
+                self.push_system_message(
+                    "Pylon Worker",
+                    format!("Using existing earning worker at {listen_addr}."),
+                );
+            }
+            ManagedPylonWorkerLaunch::Started(worker) => {
+                let log_path = worker.log_path.display().to_string();
+                self.push_system_message(
+                    "Pylon Worker",
+                    format!("Started managed earning worker. Log: {log_path}"),
+                );
+                self.managed_worker = Some(worker);
+            }
+        }
+    }
+
+    fn poll_managed_worker(&mut self) {
+        let Some(worker) = self.managed_worker.as_mut() else {
+            return;
+        };
+        let result = match worker.child.try_wait() {
+            Ok(Some(status)) => Some(Ok((status.to_string(), worker.log_path.clone()))),
+            Ok(None) => None,
+            Err(error) => Some(Err((error.to_string(), worker.log_path.clone()))),
+        };
+        let Some(result) = result else {
+            return;
+        };
+        self.managed_worker = None;
+        let (message, log_path) = match result {
+            Ok((status, log_path)) => (
+                format!("Managed earning worker exited with {status}"),
+                log_path,
+            ),
+            Err((error, log_path)) => (
+                format!("Managed earning worker status check failed: {error}"),
+                log_path,
+            ),
+        };
+        self.worker_runtime_issue = Some(message.clone());
+        self.push_system_message(
+            "Pylon Worker",
+            format!("{message}. Log: {}", log_path.display()),
+        );
+        self.schedule_refresh_now();
+    }
+
     fn handle_key(&mut self, key: KeyEvent) {
         if matches!(
             key,
@@ -582,26 +664,10 @@ impl AppShell {
             self.should_quit = true;
             return;
         }
-
-        if let Some(submission) = self.bottom_pane.handle_key(key) {
-            self.handle_submission(submission);
-            return;
-        }
-
-        match key.code {
-            KeyCode::Tab => self.sidebar_view.toggle(),
-            KeyCode::PageUp => self.scroll_transcript_up(10),
-            KeyCode::PageDown => self.scroll_transcript_down(10),
-            _ => {}
-        }
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) {
-        match mouse.kind {
-            MouseEventKind::ScrollUp => self.scroll_transcript_up(3),
-            MouseEventKind::ScrollDown => self.scroll_transcript_down(3),
-            _ => {}
-        }
+        let _ = mouse;
     }
 
     fn handle_submission(&mut self, submission: ComposerSubmission) {
@@ -991,6 +1057,7 @@ impl AppShell {
             WorkerEvent::RefreshCompleted {
                 loaded,
                 installed_gemma_models,
+                training_status_lines,
                 operator_stats,
                 wallet_surface,
                 last_error,
@@ -1011,21 +1078,21 @@ impl AppShell {
                     self.latest_paid_moment = Some((paid_delta_sats, until));
                     self.live_activity_pulse_until = Some(until);
                 }
-                let previous_rank =
-                    stacker_rank_progress(previous_stats.total_earnings_sats).current.name;
-                let current_rank =
-                    stacker_rank_progress(operator_stats.total_earnings_sats).current.name;
+                let previous_rank = stacker_rank_progress(previous_stats.total_earnings_sats)
+                    .current
+                    .name;
+                let current_rank = stacker_rank_progress(operator_stats.total_earnings_sats)
+                    .current
+                    .name;
                 if previous_rank != current_rank && self.last_refresh_at.is_some() {
                     let until = Instant::now() + Duration::from_millis(4200);
-                    self.latest_rank_up_moment = Some((
-                        previous_rank.to_string(),
-                        current_rank.to_string(),
-                        until,
-                    ));
+                    self.latest_rank_up_moment =
+                        Some((previous_rank.to_string(), current_rank.to_string(), until));
                     self.live_activity_pulse_until = Some(until);
                 }
                 self.loaded = loaded;
                 self.installed_gemma_models = installed_gemma_models;
+                self.training_status_lines = training_status_lines;
                 self.operator_stats = operator_stats;
                 self.wallet_surface = wallet_surface;
                 if activity_changed && !self.operator_stats.recent_activity.is_empty() {
@@ -2019,7 +2086,10 @@ impl AppShell {
             lines.push(format!("Network: {network}"));
         }
         if let Some(balance) = self.wallet_surface.balance.as_ref() {
-            lines.push(format!("Total balance: {}", format_sats(balance.total_sats)));
+            lines.push(format!(
+                "Total balance: {}",
+                format_sats(balance.total_sats)
+            ));
             lines.push(format!(
                 "Balance mix: {} Spark, {} Lightning, {} on-chain",
                 format_sats(balance.spark_sats),
@@ -2080,7 +2150,8 @@ impl AppShell {
             self.push_system_lines(
                 "Wallet Withdraw",
                 vec![
-                    "Paste a Lightning invoice from your real wallet after the command.".to_string(),
+                    "Paste a Lightning invoice from your real wallet after the command."
+                        .to_string(),
                     "Usage: /wallet withdraw <lightning_invoice> [--amount-sats <n>]".to_string(),
                 ],
             );
@@ -2145,10 +2216,7 @@ impl AppShell {
             return;
         }
         if remainder != "reveal" {
-            self.push_system_message(
-                "Wallet Error",
-                "Usage: /wallet recovery [show|reveal]",
-            );
+            self.push_system_message("Wallet Error", "Usage: /wallet recovery [show|reveal]");
             return;
         }
         let config_path = self.config_path.clone();
@@ -2343,6 +2411,7 @@ impl AppShell {
                     let _ = tx.send(WorkerEvent::RefreshCompleted {
                         loaded: None,
                         installed_gemma_models,
+                        training_status_lines: Vec::new(),
                         operator_stats: OperatorPanelStats::default(),
                         wallet_surface: WalletSurfaceState::default(),
                         last_error: Some(error.to_string()),
@@ -2362,6 +2431,7 @@ impl AppShell {
                                 return WorkerEvent::RefreshCompleted {
                                     loaded: None,
                                     installed_gemma_models,
+                                    training_status_lines: Vec::new(),
                                     operator_stats: OperatorPanelStats::default(),
                                     wallet_surface: WalletSurfaceState::default(),
                                     last_error: Some(error.to_string()),
@@ -2386,6 +2456,8 @@ impl AppShell {
                                 Ok(report) => (Some(report), None),
                                 Err(error) => (None, Some(error.to_string())),
                             };
+                        let training_status_lines =
+                            load_training_status_lines(config_path.as_path()).await;
                         match pylon::load_config_and_status(config_path.as_path()).await {
                             Ok((_, status)) => {
                                 let provider_presence_online = sync_provider_presence_for_refresh(
@@ -2410,6 +2482,7 @@ impl AppShell {
                                         &ledger,
                                     ),
                                     installed_gemma_models,
+                                    training_status_lines,
                                     operator_stats: compute_operator_panel_stats(
                                         status.desired_mode,
                                         provider_presence_online,
@@ -2447,6 +2520,7 @@ impl AppShell {
                                         &ledger,
                                     ),
                                     installed_gemma_models,
+                                    training_status_lines,
                                     operator_stats: compute_operator_panel_stats(
                                         ProviderDesiredMode::Offline,
                                         provider_presence_online,
@@ -2474,13 +2548,15 @@ impl AppShell {
                         )
                         .await;
                         let ledger = pylon::load_ledger(config_path.as_path()).unwrap_or_default();
-                        let wallet_surface = match pylon::load_config_or_default(config_path.as_path()) {
-                            Ok(config) => build_wallet_surface(&config, None, &ledger),
-                            Err(_) => WalletSurfaceState::default(),
-                        };
+                        let wallet_surface =
+                            match pylon::load_config_or_default(config_path.as_path()) {
+                                Ok(config) => build_wallet_surface(&config, None, &ledger),
+                                Err(_) => WalletSurfaceState::default(),
+                            };
                         WorkerEvent::RefreshCompleted {
                             loaded: None,
                             installed_gemma_models,
+                            training_status_lines: Vec::new(),
                             wallet_surface,
                             operator_stats: compute_operator_panel_stats(
                                 ProviderDesiredMode::Offline,
@@ -2572,12 +2648,9 @@ impl AppShell {
             .padding(Padding::horizontal(1))
             .title(Line::from(vec![
                 Span::styled(" Pylon ", shell_accent()),
-                Span::styled(" transcript shell ", shell_border()),
+                Span::styled(" earning node ", shell_border()),
                 Span::raw("  "),
-                Span::styled(
-                    format!("{} view", self.sidebar_view.label()),
-                    shell_accent(),
-                ),
+                Span::styled("homework dashboard", shell_accent()),
             ]))
             .style(shell_border());
         let area = frame.area();
@@ -2587,75 +2660,33 @@ impl AppShell {
         let vertical = Layout::vertical([
             Constraint::Length(self.header_height()),
             Constraint::Min(10),
-            Constraint::Length(self.bottom_pane.height()),
             Constraint::Length(2),
         ])
         .split(inner);
-        let middle = Layout::horizontal([Constraint::Percentage(67), Constraint::Percentage(33)])
+        let columns = Layout::horizontal([Constraint::Percentage(62), Constraint::Percentage(38)])
             .split(vertical[1]);
-        self.update_transcript_layout(middle[0]);
-
         frame.render_widget(self.header_panel(), vertical[0]);
-        frame.render_widget(self.transcript_panel(), middle[0]);
-        match self.sidebar_view {
-            SidebarView::Operate => {
-                let operator_height = (self.operator_lines().len() as u16 + 2).clamp(7, 9);
-                let wallet_card_height = (self.wallet_card_lines().len() as u16 + 2).clamp(7, 9);
-                let rank_height = (self.rank_lines().len() as u16 + 2).clamp(8, 10);
-                let node_height = (self.summary_lines().len() as u16 + 2).clamp(6, 8);
-                let right_column = Layout::vertical([
-                    Constraint::Length(operator_height),
-                    Constraint::Length(wallet_card_height),
-                    Constraint::Length(rank_height),
-                    Constraint::Length(node_height),
-                    Constraint::Min(0),
-                ])
-                .split(middle[1]);
-                frame.render_widget(self.operator_panel(), right_column[0]);
-                frame.render_widget(self.wallet_card_panel(), right_column[1]);
-                frame.render_widget(self.rank_panel(), right_column[2]);
-                frame.render_widget(self.summary_panel(), right_column[3]);
-            }
-            SidebarView::Wallet => {
-                let wallet_height = (self.wallet_overview_lines().len() as u16 + 2).clamp(7, 9);
-                let receive_height = (self.wallet_receive_lines().len() as u16 + 2).clamp(8, 11);
-                let move_height = (self.wallet_withdraw_lines().len() as u16 + 2).clamp(7, 10);
-                let recovery_height =
-                    (self.wallet_recovery_lines().len() as u16 + 2).clamp(7, 10);
-                let right_column = Layout::vertical([
-                    Constraint::Length(wallet_height),
-                    Constraint::Length(receive_height),
-                    Constraint::Length(move_height),
-                    Constraint::Min(recovery_height),
-                ])
-                .split(middle[1]);
-                frame.render_widget(self.wallet_overview_panel(), right_column[0]);
-                frame.render_widget(self.wallet_receive_panel(), right_column[1]);
-                frame.render_widget(self.wallet_withdraw_panel(), right_column[2]);
-                frame.render_widget(self.wallet_recovery_panel(), right_column[3]);
-            }
-            SidebarView::Inspect => {
-                let models_height = (self.model_lines().len() as u16 + 2).clamp(10, 15);
-                let summary_height = (self.summary_lines().len() as u16 + 2).clamp(6, 8);
-                let right_column = Layout::vertical([
-                    Constraint::Length(models_height),
-                    Constraint::Length(summary_height),
-                    Constraint::Min(8),
-                ])
-                .split(middle[1]);
-                frame.render_widget(self.models_panel(), right_column[0]);
-                frame.render_widget(self.summary_panel(), right_column[1]);
-                frame.render_widget(self.diagnostics_panel(), right_column[2]);
-            }
-        }
-        self.bottom_pane.render(
-            frame,
-            vertical[2],
-            shell_border(),
-            shell_accent(),
-            Some("Ask Gemma or type /help"),
-        );
-        frame.render_widget(self.footer_panel(), vertical[3]);
+
+        let left = Layout::vertical([
+            Constraint::Length((self.homework_lines().len() as u16 + 2).clamp(10, 16)),
+            Constraint::Min(8),
+        ])
+        .split(columns[0]);
+        let right = Layout::vertical([
+            Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(6, 8)),
+            Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(6, 8)),
+            Constraint::Length((self.summary_lines().len() as u16 + 2).clamp(5, 7)),
+            Constraint::Min((self.rank_lines().len() as u16 + 2).clamp(7, 9)),
+        ])
+        .split(columns[1]);
+
+        frame.render_widget(self.homework_panel(), left[0]);
+        frame.render_widget(self.activity_panel(), left[1]);
+        frame.render_widget(self.operator_panel(), right[0]);
+        frame.render_widget(self.wallet_card_panel(), right[1]);
+        frame.render_widget(self.summary_panel(), right[2]);
+        frame.render_widget(self.rank_panel(), right[3]);
+        frame.render_widget(self.footer_panel(), vertical[2]);
     }
 
     fn header_panel(&self) -> Paragraph<'static> {
@@ -2719,7 +2750,10 @@ impl AppShell {
             ));
         } else if let Some((_, to_rank, _)) = self.visible_rank_up_moment() {
             bottom_spans.push(Span::raw("  "));
-            bottom_spans.push(Span::styled(format!("ascended to {to_rank}"), shell_accent()));
+            bottom_spans.push(Span::styled(
+                format!("ascended to {to_rank}"),
+                shell_accent(),
+            ));
         }
         if self.last_error.is_some() {
             bottom_spans.push(Span::raw("  "));
@@ -2734,6 +2768,14 @@ impl AppShell {
 
     fn summary_panel(&self) -> Paragraph<'static> {
         panel("Node", Text::from(self.summary_lines()))
+    }
+
+    fn homework_panel(&self) -> Paragraph<'static> {
+        panel("Homework Run", Text::from(self.homework_lines()))
+    }
+
+    fn activity_panel(&self) -> Paragraph<'static> {
+        panel("Work Activity", Text::from(self.activity_lines()))
     }
 
     fn models_panel(&self) -> Paragraph<'static> {
@@ -2794,45 +2836,31 @@ impl AppShell {
             spans.push(Span::styled(format!(" {key} "), shell_accent()));
             spans.push(Span::raw(label));
         }
-        Paragraph::new(Line::from(spans))
-        .block(Block::default().style(shell_border()))
+        Paragraph::new(Line::from(spans)).block(Block::default().style(shell_border()))
     }
 
     fn footer_segments(&self) -> Vec<(&'static str, &'static str)> {
-        match self.sidebar_view {
-            SidebarView::Operate => vec![
-                ("Ctrl+C", "quit"),
-                ("Tab", "wallet"),
-                ("jobs", "online"),
-                ("/wallet receive", "cash in"),
-                ("PgUp/PgDn", "scroll"),
-            ],
-            SidebarView::Wallet => vec![
-                ("Ctrl+C", "quit"),
-                ("Tab", "inspect"),
-                ("/wallet receive", "addresses"),
-                ("/wallet invoice", "request"),
-                ("/wallet withdraw", "send out"),
-            ],
-            SidebarView::Inspect => vec![
-                ("Ctrl+C", "quit"),
-                ("Tab", "operate"),
-                ("PgUp/PgDn", "scroll"),
-                ("/wallet", "view"),
-                ("/help", "commands"),
-            ],
-        }
+        vec![
+            ("Ctrl+C", "quit"),
+            ("status", "online while this stays open"),
+            ("jobs", "admin-triggered homework runs land automatically"),
+            ("wallet", "payouts settle to the built-in wallet"),
+        ]
     }
 
     fn hero_status_copy(&self) -> String {
         let (state_label, detail) = self.operator_state_label_and_detail();
         match state_label.as_str() {
-            "Listening for work" => "Listening across relays for paid work".to_string(),
-            "Earning now" => "Local Gemma is actively working a paid request".to_string(),
+            "Listening for work" => "Waiting for the next homework job".to_string(),
+            "Earning now" => "This node is processing paid homework".to_string(),
             "Waiting for payout" => "Work is done. Waiting for sats to settle".to_string(),
-            "Ready to earn" => "Standing by for the next paid match".to_string(),
-            "Preparing to earn" => detail.unwrap_or_else(|| "Booting local earnings lane".to_string()),
-            "Needs attention" => detail.unwrap_or_else(|| "A local runtime issue needs attention".to_string()),
+            "Ready to earn" => "Standing by for the next homework job".to_string(),
+            "Preparing to earn" => {
+                detail.unwrap_or_else(|| "Booting local earnings lane".to_string())
+            }
+            "Needs attention" => {
+                detail.unwrap_or_else(|| "A local runtime issue needs attention".to_string())
+            }
             _ => detail.unwrap_or(state_label),
         }
     }
@@ -2847,7 +2875,10 @@ impl AppShell {
             {
                 format_sats(self.operator_stats.total_earnings_sats)
             } else {
-                format!("{} retained", format_sats(self.operator_stats.total_earnings_sats))
+                format!(
+                    "{} retained",
+                    format_sats(self.operator_stats.total_earnings_sats)
+                )
             }
         } else {
             "0 sats".to_string()
@@ -2870,11 +2901,94 @@ impl AppShell {
             .map(|(from, to, until)| (from.clone(), to.clone(), *until))
     }
 
+    fn training_status_value(&self, prefix: &str) -> Option<String> {
+        self.training_status_lines
+            .iter()
+            .find_map(|line| line.strip_prefix(prefix))
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    }
+
+    fn homework_lines(&self) -> Vec<Line<'static>> {
+        let training_state = self
+            .training_status_value("training state:")
+            .map(|value| human_homework_status(value.as_str()).to_string())
+            .unwrap_or_else(|| "starting".to_string());
+        let current_run = self
+            .training_status_value("current run id:")
+            .or_else(|| {
+                self.training_status_lines.iter().find_map(|line| {
+                    line.strip_prefix("- ")
+                        .and_then(|rest| rest.split_whitespace().next())
+                        .map(str::to_string)
+                })
+            })
+            .unwrap_or_else(|| "waiting for next admin-triggered run".to_string());
+        let active_window = self
+            .training_status_value("active window id:")
+            .unwrap_or_else(|| "none yet".to_string());
+        let last_result = self
+            .operator_stats
+            .last_job_result
+            .as_deref()
+            .map(human_homework_status)
+            .map(str::to_string)
+            .unwrap_or_else(|| "none yet".to_string());
+
+        let mut lines = vec![
+            Line::from(vec![
+                key_label("State"),
+                Span::styled(training_state, emphasis_text()),
+            ]),
+            Line::from(vec![key_label("Run"), Span::raw(current_run)]),
+            Line::from(vec![key_label("Window"), Span::raw(active_window)]),
+            Line::from(vec![key_label("Last result"), Span::raw(last_result)]),
+            Line::from(vec![
+                key_label("24h work"),
+                Span::raw(format!(
+                    "{} found, {} matched, {} processed, {} paid",
+                    format_u64_with_commas(self.operator_stats.jobs_found_24h),
+                    format_u64_with_commas(self.operator_stats.matching_jobs_24h),
+                    format_u64_with_commas(self.operator_stats.jobs_processed_24h),
+                    format_u64_with_commas(self.operator_stats.jobs_settled_24h)
+                )),
+            ]),
+        ];
+
+        if let Some(offer_count) = self.training_status_value("work offers:") {
+            lines.push(Line::from(vec![
+                key_label("Offers"),
+                Span::raw(offer_count),
+            ]));
+        }
+        if let Some(closeout_count) = self.training_status_value("closeout progress:") {
+            lines.push(Line::from(vec![
+                key_label("Closeout"),
+                Span::raw(closeout_count),
+            ]));
+        }
+        if let Some(issue_count) = self.training_status_value("recent issues:") {
+            lines.push(Line::from(vec![
+                key_label("Issues"),
+                Span::raw(issue_count),
+            ]));
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(
+            "Keep this window open. Homework runs are assigned automatically when an admin triggers work."
+                .to_string(),
+        ));
+        lines
+    }
+
     fn summary_lines(&self) -> Vec<Line<'static>> {
-        let gemma = gemma4_status(self.loaded.as_ref());
         let health_label = if self.last_error.is_some() {
             "needs attention"
-        } else if gemma.loaded {
+        } else if matches!(
+            self.operator_stats.runtime_status.as_deref(),
+            Some("online") | Some("ready")
+        ) {
             "healthy"
         } else {
             "warming up"
@@ -2946,7 +3060,10 @@ impl AppShell {
                     .as_deref()
                     .unwrap_or("unknown"),
             )),
-            Line::from(format!("gemma loaded: {}", if gemma.loaded { "yes" } else { "no" })),
+            Line::from(format!(
+                "gemma loaded: {}",
+                if gemma.loaded { "yes" } else { "no" }
+            )),
             Line::from(format!(
                 "models: {}",
                 comma_or_none(gemma.models.as_slice())
@@ -3143,7 +3260,10 @@ impl AppShell {
         if let Some((amount_sats, _)) = self.visible_paid_moment() {
             lines.push(Line::from(vec![
                 key_label("Fresh payout"),
-                Span::styled(format!("+{} just landed", format_sats(amount_sats)), success_accent()),
+                Span::styled(
+                    format!("+{} just landed", format_sats(amount_sats)),
+                    success_accent(),
+                ),
             ]));
         }
         if let Some(wallet_error) = self.last_wallet_error.as_deref() {
@@ -3200,11 +3320,12 @@ impl AppShell {
             ]),
         ];
         if let Some(last_paid) = self.latest_wallet_receive_summary() {
-            lines.push(Line::from(vec![key_label("Last paid"), Span::raw(last_paid)]));
+            lines.push(Line::from(vec![
+                key_label("Last paid"),
+                Span::raw(last_paid),
+            ]));
         }
-        lines.extend([
-            Line::from(vec![key_label("Balance mix"), Span::raw(mix)]),
-        ]);
+        lines.extend([Line::from(vec![key_label("Balance mix"), Span::raw(mix)])]);
         if let Some(detail) = self.wallet_surface.runtime_detail.as_deref() {
             lines.push(Line::from(vec![
                 key_label("Runtime"),
@@ -3254,7 +3375,10 @@ impl AppShell {
             ]),
         ];
         if let Some(last_paid) = self.latest_wallet_receive_summary() {
-            lines.push(Line::from(vec![key_label("Last paid"), Span::raw(last_paid)]));
+            lines.push(Line::from(vec![
+                key_label("Last paid"),
+                Span::raw(last_paid),
+            ]));
         }
         lines
     }
@@ -3406,10 +3530,7 @@ impl AppShell {
                 animation_tick,
                 rank_up_visible,
             ));
-            progress_line.extend([
-                Span::raw("  "),
-                Span::styled(next.name, muted_text()),
-            ]);
+            progress_line.extend([Span::raw("  "), Span::styled(next.name, muted_text())]);
             lines.push(Line::from(vec![
                 key_label("Next unlock"),
                 Span::raw(format!("{} in {}", next.name, format_sats(sats_remaining))),
@@ -3460,17 +3581,26 @@ impl AppShell {
                 pulse_highlight_text(),
             )));
         }
-        if !self.operator_stats.recent_activity.is_empty() {
-            lines.extend(self.operator_stats.recent_activity.iter().enumerate().map(
-                |(index, entry)| {
-                    let style = if index == 0 && self.activity_pulse_is_visible() {
-                        pulse_highlight_text()
-                    } else {
-                        Style::default()
-                    };
-                    Line::from(Span::styled(entry.clone(), style))
-                },
-            ));
+        let visible_recent_activity = self
+            .operator_stats
+            .recent_activity
+            .iter()
+            .filter(|entry| entry.starts_with("[PAID]"))
+            .collect::<Vec<_>>();
+        if !visible_recent_activity.is_empty() {
+            lines.extend(
+                visible_recent_activity
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, entry)| {
+                        let style = if index == 0 && self.activity_pulse_is_visible() {
+                            pulse_highlight_text()
+                        } else {
+                            Style::default()
+                        };
+                        Line::from(Span::styled(entry.clone(), style))
+                    }),
+            );
             return lines;
         }
 
@@ -3481,29 +3611,34 @@ impl AppShell {
         if let Some(command) = self.provider_command_in_flight.as_ref() {
             return vec![
                 Line::from(format!(
-                    "[LIVE] listening across relays {}",
+                    "[LIVE] checking homework queue {}",
                     animated_ready_heartbeat(animation_phase)
                 )),
                 Line::from(format!("[LIVE] {}", command.detail())),
-                Line::from("[TIP] Keep Pylon open so matching jobs can land.".to_string()),
+                Line::from("[TIP] Keep Pylon open so homework jobs can land.".to_string()),
             ];
         }
 
         let quiet_detail = match self.operator_stats.last_provider_event_at_ms {
             Some(at_ms) => format!(
-                "No new paid matches in {}.",
+                "No new homework assignment in {}.",
                 format_elapsed_since_ms(at_ms, current_epoch_ms_u64())
             ),
-            None => "No paid matches yet.".to_string(),
+            None => "No homework assignment yet.".to_string(),
         };
 
         vec![
             Line::from(format!(
-                "[READY] standing by for paid work {}",
+                "[READY] standing by for homework jobs {}",
                 animated_ready_heartbeat(animation_phase)
             )),
-            Line::from(format!("[MARKET] {quiet_detail}{}", animated_quiet_suffix(animation_phase))),
-            Line::from("[TIP] Keep Pylon open so starter jobs can land.".to_string()),
+            Line::from(format!(
+                "[HOMEWORK] {quiet_detail}{}",
+                animated_quiet_suffix(animation_phase)
+            )),
+            Line::from(
+                "[TIP] Keep Pylon open so admin-triggered homework jobs can land.".to_string(),
+            ),
         ]
     }
 
@@ -3529,7 +3664,9 @@ impl AppShell {
             };
             return (
                 "Waiting for payout".to_string(),
-                Some(format!("{count} completed {job_label} waiting for settlement")),
+                Some(format!(
+                    "{count} completed {job_label} waiting for settlement"
+                )),
             );
         }
         if let Some(detail) = self.startup_detail() {
@@ -3577,14 +3714,19 @@ impl AppShell {
     }
 
     fn startup_detail(&self) -> Option<String> {
+        if let Some(issue) = self.worker_runtime_issue.as_ref() {
+            return Some(issue.clone());
+        }
         if self.last_refresh_at.is_none() && self.operator_stats.runtime_status.is_none() {
-            return Some("Starting local checks for Gemma, wallet, and node status.".to_string());
+            return Some(
+                "Starting local checks for wallet, worker, and homework status.".to_string(),
+            );
         }
         if self.refresh_in_flight
             && self.loaded.is_none()
             && self.operator_stats.runtime_status.is_none()
         {
-            return Some("Loading node status and checking local Gemma supply.".to_string());
+            return Some("Loading node status and checking homework readiness.".to_string());
         }
         if self.refresh_in_flight && self.operator_stats.runtime_status.is_none() {
             return Some("Refreshing runtime status and wallet state.".to_string());
@@ -3598,7 +3740,8 @@ impl AppShell {
         if self.last_refresh_at.is_none() && self.operator_stats.runtime_status.is_none() {
             return Some(vec![
                 Line::from(format!("[LIVE] {spinner} checking local Pylon setup")),
-                Line::from(format!("[LIVE] {spinner} looking for local Gemma availability")),
+                Line::from(format!("[LIVE] {spinner} checking wallet readiness")),
+                Line::from(format!("[LIVE] {spinner} confirming homework intake")),
                 Line::from("[WAIT] Opening the shell and preparing earnings state.".to_string()),
             ]);
         }
@@ -3608,17 +3751,18 @@ impl AppShell {
         {
             return Some(vec![
                 Line::from(format!("[LIVE] {spinner} loading node status")),
-                Line::from(format!("[LIVE] {spinner} checking wallet and runtime state")),
+                Line::from(format!(
+                    "[LIVE] {spinner} checking wallet and runtime state"
+                )),
                 Line::from(
-                    "[WAIT] This usually clears as soon as the first refresh finishes."
-                        .to_string(),
+                    "[WAIT] This usually clears as soon as the first refresh finishes.".to_string(),
                 ),
             ]);
         }
         if self.refresh_in_flight && self.operator_stats.runtime_status.is_none() {
             return Some(vec![
-                Line::from(format!("[LIVE] {spinner} refreshing provider readiness")),
-                Line::from(format!("[LIVE] {spinner} confirming local Gemma connectivity")),
+                Line::from(format!("[LIVE] {spinner} refreshing homework readiness")),
+                Line::from(format!("[LIVE] {spinner} confirming homework intake")),
                 Line::from("[WAIT] Still preparing this node to earn.".to_string()),
             ]);
         }
@@ -3635,7 +3779,7 @@ impl AppShell {
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Ask Gemma or type /help.", emphasis_text()),
+                    Span::styled("Pylon is preparing the earning node.", emphasis_text()),
                 ]),
             ])
         } else {
@@ -3754,7 +3898,9 @@ fn stacker_rank_progress(lifetime_sats: u64) -> StackerRankProgress {
     match next {
         Some(next_rank) => {
             let progress_sats = lifetime_sats.saturating_sub(current.threshold_sats);
-            let segment_goal_sats = next_rank.threshold_sats.saturating_sub(current.threshold_sats);
+            let segment_goal_sats = next_rank
+                .threshold_sats
+                .saturating_sub(current.threshold_sats);
             let progress_ratio = if segment_goal_sats == 0 {
                 1.0
             } else {
@@ -3788,7 +3934,13 @@ fn render_rank_progress_spans(
     let ratio = progress_ratio.clamp(0.0, 1.0);
     let marker_index = ((width.saturating_sub(1)) as f64 * ratio).round() as usize;
     let glint_index = if celebratory {
-        let wave = [marker_index.saturating_sub(2), marker_index.saturating_sub(1), marker_index, (marker_index + 1).min(width - 1), (marker_index + 2).min(width - 1)];
+        let wave = [
+            marker_index.saturating_sub(2),
+            marker_index.saturating_sub(1),
+            marker_index,
+            (marker_index + 1).min(width - 1),
+            (marker_index + 2).min(width - 1),
+        ];
         wave[tick % wave.len()]
     } else {
         tick % width
@@ -3796,7 +3948,11 @@ fn render_rank_progress_spans(
     let mut out = Vec::with_capacity(width);
     for index in 0..width {
         let span = if index == marker_index {
-            let marker = if celebratory && tick % 2 == 0 { "◎" } else { "◉" };
+            let marker = if celebratory && tick % 2 == 0 {
+                "◎"
+            } else {
+                "◉"
+            };
             Span::styled(
                 marker,
                 if celebratory && tick % 2 == 0 {
@@ -3892,10 +4048,7 @@ fn animated_stack_gain_suffix(phase: usize, active: bool) -> &'static str {
     }
 }
 
-fn mission_control_signal_spans(
-    state_label: &str,
-    tick: usize,
-) -> Vec<Span<'static>> {
+fn mission_control_signal_spans(state_label: &str, tick: usize) -> Vec<Span<'static>> {
     let mut spans = vec![Span::raw("  ")];
     match state_label {
         "Ready to earn" => {
@@ -3912,7 +4065,10 @@ fn mission_control_signal_spans(
             }
         }
         "Earning now" => {
-            spans.push(Span::styled(animated_active_work_pulse(tick), success_accent()));
+            spans.push(Span::styled(
+                animated_active_work_pulse(tick),
+                success_accent(),
+            ));
         }
         "Waiting for payout" => {
             spans.push(Span::styled(animated_payout_pulse(tick), warning_accent()));
@@ -4187,31 +4343,9 @@ pub fn usage() -> &'static str {
     "Usage: pylon-tui [--config-path <path>]\n\
 Controls:\n\
   Ctrl+C   quit\n\
-  Tab      toggle between operate and inspect sidebars\n\
-  PgUp/PgDn / wheel  scroll transcript\n\
-  Enter    submit composer\n\
-  Ctrl+J   insert newline\n\
-  Composer:\n\
-  [prompt]  stream a reply from local Gemma when weights are loaded\n\
-  /help  show available commands\n\
-  /model [model]  target a Gemma model for local runtime use\n\
-  /uninstall [model]  remove a Gemma model from local cache and runtime\n\
-  /provider [scan|run] [--seconds <n>]  inspect or process retained inbound NIP-90 jobs\n\
-  /jobs [--limit <n>]  show retained provider job history\n\
-  /earnings  show retained provider earnings\n\
-  /receipts [--limit <n>]  show retained provider receipts\n\
-  /activity [--limit <n>]  show retained relay and settlement activity\n\
-  /job submit [--bid-msats <n>] [--model <id>] [--provider <pubkey>] <prompt>  publish a retained NIP-90 buyer request\n\
-  /job watch [<request_event_id>] [--seconds <n>]  stream retained buyer feedback and results into the transcript\n\
-  /job history [--limit <n>]  show retained buyer job history from the local ledger\n\
-  /job replay <request_event_id>  replay one retained buyer job from local state\n\
-  /job approve <request_event_id>  pay one retained buyer invoice\n\
-  /job deny <request_event_id>  deny one retained buyer invoice locally\n\
-  /job policy [show|auto|manual]  inspect or set buyer auto-pay policy\n\
-  /payout [history|withdraw] ...  inspect provider earnings and run withdrawals\n\
-  /relay [list|add|remove|refresh]  inspect or update configured relays\n\
-  /wallet [show|receive|withdraw|recovery|status|balance|address|invoice|pay|history]  open the wallet surface or run retained Spark wallet commands\n\
-  /download [model]  download a Gemma GGUF from Hugging Face into the local Pylon cache\n"
+  Keep this window open to stay eligible for admin-triggered homework jobs.\n\
+  The TUI starts and supervises the local earning worker automatically.\n\
+  Payouts settle to the built-in wallet.\n"
 }
 
 fn should_publish_provider_presence(
@@ -4234,6 +4368,7 @@ pub async fn run_pylon_tui_with_args(args: Vec<String>) -> Result<()> {
 }
 
 async fn run_pylon_tui_with_config(config: TuiLaunchConfig) -> Result<()> {
+    let managed_worker_launch = start_managed_pylon_worker(config.config_path.as_path())?;
     let mut stdout = io::stdout();
     enable_raw_mode()?;
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -4243,6 +4378,7 @@ async fn run_pylon_tui_with_config(config: TuiLaunchConfig) -> Result<()> {
     terminal.clear()?;
 
     let mut app = AppShell::new(config.config_path);
+    app.attach_managed_worker_launch(managed_worker_launch);
     let result = run_loop(&mut terminal, &mut app).await;
     app.report_provider_presence_offline().await;
     let cleanup_result = restore_terminal(&mut terminal);
@@ -4257,6 +4393,7 @@ async fn run_loop(
     app.refresh().await;
 
     while !app.should_quit() {
+        app.poll_managed_worker();
         app.drain_worker_events();
         terminal.draw(|frame| app.render(frame))?;
         if event::poll(TICK_RATE)? {
@@ -4274,6 +4411,74 @@ async fn run_loop(
     }
 
     Ok(())
+}
+
+fn start_managed_pylon_worker(config_path: &Path) -> Result<ManagedPylonWorkerLaunch> {
+    let config = pylon::ensure_local_setup(config_path)?;
+    if admin_listener_reachable(&config.admin_listen_addr) {
+        return Ok(ManagedPylonWorkerLaunch::Existing {
+            listen_addr: config.admin_listen_addr,
+        });
+    }
+
+    let worker_path = resolve_pylon_worker_path();
+    let log_path = managed_worker_log_path(config_path);
+    if let Some(parent) = log_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path.as_path())?;
+    let child = Command::new(worker_path.as_path())
+        .arg("--config-path")
+        .arg(config_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log_file.try_clone()?))
+        .stderr(Stdio::from(log_file))
+        .spawn()
+        .with_context(|| format!("failed to start Pylon worker at {}", worker_path.display()))?;
+
+    Ok(ManagedPylonWorkerLaunch::Started(ManagedPylonWorker {
+        child,
+        log_path,
+    }))
+}
+
+fn resolve_pylon_worker_path() -> PathBuf {
+    if let Ok(path) = std::env::var("OPENAGENTS_PYLON_WORKER_PATH") {
+        if !path.trim().is_empty() {
+            return PathBuf::from(path);
+        }
+    }
+    let executable_name = if cfg!(windows) { "pylon.exe" } else { "pylon" };
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.join(executable_name)))
+        .filter(|path| path.exists())
+        .unwrap_or_else(|| PathBuf::from(executable_name))
+}
+
+fn managed_worker_log_path(config_path: &Path) -> PathBuf {
+    config_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("logs")
+        .join(MANAGED_WORKER_LOG_FILE)
+}
+
+fn admin_listener_reachable(listen_addr: &str) -> bool {
+    let Ok(addrs) = listen_addr.to_socket_addrs() else {
+        return false;
+    };
+    addrs.into_iter().any(|addr| {
+        TcpStream::connect_timeout(&addr, MANAGED_WORKER_CONNECT_TIMEOUT)
+            .map(|stream| {
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+                true
+            })
+            .unwrap_or(false)
+    })
 }
 
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
@@ -4395,6 +4600,24 @@ fn compute_operator_panel_stats(
         session_started_at_ms,
         current_epoch_ms_u64(),
     )
+}
+
+async fn load_training_status_lines(config_path: &Path) -> Vec<String> {
+    let args = vec![
+        "--config-path".to_string(),
+        config_path.display().to_string(),
+        "training".to_string(),
+        "status".to_string(),
+    ];
+    let cli = match pylon::parse_args(args) {
+        Ok(cli) => cli,
+        Err(error) => return vec![format!("training status unavailable: {error}")],
+    };
+    match pylon::run_cli(cli).await {
+        Ok(Some(output)) => output.lines().map(str::to_string).collect(),
+        Ok(None) => Vec::new(),
+        Err(error) => vec![format!("training status unavailable: {error}")],
+    }
 }
 
 fn build_wallet_surface(
@@ -4638,9 +4861,12 @@ async fn render_wallet_command_output(
             amount_sats,
             ..
         } => {
-            let report =
-                pylon::pay_wallet_invoice_report(config_path, payment_request.as_str(), *amount_sats)
-                    .await?;
+            let report = pylon::pay_wallet_invoice_report(
+                config_path,
+                payment_request.as_str(),
+                *amount_sats,
+            )
+            .await?;
             Ok(render_wallet_pay_output(&report))
         }
         pylon::WalletSubcommand::History { limit, .. } => {
@@ -4652,7 +4878,10 @@ async fn render_wallet_command_output(
 
 fn render_wallet_status_output(report: &pylon::WalletStatusReport) -> String {
     let mut lines = vec![
-        format!("Status: {}", title_case_status(report.runtime_status.as_str())),
+        format!(
+            "Status: {}",
+            title_case_status(report.runtime_status.as_str())
+        ),
         format!("Network: {}", report.runtime.network),
         format!("Total balance: {}", format_sats(report.balance.total_sats)),
         format!(
@@ -4697,7 +4926,10 @@ fn render_wallet_receive_output(report: &pylon::WalletAddressReport) -> String {
 
 fn render_wallet_invoice_output(report: &pylon::WalletInvoiceReport) -> String {
     let mut lines = vec![
-        format!("Lightning invoice ready for {}", format_sats(report.invoice.amount_sats)),
+        format!(
+            "Lightning invoice ready for {}",
+            format_sats(report.invoice.amount_sats)
+        ),
         format!("Network: {}", report.runtime.network),
     ];
     if let Some(description) = report.invoice.description.as_deref() {
@@ -4711,10 +4943,16 @@ fn render_wallet_invoice_output(report: &pylon::WalletInvoiceReport) -> String {
 
 fn render_wallet_pay_output(report: &pylon::WalletPayReport) -> String {
     let mut lines = vec![
-        format!("Lightning withdrawal submitted on {}", report.runtime.network),
+        format!(
+            "Lightning withdrawal submitted on {}",
+            report.runtime.network
+        ),
         format!("Amount: {}", format_sats(report.payment.amount_sats)),
         format!("Fees: {}", format_sats(report.payment.fees_sats)),
-        format!("Wallet balance: {}", format_sats(report.post_balance.total_sats)),
+        format!(
+            "Wallet balance: {}",
+            format_sats(report.post_balance.total_sats)
+        ),
     ];
     if let Some(description) = report.payment.description.as_deref() {
         lines.push(format!("Description: {description}"));
@@ -4759,8 +4997,7 @@ fn reveal_wallet_recovery_phrase(config_path: &Path) -> Result<String> {
     }
     Ok([
         "Recovery phrase".to_string(),
-        "Handle with care. This unlocks both your Spark wallet and your node identity."
-            .to_string(),
+        "Handle with care. This unlocks both your Spark wallet and your node identity.".to_string(),
         format!("Stored at: {}", config.identity_path.display()),
         String::new(),
         mnemonic,
@@ -4835,18 +5072,6 @@ fn recent_provider_activity(ledger: &pylon::PylonLedger, now_ms: u64) -> Vec<Str
         ));
     }
 
-    for job in ledger.jobs.iter().filter(|job| job.direction == "provider") {
-        if let Some(label) = provider_job_activity_label(job) {
-            entries.push((
-                job.updated_at_ms,
-                format!(
-                    "{label} {} ago",
-                    format_elapsed_since_ms(job.updated_at_ms, now_ms)
-                ),
-            ));
-        }
-    }
-
     entries.sort_by(|left, right| right.0.cmp(&left.0));
     entries
         .into_iter()
@@ -4857,13 +5082,33 @@ fn recent_provider_activity(ledger: &pylon::PylonLedger, now_ms: u64) -> Vec<Str
 
 fn provider_job_activity_label(job: &pylon::PylonLedgerJob) -> Option<String> {
     match job.status.as_str() {
-        "accepted_local" => Some("[LIVE] matched a paid request".to_string()),
-        "processing_local" => Some("[LIVE] local Gemma is processing".to_string()),
+        "accepted_local" => Some("[LIVE] matched a homework assignment".to_string()),
+        "processing_local" => Some("[LIVE] processing assigned homework".to_string()),
         "payment_required" => Some("[WAIT] result delivered, payout pending".to_string()),
-        "completed_local" => Some("[DONE] delivered a local result".to_string()),
+        "completed_local" => Some("[DONE] submitted homework result".to_string()),
         "settled" => None,
         "failed_local" => Some("[WARN] local run hit a failure".to_string()),
         _ => None,
+    }
+}
+
+fn human_homework_status(value: &str) -> &'static str {
+    match value.trim() {
+        "accepted_local" => "accepted locally",
+        "processing_local" => "processing locally",
+        "completed_local" => "completed locally",
+        "payment_required" => "waiting for payout",
+        "settled" | "payment_received" => "paid",
+        "failed_local" => "local run failed",
+        "ready" => "ready",
+        "starting" => "starting",
+        "closeout" => "closing out",
+        "sealed" | "window_sealed" => "window sealed",
+        "released" => "released",
+        "paused" => "paused",
+        "offline" => "offline",
+        "online" => "online",
+        _ => "status updated",
     }
 }
 
@@ -4945,7 +5190,10 @@ fn gemma_runtime_ready_models(loaded: Option<&LoadedState>) -> Vec<String> {
     };
     let mut models = Vec::new();
     collect_gemma4_backend_ready_models(&snapshot.availability.local_gemma, &mut models);
-    collect_gemma4_backend_ready_models(&snapshot.availability.apple_foundation_models, &mut models);
+    collect_gemma4_backend_ready_models(
+        &snapshot.availability.apple_foundation_models,
+        &mut models,
+    );
     sort_and_dedup(&mut models);
     models
 }
@@ -5443,18 +5691,17 @@ mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission,
         LOCAL_CHAT_PLAIN_TEXT_POLICY, OperatorPanelStats, ProviderCommandInFlight,
-        WalletSurfaceState, WorkerEvent, active_chat_title, animated_right_now_suffix,
-        animated_stack_gain_suffix, compute_operator_panel_stats_at, current_epoch_ms_u64,
-        estimate_token_count, local_chat_request_messages, max_transcript_scroll_y,
-        mission_control_signal_spans,
+        WalletSurfaceState, WorkerEvent, active_chat_title, admin_listener_reachable,
+        animated_right_now_suffix, animated_stack_gain_suffix, compute_operator_panel_stats_at,
+        current_epoch_ms_u64, estimate_token_count, local_chat_request_messages,
+        managed_worker_log_path, max_transcript_scroll_y, mission_control_signal_spans,
         parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
         parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
         parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
         parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
         recent_provider_activity, render_rank_progress_spans, should_publish_provider_presence,
-        stacker_rank_progress,
-        stabilize_operator_panel_stats, summarize_chat_metrics, transcript_viewport_height,
-        transcript_wrap_width, wrapped_row_count,
+        stabilize_operator_panel_stats, stacker_rank_progress, summarize_chat_metrics,
+        transcript_viewport_height, transcript_wrap_width, wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use openagents_provider_substrate::{ProviderDesiredMode, ProviderPersistedSnapshot};
@@ -5470,6 +5717,21 @@ mod tests {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn managed_worker_log_path_lives_next_to_config() {
+        let path = managed_worker_log_path(PathBuf::from("/tmp/pylon/config.json").as_path());
+
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/pylon/logs/pylon-tui-managed-worker.log")
+        );
+    }
+
+    #[test]
+    fn admin_listener_reachable_rejects_invalid_addr() {
+        assert!(!admin_listener_reachable("not-a-socket-address"));
     }
 
     #[test]
@@ -5609,6 +5871,7 @@ mod tests {
         app.handle_worker_event(WorkerEvent::RefreshCompleted {
             loaded: None,
             installed_gemma_models: Default::default(),
+            training_status_lines: Vec::new(),
             operator_stats: OperatorPanelStats {
                 recent_activity: vec![String::from("[LIVE] accepted a job 1s ago")],
                 ..OperatorPanelStats::default()
@@ -5633,6 +5896,7 @@ mod tests {
         app.handle_worker_event(WorkerEvent::RefreshCompleted {
             loaded: None,
             installed_gemma_models: Default::default(),
+            training_status_lines: Vec::new(),
             operator_stats: OperatorPanelStats {
                 session_earnings_sats: 6,
                 total_earnings_sats: 1_200,
@@ -5694,7 +5958,10 @@ mod tests {
 
         assert!(!stats.wallet_balance_live);
         assert_eq!(
-            stats.wallet_balance.as_ref().map(|balance| balance.total_sats),
+            stats
+                .wallet_balance
+                .as_ref()
+                .map(|balance| balance.total_sats),
             Some(377)
         );
     }
@@ -5739,7 +6006,10 @@ mod tests {
         );
 
         assert_eq!(
-            stats.wallet_balance.as_ref().map(|balance| balance.total_sats),
+            stats
+                .wallet_balance
+                .as_ref()
+                .map(|balance| balance.total_sats),
             Some(8)
         );
         assert_eq!(stats.settled_sats_lifetime, 55);
@@ -5751,10 +6021,7 @@ mod tests {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
         let mut snapshot = ProviderPersistedSnapshot::default();
         snapshot.availability.local_gemma.ready_model = Some("gemma4:e4b".to_string());
-        snapshot
-            .availability
-            .local_gemma
-            .available_models = vec!["gemma4:e4b".to_string()];
+        snapshot.availability.local_gemma.available_models = vec!["gemma4:e4b".to_string()];
         app.loaded = Some(super::LoadedState {
             snapshot: Some(snapshot),
             wallet_status: None,
@@ -5879,7 +6146,7 @@ mod tests {
         let user_surface = format!("{header}\n{earnings}\n{activity}");
 
         assert!(user_surface.contains("Ready to earn"));
-        assert!(user_surface.contains("Standing by for the next paid match"));
+        assert!(user_surface.contains("Standing by for the next homework job"));
         assert!(user_surface.contains("Session stack: 0 sats"));
         assert!(user_surface.contains("Lifetime stack: 0 sats"));
         for forbidden in [
@@ -5905,7 +6172,7 @@ mod tests {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
         app.operator_stats.recent_activity = vec![
             String::from("[PAID] stacked 21 sats 6m ago"),
-            String::from("[LIVE] matched a paid request 8m ago"),
+            String::from("[LIVE] matched a generic request 8m ago"),
         ];
         let activity = app
             .activity_lines()
@@ -5914,7 +6181,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(activity.contains("[PAID] stacked 21 sats 6m ago"));
-        assert!(activity.contains("[LIVE] matched a paid request 8m ago"));
+        assert!(!activity.contains("[LIVE] matched a generic request 8m ago"));
 
         app.operator_stats.recent_activity.clear();
         app.operator_stats.last_provider_event_at_ms = None;
@@ -5927,7 +6194,7 @@ mod tests {
             .join("\n");
         assert!(quiet.contains("[LIVE]"));
         assert!(quiet.contains("checking local Pylon setup"));
-        assert!(quiet.contains("looking for local Gemma availability"));
+        assert!(quiet.contains("confirming homework intake"));
         assert!(quiet.contains("preparing earnings state"));
 
         app.last_refresh_at = Some(Instant::now());
@@ -5939,28 +6206,20 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(ready.contains("[READY]"));
-        assert!(ready.contains("standing by for paid work"));
-        assert!(ready.contains("[MARKET]"));
-        assert!(ready.contains("No paid matches yet"));
+        assert!(ready.contains("standing by for homework jobs"));
+        assert!(ready.contains("[HOMEWORK]"));
+        assert!(ready.contains("No homework assignment yet"));
     }
 
     #[test]
-    fn footer_hints_change_with_sidebar_view() {
-        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+    fn footer_hints_focus_on_passive_homework_earning() {
+        let app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
 
-        let operate = app.footer_segments();
-        assert!(operate.contains(&("jobs", "online")));
-        assert!(operate.contains(&("/wallet receive", "cash in")));
-
-        app.sidebar_view = super::SidebarView::Wallet;
-        let wallet = app.footer_segments();
-        assert!(wallet.contains(&("/wallet invoice", "request")));
-        assert!(wallet.contains(&("/wallet withdraw", "send out")));
-
-        app.sidebar_view = super::SidebarView::Inspect;
-        let inspect = app.footer_segments();
-        assert!(inspect.contains(&("/wallet", "view")));
-        assert!(inspect.contains(&("/help", "commands")));
+        let footer = app.footer_segments();
+        assert!(footer.contains(&("Ctrl+C", "quit")));
+        assert!(footer.contains(&("status", "online while this stays open")));
+        assert!(footer.contains(&("jobs", "admin-triggered homework runs land automatically")));
+        assert!(footer.contains(&("wallet", "payouts settle to the built-in wallet")));
     }
 
     #[test]
@@ -6005,22 +6264,19 @@ mod tests {
 
         let stabilized = stabilize_operator_panel_stats(previous, current);
         assert_eq!(
-            stabilized.wallet_balance.as_ref().map(|balance| balance.total_sats),
+            stabilized
+                .wallet_balance
+                .as_ref()
+                .map(|balance| balance.total_sats),
             Some(628)
         );
         assert!(!stabilized.wallet_balance_live);
     }
 
     #[test]
-    fn tab_toggles_sidebar_view() {
+    fn tab_is_ignored_on_minimal_dashboard() {
         let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
         assert_eq!(app.sidebar_view, super::SidebarView::Operate);
-
-        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-        assert_eq!(app.sidebar_view, super::SidebarView::Wallet);
-
-        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-        assert_eq!(app.sidebar_view, super::SidebarView::Inspect);
 
         app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         assert_eq!(app.sidebar_view, super::SidebarView::Operate);
@@ -6038,12 +6294,10 @@ mod tests {
                 ..pylon::WalletBalanceSnapshot::default()
             }),
             spark_address: Some(
-                "spark1pgss97gxzmrydeh2ypjkeu9jqeve8rfy9nzy2apkks836apnwyreqrlyrtjzcu"
-                    .to_string(),
+                "spark1pgss97gxzmrydeh2ypjkeu9jqeve8rfy9nzy2apkks836apnwyreqrlyrtjzcu".to_string(),
             ),
             bitcoin_address: Some(
-                "bc1psxsk8uzdmcg4jq03p7hf0a99r469te0ew40w32yersvlzlr697nqh94nge"
-                    .to_string(),
+                "bc1psxsk8uzdmcg4jq03p7hf0a99r469te0ew40w32yersvlzlr697nqh94nge".to_string(),
             ),
             identity_path: Some(PathBuf::from("/tmp/pylon-test/identity.mnemonic")),
             ..WalletSurfaceState::default()
@@ -6132,7 +6386,7 @@ mod tests {
     }
 
     #[test]
-    fn recent_provider_activity_prefers_paid_settlements_over_duplicate_paid_job_labels() {
+    fn recent_provider_activity_only_surfaces_paid_settlements() {
         let now_ms = current_epoch_ms_u64();
         let mut ledger = pylon::PylonLedger::default();
         ledger.settlements.push(pylon::PylonSettlementRecord {
@@ -6152,7 +6406,8 @@ mod tests {
 
         let activity = recent_provider_activity(&ledger, now_ms).join("\n");
         assert!(activity.contains("[PAID] stacked 7 sats"));
-        assert!(!activity.contains("completed a paid job"));
+        assert!(!activity.contains("[DONE]"));
+        assert!(!activity.contains("[LIVE]"));
     }
 
     #[test]
@@ -6190,18 +6445,21 @@ mod tests {
             created_at_ms: now_ms - 600,
             updated_at_ms: now_ms - 400,
         });
-        ledger.wallet.payments.push(pylon::PylonWalletPaymentRecord {
-            payment_id: "payment-001".to_string(),
-            direction: "receive".to_string(),
-            status: "completed".to_string(),
-            amount_sats: 4,
-            fees_sats: 0,
-            method: "spark".to_string(),
-            description: None,
-            invoice: None,
-            created_at_ms: now_ms - 800,
-            updated_at_ms: now_ms - 700,
-        });
+        ledger
+            .wallet
+            .payments
+            .push(pylon::PylonWalletPaymentRecord {
+                payment_id: "payment-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 4,
+                fees_sats: 0,
+                method: "spark".to_string(),
+                description: None,
+                invoice: None,
+                created_at_ms: now_ms - 800,
+                updated_at_ms: now_ms - 700,
+            });
 
         let stats = compute_operator_panel_stats_at(
             ProviderDesiredMode::Online,
@@ -6238,8 +6496,7 @@ mod tests {
         let now_ms = 1_762_700_500_000_u64;
         let mut ledger = pylon::PylonLedger::default();
 
-        let mut paid =
-            pylon::PylonLedgerJob::new("job-paid", "provider", 5050, "completed_local");
+        let mut paid = pylon::PylonLedgerJob::new("job-paid", "provider", 5050, "completed_local");
         paid.created_at_ms = now_ms - 5_000;
         paid.updated_at_ms = now_ms - 4_000;
         ledger.jobs = vec![paid];
@@ -6524,8 +6781,8 @@ mod tests {
 
         let transcript = transcript_text(&app);
         assert!(!app.should_quit());
-        assert!(transcript.contains("[user] Prompt"));
-        assert!(transcript.contains("qr"));
+        assert!(transcript.contains("Pylon is preparing the earning node."));
+        assert!(!transcript.contains("qr"));
     }
 
     #[test]

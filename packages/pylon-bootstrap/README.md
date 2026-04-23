@@ -3,8 +3,8 @@
 Bootstrap the latest tagged standalone `Pylon` release asset from GitHub
 Releases, fall back to a deterministic source build when no matching asset
 exists for the local platform, stream first-run status updates in the terminal,
-and start the Pylon default earning loop without Cargo when prebuilt binaries are
-available.
+and start the Pylon terminal UI without Cargo when prebuilt binaries are
+available. The terminal UI manages the long-lived earning worker.
 
 ## Usage
 
@@ -13,9 +13,9 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.1.10
+npx @openagentsinc/pylon --version 0.1.11
 npx @openagentsinc/pylon --no-launch
-npx @openagentsinc/pylon --download-curated-cache --model gemma-4-e2b --diagnostic-repeats 2
+npx @openagentsinc/pylon --download-curated-cache --model gemma-4-e2b --run-diagnostics
 npx @openagentsinc/pylon --verbose
 ```
 
@@ -45,13 +45,17 @@ The launcher:
 - ends first run with an explicit verdict such as `fully online`, `runtime
   ready`, or `installed but runtime missing`, plus exact next-step guidance
 - runs `pylon --help`, `init`, `status --json`, and `inventory --json`
-- runs `pylon gemma diagnose <model> --json`
+- skips Gemma diagnostics by default because hosted homework training does not
+  require local Gemma weights
+- only runs `pylon gemma diagnose <model> --json` when `--run-diagnostics` is
+  set
 - only runs `pylon gemma download <model>` when `--download-curated-cache` is
   set, because the optional GGUF cache does not satisfy the sellable runtime by
   itself
 - falls back to `curl` for release metadata and asset downloads when the Node
   fetch path fails in constrained network contexts
-- starts the installed `pylon` earning loop by default after the smoke path
+- starts the installed `pylon-tui` by default after the smoke path; that TUI
+  starts and supervises the earning worker
   unless `--no-launch` is set
 - does not try to install or register a local runtime automatically; the
   bootstrap stays honest about the separate Ollama-compatible runtime

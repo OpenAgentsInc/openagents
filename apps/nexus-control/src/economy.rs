@@ -90,6 +90,13 @@ pub struct PublicRecentPylon {
     pub training_capability_envelope_v2: Option<ProviderTrainingCapabilityEnvelopeV2>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicPylonClientVersionCount {
+    pub client_version: String,
+    pub online_sessions: u64,
+    pub online_pylons: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PublicRecentPylonDiagnostic {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -766,6 +773,8 @@ pub struct PublicStatsSnapshot {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_pylons: Vec<PublicRecentPylon>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pylon_client_version_counts: Vec<PublicPylonClientVersionCount>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_pylon_diagnostics: Vec<PublicRecentPylonDiagnostic>,
     pub recent_receipts: Vec<PublicRecentReceipt>,
 }
@@ -911,6 +920,7 @@ pub struct PublicRuntimeSnapshot {
     pub risk_calibration_score: f64,
     pub risk_coverage_concentration_hhi: f64,
     pub recent_pylons: Vec<PublicRecentPylon>,
+    pub pylon_client_version_counts: Vec<PublicPylonClientVersionCount>,
     pub recent_pylon_diagnostics: Vec<PublicRecentPylonDiagnostic>,
 }
 
@@ -1057,6 +1067,7 @@ impl ReceiptLedger {
             likely_same_host_pylon_sessions_online_now: runtime
                 .likely_same_host_pylon_sessions_online_now,
             likely_same_host_pylons_online_now: runtime.likely_same_host_pylons_online_now,
+            pylon_client_version_counts: runtime.pylon_client_version_counts.clone(),
             pylon_presence_stale_after_ms: runtime.pylon_presence_stale_after_ms,
             sessions_active: runtime.sessions_active,
             sessions_issued_24h,
@@ -1432,6 +1443,7 @@ mod tests {
                 pylon_sessions_missing_host_fingerprint_online_now: 0,
                 likely_same_host_pylon_sessions_online_now: 0,
                 likely_same_host_pylons_online_now: 0,
+                pylon_client_version_counts: Vec::new(),
                 pylon_presence_stale_after_ms: 0,
                 sessions_active: 1,
                 sync_tokens_active: 1,

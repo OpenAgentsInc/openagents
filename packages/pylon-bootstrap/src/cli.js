@@ -83,8 +83,9 @@ Description:
   or a specific tagged Pylon version when --version is set. If no matching
   asset exists for the local platform, fetch the exact tagged source checkout
   and build it locally instead. Cache the binaries, run the first-run smoke
-  path, and then start the Pylon default earning loop by default with live status
-  updates. The launcher checks GitHub for newer tagged pylon-v... releases on
+  path, and then start the Pylon terminal UI by default. The terminal UI manages
+  the earning worker and keeps live status visible. The launcher checks GitHub
+  for newer tagged pylon-v... releases on
   each default run, but only caches the standalone binaries under the local
   bootstrap root; it does not replace your global npm or bun pylon command.
 
@@ -98,13 +99,14 @@ Options:
                                        Default: ${DEFAULT_MODEL_ID}
   --download-curated-cache             Prefetch the optional Hugging Face GGUF
                                        cache before launching pylon.
-  --diagnostic-repeats <n>             Repeat count for pylon gemma diagnose.
+  --run-diagnostics                    Run optional pylon gemma diagnose.
+  --diagnostic-repeats <n>             Repeat count when diagnostics are enabled.
                                        Default: ${DEFAULT_DIAGNOSTIC_REPEATS}
-  --diagnostic-max-output-tokens <n>   Max output tokens for diagnostics.
+  --diagnostic-max-output-tokens <n>   Max output tokens when diagnostics are enabled.
                                        Default: ${DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS}
   --skip-model-download                Keep the curated GGUF cache skipped.
-  --skip-diagnostics                   Skip pylon gemma diagnose.
-  --no-launch                          Do not start pylon after bootstrap.
+  --skip-diagnostics                   Keep optional pylon gemma diagnose skipped.
+  --no-launch                          Do not start pylon-tui after bootstrap.
   --verbose                            Print extra network and recovery detail.
   --debug-network                      Alias for --verbose.
   --json                               Emit a machine-readable JSON summary.
@@ -128,7 +130,7 @@ export function parseArgs(argv) {
     diagnosticRepeats: DEFAULT_DIAGNOSTIC_REPEATS,
     diagnosticMaxOutputTokens: DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS,
     skipModelDownload: true,
-    skipDiagnostics: false,
+    skipDiagnostics: true,
     noLaunch: false,
     verbose: false,
     json: false,
@@ -170,6 +172,9 @@ export function parseArgs(argv) {
         break;
       case "--download-curated-cache":
         options.skipModelDownload = false;
+        break;
+      case "--run-diagnostics":
+        options.skipDiagnostics = false;
         break;
       case "--diagnostic-repeats":
         options.diagnosticRepeats = parseIntegerFlag(
@@ -321,8 +326,8 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
         );
       } else {
         reporter?.warning(
-          "Skipped Pylon launch",
-          "pass no flag to start the default earning loop",
+          "Skipped Pylon terminal UI launch",
+          "pass no flag to open pylon-tui and start the earning worker",
         );
       }
     }

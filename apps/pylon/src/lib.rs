@@ -3429,9 +3429,13 @@ where
     .await
 }
 
+fn pylon_http_user_agent() -> &'static str {
+    concat!("openagents-pylon/", env!("CARGO_PKG_VERSION"))
+}
+
 fn build_gemma_download_client(bind_ipv4_unspecified: bool) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
-        .user_agent("openagents-pylon/0.1.1")
+        .user_agent(pylon_http_user_agent())
         .connect_timeout(Duration::from_secs(15));
     if bind_ipv4_unspecified {
         builder = builder
@@ -7679,8 +7683,9 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
 
 pub fn usage() -> &'static str {
     "Standalone Pylon CLI.\n\
-Bare `pylon` initializes the node, marks it online, and runs the default earning loop.\n\
-Use `pylon-tui` or `pylon tui` for the terminal UI.\n\
+Bare interactive `pylon` opens the terminal UI, which starts and supervises the earning worker.\n\
+Noninteractive `pylon` and `pylon --config-path <path>` run the worker loop directly.\n\
+Use `pylon-tui` or `pylon tui` to open the terminal UI explicitly.\n\
 Use the commands below for explicit provider control and inspection.\n\
 From this repo, run them with `cargo pylon-headless <command>`, the `pylon` binary directly, or the `oa` binary for proof-runtime commands.\n\
 \n\
@@ -9353,11 +9358,13 @@ impl PylonTrainingCoordinatorClient {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
         let client = reqwest::Client::builder()
+            .user_agent(pylon_http_user_agent())
             .connect_timeout(Duration::from_secs(nexus_remote_connect_timeout_seconds()))
             .timeout(Duration::from_secs(nexus_remote_timeout_seconds()))
             .build()
             .context("failed to build pylon training coordinator client")?;
         let heartbeat_client = reqwest::Client::builder()
+            .user_agent(pylon_http_user_agent())
             .connect_timeout(Duration::from_secs(
                 training_heartbeat_connect_timeout_seconds(),
             ))
@@ -24862,6 +24869,7 @@ fn training_heartbeat_timeout_seconds() -> u64 {
 
 fn provider_presence_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
+        .user_agent(pylon_http_user_agent())
         // Keep provider-presence edge calls on a shorter budget so slow ingress does
         // not starve the single-threaded training heartbeat loop.
         .connect_timeout(Duration::from_secs(
@@ -24874,6 +24882,7 @@ fn provider_presence_client() -> Result<reqwest::Client> {
 
 fn openagents_account_link_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
+        .user_agent(pylon_http_user_agent())
         .timeout(Duration::from_secs(10))
         .build()
         .context("failed to build OpenAgents account-link client")
@@ -41704,6 +41713,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             heartbeat_request.1["session_id"] == "session-test",
             "heartbeat should include the provider presence session id",
+        )?;
+        ensure(
+            heartbeat_request.1["client_version"]
+                == json!(format!("pylon/{}", env!("CARGO_PKG_VERSION"))),
+            "heartbeat should advertise the compiled Pylon package version",
         )?;
         ensure(
             heartbeat_request.1["eligible_product_count"] == 1,

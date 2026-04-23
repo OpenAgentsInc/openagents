@@ -24,7 +24,7 @@ ordinary scheduler and payout bugs.
 
 Minimum runtime requirements:
 
-- public Pylon release asset `pylon-v0.1.10` or newer. The npm bootstrap
+- public Pylon release asset `pylon-v0.1.11` or newer. The npm bootstrap
   package may still be invoked as `npx @openagentsinc/pylon`; the important
   version for earning and validation is the resolved standalone Pylon binary.
 - production Nexus running the lease-priority fix that tries existing
@@ -38,7 +38,9 @@ Minimum runtime requirements:
 - a normal user `HOME` for the running Pylon process so Rust and Psionic
   discovery work
 - an isolated `OPENAGENTS_PYLON_HOME` for the proof
-- local Gemma runtime visible to Pylon
+- local Gemma runtime visible to Pylon only when the proof also covers sellable
+  inference. Hosted homework earning itself must not require an automatic Gemma
+  download or diagnostic.
 - compatible Psionic checkout discoverable by Pylon
 - treasury wallet status connected and funded
 - placeholder/liveness payouts disabled for this proof
@@ -77,7 +79,58 @@ Autopilot-controlled earning proof fixes: default Spark payout destination
 creation in the long-lived serve path, retained snapshot reuse for validator
 replay retries, and stricter Autopilot paid-state projection. Do not re-enable
 sample challenges for homework dispatch until the per-contribution sample
-replay path is separately fixed and proven with npm Pylon.
+replay path is separately fixed and proven with npm Pylon. Pylon `0.1.11` is
+the current user-path floor because it makes the TUI manage the earning worker,
+removes the composer/transcript from the default homework surface, and skips
+Gemma diagnostics/downloads unless explicitly requested.
+
+## Online Version Telemetry
+
+The stats page has two intentionally separate Pylon version surfaces. Installed
+release counts come from `openagents.com` first-party installer telemetry.
+Online client-version counts come from Nexus provider presence. Do not compare
+the installed-release count to `recent_pylons` directly: `recent_pylons` is a
+small capped sample of the newest public rows, not the whole online fleet. A
+busy set of older nodes can fill that sample and make a fresh `pylon-v0.1.11`
+session appear missing.
+
+The fleet-wide online version source is `pylon_client_version_counts` in
+`GET https://nexus.openagents.com/api/stats`. That field counts every live
+provider-presence session by the heartbeat body's `client_version` value during
+the current stale window. Use it when validating that a newly installed public
+Pylon is visible online. Use `recent_pylons` only for row-level debugging and
+last-seen inspection.
+
+If installed telemetry shows `pylon-v0.1.11` but online counts are dominated by
+`pylon/0.1.1`, the likely causes are old fleet processes still heartbeating,
+the website reading the old capped sample, or Nexus not yet deployed with the
+online-version histogram. `pylon-v0.1.11` sends `client_version=pylon/0.1.11`
+in provider presence and derives Pylon HTTP user agents from
+`CARGO_PKG_VERSION`; the provider-presence histogram remains the source of
+truth for online versions.
+
+## Release `pylon-v0.1.11` Preparation
+
+Use `pylon-v0.1.11` as the current release floor for public homework earning.
+It keeps the `0.1.10` payout and hosted-starter fixes, then corrects the user
+surface: the npm bootstrap and interactive `pylon` command open the minimal
+homework dashboard, that dashboard starts and supervises the real worker, and
+Gemma diagnostics/downloads stay opt-in. New homework dispatches should require
+`min_pylon_version=0.1.11` so users running the TUI are actually online for
+jobs.
+
+Before tagging `0.1.11`, run:
+
+```bash
+cargo test -p pylon-tui
+cargo test -p pylon --bin pylon
+cd packages/pylon-bootstrap && bun test
+```
+
+Then prove from a fresh Pylon home that `pylon-tui` starts a child worker,
+the admin listener comes up under that worker, the visible UI contains no
+composer/transcript, and no Gemma model cache is created unless
+`--download-curated-cache` or `--run-diagnostics` is explicitly passed.
 
 ## Release `pylon-v0.1.10` Preparation And Proof
 

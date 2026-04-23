@@ -1757,6 +1757,8 @@ export async function bootstrapInstalledPylon(
     options.diagnosticRepeats ?? DEFAULT_DIAGNOSTIC_REPEATS;
   const diagnosticMaxOutputTokens =
     options.diagnosticMaxOutputTokens ?? DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS;
+  const skipModelDownload = options.skipModelDownload ?? true;
+  const skipDiagnostics = options.skipDiagnostics ?? true;
   emitTelemetry(telemetryClient, "installer_smoke_test_started", {
     release_tag: options.tagName ?? `pylon-v${options.version}`,
     release_commit: options.sourceCommit ?? null,
@@ -1793,7 +1795,7 @@ export async function bootstrapInstalledPylon(
     );
 
     let download = null;
-    if (!options.skipModelDownload) {
+    if (!skipModelDownload) {
       emitStatus(onStatus, "Downloading curated model bundle", model);
       download = await runPylonJson(
         pylonPath,
@@ -1810,7 +1812,7 @@ export async function bootstrapInstalledPylon(
     }
 
     let diagnostic = null;
-    if (!options.skipDiagnostics) {
+    if (!skipDiagnostics) {
       emitStatus(onStatus, "Running first-run diagnostic", model);
       try {
         diagnostic = await runPylonJson(
@@ -1839,7 +1841,11 @@ export async function bootstrapInstalledPylon(
         );
       }
     } else {
-      emitStatus(onStatus, "Skipping first-run diagnostic", model);
+      emitStatus(
+        onStatus,
+        "Skipping optional Gemma diagnostic",
+        "use --run-diagnostics when validating local inference separately",
+      );
     }
 
     const diagnosticResult =
@@ -1917,9 +1923,13 @@ export async function launchInstalledPylon(
     onStatus = null,
   } = {},
 ) {
-  const pylonPath = path.resolve(options.pylonPath);
-  emitStatus(onStatus, "Starting Pylon default earning loop", path.basename(pylonPath));
-  return runProcessImpl(pylonPath, [], {
+  const pylonTuiPath = path.resolve(options.pylonTuiPath);
+  emitStatus(
+    onStatus,
+    "Starting Pylon terminal UI",
+    `${path.basename(pylonTuiPath)} manages the earning worker`,
+  );
+  return runProcessImpl(pylonTuiPath, [], {
     env: buildPylonEnv(options),
     stdio: "inherit",
   });
@@ -1989,7 +1999,7 @@ function renderBootstrapNextSteps(summary, outcome) {
   ];
 
   if (outcome.verdict === "fully online" || outcome.verdict === "runtime ready") {
-    lines.push("Next step: run `pylon`; it starts the default online earning loop.");
+    lines.push("Next step: run `pylon`; it opens the TUI and starts the earning worker.");
     return lines;
   }
 
