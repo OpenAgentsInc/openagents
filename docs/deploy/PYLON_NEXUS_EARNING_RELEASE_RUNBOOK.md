@@ -101,6 +101,13 @@ min_pylon_version=0.1.11
 If the code changes the earning-loop behavior again, update this floor, the
 Pylon docs, the Nexus treasury docs, the audit, and the issue comments together.
 
+The published `0.1.11` receipt is
+`docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json`. It proves the
+release asset, npm bootstrap, TUI-managed worker, no default Gemma model
+download, and production homework lease intake/seal path. It does not replace
+the earlier full wallet-payout receipt because the `0.1.11` smoke still had
+training-relay publication retries pending after local closeout.
+
 ## Version Telemetry Rules
 
 Do not use `recent_pylons` as a fleet version count. Nexus intentionally caps
