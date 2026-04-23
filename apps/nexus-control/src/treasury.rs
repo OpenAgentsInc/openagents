@@ -2338,13 +2338,19 @@ impl TreasuryState {
             .map(|last_sync| now_unix_ms.saturating_sub(last_sync));
 
         let stale_after_ms = config.wallet_snapshot_stale_after_ms();
-        if snapshot_age_ms.is_some_and(|lag| lag >= stale_after_ms)
-            || wallet_sync_lag_ms.is_some_and(|lag| lag >= stale_after_ms)
-        {
+        let snapshot_stale = snapshot_age_ms.is_some_and(|lag| lag >= stale_after_ms);
+        let wallet_sync_stale = wallet_sync_lag_ms.is_some_and(|lag| lag >= stale_after_ms);
+        let wallet_sync_stale_requires_action =
+            wallet_sync_stale && self.due_wallet_refresh_requires_reconciliation();
+        if snapshot_stale || wallet_sync_stale_requires_action {
             active_alerts.push(TreasuryContinuityAlert {
                 alert_id: "snapshot_stale".to_string(),
                 severity: "warning".to_string(),
-                reason: "treasury_snapshot_or_wallet_sync_stale".to_string(),
+                reason: if snapshot_stale {
+                    "treasury_snapshot_stale".to_string()
+                } else {
+                    "wallet_sync_stale_with_pending_reconciliation".to_string()
+                },
                 started_at_unix_ms: self
                     .public_snapshot
                     .as_ref()
@@ -2570,7 +2576,9 @@ impl TreasuryState {
                 return Some("wallet_unsynced".to_string());
             };
             let lag_ms = now_unix_ms.saturating_sub(last_wallet_activity_at_unix_ms);
-            if lag_ms >= config.wallet_snapshot_stale_after_ms() {
+            if lag_ms >= config.wallet_snapshot_stale_after_ms()
+                && self.due_wallet_refresh_requires_reconciliation()
+            {
                 return Some(format!("wallet_snapshot_stale:{lag_ms}"));
             }
         }
@@ -9146,6 +9154,39 @@ mod tests {
         let healthy_stats = state.public_stats(&config, now_unix_ms.saturating_add(30_000));
         assert_eq!(healthy_stats.degraded_reason, None);
 
+        let idle_stats = state.public_stats(&config, now_unix_ms.saturating_add(60_001));
+        assert_eq!(idle_stats.degraded_reason, None);
+        assert_eq!(idle_stats.payout_loop_health, "unknown");
+
+        let payout_key = "accepted-work:balance-blocked".to_string();
+        state.payout_records_by_key.insert(
+            payout_key.clone(),
+            TreasuryPayoutRecord {
+                payout_key,
+                nostr_pubkey_hex: "pubkey-balance-blocked".to_string(),
+                payout_target: "spark:balance-blocked".to_string(),
+                amount_sats: 25,
+                status: "queued".to_string(),
+                reason: Some("wallet_balance_insufficient".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms.saturating_add(1),
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("homework_acceptance".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
         let warning_stats = state.public_stats(&config, now_unix_ms.saturating_add(60_001));
         assert_eq!(
             warning_stats.degraded_reason.as_deref(),
@@ -9355,10 +9396,7 @@ mod tests {
         assert_eq!(stats.wallet_runtime_status.as_deref(), Some("connected"));
         assert_eq!(stats.wallet_last_error, None);
         assert_eq!(stats.wallet_balance_sats, 80);
-        assert_eq!(
-            stats.degraded_reason.as_deref(),
-            Some("wallet_snapshot_stale:99000")
-        );
+        assert_eq!(stats.degraded_reason, None);
     }
 
     #[test]

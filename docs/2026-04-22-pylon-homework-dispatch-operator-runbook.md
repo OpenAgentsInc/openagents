@@ -274,12 +274,14 @@ worker wallet delta: 0 sats -> 25 sats
 wallet receive status: completed
 ```
 
-The proof still observed `run_backlog`, `validator_backlog`, and treasury
-`snapshot_stale` / `wallet_snapshot_stale` warnings. Those were not blockers
-for this proof because the runtime wallet was connected, the accepted-work
-payout was confirmed and settled, and the npm-installed worker wallet balance
-increased by the paid amount. Do not confuse those stale snapshot warnings with
-the earlier insufficient-funds failure mode.
+The proof still observed `run_backlog` and `validator_backlog` caveats while
+the bounded run was moving through the queue. Those were not blockers because
+the accepted-work payout was confirmed and settled, and the npm-installed
+worker wallet balance increased by the paid amount. A follow-up Nexus health
+fix also stopped idle stale wallet-sync metadata from surfacing as
+`snapshot_stale` / `wallet_snapshot_stale` when the wallet is connected and no
+accepted-work payout reconciliation is pending. Do not confuse stale snapshot
+metadata with the earlier insufficient-funds failure mode.
 
 ## Check Treasury Before Dispatch
 
