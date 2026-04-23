@@ -69,7 +69,7 @@ worktree can run, but it cannot honestly close the issue.
 ## Version Floor Rules
 
 For the current hosted training earning path, the minimum public Pylon release
-is `pylon-v0.1.11` / `@openagentsinc/pylon` `0.1.11`.
+is `pylon-v0.1.12` / `@openagentsinc/pylon` `0.1.12`.
 
 Older versions are useful historical proof points but not sufficient for final
 closeout:
@@ -91,17 +91,25 @@ closeout:
   the earning worker, the default bootstrap path launches that TUI, Gemma
   diagnostics/downloads are opt-in, and new hosted homework runs should avoid
   older TUI-only clients that never started the worker.
+- `0.1.12` fixes issue #4414 for Psionic-backed homework/training jobs on Mac:
+  Pylon prefers a current `target/release/psionic-train` binary when it exists,
+  falls back to `cargo run --release` instead of debug Cargo, and records
+  signal/log-tail diagnostics when the supervisor exits without a normal code.
 
 Nexus must enforce the same floor for new hosted starter runs:
 
 ```text
-min_pylon_version=0.1.11
+min_pylon_version=0.1.12
 ```
 
 If the code changes the earning-loop behavior again, update this floor, the
 Pylon docs, the Nexus treasury docs, the audit, and the issue comments together.
 
-The published `0.1.11` release-smoke receipt is
+The published `0.1.12` release-smoke receipt is
+`docs/reports/nexus/20260423-issue-4414-pylon-v0.1.12-release.json`. It proves
+the release assets, npm bootstrap, and issue #4414 training launch regression.
+
+The prior `0.1.11` release-smoke receipt is
 `docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json`. It proves the
 release asset, npm bootstrap, TUI-managed worker, no default Gemma model
 download, and production homework lease intake/seal path.
@@ -132,14 +140,14 @@ heartbeat body.
 The installed-release telemetry on `openagents.com/stats` is a separate source:
 it comes from first-party npm/bootstrap `installer_finished` events and proves
 which release assets users installed. It can correctly show
-`pylon-v0.1.11` while online presence still has older `pylon/0.1.1` rows,
+`pylon-v0.1.12` while online presence still has older `pylon/0.1.1` rows,
 because old GCP or local fleet processes may still be heartbeating. If the
 website shows only `pylon/0.1.1` online while a newer local Pylon is running,
 first verify that production Nexus exposes `pylon_client_version_counts`, then
 verify the website is reading that field rather than recomputing counts from
 `recent_pylons`.
 
-`pylon-v0.1.11` advertises `client_version=pylon/0.1.11` in the provider
+`pylon-v0.1.12` advertises `client_version=pylon/0.1.12` in the provider
 presence heartbeat body. It also uses the compiled package version for Pylon
 HTTP user agents. The online-version source of truth remains the provider
 presence heartbeat, not model-download user agent strings.
@@ -204,14 +212,14 @@ mkdir -p "${PROOF_ROOT}/logs"
 
 HOME="${PWD}/${PROOF_ROOT}/home" \
 OPENAGENTS_DISABLE_TELEMETRY=1 \
-npx --yes @openagentsinc/pylon@0.1.11 --version 0.1.11 \
+npx --yes @openagentsinc/pylon@0.1.12 --version 0.1.12 \
   --pylon-home "${PWD}/${PROOF_ROOT}/home/.openagents/pylon" \
   --install-root "${PWD}/${PROOF_ROOT}/install" \
   --skip-diagnostics \
   --no-launch \
   --json | tee "${PROOF_ROOT}/bootstrap.json"
 
-PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.11-darwin-arm64"
+PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.12-darwin-arm64"
 PYLON_HOME="${PWD}/${PROOF_ROOT}/home/.openagents/pylon"
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PYLON_HOME}" \

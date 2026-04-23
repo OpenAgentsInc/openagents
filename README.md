@@ -160,15 +160,15 @@ paid when assigned work closes out as accepted.
 
 Current production truth:
 
-- The minimum current paid-training release is `pylon-v0.1.11` through
-  `@openagentsinc/pylon` `0.1.11` or newer.
+- The minimum current paid-training release is `pylon-v0.1.12` through
+  `@openagentsinc/pylon` `0.1.12` or newer.
 - The live paid work class is bounded hosted homework/training work, currently
   the CS336 A1 starter lane used to prove the earning loop.
 - Work is not yet a fully open demand marketplace. Hosted Nexus currently
   paces paid homework jobs from the server side.
 - Production Nexus automatically dispatches a fresh CS336 A1 homework run about
   every 10 minutes for online eligible Pylons. The current automatic pacing
-  target is `pylon-v0.1.11+`, online-only, up to 256 contributors, 25 sats per
+  target is `pylon-v0.1.12+`, online-only, up to 256 contributors, 25 sats per
   accepted contribution, and a 6,400-sat cap per automatic cycle.
 - Admins can still trigger override batches with
   `POST /v1/admin/homework/cs336-a1/dispatch` when they need a bounded proof,
@@ -181,6 +181,10 @@ Current production truth:
   homework lane. In practice, keep a compatible Psionic checkout discoverable
   until that runtime is bundled more tightly. `pylon doctor` and
   `pylon training status --json` report missing runtime prerequisites.
+- For Psionic-backed homework/training work, `0.1.12` fixes the Mac launch path:
+  Pylon now runs a current `target/release/psionic-train` when present and
+  otherwise falls back to `cargo run --release`, with failure receipts that show
+  signal/log-tail details instead of only `code -1`.
 
 Useful inspection commands:
 
@@ -211,10 +215,12 @@ recorded in
 [docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md](docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md).
 That source proof is newer than the older `pylon-v0.1.9` tag. The
 `pylon-v0.1.10` release carried those Autopilot/Pylon fixes through the public
-release asset and npm bootstrap path. `pylon-v0.1.11` is the current user-path
-floor because it makes `pylon` open the minimal homework dashboard, has the TUI
-start and supervise the earning worker, and keeps Gemma diagnostics/downloads
-opt-in during homework onboarding. The `0.1.11` release receipt is
+release asset and npm bootstrap path. `pylon-v0.1.11` made `pylon` open the
+minimal homework dashboard, had the TUI start and supervise the earning worker,
+and kept Gemma diagnostics/downloads opt-in during homework onboarding.
+`pylon-v0.1.12` is the current user-path floor because it fixes the
+Psionic-backed Mac training-worker launch path and raises the hosted Nexus
+homework dispatcher minimum to that build. The `0.1.11` release receipt is
 [docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json](docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json).
 The prior full accepted-work payout proof remains
 [docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json](docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json).
