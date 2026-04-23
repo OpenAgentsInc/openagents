@@ -398,6 +398,18 @@ Without that ordering a validator can spend time on stale historical homework
 or starter challenges while a fresh automatic paid run is sealed and awaiting
 payout.
 
+The first production proof for the 10-minute automatic loop is
+`docs/reports/nexus/20260423-101209-cs336-auto-dispatch-prod-e2e.json`.
+It used image
+`us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:33ee54cf6c51`
+and two npm-installed `pylon-v0.1.11` processes. Nexus created two consecutive
+`run.cs336.a1.auto_10m_*` runs, both windows reconciled, both closeouts were
+rewarded, accepted-work payout stats advanced by 50 sats, and the proof worker
+wallet received two completed 25-sat Spark payments. If a future proof sees
+temporary `queued_retry` / `trn_publish_retry` on contribution artifacts, keep
+the Pylon process alive or rerun `pylon training publish --json`; those retries
+are idempotent and recovered in the proof above.
+
 4. Verify health and emit a deploy receipt.
 
 ```bash

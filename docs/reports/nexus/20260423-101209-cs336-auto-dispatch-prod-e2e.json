@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-04-23T10:12:09Z",
+  "purpose": "Production proof for automatic CS336 A1 homework dispatch every 10 minutes to online eligible Pylons.",
+  "nexus": {
+    "base_url": "https://nexus.openagents.com",
+    "deployed_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:33ee54cf6c51",
+    "source_commit": "33ee54cf6c51",
+    "build_receipt": "docs/reports/nexus/20260423-092906-cloudbuild-image-33ee54cf6c51.json",
+    "deploy_receipts": [
+      "docs/reports/nexus/20260423-093833-deploy-receipt.json",
+      "docs/reports/nexus/20260423-093923-deploy-receipt.json",
+      "docs/reports/nexus/20260423-094016-deploy-receipt.json"
+    ]
+  },
+  "automatic_dispatch_config": {
+    "enabled": true,
+    "interval_seconds": 600,
+    "amount_sats": 25,
+    "max_contributors": 256,
+    "total_budget_sats": 6400,
+    "min_pylon_version": "0.1.11",
+    "require_updated_build": false,
+    "window_duration_seconds": 1800,
+    "network_id": "trainnet.cs336.a1.demo",
+    "run_kind": "homework_auto_dispatch"
+  },
+  "proof_runtime": {
+    "proof_root": "/private/tmp/pylon-auto-dispatch-postfix-prod-20260423T094509Z",
+    "worker_label": "postfix-auto-worker",
+    "validator_label": "postfix-auto-validator",
+    "pylon_version": "0.1.11",
+    "pylon_install_source": "npm bootstrap downloaded pylon-v0.1.11-darwin-arm64",
+    "worker_role_claims": [
+      "worker"
+    ],
+    "validator_role_claims": [
+      "validator"
+    ]
+  },
+  "runs": [
+    {
+      "training_run_id": "run.cs336.a1.auto_10m_20260423095802_717db136_0001.20260423095802.d40e370b",
+      "display_name": "Automatic CS336 A1 Homework 20260423095802 #0001",
+      "stage_id": "stage.cs336.a1.homework_auto_dispatch",
+      "assigned_contributors": 1,
+      "accepted_contributors": 1,
+      "latest_window_status": "reconciled",
+      "latest_closeout_status": "rewarded",
+      "featured_window_total_contributions": 1,
+      "featured_window_accepted_contributions": 1,
+      "featured_window_payout_eligible": true,
+      "promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.auto_10m_20260423095802_717db136_0001.20260423095802.d40e370b/step-000004"
+    },
+    {
+      "training_run_id": "run.cs336.a1.auto_10m_20260423100802_031fda4f_0001.20260423100802.b9748594",
+      "display_name": "Automatic CS336 A1 Homework 20260423100802 #0001",
+      "stage_id": "stage.cs336.a1.homework_auto_dispatch",
+      "assigned_contributors": 1,
+      "accepted_contributors": 1,
+      "latest_window_status": "reconciled",
+      "latest_closeout_status": "rewarded",
+      "featured_window_total_contributions": 1,
+      "featured_window_accepted_contributions": 1,
+      "featured_window_payout_eligible": true,
+      "promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.auto_10m_20260423100802_031fda4f_0001.20260423100802.b9748594/step-000004"
+    }
+  ],
+  "stats_delta": {
+    "baseline_file": "/private/tmp/pylon-auto-dispatch-postfix-prod-20260423T094509Z/stats-before-validator.json",
+    "after_file": "/private/tmp/pylon-auto-dispatch-postfix-prod-20260423T094509Z/stats-after-payout.json",
+    "nexus_accepted_work_payout_sats_paid_total_delta": 50,
+    "nexus_payout_sats_paid_total_delta": 50,
+    "training_accepted_contributors_delta": 1,
+    "training_accepted_closeouts_delta": 2,
+    "after_nexus_accepted_work_payout_sats_paid_total": 836,
+    "after_nexus_payout_sats_paid_total": 1077896
+  },
+  "worker_wallet_proof": {
+    "before_total_sats": 0,
+    "after_total_sats": 50,
+    "payments": [
+      {
+        "payment_id": "019db9ce-1013-7cf2-8f30-4d2fe0023fe0",
+        "direction": "receive",
+        "status": "completed",
+        "amount_sats": 25,
+        "method": "spark",
+        "created_at_ms": 1776938782000
+      },
+      {
+        "payment_id": "019db9d0-6327-7031-a5aa-57151f154f1e",
+        "direction": "receive",
+        "status": "completed",
+        "amount_sats": 25,
+        "method": "spark",
+        "created_at_ms": 1776938935000
+      }
+    ]
+  },
+  "treasury_status_after": {
+    "treasury_enabled": true,
+    "wallet_runtime_status": "connected",
+    "wallet_balance_sats": 49186,
+    "payout_loop_health": "idle",
+    "accepted_work_payout_sats_paid_total": 836,
+    "accepted_work_payout_sats_paid_24h": 322,
+    "training_payout_ledger_reconciliation_status": "clean",
+    "accepted_work_pending_payout_count": 0,
+    "accepted_work_confirmed_payout_count": 39
+  },
+  "observations": [
+    "The production automatic dispatcher emitted fresh run.cs336.a1.auto_10m_* runs without using the manual admin dispatch endpoint.",
+    "The first clean worker publication pass temporarily left contribution/proof/sealed-window TRN records in queued_retry due relay connectivity, then recovered on a later status/publish pass without code changes.",
+    "A validator running pylon-v0.1.11 claimed the fresh auto-dispatch window first, proving the validator-priority fix works for homework_auto_dispatch before older backlog.",
+    "The public run detail endpoint does not currently include a payouts array for these rewarded windows, so payment proof came from Nexus stats, treasury status, and the worker wallet history."
+  ],
+  "residual_gate_notes": [
+    "The image deployment smoke passed, but post-deploy gate receipts before this proof had transient latency failures: one training rollout endpoint p95 over the strict 1000 ms gate and provider-presence p99 just over the 2000 ms gate. Functional auto-dispatch, validation, treasury payout, and stats proof succeeded after those gate runs."
+  ]
+}
