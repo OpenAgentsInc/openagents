@@ -371,6 +371,26 @@ redeploying the Nexus container:
 scripts/deploy/nexus/10-install-treasury-watchdog.sh
 ```
 
+The same deploy script now installs the default hosted homework auto-dispatcher
+runtime. Production defaults are:
+
+```text
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED=true
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS=600
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS=25
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS=256
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_TOTAL_BUDGET_SATS=6400
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MIN_PYLON_VERSION=0.1.11
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD=false
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS=1800
+```
+
+The automatic dispatcher runs one cycle immediately after `nexus-relay` starts,
+then every 600 seconds. It creates a fresh CS336 A1 homework run, targets online
+eligible Pylons on the default demo training network, and pays only accepted
+homework closeouts. The manual admin endpoint remains available for bounded
+proofs and temporary pacing overrides.
+
 4. Verify health and emit a deploy receipt.
 
 ```bash

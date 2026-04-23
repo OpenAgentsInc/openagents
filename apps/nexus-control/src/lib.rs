@@ -203,6 +203,22 @@ const ENV_STARTER_DEMAND_START_CONFIRM_SECONDS: &str =
 const ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS";
 const ENV_PROVIDER_PRESENCE_STALE_AFTER_MS: &str = "NEXUS_CONTROL_PROVIDER_PRESENCE_STALE_AFTER_MS";
+const ENV_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED: &str =
+    "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED";
+const ENV_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS: &str =
+    "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS";
+const ENV_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS: &str =
+    "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS";
+const ENV_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS: &str =
+    "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS";
+const ENV_CS336_HOMEWORK_AUTO_DISPATCH_TOTAL_BUDGET_SATS: &str =
+    "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_TOTAL_BUDGET_SATS";
+const ENV_CS336_HOMEWORK_AUTO_DISPATCH_MIN_PYLON_VERSION: &str =
+    "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MIN_PYLON_VERSION";
+const ENV_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD: &str =
+    "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD";
+const ENV_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS: &str =
+    "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS";
 const ENV_TRAINING_GCS_BUCKET_URI: &str = "NEXUS_CONTROL_TRAINING_GCS_BUCKET_URI";
 const ENV_TRAINING_GCS_ENDPOINT: &str = "NEXUS_CONTROL_TRAINING_GCS_ENDPOINT";
 const ENV_TRAINING_GCS_SIGNED_URL_TTL_SECONDS: &str =
@@ -230,6 +246,14 @@ const DEFAULT_STARTER_DEMAND_START_CONFIRM_SECONDS: u64 = 15;
 const DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 120_000;
+const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED: bool = false;
+const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS: u64 = 600;
+const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS: u64 = 25;
+const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS: u32 = 256;
+const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD: bool = false;
+const DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS: u64 = 1_800;
+const MAX_CS336_A1_HOMEWORK_DISPATCH_RUNS: u32 = 64;
+const MAX_CS336_A1_HOMEWORK_DISPATCH_CONTRIBUTORS_PER_RUN: u32 = 256;
 const DEFAULT_TRAINING_GCS_ENDPOINT: &str = "https://storage.googleapis.com";
 const DEFAULT_TRAINING_GCS_SIGNED_URL_TTL_SECONDS: u64 = 900;
 const DEFAULT_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS: u64 = 3_600;
@@ -312,6 +336,14 @@ pub struct ServiceConfig {
     pub starter_demand_start_confirm_seconds: u64,
     pub starter_demand_heartbeat_timeout_seconds: u64,
     pub provider_presence_stale_after_ms: u64,
+    pub cs336_homework_auto_dispatch_enabled: bool,
+    pub cs336_homework_auto_dispatch_interval_seconds: u64,
+    pub cs336_homework_auto_dispatch_amount_sats: u64,
+    pub cs336_homework_auto_dispatch_max_contributors_per_run: u32,
+    pub cs336_homework_auto_dispatch_total_budget_sats: Option<u64>,
+    pub cs336_homework_auto_dispatch_min_pylon_version: Option<String>,
+    pub cs336_homework_auto_dispatch_require_updated_build: bool,
+    pub cs336_homework_auto_dispatch_window_duration_seconds: u64,
     pub training_artifact_signed_url: Option<TrainingArtifactSignedUrlConfig>,
     pub treasury: TreasuryConfig,
 }
@@ -446,6 +478,46 @@ impl ServiceConfig {
             ENV_PROVIDER_PRESENCE_STALE_AFTER_MS,
             DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
         )?;
+        let cs336_homework_auto_dispatch_enabled = parse_bool_env(
+            ENV_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED,
+            DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED,
+        )?;
+        let cs336_homework_auto_dispatch_interval_seconds = parse_u64_env(
+            ENV_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS,
+            DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS,
+        )?;
+        let cs336_homework_auto_dispatch_amount_sats = parse_u64_env(
+            ENV_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS,
+            DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS,
+        )?;
+        let cs336_homework_auto_dispatch_max_contributors_per_run = parse_u64_env(
+            ENV_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS,
+            u64::from(DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS),
+        )
+        .and_then(|value| {
+            u32::try_from(value).map_err(|error| {
+                format!("invalid {ENV_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS}: {error}")
+            })
+        })?;
+        let cs336_homework_auto_dispatch_total_budget_sats =
+            match parse_u64_env(ENV_CS336_HOMEWORK_AUTO_DISPATCH_TOTAL_BUDGET_SATS, 0)? {
+                0 => None,
+                value => Some(value),
+            };
+        let cs336_homework_auto_dispatch_min_pylon_version =
+            std::env::var(ENV_CS336_HOMEWORK_AUTO_DISPATCH_MIN_PYLON_VERSION)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .or_else(|| Some(MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string()));
+        let cs336_homework_auto_dispatch_require_updated_build = parse_bool_env(
+            ENV_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD,
+            DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD,
+        )?;
+        let cs336_homework_auto_dispatch_window_duration_seconds = parse_u64_env(
+            ENV_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS,
+            DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS,
+        )?;
         let training_artifact_signed_url = training_artifact_signed_url_config_from_env()?;
         if starter_demand_dispatch_interval_seconds == 0 {
             return Err(format!(
@@ -487,6 +559,34 @@ impl ServiceConfig {
                 "{ENV_PROVIDER_PRESENCE_STALE_AFTER_MS} must be at least {DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS}"
             ));
         }
+        if cs336_homework_auto_dispatch_interval_seconds == 0 {
+            return Err(format!(
+                "{ENV_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS} must be greater than zero"
+            ));
+        }
+        if cs336_homework_auto_dispatch_amount_sats == 0 {
+            return Err(format!(
+                "{ENV_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS} must be greater than zero"
+            ));
+        }
+        if cs336_homework_auto_dispatch_max_contributors_per_run == 0
+            || cs336_homework_auto_dispatch_max_contributors_per_run
+                > MAX_CS336_A1_HOMEWORK_DISPATCH_CONTRIBUTORS_PER_RUN
+        {
+            return Err(format!(
+                "{ENV_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS} must be between 1 and {MAX_CS336_A1_HOMEWORK_DISPATCH_CONTRIBUTORS_PER_RUN}"
+            ));
+        }
+        if cs336_homework_auto_dispatch_window_duration_seconds == 0 {
+            return Err(format!(
+                "{ENV_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS} must be greater than zero"
+            ));
+        }
+        if let Some(min_pylon_version) = cs336_homework_auto_dispatch_min_pylon_version.as_ref() {
+            Version::parse(min_pylon_version).map_err(|error| {
+                format!("invalid {ENV_CS336_HOMEWORK_AUTO_DISPATCH_MIN_PYLON_VERSION}: {error}")
+            })?;
+        }
         let treasury = TreasuryConfig::from_env()?;
 
         Ok(Self {
@@ -514,6 +614,14 @@ impl ServiceConfig {
             starter_demand_start_confirm_seconds,
             starter_demand_heartbeat_timeout_seconds,
             provider_presence_stale_after_ms,
+            cs336_homework_auto_dispatch_enabled,
+            cs336_homework_auto_dispatch_interval_seconds,
+            cs336_homework_auto_dispatch_amount_sats,
+            cs336_homework_auto_dispatch_max_contributors_per_run,
+            cs336_homework_auto_dispatch_total_budget_sats,
+            cs336_homework_auto_dispatch_min_pylon_version,
+            cs336_homework_auto_dispatch_require_updated_build,
+            cs336_homework_auto_dispatch_window_duration_seconds,
             training_artifact_signed_url,
             treasury,
         })
@@ -1185,6 +1293,8 @@ pub struct DispatchCs336A1HomeworkRunsRequest {
     pub display_name_prefix: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_kind: Option<String>,
     #[serde(default = "cs336_a1_homework_dispatch_reuse_existing_default")]
     pub reuse_existing_run: bool,
     #[serde(default = "cs336_a1_homework_dispatch_only_online_default")]
@@ -1209,6 +1319,7 @@ impl Default for DispatchCs336A1HomeworkRunsRequest {
             run_slug_prefix: None,
             display_name_prefix: None,
             network_id: None,
+            run_kind: None,
             reuse_existing_run: cs336_a1_homework_dispatch_reuse_existing_default(),
             only_online: cs336_a1_homework_dispatch_only_online_default(),
             min_pylon_version: cs336_a1_homework_dispatch_min_pylon_version_default(),
@@ -8425,6 +8536,7 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
     let state = build_app_state(config);
     spawn_treasury_dispatch_loop(state.clone());
     spawn_treasury_wallet_refresh_loop(state.clone());
+    spawn_cs336_homework_auto_dispatch_loop(state.clone());
     build_api_router_with_state(state)
 }
 
@@ -8881,6 +8993,7 @@ pub async fn run_server(config: ServiceConfig) -> Result<(), anyhow::Error> {
     let state = build_app_state(config);
     spawn_treasury_dispatch_loop(state.clone());
     spawn_treasury_wallet_refresh_loop(state.clone());
+    spawn_cs336_homework_auto_dispatch_loop(state.clone());
     axum::serve(listener, build_router_with_state(state)).await?;
     Ok(())
 }
@@ -10460,10 +10573,7 @@ async fn execute_cs336_a1_homework_dispatch(
     state: &AppState,
     request: DispatchCs336A1HomeworkRunsRequest,
 ) -> Result<DispatchCs336A1HomeworkRunsResponse, ApiError> {
-    const MAX_DISPATCH_RUNS: u32 = 64;
-    const MAX_CONTRIBUTORS_PER_RUN: u32 = 256;
-
-    if request.run_count == 0 || request.run_count > MAX_DISPATCH_RUNS {
+    if request.run_count == 0 || request.run_count > MAX_CS336_A1_HOMEWORK_DISPATCH_RUNS {
         return Err(ApiError {
             status: StatusCode::BAD_REQUEST,
             error: "invalid_request",
@@ -10471,7 +10581,7 @@ async fn execute_cs336_a1_homework_dispatch(
         });
     }
     if request.max_contributors_per_run == 0
-        || request.max_contributors_per_run > MAX_CONTRIBUTORS_PER_RUN
+        || request.max_contributors_per_run > MAX_CS336_A1_HOMEWORK_DISPATCH_CONTRIBUTORS_PER_RUN
     {
         return Err(ApiError {
             status: StatusCode::BAD_REQUEST,
@@ -10528,6 +10638,8 @@ async fn execute_cs336_a1_homework_dispatch(
         .unwrap_or_else(|| "CS336 A1 Homework Dispatch".to_string());
     let network_id = normalize_optional_field(request.network_id.as_deref())
         .unwrap_or_else(|| EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string());
+    let run_kind = normalize_optional_field(request.run_kind.as_deref())
+        .unwrap_or_else(|| "homework_dispatch".to_string());
     let min_pylon_version = normalize_optional_field(request.min_pylon_version.as_deref());
 
     let mut launches = Vec::new();
@@ -10543,7 +10655,7 @@ async fn execute_cs336_a1_homework_dispatch(
             display_name: Some(display_name),
             reuse_existing_run: request.reuse_existing_run,
             network_id: Some(network_id.clone()),
-            run_kind: Some("homework_dispatch".to_string()),
+            run_kind: Some(run_kind.clone()),
             assignment_family: Some("cs336.assignment1".to_string()),
             artifact_prefix: None,
             target: HomeworkLaunchTargetRequest {
@@ -10581,6 +10693,7 @@ async fn execute_cs336_a1_homework_dispatch(
         }
     }
 
+    invalidate_public_stats_cache(state, now_unix_ms());
     Ok(DispatchCs336A1HomeworkRunsResponse {
         dispatched_at_unix_ms,
         batch_id,
@@ -21718,6 +21831,11 @@ fn treasury_dispatch_in_flight_flag() -> &'static AtomicBool {
     FLAG.get_or_init(|| AtomicBool::new(false))
 }
 
+fn cs336_homework_auto_dispatch_in_flight_flag() -> &'static AtomicBool {
+    static FLAG: OnceLock<AtomicBool> = OnceLock::new();
+    FLAG.get_or_init(|| AtomicBool::new(false))
+}
+
 fn try_begin_treasury_dispatch_cycle() -> bool {
     treasury_dispatch_in_flight_flag()
         .compare_exchange(false, true, AtomicOrdering::AcqRel, AtomicOrdering::Acquire)
@@ -21730,12 +21848,22 @@ fn try_begin_treasury_wallet_refresh_cycle() -> bool {
         .is_ok()
 }
 
+fn try_begin_cs336_homework_auto_dispatch_cycle() -> bool {
+    cs336_homework_auto_dispatch_in_flight_flag()
+        .compare_exchange(false, true, AtomicOrdering::AcqRel, AtomicOrdering::Acquire)
+        .is_ok()
+}
+
 fn finish_treasury_wallet_refresh_cycle() {
     treasury_wallet_refresh_in_flight_flag().store(false, AtomicOrdering::Release);
 }
 
 fn finish_treasury_dispatch_cycle() {
     treasury_dispatch_in_flight_flag().store(false, AtomicOrdering::Release);
+}
+
+fn finish_cs336_homework_auto_dispatch_cycle() {
+    cs336_homework_auto_dispatch_in_flight_flag().store(false, AtomicOrdering::Release);
 }
 
 fn spawn_treasury_dispatch_loop(state: AppState) {
@@ -21761,6 +21889,99 @@ fn spawn_treasury_wallet_refresh_loop(state: AppState) {
             run_treasury_wallet_refresh_cycle(&state, true).await;
         }
     });
+}
+
+fn spawn_cs336_homework_auto_dispatch_loop(state: AppState) {
+    if !state.config.cs336_homework_auto_dispatch_enabled {
+        return;
+    }
+    tokio::spawn(async move {
+        let interval_seconds = state.config.cs336_homework_auto_dispatch_interval_seconds;
+        tracing::info!(
+            interval_seconds,
+            amount_sats = state.config.cs336_homework_auto_dispatch_amount_sats,
+            max_contributors = state
+                .config
+                .cs336_homework_auto_dispatch_max_contributors_per_run,
+            min_pylon_version = ?state.config.cs336_homework_auto_dispatch_min_pylon_version,
+            "CS336 homework auto dispatcher enabled"
+        );
+        let mut interval = tokio::time::interval(Duration::from_secs(interval_seconds));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            if let Err(error) = run_cs336_homework_auto_dispatch_cycle(&state).await {
+                tracing::warn!(
+                    status = ?error.status,
+                    error = error.error,
+                    reason = %error.reason,
+                    "CS336 homework auto dispatch cycle failed"
+                );
+            }
+        }
+    });
+}
+
+fn cs336_homework_auto_dispatch_request(
+    config: &ServiceConfig,
+) -> DispatchCs336A1HomeworkRunsRequest {
+    DispatchCs336A1HomeworkRunsRequest {
+        run_count: 1,
+        max_contributors_per_run: config.cs336_homework_auto_dispatch_max_contributors_per_run,
+        amount_sats: config.cs336_homework_auto_dispatch_amount_sats,
+        total_budget_sats: config.cs336_homework_auto_dispatch_total_budget_sats,
+        run_slug_prefix: Some("auto.10m".to_string()),
+        display_name_prefix: Some("Automatic CS336 A1 Homework".to_string()),
+        network_id: Some(EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string()),
+        run_kind: Some("homework_auto_dispatch".to_string()),
+        reuse_existing_run: false,
+        only_online: true,
+        min_pylon_version: config
+            .cs336_homework_auto_dispatch_min_pylon_version
+            .clone(),
+        require_updated_build: config.cs336_homework_auto_dispatch_require_updated_build,
+        window_duration_seconds: config.cs336_homework_auto_dispatch_window_duration_seconds,
+        continue_on_error: true,
+    }
+}
+
+async fn run_cs336_homework_auto_dispatch_cycle(
+    state: &AppState,
+) -> Result<DispatchCs336A1HomeworkRunsResponse, ApiError> {
+    if !try_begin_cs336_homework_auto_dispatch_cycle() {
+        return Err(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: "cs336_homework_auto_dispatch_in_flight".to_string(),
+        });
+    }
+
+    let request = cs336_homework_auto_dispatch_request(&state.config);
+    let result = execute_cs336_a1_homework_dispatch(state, request).await;
+    finish_cs336_homework_auto_dispatch_cycle();
+
+    match &result {
+        Ok(response) => {
+            tracing::info!(
+                batch_id = response.batch_id.as_str(),
+                launched_run_count = response.launched_run_count,
+                failed_run_count = response.failed_run_count,
+                max_contributors_per_run = response.max_contributors_per_run,
+                amount_sats = response.amount_sats,
+                "CS336 homework auto dispatch cycle completed"
+            );
+        }
+        Err(error) => {
+            tracing::warn!(
+                status = ?error.status,
+                error = error.error,
+                reason = %error.reason,
+                "CS336 homework auto dispatch cycle returned error"
+            );
+        }
+    }
+
+    result
 }
 
 async fn run_treasury_dispatch_cycle(state: &AppState) {
@@ -25673,7 +25894,8 @@ mod tests {
         TrainingVisualizationResponse, TrainingWindowContributionInput,
         TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
         build_api_router_with_state, build_app_state, build_router, build_router_with_state,
-        now_unix_ms, random_token, run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
+        now_unix_ms, random_token, run_cs336_homework_auto_dispatch_cycle,
+        run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
         training_kernel_mutation_context,
     };
 
@@ -25709,6 +25931,21 @@ mod tests {
             starter_demand_start_confirm_seconds: 5,
             starter_demand_heartbeat_timeout_seconds: 5,
             provider_presence_stale_after_ms: DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
+            cs336_homework_auto_dispatch_enabled: false,
+            cs336_homework_auto_dispatch_interval_seconds:
+                super::DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS,
+            cs336_homework_auto_dispatch_amount_sats:
+                super::DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS,
+            cs336_homework_auto_dispatch_max_contributors_per_run:
+                super::DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS,
+            cs336_homework_auto_dispatch_total_budget_sats: None,
+            cs336_homework_auto_dispatch_min_pylon_version: Some(
+                super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string(),
+            ),
+            cs336_homework_auto_dispatch_require_updated_build:
+                super::DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD,
+            cs336_homework_auto_dispatch_window_duration_seconds:
+                super::DEFAULT_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS,
             training_artifact_signed_url: None,
             treasury: TreasuryConfig {
                 enabled: false,
@@ -43564,6 +43801,121 @@ mod tests {
                 );
             }
         }
+
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cs336_homework_auto_dispatch_cycle_targets_all_compatible_online_pylons() -> Result<()>
+    {
+        let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink("gs://auto-dispatch-training-bucket").await?;
+        let mut config = test_config()?;
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = 0;
+        config.cs336_homework_auto_dispatch_enabled = true;
+        config.cs336_homework_auto_dispatch_interval_seconds = 600;
+        config.cs336_homework_auto_dispatch_amount_sats = 25;
+        config.cs336_homework_auto_dispatch_max_contributors_per_run = 256;
+        config.cs336_homework_auto_dispatch_total_budget_sats = Some(6_400);
+        config.cs336_homework_auto_dispatch_min_pylon_version =
+            Some(super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string());
+        config.cs336_homework_auto_dispatch_require_updated_build = false;
+        let state = build_app_state(config);
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let recorded_at_ms = now_unix_ms();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(300),
+            "node-auto-alpha",
+            "sha256:build-auto-alpha",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodeautoalpha"),
+        );
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(200),
+            "node-auto-beta",
+            "sha256:build-auto-beta",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodeautobeta"),
+        );
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-auto-old",
+            "sha256:build-auto-old",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            "openagents.pylon@0.1.10",
+            "0.1.10",
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodeautoold"),
+        );
+
+        let dispatch = run_cs336_homework_auto_dispatch_cycle(&state)
+            .await
+            .map_err(|error| anyhow::anyhow!(error.reason))?;
+        assert_eq!(dispatch.requested_run_count, 1);
+        assert_eq!(dispatch.launched_run_count, 1);
+        assert_eq!(dispatch.failed_run_count, 0);
+        assert_eq!(dispatch.max_contributors_per_run, 256);
+        assert_eq!(dispatch.amount_sats, 25);
+        assert_eq!(dispatch.max_payout_sats, 6_400);
+        assert!(dispatch.duplicate_work_allowed);
+        let launch = dispatch.launches.first().expect("auto-dispatched launch");
+        assert_eq!(launch.launch_state, "created");
+        assert_eq!(launch.launch_phase.as_deref(), Some("leaseable"));
+        assert_eq!(launch.matched_pylons.len(), 2);
+        assert_eq!(launch.assigned_pylons.len(), 2);
+        assert!(
+            launch.assigned_pylons.iter().all(|assignment| assignment
+                .node
+                .build_version
+                .as_deref()
+                == Some("0.1.11"))
+        );
+        assert!(launch.training_run_id.starts_with("run.cs336.a1.auto_10m_"));
+
+        {
+            let store = state.store.read().expect("read store");
+            let run = store
+                .kernel
+                .get_compute_training_run(launch.training_run_id.as_str())
+                .expect("auto-dispatched homework run");
+            assert_eq!(
+                run.metadata.get("run_kind").and_then(Value::as_str),
+                Some("homework_auto_dispatch")
+            );
+            assert_eq!(
+                run.metadata
+                    .pointer("/homework_launch/payout/amount_sats")
+                    .and_then(Value::as_u64),
+                Some(25)
+            );
+            assert_eq!(
+                run.metadata
+                    .pointer("/homework_launch/target/min_pylon_version")
+                    .and_then(Value::as_str),
+                Some(super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION)
+            );
+        }
+
+        let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
+        let unique_uploaded_paths = uploaded_paths
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<String>>();
+        assert_eq!(unique_uploaded_paths.len(), 3, "{uploaded_paths:?}");
 
         upload_server.abort();
         Ok(())

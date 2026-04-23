@@ -3,14 +3,14 @@
 Published: 2026-04-22
 
 This runbook is for operators who need to prove the public Pylon earning path
-against hosted Nexus by running Pylon from npm, triggering a bounded homework
-run from a separate admin process, and verifying accepted-work payout into the
-Pylon wallet.
+against hosted Nexus by running Pylon from npm, waiting for the hosted automatic
+homework dispatcher or triggering a bounded manual override, and verifying
+accepted-work payout into the Pylon wallet.
 
 The target user story is:
 
 ```text
-npx installs Pylon -> pylon stays online -> admin dispatch creates homework
+npx installs Pylon -> pylon stays online -> hosted Nexus dispatches homework
 work -> Pylon claims the work -> work closes out -> validation accepts it ->
 treasury pays -> Pylon wallet balance increases and treasury records a settled
 accepted-work payout
@@ -67,6 +67,13 @@ And run:
 
 ```bash
 cargo test -p nexus-control validation_policy
+```
+
+Also run the automatic-dispatch regression before enabling or changing the
+production loop:
+
+```bash
+cargo test -p nexus-control cs336_homework_auto_dispatch_cycle_targets_all_compatible_online_pylons
 ```
 
 The homework validation-policy test must show that `homework_dispatch` keeps the
@@ -469,7 +476,7 @@ Check validator status:
 curl -fsS http://127.0.0.1:9469/v1/training/status | jq .
 ```
 
-## Trigger Homework Work From A Separate Process
+## Trigger Manual Homework Work From A Separate Process
 
 Use a simple slug prefix. Avoid relying on shell variables named `status` in
 zsh because `status` is read-only.
@@ -524,10 +531,58 @@ jq -r '.launches[0].training_run_id' "${PROOF_ROOT}/dispatch-response.json" \
   > "${PROOF_ROOT}/triggered-run-id.txt"
 ```
 
+## Automatic 10-Minute Dispatch
+
+Production Nexus now owns the normal homework pacing loop. The public user
+contract remains only `pylon`: when an eligible node is online, Nexus can assign
+the current hosted CS336 A1 homework work without the user running a course
+opt-in command or an admin dispatch command.
+
+The deployed loop is controlled by the Nexus runtime environment:
+
+```text
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_ENABLED=true
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS=600
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS=25
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS=256
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_TOTAL_BUDGET_SATS=6400
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MIN_PYLON_VERSION=0.1.11
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD=false
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS=1800
+```
+
+Each cycle creates one fresh `homework_auto_dispatch` run with a slug prefix
+under `run.cs336.a1.auto_10m_`, targets online Pylons on the default
+`trainnet.cs336.a1.demo` network, and pays only accepted homework closeouts.
+The first cycle runs as soon as the Nexus process starts, then repeats every
+configured interval. The in-process guard skips overlapping cycles instead of
+running two dispatches concurrently after a slow cycle or delayed timer tick.
+
+Automatic dispatch still uses the same launch, assignment, validation, closeout,
+treasury, and public-stats path as the manual admin endpoint. A successful
+cycle should make `/api/stats` advance through the normal sequence:
+
+- online/assigned Pylon counts can change when the Pylon heartbeat and launch
+  projection refresh
+- accepted-work and strong-lane counters tick only after the homework window is
+  accepted/rewarded
+- `nexusPayoutSatsPaidTotal`, the accepted-work payout total, and the worker
+  wallet balance tick only after treasury dispatch confirms or settles the
+  accepted-work payout
+
+For production verification, keep at least one fresh `pylon-v0.1.11` worker
+online on the default network before restarting Nexus. Because the first
+automatic cycle runs immediately on process start, starting the worker first
+avoids waiting the full 10-minute interval for the next cycle. After the worker
+seals its contribution, start or confirm a validator and use the same
+"Wait For Validation And Payout" and "Verify Accepted-Work Payment" sections
+below.
+
 ## Cron-Compatible Dispatch
 
-The same endpoint is the operator pacing control for paid homework. Put the
-dispatch call in cron or another scheduler, and control payout rate with
+The manual endpoint remains the operator override control for paid homework.
+Use it when you need a bounded proof, a one-off smoke, or a temporary payout
+pace different from the automatic 10-minute loop. Control payout rate with
 `run_count`, `max_contributors_per_run`, `amount_sats`, and
 `total_budget_sats`.
 

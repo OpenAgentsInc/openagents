@@ -578,8 +578,16 @@ auto-launch the hosted CS336 A1 starter run, then waits for accepted work and
 accepted-work payout closeout. The older `cs336-a1` proof lane remains the
 explicit admin-launch proof path.
 
-Admins can also pace the amount of homework work offered to online Pylons
-without changing the public user command. The cron-safe endpoint is:
+Hosted Nexus now paces homework work automatically without changing the public
+user command. Production runs an internal CS336 A1 homework dispatcher every
+10 minutes. Each cycle creates a fresh homework run, targets online eligible
+Pylons on `pylon-v0.1.11` or newer, allows duplicated starter work across
+cycles, pays 25 sats only for accepted closeouts, and caps the automatic cycle
+at 6,400 sats. The loop intentionally lives in Nexus rather than in each Pylon:
+users only run `pylon` and stay online.
+
+Admins can still pace or prove the amount of homework work offered to online
+Pylons with a manual override endpoint. The cron-safe endpoint is:
 
 ```bash
 curl -X POST "$NEXUS_BASE_URL/v1/admin/homework/cs336-a1/dispatch" \
@@ -874,7 +882,8 @@ activity, and the active homework-run/window details returned by the local
 worker. It should not show internal Nexus treasury recovery text, stale sync
 warnings, or Gemma model-management controls during normal paid-homework
 bring-up. Keep the window open; the supervised worker stays online underneath
-it and receives admin-triggered homework runs automatically.
+it and receives Nexus-dispatched homework runs automatically. Normal public
+users do not run a CS336 opt-in command and do not trigger jobs themselves.
 
 When a node reports provider presence to `Nexus`, that same heartbeat now also
 carries a private hosting telemetry snapshot alongside the public-safe launch
