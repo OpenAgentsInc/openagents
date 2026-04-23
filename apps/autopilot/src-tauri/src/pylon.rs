@@ -1114,28 +1114,17 @@ fn homework_status_and_detail(
     training_error: Option<&str>,
     proof: Option<&ProofRunProjection>,
 ) -> (String, String) {
-    if let Some(proof) = proof {
-        if proof.status == "accepted" || proof.status == "completed" || proof.status == "paid" {
-            return (
-                "Homework paid".to_string(),
-                proof.detail.clone().unwrap_or_else(|| {
-                    "Latest local homework proof reached accepted work.".to_string()
-                }),
-            );
-        }
-        if proof.status == "running" || proof.status == "starting" {
-            return (
-                "Testing homework".to_string(),
-                "Local homework proof lane is running.".to_string(),
-            );
-        }
-    }
-
     if !pylon.installed {
         return (
             "Pylon missing".to_string(),
             "Install or select a Pylon binary before homework work can run.".to_string(),
         );
+    }
+
+    if let Some(proof) = proof {
+        if proof_reached_paid_closeout(proof) {
+            return ("Homework paid".to_string(), proof_paid_detail(proof));
+        }
     }
 
     if pylon.provider_state != "online" {
@@ -1152,12 +1141,15 @@ fn homework_status_and_detail(
     }
 
     if let Some(training) = training {
-        if !training.blocked_label_keys.is_empty() || !training.recent_issues.is_empty() {
+        let relevant_issue = first_relevant_homework_issue(training);
+        if !training.blocked_label_keys.is_empty() || relevant_issue.is_some() {
             return (
                 "Needs attention".to_string(),
-                first_homework_issue(training).unwrap_or_else(|| {
-                    format!("blocked labels: {}", training.blocked_label_keys.join(", "))
-                }),
+                relevant_issue
+                    .map(summarize_homework_issue)
+                    .unwrap_or_else(|| {
+                        format!("blocked labels: {}", training.blocked_label_keys.join(", "))
+                    }),
             );
         }
         if let Some(runtime) = training.active_runtime.as_ref() {
@@ -1169,8 +1161,19 @@ fn homework_status_and_detail(
                 ),
             );
         }
-        if let Some(closeout) = training.recent_closeout_progress.first() {
-            if closeout.stage != "accepted" && closeout.stage != "paid" {
+        if let Some(closeout) = first_relevant_homework_closeout(training) {
+            if homework_closeout_paid(closeout) {
+                return (
+                    "Homework paid".to_string(),
+                    closeout.payout_id.clone().unwrap_or_else(|| {
+                        closeout
+                            .accepted_outcome_id
+                            .clone()
+                            .unwrap_or_else(|| closeout.stage.clone())
+                    }),
+                );
+            }
+            if !homework_closeout_terminal(closeout.stage.as_str()) {
                 return (
                     "Closing out homework".to_string(),
                     closeout
@@ -1197,6 +1200,23 @@ fn homework_status_and_detail(
         }
     }
 
+    if let Some(proof) = proof {
+        if proof.status == "running" || proof.status == "starting" {
+            return (
+                "Testing homework".to_string(),
+                "Local homework proof lane is running.".to_string(),
+            );
+        }
+        if proof.status == "accepted" || proof.status == "completed" || proof.status == "paid" {
+            return (
+                "Homework proof complete".to_string(),
+                proof.detail.clone().unwrap_or_else(|| {
+                    "Local homework proof completed; waiting for payout evidence.".to_string()
+                }),
+            );
+        }
+    }
+
     if let Some(error) = training_error {
         if pylon.process_state == "running" || pylon.provider_state == "online" {
             return (
@@ -1218,11 +1238,176 @@ fn homework_status_and_detail(
     )
 }
 
-fn first_homework_issue(training: &HomeworkTrainingProjection) -> Option<String> {
+fn proof_reached_paid_closeout(proof: &ProofRunProjection) -> bool {
+    proof.status == "paid"
+        || proof
+            .closeout_stage
+            .as_deref()
+            .map(homework_closeout_terminal)
+            .unwrap_or(false)
+}
+
+fn proof_paid_detail(proof: &ProofRunProjection) -> String {
+    proof
+        .detail
+        .clone()
+        .unwrap_or_else(|| "Latest local homework proof reached accepted work.".to_string())
+}
+
+fn homework_closeout_terminal(stage: &str) -> bool {
+    matches!(
+        stage,
+        "rewarded" | "accepted" | "paid" | "confirmed" | "delivered" | "settled"
+    )
+}
+
+fn homework_closeout_paid(closeout: &HomeworkCloseoutProjection) -> bool {
+    homework_closeout_terminal(closeout.stage.as_str())
+        || closeout
+            .acceptance_state
+            .as_deref()
+            .is_some_and(|state| matches!(state, "accepted" | "paid" | "confirmed"))
+        || closeout.payout_state.as_deref().is_some_and(|state| {
+            matches!(
+                state,
+                "confirmed" | "accepted" | "paid" | "settled" | "rewarded"
+            )
+        })
+        || closeout.payout_receipt_id.is_some()
+        || closeout.payout_id.is_some()
+}
+
+fn current_homework_run_id(training: &HomeworkTrainingProjection) -> Option<&str> {
+    training
+        .current_run_id
+        .as_deref()
+        .or_else(|| {
+            training
+                .active_runtime
+                .as_ref()
+                .map(|runtime| runtime.training_run_id.as_str())
+        })
+        .or_else(|| {
+            training
+                .leased_assignment
+                .as_ref()
+                .and_then(|assignment| assignment.training_run_id.as_deref())
+        })
+}
+
+fn current_homework_identifiers(training: &HomeworkTrainingProjection) -> Vec<&str> {
+    let mut identifiers = Vec::new();
+    if let Some(run_id) = current_homework_run_id(training) {
+        identifiers.push(run_id);
+    }
+    if let Some(window_id) = training.active_window_id.as_deref() {
+        identifiers.push(window_id);
+    }
+    if let Some(runtime) = training.active_runtime.as_ref() {
+        identifiers.push(runtime.window_id.as_str());
+        identifiers.push(runtime.assignment_id.as_str());
+        identifiers.push(runtime.lease_id.as_str());
+    }
+    if let Some(assignment) = training.leased_assignment.as_ref() {
+        if let Some(window_id) = assignment.window_id.as_deref() {
+            identifiers.push(window_id);
+        }
+        if let Some(assignment_id) = assignment.assignment_id.as_deref() {
+            identifiers.push(assignment_id);
+        }
+        if let Some(lease_id) = assignment.lease_id.as_deref() {
+            identifiers.push(lease_id);
+        }
+    }
+    identifiers
+}
+
+fn homework_issue_matches_current_run(
+    training: &HomeworkTrainingProjection,
+    issue: &HomeworkIssueProjection,
+) -> bool {
+    let identifiers = current_homework_identifiers(training);
+    identifiers.is_empty()
+        || identifiers
+            .iter()
+            .any(|identifier| issue.subject_id.contains(*identifier))
+}
+
+fn first_relevant_homework_issue(
+    training: &HomeworkTrainingProjection,
+) -> Option<&HomeworkIssueProjection> {
     training
         .recent_issues
-        .first()
-        .map(|issue| format!("{}: {}", issue.kind, issue.reason))
+        .iter()
+        .find(|issue| homework_issue_matches_current_run(training, issue))
+}
+
+fn first_relevant_homework_closeout(
+    training: &HomeworkTrainingProjection,
+) -> Option<&HomeworkCloseoutProjection> {
+    let current_run_id = current_homework_run_id(training);
+    training.recent_closeout_progress.iter().find(|closeout| {
+        current_run_id
+            .map(|run_id| closeout.training_run_id == run_id)
+            .unwrap_or(true)
+    })
+}
+
+fn relevant_homework_closeouts(
+    training: &HomeworkTrainingProjection,
+) -> impl Iterator<Item = &HomeworkCloseoutProjection> {
+    let current_run_id = current_homework_run_id(training);
+    training
+        .recent_closeout_progress
+        .iter()
+        .filter(move |closeout| {
+            current_run_id
+                .map(|run_id| closeout.training_run_id == run_id)
+                .unwrap_or(true)
+        })
+}
+
+fn summarize_homework_issue(issue: &HomeworkIssueProjection) -> String {
+    if issue.reason.contains("File name too long") {
+        return "Homework replay artifact path exceeded the local filesystem limit; wait for a fresh assignment.".to_string();
+    }
+    if issue.reason.contains("artifact_incomplete") {
+        return "Homework replay artifact is not complete yet; wait for the next assignment or retry."
+            .to_string();
+    }
+    if issue
+        .reason
+        .contains("training_scheduler_assignment_not_found")
+    {
+        return "A stale homework assignment retry was rejected; wait for a fresh assignment."
+            .to_string();
+    }
+
+    let reason = redact_sensitive(issue.reason.as_str());
+    let reason = reason
+        .split('`')
+        .enumerate()
+        .filter_map(|(index, part)| (index % 2 == 0).then_some(part))
+        .collect::<String>();
+    let reason = reason.split_whitespace().collect::<Vec<_>>().join(" ");
+    if reason.is_empty() {
+        issue.kind.clone()
+    } else {
+        format!(
+            "{}: {}",
+            issue.kind,
+            truncate_homework_detail(reason.as_str(), 160)
+        )
+    }
+}
+
+fn truncate_homework_detail(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let mut truncated = value.chars().take(max_chars).collect::<String>();
+    truncated.push_str("...");
+    truncated
 }
 
 fn homework_stages(
@@ -1239,7 +1424,9 @@ fn homework_stages(
     };
     let intake_state = training
         .map(|training| {
-            if !training.blocked_label_keys.is_empty() || !training.recent_issues.is_empty() {
+            if !training.blocked_label_keys.is_empty()
+                || first_relevant_homework_issue(training).is_some()
+            {
                 "attention"
             } else if training.contributor_supported {
                 "ready"
@@ -1265,20 +1452,19 @@ fn homework_stages(
         .or_else(|| proof.map(|proof| proof.status.as_str()))
         .unwrap_or("idle");
     let closeout_state = training
-        .and_then(|training| training.recent_closeout_progress.first())
+        .and_then(first_relevant_homework_closeout)
         .map(|closeout| closeout.stage.as_str())
         .or_else(|| proof.and_then(|proof| proof.closeout_stage.as_deref()))
         .unwrap_or("waiting");
     let payout_state = training
         .and_then(|training| {
-            training
-                .recent_closeout_progress
-                .iter()
-                .find_map(|entry| entry.payout_state.as_deref())
+            relevant_homework_closeouts(training).find_map(|entry| entry.payout_state.as_deref())
         })
         .or_else(|| {
             proof.and_then(|proof| {
-                if proof.status == "accepted" {
+                if proof_reached_paid_closeout(proof) {
+                    Some("accepted")
+                } else if proof.status == "accepted" {
                     Some("accepted")
                 } else {
                     None
@@ -1339,7 +1525,7 @@ fn homework_stages(
             label: "Closeout".to_string(),
             state: closeout_state.to_string(),
             detail: training
-                .and_then(|training| training.recent_closeout_progress.first())
+                .and_then(first_relevant_homework_closeout)
                 .and_then(|closeout| closeout.next_action.clone())
                 .unwrap_or_else(|| "no closeout pending".to_string()),
         },
@@ -1349,10 +1535,12 @@ fn homework_stages(
             state: payout_state.to_string(),
             detail: training
                 .and_then(|training| {
-                    training
-                        .recent_closeout_progress
-                        .iter()
-                        .find_map(|entry| entry.payout_id.clone())
+                    relevant_homework_closeouts(training).find_map(|entry| entry.payout_id.clone())
+                })
+                .or_else(|| {
+                    proof
+                        .and_then(|proof| proof.closeout_stage.clone())
+                        .map(|stage| format!("local proof closeout {stage}"))
                 })
                 .unwrap_or_else(|| "paid only after accepted homework".to_string()),
         },
@@ -1500,6 +1688,20 @@ fn value_string(value: &Value, key: &str) -> Option<String> {
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
         .filter(|value| !value.trim().is_empty())
+}
+
+fn extract_closeout_stage_from_detail(detail: &str) -> Option<String> {
+    let marker = "closeout=";
+    let start = detail.find(marker)? + marker.len();
+    let stage = detail[start..]
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'))
+        .next()
+        .unwrap_or_default();
+    if homework_closeout_terminal(stage) {
+        Some(stage.to_string())
+    } else {
+        None
+    }
 }
 
 fn value_bool(value: &Value, key: &str) -> Option<bool> {
@@ -1921,6 +2123,36 @@ fn proof_get_projection(
         .as_ref()
         .and_then(|value| value.get("observed_run"))
         .or_else(|| trace.as_ref().and_then(|value| value.get("observed_run")));
+    let closeout_stage = summary
+        .as_ref()
+        .and_then(|value| value.get("closeout_stage"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            observed_run
+                .and_then(|value| value.get("run"))
+                .and_then(|value| value.get("latest_closeout_status"))
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+        .or_else(|| {
+            observed_run
+                .and_then(|value| value.get("windows"))
+                .and_then(Value::as_array)
+                .and_then(|windows| {
+                    windows
+                        .iter()
+                        .filter_map(|window| window.get("closeout_status").and_then(Value::as_str))
+                        .find(|stage| homework_closeout_terminal(stage))
+                })
+                .map(ToOwned::to_owned)
+        })
+        .or_else(|| {
+            source
+                .and_then(|value| value.get("detail"))
+                .and_then(Value::as_str)
+                .and_then(extract_closeout_stage_from_detail)
+        });
     let first_write = summary
         .as_ref()
         .and_then(|value| value.get("first_failed_authority_write"))
@@ -1985,11 +2217,7 @@ fn proof_get_projection(
             .and_then(|value| value.get("membership_revision"))
             .and_then(Value::as_str)
             .map(ToOwned::to_owned),
-        closeout_stage: summary
-            .as_ref()
-            .and_then(|value| value.get("closeout_stage"))
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned),
+        closeout_stage,
         closeout_next_action: summary
             .as_ref()
             .and_then(|value| value.get("closeout_next_action"))
@@ -2393,6 +2621,66 @@ mod tests {
     }
 
     #[test]
+    fn homework_projection_ignores_stale_issue_when_current_proof_is_rewarded() {
+        let value = serde_json::json!({
+            "node_label": "pylon.local",
+            "checkpoint_serve_url": "http://127.0.0.1:43000",
+            "runtime_surface_detected": true,
+            "contributor_supported": true,
+            "current_run_id": "run.cs336.a1.current",
+            "active_window_id": "window.cs336.a1.current.0001",
+            "leased_assignment": {
+                "state": "active",
+                "training_run_id": "run.cs336.a1.current",
+                "window_id": "window.cs336.a1.current.0001",
+                "assignment_id": "assign.current",
+                "lease_id": "lease.current",
+                "role": "worker",
+                "runtime_work_class": "homework"
+            },
+            "recent_closeout_progress": [{
+                "training_run_id": "run.cs336.a1.old",
+                "window_id": "window.cs336.a1.old.0001",
+                "assignment_id": "assign.old",
+                "role": "validator",
+                "stage": "terminal_failed",
+                "last_error": "artifact_incomplete",
+                "updated_at_ms": 43
+            }],
+            "recent_issues": [{
+                "kind": "closeout_progress_error",
+                "subject_id": "assign.old",
+                "reason": "artifact_incomplete: failed to write `/tmp/very/internal/path`: File name too long",
+                "blocking_class": "local_queue_replay"
+            }]
+        });
+
+        let training = project_homework_training_status(&value);
+        let proof = test_proof_run("completed", Some("rewarded"));
+        let online = test_pylon_status("running", "online");
+        let (status, detail) =
+            homework_status_and_detail(&online, Some(&training), None, Some(&proof));
+        let stages = homework_stages(&online, Some(&training), Some(&proof));
+
+        assert_eq!(status, "Homework paid");
+        assert!(!detail.contains("File name too long"));
+        assert_eq!(
+            stages
+                .iter()
+                .find(|stage| stage.id == "closeout")
+                .map(|stage| stage.state.as_str()),
+            Some("rewarded")
+        );
+        assert_eq!(
+            stages
+                .iter()
+                .find(|stage| stage.id == "payout")
+                .map(|stage| stage.state.as_str()),
+            Some("accepted")
+        );
+    }
+
+    #[test]
     fn rejects_unknown_provider_mode() {
         assert!(normalize_provider_mode("destroy").is_err());
     }
@@ -2460,6 +2748,67 @@ mod tests {
         assert_eq!(proof.validators.len(), 1);
         assert!(proof.local_simulation);
         assert!(proof.simulated_treasury);
+    }
+
+    fn test_proof_run(status: &str, closeout_stage: Option<&str>) -> ProofRunProjection {
+        ProofRunProjection {
+            namespace: "proof.test".to_string(),
+            lane: "cs336-a1".to_string(),
+            status: status.to_string(),
+            first_red_stage: None,
+            first_red_subject: None,
+            blocker_id: None,
+            detail: Some("proof closeout=rewarded".to_string()),
+            run_id: Some("run.cs336.a1.proof".to_string()),
+            window_id: Some("window.cs336.a1.proof.0001".to_string()),
+            assignment_id: Some("assign.proof".to_string()),
+            lease_id: Some("lease.proof".to_string()),
+            membership_revision: Some("members.rev1".to_string()),
+            closeout_stage: closeout_stage.map(ToOwned::to_owned),
+            closeout_next_action: None,
+            closeout_last_error: None,
+            workers: vec![ProofNodeProjection {
+                role: "worker".to_string(),
+                index: 1,
+                label: "worker-1".to_string(),
+                running: true,
+                pid: None,
+                eligibility: Some("eligible".to_string()),
+                hard_gate_reasons: Vec::new(),
+                retained_state_fixture_id: None,
+                training_status: None,
+                training_error: None,
+            }],
+            validators: vec![ProofNodeProjection {
+                role: "validator".to_string(),
+                index: 1,
+                label: "validator-1".to_string(),
+                running: true,
+                pid: None,
+                eligibility: Some("eligible".to_string()),
+                hard_gate_reasons: Vec::new(),
+                retained_state_fixture_id: None,
+                training_status: None,
+                training_error: None,
+            }],
+            transport: ProofTransportProjection {
+                authority: "ok".to_string(),
+                relay: "ok".to_string(),
+                artifact_store: "ok".to_string(),
+                node_surfaces: "down".to_string(),
+            },
+            artifacts: ProofArtifactsProjection {
+                root: "/tmp/proof".to_string(),
+                run_report_path: Some("/tmp/proof/run-report.json".to_string()),
+                authority_trace_path: Some("/tmp/proof/authority-state-trace.json".to_string()),
+                summary_path: Some("/tmp/proof/proof-summary.json".to_string()),
+                artifact_trace_path: Some("/tmp/proof/object-trace.jsonl".to_string()),
+            },
+            first_failed_authority_write: None,
+            local_simulation: true,
+            simulated_treasury: true,
+            updated_at: "0".to_string(),
+        }
     }
 
     fn test_pylon_status(process_state: &str, provider_state: &str) -> PylonStatusProjection {

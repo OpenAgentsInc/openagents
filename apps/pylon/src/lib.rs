@@ -14975,6 +14975,44 @@ fn snapshot_training_retained_artifact_binding(
         .and_then(Value::as_str)
         .map(|value| value.trim_start_matches("sha256:").to_string());
     let expected_bytes = artifact_ref.get("artifact_bytes").and_then(Value::as_u64);
+    if let Some(expected_digest) = expected_digest.as_deref() {
+        let expected_snapshot_path = training_snapshot_materialized_artifact_path(
+            contribution_root,
+            artifact_kind,
+            &source_path,
+            expected_digest,
+        );
+        if expected_snapshot_path.is_file() {
+            let payload = std::fs::read(expected_snapshot_path.as_path()).with_context(|| {
+                format!(
+                    "failed to read retained contribution artifact `{artifact_kind}` snapshot {}",
+                    expected_snapshot_path.display()
+                )
+            })?;
+            if let Some(expected_bytes) = expected_bytes {
+                let actual_bytes = u64::try_from(payload.len())
+                    .context("failed to convert retained artifact snapshot byte length to u64")?;
+                if actual_bytes != expected_bytes {
+                    bail!(
+                        "retained contribution artifact `{artifact_kind}` snapshot drifted: expected {expected_bytes} bytes but {} had {actual_bytes}",
+                        expected_snapshot_path.display()
+                    );
+                }
+            }
+            let actual_digest = training_raw_sha256_hex(payload.as_slice());
+            if actual_digest != expected_digest {
+                bail!(
+                    "retained contribution artifact `{artifact_kind}` snapshot drifted: expected digest `{expected_digest}` but {} had `{actual_digest}`",
+                    expected_snapshot_path.display()
+                );
+            }
+            binding.insert(
+                "materialized_path".to_string(),
+                Value::String(expected_snapshot_path.display().to_string()),
+            );
+            return Ok(Some(expected_snapshot_path.display().to_string()));
+        }
+    }
     let payload = std::fs::read(source_path.as_path()).with_context(|| {
         format!(
             "failed to read retained contribution artifact `{artifact_kind}` from {}",
@@ -20818,7 +20856,10 @@ fn ensure_identity(path: &Path) -> Result<NostrIdentity> {
     })
 }
 
-async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
+async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
+    if ensure_default_payout_destination(config_path, &mut config).await? {
+        eprintln!("pylon: created local Spark payout destination for paid training work");
+    }
     let admin_config = provider_admin_config(&config)?;
     let mut desired_mode = ProviderPersistenceStore::open(&admin_config)
         .map_err(anyhow::Error::msg)?
