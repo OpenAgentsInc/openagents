@@ -72,13 +72,13 @@ async function withCapturedConsole(run) {
   return { ...result, logs, errors };
 }
 
-test("parseArgs defaults to launching pylon", () => {
+test("parseArgs defaults to launching pylon-tui", () => {
   const options = parseArgs([]);
 
   expect(options.help).toBe(false);
   expect(options.noLaunch).toBe(false);
   expect(options.skipModelDownload).toBe(true);
-  expect(options.skipDiagnostics).toBe(false);
+  expect(options.skipDiagnostics).toBe(true);
   expect(options.verbose).toBe(false);
 });
 
@@ -92,7 +92,13 @@ test("parseArgs supports explicit cache download and verbose network flags", () 
   expect(options.verbose).toBe(true);
 });
 
-test("main launches pylon by default after bootstrap", async () => {
+test("parseArgs supports explicit Gemma diagnostics opt-in", () => {
+  const options = parseArgs(["--run-diagnostics"]);
+
+  expect(options.skipDiagnostics).toBe(false);
+});
+
+test("main launches pylon-tui by default after bootstrap", async () => {
   const calls = [];
   const telemetry = createTelemetryRecorder();
 
@@ -186,7 +192,7 @@ test("main prints a warning verdict when bootstrap completes without a usable ru
   );
 });
 
-test("main skips pylon launch when --no-launch is set", async () => {
+test("main skips pylon-tui launch when --no-launch is set", async () => {
   const calls = [];
   const telemetry = createTelemetryRecorder();
 
@@ -203,9 +209,7 @@ test("main skips pylon launch when --no-launch is set", async () => {
   );
 
   expect(calls).toEqual([]);
-  expect(logs.some((line) => line.includes("Skipped Pylon launch"))).toBe(
-    true,
-  );
+  expect(logs.some((line) => line.includes("Skipped Pylon terminal UI launch"))).toBe(true);
 });
 
 test("main records a failed installer finish event when bootstrap aborts", async () => {

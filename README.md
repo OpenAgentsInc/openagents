@@ -160,8 +160,8 @@ paid when assigned work closes out as accepted.
 
 Current production truth:
 
-- The minimum current paid-training release is `pylon-v0.1.10` through
-  `@openagentsinc/pylon` `0.1.10` or newer.
+- The minimum current paid-training release is `pylon-v0.1.11` through
+  `@openagentsinc/pylon` `0.1.11` or newer.
 - The live paid work class is bounded hosted homework/training work, currently
   the CS336 A1 starter lane used to prove the earning loop.
 - Work is not yet a fully open demand marketplace. OpenAgents/Nexus admins
@@ -206,8 +206,11 @@ verified the worker wallet increased from `0` to `25` sats. That proof is
 recorded in
 [docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md](docs/reports/nexus/2026-04-23-autopilot-pylon-production-earning-proof.md).
 That source proof is newer than the older `pylon-v0.1.9` tag. The
-`pylon-v0.1.10` release now carries those Autopilot/Pylon fixes through the
-public release asset and npm bootstrap path. The release receipt is
+`pylon-v0.1.10` release carried those Autopilot/Pylon fixes through the public
+release asset and npm bootstrap path. `pylon-v0.1.11` is the current user-path
+floor because it makes `pylon` open the minimal homework dashboard, has the TUI
+start and supervise the earning worker, and keeps Gemma diagnostics/downloads
+opt-in during homework onboarding. The prior release receipt is
 [docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json](docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json).
 
 Operator details live in

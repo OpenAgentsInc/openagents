@@ -29,17 +29,18 @@ out as accepted work, and receives sats for the accepted outcome.
 
 ## What Is Possible Now
 
-Pylon can now run as the default online earning loop. Bare `pylon` initializes
-local state, marks the node online, starts its local admin/status loop,
-publishes provider presence when possible, and keeps provider and training
-intake running while the process stays alive. The terminal UI is separate:
-`pylon-tui` or `pylon tui`.
+Pylon can now run as the default user-facing earning dashboard. Bare
+interactive `pylon` opens a minimal homework-focused TUI that initializes local
+state, starts and supervises the worker process, marks the node online, exposes
+local admin/status endpoints, publishes provider presence when possible, and
+keeps provider and training intake running while the window stays open.
 
 Public paid-training onboarding now has a minimum release:
-`pylon-v0.1.10`, exposed through `@openagentsinc/pylon` version `0.1.10`.
+`pylon-v0.1.11`, exposed through `@openagentsinc/pylon` version `0.1.11`.
 That release is the current public release that has the pieces needed for this
-claim: the bare `pylon` earning loop, npm bootstrap behavior that launches the
-earning loop instead of the TUI, public signed-artifact transfer, accepted-work
+claim: the minimal TUI-managed earning worker, npm bootstrap behavior that
+launches that TUI after smoke checks, no automatic Gemma diagnostics or model
+downloads during homework onboarding, public signed-artifact transfer, accepted-work
 payout projection, validator intake enabled by default, worker-first and
 validator-second role claims, failed retained-runtime lease retirement,
 nonfatal scheduler-error handling, default local Spark payout destination
@@ -50,7 +51,7 @@ reporting before slow artifact publication can wedge the loop.
 Nexus can now offer hosted starter work to online paid-training-capable Pylons
 without asking the user to pick a course, enter a private credential, or run a
 one-off assignment command. The production starter lane targets online Pylons
-by `min_pylon_version=0.1.10`, skips exhausted or sealed starter runs, and does
+by `min_pylon_version=0.1.11`, skips exhausted or sealed starter runs, and does
 not require the provider's build digest to match the Nexus service build.
 
 The payout rule is also concrete. Pylon gets paid for accepted homework work.
@@ -72,7 +73,7 @@ If `pylon` is already installed, check that it is new enough:
 pylon --version
 ```
 
-For paid hosted starter training, use `pylon-v0.1.10` or a newer release with
+For paid hosted starter training, use `pylon-v0.1.11` or a newer release with
 the same paid-training guarantees. Older versions may still bring up local
 Gemma inference, but they are not sufficient proof for the hosted starter
 earning claim.
@@ -89,7 +90,7 @@ installed `pylon` binary by default. To pin the first paid-training release
 explicitly:
 
 ```bash
-npx @openagentsinc/pylon --version 0.1.10
+npx @openagentsinc/pylon --version 0.1.11
 ```
 
 After install, the normal provider command is:
@@ -221,7 +222,7 @@ used `@openagentsinc/pylon@0.1.7` and proved the bare `pylon` command could earn
 across four accepted homework outcomes. A later npm release-asset proof is
 `docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json`, which
 used a newer npm-installed worker and a separate validator. Those receipts
-explain the path to the current release, but `0.1.10` is the minimum public
+explain the path to the current release, but `0.1.11` is the minimum public
 release to recommend now.
 
 One operational detail still matters for repeatability. The successful public
@@ -261,7 +262,7 @@ pylon training status --json
 pylon doctor
 ```
 
-Common causes are straightforward: the Pylon release is older than `0.1.10`, the
+Common causes are straightforward: the Pylon release is older than `0.1.11`, the
 node is not actually online, the local Psionic runtime cannot be found, Nexus
 has no currently available hosted starter work, or production Nexus is not
 running the hosted-starter fix set that matches the public Pylon release.

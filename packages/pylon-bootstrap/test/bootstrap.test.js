@@ -1011,6 +1011,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
         model: "gemma-4-e4b",
         configPath: "/tmp/pylon-config.json",
         skipModelDownload: false,
+        skipDiagnostics: false,
         diagnosticRepeats: 2,
         diagnosticMaxOutputTokens: 24,
       },
@@ -1127,12 +1128,65 @@ describe("@openagentsinc/pylon bootstrap", () => {
     ]);
   });
 
-  test("launchInstalledPylon starts the default earning loop with inherited stdio", async () => {
+  test("bootstrapInstalledPylon skips Gemma download and diagnostics by default", async () => {
+    const calls = [];
+    const statuses = [];
+
+    const summary = await bootstrapInstalledPylon(
+      {
+        version: "1.2.3",
+        tagName: "pylon-v1.2.3",
+        target: { os: "darwin", arch: "arm64" },
+        cached: false,
+        pylonPath: "/tmp/pylon",
+        pylonTuiPath: "/tmp/pylon-tui",
+        model: "gemma-4-e4b",
+        configPath: "/tmp/pylon-config.json",
+      },
+      {
+        runProcessImpl: async (command, args) => {
+          calls.push([command, ...args]);
+          const joined = args.join(" ");
+          if (joined === "--help") {
+            return { stdout: "usage", stderr: "" };
+          }
+          if (joined === "init") {
+            return {
+              stdout: JSON.stringify({ config_path: "/tmp/pylon-config.json" }),
+              stderr: "",
+            };
+          }
+          if (joined === "status --json") {
+            return { stdout: JSON.stringify({ snapshot: null }), stderr: "" };
+          }
+          if (joined === "inventory --json") {
+            return { stdout: JSON.stringify({ rows: [] }), stderr: "" };
+          }
+          throw new Error(`Unexpected command: ${command} ${joined}`);
+        },
+        onStatus: (event) => statuses.push(event.message),
+      },
+    );
+
+    expect(calls).toEqual([
+      ["/tmp/pylon", "--help"],
+      ["/tmp/pylon", "init"],
+      ["/tmp/pylon", "status", "--json"],
+      ["/tmp/pylon", "inventory", "--json"],
+    ]);
+    expect(statuses).toContain("Skipping optional curated GGUF cache");
+    expect(statuses).toContain("Skipping optional Gemma diagnostic");
+    expect(summary.download).toBeNull();
+    expect(summary.diagnosticResult).toBeNull();
+  });
+
+  test("launchInstalledPylon opens the managed terminal UI with inherited stdio", async () => {
     const calls = [];
 
     await launchInstalledPylon(
       {
         pylonPath: "/tmp/pylon",
+        pylonTuiPath: "/tmp/pylon-tui",
         pylonHome: "/tmp/pylon-home",
         configPath: "/tmp/pylon-config.json",
       },
@@ -1146,7 +1200,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual({
-      command: "/tmp/pylon",
+      command: "/tmp/pylon-tui",
       args: [],
       options: {
         env: expect.objectContaining({
@@ -1171,6 +1225,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
         pylonTuiPath: "/tmp/pylon-tui",
         model: "gemma-4-e4b",
         skipModelDownload: true,
+        skipDiagnostics: false,
       },
       {
         runProcessImpl: async (_command, args) => {

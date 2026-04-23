@@ -340,7 +340,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.1.10
+npx @openagentsinc/pylon --version 0.1.11
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
@@ -348,12 +348,13 @@ npx @openagentsinc/pylon --download-curated-cache
 On Windows, run the bootstrap command inside the target WSL Ubuntu shell unless
 the operator explicitly wants a separate Windows-native lane.
 
-That launcher checks GitHub for the latest tagged `pylon-v...` release on each default run, or resolves a specific tagged `Pylon` version when `--version` is provided. It then finds the matching release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, runs the `init` / `status --json` / `inventory --json` smoke path, and then drives `pylon gemma diagnose <model>`. It only prefetches the optional Hugging Face GGUF cache when `--download-curated-cache` is set, because the sellable lane still depends on the configured local runtime endpoint rather than the local GGUF cache alone.
+That launcher checks GitHub for the latest tagged `pylon-v...` release on each default run, or resolves a specific tagged `Pylon` version when `--version` is provided. It then finds the matching release asset for the local machine, verifies the published SHA-256 checksum, caches the binaries locally, and runs the `init` / `status --json` / `inventory --json` smoke path. It skips Gemma diagnostics by default because hosted homework earning does not require local Gemma weights. Run diagnostics explicitly with `--run-diagnostics`, and prefetch the optional Hugging Face GGUF cache only with `--download-curated-cache`.
 The default no-argument path is the intended onboarding lane: it streams terminal
-status updates during bootstrap and launches the installed `pylon` binary when
-the smoke path finishes. In current releases, bare `pylon` is the online
-earning loop, not the TUI. Use `--no-launch` when you want the same install and
-bootstrap flow without starting the earning loop.
+status updates during bootstrap and launches the installed `pylon-tui` binary
+when the smoke path finishes. In current releases, the TUI is the user-facing
+earning surface and starts/supervises the worker process automatically. Use
+`--no-launch` when you want the same install and bootstrap flow without opening
+the earning dashboard.
 If the resolved release does not ship a prebuilt archive for the local
 platform, the launcher now falls back to the exact tagged source checkout,
 prompts before installing Rust if `cargo` and `rustc` are missing, and builds
@@ -402,9 +403,9 @@ Use a direct release asset install only when the operator explicitly does not wa
 ./pylon gemma diagnose gemma-4-e2b --max-output-tokens 96 --repeats 3
 ```
 
-Bare `./pylon` initializes the node, marks it online, and runs the default
-earning loop. Use `./pylon-tui` or `./pylon tui` only when you want the terminal
-shell instead of the service loop.
+Bare interactive `./pylon` opens the same earning dashboard and supervises the
+worker. Noninteractive `./pylon` and `./pylon --config-path <path>` remain the
+direct worker/service path for automation.
 
 Use a source checkout only when:
 
@@ -430,9 +431,10 @@ target, asks Nexus for available work, and receives CS336 Assignment 1 starter
 work when that is the currently hosted starter lane available to the node.
 
 The minimum public paid-training Pylon release for this path is
-`pylon-v0.1.10`, exposed through `@openagentsinc/pylon` `0.1.10`. That release
-contains the bare `pylon` online earning loop, the package bootstrap behavior
-that launches that earning loop instead of dropping into the TUI, the
+`pylon-v0.1.11`, exposed through `@openagentsinc/pylon` `0.1.11`. That release
+contains the minimal homework-earning TUI, the TUI-managed worker lifecycle,
+bootstrap behavior that launches the TUI after smoke checks, opt-in-only Gemma
+diagnostics/downloads, the
 public-safe signed-artifact path, accepted-work payout projection, validator
 intake enabled by default, worker-first/validator-second default role claims,
 failed retained-runtime lease retirement, nonfatal scheduler-error handling,
@@ -443,24 +445,26 @@ validator roles. It also reports terminal worker and validator closeout state
 to Nexus before attempting slower artifact/TRN publication, with a bounded
 publication timeout so a slow signed-URL upload cannot wedge the earning loop
 before accepted-work payout. Older releases may still bring up local Gemma
-inference; `pylon-v0.1.4`
+inference; `pylon-v0.1.10` contains the earlier payout fixes but its TUI did
+not supervise the worker and is not enough for the current user path.
+`pylon-v0.1.4`
 proved public install plus worker artifact sealing, and `pylon-v0.1.5` proved
 the earning-loop packaging fixes, but neither is sufficient closeout proof for
 hosted CS336 earning because retained failed validator leases can block fresh
 paid worker intake. `pylon-v0.1.6` adds validator defaults but can still block
 terminal closeout behind artifact/TRN publication during the validator path.
 If `npx @openagentsinc/pylon` resolves an older version, update before testing
-paid training. If a platform does not yet have a matching `pylon-v0.1.10`
+paid training. If a platform does not yet have a matching `pylon-v0.1.11`
 release asset, use the npm bootstrap source fallback
 or a newer official release that includes these same paid-training guarantees.
 
 That Pylon version is necessary but not sufficient. Hosted starter work also
 requires production Nexus to run the corresponding hosted-starter fix set: the
 auto-launched starter lane must target online Pylons by
-`min_pylon_version=0.1.10`, must not require the provider's build digest to
+`min_pylon_version=0.1.11`, must not require the provider's build digest to
 match the Nexus service build, and must skip exhausted or sealed starter runs
 instead of returning `training_scheduler_run_not_schedulable` to the default
-Pylon loop. If Nexus is older, a public `pylon-v0.1.10` node can come online
+Pylon loop. If Nexus is older, a public `pylon-v0.1.11` node can come online
 correctly and still fail to receive fresh starter work. Treat that as a Nexus
 deployment/readiness problem, not a user opt-in problem.
 
@@ -590,7 +594,7 @@ wants duplicated starter work. It still pays only accepted homework closeouts:
 launching a run does not send sats, and periodic placeholder or liveness
 payouts must remain disabled for this claim. The default pacing contract is one
 fresh run, one contributor per run, one sat per accepted contribution, online
-nodes only, `min_pylon_version=0.1.10`, and no active-run reuse. Operators can
+nodes only, `min_pylon_version=0.1.11`, and no active-run reuse. Operators can
 raise `run_count`, `max_contributors_per_run`, or `amount_sats` in cron while
 using `total_budget_sats` as a per-call cap.
 
@@ -828,7 +832,7 @@ normal check that the runtime is actually using the GPU.
 
 ## Quick Start
 
-Start the default online earning loop:
+Start the default user-facing earning dashboard:
 
 ```bash
 cargo pylon
@@ -841,13 +845,14 @@ If you installed from a release asset instead of a source checkout, run:
 ```
 
 That command stays in the foreground and is the path a normal provider should
-keep running. It initializes local state, flips desired mode to `online`, starts
-the local admin/status loop, heartbeats provider presence, keeps announcements
+keep running. It opens a minimal homework-focused TUI, initializes local state,
+starts a supervised worker process, flips desired mode to `online`, starts the
+local admin/status loop, heartbeats provider presence, keeps announcements
 fresh, and performs automatic provider and training intake whenever the node has
 eligible local supply or hosted training capability for currently available
 jobs.
 
-Open the local terminal shell only when you want an interactive operator UI:
+The explicit TUI commands are equivalent:
 
 ```bash
 cargo pylon-tui
@@ -855,16 +860,14 @@ pylon-tui
 pylon tui
 ```
 
-The first TUI cut is intentionally small. It renders one full-screen transcript shell with:
-
-- whether a Gemma 4-serving path is visible to the node
-- live host, CPU, memory, swap, uptime, disk, network, thermal, and power-source state
-- a GPU summary and NVIDIA power telemetry when the host can report it
-- a built-in Hugging Face Gemma GGUF catalog that shows which curated models are installed, missing, or actively downloading
-- a retained transcript area for local shell activity
-- a bottom textbox where plain text submits a prompt, `/help` shows the retained shell commands, `/model <model>` targets a Gemma runtime model for future local work, `/uninstall <model>` removes a local Gemma model, and `/download <model>` pulls a curated Gemma GGUF into the local Pylon cache
-
-The shell keeps submitted input in the transcript, streams the local Gemma reply back into the same view while it is generating, and carries prior user and assistant turns into the next prompt when local Gemma weights are available. The TUI prepends a plain-terminal system instruction on each local chat request so replies avoid Markdown and LaTeX formatting the transcript cannot render. The right column now shows a curated Hugging Face catalog for `gemma-4-e2b`, `gemma-4-e4b`, `gemma-4-26b-a4b`, and `gemma-4-31b`, with live per-model progress bars while downloads are active. That catalog is intentionally separate from the live runtime truth: the `Gemma Models` panel now shows `runtime ready: ...` from the local backend before listing the optional local GGUF cache rows, so a healthy Ollama-loaded `gemma4:e4b` no longer looks "missing" just because no curated cache file was downloaded. Directly under that catalog, the `Pylon Operator` panel now projects the retained operator truth that matters during bring-up: whether the node is still coming online, idle and ready for jobs, actively running intake, or waiting on settlement, along with the current wallet total, 24-hour found and matching demand counts, 24-hour processed and settled counts, the last job result, and online uptime. The operator header now keeps the desired `mode` separate from the live `runtime`, drops the confusing standalone `state` line, and shows an idle online runtime as `ready` while the detail row explains that automatic intake passes are active. The first visible frame is also now neutral during bring-up: before the first status refresh lands, the shell shows `loading current status` instead of painting an offline-looking default state. Downloaded GGUFs land under `~/.openagents/pylon/models/huggingface/`. `/model <model>` persists a preferred Gemma target, maps it to the local runtime naming when possible, and warms that model through the configured local runtime endpoint. `/uninstall <model>` removes the matching cached GGUF and, when `local_gemma_base_url` points at a local Ollama instance, also removes the corresponding local runtime model. The current local chat path accepts the preferred model when it is visible through the configured local runtime endpoint. The `System` block is meant to show what the node can honestly report right now about local capacity and headroom. On Macs that includes power source and battery state. On NVIDIA hosts it can also show `power.draw / power.limit` from `nvidia-smi`. The normal provider automation now lives in the long-running bare `pylon` path, while explicit `provider run` remains available as a manual one-shot pass. `cargo run -p pylon-tui` remains the direct fallback if you want to bypass the alias.
+The current TUI is intentionally minimal. It removes the chat composer and
+transcript from the default user surface and focuses on the pieces that matter
+for earning: node status, wallet/balance state, stacker progress, recent paid
+activity, and the active homework-run/window details returned by the local
+worker. It should not show internal Nexus treasury recovery text, stale sync
+warnings, or Gemma model-management controls during normal paid-homework
+bring-up. Keep the window open; the supervised worker stays online underneath
+it and receives admin-triggered homework runs automatically.
 
 When a node reports provider presence to `Nexus`, that same heartbeat now also
 carries a private hosting telemetry snapshot alongside the public-safe launch
@@ -880,7 +883,11 @@ Headless Gemma operator commands now exist too:
 - `cargo pylon-headless gemma diagnose gemma-4-e2b --max-output-tokens 96 --repeats 3`
 - `cargo pylon-headless gemma benchmark all --download-missing --mode matrix`
 
-Use the first, third, and fourth commands for normal onboarding. They inspect the optional curated cache, confirm a loaded runtime model is actually answering `/api/chat`, and persist a local first-run diagnostic report without requiring a sibling `psionic` checkout. Use `gemma download ...` only when you intentionally want the local GGUF cache too.
+Do not run these Gemma commands as part of normal hosted-homework onboarding.
+They are explicit inference diagnostics only: `gemma diagnose` confirms a
+loaded runtime model is actually answering `/api/chat`, `gemma benchmark`
+measures inference behavior, and `gemma download ...` intentionally pulls the
+optional local GGUF cache.
 
 Important:
 

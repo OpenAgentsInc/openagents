@@ -17,6 +17,11 @@ use tokio::task::LocalSet;
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if matches!(args.as_slice(), [flag] if flag == "--version" || flag == "-V") {
+        println!("pylon-tui {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     let local = LocalSet::new();
     match local
         .run_until(pylon_tui::run_pylon_tui_with_args(args))

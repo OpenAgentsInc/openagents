@@ -104,8 +104,8 @@ Version: ${VERSION}
 Platform: $(host_os)-$(host_arch)
 
 This archive contains:
-- pylon: the default online earning loop plus headless provider CLI
-- pylon-tui: the terminal UI shell
+- pylon: the default user entrypoint plus headless worker/provider CLI
+- pylon-tui: the minimal homework-earning terminal dashboard
 
 Quick start:
   cd ${archive_dir}
@@ -115,20 +115,20 @@ Quick start:
   ./pylon inventory --json
   ./pylon config show
   ./pylon
-  # Use ./pylon-tui only when you want the terminal UI shell.
-  # Sellable Gemma supply still requires a local runtime at 127.0.0.1:11434.
-  # On macOS the shortest path today is:
-  #   brew install ollama
-  #   brew services start ollama
-  #   ollama pull gemma4:e4b
-  ./pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
+  # Interactive ./pylon opens the homework dashboard and keeps the worker online.
+  # Noninteractive ./pylon and ./pylon --config-path <path> run the worker directly.
+  # Gemma diagnostics/downloads are optional and not part of homework onboarding.
+  # Run them only when validating local inference separately:
+  #   ./pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
 
 Important:
 - These binaries run without a Rust toolchain.
 - Pylon keeps its local state under ~/.openagents/pylon by default.
+- Keep the dashboard open to stay eligible for admin-triggered homework jobs.
 - Curated GGUF downloads are optional local cache only; they do not make the sellable lane ready by themselves.
-- First-run diagnostics persist to ~/.openagents/pylon/diagnostics/gemma/latest.json.
-- When the node is online and eligible, the long-lived \`serve\` loop now auto-publishes or refreshes the current handler announcement.
+- The dashboard starts and supervises the earning worker automatically.
+- First-run Gemma diagnostics persist to ~/.openagents/pylon/diagnostics/gemma/latest.json only when run explicitly.
+- When the node is online and eligible, the long-lived worker loop publishes or refreshes provider presence.
 - The retained Gemma benchmark path still shells into a sibling Psionic checkout.
   Set OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic when you need that lane.
 - Source builds remain the fallback for unsupported platforms or when you need
@@ -157,22 +157,21 @@ cd pylon-v${VERSION}-$(host_os)-$(host_arch)
 ./pylon inventory --json
 ./pylon config show
 ./pylon
-# Use ./pylon-tui only when you want the terminal UI shell.
-# Sellable Gemma supply still requires a local runtime at 127.0.0.1:11434.
-# On macOS the shortest path today is:
-#   brew install ollama
-#   brew services start ollama
-#   ollama pull gemma4:e4b
-./pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
+# Interactive ./pylon opens the homework dashboard and keeps the worker online.
+# Noninteractive ./pylon and ./pylon --config-path <path> run the worker directly.
+# Gemma diagnostics/downloads are optional and not part of homework onboarding.
+# Run them only when validating local inference separately:
+#   ./pylon gemma diagnose gemma-4-e4b --max-output-tokens 96 --repeats 3
 \`\`\`
 
 Notes:
 - This release is unsigned and not notarized.
-- The current standalone sellable lane is \`psionic.local.inference.gemma.single_node\`.
-- Bare \`pylon\` starts the default online earning loop; use \`pylon-tui\` for the terminal UI shell.
+- The current user-facing paid lane is admin-triggered homework/training work.
+- Bare interactive \`pylon\` opens the minimal homework dashboard and supervises the worker.
+- Noninteractive \`pylon\` remains the direct worker/service path for automation.
 - Curated GGUF downloads are optional local cache only; they do not make the sellable lane ready by themselves.
-- First-run diagnostics persist to \`~/.openagents/pylon/diagnostics/gemma/latest.json\`.
-- When the node is online and eligible, the long-lived \`serve\` loop auto-publishes or refreshes the current handler announcement.
+- First-run Gemma diagnostics persist to \`~/.openagents/pylon/diagnostics/gemma/latest.json\` only when run explicitly.
+- When the node is online and eligible, the long-lived worker loop publishes or refreshes provider presence.
 - Source builds are still the fallback for unsupported platforms or local development.
 EOF
 }

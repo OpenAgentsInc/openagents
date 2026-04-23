@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SlashCommandId {
     Help,
@@ -50,25 +52,25 @@ const COMMANDS: &[SlashCommandSpec] = &[
         id: SlashCommandId::Chat,
         name: "chat",
         usage: "/chat [prompt]",
-        summary: "submit a local Gemma prompt explicitly",
+        summary: "run an explicit local model prompt",
     },
     SlashCommandSpec {
         id: SlashCommandId::Download,
         name: "download",
         usage: "/download [model]",
-        summary: "download a curated Gemma GGUF into the local cache",
+        summary: "download an optional curated local model cache",
     },
     SlashCommandSpec {
         id: SlashCommandId::Model,
         name: "model",
         usage: "/model [model]",
-        summary: "target a Gemma model for local runtime use",
+        summary: "select an optional local runtime model",
     },
     SlashCommandSpec {
         id: SlashCommandId::Uninstall,
         name: "uninstall",
         usage: "/uninstall [model]",
-        summary: "remove a Gemma model from local cache and runtime",
+        summary: "remove an optional local model cache",
     },
     SlashCommandSpec {
         id: SlashCommandId::Announce,
@@ -225,7 +227,7 @@ pub fn help_lines() -> Vec<String> {
             .map(|spec| format!("  {:<24} {}", spec.usage, spec.summary)),
     );
     lines.push(String::from(
-        "Plain text without a slash runs a local Gemma prompt.",
+        "Plain text input is disabled in the default homework dashboard.",
     ));
     lines
 }
@@ -303,7 +305,7 @@ mod tests {
         assert!(
             lines
                 .iter()
-                .any(|line| line.contains("Plain text without a slash"))
+                .any(|line| line.contains("Plain text input is disabled"))
         );
         assert_eq!(registry()[1].id, SlashCommandId::Chat);
         assert_eq!(registry()[3].id, SlashCommandId::Model);
