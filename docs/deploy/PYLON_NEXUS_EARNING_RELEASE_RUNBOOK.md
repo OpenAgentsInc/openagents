@@ -107,12 +107,16 @@ release asset, npm bootstrap, TUI-managed worker, no default Gemma model
 download, and production homework lease intake/seal path.
 
 The current full production earning receipt is
-`docs/reports/nexus/20260423-080422-pylon-v0.1.11-prod-e2e.json`. It proves
-fresh npm-installed `0.1.11` worker and validator binaries, Nexus online
-presence as `pylon/0.1.11`, an admin-triggered 25-sat CS336 homework run,
-rewarded closeout, confirmed and settled accepted-work treasury payout, a
-worker wallet balance increase from `0` to `25` sats, and no default Gemma
-model download. Use this receipt as the current release closeout proof.
+`docs/reports/nexus/20260423-084113-pylon-v0.1.11-post-health-prod-e2e.json`.
+It proves fresh npm-installed `0.1.11` worker and validator binaries against
+the deployed `bee1c593b9ba` Nexus image, Nexus online presence as
+`pylon/0.1.11`, an admin-triggered 25-sat CS336 homework run, rewarded
+closeout, confirmed and settled accepted-work treasury payout, a worker wallet
+balance increase from `0` to `25` sats, `nexus_payout_loop_health: idle`, no
+treasury degraded reason, and no default Gemma model download. Use this receipt
+as the current release closeout proof. The earlier
+`docs/reports/nexus/20260423-080422-pylon-v0.1.11-prod-e2e.json` receipt
+remains the first successful full `0.1.11` production earning proof.
 
 ## Version Telemetry Rules
 
