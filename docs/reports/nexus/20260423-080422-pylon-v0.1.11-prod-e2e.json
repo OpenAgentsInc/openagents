@@ -1,0 +1,2197 @@
+{
+  "release": "pylon-v0.1.11",
+  "version": "0.1.11",
+  "deploy_commit": "14e25e624a97cf84c0635e359231f4eab954fd90",
+  "deployed_nexus_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:14e25e624a97",
+  "generated_at": "2026-04-23T08:04:22Z",
+  "proof_root": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z",
+  "network_id": "trainnet.cs336.a1.pylon011-prod.20260423T075819Z",
+  "batch_id": "dispatch.cs336.a1.20260423075854.5723f6b5",
+  "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+  "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+  "worker_admin_port": 54006,
+  "validator_admin_port": 54007,
+  "npm_bootstrap": {
+    "worker": {
+      "version": "0.1.11",
+      "tagName": "pylon-v0.1.11",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "cached": false,
+      "installMethod": "release_asset",
+      "binaries": {
+        "pylon": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/install/versions/pylon-v0.1.11-darwin-arm64/pylon",
+        "pylonTui": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/install/versions/pylon-v0.1.11-darwin-arm64/pylon-tui"
+      },
+      "configPath": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/pylon-home/config.json",
+      "pylonHome": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/pylon-home",
+      "init": {
+        "config_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/pylon-home/config.json",
+        "ledger_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/pylon-home/ledger.json",
+        "identity_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/pylon-home/identity.mnemonic",
+        "npub": "npub17q2mapyjn38xmjsshzq3536luej6hzfsvufl47cxr46vpmmpy93s9rkx97",
+        "payout_destination": null,
+        "admin_listen_addr": "127.0.0.1:9468"
+      },
+      "status": {
+        "listen_addr": "127.0.0.1:9468",
+        "desired_mode": "offline",
+        "snapshot": {
+          "captured_at_ms": 1776931105788,
+          "config_metadata": [
+            {
+              "key": "node_label",
+              "value": "pylon"
+            },
+            {
+              "key": "payout_destination",
+              "value": null
+            },
+            {
+              "key": "local_gemma_base_url",
+              "value": "http://127.0.0.1:11434"
+            },
+            {
+              "key": "local_gemma_preferred_model",
+              "value": null
+            },
+            {
+              "key": "training_operator_status",
+              "value": {
+                "generated_at_ms": 1776931105789,
+                "node_label": "pylon",
+                "provider_pubkey": "f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+                "checkpoint_serve_url": "http://127.0.0.1:9570",
+                "runtime_surface_detected": true,
+                "psionic_repo_root": "/Users/christopherdavid/work/psionic",
+                "psionic_repo_source": "env_override",
+                "contributor_supported": true,
+                "capability_tier": {
+                  "tier": "tier3_island",
+                  "backend_families": [
+                    "cpu",
+                    "metal"
+                  ],
+                  "accelerator_inventory": [
+                    {
+                      "backend_family": "metal",
+                      "model": "Apple M5 Max",
+                      "vendor": "sppci_vendor_Apple",
+                      "accelerator_count": 1
+                    }
+                  ],
+                  "memory_floor_gb": 32,
+                  "available_memory_gb": 128,
+                  "throughput_band": "island",
+                  "lease_reliability": "steady",
+                  "replay_capability": "full_window",
+                  "artifact_upload_latency_class": "unknown"
+                },
+                "capability_envelope_v2": {
+                  "schema_version": "provider.training_capability_envelope.v2",
+                  "tier_profile": {
+                    "tier": "tier3_island",
+                    "backend_families": [
+                      "cpu",
+                      "metal"
+                    ],
+                    "accelerator_inventory": [
+                      {
+                        "backend_family": "metal",
+                        "model": "Apple M5 Max",
+                        "vendor": "sppci_vendor_Apple",
+                        "accelerator_count": 1
+                      }
+                    ],
+                    "memory_floor_gb": 32,
+                    "available_memory_gb": 128,
+                    "throughput_band": "island",
+                    "lease_reliability": "steady",
+                    "replay_capability": "full_window",
+                    "artifact_upload_latency_class": "unknown"
+                  },
+                  "runtime_surface_detected": true,
+                  "contributor_supported": true,
+                  "benchmark_lane_available": true,
+                  "eligible_work_classes": [
+                    {
+                      "work_class": "validation_replay",
+                      "minimum_tier": "tier1_validation",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "short_window",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "evaluation",
+                      "minimum_tier": "tier1_validation",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "short_window",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "adapter_training",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "small_model_local_training",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": false
+                    },
+                    {
+                      "work_class": "grouped_replica_stage_execution",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "grouped_replica"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "full_island_local_update_training",
+                      "minimum_tier": "tier3_island",
+                      "replica_types": [
+                        "island"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "island",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    }
+                  ],
+                  "eligible_replica_types": [
+                    {
+                      "replica_type": "single_node",
+                      "minimum_tier": "tier1_validation",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ]
+                    },
+                    {
+                      "replica_type": "grouped_replica",
+                      "minimum_tier": "tier2_trainer",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32
+                    },
+                    {
+                      "replica_type": "island",
+                      "minimum_tier": "tier3_island",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32
+                    }
+                  ]
+                },
+                "manifest_count": 0,
+                "publication_pointer_count": 0,
+                "publication_record_count": 0,
+                "pending_publication_count": 0,
+                "contribution_outcome_count": 0,
+                "closeout_count": 0,
+                "blocked_label_keys": []
+              }
+            }
+          ],
+          "identity": {
+            "npub": "npub17q2mapyjn38xmjsshzq3536luej6hzfsvufl47cxr46vpmmpy93s9rkx97",
+            "public_key_hex": "f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+            "display_name": "Pylon",
+            "node_label": "pylon"
+          },
+          "runtime": {
+            "mode": "offline",
+            "last_action": "pylon is ready with 2 sellable launch products",
+            "last_error": null,
+            "degraded_reason_code": null,
+            "authoritative_status": "ready",
+            "authoritative_error_class": null,
+            "queue_depth": 0,
+            "online_uptime_seconds": 0,
+            "inventory_session_started_at_ms": null,
+            "last_completed_job_at_epoch_ms": null,
+            "last_authoritative_event_id": null,
+            "execution_backend_label": "local Gemma runtime",
+            "provider_blocker_codes": []
+          },
+          "availability": {
+            "local_gemma": {
+              "reachable": true,
+              "ready": true,
+              "configured_model": "gemma4-e4b-local:latest",
+              "ready_model": "gemma4-e4b-local:latest",
+              "available_models": [
+                "gemma4-e4b-local:latest"
+              ],
+              "last_error": null,
+              "last_action": "health check ready",
+              "availability_message": "gemma_ready",
+              "latency_ms_p50": null
+            },
+            "adapter_training_contributor": {
+              "contributor_supported": true,
+              "coordinator_match_supported": true,
+              "authority_receipt_supported": true,
+              "execution_backends": [
+                "open_adapter_backend"
+              ],
+              "adapter_families": [
+                "openagents.adapter.reference"
+              ],
+              "adapter_formats": [
+                "openagents.adapter.delta.v1"
+              ],
+              "validator_policy_refs": [
+                "policy://validator/mvp/v1"
+              ],
+              "checkpoint_families": [
+                "decoder"
+              ],
+              "environment_refs": [
+                "psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1",
+                "psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1"
+              ],
+              "minimum_memory_gb": 32,
+              "available_memory_gb": 128,
+              "settlement_trigger": "accepted_sealed_window"
+            },
+            "sandbox": {
+              "runtimes": [
+                {
+                  "runtime_kind": "container",
+                  "detected": false,
+                  "ready": false,
+                  "binary_name": null,
+                  "binary_path": null,
+                  "runtime_version": null,
+                  "supported_execution_classes": [
+                    "container_exec"
+                  ],
+                  "last_error": "container runtime not detected on PATH"
+                },
+                {
+                  "runtime_kind": "python",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "python3",
+                  "binary_path": "/usr/bin/python3",
+                  "runtime_version": "Python 3.9.6",
+                  "supported_execution_classes": [
+                    "python_exec"
+                  ],
+                  "last_error": null
+                },
+                {
+                  "runtime_kind": "node",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "node",
+                  "binary_path": "/Users/christopherdavid/.nvm/versions/node/v25.8.2/bin/node",
+                  "runtime_version": "v25.8.2",
+                  "supported_execution_classes": [
+                    "node_exec"
+                  ],
+                  "last_error": null
+                },
+                {
+                  "runtime_kind": "posix",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "bash",
+                  "binary_path": "/bin/bash",
+                  "runtime_version": null,
+                  "supported_execution_classes": [
+                    "posix_exec"
+                  ],
+                  "last_error": null
+                }
+              ],
+              "profiles": [],
+              "last_scan_error": null
+            }
+          },
+          "inventory_rows": [
+            {
+              "target": "psionic.local.inference.gemma.single_node",
+              "enabled": true,
+              "backend_ready": true,
+              "eligible": true,
+              "capability_summary": "backend=local_gemma execution=local_inference family=inference model=gemma4-e4b-local:latest configured_model=gemma4-e4b-local:latest latency_ms_p50=n/a",
+              "market_receipt_class": "accepted_delivery",
+              "earnings_summary": "Earns when local delivery is accepted and wallet settlement is confirmed.",
+              "source_badge": "pylon.local_preview",
+              "capacity_lot_id": null,
+              "total_quantity": 0,
+              "reserved_quantity": 0,
+              "available_quantity": 0,
+              "delivery_state": "offline",
+              "price_floor_sats": 21,
+              "terms_label": "spot session / local best effort",
+              "forward_capacity_lot_id": null,
+              "forward_delivery_window_label": null,
+              "forward_total_quantity": 0,
+              "forward_reserved_quantity": 0,
+              "forward_available_quantity": 0,
+              "forward_terms_label": "forward physical / committed local window"
+            },
+            {
+              "target": "psionic.cluster.training.adapter_contributor.cluster_attached",
+              "enabled": true,
+              "backend_ready": true,
+              "eligible": true,
+              "capability_summary": "backend=psionic_train execution=training family=adapter_training_contributor contributor_supported=true coordinator_match_supported=true authority_receipt_supported=true execution_backends=open_adapter_backend adapter_families=openagents.adapter.reference adapter_formats=openagents.adapter.delta.v1 validator_policy_refs=policy://validator/mvp/v1 available_memory_gb=128 minimum_memory_gb=32 settlement_trigger=accepted_sealed_window",
+              "market_receipt_class": "accepted_window_or_sealed_contribution",
+              "earnings_summary": "Training contributions settle on accepted windows, not immediate inference receipts.",
+              "source_badge": "pylon.local_preview",
+              "capacity_lot_id": null,
+              "total_quantity": 0,
+              "reserved_quantity": 0,
+              "available_quantity": 0,
+              "delivery_state": "offline",
+              "price_floor_sats": 89,
+              "terms_label": "window assignment / accepted contribution or accepted sealed window",
+              "forward_capacity_lot_id": null,
+              "forward_delivery_window_label": null,
+              "forward_total_quantity": 0,
+              "forward_reserved_quantity": 0,
+              "forward_available_quantity": 0,
+              "forward_terms_label": "forward physical / contributor window with authority receipts"
+            }
+          ],
+          "recent_jobs": [],
+          "receipts": [],
+          "payouts": [],
+          "health_events": [],
+          "earnings": {
+            "sats_today": 0,
+            "lifetime_sats": 0,
+            "jobs_today": 0,
+            "online_uptime_seconds": 0,
+            "last_job_result": "none",
+            "first_job_latency_seconds": null,
+            "completion_ratio_bps": null,
+            "payout_success_ratio_bps": null,
+            "avg_wallet_confirmation_latency_seconds": null
+          }
+        }
+      },
+      "inventory": {
+        "context": {
+          "state": "ready",
+          "desired_mode": "offline",
+          "listen_addr": "127.0.0.1:9468"
+        },
+        "rows": [
+          {
+            "target": "psionic.local.inference.gemma.single_node",
+            "enabled": true,
+            "backend_ready": true,
+            "eligible": true,
+            "capability_summary": "backend=local_gemma execution=local_inference family=inference model=gemma4-e4b-local:latest configured_model=gemma4-e4b-local:latest latency_ms_p50=n/a",
+            "market_receipt_class": "accepted_delivery",
+            "earnings_summary": "Earns when local delivery is accepted and wallet settlement is confirmed.",
+            "source_badge": "pylon.local_preview",
+            "capacity_lot_id": null,
+            "total_quantity": 0,
+            "reserved_quantity": 0,
+            "available_quantity": 0,
+            "delivery_state": "offline",
+            "price_floor_sats": 21,
+            "terms_label": "spot session / local best effort",
+            "forward_capacity_lot_id": null,
+            "forward_delivery_window_label": null,
+            "forward_total_quantity": 0,
+            "forward_reserved_quantity": 0,
+            "forward_available_quantity": 0,
+            "forward_terms_label": "forward physical / committed local window"
+          },
+          {
+            "target": "psionic.cluster.training.adapter_contributor.cluster_attached",
+            "enabled": true,
+            "backend_ready": true,
+            "eligible": true,
+            "capability_summary": "backend=psionic_train execution=training family=adapter_training_contributor contributor_supported=true coordinator_match_supported=true authority_receipt_supported=true execution_backends=open_adapter_backend adapter_families=openagents.adapter.reference adapter_formats=openagents.adapter.delta.v1 validator_policy_refs=policy://validator/mvp/v1 available_memory_gb=128 minimum_memory_gb=32 settlement_trigger=accepted_sealed_window",
+            "market_receipt_class": "accepted_window_or_sealed_contribution",
+            "earnings_summary": "Training contributions settle on accepted windows, not immediate inference receipts.",
+            "source_badge": "pylon.local_preview",
+            "capacity_lot_id": null,
+            "total_quantity": 0,
+            "reserved_quantity": 0,
+            "available_quantity": 0,
+            "delivery_state": "offline",
+            "price_floor_sats": 89,
+            "terms_label": "window assignment / accepted contribution or accepted sealed window",
+            "forward_capacity_lot_id": null,
+            "forward_delivery_window_label": null,
+            "forward_total_quantity": 0,
+            "forward_reserved_quantity": 0,
+            "forward_available_quantity": 0,
+            "forward_terms_label": "forward physical / contributor window with authority receipts"
+          }
+        ]
+      },
+      "model": "gemma-4-e4b",
+      "download": null,
+      "diagnostic": null,
+      "diagnosticResult": null
+    },
+    "validator": {
+      "version": "0.1.11",
+      "tagName": "pylon-v0.1.11",
+      "target": {
+        "os": "darwin",
+        "arch": "arm64"
+      },
+      "cached": false,
+      "installMethod": "release_asset",
+      "binaries": {
+        "pylon": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/install/versions/pylon-v0.1.11-darwin-arm64/pylon",
+        "pylonTui": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/install/versions/pylon-v0.1.11-darwin-arm64/pylon-tui"
+      },
+      "configPath": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home/config.json",
+      "pylonHome": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home",
+      "init": {
+        "config_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home/config.json",
+        "ledger_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home/ledger.json",
+        "identity_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home/identity.mnemonic",
+        "npub": "npub1natwc3dseqt9fy9p0c3ne2a0lvz2g3lnmuea0hs59su4ctmfepzs36y3ly",
+        "payout_destination": null,
+        "admin_listen_addr": "127.0.0.1:9468"
+      },
+      "status": {
+        "listen_addr": "127.0.0.1:9468",
+        "desired_mode": "offline",
+        "snapshot": {
+          "captured_at_ms": 1776931264332,
+          "config_metadata": [
+            {
+              "key": "node_label",
+              "value": "pylon"
+            },
+            {
+              "key": "payout_destination",
+              "value": null
+            },
+            {
+              "key": "local_gemma_base_url",
+              "value": "http://127.0.0.1:11434"
+            },
+            {
+              "key": "local_gemma_preferred_model",
+              "value": null
+            },
+            {
+              "key": "training_operator_status",
+              "value": {
+                "generated_at_ms": 1776931264333,
+                "node_label": "pylon",
+                "provider_pubkey": "9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845",
+                "checkpoint_serve_url": "http://127.0.0.1:9570",
+                "runtime_surface_detected": true,
+                "psionic_repo_root": "/Users/christopherdavid/work/psionic",
+                "psionic_repo_source": "env_override",
+                "contributor_supported": true,
+                "capability_tier": {
+                  "tier": "tier3_island",
+                  "backend_families": [
+                    "cpu",
+                    "metal"
+                  ],
+                  "accelerator_inventory": [
+                    {
+                      "backend_family": "metal",
+                      "model": "Apple M5 Max",
+                      "vendor": "sppci_vendor_Apple",
+                      "accelerator_count": 1
+                    }
+                  ],
+                  "memory_floor_gb": 32,
+                  "available_memory_gb": 128,
+                  "throughput_band": "island",
+                  "lease_reliability": "steady",
+                  "replay_capability": "full_window",
+                  "artifact_upload_latency_class": "unknown"
+                },
+                "capability_envelope_v2": {
+                  "schema_version": "provider.training_capability_envelope.v2",
+                  "tier_profile": {
+                    "tier": "tier3_island",
+                    "backend_families": [
+                      "cpu",
+                      "metal"
+                    ],
+                    "accelerator_inventory": [
+                      {
+                        "backend_family": "metal",
+                        "model": "Apple M5 Max",
+                        "vendor": "sppci_vendor_Apple",
+                        "accelerator_count": 1
+                      }
+                    ],
+                    "memory_floor_gb": 32,
+                    "available_memory_gb": 128,
+                    "throughput_band": "island",
+                    "lease_reliability": "steady",
+                    "replay_capability": "full_window",
+                    "artifact_upload_latency_class": "unknown"
+                  },
+                  "runtime_surface_detected": true,
+                  "contributor_supported": true,
+                  "benchmark_lane_available": true,
+                  "eligible_work_classes": [
+                    {
+                      "work_class": "validation_replay",
+                      "minimum_tier": "tier1_validation",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "short_window",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "evaluation",
+                      "minimum_tier": "tier1_validation",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "short_window",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "adapter_training",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "small_model_local_training",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "single_node"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": false
+                    },
+                    {
+                      "work_class": "grouped_replica_stage_execution",
+                      "minimum_tier": "tier2_trainer",
+                      "replica_types": [
+                        "grouped_replica"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "unknown",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    },
+                    {
+                      "work_class": "full_island_local_update_training",
+                      "minimum_tier": "tier3_island",
+                      "replica_types": [
+                        "island"
+                      ],
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32,
+                      "required_throughput_band": "island",
+                      "required_replay_capability": "none",
+                      "benchmark_lane_required": true
+                    }
+                  ],
+                  "eligible_replica_types": [
+                    {
+                      "replica_type": "single_node",
+                      "minimum_tier": "tier1_validation",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ]
+                    },
+                    {
+                      "replica_type": "grouped_replica",
+                      "minimum_tier": "tier2_trainer",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32
+                    },
+                    {
+                      "replica_type": "island",
+                      "minimum_tier": "tier3_island",
+                      "required_backend_families": [
+                        "cpu",
+                        "metal"
+                      ],
+                      "minimum_memory_gb": 32
+                    }
+                  ]
+                },
+                "manifest_count": 0,
+                "publication_pointer_count": 0,
+                "publication_record_count": 0,
+                "pending_publication_count": 0,
+                "contribution_outcome_count": 0,
+                "closeout_count": 0,
+                "blocked_label_keys": []
+              }
+            }
+          ],
+          "identity": {
+            "npub": "npub1natwc3dseqt9fy9p0c3ne2a0lvz2g3lnmuea0hs59su4ctmfepzs36y3ly",
+            "public_key_hex": "9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845",
+            "display_name": "Pylon",
+            "node_label": "pylon"
+          },
+          "runtime": {
+            "mode": "offline",
+            "last_action": "pylon is ready with 2 sellable launch products",
+            "last_error": null,
+            "degraded_reason_code": null,
+            "authoritative_status": "ready",
+            "authoritative_error_class": null,
+            "queue_depth": 0,
+            "online_uptime_seconds": 0,
+            "inventory_session_started_at_ms": null,
+            "last_completed_job_at_epoch_ms": null,
+            "last_authoritative_event_id": null,
+            "execution_backend_label": "local Gemma runtime",
+            "provider_blocker_codes": []
+          },
+          "availability": {
+            "local_gemma": {
+              "reachable": true,
+              "ready": true,
+              "configured_model": "gemma4-e4b-local:latest",
+              "ready_model": "gemma4-e4b-local:latest",
+              "available_models": [
+                "gemma4-e4b-local:latest"
+              ],
+              "last_error": null,
+              "last_action": "health check ready",
+              "availability_message": "gemma_ready",
+              "latency_ms_p50": null
+            },
+            "adapter_training_contributor": {
+              "contributor_supported": true,
+              "coordinator_match_supported": true,
+              "authority_receipt_supported": true,
+              "execution_backends": [
+                "open_adapter_backend"
+              ],
+              "adapter_families": [
+                "openagents.adapter.reference"
+              ],
+              "adapter_formats": [
+                "openagents.adapter.delta.v1"
+              ],
+              "validator_policy_refs": [
+                "policy://validator/mvp/v1"
+              ],
+              "checkpoint_families": [
+                "decoder"
+              ],
+              "environment_refs": [
+                "psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1",
+                "psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1"
+              ],
+              "minimum_memory_gb": 32,
+              "available_memory_gb": 128,
+              "settlement_trigger": "accepted_sealed_window"
+            },
+            "sandbox": {
+              "runtimes": [
+                {
+                  "runtime_kind": "container",
+                  "detected": false,
+                  "ready": false,
+                  "binary_name": null,
+                  "binary_path": null,
+                  "runtime_version": null,
+                  "supported_execution_classes": [
+                    "container_exec"
+                  ],
+                  "last_error": "container runtime not detected on PATH"
+                },
+                {
+                  "runtime_kind": "python",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "python3",
+                  "binary_path": "/usr/bin/python3",
+                  "runtime_version": "Python 3.9.6",
+                  "supported_execution_classes": [
+                    "python_exec"
+                  ],
+                  "last_error": null
+                },
+                {
+                  "runtime_kind": "node",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "node",
+                  "binary_path": "/Users/christopherdavid/.nvm/versions/node/v25.8.2/bin/node",
+                  "runtime_version": "v25.8.2",
+                  "supported_execution_classes": [
+                    "node_exec"
+                  ],
+                  "last_error": null
+                },
+                {
+                  "runtime_kind": "posix",
+                  "detected": true,
+                  "ready": true,
+                  "binary_name": "bash",
+                  "binary_path": "/bin/bash",
+                  "runtime_version": null,
+                  "supported_execution_classes": [
+                    "posix_exec"
+                  ],
+                  "last_error": null
+                }
+              ],
+              "profiles": [],
+              "last_scan_error": null
+            }
+          },
+          "inventory_rows": [
+            {
+              "target": "psionic.local.inference.gemma.single_node",
+              "enabled": true,
+              "backend_ready": true,
+              "eligible": true,
+              "capability_summary": "backend=local_gemma execution=local_inference family=inference model=gemma4-e4b-local:latest configured_model=gemma4-e4b-local:latest latency_ms_p50=n/a",
+              "market_receipt_class": "accepted_delivery",
+              "earnings_summary": "Earns when local delivery is accepted and wallet settlement is confirmed.",
+              "source_badge": "pylon.local_preview",
+              "capacity_lot_id": null,
+              "total_quantity": 0,
+              "reserved_quantity": 0,
+              "available_quantity": 0,
+              "delivery_state": "offline",
+              "price_floor_sats": 21,
+              "terms_label": "spot session / local best effort",
+              "forward_capacity_lot_id": null,
+              "forward_delivery_window_label": null,
+              "forward_total_quantity": 0,
+              "forward_reserved_quantity": 0,
+              "forward_available_quantity": 0,
+              "forward_terms_label": "forward physical / committed local window"
+            },
+            {
+              "target": "psionic.cluster.training.adapter_contributor.cluster_attached",
+              "enabled": true,
+              "backend_ready": true,
+              "eligible": true,
+              "capability_summary": "backend=psionic_train execution=training family=adapter_training_contributor contributor_supported=true coordinator_match_supported=true authority_receipt_supported=true execution_backends=open_adapter_backend adapter_families=openagents.adapter.reference adapter_formats=openagents.adapter.delta.v1 validator_policy_refs=policy://validator/mvp/v1 available_memory_gb=128 minimum_memory_gb=32 settlement_trigger=accepted_sealed_window",
+              "market_receipt_class": "accepted_window_or_sealed_contribution",
+              "earnings_summary": "Training contributions settle on accepted windows, not immediate inference receipts.",
+              "source_badge": "pylon.local_preview",
+              "capacity_lot_id": null,
+              "total_quantity": 0,
+              "reserved_quantity": 0,
+              "available_quantity": 0,
+              "delivery_state": "offline",
+              "price_floor_sats": 89,
+              "terms_label": "window assignment / accepted contribution or accepted sealed window",
+              "forward_capacity_lot_id": null,
+              "forward_delivery_window_label": null,
+              "forward_total_quantity": 0,
+              "forward_reserved_quantity": 0,
+              "forward_available_quantity": 0,
+              "forward_terms_label": "forward physical / contributor window with authority receipts"
+            }
+          ],
+          "recent_jobs": [],
+          "receipts": [],
+          "payouts": [],
+          "health_events": [],
+          "earnings": {
+            "sats_today": 0,
+            "lifetime_sats": 0,
+            "jobs_today": 0,
+            "online_uptime_seconds": 0,
+            "last_job_result": "none",
+            "first_job_latency_seconds": null,
+            "completion_ratio_bps": null,
+            "payout_success_ratio_bps": null,
+            "avg_wallet_confirmation_latency_seconds": null
+          }
+        }
+      },
+      "inventory": {
+        "context": {
+          "state": "ready",
+          "desired_mode": "offline",
+          "listen_addr": "127.0.0.1:9468"
+        },
+        "rows": [
+          {
+            "target": "psionic.local.inference.gemma.single_node",
+            "enabled": true,
+            "backend_ready": true,
+            "eligible": true,
+            "capability_summary": "backend=local_gemma execution=local_inference family=inference model=gemma4-e4b-local:latest configured_model=gemma4-e4b-local:latest latency_ms_p50=n/a",
+            "market_receipt_class": "accepted_delivery",
+            "earnings_summary": "Earns when local delivery is accepted and wallet settlement is confirmed.",
+            "source_badge": "pylon.local_preview",
+            "capacity_lot_id": null,
+            "total_quantity": 0,
+            "reserved_quantity": 0,
+            "available_quantity": 0,
+            "delivery_state": "offline",
+            "price_floor_sats": 21,
+            "terms_label": "spot session / local best effort",
+            "forward_capacity_lot_id": null,
+            "forward_delivery_window_label": null,
+            "forward_total_quantity": 0,
+            "forward_reserved_quantity": 0,
+            "forward_available_quantity": 0,
+            "forward_terms_label": "forward physical / committed local window"
+          },
+          {
+            "target": "psionic.cluster.training.adapter_contributor.cluster_attached",
+            "enabled": true,
+            "backend_ready": true,
+            "eligible": true,
+            "capability_summary": "backend=psionic_train execution=training family=adapter_training_contributor contributor_supported=true coordinator_match_supported=true authority_receipt_supported=true execution_backends=open_adapter_backend adapter_families=openagents.adapter.reference adapter_formats=openagents.adapter.delta.v1 validator_policy_refs=policy://validator/mvp/v1 available_memory_gb=128 minimum_memory_gb=32 settlement_trigger=accepted_sealed_window",
+            "market_receipt_class": "accepted_window_or_sealed_contribution",
+            "earnings_summary": "Training contributions settle on accepted windows, not immediate inference receipts.",
+            "source_badge": "pylon.local_preview",
+            "capacity_lot_id": null,
+            "total_quantity": 0,
+            "reserved_quantity": 0,
+            "available_quantity": 0,
+            "delivery_state": "offline",
+            "price_floor_sats": 89,
+            "terms_label": "window assignment / accepted contribution or accepted sealed window",
+            "forward_capacity_lot_id": null,
+            "forward_delivery_window_label": null,
+            "forward_total_quantity": 0,
+            "forward_reserved_quantity": 0,
+            "forward_available_quantity": 0,
+            "forward_terms_label": "forward physical / contributor window with authority receipts"
+          }
+        ]
+      },
+      "model": "gemma-4-e4b",
+      "download": null,
+      "diagnostic": null,
+      "diagnosticResult": null
+    }
+  },
+  "dispatch": {
+    "batch_id": "dispatch.cs336.a1.20260423075854.5723f6b5",
+    "requested_run_count": 1,
+    "launched_run_count": 1,
+    "max_payout_sats": 25,
+    "duplicate_work_allowed": true,
+    "launch": {
+      "launched_at_unix_ms": 1776931134532,
+      "launch_state": "created",
+      "launch_phase": "leaseable",
+      "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+      "run_status": "running",
+      "current_window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+      "matched_pylons": [
+        {
+          "node_pubkey_hex": "f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "node_label": "pylon",
+          "release_id": "openagents.pylon@0.1.11",
+          "build_version": "0.1.11",
+          "build_digest": "sha256:bdacf54f7cfe0ea7af0fe03bfd8be174ba74cdc22e77af19c9303dd49ffb2695",
+          "online": true,
+          "eligible": true,
+          "settlement_destination": "spark1pgss8kzf4plea9wmc3nuruv7xqzkm7sgy6ugrhg85yydcw9f2844q73p2jmv05"
+        }
+      ],
+      "assigned_pylons": [
+        {
+          "node_pubkey_hex": "f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "node_label": "pylon",
+          "release_id": "openagents.pylon@0.1.11",
+          "build_version": "0.1.11",
+          "build_digest": "sha256:bdacf54f7cfe0ea7af0fe03bfd8be174ba74cdc22e77af19c9303dd49ffb2695",
+          "online": true,
+          "eligible": true,
+          "settlement_destination": "spark1pgss8kzf4plea9wmc3nuruv7xqzkm7sgy6ugrhg85yydcw9f2844q73p2jmv05",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "lease_id": "lease.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1.rev1",
+          "assignment_state": "leased"
+        }
+      ],
+      "artifact_prefix": "gs://openagentsgemini-openagents-training-prod/networks/trainnet.cs336.a1.pylon011-prod.20260423T075819Z/runs/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+      "launch_receipt_id": "receipt.kernel.compute.training_run.create:sha256:df77b169f9f17113bf8a61187c107389f7b09a5384af0e65707af5403c107dd2",
+      "run_detail": {
+        "generated_at_unix_ms": 1776931136565,
+        "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+        "run": {
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "display_name": "CS336 A1 Homework Dispatch 20260423075854 #0001",
+          "network_id": "trainnet.cs336.a1.pylon011-prod.20260423T075819Z",
+          "run_status": "running",
+          "scheduler_window_state": "active",
+          "current_window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 0,
+          "validator_challenges_open": 0,
+          "validator_challenges_queued": 0,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 2033,
+          "latest_window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "latest_window_status": "active"
+        },
+        "featured_window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+        "featured_window": {
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "network_id": "trainnet.cs336.a1.pylon011-prod.20260423T075819Z",
+          "status": "active",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 0,
+          "admitted_contributions": 0,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 0,
+          "validator_challenges_open": 0,
+          "validator_challenges_queued": 0,
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": false,
+          "planned_at_ms": 1776931135366,
+          "activated_at_ms": 1776931135366
+        },
+        "queue_pressure": {
+          "state": "pending_validation",
+          "active_windows": 57,
+          "pending_validation_windows": 34,
+          "validator_challenges_open": 57,
+          "validator_challenges_queued": 33
+        },
+        "launch_health": {
+          "generated_at_unix_ms": 1776931136565,
+          "overall_status": "warn",
+          "public_snapshot_source": "live",
+          "public_stats_age_ms": 0,
+          "public_state_drift_from_kernel_ms": 0,
+          "active_runs": 112,
+          "run_backlog_slots": 30,
+          "pending_validation_windows": 34,
+          "validator_challenges_open": 57,
+          "validator_challenges_queued": 33,
+          "accepted_work_pending_payout_count": 0,
+          "accepted_work_attention_payout_count": 0,
+          "payouts_failed_24h": 0,
+          "payouts_skipped_24h": 0,
+          "resolver_lookup_latency_p95_ms": 10,
+          "resolver_lookup_sample_count": 64,
+          "signed_access_latency_p95_ms": 1,
+          "signed_access_sample_count": 64,
+          "active_alert_count": 2,
+          "critical_alert_count": 0,
+          "alerts": [
+            {
+              "alert_id": "run_backlog",
+              "severity": "warning",
+              "title": "Run backlog",
+              "detail": "30 worker slots remain unfilled across 112 active run(s)."
+            },
+            {
+              "alert_id": "validator_backlog",
+              "severity": "warning",
+              "title": "Validator backlog",
+              "detail": "34 pending window(s) // 57 open challenge(s) // 33 queued challenge(s)."
+            }
+          ]
+        },
+        "treasury": {
+          "payout_loop_health": "warning",
+          "degraded_reason": "wallet_snapshot_stale:9929550",
+          "wallet_runtime_status": "connected",
+          "wallet_last_error": "sync_wallet_timeout:20000; using cached balance and bounded payment scan"
+        },
+        "launch": {
+          "launch_id": "launch.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "phase": "leaseable",
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "current_window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "requested_at_ms": 1776931134532,
+          "updated_at_ms": 1776931135366,
+          "launch_receipt_id": "receipt.kernel.compute.training_run.create:sha256:df77b169f9f17113bf8a61187c107389f7b09a5384af0e65707af5403c107dd2",
+          "bootstrap_uploaded_at_ms": 1776931135366,
+          "bootstrap_verified_at_ms": 1776931135366,
+          "scheduler_materialized_at_ms": 1776931135366,
+          "leaseable_at_ms": 1776931135366
+        },
+        "windows": [
+          {
+            "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+            "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+            "network_id": "trainnet.cs336.a1.pylon011-prod.20260423T075819Z",
+            "status": "active",
+            "stage_id": "stage.cs336.a1.homework_dispatch",
+            "work_class": "small_model_local_training",
+            "progress_class": "model_update",
+            "replica_type": "single_node",
+            "round_index": 1,
+            "base_checkpoint_ref": "checkpoint://decoder/base",
+            "planned_local_step_count": 64,
+            "total_contributions": 0,
+            "admitted_contributions": 0,
+            "accepted_contributions": 0,
+            "replay_required_contributions": 0,
+            "validator_challenges_open": 0,
+            "validator_challenges_queued": 0,
+            "payout_eligible": false,
+            "weak_device_bearing": false,
+            "lineage_advanced": false,
+            "planned_at_ms": 1776931135366,
+            "activated_at_ms": 1776931135366
+          }
+        ],
+        "caveats": [
+          {
+            "caveat_id": "run_backlog",
+            "severity": "warning",
+            "title": "Run backlog",
+            "detail": "30 worker slots remain unfilled across 112 active run(s)."
+          },
+          {
+            "caveat_id": "validator_backlog",
+            "severity": "warning",
+            "title": "Validator backlog",
+            "detail": "34 pending window(s) // 57 open challenge(s) // 33 queued challenge(s)."
+          },
+          {
+            "caveat_id": "treasury_degraded",
+            "severity": "critical",
+            "title": "Treasury degraded",
+            "detail": "wallet_snapshot_stale:9929550"
+          }
+        ]
+      }
+    }
+  },
+  "worker": {
+    "status": {
+      "generated_at_ms": 1776931383724,
+      "node_label": "pylon",
+      "provider_pubkey": "f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+      "checkpoint_serve_url": "http://127.0.0.1:54008",
+      "runtime_surface_detected": true,
+      "psionic_repo_root": "/Users/christopherdavid/work/psionic",
+      "psionic_repo_source": "env_override",
+      "contributor_supported": true,
+      "capability_tier": {
+        "tier": "tier3_island",
+        "backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "accelerator_inventory": [
+          {
+            "backend_family": "metal",
+            "model": "Apple M5 Max",
+            "vendor": "sppci_vendor_Apple",
+            "accelerator_count": 1
+          }
+        ],
+        "memory_floor_gb": 32,
+        "available_memory_gb": 128,
+        "throughput_band": "island",
+        "lease_reliability": "steady",
+        "replay_capability": "short_window",
+        "artifact_upload_latency_class": "unknown"
+      },
+      "capability_envelope_v2": {
+        "schema_version": "provider.training_capability_envelope.v2",
+        "tier_profile": {
+          "tier": "tier3_island",
+          "backend_families": [
+            "cpu",
+            "metal"
+          ],
+          "accelerator_inventory": [
+            {
+              "backend_family": "metal",
+              "model": "Apple M5 Max",
+              "vendor": "sppci_vendor_Apple",
+              "accelerator_count": 1
+            }
+          ],
+          "memory_floor_gb": 32,
+          "available_memory_gb": 128,
+          "throughput_band": "island",
+          "lease_reliability": "steady",
+          "replay_capability": "short_window",
+          "artifact_upload_latency_class": "unknown"
+        },
+        "runtime_surface_detected": true,
+        "contributor_supported": true,
+        "benchmark_lane_available": true,
+        "eligible_work_classes": [
+          {
+            "work_class": "validation_replay",
+            "minimum_tier": "tier1_validation",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "short_window",
+            "benchmark_lane_required": true
+          },
+          {
+            "work_class": "evaluation",
+            "minimum_tier": "tier1_validation",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "short_window",
+            "benchmark_lane_required": true
+          },
+          {
+            "work_class": "adapter_training",
+            "minimum_tier": "tier2_trainer",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32,
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "none",
+            "benchmark_lane_required": true
+          },
+          {
+            "work_class": "small_model_local_training",
+            "minimum_tier": "tier2_trainer",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32,
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "none",
+            "benchmark_lane_required": false
+          },
+          {
+            "work_class": "grouped_replica_stage_execution",
+            "minimum_tier": "tier2_trainer",
+            "replica_types": [
+              "grouped_replica"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32,
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "none",
+            "benchmark_lane_required": true
+          },
+          {
+            "work_class": "full_island_local_update_training",
+            "minimum_tier": "tier3_island",
+            "replica_types": [
+              "island"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32,
+            "required_throughput_band": "island",
+            "required_replay_capability": "none",
+            "benchmark_lane_required": true
+          }
+        ],
+        "eligible_replica_types": [
+          {
+            "replica_type": "single_node",
+            "minimum_tier": "tier1_validation",
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ]
+          },
+          {
+            "replica_type": "grouped_replica",
+            "minimum_tier": "tier2_trainer",
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32
+          },
+          {
+            "replica_type": "island",
+            "minimum_tier": "tier3_island",
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "minimum_memory_gb": 32
+          }
+        ]
+      },
+      "manifest_count": 1,
+      "publication_pointer_count": 14,
+      "publication_record_count": 14,
+      "pending_publication_count": 0,
+      "contribution_outcome_count": 0,
+      "closeout_count": 0,
+      "current_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+      "active_window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+      "blocked_label_keys": [],
+      "leased_assignment": {
+        "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+        "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+        "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+        "lease_id": "lease.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1.rev1",
+        "membership_revision": "members.rev1",
+        "role": "worker",
+        "state": "released",
+        "manifest_digest": "sha256:de307de27999b91e401612a08d2b5dd2f6cab926745ad09a05ca5ec8f0b6df28",
+        "checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211/step-000004",
+        "expires_at_ms": 1776931869205,
+        "network_id": "trainnet.cs336.a1.pylon011-prod.20260423T075819Z",
+        "runtime_manifest_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/pylon-home/training/runs/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211/manifests/invocation_manifest.json",
+        "runtime_manifest_digest": "2ff845f866d8cdff43637ad141a3141c35d184f1d879d296341fe40a1e553e17",
+        "runtime_lane_id": "psion_cs336_a1_demo_v1",
+        "runtime_operation": "start",
+        "runtime_work_class": "adapter_training",
+        "updated_at_ms": 1776931296863
+      },
+      "recent_work_offers": [
+        {
+          "offer_id": "lease.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1.rev1",
+          "work_type": "worker_assignment",
+          "acquisition_source": "scheduled",
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "lease_id": "lease.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1.rev1",
+          "membership_revision": "members.rev1",
+          "role": "worker",
+          "state": "released",
+          "manifest_digest": "sha256:de307de27999b91e401612a08d2b5dd2f6cab926745ad09a05ca5ec8f0b6df28",
+          "checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211/step-000004",
+          "expires_at_ms": 1776931869205,
+          "network_id": "trainnet.cs336.a1.pylon011-prod.20260423T075819Z",
+          "runtime_manifest_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/pylon-home/training/runs/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211/manifests/invocation_manifest.json",
+          "runtime_manifest_digest": "2ff845f866d8cdff43637ad141a3141c35d184f1d879d296341fe40a1e553e17",
+          "runtime_lane_id": "psion_cs336_a1_demo_v1",
+          "runtime_operation": "start",
+          "runtime_work_class": "adapter_training",
+          "updated_at_ms": 1776931296863
+        }
+      ],
+      "current_window": {
+        "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+        "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+        "state": "reconciled",
+        "manifest_digest": "sha256:9c4740883bb26a2b7249a0a56249560e047a2e0f828ef9dc36cb146f9984277c",
+        "updated_at_ms": 1776931296523
+      },
+      "last_checkpoint": {
+        "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+        "checkpoint_ref": "checkpoint://decoder/base",
+        "optimizer_step": 4,
+        "source_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/pylon-home/training/runs/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211/checkpoints/latest_pointer.json"
+      },
+      "recent_trn_events": [
+        {
+          "subject_kind": "artifact_locator",
+          "subject_id": "oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "event_id": "2e401c30a5084811f8c14cabba98a68f0f361749de7ed968c33e66a65d6fa5fa",
+          "a_ref": "39520:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163:oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "published_at_ms": 1776931184160
+        },
+        {
+          "subject_kind": "artifact_uploaded",
+          "subject_id": "oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "event_id": "34a70773168dab32c5d4aacfb03d0c77ed5ef38ca3d242f77d870f341893ded4",
+          "a_ref": "39520:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163:oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "published_at_ms": 1776931184160
+        },
+        {
+          "subject_kind": "artifact_uploaded",
+          "subject_id": "oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~assignment~assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "event_id": "1397a95b296d014158893be9c12e82d42ca3736703440bfacec7c2eb49dfdb5d",
+          "a_ref": "39520:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163:oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~assignment~assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "published_at_ms": 1776931183767
+        },
+        {
+          "subject_kind": "artifact_locator",
+          "subject_id": "oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~assignment~assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "event_id": "2ddd52caddcfac310a13687289bfdb322995f76dc7c6736b522e8731ce29767e",
+          "a_ref": "39520:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163:oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~assignment~assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "published_at_ms": 1776931183767
+        },
+        {
+          "subject_kind": "artifact_uploaded",
+          "subject_id": "oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~assignment~assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "event_id": "4e6094b090bf3f412fa322514df8c3edc7716d93d76501d0e5e3372d2e87af36",
+          "a_ref": "39520:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163:oa.train_artifact.v1~kind~proof_bundle~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~assignment~assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "published_at_ms": 1776931183767
+        },
+        {
+          "subject_kind": "artifact_locator",
+          "subject_id": "oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~assignment~assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "event_id": "7f927ef7e06f049c9f921eb387d600cea6fa153f7e1760ee9326922067e196d0",
+          "a_ref": "39520:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163:oa.train_artifact.v1~kind~local_update~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~assignment~assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "published_at_ms": 1776931183767
+        },
+        {
+          "subject_kind": "artifact_locator",
+          "subject_id": "oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~optimizer_step~0",
+          "event_id": "430a35284dbf4556d68a38a6cdd1cebab90759b6d327443486ee8885cb4798c7",
+          "a_ref": "39520:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163:oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~optimizer_step~0",
+          "published_at_ms": 1776931182806
+        },
+        {
+          "subject_kind": "artifact_uploaded",
+          "subject_id": "oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~optimizer_step~0",
+          "event_id": "795b63776c923302c3447c1c1bc063f5436bff503b9ab59be4d33e955f26e49b",
+          "a_ref": "39520:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163:oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~optimizer_step~0",
+          "published_at_ms": 1776931182806
+        }
+      ],
+      "recent_closeout_progress": [
+        {
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "worker",
+          "stage": "accepted",
+          "next_action": "observe_payout",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "dispatching",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_reconciliation_status": "pending_confirmation",
+          "updated_at_ms": 1776931296863
+        }
+      ],
+      "recent_closeout_journal": [
+        {
+          "sequence": 36,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "worker",
+          "stage": "accepted",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "dispatching",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_reconciliation_status": "pending_confirmation",
+          "transition_reason": "observation_refresh",
+          "observed_at_ms": 1776931296863
+        },
+        {
+          "sequence": 35,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "worker",
+          "stage": "accepted",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "dispatching",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_reconciliation_status": "pending_confirmation",
+          "transition_reason": "public_settlement_metadata_refresh",
+          "observed_at_ms": 1776931296863
+        },
+        {
+          "sequence": 34,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "worker",
+          "stage": "accepted",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "dispatching",
+          "transition_reason": "stage_metadata_refresh",
+          "observed_at_ms": 1776931296863
+        },
+        {
+          "sequence": 33,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "worker",
+          "stage": "accepted",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "pending",
+          "transition_reason": "public_settlement_metadata_refresh",
+          "observed_at_ms": 1776931296753
+        },
+        {
+          "sequence": 32,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "worker",
+          "stage": "accepted",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "payout_state": "pending",
+          "transition_reason": "stage_transition",
+          "observed_at_ms": 1776931296753
+        },
+        {
+          "sequence": 31,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "worker",
+          "stage": "reconcile_observed",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "reconciled",
+          "transition_reason": "stage_transition",
+          "observed_at_ms": 1776931296432
+        },
+        {
+          "sequence": 30,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "worker",
+          "stage": "window_sealed",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "sealed",
+          "transition_reason": "observation_refresh",
+          "observed_at_ms": 1776931296261
+        },
+        {
+          "sequence": 29,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "worker",
+          "stage": "window_sealed",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "sealed",
+          "transition_reason": "observation_refresh",
+          "observed_at_ms": 1776931295987
+        }
+      ]
+    },
+    "wallet_before_total_sats": 0,
+    "wallet_after_total_sats": 25,
+    "online_seen_by_stats_before": null,
+    "online_seen_by_stats_after": {
+      "client_version": "pylon/0.1.11",
+      "online_sessions": 2,
+      "online_pylons": 2
+    }
+  },
+  "validator": {
+    "status": {
+      "generated_at_ms": 1776931384114,
+      "node_label": "pylon",
+      "provider_pubkey": "9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845",
+      "checkpoint_serve_url": "http://127.0.0.1:54009",
+      "runtime_surface_detected": true,
+      "psionic_repo_root": "/Users/christopherdavid/work/psionic",
+      "psionic_repo_source": "env_override",
+      "contributor_supported": true,
+      "capability_tier": {
+        "tier": "tier1_validation",
+        "backend_families": [
+          "cpu",
+          "metal"
+        ],
+        "accelerator_inventory": [
+          {
+            "backend_family": "metal",
+            "model": "Apple M5 Max",
+            "vendor": "sppci_vendor_Apple",
+            "accelerator_count": 1
+          }
+        ],
+        "memory_floor_gb": 32,
+        "available_memory_gb": 128,
+        "throughput_band": "island",
+        "lease_reliability": "steady",
+        "replay_capability": "full_window",
+        "artifact_upload_latency_class": "unknown"
+      },
+      "capability_envelope_v2": {
+        "schema_version": "provider.training_capability_envelope.v2",
+        "tier_profile": {
+          "tier": "tier1_validation",
+          "backend_families": [
+            "cpu",
+            "metal"
+          ],
+          "accelerator_inventory": [
+            {
+              "backend_family": "metal",
+              "model": "Apple M5 Max",
+              "vendor": "sppci_vendor_Apple",
+              "accelerator_count": 1
+            }
+          ],
+          "memory_floor_gb": 32,
+          "available_memory_gb": 128,
+          "throughput_band": "island",
+          "lease_reliability": "steady",
+          "replay_capability": "full_window",
+          "artifact_upload_latency_class": "unknown"
+        },
+        "runtime_surface_detected": true,
+        "contributor_supported": true,
+        "benchmark_lane_available": true,
+        "eligible_work_classes": [
+          {
+            "work_class": "validation_replay",
+            "minimum_tier": "tier1_validation",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "short_window",
+            "benchmark_lane_required": true
+          },
+          {
+            "work_class": "evaluation",
+            "minimum_tier": "tier1_validation",
+            "replica_types": [
+              "single_node"
+            ],
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "required_throughput_band": "unknown",
+            "required_replay_capability": "short_window",
+            "benchmark_lane_required": true
+          }
+        ],
+        "eligible_replica_types": [
+          {
+            "replica_type": "single_node",
+            "minimum_tier": "tier1_validation",
+            "required_backend_families": [
+              "cpu",
+              "metal"
+            ]
+          }
+        ]
+      },
+      "manifest_count": 1,
+      "publication_pointer_count": 12,
+      "publication_record_count": 12,
+      "pending_publication_count": 0,
+      "contribution_outcome_count": 0,
+      "closeout_count": 0,
+      "current_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+      "active_window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+      "blocked_label_keys": [],
+      "active_runtime": {
+        "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+        "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+        "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+        "lease_id": "lease.validator.challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1.attempt1",
+        "membership_revision": "members.rev0",
+        "role": "validator",
+        "desired_state": "stopped",
+        "process_state": "stopped",
+        "last_heartbeat_at_ms": 1776931287176,
+        "last_exit_code": 0,
+        "manifest_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home/training/runs/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211/manifests/invocation_manifest.json",
+        "run_root": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home/training/runs/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+        "launch_count": 1,
+        "restart_count": 0,
+        "updated_at_ms": 1776931288264
+      },
+      "leased_assignment": {
+        "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+        "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+        "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+        "lease_id": "lease.validator.challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1.attempt1",
+        "membership_revision": "members.rev0",
+        "role": "validator",
+        "state": "released",
+        "manifest_digest": "sha256:de307de27999b91e401612a08d2b5dd2f6cab926745ad09a05ca5ec8f0b6df28",
+        "checkpoint_ref": "checkpoint://decoder/base",
+        "expires_at_ms": 1776931882648,
+        "network_id": "trainnet.cs336.a1.pylon011-prod.20260423T075819Z",
+        "runtime_manifest_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home/training/runs/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211/manifests/invocation_manifest.json",
+        "runtime_manifest_digest": "33cfc8f1fbbcecbf05b5d0bec11dfdc1a3da73d75880a43d358d04aa2b229f48",
+        "runtime_lane_id": "psion_cs336_a1_demo_v1",
+        "runtime_operation": "validate_contribution",
+        "runtime_work_class": "validation_replay",
+        "updated_at_ms": 1776931295855
+      },
+      "recent_work_offers": [
+        {
+          "offer_id": "lease.validator.challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1.attempt1",
+          "work_type": "validator_challenge",
+          "acquisition_source": "direct_claim",
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "lease_id": "lease.validator.challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1.attempt1",
+          "membership_revision": "members.rev0",
+          "role": "validator",
+          "state": "released",
+          "manifest_digest": "sha256:de307de27999b91e401612a08d2b5dd2f6cab926745ad09a05ca5ec8f0b6df28",
+          "checkpoint_ref": "checkpoint://decoder/base",
+          "expires_at_ms": 1776931882648,
+          "network_id": "trainnet.cs336.a1.pylon011-prod.20260423T075819Z",
+          "challenge_id": "challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1",
+          "runtime_manifest_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home/training/runs/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211/manifests/invocation_manifest.json",
+          "runtime_manifest_digest": "33cfc8f1fbbcecbf05b5d0bec11dfdc1a3da73d75880a43d358d04aa2b229f48",
+          "runtime_lane_id": "psion_cs336_a1_demo_v1",
+          "runtime_operation": "validate_contribution",
+          "runtime_work_class": "validation_replay",
+          "updated_at_ms": 1776931295855
+        }
+      ],
+      "current_window": {
+        "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+        "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+        "state": "reconciled",
+        "manifest_digest": "sha256:9fd2a45d5152e398f111d06d028f507f138e30bb90f027a1eb6b31a9ed65be7f",
+        "updated_at_ms": 1776931381548
+      },
+      "last_checkpoint": {
+        "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+        "checkpoint_ref": "checkpoint://decoder/base",
+        "optimizer_step": 0,
+        "source_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home/training/runs/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211/checkpoints/latest_pointer.json"
+      },
+      "validator_queue": [
+        {
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "challenge_id": "challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1",
+          "state": "local_only",
+          "manifest_digest": "sha256:9fd2a45d5152e398f111d06d028f507f138e30bb90f027a1eb6b31a9ed65be7f",
+          "local_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/validator/pylon-home/training/runs/run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211/windows/window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001/validators/challenge.training.run.cs336.a1.pylon011-prod-20-2be43fef16d54fc440a87e32"
+        }
+      ],
+      "recent_trn_events": [
+        {
+          "subject_kind": "artifact_locator",
+          "subject_id": "oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "event_id": "0edd15b66775ea1dbdf316af72027562e08887622bf47896a5db80a32906045e",
+          "a_ref": "39520:9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845:oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "published_at_ms": 1776931299508
+        },
+        {
+          "subject_kind": "artifact_uploaded",
+          "subject_id": "oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "event_id": "35a5c50ed903509c8ee672ba7ee4dc8ea213aad0714bfb6d9fb46667e20ed216",
+          "a_ref": "39520:9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845:oa.train_artifact.v1~kind~sealed_window~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "published_at_ms": 1776931299508
+        },
+        {
+          "subject_kind": "artifact_locator",
+          "subject_id": "oa.train_artifact.v1~kind~validator_verdict~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~challenge~challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1",
+          "event_id": "5108cdff12fc1534d46fb98be4a91939379ad0416891a4083a048d7e8ff7cbf2",
+          "a_ref": "39520:9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845:oa.train_artifact.v1~kind~validator_verdict~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~challenge~challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1",
+          "published_at_ms": 1776931299087
+        },
+        {
+          "subject_kind": "artifact_uploaded",
+          "subject_id": "oa.train_artifact.v1~kind~validator_verdict~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~challenge~challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1",
+          "event_id": "f16c56e645a8a776f5c1b7dbb021538f8e594e7fc2f217075417518c1d229e7b",
+          "a_ref": "39520:9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845:oa.train_artifact.v1~kind~validator_verdict~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~window~window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001~challenge~challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1",
+          "published_at_ms": 1776931299087
+        },
+        {
+          "subject_kind": "artifact_uploaded",
+          "subject_id": "oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~optimizer_step~0",
+          "event_id": "831dd196df3b1a08e3452093b9d1c9a314e24317cd25f245115803615f6d9719",
+          "a_ref": "39520:9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845:oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~optimizer_step~0",
+          "published_at_ms": 1776931298654
+        },
+        {
+          "subject_kind": "artifact_locator",
+          "subject_id": "oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~optimizer_step~0",
+          "event_id": "be27e518b2a529ccc14d641e9e52b2b09bf9629cadb266e47917467ca00ae761",
+          "a_ref": "39520:9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845:oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211~optimizer_step~0",
+          "published_at_ms": 1776931298653
+        },
+        {
+          "subject_kind": "artifact_uploaded",
+          "subject_id": "oa.train_artifact.v1~kind~latest_checkpoint_pointer~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "event_id": "cf8bdcf547837c609f6b15eb6d738861c69b5e07bfac74b847380d2e37281a26",
+          "a_ref": "39520:9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845:oa.train_artifact.v1~kind~latest_checkpoint_pointer~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "published_at_ms": 1776931297845
+        },
+        {
+          "subject_kind": "artifact_locator",
+          "subject_id": "oa.train_artifact.v1~kind~latest_checkpoint_pointer~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "event_id": "598d57749c045afbd0c74eafc1cbcd3ebed4d644ad14449ee4f80a06d63dda58",
+          "a_ref": "39520:9f56ec45b0c8165490a17e233cabaffb04a447f3df33d7de142c395c2f69c845:oa.train_artifact.v1~kind~latest_checkpoint_pointer~network~trainnet.cs336.a1.pylon011-prod.20260423T075819Z~run~run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "published_at_ms": 1776931297844
+        }
+      ],
+      "recent_closeout_progress": [
+        {
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "validator",
+          "stage": "paid",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "confirmed",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_receipt_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+          "payout_reconciliation_status": "settled",
+          "updated_at_ms": 1776931381944
+        },
+        {
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "validator",
+          "stage": "validator_finalized",
+          "next_action": "request_reconcile",
+          "challenge_id": "challenge.training.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.aggregate.a1",
+          "acceptance_state": "verified",
+          "updated_at_ms": 1776931291240
+        }
+      ],
+      "recent_closeout_journal": [
+        {
+          "sequence": 33,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "validator",
+          "stage": "paid",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "confirmed",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_receipt_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+          "payout_reconciliation_status": "settled",
+          "transition_reason": "observation_refresh",
+          "observed_at_ms": 1776931381944
+        },
+        {
+          "sequence": 32,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "validator",
+          "stage": "paid",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "confirmed",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_receipt_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+          "payout_reconciliation_status": "settled",
+          "transition_reason": "observation_refresh",
+          "observed_at_ms": 1776931380601
+        },
+        {
+          "sequence": 31,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "validator",
+          "stage": "paid",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "confirmed",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_receipt_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+          "payout_reconciliation_status": "settled",
+          "transition_reason": "observation_refresh",
+          "observed_at_ms": 1776931370703
+        },
+        {
+          "sequence": 30,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "validator",
+          "stage": "paid",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "confirmed",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_receipt_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+          "payout_reconciliation_status": "settled",
+          "transition_reason": "observation_refresh",
+          "observed_at_ms": 1776931370132
+        },
+        {
+          "sequence": 29,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "validator",
+          "stage": "paid",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "confirmed",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_receipt_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+          "payout_reconciliation_status": "settled",
+          "transition_reason": "observation_refresh",
+          "observed_at_ms": 1776931359829
+        },
+        {
+          "sequence": 28,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "validator",
+          "stage": "paid",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "confirmed",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_receipt_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+          "payout_reconciliation_status": "settled",
+          "transition_reason": "public_settlement_metadata_refresh",
+          "observed_at_ms": 1776931359829
+        },
+        {
+          "sequence": 27,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "validator",
+          "stage": "paid",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "confirmed",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_receipt_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+          "payout_reconciliation_status": "pending_confirmation",
+          "transition_reason": "stage_metadata_refresh",
+          "observed_at_ms": 1776931359829
+        },
+        {
+          "sequence": 26,
+          "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+          "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+          "role": "validator",
+          "stage": "paid",
+          "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+          "acceptance_state": "rewarded",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+          "payout_state": "dispatched",
+          "payout_id": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+          "payout_receipt_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+          "payout_reconciliation_status": "pending_confirmation",
+          "transition_reason": "observation_refresh",
+          "observed_at_ms": 1776931359242
+        }
+      ]
+    },
+    "online_seen_by_stats_after": {
+      "client_version": "pylon/0.1.11",
+      "online_sessions": 2,
+      "online_pylons": 2
+    }
+  },
+  "run": {
+    "status": "running",
+    "latest_closeout_status": "rewarded",
+    "accepted_contributors": 1,
+    "featured_window_status": "reconciled",
+    "total_contributions": 1,
+    "admitted_contributions": 1,
+    "accepted_contributions": 1,
+    "payout_eligible": true,
+    "queue_pressure": {
+      "state": "pending_validation",
+      "active_windows": 56,
+      "pending_validation_windows": 34,
+      "validator_challenges_open": 57,
+      "validator_challenges_queued": 33
+    },
+    "caveats": [
+      {
+        "caveat_id": "run_backlog",
+        "severity": "warning",
+        "title": "Run backlog",
+        "detail": "30 worker slots remain unfilled across 112 active run(s)."
+      },
+      {
+        "caveat_id": "validator_backlog",
+        "severity": "warning",
+        "title": "Validator backlog",
+        "detail": "34 pending window(s) // 57 open challenge(s) // 33 queued challenge(s)."
+      }
+    ]
+  },
+  "treasury_payout": {
+    "payout_key": "accepted_work:accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001:41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd:f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+    "nostr_pubkey_hex": "f015be84929c4e6dca10b8811a475fe665ab89306713fafb061d74c0ef612163",
+    "payout_target": "spark1pgss8kzf4plea9wmc3nuruv7xqzkm7sgy6ugrhg85yydcw9f2844q73p2jmv05",
+    "amount_sats": 25,
+    "status": "confirmed",
+    "reconciliation_status": "settled",
+    "payment_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+    "window_started_at_unix_ms": 1776931291240,
+    "window_ends_at_unix_ms": 1776931291240,
+    "created_at_unix_ms": 1776931291240,
+    "updated_at_unix_ms": 1776931299000,
+    "sellable_at_window_open": true,
+    "classification": {
+      "payout_class": "accepted_work",
+      "payout_basis": "aggregation_weight",
+      "work_class": "small_model_local_training",
+      "progress_class": "model_update",
+      "accepted_outcome_id": "accepted.training_window.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+      "training_run_id": "run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211",
+      "window_id": "window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001",
+      "contribution_id": "41f41b7360d548535cf2988c54bccff9aeaebddab79febe546b65a89c56843cd",
+      "assignment_id": "assign.run.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.window.cs336.a1.pylon011-prod-20260423075819_20260423075854_5723f6b5_0001.20260423075854.18cc7211.0001.worker.1.attempt1",
+      "share_bps": 10000,
+      "weight_basis": "local_steps",
+      "weight_value": 4,
+      "weak_device_bearing": false,
+      "progress_bearing": true
+    }
+  },
+  "treasury_summary": {
+    "before_wallet_balance_sats": 49458,
+    "after_wallet_balance_sats": 49433,
+    "wallet_runtime_status": "connected",
+    "placeholder_payout_mode": "disabled",
+    "accepted_work_payout_sats_paid_total_before": 564,
+    "accepted_work_payout_sats_paid_total_after": 589,
+    "accepted_work_payout_sats_paid_24h_after": 75,
+    "active_continuity_alerts": null
+  },
+  "wallet": {
+    "before": {
+      "spark_sats": 0,
+      "lightning_sats": 0,
+      "onchain_sats": 0,
+      "total_sats": 0
+    },
+    "after": {
+      "spark_sats": 25,
+      "lightning_sats": 0,
+      "onchain_sats": 0,
+      "total_sats": 25
+    },
+    "delta_total_sats": 25,
+    "history": {
+      "runtime": {
+        "network": "mainnet",
+        "identity_path": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/pylon-home/identity.mnemonic",
+        "storage_dir": "/Users/christopherdavid/work/openagents/var/proof/pylon-0.1.11-prod-e2e-20260423T075819Z/worker/pylon-home/spark",
+        "api_key_env": "OPENAGENTS_SPARK_API_KEY",
+        "api_key_source": "embedded:openagents-default"
+      },
+      "payments": [
+        {
+          "payment_id": "019db95b-dfff-73f1-9926-2269a33153bd",
+          "direction": "receive",
+          "status": "completed",
+          "amount_sats": 25,
+          "fees_sats": 0,
+          "method": "spark",
+          "description": null,
+          "invoice": null,
+          "created_at_ms": 1776931299000,
+          "updated_at_ms": 1776931299000
+        }
+      ]
+    }
+  },
+  "stats": {
+    "before": {
+      "pylon_client_version_counts": [
+        {
+          "client_version": "pylon/0.1.1",
+          "online_sessions": 54,
+          "online_pylons": 52
+        },
+        {
+          "client_version": "pylon/0.1.10",
+          "online_sessions": 1,
+          "online_pylons": 1
+        },
+        {
+          "client_version": "pylon/0.1.9",
+          "online_sessions": 1,
+          "online_pylons": 1
+        }
+      ],
+      "accepted_work_sats_total": 564,
+      "accepted_work_sats_24h": 50,
+      "training_accepted_closeouts": 30,
+      "training_nodes_online": 2
+    },
+    "after": {
+      "pylon_client_version_counts": [
+        {
+          "client_version": "pylon/0.1.1",
+          "online_sessions": 56,
+          "online_pylons": 54
+        },
+        {
+          "client_version": "pylon/0.1.11",
+          "online_sessions": 2,
+          "online_pylons": 2
+        },
+        {
+          "client_version": "pylon/0.1.10",
+          "online_sessions": 1,
+          "online_pylons": 1
+        },
+        {
+          "client_version": "pylon/0.1.9",
+          "online_sessions": 1,
+          "online_pylons": 1
+        }
+      ],
+      "accepted_work_sats_total": 589,
+      "accepted_work_sats_24h": 75,
+      "training_accepted_closeouts": 31,
+      "training_nodes_online": 4,
+      "payout_loop_health": "idle",
+      "wallet_runtime_status": "connected",
+      "wallet_balance_sats": 49433
+    }
+  },
+  "no_gemma_model_download_observed": true,
+  "pylon_home_model_file_count": 0,
+  "observed_caveats": [
+    "Nexus still reports run_backlog and validator_backlog warnings from older active runs; the targeted 0.1.11 run reconciled and paid.",
+    "Treasury may report wallet sync timeout/cache staleness while accepted-work payout dispatch and settlement still complete."
+  ]
+}

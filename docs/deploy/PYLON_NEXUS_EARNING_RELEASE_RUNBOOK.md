@@ -101,12 +101,18 @@ min_pylon_version=0.1.11
 If the code changes the earning-loop behavior again, update this floor, the
 Pylon docs, the Nexus treasury docs, the audit, and the issue comments together.
 
-The published `0.1.11` receipt is
+The published `0.1.11` release-smoke receipt is
 `docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json`. It proves the
 release asset, npm bootstrap, TUI-managed worker, no default Gemma model
-download, and production homework lease intake/seal path. It does not replace
-the earlier full wallet-payout receipt because the `0.1.11` smoke still had
-training-relay publication retries pending after local closeout.
+download, and production homework lease intake/seal path.
+
+The current full production earning receipt is
+`docs/reports/nexus/20260423-080422-pylon-v0.1.11-prod-e2e.json`. It proves
+fresh npm-installed `0.1.11` worker and validator binaries, Nexus online
+presence as `pylon/0.1.11`, an admin-triggered 25-sat CS336 homework run,
+rewarded closeout, confirmed and settled accepted-work treasury payout, a
+worker wallet balance increase from `0` to `25` sats, and no default Gemma
+model download. Use this receipt as the current release closeout proof.
 
 ## Version Telemetry Rules
 
