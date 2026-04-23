@@ -1,0 +1,165 @@
+{
+  "generated_at": "2026-04-23T17:55:30Z",
+  "issue": {
+    "number": 4414,
+    "title": "psionic-train exited with code -1",
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/4414",
+    "reported_environment": "Mac M4 / Apple Silicon / npm-installed Pylon"
+  },
+  "status": "completed",
+  "owner_repo": "OpenAgentsInc/openagents",
+  "fix_commits": [
+    {
+      "git_sha": "96a2d2d9386b79171a0792c206caf3c65e002701",
+      "summary": "Fix Pylon Mac training launch for v0.1.12"
+    },
+    {
+      "git_sha": "5ed2cb05b8407fe4fed4f239c81491c2ebb5ff13",
+      "summary": "Refresh Nexus deploy lock for v0.1.12"
+    }
+  ],
+  "root_cause": {
+    "summary": "The Pylon training supervisor was still willing to launch the training lane through Cargo instead of preferring an already-built release psionic-train binary, which matched the user's symptoms of immediate failure and stderr containing compile output instead of a clear runtime failure.",
+    "fixes": [
+      "Prefer /psionic/target/release/psionic-train when present.",
+      "Fallback to cargo run --release instead of debug cargo run when a release binary is unavailable.",
+      "Persist stdout_tail and stderr_tail in training failure receipts.",
+      "Fail fast when neither a usable release binary nor Cargo is available."
+    ]
+  },
+  "release": {
+    "tag": "pylon-v0.1.12",
+    "name": "Pylon v0.1.12",
+    "url": "https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.1.12",
+    "target_commitish": "96a2d2d9386b79171a0792c206caf3c65e002701",
+    "assets": [
+      {
+        "name": "pylon-v0.1.12-darwin-arm64.tar.gz",
+        "url": "https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.1.12/pylon-v0.1.12-darwin-arm64.tar.gz",
+        "sha256": "8bf695eb20c1c0fed30f84bc89e112d7ae4312ae8e36dfd8e933fdb18ffad0c4"
+      },
+      {
+        "name": "pylon-v0.1.12-linux-x86_64.tar.gz",
+        "url": "https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.1.12/pylon-v0.1.12-linux-x86_64.tar.gz",
+        "sha256": "328b0fc9ae4d853a08e5a82fc721ffa0ec8d2640676792dfdca25f88e8e550a3"
+      },
+      {
+        "name": "pylon-v0.1.12-linux-arm64.tar.gz",
+        "url": "https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.1.12/pylon-v0.1.12-linux-arm64.tar.gz",
+        "sha256": "dba1af3e69db04cec25c41c981ddcf873d7f32b98334d54e95390e3ac2e10dbd"
+      }
+    ]
+  },
+  "npm_package": {
+    "name": "@openagentsinc/pylon",
+    "version": "0.1.12",
+    "shasum": "d4f09e7599089adf167fd00d8b4d4aea5f58dc32",
+    "integrity": "sha512-c19reBcw5X2benMWK/WmLLeOD5VPNUxPANP/a8aMiHEJem3mSn0Fr+4uZYc8vxgNBv2nFby/3P/NGUDEg90JHA==",
+    "bin": {
+      "pylon": "bin/pylon"
+    }
+  },
+  "local_validation": {
+    "checks": [
+      "cargo fmt -p pylon -p nexus-control",
+      "cargo check -p pylon",
+      "cargo check -p nexus-control",
+      "cargo test -p pylon <focused supervisor selection and receipt-tail coverage>",
+      "cargo test -p nexus-control <focused homework auto-dispatch coverage>",
+      "bun test (packages/pylon-bootstrap)",
+      "npm pack --dry-run (packages/pylon-bootstrap)"
+    ],
+    "proof_runtime": {
+      "namespaces": [
+        "proof.issue4414.20260423t1116",
+        "proof.issue4414wrap.20260423t1117"
+      ],
+      "wrapper_log_path": "/tmp/issue4414-psionic-train-wrapper.log",
+      "wrapper_log_evidence": [
+        "/Users/christopherdavid/work/psionic/target/release/psionic-train manifest --manifest /Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.issue4414wrap.20260423t1117/fleet/validator-1/training/runs/run.cs336.a1.starter.20260423162102.c46c6c61/manifests/invocation_manifest.json",
+        "/Users/christopherdavid/work/psionic/target/release/psionic-train manifest --manifest /Users/christopherdavid/.openagents/pylon/proof/namespaces/proof.issue4414wrap.20260423t1117/fleet/worker-1/training/runs/run.cs336.a1.starter.20260423162115.fa698f43/manifests/invocation_manifest.json"
+      ],
+      "conclusion": "The wrapper proof shows that the training lane called the built release psionic-train binary directly instead of recompiling through Cargo."
+    },
+    "npm_bootstrap_smoke": {
+      "proof_root": "/private/tmp/pylon-0.1.12-npm-smoke-issue4414-clean-20260423T175344Z",
+      "install_method": "release_asset",
+      "tag": "pylon-v0.1.12",
+      "authoritative_status": "online",
+      "training_target": {
+        "target": "psionic.cluster.training.adapter_contributor.cluster_attached",
+        "enabled": true,
+        "backend_ready": true,
+        "eligible": true,
+        "delivery_state": "idle"
+      }
+    },
+    "linux_assets": {
+      "build_method": "cargo zigbuild",
+      "targets": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu"
+      ],
+      "artifact_dir": "/private/tmp/openagents-pylon-v0.1.12-release-assets",
+      "verification": [
+        "ELF binary type verified locally for both linux targets",
+        "tar contents verified locally",
+        "SHA-256 digests published to GitHub release"
+      ],
+      "runtime_smoke_note": "A real remote Linux runtime smoke was blocked during this fix lane because the Tailnet archlinux host became unreachable and no local container or QEMU fallback was installed on the Mac."
+    }
+  },
+  "live_nexus_deploy": {
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:5ed2cb05b840",
+    "cloud_build_receipt": "docs/reports/nexus/20260423-170419-cloudbuild-image-5ed2cb05b840.json",
+    "cloud_build_id": "618e3792-b430-43d8-a43a-04120ef648f6",
+    "deploy_receipt": "docs/reports/nexus/20260423-172434-deploy-receipt.json",
+    "deployed_homework_min_pylon_version": "0.1.12",
+    "live_env_confirmation": "NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MIN_PYLON_VERSION=0.1.12",
+    "verify_expected_release_git_sha": "5ed2cb05b8407fe4fed4f239c81491c2ebb5ff13",
+    "deploy_mode": "image",
+    "notes": [
+      "The deploy first failed because the VM guest network stack was unhealthy and IAP could not reach SSH on port 22.",
+      "Serial console output showed repeated metadata server failures with 'connect: network is unreachable'.",
+      "The VM was reset, SSH recovered, the deploy was retried, and the post-deploy smoke plus verify gates passed.",
+      "The verify receipt still records an older retained binary release under /opt/nexus-relay/current, but the active service is the new container image deploy mode and the verify gates passed against that image."
+    ]
+  },
+  "live_public_state": {
+    "stats_endpoint": "https://nexus.openagents.com/api/stats",
+    "snapshot": {
+      "generated_at_unix_ms": 1776966849158,
+      "payout_interval_seconds": 600,
+      "payout_sats_per_window": 25,
+      "accepted_work_paid_total": 992,
+      "accepted_work_paid_24h": 478,
+      "pylon_client_version_counts": [
+        {
+          "client_version": "pylon/0.1.1",
+          "online_sessions": 49,
+          "online_pylons": 48
+        },
+        {
+          "client_version": "pylon/0.1.12",
+          "online_sessions": 3,
+          "online_pylons": 2
+        },
+        {
+          "client_version": "pylon/0.1.10",
+          "online_sessions": 1,
+          "online_pylons": 1
+        }
+      ]
+    }
+  },
+  "follow_on_docs_updated_in_fix_commit": [
+    "README.md",
+    "docs/pylon/README.md",
+    "docs/2026-04-21-run-pylon-get-paid-for-training.md",
+    "docs/2026-04-22-pylon-homework-dispatch-operator-runbook.md",
+    "docs/deploy/PYLON_NEXUS_EARNING_RELEASE_RUNBOOK.md",
+    "docs/deploy/NEXUS_GCP_RUNBOOK.md",
+    "packages/pylon-bootstrap/README.md"
+  ],
+  "closing_statement": "Issue #4414 is fixed in Pylon v0.1.12 and @openagentsinc/pylon@0.1.12. The Mac training lane now prefers the built release psionic-train binary, the published npm bootstrap installs the fixed build, the Nexus homework floor is deployed to 0.1.12, and the live verification gates passed after deploying image 5ed2cb05b840."
+}
