@@ -623,3 +623,5 @@ sealed the work, passed validator closeout, received a confirmed and settled
 `0` to `25` sats. Public release assets for this exact source behavior must be
 `pylon-v0.1.10` or newer; after publishing, rerun this runbook from a fresh
 Pylon home before closing any release-dependent issue.
+The `pylon-v0.1.10` release receipt is recorded at
+`docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json`.
