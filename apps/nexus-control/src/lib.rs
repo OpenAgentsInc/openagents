@@ -21390,7 +21390,7 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_product_model_identity_missing"
         | "compute_product_host_accelerator_vendor_missing"
         | "compute_product_host_memory_gb_invalid"
-        | "compute_product_ollama_runtime_missing"
+        | "compute_product_local_gemma_runtime_missing"
         | "compute_product_gpt_oss_runtime_missing"
         | "compute_product_apple_platform_gates_missing"
         | "compute_product_apple_silicon_requirement_missing"
@@ -29030,7 +29030,7 @@ mod tests {
                     rubric_ref: None,
                     evaluator_policy_ref: None,
                 },
-                product_id: Some("ollama.text_generation".to_string()),
+                product_id: Some("local_gemma.text_generation".to_string()),
                 capacity_lot_id: Some("lot.compute.client".to_string()),
                 instrument_id: Some("instrument.compute.client".to_string()),
                 delivery_proof_id: Some(delivery_proof_id.to_string()),
@@ -29513,7 +29513,7 @@ mod tests {
                     evaluator_policy_ref: None,
                 },
                 teacher_model_ref: "model://llama3.3-instruct".to_string(),
-                generation_product_id: Some("ollama.text_generation".to_string()),
+                generation_product_id: Some("local_gemma.text_generation".to_string()),
                 generation_delivery_proof_id: Some("delivery.compute.client".to_string()),
                 output_artifact_ref: None,
                 created_at_ms,
@@ -29733,7 +29733,7 @@ mod tests {
                 rubric_ref: None,
                 evaluator_policy_ref: None,
             },
-            product_id: Some("ollama.text_generation".to_string()),
+            product_id: Some("local_gemma.text_generation".to_string()),
             capacity_lot_id: Some("lot.compute.client".to_string()),
             instrument_id: Some("instrument.compute.client".to_string()),
             delivery_proof_id: Some("delivery.compute.client".to_string()),
@@ -29951,7 +29951,7 @@ mod tests {
                     artifact_residency: None,
                     environment_binding: None,
                     checkpoint_binding: None,
-                    model_policy: Some("ollama.text_generation.launch".to_string()),
+                    model_policy: Some("local_gemma.text_generation.launch".to_string()),
                     model_family: Some("llama3.2:latest".to_string()),
                     host_capability: None,
                     apple_platform: None,
@@ -29982,7 +29982,7 @@ mod tests {
             challenge_id,
             "proof-bundle-digest.alpha",
             "request-digest.alpha",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "cuda",
             created_at_ms,
         )
@@ -30106,7 +30106,7 @@ mod tests {
             superseded_index_id: superseded_index_id.to_string(),
             corrected_index: ComputeIndex {
                 index_id: corrected_index_id.to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 observation_window_start_ms: published_at_ms - 60_000,
                 observation_window_end_ms: published_at_ms + 1,
                 published_at_ms,
@@ -30141,7 +30141,7 @@ mod tests {
             policy: kernel_policy(),
             instrument: CapacityInstrument {
                 instrument_id: instrument_id.to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 capacity_lot_id: None,
                 buyer_id: Some("buyer.hedge.alpha".to_string()),
                 provider_id: Some("provider.hedge.alpha".to_string()),
@@ -30199,7 +30199,7 @@ mod tests {
             policy: kernel_policy(),
             instrument: CapacityInstrument {
                 instrument_id: instrument_id.to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 capacity_lot_id: Some(capacity_lot_id.to_string()),
                 buyer_id: Some("buyer.compute.alpha".to_string()),
                 provider_id: Some("desktop-provider.alpha".to_string()),
@@ -30248,7 +30248,7 @@ mod tests {
             policy: kernel_policy(),
             structured_instrument: StructuredCapacityInstrument {
                 structured_instrument_id: structured_instrument_id.to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 buyer_id: Some("buyer.compute.alpha".to_string()),
                 provider_id: Some("desktop-provider.alpha".to_string()),
                 kind: StructuredCapacityInstrumentKind::Reservation,
@@ -33624,7 +33624,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
                         &compute_product_wire_request(
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "idemp.compute.product.alpha",
                             created_at_ms,
                         ),
@@ -33650,7 +33650,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
                         "lot.compute.alpha",
-                        "ollama.text_generation",
+                        "local_gemma.text_generation",
                         "idemp.compute.lot.alpha",
                         created_at_ms + 1_000,
                     ))?))?,
@@ -33676,7 +33676,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &capacity_instrument_wire_request(
                             "instrument.compute.alpha",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "lot.compute.alpha",
                             "idemp.compute.instrument.alpha",
                             created_at_ms + 2_000,
@@ -33704,7 +33704,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &delivery_proof_wire_request(
                             "delivery.compute.alpha",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "lot.compute.alpha",
                             "instrument.compute.alpha",
                             "idemp.compute.delivery.alpha",
@@ -33733,7 +33733,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &compute_index_wire_request(
                             "index.compute.alpha",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "idemp.compute.index.alpha",
                             created_at_ms + 4_000,
                         ),
@@ -33838,7 +33838,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
                         &compute_product_wire_request(
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "idemp.compute.product.validator-route",
                             created_at_ms,
                         ),
@@ -33857,7 +33857,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
                         "lot.compute.validator-route",
-                        "ollama.text_generation",
+                        "local_gemma.text_generation",
                         "idemp.compute.lot.validator-route",
                         created_at_ms + 1_000,
                     ))?))?,
@@ -33876,7 +33876,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &capacity_instrument_wire_request(
                             "instrument.compute.validator-route",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "lot.compute.validator-route",
                             "idemp.compute.instrument.validator-route",
                             created_at_ms + 2_000,
@@ -33888,7 +33888,7 @@ mod tests {
 
         let mut delivery_request = delivery_proof_request(
             "delivery.compute.validator-route",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "lot.compute.validator-route",
             "instrument.compute.validator-route",
             "idemp.compute.delivery.validator-route",
@@ -34097,7 +34097,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
                         &compute_product_wire_request(
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "idemp.compute.product.close-route",
                             created_at_ms,
                         ),
@@ -34116,7 +34116,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
                         "lot.compute.close-route",
-                        "ollama.text_generation",
+                        "local_gemma.text_generation",
                         "idemp.compute.lot.close-route",
                         created_at_ms + 1_000,
                     ))?))?,
@@ -34135,7 +34135,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &capacity_instrument_wire_request(
                             "instrument.compute.close-route",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "lot.compute.close-route",
                             "idemp.compute.instrument.close-route",
                             created_at_ms + 2_000,
@@ -34195,7 +34195,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
                         &compute_product_wire_request(
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "idemp.compute.product.index-correct",
                             created_at_ms,
                         ),
@@ -34214,7 +34214,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
                         "lot.compute.index-correct",
-                        "ollama.text_generation",
+                        "local_gemma.text_generation",
                         "idemp.compute.lot.index-correct",
                         created_at_ms + 1_000,
                     ))?))?,
@@ -34233,7 +34233,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &capacity_instrument_wire_request(
                             "instrument.compute.index-correct.alpha",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "lot.compute.index-correct",
                             "idemp.compute.instrument.index-correct.alpha",
                             created_at_ms + 2_000,
@@ -34254,7 +34254,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &delivery_proof_wire_request(
                             "delivery.compute.index-correct.alpha",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "lot.compute.index-correct",
                             "instrument.compute.index-correct.alpha",
                             "idemp.compute.delivery.index-correct.alpha",
@@ -34276,7 +34276,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &compute_index_wire_request(
                             "index.compute.index-correct",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "idemp.compute.index-correct.publish",
                             created_at_ms + 4_000,
                         ),
@@ -34287,7 +34287,7 @@ mod tests {
 
         let mut second_lot = capacity_lot_request(
             "lot.compute.index-correct.beta",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "idemp.compute.lot.index-correct.beta",
             created_at_ms + 1_500,
         );
@@ -34309,7 +34309,7 @@ mod tests {
 
         let mut second_instrument = capacity_instrument_request(
             "instrument.compute.index-correct.beta",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "lot.compute.index-correct.beta",
             "idemp.compute.instrument.index-correct.beta",
             created_at_ms + 5_000,
@@ -34338,7 +34338,7 @@ mod tests {
 
         let mut second_delivery = delivery_proof_request(
             "delivery.compute.index-correct.beta",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "lot.compute.index-correct.beta",
             "instrument.compute.index-correct.beta",
             "idemp.compute.delivery.index-correct.beta",
@@ -34445,7 +34445,7 @@ mod tests {
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(
                     &compute_product_wire_request(
-                        "ollama.text_generation",
+                        "local_gemma.text_generation",
                         "idemp.compute.product.future-cash",
                         created_at_ms,
                     ),
@@ -34457,7 +34457,7 @@ mod tests {
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
                     "lot.compute.future-cash.alpha",
-                    "ollama.text_generation",
+                    "local_gemma.text_generation",
                     "idemp.compute.lot.future-cash.alpha",
                     created_at_ms + 1_000,
                 ))?))?,
@@ -34469,7 +34469,7 @@ mod tests {
                 .body(Body::from(serde_json::to_vec(
                     &capacity_instrument_wire_request(
                         "instrument.compute.future-cash.alpha",
-                        "ollama.text_generation",
+                        "local_gemma.text_generation",
                         "lot.compute.future-cash.alpha",
                         "idemp.compute.instrument.future-cash.alpha",
                         created_at_ms + 2_000,
@@ -34483,7 +34483,7 @@ mod tests {
                 .body(Body::from(serde_json::to_vec(
                     &delivery_proof_wire_request(
                         "delivery.compute.future-cash.alpha",
-                        "ollama.text_generation",
+                        "local_gemma.text_generation",
                         "lot.compute.future-cash.alpha",
                         "instrument.compute.future-cash.alpha",
                         "idemp.compute.delivery.future-cash.alpha",
@@ -34498,7 +34498,7 @@ mod tests {
                 .body(Body::from(serde_json::to_vec(
                     &compute_index_wire_request(
                         "index.compute.future-cash",
-                        "ollama.text_generation",
+                        "local_gemma.text_generation",
                         "idemp.compute.index.future-cash.publish",
                         created_at_ms + 4_000,
                     ),
@@ -34510,7 +34510,7 @@ mod tests {
 
         let mut second_lot = capacity_lot_request(
             "lot.compute.future-cash.beta",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "idemp.compute.lot.future-cash.beta",
             created_at_ms + 1_500,
         );
@@ -34532,7 +34532,7 @@ mod tests {
 
         let mut second_instrument = capacity_instrument_request(
             "instrument.compute.future-cash.beta",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "lot.compute.future-cash.beta",
             "idemp.compute.instrument.future-cash.beta",
             created_at_ms + 5_000,
@@ -34561,7 +34561,7 @@ mod tests {
 
         let mut second_delivery = delivery_proof_request(
             "delivery.compute.future-cash.beta",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "lot.compute.future-cash.beta",
             "instrument.compute.future-cash.beta",
             "idemp.compute.delivery.future-cash.beta",
@@ -34764,7 +34764,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
                         &compute_product_wire_request(
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "idemp.compute.product.future-cash.gate",
                             created_at_ms,
                         ),
@@ -34920,7 +34920,7 @@ mod tests {
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(
                     &compute_product_wire_request(
-                        "ollama.text_generation",
+                        "local_gemma.text_generation",
                         "idemp.compute.product.structured",
                         created_at_ms,
                     ),
@@ -34932,7 +34932,7 @@ mod tests {
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
                     "lot.compute.structured.alpha",
-                    "ollama.text_generation",
+                    "local_gemma.text_generation",
                     "idemp.compute.lot.structured.alpha",
                     created_at_ms + 1_000,
                 ))?))?,
@@ -34995,7 +34995,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/kernel/compute/structured_instruments?product_id=ollama.text_generation")
+                    .uri("/v1/kernel/compute/structured_instruments?product_id=local_gemma.text_generation")
                     .header("authorization", authorization(&session))
                     .body(Body::empty())?,
             )
@@ -35093,7 +35093,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
                         &compute_product_wire_request(
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "idemp.compute.product.persisted",
                             created_at_ms,
                         ),
@@ -35137,7 +35137,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
                         "lot.compute.persisted",
-                        "ollama.text_generation",
+                        "local_gemma.text_generation",
                         "idemp.compute.lot.persisted",
                         created_at_ms + 1_000,
                     ))?))?,
@@ -35156,7 +35156,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &capacity_instrument_wire_request(
                             "instrument.compute.persisted",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "lot.compute.persisted",
                             "idemp.compute.instrument.persisted",
                             created_at_ms + 2_000,
@@ -35177,7 +35177,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &delivery_proof_wire_request(
                             "delivery.compute.persisted",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "lot.compute.persisted",
                             "instrument.compute.persisted",
                             "idemp.compute.delivery.persisted",
@@ -35199,7 +35199,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &compute_index_wire_request(
                             "index.compute.persisted",
-                            "ollama.text_generation",
+                            "local_gemma.text_generation",
                             "idemp.compute.index.persisted",
                             created_at_ms + 4_000,
                         ),
@@ -35226,7 +35226,7 @@ mod tests {
             &response_json::<proto_compute::ListComputeProductsResponse>(products_response).await?,
         )?;
         assert!(products.iter().any(|product| {
-            product.product_id == "ollama.text_generation"
+            product.product_id == "local_gemma.text_generation"
                 || product.product_id == product_payload.product.product_id
         }));
 
@@ -35235,7 +35235,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/kernel/compute/products/ollama.text_generation")
+                    .uri("/v1/kernel/compute/products/local_gemma.text_generation")
                     .header("authorization", authorization(&reloaded_session))
                     .body(Body::empty())?,
             )
@@ -35245,7 +35245,7 @@ mod tests {
             &response_json::<proto_compute::GetComputeProductResponse>(product_get_response)
                 .await?,
         )?;
-        assert_eq!(product_get.product_id, "ollama.text_generation");
+        assert_eq!(product_get.product_id, "local_gemma.text_generation");
 
         let environments_response = reloaded_app
             .clone()
@@ -35275,7 +35275,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/kernel/compute/lots?product_id=ollama.text_generation")
+                    .uri("/v1/kernel/compute/lots?product_id=local_gemma.text_generation")
                     .header("authorization", authorization(&reloaded_session))
                     .body(Body::empty())?,
             )
@@ -35336,7 +35336,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/kernel/compute/indices?product_id=ollama.text_generation")
+                    .uri("/v1/kernel/compute/indices?product_id=local_gemma.text_generation")
                     .header("authorization", authorization(&reloaded_session))
                     .body(Body::empty())?,
             )
@@ -49666,7 +49666,7 @@ mod tests {
         );
 
         let mut product_request = compute_product_request(
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "idemp.compute.client.product",
             created_at_ms,
         );
@@ -49683,7 +49683,7 @@ mod tests {
             evaluator_policy_ref: Some("policy://eval/math/basic".to_string()),
         });
         let product = client.create_compute_product(product_request).await?;
-        assert_eq!(product.product.product_id, "ollama.text_generation");
+        assert_eq!(product.product.product_id, "local_gemma.text_generation");
         assert_eq!(
             product
                 .product
@@ -49697,7 +49697,7 @@ mod tests {
         let lot = client
             .create_capacity_lot(capacity_lot_request(
                 "lot.compute.client",
-                "ollama.text_generation",
+                "local_gemma.text_generation",
                 "idemp.compute.client.lot",
                 created_at_ms + 1_000,
             ))
@@ -49714,7 +49714,7 @@ mod tests {
         let instrument = client
             .create_capacity_instrument(capacity_instrument_request(
                 "instrument.compute.client",
-                "ollama.text_generation",
+                "local_gemma.text_generation",
                 "lot.compute.client",
                 "idemp.compute.client.instrument",
                 created_at_ms + 2_000,
@@ -49735,7 +49735,7 @@ mod tests {
 
         let mut delivery_request = delivery_proof_request(
             "delivery.compute.client",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "lot.compute.client",
             "instrument.compute.client",
             "idemp.compute.client.delivery",
@@ -49952,7 +49952,7 @@ mod tests {
         let listed_synthetic_jobs = client
             .list_compute_synthetic_data_jobs(
                 Some("env.openagents.math.basic"),
-                Some("ollama.text_generation"),
+                Some("local_gemma.text_generation"),
                 Some(ComputeSyntheticDataJobStatus::Verified),
             )
             .await?;
@@ -50220,7 +50220,7 @@ mod tests {
         let index = client
             .publish_compute_index(compute_index_request(
                 "index.compute.client",
-                "ollama.text_generation",
+                "local_gemma.text_generation",
                 "idemp.compute.client.index",
                 created_at_ms + 4_000,
             ))
@@ -50230,7 +50230,7 @@ mod tests {
 
         let mut second_lot = capacity_lot_request(
             "lot.compute.client.beta",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "idemp.compute.client.lot.beta",
             created_at_ms + 1_500,
         );
@@ -50241,7 +50241,7 @@ mod tests {
         let reservation_lot = client
             .create_capacity_lot(capacity_lot_request(
                 "lot.compute.client.reservation",
-                "ollama.text_generation",
+                "local_gemma.text_generation",
                 "idemp.compute.client.lot.reservation",
                 created_at_ms + 2_500,
             ))
@@ -50253,7 +50253,7 @@ mod tests {
 
         let mut second_instrument = capacity_instrument_request(
             "instrument.compute.client.beta",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "lot.compute.client.beta",
             "idemp.compute.client.instrument.beta",
             created_at_ms + 5_000,
@@ -50271,7 +50271,7 @@ mod tests {
 
         let mut second_delivery_request = delivery_proof_request(
             "delivery.compute.client.beta",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "lot.compute.client.beta",
             "instrument.compute.client.beta",
             "idemp.compute.client.delivery.beta",
@@ -50401,7 +50401,7 @@ mod tests {
         assert!(
             listed_products
                 .iter()
-                .any(|item| item.product_id == "ollama.text_generation")
+                .any(|item| item.product_id == "local_gemma.text_generation")
         );
 
         let listed_environments = client
@@ -50412,7 +50412,7 @@ mod tests {
         }));
 
         let listed_lots = client
-            .list_capacity_lots(Some("ollama.text_generation"), None)
+            .list_capacity_lots(Some("local_gemma.text_generation"), None)
             .await?;
         assert!(
             listed_lots
@@ -50430,7 +50430,7 @@ mod tests {
         );
 
         let listed_structured = client
-            .list_structured_capacity_instruments(Some("ollama.text_generation"), None)
+            .list_structured_capacity_instruments(Some("local_gemma.text_generation"), None)
             .await?;
         assert!(listed_structured.iter().any(|item| {
             item.structured_instrument_id == "structured.compute.client.reservation"
@@ -50446,7 +50446,7 @@ mod tests {
         );
 
         let listed_indices = client
-            .list_compute_indices(Some("ollama.text_generation"))
+            .list_compute_indices(Some("local_gemma.text_generation"))
             .await?;
         assert!(
             listed_indices
@@ -50459,8 +50459,10 @@ mod tests {
                 .any(|item| item.index_id == "index.compute.client.v2")
         );
 
-        let fetched_product = client.get_compute_product("ollama.text_generation").await?;
-        assert_eq!(fetched_product.product_id, "ollama.text_generation");
+        let fetched_product = client
+            .get_compute_product("local_gemma.text_generation")
+            .await?;
+        assert_eq!(fetched_product.product_id, "local_gemma.text_generation");
 
         let fetched_environment = client
             .get_compute_environment_package("env.openagents.math.basic", Some("2026.03.13"))
@@ -51071,7 +51073,7 @@ mod tests {
             .await?;
 
         let mut product_request = compute_product_request(
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "idemp.compute.benchmark.product",
             created_at_ms + 100,
         );
@@ -51091,7 +51093,7 @@ mod tests {
         client
             .create_capacity_lot(capacity_lot_request(
                 "lot.compute.client",
-                "ollama.text_generation",
+                "local_gemma.text_generation",
                 "idemp.compute.benchmark.lot",
                 created_at_ms + 200,
             ))
@@ -51099,7 +51101,7 @@ mod tests {
         client
             .create_capacity_instrument(capacity_instrument_request(
                 "instrument.compute.client",
-                "ollama.text_generation",
+                "local_gemma.text_generation",
                 "lot.compute.client",
                 "idemp.compute.benchmark.instrument",
                 created_at_ms + 300,
@@ -51108,7 +51110,7 @@ mod tests {
         client
             .record_delivery_proof(delivery_proof_request(
                 "delivery.compute.client",
-                "ollama.text_generation",
+                "local_gemma.text_generation",
                 "lot.compute.client",
                 "instrument.compute.client",
                 "idemp.compute.benchmark.delivery",

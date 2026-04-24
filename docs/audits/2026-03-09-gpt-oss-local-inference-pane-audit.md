@@ -32,7 +32,7 @@
 
 Psionic is now far enough along that a desktop GPT-OSS local-inference pane is worth starting immediately. The March 9, 2026 Metal issue sequence closed the core engine/bootstrap work: the shared GPT-OSS runtime seam exists, `MetalGgufGptOssTextGenerationService` exists, the OpenAI-compatible GPT-OSS server can run with `--backend metal`, and the hardware validation matrix now has an explicit `metal.gpt_oss.text_generation.apple_silicon` row.
 
-The blocker has moved from "there is no real Metal GPT-OSS lane" to "the desktop does not expose it honestly." `apps/autopilot-deprecated` still has no local-inference pane, still stores the local Psionic runtime snapshot under `ollama_execution`, still copies that into `provider_runtime.ollama`, and still maps launch inventory and metering to `ollama.*` product IDs. The app seam exists, but it is too thin and too stale to support a truthful GPT-OSS workbench.
+The blocker has moved from "there is no real Metal GPT-OSS lane" to "the desktop does not expose it honestly." `apps/autopilot-deprecated` still has no local-inference pane, still stores the local Psionic runtime snapshot under `legacy_local_runtime_execution`, still copies that into `provider_runtime.legacy_local_runtime`, and still maps launch inventory and metering to `legacy_local_runtime.*` product IDs. The app seam exists, but it is too thin and too stale to support a truthful GPT-OSS workbench.
 
 The right path is:
 
@@ -47,7 +47,7 @@ The right path is:
 
 - `#3217` / `OA-201`: app-owned `LocalInferenceRuntime` seam landed.
 - `#3218` / `OA-202`: desktop default switched to in-process Psionic.
-- `#3219` / `OA-203`: external Ollama dependency stopped being the default product path and user-facing wording moved toward Psionic/local inference.
+- `#3219` / `OA-203`: external legacy local-runtime lane dependency stopped being the default product path and user-facing wording moved toward Psionic/local inference.
 
 Those issues matter because the pane should be built on that app seam, not by adding a new direct dependency from pane code into random Psionic internals.
 
@@ -175,24 +175,24 @@ That means:
 
 This is the single biggest functional gap for the proposed pane.
 
-### 4. Desktop state still carries stale `ollama` names everywhere
+### 4. Desktop state still carries stale `legacy_local_runtime` names everywhere
 
 The biggest code-health problem is not missing buttons. It is stale product identity:
 
-- `RenderState` stores the local runtime snapshot as `ollama_execution`
-- reducers copy local runtime updates into `provider_runtime.ollama`
-- `ProviderRuntimeState` still owns `ProviderOllamaRuntimeState`
+- `RenderState` stores the local runtime snapshot as `legacy_local_runtime_execution`
+- reducers copy local runtime updates into `provider_runtime.legacy_local_runtime`
+- `ProviderRuntimeState` still owns `Providerlegacy local-runtime laneRuntimeState`
 - `kernel_control.rs` still maps local inference to:
-  - `ollama.text_generation`
-  - `ollama.embeddings`
-  - `meter.ollama.inference.v1`
-  - `meter.ollama.embeddings.v1`
+  - `legacy_local_runtime.text_generation`
+  - `legacy_local_runtime.embeddings`
+  - `meter.legacy_local_runtime.inference.v1`
+  - `meter.legacy_local_runtime.embeddings.v1`
 - `openagents-provider-substrate` still uses:
-  - `ProviderBackendKind::Ollama`
-  - `ProviderComputeProduct::OllamaInference`
-  - `ProviderBlocker::OllamaUnavailable`
+  - `ProviderBackendKind::legacy local-runtime lane`
+  - `ProviderComputeProduct::legacy local-runtime laneInference`
+  - `ProviderBlocker::legacy local-runtime laneUnavailable`
 
-This is more than cosmetic. A GPT-OSS workbench would be visibly dishonest if it loads a Psionic GGUF model through a pane while the same app still describes the backend/product lineage as `ollama.*`.
+This is more than cosmetic. A GPT-OSS workbench would be visibly dishonest if it loads a Psionic GGUF model through a pane while the same app still describes the backend/product lineage as `legacy_local_runtime.*`.
 
 ### 5. The desktop does not yet use the richer Psionic local-runtime surface
 
@@ -263,17 +263,17 @@ This is the first required slice before any real pane work.
 
 In `apps/autopilot-deprecated`:
 
-- rename the app-owned snapshot/state fields away from `ollama_*`
+- rename the app-owned snapshot/state fields away from `legacy_local_runtime_*`
 - add app-owned `LocalInferencePaneState` and `LocalInferencePaneInputs`
 - keep the pane orchestration entirely in the app layer
 
 In `crates/openagents-provider-substrate`:
 
 - decide whether to:
-  - do a real `Ollama -> LocalInference/Psionic` rename now, or
+  - do a real `legacy local-runtime lane -> LocalInference/Psionic` rename now, or
   - add explicit alias/deprecation posture and keep the old IDs temporarily only for provider-lane compatibility
 
-My recommendation: do the rename or alias work before shipping the pane. The alternative is a pane that visibly says "Psionic GPT-OSS" while the rest of the product still publishes `ollama.text_generation`.
+My recommendation: do the rename or alias work before shipping the pane. The alternative is a pane that visibly says "Psionic GPT-OSS" while the rest of the product still publishes `legacy_local_runtime.text_generation`.
 
 ### Phase 2: expand the app-owned local runtime contract
 
@@ -330,7 +330,7 @@ Only after the pane can truthfully load and run GPT-OSS should we reconnect prov
 
 That follow-on includes:
 
-- launch-product identity cleanup away from `ollama.*`
+- launch-product identity cleanup away from `legacy_local_runtime.*`
 - metering-rule cleanup
 - inventory/product derivation updates
 - provider-status pane cleanup
@@ -340,8 +340,8 @@ That work crosses into `openagents-provider-substrate`, so it should be treated 
 ## Recommended Implementation Order
 
 1. App rename and state cleanup:
-   - remove `ollama_execution` / `provider_runtime.ollama` naming from app-owned state
-   - add explicit "legacy provider product ids still mapped to ollama" note only if substrate rename is deferred
+   - remove `legacy_local_runtime_execution` / `provider_runtime.legacy_local_runtime` naming from app-owned state
+   - add explicit "legacy provider product ids still mapped to legacy_local_runtime" note only if substrate rename is deferred
 2. Runtime seam expansion:
    - add catalog/load/observability/streaming commands and DTOs
 3. Pane shell:
@@ -351,7 +351,7 @@ That work crosses into `openagents-provider-substrate`, so it should be treated 
    - instantiate real GPT-OSS runtime services
    - support backend selection and refusal reporting
 5. Provider/product identity cleanup:
-   - stop mapping Psionic local inference to `ollama.*`
+   - stop mapping Psionic local inference to `legacy_local_runtime.*`
 
 ## Recommendation
 

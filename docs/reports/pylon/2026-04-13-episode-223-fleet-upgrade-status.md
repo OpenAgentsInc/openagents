@@ -152,7 +152,7 @@ On `archlinux`:
 - the `linux-x86_64` archive is present under
   `~/code/pylon-v0.1.1-rc1-linux-x86_64/`
 - the extracted `pylon` binary runs and returns `status --json`
-- Ollama and `gemma4-e4b-gguf:latest` are present locally
+- legacy local-runtime lane and `gemma4-e4b-gguf:latest` are present locally
 
 The first training-status read was misleading because the host's existing
 `~/code/psionic` checkout was stale enough that the released Pylon binary did

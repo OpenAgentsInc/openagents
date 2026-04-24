@@ -154,7 +154,7 @@ If Apple FM is the active inference backend, text-generation provider jobs can a
 
 ### 6. Provider/backend truth already prefers Apple FM when ready
 
-`crates/openagents-provider-substrate/src/lib.rs` makes `ProviderAvailability::active_inference_backend()` prefer `AppleFoundationModels` over `Ollama`.
+`crates/openagents-provider-substrate/src/lib.rs` makes `ProviderAvailability::active_inference_backend()` prefer `AppleFoundationModels` over `legacy local-runtime lane`.
 
 `apps/autopilot-deprecated/src/kernel_control.rs` and `apps/autopilot-deprecated/src/input/reducers/jobs.rs` then flow that preference through:
 
@@ -391,9 +391,9 @@ For a shipping Mac local-model lane, that is a supportability weakness.
 
 A lot of desktop code still uses legacy labels like:
 
-- `ollama_execution`
+- `legacy_local_runtime_execution`
 - `local inference`
-- preferred backend string `"psionic" | "local_inference" | "ollama"`
+- preferred backend string `"psionic" | "local_inference" | "legacy_local_runtime"`
 
 while the retained local runtime is now Psionic GPT-OSS.
 
@@ -403,7 +403,7 @@ This is not just cosmetic. It makes policy harder to reason about:
 
 - what is "local inference" on Mac now?
 - what is the non-Apple Mac fallback?
-- what does "ollama" mean in a world where the runtime is Psionic GPT-OSS?
+- what does "legacy_local_runtime" mean in a world where the runtime is Psionic GPT-OSS?
 
 Before Apple FM becomes the Mac MVP lane, this naming and backend model should be cleaned up.
 
@@ -492,7 +492,7 @@ The bridge currently builds and is discoverable, but packaging should be first-c
 6. Pass generation controls through when the Apple API and bridge contract can support them truthfully.
 7. Replace approximate token metrics with a more defensible metric story, or mark them as estimated in receipts/UI.
 8. Improve bridge diagnostics and error surfacing.
-9. Clean up backend naming drift so "Ollama", "Psionic", and "Apple FM" are not conflated.
+9. Clean up backend naming drift so "legacy local-runtime lane", "Psionic", and "Apple FM" are not conflated.
 
 ## Final Assessment
 

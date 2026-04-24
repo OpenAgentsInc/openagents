@@ -58,7 +58,7 @@ That mapping is not explicit today. The desktop app records useful local receipt
 
 If the intended product split is:
 
-- `Ollama = Compute layer`
+- `legacy local-runtime lane = Compute layer`
 - `Codex = Labor layer`
 
 then OpenAgents still needs a dedicated labor orchestration layer that wraps Codex execution inside kernel-shaped work, verification, liability, and settlement semantics. Right now Codex is a capable local runtime, not yet a fully compliant labor-market worker.
@@ -243,7 +243,7 @@ The current provider job flow:
 4. captures the final Codex message as execution output,
 5. advances job lifecycle based on Codex notifications.
 
-This is the wrong shape for the intended architecture where Ollama powers Compute and Codex powers Labor.
+This is the wrong shape for the intended architecture where legacy local-runtime lane powers Compute and Codex powers Labor.
 
 It means Codex is currently more directly wired into Compute execution than into an explicit labor-market contract lifecycle.
 
@@ -392,7 +392,7 @@ As long as the tool layer remains mostly app-centric, labor semantics will stay 
 
 This is both a product and architectural problem.
 
-If Compute is going to be powered by Ollama and Labor by Codex, then Codex must stop being the hidden execution backend for the NIP-90 compute provider flow.
+If Compute is going to be powered by legacy local-runtime lane and Labor by Codex, then Codex must stop being the hidden execution backend for the NIP-90 compute provider flow.
 
 Right now the boundary is blurry:
 
@@ -530,7 +530,7 @@ It should not be the final authority for paid labor outcomes.
 
 With the new desired split:
 
-- Ollama should execute Compute-market inference jobs.
+- legacy local-runtime lane should execute Compute-market inference jobs.
 - Codex should execute Labor-market machine work.
 
 That means the current provider-job Codex execution path in `apps/autopilot-deprecated/src/input/reducers/jobs.rs` should be retired from the compute-provider loop.
@@ -619,7 +619,7 @@ Truthful labeling matters here because each mode has different authority, verifi
 ### Phase 1: finish the market split
 
 1. Remove Codex from the NIP-90 compute-provider execution path.
-2. Keep Ollama as the Compute execution backend.
+2. Keep legacy local-runtime lane as the Compute execution backend.
 3. Preserve Codex for personal-agent and future labor flows only.
 
 ### Phase 2: introduce local labor binding for Codex

@@ -1969,7 +1969,7 @@ export function resolveBootstrapOutcome(summary) {
       level: "warning",
       verdict: "installed but runtime missing",
       detail:
-        "no Ollama-compatible local runtime is answering /api/tags yet",
+        "no local Gemma runtime is answering /api/tags yet",
     };
   }
 
@@ -2005,11 +2005,11 @@ function renderBootstrapNextSteps(summary, outcome) {
 
   if (summary.target?.os === "darwin") {
     lines.push(
-      "Runtime setup (macOS default): `brew install ollama`, `brew services start ollama`, `ollama pull gemma4:e4b`.",
+      "Runtime setup: start a local Gemma runtime at `local_gemma_base_url` and load `gemma4:e4b`.",
     );
   } else {
     lines.push(
-      "Runtime setup: start an Ollama-compatible local runtime at `local_gemma_base_url` and load `gemma4:e4b`.",
+      "Runtime setup: start a local Gemma runtime at `local_gemma_base_url` and load `gemma4:e4b`.",
     );
   }
   lines.push(

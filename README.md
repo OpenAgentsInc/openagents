@@ -160,8 +160,8 @@ paid when assigned work closes out as accepted.
 
 Current production truth:
 
-- The minimum current paid-training release is `pylon-v0.1.12` through
-  `@openagentsinc/pylon` `0.1.12` or newer.
+- The current recommended paid-training release is `pylon-v0.1.13` through
+  `@openagentsinc/pylon` `0.1.13` or newer.
 - The live paid work class is bounded hosted homework/training work, currently
   the CS336 A1 starter lane used to prove the earning loop.
 - Work is not yet a fully open demand marketplace. Hosted Nexus currently
@@ -181,10 +181,12 @@ Current production truth:
   homework lane. In practice, keep a compatible Psionic checkout discoverable
   until that runtime is bundled more tightly. `pylon doctor` and
   `pylon training status --json` report missing runtime prerequisites.
-- For Psionic-backed homework/training work, `0.1.12` fixes the Mac launch path:
-  Pylon now runs a current `target/release/psionic-train` when present and
-  otherwise falls back to `cargo run --release`, with failure receipts that show
-  signal/log-tail details instead of only `code -1`.
+- For Psionic-backed homework/training work, `0.1.12` fixed the Mac launch
+  path. `0.1.13` keeps that worker-launch behavior and removes the last legacy
+  runtime wording plus automatic runtime mutation from the public install path.
+  Pylon runs a current `target/release/psionic-train` when present and
+  otherwise falls back to `cargo run --release`, with failure receipts that
+  show signal/log-tail details instead of only `code -1`.
 
 Useful inspection commands:
 
@@ -218,9 +220,11 @@ That source proof is newer than the older `pylon-v0.1.9` tag. The
 release asset and npm bootstrap path. `pylon-v0.1.11` made `pylon` open the
 minimal homework dashboard, had the TUI start and supervise the earning worker,
 and kept Gemma diagnostics/downloads opt-in during homework onboarding.
-`pylon-v0.1.12` is the current user-path floor because it fixes the
-Psionic-backed Mac training-worker launch path and raises the hosted Nexus
-homework dispatcher minimum to that build. The `0.1.11` release receipt is
+`pylon-v0.1.12` remains the live hosted-Nexus homework dispatcher floor because
+it fixed the Psionic-backed Mac training-worker launch path. `pylon-v0.1.13`
+is the current recommended public build because it keeps that path while
+removing the last legacy runtime wording and automatic runtime mutation from the
+public install/runtime flow. The `0.1.11` release receipt is
 [docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json](docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json).
 The prior full accepted-work payout proof remains
 [docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json](docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json).
@@ -364,7 +368,7 @@ If you are on macOS and using the Apple FM release path, test the bridge first. 
 
 If you are on a supported Linux NVIDIA host and using GPT-OSS, set `OPENAGENTS_GPT_OSS_BACKEND=cuda` and `OPENAGENTS_GPT_OSS_MODEL_PATH=/path/to/gpt-oss-20b-mxfp4.gguf`, then start the app. Mission Control now auto-warms the configured GPT-OSS model on startup. Verify with `autopilotctl local-runtime status` and `autopilotctl wait local-runtime-ready`.
 
-If you are bringing up standalone `Pylon`, install Ollama in the same runtime environment where `pylon` will run, verify `curl http://127.0.0.1:11434/api/tags`, and pull `gemma4:e2b` first. On Windows, do that inside WSL Ubuntu. If the machine has an NVIDIA GPU, verify passthrough with `nvidia-smi` inside WSL before claiming GPU readiness.
+If you are bringing up standalone `Pylon`, provision a local Gemma runtime in the same environment where `pylon` will run, verify `curl http://127.0.0.1:11434/api/tags`, and make sure a `gemma4:*` model is loaded first. On Windows, do that inside WSL Ubuntu. If the machine has an NVIDIA GPU, verify passthrough with `nvidia-smi` inside WSL before claiming GPU readiness.
 
 See AGENTS.md for the Apple bridge rule and [docs/headless-compute.md](docs/headless-compute.md) for the current local-runtime runbooks.
 ```

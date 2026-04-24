@@ -16528,7 +16528,7 @@ fn build_spot_compute_rfq_from_inputs(
             .replace(['.', '-'], "_")
             .as_str()
         {
-            "gpt_oss" | "gptoss" | "psionic" | "local_inference" | "ollama" => {
+            "gpt_oss" | "gptoss" | "psionic" | "local_inference" | "local_runtime" => {
                 Some(ComputeBackendFamily::GptOss)
             }
             "pooled_inference" | "pooled" | "clustered_inference" | "psionic_cluster" => {

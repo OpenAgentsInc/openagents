@@ -411,7 +411,7 @@ The strongest retained claims in the `psionic` repo are:
   green `6/6` on `2026-03-29` for native Psionic `qwen35` on the local
   `archlinux` `RTX 4080` lane.
 - `docs/HERMES_QWEN35_PARALLEL_ATTRIBUTION.md`: the formerly hard same-turn
-  parallel-tool row is now green on Psionic and Ollama across `2b`, `4b`, and
+  parallel-tool row is now green on Psionic and legacy local-runtime lane across `2b`, `4b`, and
   `9b`.
 - `docs/HERMES_BACKEND_BENCHMARK.md`: the repo also kept same-host benchmark
   receipts where Hermes stays fixed and only the backend endpoint and

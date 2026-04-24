@@ -2704,7 +2704,7 @@ fn embedding_quantity_from_output(execution_output: Option<&str>) -> u64 {
 
 fn backend_family_from_runtime_label(value: &str) -> Option<ComputeBackendFamily> {
     match value.trim() {
-        "gpt_oss" | "psionic" | "ollama" => Some(ComputeBackendFamily::GptOss),
+        "gpt_oss" | "psionic" | "local_runtime" => Some(ComputeBackendFamily::GptOss),
         "pooled_inference" | "psionic_cluster" => Some(ComputeBackendFamily::PooledInference),
         "apple_foundation_models" => Some(ComputeBackendFamily::AppleFoundationModels),
         "psionic_train" => Some(ComputeBackendFamily::PsionicTrain),

@@ -1329,7 +1329,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
     expect(runtimeMissing).toEqual({
       level: "warning",
       verdict: "installed but runtime missing",
-      detail: "no Ollama-compatible local runtime is answering /api/tags yet",
+      detail: "no local Gemma runtime is answering /api/tags yet",
     });
     expect(runtimeReady).toEqual({
       level: "success",

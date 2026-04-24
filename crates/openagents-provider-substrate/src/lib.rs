@@ -26,7 +26,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderBackendKind {
-    #[serde(alias = "gpt_oss", alias = "ollama")]
+    #[serde(alias = "gpt_oss", alias = "local_gemma")]
     GptOss,
     AppleFoundationModels,
     PsionicTrain,
@@ -995,7 +995,7 @@ pub fn settlement_hook_from_authority(
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderAvailability {
-    #[serde(alias = "gpt_oss", alias = "ollama")]
+    #[serde(alias = "gpt_oss", alias = "local_gemma")]
     pub local_gemma: ProviderBackendHealth,
     #[serde(default, skip_serializing_if = "ProviderBackendHealth::is_inert")]
     pub apple_foundation_models: ProviderBackendHealth,
@@ -1909,12 +1909,10 @@ impl ProviderComputeProduct {
             "psionic.local.inference.gemma.single_node"
             | "psionic.local.inference.gpt_oss.single_node"
             | "local_gemma.text_generation"
-            | "ollama.text_generation"
             | "gpt_oss.text_generation" => Some(Self::GptOssInference),
             "psionic.local.embeddings.gemma.single_node"
             | "psionic.local.embeddings.gpt_oss.single_node"
             | "local_gemma.embeddings"
-            | "ollama.embeddings"
             | "gpt_oss.embeddings" => Some(Self::GptOssEmbeddings),
             "psionic.cluster.inference.pooled.remote_whole_request"
             | "psionic.cluster.inference.gpt_oss.remote_whole_request"
@@ -2144,12 +2142,12 @@ where
 pub struct ProviderInventoryControls {
     #[serde(
         alias = "gpt_oss_inference_enabled",
-        alias = "ollama_inference_enabled"
+        alias = "local_runtime_inference_enabled"
     )]
     pub local_gemma_inference_enabled: bool,
     #[serde(
         alias = "gpt_oss_embeddings_enabled",
-        alias = "ollama_embeddings_enabled"
+        alias = "local_runtime_embeddings_enabled"
     )]
     pub local_gemma_embeddings_enabled: bool,
     #[serde(default)]
@@ -2650,12 +2648,12 @@ mod tests {
             Some(ProviderComputeProduct::GptOssInference)
         );
         assert_eq!(
-            ProviderComputeProduct::for_product_id("ollama.text_generation"),
+            ProviderComputeProduct::for_product_id("local_gemma.text_generation"),
             Some(ProviderComputeProduct::GptOssInference)
         );
 
         let legacy_descriptor =
-            describe_provider_product_id("ollama.text_generation").expect("legacy alias");
+            describe_provider_product_id("local_gemma.text_generation").expect("legacy alias");
         assert_eq!(
             legacy_descriptor.product_id,
             "psionic.local.inference.gemma.single_node"

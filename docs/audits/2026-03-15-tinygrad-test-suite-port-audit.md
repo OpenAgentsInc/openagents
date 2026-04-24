@@ -216,7 +216,7 @@ scan suggests.
 - chat-template metadata loading and prompt rendering fixtures
 - GGUF weight-bundle loading for dense and quantized tensors
 - paged blob artifact access and memory-mapped open path
-- Ollama blob and manifest loading
+- legacy local-runtime lane blob and manifest loading
 - decoder adapter loading for Llama, Qwen, and GPT-OSS
 - embedding adapter loading for BERT and Nomic-BERT
 - reference block decode for:

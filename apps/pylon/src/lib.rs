@@ -299,7 +299,6 @@ pub struct PylonConfig {
     #[serde(default = "default_buyer_auto_pay_enabled")]
     pub buyer_auto_pay_enabled: bool,
     pub wallet_storage_dir: PathBuf,
-    #[serde(alias = "ollama_base_url")]
     pub local_gemma_base_url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_gemma_preferred_model: Option<String>,
@@ -3062,7 +3061,7 @@ fn canonical_local_gemma_runtime_model(model_id: &str) -> String {
         .unwrap_or_else(|| trimmed.to_string())
 }
 
-fn is_local_ollama_endpoint(base_url: &str) -> bool {
+fn is_local_runtime_endpoint(base_url: &str) -> bool {
     let normalized = base_url.trim().trim_end_matches('/').to_ascii_lowercase();
     normalized.starts_with("http://127.0.0.1:")
         || normalized.starts_with("http://localhost:")
@@ -3073,97 +3072,23 @@ fn uninstall_local_gemma_runtime_model(
     config: &PylonConfig,
     runtime_model: &str,
 ) -> Result<(bool, Option<String>)> {
-    if !is_local_ollama_endpoint(config.local_gemma_base_url.as_str()) {
+    if !is_local_runtime_endpoint(config.local_gemma_base_url.as_str()) {
         return Ok((
             false,
             Some(
-                "runtime uninstall skipped because local_gemma_base_url is not a local Ollama endpoint."
+                "runtime uninstall skipped because local_gemma_base_url is not a local runtime endpoint."
                     .to_string(),
             ),
         ));
     }
-
-    let output = match StdCommand::new("ollama")
-        .args(["rm", runtime_model])
-        .output()
-    {
-        Ok(output) => output,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok((
-                false,
-                Some(
-                    "runtime uninstall skipped because the `ollama` CLI is not installed."
-                        .to_string(),
-                ),
-            ));
-        }
-        Err(error) => {
-            return Err(error).with_context(|| {
-                format!("failed to invoke `ollama rm {runtime_model}` for runtime uninstall")
-            });
-        }
-    };
-
-    if output.status.success() {
-        return Ok((true, None));
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let detail = if !stderr.is_empty() { stderr } else { stdout };
-    let detail_lower = detail.to_ascii_lowercase();
-    if detail_lower.contains("not found")
-        || detail_lower.contains("no such model")
-        || detail_lower.contains("does not exist")
-    {
-        return Ok((false, None));
-    }
-
-    bail!("runtime uninstall failed for `{runtime_model}`: {detail}");
-}
-
-fn import_local_gemma_runtime_model_from_cache(
-    config_path: &Path,
-    runtime_model: &str,
-    model_path: &Path,
-) -> Result<()> {
-    let home_dir = config_path
-        .parent()
-        .map(PathBuf::from)
-        .unwrap_or_else(default_home_dir);
-    let modelfile_dir = home_dir.join("runtime").join("ollama");
-    std::fs::create_dir_all(modelfile_dir.as_path()).with_context(|| {
-        format!(
-            "failed to create Ollama runtime import dir {}",
-            modelfile_dir.display()
-        )
-    })?;
-    let modelfile_path =
-        modelfile_dir.join(format!("{}.Modelfile", normalize_model_key(runtime_model)));
-    std::fs::write(
-        modelfile_path.as_path(),
-        format!("FROM {}\n", model_path.display()),
-    )
-    .with_context(|| {
-        format!(
-            "failed to write Ollama Modelfile {}",
-            modelfile_path.display()
-        )
-    })?;
-
-    let output = StdCommand::new("ollama")
-        .args(["create", runtime_model, "-f"])
-        .arg(modelfile_path.as_path())
-        .output()
-        .with_context(|| format!("failed to invoke `ollama create {runtime_model}`"))?;
-    let _ = std::fs::remove_file(modelfile_path.as_path());
-    if output.status.success() {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let detail = if !stderr.is_empty() { stderr } else { stdout };
-    bail!("runtime import failed for `{runtime_model}`: {detail}");
+    let _ = runtime_model;
+    Ok((
+        false,
+        Some(
+            "runtime uninstall skipped because Pylon no longer mutates external runtime registries automatically."
+                .to_string(),
+        ),
+    ))
 }
 
 pub fn gemma_models_root(config_path: &Path) -> PathBuf {
@@ -3253,21 +3178,19 @@ pub async fn select_local_gemma_model(
         .as_ref()
         .map(|snapshot| &snapshot.availability.local_gemma);
     let mut note = None::<String>;
-    let mut imported_from_cache = false;
     let runtime_visible = initial_health
         .and_then(|health| runtime_model_for_selector(health, canonical_model_id.as_str()))
         .is_some();
     if !runtime_visible {
         if let Some(spec) = gemma_download_spec_for_selector(canonical_model_id.as_str()) {
             let model_path = gemma_model_path(config_path, spec);
-            if model_path.exists() && is_local_ollama_endpoint(config.local_gemma_base_url.as_str())
+            if model_path.exists()
+                && is_local_runtime_endpoint(config.local_gemma_base_url.as_str())
             {
-                import_local_gemma_runtime_model_from_cache(
-                    config_path,
-                    runtime_model.as_str(),
-                    model_path.as_path(),
-                )?;
-                imported_from_cache = true;
+                note = Some(
+                    "Pylon found the model in the local cache, but runtime import is no longer automatic. Load it in the configured runtime directly."
+                        .to_string(),
+                );
             }
         }
     }
@@ -3301,12 +3224,6 @@ pub async fn select_local_gemma_model(
         );
     }
     warm_local_gemma_runtime_model(&client, &config, runtime_model.as_str()).await?;
-    if imported_from_cache {
-        note = Some(
-            "runtime model was imported from the local Pylon cache and warmed successfully."
-                .to_string(),
-        );
-    }
     let available_models = health
         .map(|health| health.available_models.clone())
         .unwrap_or_default();
@@ -3977,7 +3894,7 @@ struct LocalGemmaChatChunk {
     completion: Option<LocalGemmaChatCompletionMetrics>,
 }
 
-fn parse_ollama_duration_seconds(payload: &Value, key: &str) -> Option<f64> {
+fn parse_runtime_duration_seconds(payload: &Value, key: &str) -> Option<f64> {
     payload
         .get(key)
         .and_then(Value::as_u64)
@@ -4265,7 +4182,7 @@ async fn run_local_gemma_diagnostic_once(
             if line.is_empty() {
                 continue;
             }
-            let chunk = decode_ollama_chat_chunk(line.as_str())?;
+            let chunk = decode_runtime_chat_chunk(line.as_str())?;
             if let Some(delta) = chunk.delta {
                 if first_delta_at.is_none() {
                     first_delta_at = Some(started_at.elapsed().as_secs_f64());
@@ -4280,7 +4197,7 @@ async fn run_local_gemma_diagnostic_once(
 
     let trailing = pending.trim();
     if !trailing.is_empty() {
-        let chunk = decode_ollama_chat_chunk(trailing)?;
+        let chunk = decode_runtime_chat_chunk(trailing)?;
         if let Some(delta) = chunk.delta {
             if first_delta_at.is_none() {
                 first_delta_at = Some(started_at.elapsed().as_secs_f64());
@@ -20801,11 +20718,11 @@ fn normalize_legacy_config_value(value: &mut Value) {
     };
 
     if !object.contains_key("local_gemma_base_url") {
-        if let Some(legacy_value) = object.remove("ollama_base_url") {
+        if let Some(legacy_value) = object.remove("legacy_runtime_base_url") {
             object.insert("local_gemma_base_url".to_string(), legacy_value);
         }
     } else {
-        object.remove("ollama_base_url");
+        object.remove("legacy_runtime_base_url");
     }
 
     if let Some(inventory_controls) = object
@@ -20815,12 +20732,18 @@ fn normalize_legacy_config_value(value: &mut Value) {
         normalize_legacy_object_key(
             inventory_controls,
             "local_gemma_inference_enabled",
-            &["gpt_oss_inference_enabled", "ollama_inference_enabled"],
+            &[
+                "gpt_oss_inference_enabled",
+                "legacy_runtime_inference_enabled",
+            ],
         );
         normalize_legacy_object_key(
             inventory_controls,
             "local_gemma_embeddings_enabled",
-            &["gpt_oss_embeddings_enabled", "ollama_embeddings_enabled"],
+            &[
+                "gpt_oss_embeddings_enabled",
+                "legacy_runtime_embeddings_enabled",
+            ],
         );
     }
 }
@@ -22390,7 +22313,7 @@ where
             if line.is_empty() {
                 continue;
             }
-            if let Some(delta) = decode_ollama_chat_delta(line.as_str())? {
+            if let Some(delta) = decode_runtime_chat_delta(line.as_str())? {
                 emit(LocalGemmaChatEvent::Delta(delta));
             }
         }
@@ -22398,7 +22321,7 @@ where
 
     let trailing = pending.trim();
     if !trailing.is_empty() {
-        if let Some(delta) = decode_ollama_chat_delta(trailing)? {
+        if let Some(delta) = decode_runtime_chat_delta(trailing)? {
             emit(LocalGemmaChatEvent::Delta(delta));
         }
     }
@@ -22406,19 +22329,19 @@ where
     Ok(())
 }
 
-fn decode_ollama_chat_delta(line: &str) -> Result<Option<String>> {
+fn decode_runtime_chat_delta(line: &str) -> Result<Option<String>> {
     let payload = serde_json::from_str::<Value>(line)
         .with_context(|| format!("invalid local Gemma stream chunk: {line}"))?;
-    Ok(decode_ollama_chat_chunk_from_payload(&payload).delta)
+    Ok(decode_runtime_chat_chunk_from_payload(&payload).delta)
 }
 
-fn decode_ollama_chat_chunk(line: &str) -> Result<LocalGemmaChatChunk> {
+fn decode_runtime_chat_chunk(line: &str) -> Result<LocalGemmaChatChunk> {
     let payload = serde_json::from_str::<Value>(line)
         .with_context(|| format!("invalid local Gemma stream chunk: {line}"))?;
-    Ok(decode_ollama_chat_chunk_from_payload(&payload))
+    Ok(decode_runtime_chat_chunk_from_payload(&payload))
 }
 
-fn decode_ollama_chat_chunk_from_payload(payload: &Value) -> LocalGemmaChatChunk {
+fn decode_runtime_chat_chunk_from_payload(payload: &Value) -> LocalGemmaChatChunk {
     let delta = payload
         .get("message")
         .and_then(|message| message.get("content"))
@@ -22426,15 +22349,15 @@ fn decode_ollama_chat_chunk_from_payload(payload: &Value) -> LocalGemmaChatChunk
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
     let completion = (payload.get("done").and_then(Value::as_bool) == Some(true)).then(|| {
-        let decode_s = parse_ollama_duration_seconds(payload, "eval_duration");
+        let decode_s = parse_runtime_duration_seconds(payload, "eval_duration");
         let output_tokens = payload
             .get("eval_count")
             .and_then(Value::as_u64)
             .and_then(|value| usize::try_from(value).ok());
         LocalGemmaChatCompletionMetrics {
-            total_s: parse_ollama_duration_seconds(payload, "total_duration"),
-            load_s: parse_ollama_duration_seconds(payload, "load_duration"),
-            prompt_s: parse_ollama_duration_seconds(payload, "prompt_eval_duration"),
+            total_s: parse_runtime_duration_seconds(payload, "total_duration"),
+            load_s: parse_runtime_duration_seconds(payload, "load_duration"),
+            prompt_s: parse_runtime_duration_seconds(payload, "prompt_eval_duration"),
             decode_s,
             output_tokens,
             decode_tok_s: match (output_tokens, decode_s) {
@@ -26232,7 +26155,7 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
             next.buyer_auto_pay_enabled = parse_bool(value)?;
         }
         "wallet_storage_dir" => next.wallet_storage_dir = PathBuf::from(value.trim()),
-        "local_gemma_base_url" | "ollama_base_url" => {
+        "local_gemma_base_url" | "legacy_runtime_base_url" => {
             next.local_gemma_base_url = value.to_string();
         }
         "local_gemma_preferred_model" => {
@@ -26244,12 +26167,12 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
         }
         "backend.local_gemma_inference_enabled"
         | "backend.gpt_oss_inference_enabled"
-        | "backend.ollama_inference_enabled" => {
+        | "backend.legacy_runtime_inference_enabled" => {
             next.inventory_controls.local_gemma_inference_enabled = parse_bool(value)?;
         }
         "backend.local_gemma_embeddings_enabled"
         | "backend.gpt_oss_embeddings_enabled"
-        | "backend.ollama_embeddings_enabled" => {
+        | "backend.legacy_runtime_embeddings_enabled" => {
             next.inventory_controls.local_gemma_embeddings_enabled = parse_bool(value)?;
         }
         "backend.sandbox_container_exec_enabled" => {
@@ -41802,7 +41725,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
   "admin_db_path": "/tmp/pylon-test/provider-admin.sqlite",
   "admin_listen_addr": "127.0.0.1:9468",
   "wallet_storage_dir": "/tmp/pylon-test/spark",
-  "ollama_base_url": "http://127.0.0.1:11435",
+  "legacy_runtime_base_url": "http://127.0.0.1:11435",
   "inventory_controls": {
     "gpt_oss_inference_enabled": false,
     "gpt_oss_embeddings_enabled": false,
@@ -41820,7 +41743,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
 
         ensure(
             config.local_gemma_base_url == "http://127.0.0.1:11435",
-            "legacy ollama_base_url should hydrate the local Gemma base URL",
+            "legacy runtime base URL should hydrate the local Gemma base URL",
         )?;
         ensure(
             !config.inventory_controls.local_gemma_inference_enabled
@@ -43367,15 +43290,15 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     #[tokio::test(flavor = "current_thread")]
     async fn publish_announcement_persists_handler_event() -> Result<(), Box<dyn std::error::Error>>
     {
-        let ollama_listener = TcpListener::bind("127.0.0.1:0").await?;
-        let ollama_addr = ollama_listener.local_addr()?;
-        let ollama_server = tokio::spawn(async move {
-            let (mut stream, _) = ollama_listener.accept().await.expect("accept ollama");
+        let runtime_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let runtime_addr = runtime_listener.local_addr()?;
+        let runtime_server = tokio::spawn(async move {
+            let (mut stream, _) = runtime_listener.accept().await.expect("accept runtime");
             let mut request = vec![0u8; 4096];
             let _ = stream
                 .read(&mut request)
                 .await
-                .expect("read ollama request");
+                .expect("read runtime request");
             let body = json!({
                 "models": [{"name": "gemma4-e4b-local:latest"}]
             })
@@ -43388,7 +43311,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             stream
                 .write_all(response.as_bytes())
                 .await
-                .expect("write ollama response");
+                .expect("write runtime response");
         });
 
         let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -43414,7 +43337,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let mut config = load_or_create_config(config_path.as_path())?;
         config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.relay_urls = vec![relay_url];
-        config.local_gemma_base_url = format!("http://{ollama_addr}");
+        config.local_gemma_base_url = format!("http://{runtime_addr}");
         save_config(config_path.as_path(), &config)?;
 
         let report = publish_announcement_report(config_path.as_path(), false).await?;
@@ -43450,23 +43373,23 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "publish should append a relay activity record",
         )?;
 
-        ollama_server.await?;
+        runtime_server.await?;
         Ok(())
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn sync_live_announcement_publishes_when_online_and_eligible()
     -> Result<(), Box<dyn std::error::Error>> {
-        let ollama_listener = TcpListener::bind("127.0.0.1:0").await?;
-        let ollama_addr = ollama_listener.local_addr()?;
-        let ollama_server = tokio::spawn(async move {
+        let runtime_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let runtime_addr = runtime_listener.local_addr()?;
+        let runtime_server = tokio::spawn(async move {
             for _ in 0..2 {
-                let (mut stream, _) = ollama_listener.accept().await.expect("accept ollama");
+                let (mut stream, _) = runtime_listener.accept().await.expect("accept runtime");
                 let mut request = vec![0u8; 4096];
                 let _ = stream
                     .read(&mut request)
                     .await
-                    .expect("read ollama request");
+                    .expect("read runtime request");
                 let body = json!({
                     "models": [{"name": "gemma4:e4b"}]
                 })
@@ -43479,7 +43402,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 stream
                     .write_all(response.as_bytes())
                     .await
-                    .expect("write ollama response");
+                    .expect("write runtime response");
             }
         });
 
@@ -43507,7 +43430,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let identity = ensure_identity(config.identity_path.as_path())?;
         config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.relay_urls = vec![relay_url];
-        config.local_gemma_base_url = format!("http://{ollama_addr}");
+        config.local_gemma_base_url = format!("http://{runtime_addr}");
         save_config(config_path.as_path(), &config)?;
 
         let availability = detect_availability(&config).await?;
@@ -43546,7 +43469,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "auto-publish should persist the handler announcement in the ledger",
         )?;
 
-        ollama_server.await?;
+        runtime_server.await?;
         Ok(())
     }
 
@@ -44348,15 +44271,15 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let config = load_or_create_config(config_path.as_path())?;
         let identity = ensure_identity(config.identity_path.as_path())?;
 
-        let ollama_listener = TcpListener::bind("127.0.0.1:0").await?;
-        let ollama_addr = ollama_listener.local_addr()?;
-        let ollama_server = tokio::spawn(async move {
-            let (mut stream, _) = ollama_listener.accept().await.expect("accept ollama");
+        let runtime_listener = TcpListener::bind("127.0.0.1:0").await?;
+        let runtime_addr = runtime_listener.local_addr()?;
+        let runtime_server = tokio::spawn(async move {
+            let (mut stream, _) = runtime_listener.accept().await.expect("accept runtime");
             let mut request = vec![0u8; 4096];
             let _ = stream
                 .read(&mut request)
                 .await
-                .expect("read ollama request");
+                .expect("read runtime request");
             let body = json!({
                 "models": [{"name": "gemma4-e4b-local:latest"}]
             })
@@ -44369,7 +44292,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             stream
                 .write_all(response.as_bytes())
                 .await
-                .expect("write ollama response");
+                .expect("write runtime response");
         });
 
         let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -44441,7 +44364,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         let mut config = load_or_create_config(config_path.as_path())?;
         config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.relay_urls = vec![relay_url];
-        config.local_gemma_base_url = format!("http://{ollama_addr}");
+        config.local_gemma_base_url = format!("http://{runtime_addr}");
         save_config(config_path.as_path(), &config)?;
 
         let report = scan_provider_requests(config_path.as_path(), 1).await?;
@@ -44475,7 +44398,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         )?;
 
         relay_server.await?;
-        ollama_server.await?;
+        runtime_server.await?;
         Ok(())
     }
 
@@ -44498,7 +44421,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     ),
                     ("POST", "/api/chat") => {
                         let request: serde_json::Value =
-                            serde_json::from_str(body.as_str()).expect("valid ollama chat body");
+                            serde_json::from_str(body.as_str()).expect("valid runtime chat body");
                         assert_eq!(request["model"], json!("gemma4:e4b"));
                         assert_eq!(request["messages"][0]["content"], json!("hello from buyer"));
                         (
@@ -44673,7 +44596,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     ),
                     ("POST", "/api/chat") => {
                         let request: serde_json::Value =
-                            serde_json::from_str(body.as_str()).expect("valid ollama chat body");
+                            serde_json::from_str(body.as_str()).expect("valid runtime chat body");
                         assert_eq!(request["model"], json!("gemma4:e4b"));
                         (
                             200,
@@ -45166,7 +45089,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     ),
                     ("POST", "/api/chat") => {
                         let request: serde_json::Value =
-                            serde_json::from_str(body.as_str()).expect("valid ollama chat body");
+                            serde_json::from_str(body.as_str()).expect("valid runtime chat body");
                         assert_eq!(request["model"], json!("gemma4:e4b"));
                         assert_eq!(request["messages"][0]["content"], json!("paid run"));
                         (
@@ -46240,7 +46163,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     ),
                     ("POST", "/api/chat") => {
                         let request: serde_json::Value =
-                            serde_json::from_str(body.as_str()).expect("valid ollama chat body");
+                            serde_json::from_str(body.as_str()).expect("valid runtime chat body");
                         assert_eq!(request["model"], json!("gemma4:e4b"));
                         assert_eq!(request["messages"][0]["content"], json!("hello"));
                         (
@@ -46300,7 +46223,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     ),
                     ("POST", "/api/chat") => {
                         let request: serde_json::Value =
-                            serde_json::from_str(body.as_str()).expect("valid ollama chat body");
+                            serde_json::from_str(body.as_str()).expect("valid runtime chat body");
                         assert_eq!(request["messages"][0]["role"], json!("system"));
                         assert_eq!(
                             request["messages"][0]["content"],

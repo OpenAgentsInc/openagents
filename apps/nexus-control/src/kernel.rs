@@ -9151,8 +9151,8 @@ impl KernelState {
             .or_else(|| canonical_compute_product_id(product.product_id.as_str()))
             .unwrap_or(product.product_id.as_str())
         {
-            "psionic.local.inference.gpt_oss.single_node" => "meter.ollama.inference.v1",
-            "psionic.local.embeddings.gpt_oss.single_node" => "meter.ollama.embeddings.v1",
+            "psionic.local.inference.gpt_oss.single_node" => "meter.local_gemma.inference.v1",
+            "psionic.local.embeddings.gpt_oss.single_node" => "meter.local_gemma.embeddings.v1",
             "psionic.local.inference.apple_foundation_models.single_node" => {
                 "meter.apple_fm.inference.v1"
             }
@@ -15851,7 +15851,7 @@ mod tests {
             trace: TraceContext::default(),
             policy: PolicyContext::default(),
             product: ComputeProduct {
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 resource_class: "compute".to_string(),
                 capacity_unit: "request".to_string(),
                 window_spec: "session".to_string(),
@@ -15877,7 +15877,7 @@ mod tests {
                     artifact_residency: None,
                     environment_binding: None,
                     checkpoint_binding: None,
-                    model_policy: Some("ollama.text_generation.launch".to_string()),
+                    model_policy: Some("local_gemma.text_generation.launch".to_string()),
                     model_family: Some("llama3.2:latest".to_string()),
                     host_capability: None,
                     apple_platform: None,
@@ -16648,7 +16648,7 @@ mod tests {
                     evaluator_policy_ref: None,
                 },
                 teacher_model_ref: "model://llama3.3-instruct".to_string(),
-                generation_product_id: Some("ollama.text_generation".to_string()),
+                generation_product_id: Some("local_gemma.text_generation".to_string()),
                 generation_delivery_proof_id: Some("delivery.compute.alpha".to_string()),
                 output_artifact_ref: None,
                 created_at_ms,
@@ -16754,7 +16754,7 @@ mod tests {
             policy: PolicyContext::default(),
             lot: CapacityLot {
                 capacity_lot_id: "lot.compute.alpha".to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 provider_id: "provider.alpha".to_string(),
                 delivery_start_ms: created_at_ms,
                 delivery_end_ms: created_at_ms + 60_000,
@@ -16799,7 +16799,7 @@ mod tests {
             policy: PolicyContext::default(),
             instrument: CapacityInstrument {
                 instrument_id: "instrument.compute.alpha".to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 capacity_lot_id: Some("lot.compute.alpha".to_string()),
                 buyer_id: Some("buyer.alpha".to_string()),
                 provider_id: Some("provider.alpha".to_string()),
@@ -16834,7 +16834,7 @@ mod tests {
             policy: PolicyContext::default(),
             delivery_proof: DeliveryProof {
                 delivery_proof_id: "delivery.compute.alpha".to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 capacity_lot_id: "lot.compute.alpha".to_string(),
                 instrument_id: Some("instrument.compute.alpha".to_string()),
                 contract_id: None,
@@ -16863,7 +16863,7 @@ mod tests {
                     artifact_residency: None,
                     environment_binding: None,
                     checkpoint_binding: None,
-                    model_policy: Some("ollama.text_generation.launch".to_string()),
+                    model_policy: Some("local_gemma.text_generation.launch".to_string()),
                     model_family: Some("llama3.2:latest".to_string()),
                     host_capability: None,
                     apple_platform: None,
@@ -16953,7 +16953,7 @@ mod tests {
             policy: PolicyContext::default(),
             index: ComputeIndex {
                 index_id: "index.compute.alpha".to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 observation_window_start_ms: created_at_ms - 60_000,
                 observation_window_end_ms: created_at_ms,
                 published_at_ms: created_at_ms,
@@ -16980,7 +16980,7 @@ mod tests {
             challenge_id,
             "proof-bundle-digest.alpha",
             "request-digest.alpha",
-            "ollama.text_generation",
+            "local_gemma.text_generation",
             "cuda",
             created_at_ms,
         )
@@ -17240,7 +17240,7 @@ mod tests {
             policy: PolicyContext::default(),
             instrument: CapacityInstrument {
                 instrument_id: "instrument.compute.future_cash.alpha".to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 capacity_lot_id: None,
                 buyer_id: Some("buyer.hedge.alpha".to_string()),
                 provider_id: Some("provider.hedge.alpha".to_string()),
@@ -17295,7 +17295,7 @@ mod tests {
             policy: PolicyContext::default(),
             instrument: CapacityInstrument {
                 instrument_id: instrument_id.to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 capacity_lot_id: Some("lot.compute.alpha".to_string()),
                 buyer_id: Some("buyer.alpha".to_string()),
                 provider_id: Some("provider.alpha".to_string()),
@@ -17344,7 +17344,7 @@ mod tests {
             policy: PolicyContext::default(),
             instrument: CapacityInstrument {
                 instrument_id: instrument_id.to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 capacity_lot_id: Some(capacity_lot_id.to_string()),
                 buyer_id: Some("buyer.alpha".to_string()),
                 provider_id: Some("provider.alpha".to_string()),
@@ -17381,7 +17381,7 @@ mod tests {
             policy: PolicyContext::default(),
             structured_instrument: StructuredCapacityInstrument {
                 structured_instrument_id: "structured.compute.reservation.alpha".to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 buyer_id: Some("buyer.alpha".to_string()),
                 provider_id: Some("provider.alpha".to_string()),
                 kind: StructuredCapacityInstrumentKind::Reservation,
@@ -17408,7 +17408,7 @@ mod tests {
             policy: PolicyContext::default(),
             structured_instrument: StructuredCapacityInstrument {
                 structured_instrument_id: "structured.compute.strip.alpha".to_string(),
-                product_id: "ollama.text_generation".to_string(),
+                product_id: "local_gemma.text_generation".to_string(),
                 buyer_id: Some("buyer.alpha".to_string()),
                 provider_id: Some("provider.alpha".to_string()),
                 kind: StructuredCapacityInstrumentKind::Strip,
@@ -17903,7 +17903,7 @@ mod tests {
             .expect("create eval run");
         assert_eq!(
             create.response.eval_run.product_id.as_deref(),
-            Some("ollama.text_generation")
+            Some("local_gemma.text_generation")
         );
         assert_eq!(
             create
@@ -19828,7 +19828,7 @@ mod tests {
                     superseded_index_id: "index.compute.alpha".to_string(),
                     corrected_index: ComputeIndex {
                         index_id: "index.compute.alpha.v2".to_string(),
-                        product_id: "ollama.text_generation".to_string(),
+                        product_id: "local_gemma.text_generation".to_string(),
                         observation_window_start_ms: 0,
                         observation_window_end_ms: 0,
                         published_at_ms: created_at_ms as i64 + 7_000,
@@ -20029,7 +20029,7 @@ mod tests {
                     superseded_index_id: "index.compute.alpha".to_string(),
                     corrected_index: ComputeIndex {
                         index_id: "index.compute.alpha.v2".to_string(),
-                        product_id: "ollama.text_generation".to_string(),
+                        product_id: "local_gemma.text_generation".to_string(),
                         observation_window_start_ms: 0,
                         observation_window_end_ms: 0,
                         published_at_ms: created_at_ms as i64 + 7_000,
@@ -20214,7 +20214,7 @@ mod tests {
                     superseded_index_id: "index.compute.alpha".to_string(),
                     corrected_index: ComputeIndex {
                         index_id: "index.compute.alpha.v2".to_string(),
-                        product_id: "ollama.text_generation".to_string(),
+                        product_id: "local_gemma.text_generation".to_string(),
                         observation_window_start_ms: 0,
                         observation_window_end_ms: 0,
                         published_at_ms: created_at_ms as i64 + 7_000,
