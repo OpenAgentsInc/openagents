@@ -3829,7 +3829,7 @@ impl TrainingSchedulerState {
         if !node.online {
             return Err("training_scheduler_node_offline".to_string());
         }
-        if !node.eligible {
+        if !training_authority_view_claimability_ready(&node, request.role) {
             return Err("training_scheduler_node_ineligible".to_string());
         }
         if let Some(requested_network_id) = request.requested_network_id.as_deref()
@@ -4768,7 +4768,10 @@ fn training_node_scheduler_run_mismatch_reason_with_definition(
     role: TrainingNodeRoleClaim,
     run_definition: &ComputeTrainingRunDefinition,
 ) -> Option<&'static str> {
-    if !node.role_claims.contains(&role) || !node.online || !node.eligible {
+    if !node.role_claims.contains(&role)
+        || !node.online
+        || !training_authority_view_claimability_ready(node, role)
+    {
         return Some("training_scheduler_node_ineligible");
     }
     if !node.allowed_networks.is_empty()
@@ -9220,7 +9223,7 @@ fn homework_launch_node_target_mismatch_reason(
     if target.only_online && !node.online {
         return Some("homework_launch_target_offline");
     }
-    if !node.eligible {
+    if !training_authority_view_claimability_ready(node, TrainingNodeRoleClaim::Worker) {
         return Some("homework_launch_target_node_ineligible");
     }
     if matches!(
@@ -12827,11 +12830,13 @@ async fn execute_training_run_lease_claim(
         .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
     let node = training_authority_refresh_node_view(&store.kernel, node, request.requested_at_ms)
         .map_err(kernel_api_error)?;
-    if !node.eligible {
-        let persisted_labels =
-            training_authority_persisted_node_labels(node.active_reputation_labels.as_slice());
-        let reason = pylon_training_hard_gate_reason(&persisted_labels)
-            .unwrap_or_else(|| "training_node_hard_gated".to_string());
+    if !training_authority_view_claimability_ready(&node, TrainingNodeRoleClaim::Worker) {
+        let reason = training_authority_view_claimability_reason(
+            &node,
+            TrainingNodeRoleClaim::Worker,
+        )
+        .unwrap_or("training_node_hard_gated")
+        .to_string();
         tracing::warn!(
             node_pubkey_hex = request.node_pubkey_hex.as_str(),
             requested_training_run_id = ?request.requested_training_run_id,
@@ -13666,7 +13671,7 @@ async fn claim_training_validator_challenge(
                 "training_scheduler_node_offline".to_string(),
             ));
         }
-        if !node.eligible {
+        if !training_authority_view_claimability_ready(&node, TrainingNodeRoleClaim::Validator) {
             tracing::warn!(
                 node_pubkey_hex = request.node_pubkey_hex.as_str(),
                 requested_training_run_id = ?request.requested_training_run_id,
@@ -14695,7 +14700,9 @@ fn training_authority_label_key(source: &TrainingAuthorityReputationSource) -> S
 #[derive(Clone, Debug, Default)]
 struct TrainingAuthorityReputationSubjectSnapshot {
     labels: Vec<String>,
-    hard_gate_reason: Option<String>,
+    worker_hard_gate_reason: Option<String>,
+    validator_hard_gate_reason: Option<String>,
+    recovery_source_hard_gate_reason: Option<String>,
 }
 
 fn training_authority_is_computed_label(label: &str) -> bool {
@@ -14725,6 +14732,15 @@ fn training_authority_hard_gate_reason_for_source(
     }
 }
 
+fn training_authority_assign_hard_gate_reason(
+    slot: &mut Option<String>,
+    reason: &str,
+) {
+    if reason == PylonTrainingRefusalCode::BuildRevoked.label() || slot.is_none() {
+        *slot = Some(reason.to_string());
+    }
+}
+
 fn training_authority_reputation_snapshots_from_sources(
     sources: Vec<TrainingAuthorityReputationSource>,
 ) -> HashMap<String, TrainingAuthorityReputationSubjectSnapshot> {
@@ -14740,10 +14756,43 @@ fn training_authority_reputation_snapshots_from_sources(
         snapshot.labels.push(training_authority_label_key(&source));
         if source.hard_gate {
             let reason = training_authority_hard_gate_reason_for_source(&source);
-            if reason == PylonTrainingRefusalCode::BuildRevoked.label()
-                || snapshot.hard_gate_reason.is_none()
-            {
-                snapshot.hard_gate_reason = Some(reason);
+            match source.namespace {
+                PylonTrainingReputationNamespace::Build => {
+                    training_authority_assign_hard_gate_reason(
+                        &mut snapshot.worker_hard_gate_reason,
+                        reason.as_str(),
+                    );
+                    training_authority_assign_hard_gate_reason(
+                        &mut snapshot.validator_hard_gate_reason,
+                        reason.as_str(),
+                    );
+                    training_authority_assign_hard_gate_reason(
+                        &mut snapshot.recovery_source_hard_gate_reason,
+                        reason.as_str(),
+                    );
+                }
+                PylonTrainingReputationNamespace::Contributor => {
+                    training_authority_assign_hard_gate_reason(
+                        &mut snapshot.worker_hard_gate_reason,
+                        reason.as_str(),
+                    );
+                }
+                PylonTrainingReputationNamespace::Validator => {
+                    training_authority_assign_hard_gate_reason(
+                        &mut snapshot.validator_hard_gate_reason,
+                        reason.as_str(),
+                    );
+                }
+                PylonTrainingReputationNamespace::Checkpoint => {
+                    training_authority_assign_hard_gate_reason(
+                        &mut snapshot.worker_hard_gate_reason,
+                        reason.as_str(),
+                    );
+                    training_authority_assign_hard_gate_reason(
+                        &mut snapshot.validator_hard_gate_reason,
+                        reason.as_str(),
+                    );
+                }
             }
         }
     }
@@ -14754,12 +14803,100 @@ fn training_authority_reputation_snapshots_from_sources(
     snapshots
 }
 
-fn training_authority_node_hard_gate_reason(
+fn training_authority_view_role_hard_gate_reason(
     persisted_labels: &[String],
     snapshot: Option<&TrainingAuthorityReputationSubjectSnapshot>,
+    role: TrainingNodeRoleClaim,
 ) -> Option<String> {
     pylon_training_hard_gate_reason(persisted_labels)
-        .or_else(|| snapshot.and_then(|value| value.hard_gate_reason.clone()))
+        .or_else(|| {
+            snapshot.and_then(|value| match role {
+                TrainingNodeRoleClaim::Worker => value.worker_hard_gate_reason.clone(),
+                TrainingNodeRoleClaim::Validator => value.validator_hard_gate_reason.clone(),
+                TrainingNodeRoleClaim::RecoverySource => {
+                    value.recovery_source_hard_gate_reason.clone()
+                }
+            })
+        })
+}
+
+fn training_authority_apply_view_role_hard_gate(
+    dimension: &mut crate::kernel::TrainingNodeReadinessDimension,
+    reason: Option<String>,
+) {
+    if matches!(dimension.reason.as_deref(), Some("reputation_blocked")) {
+        if let Some(reason) = reason {
+            *dimension = crate::kernel::TrainingNodeReadinessDimension {
+                state: "blocked".to_string(),
+                ready: false,
+                reason: Some(reason),
+            };
+        } else {
+            *dimension = crate::kernel::TrainingNodeReadinessDimension {
+                state: "ready".to_string(),
+                ready: true,
+                reason: None,
+            };
+        }
+        return;
+    }
+    if !dimension.ready {
+        return;
+    }
+    if let Some(reason) = reason {
+        *dimension = crate::kernel::TrainingNodeReadinessDimension {
+            state: "blocked".to_string(),
+            ready: false,
+            reason: Some(reason),
+        };
+    }
+}
+
+fn training_authority_view_claimability_ready(
+    node: &AdmittedTrainingNodeView,
+    role: TrainingNodeRoleClaim,
+) -> bool {
+    match role {
+        TrainingNodeRoleClaim::Worker => node.readiness.claimability_status.worker_assignment.ready,
+        TrainingNodeRoleClaim::Validator => {
+            node.readiness.claimability_status.validator_challenge.ready
+        }
+        TrainingNodeRoleClaim::RecoverySource => {
+            node.readiness.claimability_status.recovery_source_assignment.ready
+        }
+    }
+}
+
+fn training_authority_view_claimability_reason<'a>(
+    node: &'a AdmittedTrainingNodeView,
+    role: TrainingNodeRoleClaim,
+) -> Option<&'a str> {
+    match role {
+        TrainingNodeRoleClaim::Worker => node
+            .readiness
+            .claimability_status
+            .worker_assignment
+            .reason
+            .as_deref(),
+        TrainingNodeRoleClaim::Validator => node
+            .readiness
+            .claimability_status
+            .validator_challenge
+            .reason
+            .as_deref(),
+        TrainingNodeRoleClaim::RecoverySource => node
+            .readiness
+            .claimability_status
+            .recovery_source_assignment
+            .reason
+            .as_deref(),
+    }
+}
+
+fn training_authority_view_is_eligible(node: &AdmittedTrainingNodeView) -> bool {
+    node.role_claims.iter().copied().any(|role| {
+        training_authority_view_claimability_ready(node, role)
+    })
 }
 
 fn training_authority_closeout_contexts(
@@ -15209,8 +15346,31 @@ fn training_authority_apply_snapshot_to_node(
         persisted_labels.clone(),
         snapshot.map(|value| &value.labels),
     );
-    node.eligible =
-        training_authority_node_hard_gate_reason(persisted_labels.as_slice(), snapshot).is_none();
+    training_authority_apply_view_role_hard_gate(
+        &mut node.readiness.claimability_status.worker_assignment,
+        training_authority_view_role_hard_gate_reason(
+            persisted_labels.as_slice(),
+            snapshot,
+            TrainingNodeRoleClaim::Worker,
+        ),
+    );
+    training_authority_apply_view_role_hard_gate(
+        &mut node.readiness.claimability_status.validator_challenge,
+        training_authority_view_role_hard_gate_reason(
+            persisted_labels.as_slice(),
+            snapshot,
+            TrainingNodeRoleClaim::Validator,
+        ),
+    );
+    training_authority_apply_view_role_hard_gate(
+        &mut node.readiness.claimability_status.recovery_source_assignment,
+        training_authority_view_role_hard_gate_reason(
+            persisted_labels.as_slice(),
+            snapshot,
+            TrainingNodeRoleClaim::RecoverySource,
+        ),
+    );
+    node.eligible = training_authority_view_is_eligible(&node);
     node
 }
 
@@ -48970,11 +49130,16 @@ mod tests {
                 .iter()
                 .any(|label| label == "authority::trn/validator::inconsistent")
         );
-        assert_eq!(aged_snapshot.hard_gate_reason, None);
+        assert_eq!(aged_snapshot.worker_hard_gate_reason, None);
+        assert_eq!(aged_snapshot.validator_hard_gate_reason, None);
 
         let fresh_snapshot = snapshots.get("node-fresh").expect("fresh snapshot");
         assert_eq!(
-            fresh_snapshot.hard_gate_reason.as_deref(),
+            fresh_snapshot.worker_hard_gate_reason.as_deref(),
+            None
+        );
+        assert_eq!(
+            fresh_snapshot.validator_hard_gate_reason.as_deref(),
             Some("training_node_hard_gated")
         );
     }
@@ -49064,13 +49229,118 @@ mod tests {
             },
             Some(&super::TrainingAuthorityReputationSubjectSnapshot {
                 labels: vec!["authority::trn/build::admitted".to_string()],
-                hard_gate_reason: None,
+                worker_hard_gate_reason: None,
+                validator_hard_gate_reason: None,
+                recovery_source_hard_gate_reason: None,
             }),
         );
         assert!(refreshed.eligible);
         assert_eq!(
             refreshed.active_reputation_labels,
             vec!["authority::trn/build::admitted".to_string()]
+        );
+    }
+
+    #[test]
+    fn training_authority_refresh_keeps_worker_claimable_when_only_validator_is_inconsistent() {
+        let capability_tier = training_capability_tier_profile(
+            &[TrainingNodeRoleClaim::Worker, TrainingNodeRoleClaim::Validator],
+            Some(256),
+        );
+        let ready = crate::kernel::TrainingNodeReadinessDimension {
+            state: "ready".to_string(),
+            ready: true,
+            reason: None,
+        };
+        let refreshed = super::training_authority_apply_snapshot_to_node(
+            AdmittedTrainingNodeView {
+                admission_id: "admission.validator-only-gate".to_string(),
+                node_pubkey_hex: "node-validator-only-gate".to_string(),
+                release_id: "openagents.pylon@0.1.12".to_string(),
+                node_label: Some("validator-only-gate".to_string()),
+                role_claims: vec![TrainingNodeRoleClaim::Worker, TrainingNodeRoleClaim::Validator],
+                allowed_networks: vec!["trainnet.alpha".to_string()],
+                build_version: Some("0.1.12".to_string()),
+                build_digest: "sha256:build-validator-only-gate".to_string(),
+                contributor_availability: ProviderAdapterTrainingContributorAvailability {
+                    contributor_supported: true,
+                    coordinator_match_supported: true,
+                    authority_receipt_supported: true,
+                    execution_backends: vec![
+                        ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend,
+                    ],
+                    adapter_families: vec!["openagents.adapter.reference".to_string()],
+                    adapter_formats: vec!["openagents.adapter.delta.v1".to_string()],
+                    validator_policy_refs: vec!["policy://validator/mvp/v1".to_string()],
+                    checkpoint_families: vec!["decoder".to_string()],
+                    environment_refs: vec!["env.openagents.cuda.train".to_string()],
+                    minimum_memory_gb: Some(80),
+                    available_memory_gb: Some(256),
+                    settlement_trigger: Some(
+                        ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow,
+                    ),
+                },
+                capability_tier: capability_tier.clone(),
+                capability_envelope_v2: training_capability_envelope_v2(
+                    &capability_tier,
+                    true,
+                    true,
+                ),
+                available_memory_gb: Some(256),
+                available_disk_gb: Some(512),
+                active_reputation_labels: Vec::new(),
+                settlement_destination: Some("lnbc1trainingalpha".to_string()),
+                admitted_at_ms: 1_776_240_000_000,
+                updated_at_ms: 1_776_240_000_000,
+                last_heartbeat_at_ms: Some(1_776_240_000_000),
+                last_training_run_id: Some("run.idle".to_string()),
+                last_window_id: Some("window.idle".to_string()),
+                last_assignment_id: Some("assignment.idle".to_string()),
+                last_lease_id: Some("lease.idle".to_string()),
+                last_desired_state: Some(TrainingNodeDesiredState::Running),
+                last_process_state: Some(TrainingNodeProcessState::Running),
+                last_exit_code: None,
+                last_successful_run_id: None,
+                last_successful_window_id: None,
+                online: true,
+                eligible: false,
+                readiness: crate::kernel::TrainingNodeReadinessProjection {
+                    requested_network_id: None,
+                    identity_status: ready.clone(),
+                    admission_status: ready.clone(),
+                    presence_status: ready.clone(),
+                    inventory_status: ready.clone(),
+                    network_scope_status: ready.clone(),
+                    role_status: crate::kernel::TrainingNodeRoleReadinessProjection {
+                        worker: ready.clone(),
+                        validator: ready.clone(),
+                        recovery_source: ready.clone(),
+                    },
+                    claimability_status: crate::kernel::TrainingNodeClaimabilityProjection {
+                        worker_assignment: ready.clone(),
+                        validator_challenge: ready.clone(),
+                        recovery_source_assignment: ready,
+                    },
+                },
+            },
+            Some(&super::TrainingAuthorityReputationSubjectSnapshot {
+                labels: vec!["authority::trn/validator::inconsistent".to_string()],
+                worker_hard_gate_reason: None,
+                validator_hard_gate_reason: Some("training_node_hard_gated".to_string()),
+                recovery_source_hard_gate_reason: None,
+            }),
+        );
+        assert!(refreshed.eligible);
+        assert!(refreshed.readiness.claimability_status.worker_assignment.ready);
+        assert!(!refreshed.readiness.claimability_status.validator_challenge.ready);
+        assert_eq!(
+            refreshed
+                .readiness
+                .claimability_status
+                .validator_challenge
+                .reason
+                .as_deref(),
+            Some("training_node_hard_gated")
         );
     }
 
