@@ -69,10 +69,11 @@ ensure_gcloud_context
 upload_file_via_ssh() {
   local local_path="$1"
   local remote_path="$2"
-  local remote_dir encoded remote_path_quoted remote_dir_quoted
+  local remote_dir encoded encoded_quoted remote_path_quoted remote_dir_quoted
 
   remote_dir="$(dirname "$remote_path")"
   encoded="$(base64 < "$local_path" | tr -d '\n')"
+  printf -v encoded_quoted '%q' "$encoded"
   printf -v remote_path_quoted '%q' "$remote_path"
   printf -v remote_dir_quoted '%q' "$remote_dir"
 
@@ -80,7 +81,7 @@ upload_file_via_ssh() {
     --tunnel-through-iap \
     --project "$GCP_PROJECT" \
     --zone "$GCP_ZONE" \
-    --command "bash -lc 'mkdir -p ${remote_dir_quoted} && printf %s ${encoded@Q} | base64 -d > ${remote_path_quoted}'"
+    --command "bash -lc 'mkdir -p ${remote_dir_quoted} && printf %s ${encoded_quoted} | base64 -d > ${remote_path_quoted}'"
 }
 
 fetch_remote_env() {
