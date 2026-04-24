@@ -515,6 +515,12 @@ pub struct PublicTrainingLaunchState {
 pub struct PublicTrainingRunDetailSnapshot {
     #[serde(default)]
     pub generated_at_unix_ms: u64,
+    #[serde(default = "default_public_training_run_detail_snapshot_source")]
+    pub snapshot_source: String,
+    #[serde(default)]
+    pub snapshot_age_ms: u64,
+    #[serde(default)]
+    pub snapshot_stale: bool,
     #[serde(default)]
     pub training_run_id: String,
     #[serde(default)]
@@ -539,6 +545,10 @@ pub struct PublicTrainingRunDetailSnapshot {
     pub nodes: Vec<PublicTrainingRunNodeRow>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub caveats: Vec<PublicTrainingRunCaveat>,
+}
+
+fn default_public_training_run_detail_snapshot_source() -> String {
+    "live".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

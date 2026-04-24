@@ -19,6 +19,7 @@ cargo run -p nexus-control -- treasury recovery-cutover --report-path /tmp/nexus
 HTTP:
 
 - `GET /v1/treasury/status`
+- `POST /v1/admin/treasury/refresh`
 - `POST /v1/treasury/funding-target`
 - `GET /v1/treasury/integration/export`
 - `POST /v1/treasury/integration/public-snapshot`
@@ -27,6 +28,12 @@ HTTP:
 `treasury funding-target` uses the repo-owned Spark integration and returns the
 current treasury Spark receive address, Bitcoin receive address, and an optional
 Bolt11 invoice when an amount is requested.
+
+`POST /v1/admin/treasury/refresh` is the operator-safe manual refresh surface.
+It requires the normal Nexus admin bearer token, runs one forced wallet refresh
+without creating a wallet implicitly, and returns the same status payload as
+`GET /v1/treasury/status`. Use it when payout confirmation visibility matters
+now and waiting for the background refresh loop is not acceptable.
 
 To create a live Lightning invoice for operator funding, call:
 
@@ -679,6 +686,8 @@ Interpretation rules for the new `/api/stats` readiness counters:
 
 Operator-safe loop health now projects through `GET /v1/treasury/status`:
 
+- `last_wallet_sync_at_unix_ms`
+- `last_wallet_refresh_attempt_at_unix_ms`
 - `wallet_hydration_mode`
 - `wallet_payment_scan_mode`
 - `wallet_storage_runtime_mode`
@@ -695,6 +704,8 @@ Operator-safe loop health now projects through `GET /v1/treasury/status`:
 - `public_snapshot_generated_at_unix_ms`
 - `snapshot_age_ms`
 - `wallet_sync_lag_ms`
+- `pending_confirmation_count`
+- `tracked_payment_backlog_count`
 - `min_new_accrual_pylon_version`
 - `min_new_accrual_started_at_unix_ms`
 - `min_new_accrual_version_gate_active`
@@ -719,6 +730,12 @@ Operator-safe loop health now projects through `GET /v1/treasury/status`:
 - `training_payout_ledger_summary`
 - `payout_target_identities`
 - `recent_training_payouts`
+
+`GET /v1/treasury/status` now derives its response from current treasury state
+instead of replaying the last persisted public snapshot verbatim. That keeps
+tracked-payment visibility honest after payout mutations and makes
+`pending_confirmation_count` / `tracked_payment_backlog_count` reflect the
+current ledger immediately, even before an unrelated snapshot rebuild lands.
 
 Operator-safe policy audit now also projects through `GET /v1/treasury/status`:
 
