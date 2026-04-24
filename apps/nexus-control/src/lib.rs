@@ -5924,8 +5924,11 @@ fn training_window_defensibility_audit(
             kernel.get_admitted_training_node(audited_node_pubkey_hex, None, recorded_at_ms);
         let hard_gate_reason = admitted_node.as_ref().and_then(|node| {
             (!node.eligible).then(|| {
-                pylon_training_hard_gate_reason(&node.active_reputation_labels)
-                    .unwrap_or_else(|| "training_node_not_eligible".to_string())
+                let persisted_labels = training_authority_persisted_node_labels(
+                    node.active_reputation_labels.as_slice(),
+                );
+                pylon_training_hard_gate_reason(&persisted_labels)
+                    .unwrap_or_else(|| "training_node_hard_gated".to_string())
             })
         });
         match admitted_node.as_ref() {
@@ -12825,8 +12828,10 @@ async fn execute_training_run_lease_claim(
     let node = training_authority_refresh_node_view(&store.kernel, node, request.requested_at_ms)
         .map_err(kernel_api_error)?;
     if !node.eligible {
-        let reason = pylon_training_hard_gate_reason(&node.active_reputation_labels)
-            .unwrap_or_else(|| "training_node_not_eligible".to_string());
+        let persisted_labels =
+            training_authority_persisted_node_labels(node.active_reputation_labels.as_slice());
+        let reason = pylon_training_hard_gate_reason(&persisted_labels)
+            .unwrap_or_else(|| "training_node_hard_gated".to_string());
         tracing::warn!(
             node_pubkey_hex = request.node_pubkey_hex.as_str(),
             requested_training_run_id = ?request.requested_training_run_id,
@@ -14687,6 +14692,76 @@ fn training_authority_label_key(source: &TrainingAuthorityReputationSource) -> S
     )
 }
 
+#[derive(Clone, Debug, Default)]
+struct TrainingAuthorityReputationSubjectSnapshot {
+    labels: Vec<String>,
+    hard_gate_reason: Option<String>,
+}
+
+fn training_authority_is_computed_label(label: &str) -> bool {
+    label.trim().starts_with("authority::")
+}
+
+fn training_authority_persisted_node_labels(labels: &[String]) -> Vec<String> {
+    let mut persisted = labels
+        .iter()
+        .filter(|label| !training_authority_is_computed_label(label.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    persisted.sort();
+    persisted.dedup();
+    persisted
+}
+
+fn training_authority_hard_gate_reason_for_source(
+    source: &TrainingAuthorityReputationSource,
+) -> String {
+    if source.namespace == PylonTrainingReputationNamespace::Build
+        && source.label == PylonTrainingReputationLabel::Revoked
+    {
+        PylonTrainingRefusalCode::BuildRevoked.label().to_string()
+    } else {
+        "training_node_hard_gated".to_string()
+    }
+}
+
+fn training_authority_reputation_snapshots_from_sources(
+    sources: Vec<TrainingAuthorityReputationSource>,
+) -> HashMap<String, TrainingAuthorityReputationSubjectSnapshot> {
+    let mut snapshots = HashMap::<String, TrainingAuthorityReputationSubjectSnapshot>::new();
+    for source in sources {
+        if source.scheduler_effect == PylonTrainingSchedulerEffect::Ignored {
+            continue;
+        }
+        let Some(subject_pubkey) = source.subject_pubkey.as_ref() else {
+            continue;
+        };
+        let snapshot = snapshots.entry(subject_pubkey.clone()).or_default();
+        snapshot.labels.push(training_authority_label_key(&source));
+        if source.hard_gate {
+            let reason = training_authority_hard_gate_reason_for_source(&source);
+            if reason == PylonTrainingRefusalCode::BuildRevoked.label()
+                || snapshot.hard_gate_reason.is_none()
+            {
+                snapshot.hard_gate_reason = Some(reason);
+            }
+        }
+    }
+    for snapshot in snapshots.values_mut() {
+        snapshot.labels.sort();
+        snapshot.labels.dedup();
+    }
+    snapshots
+}
+
+fn training_authority_node_hard_gate_reason(
+    persisted_labels: &[String],
+    snapshot: Option<&TrainingAuthorityReputationSubjectSnapshot>,
+) -> Option<String> {
+    pylon_training_hard_gate_reason(persisted_labels)
+        .or_else(|| snapshot.and_then(|value| value.hard_gate_reason.clone()))
+}
+
 fn training_authority_closeout_contexts(
     closeout_sources: &[ComputeAcceptedOutcomePublicationSource],
 ) -> HashMap<String, TrainingCloseoutReputationContext> {
@@ -15080,22 +15155,10 @@ fn training_authority_reputation_sources(
     Ok(sources.into_values().collect())
 }
 
-fn training_authority_reputation_labels_for_node(
-    kernel: &KernelState,
-    node: &AdmittedTrainingNodeView,
-    now_unix_ms: i64,
-) -> Result<Vec<String>, String> {
-    let labels_by_subject = training_authority_reputation_labels_by_subject(kernel, now_unix_ms)?;
-    Ok(training_authority_merge_node_labels(
-        node.active_reputation_labels.clone(),
-        labels_by_subject.get(node.node_pubkey_hex.as_str()),
-    ))
-}
-
-fn training_authority_reputation_labels_by_subject(
+fn training_authority_reputation_snapshots_by_subject(
     kernel: &KernelState,
     now_unix_ms: i64,
-) -> Result<HashMap<String, Vec<String>>, String> {
+) -> Result<HashMap<String, TrainingAuthorityReputationSubjectSnapshot>, String> {
     let admitted_nodes = kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
@@ -15124,30 +15187,31 @@ fn training_authority_reputation_labels_by_subject(
         })
         .collect::<Vec<_>>();
     let validator_finalizations = kernel.list_training_validator_challenge_finalization_sources();
-    let mut labels_by_subject = HashMap::<String, BTreeSet<String>>::new();
-    for source in training_authority_reputation_sources(
-        admitted_nodes.as_slice(),
-        window_sources.as_slice(),
-        closeout_sources.as_slice(),
-        contributions.as_slice(),
-        validator_finalizations.as_slice(),
-        now_unix_ms,
-    )? {
-        if source.scheduler_effect == PylonTrainingSchedulerEffect::Ignored {
-            continue;
-        }
-        let Some(subject_pubkey) = source.subject_pubkey.as_ref() else {
-            continue;
-        };
-        labels_by_subject
-            .entry(subject_pubkey.clone())
-            .or_default()
-            .insert(training_authority_label_key(&source));
-    }
-    Ok(labels_by_subject
-        .into_iter()
-        .map(|(subject_pubkey, labels)| (subject_pubkey, labels.into_iter().collect::<Vec<_>>()))
-        .collect())
+    Ok(training_authority_reputation_snapshots_from_sources(
+        training_authority_reputation_sources(
+            admitted_nodes.as_slice(),
+            window_sources.as_slice(),
+            closeout_sources.as_slice(),
+            contributions.as_slice(),
+            validator_finalizations.as_slice(),
+            now_unix_ms,
+        )?,
+    ))
+}
+
+fn training_authority_apply_snapshot_to_node(
+    mut node: AdmittedTrainingNodeView,
+    snapshot: Option<&TrainingAuthorityReputationSubjectSnapshot>,
+) -> AdmittedTrainingNodeView {
+    let persisted_labels =
+        training_authority_persisted_node_labels(node.active_reputation_labels.as_slice());
+    node.active_reputation_labels = training_authority_merge_node_labels(
+        persisted_labels.clone(),
+        snapshot.map(|value| &value.labels),
+    );
+    node.eligible =
+        training_authority_node_hard_gate_reason(persisted_labels.as_slice(), snapshot).is_none();
+    node
 }
 
 fn training_authority_merge_node_labels(
@@ -15168,13 +15232,15 @@ fn training_authority_merge_node_labels(
 
 fn training_authority_refresh_node_view(
     kernel: &KernelState,
-    mut node: AdmittedTrainingNodeView,
+    node: AdmittedTrainingNodeView,
     now_unix_ms: i64,
 ) -> Result<AdmittedTrainingNodeView, String> {
-    node.active_reputation_labels =
-        training_authority_reputation_labels_for_node(kernel, &node, now_unix_ms)?;
-    node.eligible = pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
-    Ok(node)
+    let snapshots = training_authority_reputation_snapshots_by_subject(kernel, now_unix_ms)?;
+    let node_pubkey_hex = node.node_pubkey_hex.clone();
+    Ok(training_authority_apply_snapshot_to_node(
+        node,
+        snapshots.get(node_pubkey_hex.as_str()),
+    ))
 }
 
 fn training_authority_refresh_node_views(
@@ -15182,17 +15248,14 @@ fn training_authority_refresh_node_views(
     nodes: Vec<AdmittedTrainingNodeView>,
     now_unix_ms: i64,
 ) -> Result<Vec<AdmittedTrainingNodeView>, String> {
-    let labels_by_subject = training_authority_reputation_labels_by_subject(kernel, now_unix_ms)?;
+    let snapshots = training_authority_reputation_snapshots_by_subject(kernel, now_unix_ms)?;
     Ok(nodes
         .into_iter()
-        .map(|mut node| {
-            node.active_reputation_labels = training_authority_merge_node_labels(
-                node.active_reputation_labels,
-                labels_by_subject.get(node.node_pubkey_hex.as_str()),
-            );
-            node.eligible =
-                pylon_training_hard_gate_reason(&node.active_reputation_labels).is_none();
-            node
+        .map(|node| {
+            training_authority_apply_snapshot_to_node(
+                node.clone(),
+                snapshots.get(node.node_pubkey_hex.as_str()),
+            )
         })
         .collect())
 }
@@ -48859,6 +48922,155 @@ mod tests {
                 ComputeValidatorChallengeVerdict::Verified
             ),
             Some(super::PylonTrainingReputationLabel::Good)
+        );
+    }
+
+    #[test]
+    fn training_authority_reputation_projection_ages_inconsistent_labels_out_of_hard_gate() {
+        let now_unix_ms = 1_776_240_000_000i64;
+        let aged_inconsistent = super::training_authority_reputation_source(
+            "training".to_string(),
+            super::PylonTrainingReputationNamespace::Validator,
+            super::PylonTrainingReputationLabel::Inconsistent,
+            now_unix_ms - (8 * 86_400_000),
+            Some("node-aged".to_string()),
+            Some(
+                super::TrainingAuthorityReputationObjectRef::ValidatorChallenge(
+                    "challenge.aged".to_string(),
+                ),
+            ),
+            "reputation_label::validator::inconsistent::node-aged::challenge.aged".to_string(),
+            now_unix_ms,
+        )
+        .expect("aged inconsistent source");
+        let fresh_inconsistent = super::training_authority_reputation_source(
+            "training".to_string(),
+            super::PylonTrainingReputationNamespace::Validator,
+            super::PylonTrainingReputationLabel::Inconsistent,
+            now_unix_ms - (2 * 86_400_000),
+            Some("node-fresh".to_string()),
+            Some(
+                super::TrainingAuthorityReputationObjectRef::ValidatorChallenge(
+                    "challenge.fresh".to_string(),
+                ),
+            ),
+            "reputation_label::validator::inconsistent::node-fresh::challenge.fresh".to_string(),
+            now_unix_ms,
+        )
+        .expect("fresh inconsistent source");
+
+        let snapshots = super::training_authority_reputation_snapshots_from_sources(vec![
+            aged_inconsistent,
+            fresh_inconsistent,
+        ]);
+        let aged_snapshot = snapshots.get("node-aged").expect("aged snapshot");
+        assert!(
+            aged_snapshot
+                .labels
+                .iter()
+                .any(|label| label == "authority::trn/validator::inconsistent")
+        );
+        assert_eq!(aged_snapshot.hard_gate_reason, None);
+
+        let fresh_snapshot = snapshots.get("node-fresh").expect("fresh snapshot");
+        assert_eq!(
+            fresh_snapshot.hard_gate_reason.as_deref(),
+            Some("training_node_hard_gated")
+        );
+    }
+
+    #[test]
+    fn training_authority_refresh_discards_legacy_authority_labels_from_node_view() {
+        let capability_tier =
+            training_capability_tier_profile(&[TrainingNodeRoleClaim::Worker], Some(256));
+        let ready = crate::kernel::TrainingNodeReadinessDimension {
+            state: "ready".to_string(),
+            ready: true,
+            reason: None,
+        };
+        let refreshed = super::training_authority_apply_snapshot_to_node(
+            AdmittedTrainingNodeView {
+                admission_id: "admission.legacy-authority".to_string(),
+                node_pubkey_hex: "node-legacy-authority-labels".to_string(),
+                release_id: "openagents.pylon@0.1.12".to_string(),
+                node_label: Some("legacy-authority".to_string()),
+                role_claims: vec![TrainingNodeRoleClaim::Worker],
+                allowed_networks: vec!["trainnet.alpha".to_string()],
+                build_version: Some("0.1.12".to_string()),
+                build_digest: "sha256:build-legacy-authority-labels".to_string(),
+                contributor_availability: ProviderAdapterTrainingContributorAvailability {
+                    contributor_supported: true,
+                    coordinator_match_supported: true,
+                    authority_receipt_supported: true,
+                    execution_backends: vec![
+                        ProviderAdapterTrainingExecutionBackend::OpenAdapterBackend,
+                    ],
+                    adapter_families: vec!["openagents.adapter.reference".to_string()],
+                    adapter_formats: vec!["openagents.adapter.delta.v1".to_string()],
+                    validator_policy_refs: vec!["policy://validator/mvp/v1".to_string()],
+                    checkpoint_families: vec!["decoder".to_string()],
+                    environment_refs: vec!["env.openagents.cuda.train".to_string()],
+                    minimum_memory_gb: Some(80),
+                    available_memory_gb: Some(256),
+                    settlement_trigger: Some(
+                        ProviderAdapterTrainingSettlementTrigger::AcceptedSealedWindow,
+                    ),
+                },
+                capability_tier: capability_tier.clone(),
+                capability_envelope_v2: training_capability_envelope_v2(
+                    &capability_tier,
+                    true,
+                    true,
+                ),
+                available_memory_gb: Some(256),
+                available_disk_gb: Some(512),
+                active_reputation_labels: vec![
+                    "authority::trn/build::stale".to_string(),
+                    "authority::trn/validator::inconsistent".to_string(),
+                ],
+                settlement_destination: Some("lnbc1trainingalpha".to_string()),
+                admitted_at_ms: 1_776_240_000_000,
+                updated_at_ms: 1_776_240_000_000,
+                last_heartbeat_at_ms: Some(1_776_240_000_000),
+                last_training_run_id: Some("run.idle".to_string()),
+                last_window_id: Some("window.idle".to_string()),
+                last_assignment_id: Some("assignment.idle".to_string()),
+                last_lease_id: Some("lease.idle".to_string()),
+                last_desired_state: Some(TrainingNodeDesiredState::Running),
+                last_process_state: Some(TrainingNodeProcessState::Running),
+                last_exit_code: None,
+                last_successful_run_id: None,
+                last_successful_window_id: None,
+                online: true,
+                eligible: false,
+                readiness: crate::kernel::TrainingNodeReadinessProjection {
+                    requested_network_id: None,
+                    identity_status: ready.clone(),
+                    admission_status: ready.clone(),
+                    presence_status: ready.clone(),
+                    inventory_status: ready.clone(),
+                    network_scope_status: ready.clone(),
+                    role_status: crate::kernel::TrainingNodeRoleReadinessProjection {
+                        worker: ready.clone(),
+                        validator: ready.clone(),
+                        recovery_source: ready.clone(),
+                    },
+                    claimability_status: crate::kernel::TrainingNodeClaimabilityProjection {
+                        worker_assignment: ready.clone(),
+                        validator_challenge: ready.clone(),
+                        recovery_source_assignment: ready,
+                    },
+                },
+            },
+            Some(&super::TrainingAuthorityReputationSubjectSnapshot {
+                labels: vec!["authority::trn/build::admitted".to_string()],
+                hard_gate_reason: None,
+            }),
+        );
+        assert!(refreshed.eligible);
+        assert_eq!(
+            refreshed.active_reputation_labels,
+            vec!["authority::trn/build::admitted".to_string()]
         );
     }
 
