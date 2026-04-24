@@ -831,6 +831,8 @@ pub struct AdmittedTrainingNodeView {
     pub online: bool,
     pub eligible: bool,
     pub readiness: TrainingNodeReadinessProjection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduler_availability: Option<TrainingNodeSchedulerAvailabilityProjection>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -871,6 +873,28 @@ pub struct TrainingNodeClaimabilityProjection {
     pub worker_assignment: TrainingNodeReadinessDimension,
     pub validator_challenge: TrainingNodeReadinessDimension,
     pub recovery_source_assignment: TrainingNodeReadinessDimension,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingNodeSchedulerAvailabilityDimension {
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub challenge_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingNodeSchedulerAvailabilityProjection {
+    pub worker_assignment: TrainingNodeSchedulerAvailabilityDimension,
+    pub validator_challenge: TrainingNodeSchedulerAvailabilityDimension,
+    pub recovery_source_assignment: TrainingNodeSchedulerAvailabilityDimension,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -15028,6 +15052,7 @@ fn admitted_training_node_view(
         online: training_node_is_online(node, now_unix_ms),
         eligible: training_node_is_eligible(node),
         readiness: training_node_readiness_projection(node, requested_network_id, now_unix_ms),
+        scheduler_availability: None,
     }
 }
 

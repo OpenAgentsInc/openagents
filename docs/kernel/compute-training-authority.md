@@ -764,6 +764,42 @@ That makes self-validation exclusions explicit in proof and live closeout
 flows, so operators no longer need validator-pubkey folklore to understand why
 one validator identity cannot claim a sealed window.
 
+Worker-node operator views now also carry a separate
+`scheduler_availability` projection. That projection is intentionally not the
+same thing as admission or hard-gate eligibility:
+
+- `readiness` still answers whether a node is admitted, online, scoped to the
+  requested network, and generally claimable in principle
+- `scheduler_availability` answers whether the live scheduler can hand that
+  node fresh work right now
+
+For worker and recovery-source lanes, the scheduler surface now distinguishes:
+
+- `ready`
+  - a matching run has a claimable current-window assignment
+- `busy`
+  - the node already owns an active current-window assignment
+- `blocked`
+  - a matching run exists, but the scheduler cannot issue fresh work
+- `idle`
+  - the node is healthy, but no matching schedulable run is currently waiting
+
+Blocked worker lanes now expose explicit reasons such as
+`training_scheduler_assignment_unavailable` together with the pinned
+`training_run_id` and `window_id`, so online nodes no longer look
+economically healthy while silently doing nothing.
+
+The scheduler also now recovers stale closeout state safely when runs advance
+windows. Replacement planning is current-window-aware:
+
+- old-window `leased` / `acked` / `active` assignments no longer prevent a new
+  current-window assignment from being planned
+- scheduler recovery rehydrates `current_window_id` from the latest kernel
+  window record and preserves retained scheduler window state when the kernel
+  has no newer window snapshot yet
+- lease-claim handling runs scheduler recovery before selecting work, so stale
+  persisted state does not pin a worker through repeated dispatch waves
+
 ## HTTP Authority Surface
 
 Nexus now exposes:
