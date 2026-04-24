@@ -62,8 +62,26 @@ source "${SCRIPT_DIR}/common.sh"
 
 require_cmd gcloud
 require_cmd jq
+require_cmd base64
 
 ensure_gcloud_context
+
+upload_file_via_ssh() {
+  local local_path="$1"
+  local remote_path="$2"
+  local remote_dir encoded remote_path_quoted remote_dir_quoted
+
+  remote_dir="$(dirname "$remote_path")"
+  encoded="$(base64 < "$local_path" | tr -d '\n')"
+  printf -v remote_path_quoted '%q' "$remote_path"
+  printf -v remote_dir_quoted '%q' "$remote_dir"
+
+  gcloud compute ssh "$NEXUS_VM" \
+    --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    --command "bash -lc 'mkdir -p ${remote_dir_quoted} && printf %s ${encoded@Q} | base64 -d > ${remote_path_quoted}'"
+}
 
 fetch_remote_env() {
   local remote_env_path="/etc/nexus-relay/nexus-relay.env"
@@ -675,20 +693,9 @@ REMOTE
 
 chmod +x "$TMP_REMOTE_SCRIPT"
 
-gcloud compute scp --tunnel-through-iap \
-  --project "$GCP_PROJECT" \
-  --zone "$GCP_ZONE" \
-  "$TMP_ENV" "${NEXUS_VM}:/tmp/nexus-relay.env"
-
-gcloud compute scp --tunnel-through-iap \
-  --project "$GCP_PROJECT" \
-  --zone "$GCP_ZONE" \
-  "$TMP_UPSTREAM_CONFIG" "${NEXUS_VM}:/tmp/upstream-config.toml"
-
-gcloud compute scp --tunnel-through-iap \
-  --project "$GCP_PROJECT" \
-  --zone "$GCP_ZONE" \
-  "$TMP_REMOTE_SCRIPT" "${NEXUS_VM}:/tmp/nexus-bootstrap.sh"
+upload_file_via_ssh "$TMP_ENV" "/tmp/nexus-relay.env"
+upload_file_via_ssh "$TMP_UPSTREAM_CONFIG" "/tmp/upstream-config.toml"
+upload_file_via_ssh "$TMP_REMOTE_SCRIPT" "/tmp/nexus-bootstrap.sh"
 
 gcloud compute ssh "$NEXUS_VM" \
   --tunnel-through-iap \
