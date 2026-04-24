@@ -300,22 +300,30 @@ eligible at the same time. The hosted production Nexus should currently pin
 this lower than the default to avoid wedging entire send batches behind a
 Spark-side stall.
 
+Accepted-work sends now have an additional hard cap inside `nexus-control`:
+even if `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS` is higher, accepted-work
+closeouts will only dispatch up to `4` Spark sends concurrently per payout
+cycle. Placeholder and bonus lanes still follow the configured global cap. The
+goal is to keep real worker payouts from tripping Spark transport or leaf
+selection failures when several windows reconcile together.
+
 For the hosted production Nexus, the current safe reference treasury policy is
 homework-only:
 
 - `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=25`
 - `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600`
 - `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000`
-- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=1`
+- `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4`
 - `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=disabled`
 - `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true`
 
 That policy disables periodic placeholder stipends entirely. The
 `payout_sats_per_window` value remains available for accepted-work closeouts,
 including homework runs, but Nexus must not create new presence-only,
-inference-ready, or disabled-placeholder payout windows. The single-send cap
-keeps accepted homework payout dispatch serial while the wallet has low
-available balance.
+inference-ready, or disabled-placeholder payout windows. The global `4`-send
+cap plus the internal accepted-work cap keeps real homework payout waves small
+and predictable while still allowing more than one worker to settle in the same
+cycle.
 
 `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE` controls what a placeholder
 window actually means:

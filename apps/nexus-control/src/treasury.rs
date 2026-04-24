@@ -111,6 +111,7 @@ const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
 const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
 const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
+const TREASURY_MAX_CONCURRENT_ACCEPTED_WORK_SENDS: usize = 4;
 const TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS: u64 = 5_000;
 const TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES: usize = 1;
 const TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES: usize = 8;
@@ -403,6 +404,21 @@ impl TreasuryConfig {
 
     pub fn max_concurrent_send_operations(&self, plan_count: usize) -> usize {
         plan_count.min(self.max_concurrent_sends).max(1)
+    }
+
+    pub fn max_concurrent_send_operations_for_class(
+        &self,
+        plan_count: usize,
+        payout_class: TreasuryPayoutClass,
+    ) -> usize {
+        let configured = self.max_concurrent_send_operations(plan_count);
+        match payout_class {
+            TreasuryPayoutClass::AcceptedWork => {
+                configured.min(TREASURY_MAX_CONCURRENT_ACCEPTED_WORK_SENDS)
+            }
+            TreasuryPayoutClass::PlaceholderLiveness | TreasuryPayoutClass::BetaBonus => configured,
+        }
+        .max(1)
     }
 }
 
@@ -1364,12 +1380,48 @@ pub struct TreasuryPayoutClassification {
 }
 
 impl TreasuryPayoutClassification {
+    fn effective_payout_class(&self) -> TreasuryPayoutClass {
+        if self.payout_class != TreasuryPayoutClass::PlaceholderLiveness {
+            return self.payout_class;
+        }
+        let legacy_accepted_work_markers_present = self.work_class.is_some()
+            || self.progress_class.is_some()
+            || self.accepted_outcome_id.is_some()
+            || self.training_run_id.is_some()
+            || self.window_id.is_some()
+            || self.contribution_id.is_some()
+            || self.assignment_id.is_some()
+            || self.share_bps.is_some()
+            || self.weight_basis.is_some()
+            || self.weight_value.is_some()
+            || self.weak_device_bearing
+            || self.progress_bearing
+            || self
+                .payout_basis
+                .as_deref()
+                .is_some_and(|basis| !payout_basis_is_placeholder_liveness(basis));
+        if legacy_accepted_work_markers_present {
+            TreasuryPayoutClass::AcceptedWork
+        } else {
+            TreasuryPayoutClass::PlaceholderLiveness
+        }
+    }
+
+    fn normalize_legacy_payout_class(&mut self) -> bool {
+        let effective = self.effective_payout_class();
+        if self.payout_class == effective {
+            return false;
+        }
+        self.payout_class = effective;
+        true
+    }
+
     fn accepted_work(&self) -> bool {
-        self.payout_class == TreasuryPayoutClass::AcceptedWork
+        self.effective_payout_class() == TreasuryPayoutClass::AcceptedWork
     }
 
     fn continuity_alert_relevant(&self, policy: &TreasuryRuntimePolicy) -> bool {
-        match self.payout_class {
+        match self.effective_payout_class() {
             TreasuryPayoutClass::PlaceholderLiveness => {
                 policy.placeholder_payout_mode != TreasuryPlaceholderPayoutMode::Disabled
             }
@@ -1573,6 +1625,7 @@ pub struct TreasuryDispatchPlan {
     pub payout_key: String,
     pub payment_request: String,
     pub amount_sats: u64,
+    pub classification: TreasuryPayoutClassification,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1614,7 +1667,7 @@ struct TreasuryPayoutTotals {
 impl TreasuryPayoutTotals {
     fn add_amount(&mut self, amount_sats: u64, classification: &TreasuryPayoutClassification) {
         self.payout_sats_paid_total = self.payout_sats_paid_total.saturating_add(amount_sats);
-        match classification.payout_class {
+        match classification.effective_payout_class() {
             TreasuryPayoutClass::PlaceholderLiveness => {
                 self.placeholder_payout_sats_paid_total = self
                     .placeholder_payout_sats_paid_total
@@ -1809,14 +1862,29 @@ fn retryable_failed_accepted_work_payout_is_due(
         && record.payment_id.is_none()
         && record.classification.accepted_work()
         && !record.payout_target.trim().is_empty()
+        && record
+            .reason
+            .as_deref()
+            .is_some_and(failed_payout_reason_is_retryable)
         && now_unix_ms
             >= record
                 .updated_at_unix_ms
                 .saturating_add(TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS)
 }
 
+fn failed_payout_reason_is_retryable(reason: &str) -> bool {
+    reason == "dispatch_outcome_timeout"
+        || reason.starts_with("wallet_send_timeout:")
+        || reason.starts_with("wallet_send_retryable:")
+}
+
+fn payout_basis_is_placeholder_liveness(basis: &str) -> bool {
+    matches!(basis.trim(), "inference_ready" | "presence_only" | "disabled")
+}
+
 fn placeholder_liveness_record_can_compact(record: &TreasuryPayoutRecord) -> bool {
-    if record.classification.payout_class != TreasuryPayoutClass::PlaceholderLiveness {
+    if record.classification.effective_payout_class() != TreasuryPayoutClass::PlaceholderLiveness
+    {
         return false;
     }
 
@@ -1842,6 +1910,7 @@ impl TreasuryState {
             loaded.next_challenge_nonce = 1;
             changed = true;
         }
+        changed |= loaded.normalize_legacy_payout_classes();
         changed |= loaded.backfill_classified_payout_totals();
         loaded.public_snapshot = None;
         changed |= loaded.trim_policy_change_history();
@@ -1883,17 +1952,99 @@ impl TreasuryState {
     }
 
     fn backfill_classified_payout_totals(&mut self) -> bool {
-        if self.payout_sats_paid_total == 0 {
-            return false;
+        let computed = self.computed_classified_paid_totals_from_records();
+        let current_zero = self.accepted_work_payout_sats_paid_total == 0
+            && self.beta_bonus_payout_sats_paid_total == 0
+            && self.placeholder_payout_sats_paid_total == 0
+            && self.weak_device_accepted_work_payout_sats_paid_total == 0
+            && self.strong_lane_accepted_work_payout_sats_paid_total == 0;
+        let legacy_placeholder_only = self.payout_sats_paid_total > 0
+            && self.accepted_work_payout_sats_paid_total == 0
+            && self.beta_bonus_payout_sats_paid_total == 0
+            && self.weak_device_accepted_work_payout_sats_paid_total == 0
+            && self.strong_lane_accepted_work_payout_sats_paid_total == 0
+            && self.placeholder_payout_sats_paid_total == self.payout_sats_paid_total;
+        let target_total = self.payout_sats_paid_total.max(computed.payout_sats_paid_total);
+        let mut changed = false;
+        if self.payout_sats_paid_total != target_total {
+            self.payout_sats_paid_total = target_total;
+            changed = true;
         }
-        if self.accepted_work_payout_sats_paid_total > 0
-            || self.beta_bonus_payout_sats_paid_total > 0
-            || self.placeholder_payout_sats_paid_total > 0
+
+        if !(current_zero || legacy_placeholder_only) {
+            if self.weak_device_accepted_work_payout_sats_paid_total
+                < computed.weak_device_accepted_work_payout_sats_paid_total
+            {
+                self.weak_device_accepted_work_payout_sats_paid_total =
+                    computed.weak_device_accepted_work_payout_sats_paid_total;
+                changed = true;
+            }
+            if self.strong_lane_accepted_work_payout_sats_paid_total
+                < computed.strong_lane_accepted_work_payout_sats_paid_total
+            {
+                self.strong_lane_accepted_work_payout_sats_paid_total =
+                    computed.strong_lane_accepted_work_payout_sats_paid_total;
+                changed = true;
+            }
+            return changed;
+        }
+
+        let mut next = computed;
+        if target_total > next.payout_sats_paid_total {
+            let residual = target_total.saturating_sub(next.payout_sats_paid_total);
+            next.payout_sats_paid_total = target_total;
+            next.placeholder_payout_sats_paid_total = next
+                .placeholder_payout_sats_paid_total
+                .saturating_add(residual);
+        }
+
+        if self.accepted_work_payout_sats_paid_total != next.accepted_work_payout_sats_paid_total {
+            self.accepted_work_payout_sats_paid_total = next.accepted_work_payout_sats_paid_total;
+            changed = true;
+        }
+        if self.placeholder_payout_sats_paid_total != next.placeholder_payout_sats_paid_total {
+            self.placeholder_payout_sats_paid_total = next.placeholder_payout_sats_paid_total;
+            changed = true;
+        }
+        if self.beta_bonus_payout_sats_paid_total != next.beta_bonus_payout_sats_paid_total {
+            self.beta_bonus_payout_sats_paid_total = next.beta_bonus_payout_sats_paid_total;
+            changed = true;
+        }
+        if self.weak_device_accepted_work_payout_sats_paid_total
+            != next.weak_device_accepted_work_payout_sats_paid_total
         {
-            return false;
+            self.weak_device_accepted_work_payout_sats_paid_total =
+                next.weak_device_accepted_work_payout_sats_paid_total;
+            changed = true;
         }
-        self.placeholder_payout_sats_paid_total = self.payout_sats_paid_total;
-        true
+        if self.strong_lane_accepted_work_payout_sats_paid_total
+            != next.strong_lane_accepted_work_payout_sats_paid_total
+        {
+            self.strong_lane_accepted_work_payout_sats_paid_total =
+                next.strong_lane_accepted_work_payout_sats_paid_total;
+            changed = true;
+        }
+        changed
+    }
+
+    fn computed_classified_paid_totals_from_records(&self) -> TreasuryPayoutTotals {
+        let mut totals = TreasuryPayoutTotals::default();
+        for record in self
+            .payout_records_by_key
+            .values()
+            .filter(|record| record.counted_in_paid_total && record.status == "confirmed")
+        {
+            totals.add_amount(record.amount_sats, &record.classification);
+        }
+        totals
+    }
+
+    fn normalize_legacy_payout_classes(&mut self) -> bool {
+        let mut changed = false;
+        for record in self.payout_records_by_key.values_mut() {
+            changed |= record.classification.normalize_legacy_payout_class();
+        }
+        changed
     }
 
     fn cumulative_payout_totals(&self) -> TreasuryPayoutTotals {
@@ -2460,7 +2611,12 @@ impl TreasuryState {
             }
             if record.payment_id.is_none()
                 && !record.payout_target.trim().is_empty()
-                && matches!(record.status.as_str(), "failed" | "dispatching")
+                && (record.status == "dispatching"
+                    || (record.status == "failed"
+                        && record
+                            .reason
+                            .as_deref()
+                            .is_some_and(failed_payout_reason_is_retryable)))
             {
                 backlog_retryable = backlog_retryable.saturating_add(1);
             }
@@ -3617,6 +3773,7 @@ impl TreasuryState {
                 payout_key,
                 payment_request: target.spark_address,
                 amount_sats: record.amount_sats,
+                classification: record.classification.clone(),
             });
         }
         (dispatch_plans, changed)
@@ -3628,7 +3785,8 @@ impl TreasuryState {
         online_identities: &[OnlinePylonIdentity],
         now_unix_ms: u64,
     ) -> TreasuryPayoutPreparation {
-        let mut changed = self.trim_retention();
+        let mut changed = self.normalize_legacy_payout_classes();
+        changed |= self.trim_retention();
         let (mut receipt_events, stale_changed) = self.expire_stale_dispatches(config, now_unix_ms);
         changed |= stale_changed;
         let policy = self.active_policy(config);
@@ -3921,6 +4079,7 @@ impl TreasuryState {
                         payout_key,
                         payment_request: target.spark_address,
                         amount_sats: policy.payout_sats_per_window,
+                        classification: placeholder_classification.clone(),
                     });
                     changed = true;
                 }
@@ -3995,6 +4154,7 @@ impl TreasuryState {
         snapshot: &TreasuryWalletSnapshot,
         now_unix_ms: u64,
     ) -> Vec<TreasuryReceiptEvent> {
+        let mut persist_needed = self.normalize_legacy_payout_classes();
         self.wallet_runtime_status = Some(snapshot.runtime_status.clone());
         self.wallet_last_error = snapshot.runtime_detail.clone();
         self.wallet_hydration_mode = snapshot.wallet_hydration_mode.clone();
@@ -4005,7 +4165,6 @@ impl TreasuryState {
         self.last_wallet_refresh_attempt_at_unix_ms = Some(now_unix_ms);
 
         let mut receipt_events = Vec::new();
-        let mut persist_needed = false;
         let mut last_confirmed_payout_at_unix_ms = self.last_confirmed_payout_at_unix_ms;
         let mut orphan_recovery_payout_keys = self.orphan_payment_recovery_keys();
         let mut payments = snapshot.payments.clone();
@@ -4125,7 +4284,7 @@ impl TreasuryState {
                     self.payout_sats_paid_total = self
                         .payout_sats_paid_total
                         .saturating_add(record.amount_sats);
-                    match record.classification.payout_class {
+                    match record.classification.effective_payout_class() {
                         TreasuryPayoutClass::PlaceholderLiveness => {
                             self.placeholder_payout_sats_paid_total = self
                                 .placeholder_payout_sats_paid_total
@@ -4717,7 +4876,7 @@ pub async fn dispatch_live_payouts(
             .expect("treasury snapshot hook")
             .clone();
         if send_hook.is_some() || snapshot_hook.is_some() {
-            return dispatch_with_test_hooks(plans);
+            return dispatch_with_test_hooks(config, plans);
         }
     }
 
@@ -4745,8 +4904,73 @@ pub async fn dispatch_live_payouts(
 
     // Keep the wallet-operation lock held for a bounded window even when the
     // upstream Spark send path stalls or many Pylons become due together.
-    let max_concurrent_sends = config.max_concurrent_send_operations(plans.len());
-    let mut indexed_outcomes = stream::iter(plans.iter().cloned().enumerate())
+    let mut indexed_outcomes = dispatch_live_payout_batch(
+        config,
+        wallet.clone(),
+        plans,
+        send_timeout_ms,
+        TreasuryPayoutClass::AcceptedWork,
+    )
+    .await;
+    indexed_outcomes.extend(
+        dispatch_live_payout_batch(
+            config,
+            wallet.clone(),
+            plans,
+            send_timeout_ms,
+            TreasuryPayoutClass::PlaceholderLiveness,
+        )
+        .await,
+    );
+    indexed_outcomes.extend(
+        dispatch_live_payout_batch(
+            config,
+            wallet.clone(),
+            plans,
+            send_timeout_ms,
+            TreasuryPayoutClass::BetaBonus,
+        )
+        .await,
+    );
+    indexed_outcomes.sort_by_key(|(index, _)| *index);
+    let outcomes = indexed_outcomes
+        .into_iter()
+        .map(|(_, outcome)| outcome)
+        .collect();
+    disconnect_live_wallet(wallet).await;
+
+    TreasuryDispatchBatchResult {
+        outcomes,
+        // The dedicated wallet refresh loop reconciles confirms and balance.
+        // Keeping the full wallet scan out of the dispatch path preserves the
+        // intended payout cadence even when many Pylons are online.
+        wallet_snapshot: None,
+        wallet_error: None,
+    }
+}
+
+async fn dispatch_live_payout_batch(
+    config: &TreasuryConfig,
+    wallet: Arc<SparkWallet>,
+    plans: &[TreasuryDispatchPlan],
+    send_timeout_ms: u64,
+    payout_class: TreasuryPayoutClass,
+) -> Vec<(usize, TreasuryDispatchOutcome)> {
+    let batch = plans
+        .iter()
+        .cloned()
+        .enumerate()
+        .filter(|(_, plan)| plan.classification.payout_class == payout_class)
+        .collect::<Vec<_>>();
+    if batch.is_empty() {
+        return Vec::new();
+    }
+
+    let max_concurrent_sends = config.max_concurrent_send_operations_for_class(
+        batch.len(),
+        payout_class,
+    );
+    stream::iter(batch)
         .map(|(index, plan)| {
             let wallet = wallet.clone();
             async move {
@@ -4765,21 +4989,34 @@ pub async fn dispatch_live_payouts(
         })
         .buffer_unordered(max_concurrent_sends)
         .collect::<Vec<_>>()
-        .await;
-    indexed_outcomes.sort_by_key(|(index, _)| *index);
-    let outcomes = indexed_outcomes
-        .into_iter()
-        .map(|(_, outcome)| outcome)
-        .collect();
-    disconnect_live_wallet(wallet).await;
+        .await
+}
 
-    TreasuryDispatchBatchResult {
-        outcomes,
-        // The dedicated wallet refresh loop reconciles confirms and balance.
-        // Keeping the full wallet scan out of the dispatch path preserves the
-        // intended payout cadence even when many Pylons are online.
-        wallet_snapshot: None,
-        wallet_error: None,
+fn classify_wallet_send_failure(reason: &str) -> String {
+    let normalized = reason.trim();
+    let lowered = normalized.to_ascii_lowercase();
+    let failure_class = if lowered.contains("operation was canceled")
+        || lowered.contains("status: cancelled")
+        || lowered.contains("status: canceled")
+    {
+        Some("cancelled_transport")
+    } else if lowered.contains("treeserviceerror(insufficientfunds)")
+        || lowered.contains("tree service error")
+        || lowered.contains("insufficient funds")
+    {
+        Some("leaf_selection")
+    } else if lowered.contains("service connection error")
+        || lowered.contains("connection error")
+        || lowered.contains("transport error")
+    {
+        Some("transport")
+    } else {
+        None
+    };
+
+    match failure_class {
+        Some(classification) => format!("wallet_send_retryable:{classification}:{normalized}"),
+        None => format!("wallet_send_failed:unknown:{normalized}"),
     }
 }
 
@@ -4799,7 +5036,7 @@ where
         },
         Ok(Err(error)) => TreasuryDispatchOutcome::Failed {
             payout_key: plan.payout_key,
-            reason: error.to_string(),
+            reason: classify_wallet_send_failure(error.to_string().as_str()),
         },
         Err(_) => TreasuryDispatchOutcome::Failed {
             payout_key: plan.payout_key,
@@ -6350,7 +6587,11 @@ fn payout_receipt_attributes(record: &TreasuryPayoutRecord) -> BTreeMap<String, 
     );
     attributes.insert(
         "payout_class".to_string(),
-        record.classification.payout_class.label().to_string(),
+        record
+            .classification
+            .effective_payout_class()
+            .label()
+            .to_string(),
     );
     if !record.payout_target.is_empty() {
         attributes.insert(
@@ -6467,9 +6708,10 @@ fn record_can_recover_orphan_send_payment(record: &TreasuryPayoutRecord) -> bool
 
     match record.status.as_str() {
         "dispatching" => true,
-        "failed" => record.reason.as_deref().is_some_and(|reason| {
-            reason == "dispatch_outcome_timeout" || reason.starts_with("wallet_send_timeout:")
-        }),
+        "failed" => record
+            .reason
+            .as_deref()
+            .is_some_and(failed_payout_reason_is_retryable),
         _ => false,
     }
 }
@@ -7175,7 +7417,10 @@ pub(crate) fn treasury_test_hook_lock() -> &'static Mutex<()> {
 }
 
 #[cfg(test)]
-fn dispatch_with_test_hooks(plans: &[TreasuryDispatchPlan]) -> TreasuryDispatchBatchResult {
+fn dispatch_with_test_hooks(
+    config: &TreasuryConfig,
+    plans: &[TreasuryDispatchPlan],
+) -> TreasuryDispatchBatchResult {
     let send_hook = test_wallet_send_hook()
         .lock()
         .expect("treasury send hook")
@@ -7185,20 +7430,35 @@ fn dispatch_with_test_hooks(plans: &[TreasuryDispatchPlan]) -> TreasuryDispatchB
         .expect("treasury snapshot hook")
         .clone();
     let mut outcomes = Vec::with_capacity(plans.len());
-    for plan in plans {
-        match send_hook
-            .as_ref()
-            .ok_or_else(|| anyhow!("missing treasury send hook"))
-            .and_then(|hook| hook(plan.payment_request.clone(), plan.amount_sats))
+    for payout_class in [
+        TreasuryPayoutClass::AcceptedWork,
+        TreasuryPayoutClass::PlaceholderLiveness,
+        TreasuryPayoutClass::BetaBonus,
+    ] {
+        let _parallelism = config.max_concurrent_send_operations_for_class(
+            plans.iter()
+                .filter(|plan| plan.classification.payout_class == payout_class)
+                .count(),
+            payout_class,
+        );
+        for plan in plans
+            .iter()
+            .filter(|plan| plan.classification.payout_class == payout_class)
         {
-            Ok(payment_id) => outcomes.push(TreasuryDispatchOutcome::Dispatched {
-                payout_key: plan.payout_key.clone(),
-                payment_id,
-            }),
-            Err(error) => outcomes.push(TreasuryDispatchOutcome::Failed {
-                payout_key: plan.payout_key.clone(),
-                reason: error.to_string(),
-            }),
+            match send_hook
+                .as_ref()
+                .ok_or_else(|| anyhow!("missing treasury send hook"))
+                .and_then(|hook| hook(plan.payment_request.clone(), plan.amount_sats))
+            {
+                Ok(payment_id) => outcomes.push(TreasuryDispatchOutcome::Dispatched {
+                    payout_key: plan.payout_key.clone(),
+                    payment_id,
+                }),
+                Err(error) => outcomes.push(TreasuryDispatchOutcome::Failed {
+                    payout_key: plan.payout_key.clone(),
+                    reason: classify_wallet_send_failure(error.to_string().as_str()),
+                }),
+            }
         }
     }
     let (wallet_snapshot, wallet_error) = match snapshot_hook {
@@ -8057,6 +8317,90 @@ mod tests {
     }
 
     #[test]
+    fn loading_legacy_accepted_work_records_backfills_class_and_totals() {
+        let path = unique_treasury_state_path("legacy-accepted-work-class");
+        let now_unix_ms = super::now_unix_ms();
+        let payout_key = "legacy.accepted.pubkey-a".to_string();
+        let mut state = TreasuryState::default();
+        state.next_challenge_nonce = 1;
+        state.payout_sats_paid_total = 25;
+        state.placeholder_payout_sats_paid_total = 25;
+        state.payout_records_by_key.insert(
+            payout_key.clone(),
+            TreasuryPayoutRecord {
+                payout_key: payout_key.clone(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 25,
+                status: "confirmed".to_string(),
+                reason: None,
+                payment_id: Some("payment-legacy-accepted".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(1),
+                created_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                updated_at_unix_ms: now_unix_ms.saturating_sub(10_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: true,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: true,
+                classification: TreasuryPayoutClassification {
+                    payout_basis: Some("homework_acceptance".to_string()),
+                    accepted_outcome_id: Some("accepted.legacy.one".to_string()),
+                    training_run_id: Some("run.cs336.a1.legacy".to_string()),
+                    assignment_id: Some("assign-legacy".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let mut payload = serde_json::to_value(&state).expect("serialize treasury state");
+        payload
+            .pointer_mut("/payout_records_by_key/legacy.accepted.pubkey-a/classification")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("classification object")
+            .remove("payout_class");
+        std::fs::write(
+            path.as_path(),
+            serde_json::to_string(&payload).expect("serialize legacy payload"),
+        )
+        .expect("write legacy payload");
+
+        let loaded = TreasuryState::new(path.clone());
+        let record = loaded
+            .payout_records_by_key
+            .get(&payout_key)
+            .expect("legacy accepted-work payout record");
+        assert_eq!(
+            record.classification.payout_class,
+            TreasuryPayoutClass::AcceptedWork
+        );
+        assert_eq!(loaded.payout_sats_paid_total, 25);
+        assert_eq!(loaded.accepted_work_payout_sats_paid_total, 25);
+        assert_eq!(loaded.placeholder_payout_sats_paid_total, 0);
+
+        let rewritten: TreasuryState = serde_json::from_str(
+            std::fs::read_to_string(path.as_path())
+                .expect("read rewritten legacy state")
+                .as_str(),
+        )
+        .expect("parse rewritten legacy state");
+        let rewritten_record = rewritten
+            .payout_records_by_key
+            .get(&payout_key)
+            .expect("rewritten legacy payout record");
+        assert_eq!(
+            rewritten_record.classification.payout_class,
+            TreasuryPayoutClass::AcceptedWork
+        );
+        assert_eq!(rewritten.accepted_work_payout_sats_paid_total, 25);
+        assert_eq!(rewritten.placeholder_payout_sats_paid_total, 0);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn payout_preparation_keeps_pre_cutoff_backlog_but_blocks_new_accrual_below_floor() {
         let mut state = TreasuryState::default();
         let mut config = test_treasury_config();
@@ -8850,7 +9194,13 @@ mod tests {
                 fail_receipt_recorded: true,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
-                classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("homework_acceptance".to_string()),
+                    training_run_id: Some("run.cs336.a1.demo".to_string()),
+                    assignment_id: Some("assign-timeout-recovery".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
             },
         );
 
@@ -8937,7 +9287,13 @@ mod tests {
                 fail_receipt_recorded: true,
                 skip_receipt_recorded: false,
                 counted_in_paid_total: false,
-                classification: TreasuryPayoutClassification::default(),
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("homework_acceptance".to_string()),
+                    training_run_id: Some("run.cs336.a1.demo".to_string()),
+                    assignment_id: Some("assign-timeout-unmatched".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
             },
         );
 
@@ -10538,6 +10894,7 @@ mod tests {
                 payout_key: "window-a:pubkey-a".to_string(),
                 payment_request: "spark:alice".to_string(),
                 amount_sats: 120,
+                classification: TreasuryPayoutClassification::default(),
             }],
         )
         .await;
@@ -10588,6 +10945,7 @@ mod tests {
                 payout_key: "window-a:pubkey-a".to_string(),
                 payment_request: "spark:alice".to_string(),
                 amount_sats: 120,
+                classification: TreasuryPayoutClassification::default(),
             }],
         )
         .await;
@@ -10615,6 +10973,7 @@ mod tests {
                 payout_key: "window-a:pubkey-a".to_string(),
                 payment_request: "spark:alice".to_string(),
                 amount_sats: 120,
+                classification: TreasuryPayoutClassification::default(),
             },
             5,
             async {
@@ -10641,6 +11000,93 @@ mod tests {
         assert_eq!(config.max_concurrent_send_operations(4), 4);
         assert_eq!(config.max_concurrent_send_operations(16), 16);
         assert_eq!(config.max_concurrent_send_operations(128), 16);
+        assert_eq!(
+            config.max_concurrent_send_operations_for_class(
+                16,
+                TreasuryPayoutClass::AcceptedWork
+            ),
+            super::TREASURY_MAX_CONCURRENT_ACCEPTED_WORK_SENDS
+        );
+        assert_eq!(
+            config.max_concurrent_send_operations_for_class(
+                128,
+                TreasuryPayoutClass::PlaceholderLiveness
+            ),
+            16
+        );
+    }
+
+    #[test]
+    fn wallet_send_failure_classification_marks_retryable_transport_failures() {
+        assert_eq!(
+            super::classify_wallet_send_failure(
+                "SparkSdkError: Service error: service connection error: Connection error: status: Cancelled, message: \"operation was canceled\""
+            ),
+            "wallet_send_retryable:cancelled_transport:SparkSdkError: Service error: service connection error: Connection error: status: Cancelled, message: \"operation was canceled\""
+        );
+        assert_eq!(
+            super::classify_wallet_send_failure("TreeServiceError(InsufficientFunds)"),
+            "wallet_send_retryable:leaf_selection:TreeServiceError(InsufficientFunds)"
+        );
+        assert_eq!(
+            super::classify_wallet_send_failure("some permanent failure"),
+            "wallet_send_failed:unknown:some permanent failure"
+        );
+    }
+
+    #[test]
+    fn retryable_failed_backlog_counts_exclude_non_retryable_failures() {
+        let mut state = TreasuryState::default();
+        state.payout_records_by_key.insert(
+            "retryable".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "retryable".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 25,
+                status: "failed".to_string(),
+                reason: Some("wallet_send_retryable:transport:boom".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 1_000,
+                window_ends_at_unix_ms: 2_000,
+                created_at_unix_ms: 1_000,
+                updated_at_unix_ms: 1_000,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+        state.payout_records_by_key.insert(
+            "non-retryable".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "non-retryable".to_string(),
+                nostr_pubkey_hex: "pubkey-b".to_string(),
+                payout_target: "spark:bob".to_string(),
+                amount_sats: 25,
+                status: "failed".to_string(),
+                reason: Some("wallet_send_failed:unknown:nope".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 1_000,
+                window_ends_at_unix_ms: 2_000,
+                created_at_unix_ms: 1_000,
+                updated_at_unix_ms: 1_000,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        let (backlog_total, backlog_retryable) = state.backlog_counts();
+        assert_eq!(backlog_total, 2);
+        assert_eq!(backlog_retryable, 1);
     }
 
     #[test]

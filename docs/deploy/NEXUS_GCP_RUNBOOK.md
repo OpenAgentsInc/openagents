@@ -700,6 +700,14 @@ export NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4
 # export NEXUS_CONTROL_TREASURY_MIN_NEW_ACCRUAL_STARTED_AT_UNIX_MS=<cutover_ms>
 ```
 
+Accepted-work payout note:
+
+- `nexus-control` now hard-caps accepted-work payout sends to `4` concurrent
+  Spark sends per cycle even if `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS`
+  is set higher
+- keep the env at `4` for production unless there is proof that the upstream
+  Spark path can tolerate more without `Cancelled` / leaf-selection failures
+
 Why the extra two envs matter:
 
 - `NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS=30` keeps the wallet
