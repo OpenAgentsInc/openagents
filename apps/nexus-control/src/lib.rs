@@ -1238,6 +1238,7 @@ pub struct LaunchHomeworkRunResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub launch_phase: Option<String>,
     pub training_run_id: String,
+    pub network_id: String,
     pub run_status: String,
     pub current_window_id: String,
     #[serde(default)]
@@ -1384,7 +1385,7 @@ const fn cs336_a1_homework_dispatch_only_online_default() -> bool {
 }
 
 fn cs336_a1_homework_dispatch_min_pylon_version_default() -> Option<String> {
-    Some(MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string())
+    None
 }
 
 const fn cs336_a1_homework_dispatch_require_updated_build_default() -> bool {
@@ -10559,6 +10560,7 @@ async fn execute_homework_launch(
         launch_state: prepared.launch_state,
         launch_phase,
         training_run_id: prepared.training_run_id,
+        network_id: prepared.network_id,
         run_status: prepared.run_status,
         current_window_id: prepared.current_window_id,
         matched_pylons: prepared.matched_pylons,
@@ -10647,60 +10649,75 @@ async fn execute_cs336_a1_homework_dispatch(
         .unwrap_or_else(|| "cron".to_string());
     let display_name_prefix = normalize_optional_field(request.display_name_prefix.as_deref())
         .unwrap_or_else(|| "CS336 A1 Homework Dispatch".to_string());
-    let network_id = normalize_optional_field(request.network_id.as_deref())
-        .unwrap_or_else(|| EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string());
     let run_kind = normalize_optional_field(request.run_kind.as_deref())
         .unwrap_or_else(|| "homework_dispatch".to_string());
     let min_pylon_version = normalize_optional_field(request.min_pylon_version.as_deref());
+    let network_ids = resolve_cs336_a1_homework_dispatch_network_ids(
+        state,
+        &request,
+        min_pylon_version.as_deref(),
+    )?;
+    let include_network_fragment = network_ids.len() > 1;
 
     let mut launches = Vec::new();
     let mut errors = Vec::new();
-    for ordinal in 1..=request.run_count {
-        let run_slug = format!("{run_slug_prefix}.{timestamp}.{batch_suffix}.{ordinal:04}");
-        let display_name = format!("{display_name_prefix} {timestamp} #{ordinal:04}");
-        let launch_request = LaunchHomeworkRunRequest {
-            course_id: "cs336".to_string(),
-            homework_id: "a1".to_string(),
-            run_slug: run_slug.clone(),
-            training_run_id: None,
-            display_name: Some(display_name),
-            reuse_existing_run: request.reuse_existing_run,
-            network_id: Some(network_id.clone()),
-            run_kind: Some(run_kind.clone()),
-            assignment_family: Some("cs336.assignment1".to_string()),
-            artifact_prefix: None,
-            target: HomeworkLaunchTargetRequest {
-                only_online: request.only_online,
-                node_pubkey_hex: None,
-                min_pylon_version: min_pylon_version.clone(),
-                require_updated_build: request.require_updated_build,
-                tags_any: Vec::new(),
-                tags_all: Vec::new(),
-            },
-            assignment: HomeworkLaunchAssignmentRequest {
-                mode: HomeworkAssignmentMode::AllMatchingPylons,
-                max_contributors: Some(request.max_contributors_per_run),
-                window_duration_seconds: request.window_duration_seconds,
-            },
-            payout: HomeworkLaunchPayoutRequest {
-                enabled: true,
-                rail: Some("bitcoin_lightning".to_string()),
-                amount_sats: Some(request.amount_sats),
-                pay_only_on_accept: true,
-            },
-        };
+    for network_id in &network_ids {
+        let network_slug = sanitize_identifier(network_id.as_str());
+        for ordinal in 1..=request.run_count {
+            let run_slug = if include_network_fragment {
+                format!("{run_slug_prefix}.{network_slug}.{timestamp}.{batch_suffix}.{ordinal:04}")
+            } else {
+                format!("{run_slug_prefix}.{timestamp}.{batch_suffix}.{ordinal:04}")
+            };
+            let display_name = if include_network_fragment {
+                format!("{display_name_prefix} [{network_id}] {timestamp} #{ordinal:04}")
+            } else {
+                format!("{display_name_prefix} {timestamp} #{ordinal:04}")
+            };
+            let launch_request = LaunchHomeworkRunRequest {
+                course_id: "cs336".to_string(),
+                homework_id: "a1".to_string(),
+                run_slug: run_slug.clone(),
+                training_run_id: None,
+                display_name: Some(display_name),
+                reuse_existing_run: request.reuse_existing_run,
+                network_id: Some(network_id.clone()),
+                run_kind: Some(run_kind.clone()),
+                assignment_family: Some("cs336.assignment1".to_string()),
+                artifact_prefix: None,
+                target: HomeworkLaunchTargetRequest {
+                    only_online: request.only_online,
+                    node_pubkey_hex: None,
+                    min_pylon_version: min_pylon_version.clone(),
+                    require_updated_build: request.require_updated_build,
+                    tags_any: Vec::new(),
+                    tags_all: Vec::new(),
+                },
+                assignment: HomeworkLaunchAssignmentRequest {
+                    mode: HomeworkAssignmentMode::AllMatchingPylons,
+                    max_contributors: Some(request.max_contributors_per_run),
+                    window_duration_seconds: request.window_duration_seconds,
+                },
+                payout: HomeworkLaunchPayoutRequest {
+                    enabled: true,
+                    rail: Some("bitcoin_lightning".to_string()),
+                    amount_sats: Some(request.amount_sats),
+                    pay_only_on_accept: true,
+                },
+            };
 
-        match execute_homework_launch(state, launch_request).await {
-            Ok(response) => launches.push(response),
-            Err(error) if request.continue_on_error => {
-                errors.push(DispatchCs336A1HomeworkRunError {
-                    ordinal,
-                    run_slug,
-                    error: error.error.to_string(),
-                    reason: error.reason,
-                });
+            match execute_homework_launch(state, launch_request).await {
+                Ok(response) => launches.push(response),
+                Err(error) if request.continue_on_error => {
+                    errors.push(DispatchCs336A1HomeworkRunError {
+                        ordinal,
+                        run_slug,
+                        error: error.error.to_string(),
+                        reason: error.reason,
+                    });
+                }
+                Err(error) => return Err(error),
             }
-            Err(error) => return Err(error),
         }
     }
 
@@ -10718,6 +10735,82 @@ async fn execute_cs336_a1_homework_dispatch(
         launches,
         errors,
     })
+}
+
+fn resolve_cs336_a1_homework_dispatch_network_ids(
+    state: &AppState,
+    request: &DispatchCs336A1HomeworkRunsRequest,
+    min_pylon_version: Option<&str>,
+) -> Result<Vec<String>, ApiError> {
+    if let Some(network_id) = normalize_optional_field(request.network_id.as_deref()) {
+        return Ok(vec![network_id]);
+    }
+
+    let minimum_version = min_pylon_version
+        .map(|value| {
+            Version::parse(value).map_err(|error| ApiError {
+                status: StatusCode::BAD_REQUEST,
+                error: "invalid_request",
+                reason: format!("cs336_a1_homework_dispatch_min_pylon_version_invalid:{error}"),
+            })
+        })
+        .transpose()?;
+    let target = HomeworkLaunchTargetRequest {
+        only_online: request.only_online,
+        node_pubkey_hex: None,
+        min_pylon_version: min_pylon_version.map(str::to_string),
+        require_updated_build: request.require_updated_build,
+        tags_any: Vec::new(),
+        tags_all: Vec::new(),
+    };
+    let payout = HomeworkLaunchPayoutRequest {
+        enabled: true,
+        rail: Some("bitcoin_lightning".to_string()),
+        amount_sats: Some(request.amount_sats),
+        pay_only_on_accept: true,
+    };
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let now_unix_ms = now_unix_ms() as i64;
+    let admitted_nodes = training_authority_freshest_node_views_by_pubkey(
+        training_authority_refresh_node_views(
+            &store.kernel,
+            store.kernel.list_admitted_training_nodes(
+                &TrainingNodeQuery {
+                    network_id: None,
+                    requested_network_id: None,
+                    role: Some(TrainingNodeRoleClaim::Worker),
+                    online_only: false,
+                    eligible_only: false,
+                },
+                now_unix_ms,
+            ),
+            now_unix_ms,
+        )
+        .map_err(kernel_api_error)?,
+    );
+    let network_ids = admitted_nodes
+        .iter()
+        .filter(|node| {
+            homework_launch_node_target_matches(node, &target, &payout, minimum_version.as_ref())
+        })
+        .flat_map(|node| {
+            if node.allowed_networks.is_empty() {
+                vec![EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string()]
+            } else {
+                node.allowed_networks.clone()
+            }
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if network_ids.is_empty() {
+        return Ok(vec![EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string()]);
+    }
+    Ok(network_ids)
 }
 
 async fn continue_homework_launch_materialization(
@@ -12831,12 +12924,10 @@ async fn execute_training_run_lease_claim(
     let node = training_authority_refresh_node_view(&store.kernel, node, request.requested_at_ms)
         .map_err(kernel_api_error)?;
     if !training_authority_view_claimability_ready(&node, TrainingNodeRoleClaim::Worker) {
-        let reason = training_authority_view_claimability_reason(
-            &node,
-            TrainingNodeRoleClaim::Worker,
-        )
-        .unwrap_or("training_node_hard_gated")
-        .to_string();
+        let reason =
+            training_authority_view_claimability_reason(&node, TrainingNodeRoleClaim::Worker)
+                .unwrap_or("training_node_hard_gated")
+                .to_string();
         tracing::warn!(
             node_pubkey_hex = request.node_pubkey_hex.as_str(),
             requested_training_run_id = ?request.requested_training_run_id,
@@ -14732,10 +14823,7 @@ fn training_authority_hard_gate_reason_for_source(
     }
 }
 
-fn training_authority_assign_hard_gate_reason(
-    slot: &mut Option<String>,
-    reason: &str,
-) {
+fn training_authority_assign_hard_gate_reason(slot: &mut Option<String>, reason: &str) {
     if reason == PylonTrainingRefusalCode::BuildRevoked.label() || slot.is_none() {
         *slot = Some(reason.to_string());
     }
@@ -14808,16 +14896,13 @@ fn training_authority_view_role_hard_gate_reason(
     snapshot: Option<&TrainingAuthorityReputationSubjectSnapshot>,
     role: TrainingNodeRoleClaim,
 ) -> Option<String> {
-    pylon_training_hard_gate_reason(persisted_labels)
-        .or_else(|| {
-            snapshot.and_then(|value| match role {
-                TrainingNodeRoleClaim::Worker => value.worker_hard_gate_reason.clone(),
-                TrainingNodeRoleClaim::Validator => value.validator_hard_gate_reason.clone(),
-                TrainingNodeRoleClaim::RecoverySource => {
-                    value.recovery_source_hard_gate_reason.clone()
-                }
-            })
+    pylon_training_hard_gate_reason(persisted_labels).or_else(|| {
+        snapshot.and_then(|value| match role {
+            TrainingNodeRoleClaim::Worker => value.worker_hard_gate_reason.clone(),
+            TrainingNodeRoleClaim::Validator => value.validator_hard_gate_reason.clone(),
+            TrainingNodeRoleClaim::RecoverySource => value.recovery_source_hard_gate_reason.clone(),
         })
+    })
 }
 
 fn training_authority_apply_view_role_hard_gate(
@@ -14862,7 +14947,10 @@ fn training_authority_view_claimability_ready(
             node.readiness.claimability_status.validator_challenge.ready
         }
         TrainingNodeRoleClaim::RecoverySource => {
-            node.readiness.claimability_status.recovery_source_assignment.ready
+            node.readiness
+                .claimability_status
+                .recovery_source_assignment
+                .ready
         }
     }
 }
@@ -14894,9 +14982,10 @@ fn training_authority_view_claimability_reason<'a>(
 }
 
 fn training_authority_view_is_eligible(node: &AdmittedTrainingNodeView) -> bool {
-    node.role_claims.iter().copied().any(|role| {
-        training_authority_view_claimability_ready(node, role)
-    })
+    node.role_claims
+        .iter()
+        .copied()
+        .any(|role| training_authority_view_claimability_ready(node, role))
 }
 
 fn training_authority_closeout_contexts(
@@ -15363,7 +15452,10 @@ fn training_authority_apply_snapshot_to_node(
         ),
     );
     training_authority_apply_view_role_hard_gate(
-        &mut node.readiness.claimability_status.recovery_source_assignment,
+        &mut node
+            .readiness
+            .claimability_status
+            .recovery_source_assignment,
         training_authority_view_role_hard_gate_reason(
             persisted_labels.as_slice(),
             snapshot,
@@ -22160,7 +22252,7 @@ fn cs336_homework_auto_dispatch_request(
         total_budget_sats: config.cs336_homework_auto_dispatch_total_budget_sats,
         run_slug_prefix: Some("auto.10m".to_string()),
         display_name_prefix: Some("Automatic CS336 A1 Homework".to_string()),
-        network_id: Some(EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string()),
+        network_id: None,
         run_kind: Some("homework_auto_dispatch".to_string()),
         reuse_existing_run: false,
         only_online: true,
@@ -43962,6 +44054,9 @@ mod tests {
                             total_budget_sats: Some(14),
                             run_slug_prefix: Some("cron.hourly".to_string()),
                             display_name_prefix: Some("Cron CS336 A1".to_string()),
+                            min_pylon_version: Some(
+                                super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string(),
+                            ),
                             ..super::DispatchCs336A1HomeworkRunsRequest::default()
                         },
                     )?))?,
@@ -44003,6 +44098,7 @@ mod tests {
         assert!(dispatch.launches.iter().all(|launch| {
             launch.launch_state == "created"
                 && launch.launch_phase.as_deref() == Some("leaseable")
+                && launch.network_id == super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID
                 && launch.assigned_pylons.len() == 1
                 && launch.assigned_pylons[0].node.node_pubkey_hex == "node-dispatch-alpha"
         }));
@@ -44057,6 +44153,117 @@ mod tests {
                 );
             }
         }
+
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_cs336_homework_dispatch_fans_out_across_active_worker_networks() -> Result<()> {
+        let (training_artifact_signed_url, _dir, upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink("gs://dispatch-fanout-training-bucket").await?;
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let recorded_at_ms = now_unix_ms();
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let proof_network_id = "trainnet.cs336.a1.4368proof4";
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(200),
+            "node-dispatch-demo",
+            "sha256:build-dispatch-demo",
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodedispatchdemo"),
+        );
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-dispatch-proof",
+            "sha256:build-dispatch-proof",
+            proof_network_id,
+            "openagents.pylon@0.1.1",
+            "0.1.1",
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodedispatchproof"),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/homework/cs336-a1/dispatch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &super::DispatchCs336A1HomeworkRunsRequest {
+                            run_count: 1,
+                            max_contributors_per_run: 1,
+                            amount_sats: 9,
+                            total_budget_sats: Some(18),
+                            run_slug_prefix: Some("cron.broad".to_string()),
+                            display_name_prefix: Some("Broad CS336 A1".to_string()),
+                            min_pylon_version: None,
+                            ..super::DispatchCs336A1HomeworkRunsRequest::default()
+                        },
+                    )?))?,
+            )
+            .await?;
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(bytes.as_ref())
+        );
+        let dispatch =
+            serde_json::from_slice::<super::DispatchCs336A1HomeworkRunsResponse>(bytes.as_ref())?;
+        assert_eq!(dispatch.requested_run_count, 1);
+        assert_eq!(dispatch.launched_run_count, 2);
+        assert_eq!(dispatch.failed_run_count, 0);
+        assert_eq!(dispatch.launches.len(), 2);
+
+        let launched_networks = dispatch
+            .launches
+            .iter()
+            .map(|launch| launch.network_id.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            launched_networks,
+            std::collections::BTreeSet::from([
+                super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string(),
+                proof_network_id.to_string(),
+            ])
+        );
+        assert!(dispatch.launches.iter().all(|launch| {
+            launch.launch_state == "created"
+                && launch.launch_phase.as_deref() == Some("leaseable")
+                && launch.assigned_pylons.len() == 1
+        }));
+        assert!(dispatch.launches.iter().any(|launch| {
+            launch.network_id == super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID
+                && launch.assigned_pylons[0].node.node_pubkey_hex == "node-dispatch-demo"
+        }));
+        assert!(dispatch.launches.iter().any(|launch| {
+            launch.network_id == proof_network_id
+                && launch.assigned_pylons[0].node.node_pubkey_hex == "node-dispatch-proof"
+        }));
+
+        let uploaded_paths = upload_paths.lock().expect("upload paths").clone();
+        let unique_uploaded_paths = uploaded_paths
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<String>>();
+        assert_eq!(unique_uploaded_paths.len(), 6, "{uploaded_paths:?}");
 
         upload_server.abort();
         Ok(())
@@ -44131,6 +44338,10 @@ mod tests {
         let launch = dispatch.launches.first().expect("auto-dispatched launch");
         assert_eq!(launch.launch_state, "created");
         assert_eq!(launch.launch_phase.as_deref(), Some("leaseable"));
+        assert_eq!(
+            launch.network_id,
+            super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID
+        );
         assert_eq!(launch.matched_pylons.len(), 2);
         assert_eq!(launch.assigned_pylons.len(), 2);
         assert!(
@@ -44685,6 +44896,7 @@ mod tests {
         assert_eq!(launched.launch_state, "created");
         assert_eq!(launched.launch_phase.as_deref(), Some("leaseable"));
         assert_eq!(launched.training_run_id, training_run_id);
+        assert_eq!(launched.network_id, network_id);
         assert_eq!(launched.current_window_id, window_id);
         assert_eq!(launched.run_status, "running");
         assert_eq!(launched.artifact_prefix, artifact_prefix);
@@ -49134,10 +49346,7 @@ mod tests {
         assert_eq!(aged_snapshot.validator_hard_gate_reason, None);
 
         let fresh_snapshot = snapshots.get("node-fresh").expect("fresh snapshot");
-        assert_eq!(
-            fresh_snapshot.worker_hard_gate_reason.as_deref(),
-            None
-        );
+        assert_eq!(fresh_snapshot.worker_hard_gate_reason.as_deref(), None);
         assert_eq!(
             fresh_snapshot.validator_hard_gate_reason.as_deref(),
             Some("training_node_hard_gated")
@@ -49244,7 +49453,10 @@ mod tests {
     #[test]
     fn training_authority_refresh_keeps_worker_claimable_when_only_validator_is_inconsistent() {
         let capability_tier = training_capability_tier_profile(
-            &[TrainingNodeRoleClaim::Worker, TrainingNodeRoleClaim::Validator],
+            &[
+                TrainingNodeRoleClaim::Worker,
+                TrainingNodeRoleClaim::Validator,
+            ],
             Some(256),
         );
         let ready = crate::kernel::TrainingNodeReadinessDimension {
@@ -49258,7 +49470,10 @@ mod tests {
                 node_pubkey_hex: "node-validator-only-gate".to_string(),
                 release_id: "openagents.pylon@0.1.12".to_string(),
                 node_label: Some("validator-only-gate".to_string()),
-                role_claims: vec![TrainingNodeRoleClaim::Worker, TrainingNodeRoleClaim::Validator],
+                role_claims: vec![
+                    TrainingNodeRoleClaim::Worker,
+                    TrainingNodeRoleClaim::Validator,
+                ],
                 allowed_networks: vec!["trainnet.alpha".to_string()],
                 build_version: Some("0.1.12".to_string()),
                 build_digest: "sha256:build-validator-only-gate".to_string(),
@@ -49331,8 +49546,20 @@ mod tests {
             }),
         );
         assert!(refreshed.eligible);
-        assert!(refreshed.readiness.claimability_status.worker_assignment.ready);
-        assert!(!refreshed.readiness.claimability_status.validator_challenge.ready);
+        assert!(
+            refreshed
+                .readiness
+                .claimability_status
+                .worker_assignment
+                .ready
+        );
+        assert!(
+            !refreshed
+                .readiness
+                .claimability_status
+                .validator_challenge
+                .ready
+        );
         assert_eq!(
             refreshed
                 .readiness
