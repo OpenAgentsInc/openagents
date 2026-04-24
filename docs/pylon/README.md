@@ -465,6 +465,11 @@ If `npx @openagentsinc/pylon` resolves an older version, update before testing
 paid training. If a platform does not yet have a matching `pylon-v0.1.13`
 release asset, use the npm bootstrap source fallback
 or a newer official release that includes these same paid-training guarantees.
+The `0.1.13` release receipt is
+`docs/reports/nexus/20260423-pylon-v0.1.13-release.json`. It proves the public
+darwin-arm64 release asset, the npm publish, the `npx @openagentsinc/pylon@0.1.13 --help`
+smoke, and the removal of legacy runtime wording from the public onboarding
+path.
 The `0.1.12` release receipt is
 `docs/reports/nexus/20260423-issue-4414-pylon-v0.1.12-release.json`. It proves
 the release assets, npm bootstrap behavior, TUI-managed worker, no default
