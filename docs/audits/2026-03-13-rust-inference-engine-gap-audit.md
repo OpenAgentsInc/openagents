@@ -290,7 +290,7 @@ runtime behavior.
 
 ## 7. Adapter support is still intentionally missing
 
-Psionic is explicit today that adapter-bearing Ollama manifests are refused.
+Psionic is explicit today that adapter-bearing legacy local-runtime lane manifests are refused.
 
 That was the correct short-term decision. It is still a missing feature for a
 full engine.

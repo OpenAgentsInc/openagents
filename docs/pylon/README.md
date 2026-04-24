@@ -305,7 +305,7 @@ Use this flow:
 2. Open an Ubuntu shell.
 3. Keep the repo, model cache, and build artifacts inside the Linux
    filesystem.
-4. Install and run Ollama inside Ubuntu.
+4. Install and run a local Gemma runtime inside Ubuntu.
 5. Verify NVIDIA passthrough inside Ubuntu before claiming GPU readiness.
 
 Preferred bootstrap commands on Windows:
@@ -340,7 +340,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.1.12
+npx @openagentsinc/pylon --version 0.1.13
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
@@ -430,10 +430,10 @@ running the default `pylon` loop admits its local capabilities and payout
 target, asks Nexus for available work, and receives CS336 Assignment 1 starter
 work when that is the currently hosted starter lane available to the node.
 
-The minimum public paid-training Pylon release for this path is
-`pylon-v0.1.12`, exposed through `@openagentsinc/pylon` `0.1.12`. That release
-contains the minimal homework-earning TUI, the TUI-managed worker lifecycle,
-bootstrap behavior that launches the TUI after smoke checks, opt-in-only Gemma
+The current recommended public paid-training Pylon release for this path is
+`pylon-v0.1.13`, exposed through `@openagentsinc/pylon` `0.1.13`. It keeps the
+`0.1.12` homework-earning TUI, the TUI-managed worker lifecycle, bootstrap
+behavior that launches the TUI after smoke checks, opt-in-only Gemma
 diagnostics/downloads, the Mac-safe Psionic training-worker launch path, the
 public-safe signed-artifact path, accepted-work payout projection, validator
 intake enabled by default, worker-first/validator-second default role claims,
@@ -441,13 +441,16 @@ failed retained-runtime lease retirement, nonfatal scheduler-error handling,
 default local Spark payout destination creation in the long-lived serve path,
 retained snapshot reuse for validator replay retries, and the Autopilot proof
 projection fixes needed for a normal node that advertises both worker and
-validator roles. It also reports terminal worker and validator closeout state
-to Nexus before attempting slower artifact/TRN publication, with a bounded
-publication timeout so a slow signed-URL upload cannot wedge the earning loop
-before accepted-work payout. For Psionic-backed homework/training jobs, it also
-prefers a current `target/release/psionic-train` binary when the operator has
-already built one and otherwise falls back to `cargo run --release`, with
-signal and log-tail details in failure receipts instead of only `code -1`.
+validator roles. `0.1.13` also removes the last legacy runtime wording from the
+public onboarding/runtime path and stops automatic runtime import or uninstall
+attempts against external local runtimes. It still reports terminal worker and
+validator closeout state to Nexus before attempting slower artifact/TRN
+publication, with a bounded publication timeout so a slow signed-URL upload
+cannot wedge the earning loop before accepted-work payout. For Psionic-backed
+homework/training jobs, it still prefers a current
+`target/release/psionic-train` binary when the operator has already built one
+and otherwise falls back to `cargo run --release`, with signal and log-tail
+details in failure receipts instead of only `code -1`.
 Older releases may still bring up local Gemma inference; `pylon-v0.1.10`
 contains the earlier payout fixes but its TUI did not supervise the worker and
 is not enough for the current user path, and `pylon-v0.1.11` can still launch
@@ -459,7 +462,7 @@ hosted CS336 earning because retained failed validator leases can block fresh
 paid worker intake. `pylon-v0.1.6` adds validator defaults but can still block
 terminal closeout behind artifact/TRN publication during the validator path.
 If `npx @openagentsinc/pylon` resolves an older version, update before testing
-paid training. If a platform does not yet have a matching `pylon-v0.1.12`
+paid training. If a platform does not yet have a matching `pylon-v0.1.13`
 release asset, use the npm bootstrap source fallback
 or a newer official release that includes these same paid-training guarantees.
 The `0.1.12` release receipt is
@@ -471,13 +474,14 @@ The prior `0.1.11` release receipt remains
 `docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json` for the last
 fresh npm-installed public release proof that settled a wallet payout.
 
-That Pylon version is necessary but not sufficient. Hosted starter work also
+That recommended Pylon version is necessary but not sufficient. Hosted starter
+work also
 requires production Nexus to run the corresponding hosted-starter fix set: the
 auto-launched starter lane must target online Pylons by
 `min_pylon_version=0.1.12`, must not require the provider's build digest to
 match the Nexus service build, and must skip exhausted or sealed starter runs
 instead of returning `training_scheduler_run_not_schedulable` to the default
-Pylon loop. If Nexus is older, a public `pylon-v0.1.12` node can come online
+Pylon loop. If Nexus is older, a public `pylon-v0.1.12` or newer node can come online
 correctly and still fail to receive fresh starter work. Treat that as a Nexus
 deployment/readiness problem, not a user opt-in problem.
 
@@ -794,25 +798,18 @@ Minimum local requirements:
 
 Runtime-specific requirements:
 
-- an Ollama-compatible local runtime endpoint at `local_gemma_base_url`
+- a local Gemma runtime endpoint at `local_gemma_base_url`
   (default `http://127.0.0.1:11434`) that answers `GET /api/tags` and
   `POST /api/chat`, with a Gemma 4 model loaded
 - on Windows, prefer that runtime inside WSL Ubuntu rather than a separate
   Windows host install
-- on macOS, the shortest supported runtime path today is:
-  - `brew install ollama`
-  - `brew services start ollama`
-  - `ollama pull gemma4:e2b`
 - on Ubuntu, Debian, or WSL Ubuntu, install native prerequisites before the
   runtime or a source build:
   - `sudo apt-get update`
   - `sudo apt-get install -y pkg-config libssl-dev curl git zstd`
-- on Ubuntu, Debian, or WSL Ubuntu, the shortest supported runtime path today
-  is:
-  - `curl -fsSL https://ollama.com/install.sh | sh`
-  - `ollama serve`
-  - `curl http://127.0.0.1:11434/api/tags`
-  - `ollama pull gemma4:e2b`
+- the exact runtime implementation is intentionally operator-chosen; this
+  onboarding doc only assumes an endpoint that speaks the current local Gemma
+  API shape and has a loaded `gemma4:*` model
 - preferred runtime model names are:
   - `gemma4:e2b`
   - `gemma4:e4b`
@@ -848,8 +845,8 @@ ls /usr/lib/wsl/lib
 ```
 
 If `nvidia-smi` fails inside WSL, treat that as a machine/runtime setup
-problem first. Once Ollama is running, `ollama ps` plus `nvidia-smi` is the
-normal check that the runtime is actually using the GPU.
+problem first. Once the local Gemma runtime is running, use its own status
+surface plus `nvidia-smi` to confirm the runtime is actually using the GPU.
 
 ## Quick Start
 
@@ -915,7 +912,7 @@ Important:
 
 - `pylon gemma download ...` only downloads GGUF files into `~/.openagents/pylon/models/huggingface/`
 - `/model <model>` targets the preferred local Gemma runtime model for future TUI and provider work
-- `/uninstall <model>` removes the cached GGUF and also removes the corresponding local Ollama model when Pylon is pointed at a local Ollama runtime
+- `/uninstall <model>` removes the cached GGUF and any Pylon-managed local runtime shim for that model when one exists
 - `pylon gemma download ... --transport curl` is the explicit fallback when the default Rust HTTP transport is unhappy in an SSH/VPN-constrained shell
 - `pylon gemma diagnose ...` only benchmarks models that are already loaded in the configured local runtime
 - the latest first-run diagnostic report is retained at `~/.openagents/pylon/diagnostics/gemma/latest.json`
@@ -1039,7 +1036,7 @@ If the shipped binary is current, `status`, `inventory`, `config show`, and `doc
 
 - backend naming should be `local_gemma`
 - the launch product should be `psionic.local.inference.gemma.single_node`
-- legacy `gpt_oss_*`, `ollama_*`, or Apple-FM-only product names should not be the surfaced launch truth for standalone Pylon onboarding
+- legacy `gpt_oss_*` or older runtime-specific product names should not be the surfaced launch truth for standalone Pylon onboarding
 
 Inspect status:
 
@@ -1144,8 +1141,8 @@ The generated config currently includes:
 - wallet network
 - wallet API key env var
 - wallet storage dir
-- local Gemma runtime base URL (`local_gemma_base_url`; legacy `ollama_base_url` still loads on read)
-- inventory-control toggles with `local_gemma_*` names; legacy `gpt_oss_*` and `ollama_*` names still load on read
+- local Gemma runtime base URL (`local_gemma_base_url`)
+- inventory-control toggles with `local_gemma_*` names
 - declared sandbox profiles
 
 ## Headless Service Guidance

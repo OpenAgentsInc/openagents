@@ -11,27 +11,27 @@ use std::time::{Duration, Instant};
 const LANE_POLL: Duration = Duration::from_millis(120);
 const REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
-const DEFAULT_OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
+const DEFAULT_LOCAL_RUNTIME_BASE_URL: &str = "http://127.0.0.1:11434";
 const DEFAULT_KEEP_ALIVE: &str = "5m";
 const UNLOAD_KEEP_ALIVE: u8 = 0;
-const ENV_OLLAMA_BASE_URL: &str = "OPENAGENTS_OLLAMA_BASE_URL";
-const ENV_OLLAMA_MODEL: &str = "OPENAGENTS_OLLAMA_MODEL";
+const ENV_LOCAL_RUNTIME_BASE_URL: &str = "OPENAGENTS_LOCAL_RUNTIME_BASE_URL";
+const ENV_LOCAL_RUNTIME_MODEL: &str = "OPENAGENTS_LOCAL_RUNTIME_MODEL";
 
 #[derive(Clone, Debug)]
-pub struct OllamaExecutionConfig {
+pub struct LocalRuntimeExecutionConfig {
     pub base_url: String,
     pub configured_model: Option<String>,
     pub refresh_interval: Duration,
 }
 
-impl Default for OllamaExecutionConfig {
+impl Default for LocalRuntimeExecutionConfig {
     fn default() -> Self {
         Self {
-            base_url: std::env::var(ENV_OLLAMA_BASE_URL)
+            base_url: std::env::var(ENV_LOCAL_RUNTIME_BASE_URL)
                 .ok()
                 .and_then(|value| normalize_optional_text(value.as_str()))
-                .unwrap_or_else(|| DEFAULT_OLLAMA_BASE_URL.to_string()),
-            configured_model: std::env::var(ENV_OLLAMA_MODEL)
+                .unwrap_or_else(|| DEFAULT_LOCAL_RUNTIME_BASE_URL.to_string()),
+            configured_model: std::env::var(ENV_LOCAL_RUNTIME_MODEL)
                 .ok()
                 .and_then(|value| normalize_optional_text(value.as_str())),
             refresh_interval: REFRESH_INTERVAL,
@@ -40,7 +40,7 @@ impl Default for OllamaExecutionConfig {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct OllamaExecutionSnapshot {
+pub struct LocalRuntimeExecutionSnapshot {
     pub base_url: String,
     pub reachable: bool,
     pub configured_model: Option<String>,
@@ -54,7 +54,7 @@ pub struct OllamaExecutionSnapshot {
     pub refreshed_at: Option<Instant>,
 }
 
-impl OllamaExecutionSnapshot {
+impl LocalRuntimeExecutionSnapshot {
     pub fn is_ready(&self) -> bool {
         self.reachable && self.ready_model.is_some()
     }
@@ -113,7 +113,7 @@ impl LocalInferenceExecutionProvenance {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OllamaGenerateJob {
+pub struct LocalRuntimeGenerateJob {
     pub request_id: String,
     pub prompt: String,
     pub requested_model: Option<String>,
@@ -121,21 +121,21 @@ pub struct OllamaGenerateJob {
 }
 
 #[derive(Clone, Debug)]
-pub enum OllamaExecutionCommand {
+pub enum LocalRuntimeExecutionCommand {
     Refresh,
     WarmConfiguredModel,
     UnloadConfiguredModel,
-    Generate(OllamaGenerateJob),
+    Generate(LocalRuntimeGenerateJob),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OllamaExecutionStarted {
+pub struct LocalRuntimeExecutionStarted {
     pub request_id: String,
     pub model: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OllamaExecutionCompleted {
+pub struct LocalRuntimeExecutionCompleted {
     pub request_id: String,
     pub model: String,
     pub output: String,
@@ -144,34 +144,34 @@ pub struct OllamaExecutionCompleted {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OllamaExecutionFailed {
+pub struct LocalRuntimeExecutionFailed {
     pub request_id: String,
     pub error: String,
 }
 
 #[derive(Clone, Debug)]
-pub enum OllamaExecutionUpdate {
-    Snapshot(Box<OllamaExecutionSnapshot>),
-    Started(OllamaExecutionStarted),
-    Completed(OllamaExecutionCompleted),
-    Failed(OllamaExecutionFailed),
+pub enum LocalRuntimeExecutionUpdate {
+    Snapshot(Box<LocalRuntimeExecutionSnapshot>),
+    Started(LocalRuntimeExecutionStarted),
+    Completed(LocalRuntimeExecutionCompleted),
+    Failed(LocalRuntimeExecutionFailed),
 }
 
-pub struct OllamaExecutionWorker {
-    command_tx: Sender<OllamaExecutionCommand>,
-    update_rx: Receiver<OllamaExecutionUpdate>,
+pub struct LocalRuntimeExecutionWorker {
+    command_tx: Sender<LocalRuntimeExecutionCommand>,
+    update_rx: Receiver<LocalRuntimeExecutionUpdate>,
 }
 
-impl OllamaExecutionWorker {
+impl LocalRuntimeExecutionWorker {
     pub fn spawn() -> Self {
-        Self::spawn_with_config(OllamaExecutionConfig::default())
+        Self::spawn_with_config(LocalRuntimeExecutionConfig::default())
     }
 
-    pub fn spawn_with_config(config: OllamaExecutionConfig) -> Self {
-        let (command_tx, command_rx) = mpsc::channel::<OllamaExecutionCommand>();
-        let (update_tx, update_rx) = mpsc::channel::<OllamaExecutionUpdate>();
+    pub fn spawn_with_config(config: LocalRuntimeExecutionConfig) -> Self {
+        let (command_tx, command_rx) = mpsc::channel::<LocalRuntimeExecutionCommand>();
+        let (update_tx, update_rx) = mpsc::channel::<LocalRuntimeExecutionUpdate>();
 
-        std::thread::spawn(move || run_ollama_execution_loop(command_rx, update_tx, config));
+        std::thread::spawn(move || run_local_runtime_execution_loop(command_rx, update_tx, config));
 
         Self {
             command_tx,
@@ -179,13 +179,13 @@ impl OllamaExecutionWorker {
         }
     }
 
-    pub fn enqueue(&self, command: OllamaExecutionCommand) -> Result<(), String> {
+    pub fn enqueue(&self, command: LocalRuntimeExecutionCommand) -> Result<(), String> {
         self.command_tx
             .send(command)
-            .map_err(|error| format!("Ollama execution worker offline: {error}"))
+            .map_err(|error| format!("LocalRuntime execution worker offline: {error}"))
     }
 
-    pub fn drain_updates(&mut self) -> Vec<OllamaExecutionUpdate> {
+    pub fn drain_updates(&mut self) -> Vec<LocalRuntimeExecutionUpdate> {
         let mut updates = Vec::new();
         while let Ok(update) = self.update_rx.try_recv() {
             updates.push(update);
@@ -194,27 +194,27 @@ impl OllamaExecutionWorker {
     }
 }
 
-struct OllamaExecutionState {
-    config: OllamaExecutionConfig,
-    snapshot: OllamaExecutionSnapshot,
+struct LocalRuntimeExecutionState {
+    config: LocalRuntimeExecutionConfig,
+    snapshot: LocalRuntimeExecutionSnapshot,
     client: Option<Client>,
 }
 
-impl OllamaExecutionState {
-    fn new(config: OllamaExecutionConfig) -> Self {
+impl LocalRuntimeExecutionState {
+    fn new(config: LocalRuntimeExecutionConfig) -> Self {
         let client = Client::builder()
             .timeout(REQUEST_TIMEOUT)
             .no_proxy()
             .build()
             .ok();
-        let mut snapshot = OllamaExecutionSnapshot {
+        let mut snapshot = LocalRuntimeExecutionSnapshot {
             base_url: config.base_url.clone(),
             configured_model: config.configured_model.clone(),
-            last_action: Some("Ollama execution worker starting".to_string()),
-            ..OllamaExecutionSnapshot::default()
+            last_action: Some("LocalRuntime execution worker starting".to_string()),
+            ..LocalRuntimeExecutionSnapshot::default()
         };
         if client.is_none() {
-            snapshot.last_error = Some("Failed to initialize Ollama HTTP client".to_string());
+            snapshot.last_error = Some("Failed to initialize LocalRuntime HTTP client".to_string());
         }
         Self {
             config,
@@ -223,13 +223,17 @@ impl OllamaExecutionState {
         }
     }
 
-    fn publish_snapshot(&self, update_tx: &Sender<OllamaExecutionUpdate>) {
-        let _ = update_tx.send(OllamaExecutionUpdate::Snapshot(Box::new(
+    fn publish_snapshot(&self, update_tx: &Sender<LocalRuntimeExecutionUpdate>) {
+        let _ = update_tx.send(LocalRuntimeExecutionUpdate::Snapshot(Box::new(
             self.snapshot.clone(),
         )));
     }
 
-    fn maybe_refresh_snapshot(&mut self, update_tx: &Sender<OllamaExecutionUpdate>, force: bool) {
+    fn maybe_refresh_snapshot(
+        &mut self,
+        update_tx: &Sender<LocalRuntimeExecutionUpdate>,
+        force: bool,
+    ) {
         let should_refresh = force
             || self
                 .snapshot
@@ -241,7 +245,7 @@ impl OllamaExecutionState {
         self.refresh_snapshot(update_tx);
     }
 
-    fn refresh_snapshot(&mut self, update_tx: &Sender<OllamaExecutionUpdate>) {
+    fn refresh_snapshot(&mut self, update_tx: &Sender<LocalRuntimeExecutionUpdate>) {
         self.snapshot.base_url = self.config.base_url.clone();
         self.snapshot.configured_model = self.config.configured_model.clone();
         self.snapshot.ready_model = None;
@@ -249,8 +253,8 @@ impl OllamaExecutionState {
 
         let Some(client) = self.client.clone() else {
             self.snapshot.reachable = false;
-            self.snapshot.last_error = Some("Ollama HTTP client unavailable".to_string());
-            self.snapshot.last_action = Some("Ollama refresh failed".to_string());
+            self.snapshot.last_error = Some("LocalRuntime HTTP client unavailable".to_string());
+            self.snapshot.last_action = Some("LocalRuntime refresh failed".to_string());
             self.snapshot.refreshed_at = Some(Instant::now());
             self.publish_snapshot(update_tx);
             return;
@@ -263,7 +267,7 @@ impl OllamaExecutionState {
                 self.snapshot.available_models.clear();
                 self.snapshot.loaded_models.clear();
                 self.snapshot.last_error = Some(error);
-                self.snapshot.last_action = Some("Ollama refresh failed".to_string());
+                self.snapshot.last_action = Some("LocalRuntime refresh failed".to_string());
                 self.snapshot.refreshed_at = Some(Instant::now());
                 self.publish_snapshot(update_tx);
                 return;
@@ -278,7 +282,7 @@ impl OllamaExecutionState {
                 self.snapshot.loaded_models = loaded_models;
                 self.snapshot.last_error = None;
                 self.snapshot.last_action =
-                    Some("Refreshed local Ollama model inventory".to_string());
+                    Some("Refreshed local LocalRuntime model inventory".to_string());
 
                 let ordered_candidates = ordered_text_generation_model_candidates(
                     self.config.configured_model.as_deref(),
@@ -321,7 +325,7 @@ impl OllamaExecutionState {
                 self.snapshot.available_models.clear();
                 self.snapshot.loaded_models.clear();
                 self.snapshot.last_error = Some(error);
-                self.snapshot.last_action = Some("Ollama refresh failed".to_string());
+                self.snapshot.last_action = Some("LocalRuntime refresh failed".to_string());
             }
         }
 
@@ -331,8 +335,8 @@ impl OllamaExecutionState {
 
     fn handle_generate(
         &mut self,
-        update_tx: &Sender<OllamaExecutionUpdate>,
-        job: OllamaGenerateJob,
+        update_tx: &Sender<LocalRuntimeExecutionUpdate>,
+        job: LocalRuntimeGenerateJob,
     ) {
         let normalized_prompt = match normalize_optional_text(job.prompt.as_str()) {
             Some(value) => normalize_prompt(value.as_str()),
@@ -348,7 +352,7 @@ impl OllamaExecutionState {
             self.fail_job(
                 update_tx,
                 job.request_id.as_str(),
-                "Ollama HTTP client unavailable".to_string(),
+                "LocalRuntime HTTP client unavailable".to_string(),
             );
             return;
         };
@@ -371,7 +375,7 @@ impl OllamaExecutionState {
             self.fail_job(
                 update_tx,
                 job.request_id.as_str(),
-                "Ollama serving model is not configured".to_string(),
+                "LocalRuntime serving model is not configured".to_string(),
             );
             return;
         };
@@ -386,7 +390,7 @@ impl OllamaExecutionState {
                 update_tx,
                 job.request_id.as_str(),
                 format!(
-                    "Requested Ollama model '{}' is not installed locally",
+                    "Requested LocalRuntime model '{}' is not installed locally",
                     model
                 ),
             );
@@ -420,10 +424,12 @@ impl OllamaExecutionState {
             .iter()
             .any(|candidate| candidate == &model);
 
-        let _ = update_tx.send(OllamaExecutionUpdate::Started(OllamaExecutionStarted {
-            request_id: job.request_id.clone(),
-            model: model.clone(),
-        }));
+        let _ = update_tx.send(LocalRuntimeExecutionUpdate::Started(
+            LocalRuntimeExecutionStarted {
+                request_id: job.request_id.clone(),
+                model: model.clone(),
+            },
+        ));
 
         match execute_generate(&client, &base_url, body) {
             Ok(result) => {
@@ -436,7 +442,7 @@ impl OllamaExecutionState {
                         .map(|duration_ns| duration_ns == 0)
                 };
                 let provenance = LocalInferenceExecutionProvenance {
-                    backend: "ollama".to_string(),
+                    backend: "local_runtime".to_string(),
                     requested_model: job.requested_model.clone(),
                     served_model: model.clone(),
                     normalized_prompt_digest: sha256_prefixed_text(normalized_prompt.as_str()),
@@ -457,20 +463,21 @@ impl OllamaExecutionState {
                 self.snapshot.last_request_id = Some(job.request_id.clone());
                 self.snapshot.last_metrics = Some(result.metrics.clone());
                 self.snapshot.last_action = Some(format!(
-                    "Completed local Ollama generation for {}",
+                    "Completed local LocalRuntime generation for {}",
                     job.request_id
                 ));
                 self.refresh_loaded_models(&client, &base_url);
                 self.snapshot.refreshed_at = Some(Instant::now());
                 self.publish_snapshot(update_tx);
-                let _ =
-                    update_tx.send(OllamaExecutionUpdate::Completed(OllamaExecutionCompleted {
+                let _ = update_tx.send(LocalRuntimeExecutionUpdate::Completed(
+                    LocalRuntimeExecutionCompleted {
                         request_id: job.request_id,
                         model,
                         output: result.output,
                         metrics: result.metrics,
                         provenance,
-                    }));
+                    },
+                ));
             }
             Err(error) => {
                 self.fail_job(update_tx, job.request_id.as_str(), error);
@@ -478,12 +485,12 @@ impl OllamaExecutionState {
         }
     }
 
-    fn handle_warm_configured_model(&mut self, update_tx: &Sender<OllamaExecutionUpdate>) {
+    fn handle_warm_configured_model(&mut self, update_tx: &Sender<LocalRuntimeExecutionUpdate>) {
         self.maybe_refresh_snapshot(update_tx, true);
         let Some(client) = self.client.clone() else {
             self.snapshot.reachable = false;
-            self.snapshot.last_error = Some("Ollama HTTP client unavailable".to_string());
-            self.snapshot.last_action = Some("Ollama warm-up failed".to_string());
+            self.snapshot.last_error = Some("LocalRuntime HTTP client unavailable".to_string());
+            self.snapshot.last_action = Some("LocalRuntime warm-up failed".to_string());
             self.snapshot.refreshed_at = Some(Instant::now());
             self.publish_snapshot(update_tx);
             return;
@@ -493,7 +500,7 @@ impl OllamaExecutionState {
             Err(error) => {
                 self.snapshot.reachable = false;
                 self.snapshot.last_error = Some(error);
-                self.snapshot.last_action = Some("Ollama warm-up failed".to_string());
+                self.snapshot.last_action = Some("LocalRuntime warm-up failed".to_string());
                 self.snapshot.refreshed_at = Some(Instant::now());
                 self.publish_snapshot(update_tx);
                 return;
@@ -504,14 +511,14 @@ impl OllamaExecutionState {
                 self.snapshot.configured_model.as_deref(),
                 &self.snapshot.available_models,
             ));
-            self.snapshot.last_action = Some("Ollama warm-up skipped".to_string());
+            self.snapshot.last_action = Some("LocalRuntime warm-up skipped".to_string());
             self.snapshot.refreshed_at = Some(Instant::now());
             self.publish_snapshot(update_tx);
             return;
         };
         if let Err(error) = validate_model(&client, &base_url, model.as_str()) {
             self.snapshot.last_error = Some(error);
-            self.snapshot.last_action = Some("Ollama warm-up failed".to_string());
+            self.snapshot.last_action = Some("LocalRuntime warm-up failed".to_string());
             self.snapshot.refreshed_at = Some(Instant::now());
             self.publish_snapshot(update_tx);
             return;
@@ -527,13 +534,13 @@ impl OllamaExecutionState {
                 self.snapshot.ready_model = Some(model.clone());
                 self.snapshot.last_error = None;
                 self.snapshot.last_action = Some(format!(
-                    "Warmed local Ollama model '{}' for provider mode",
+                    "Warmed local LocalRuntime model '{}' for provider mode",
                     model
                 ));
             }
             Err(error) => {
                 self.snapshot.last_error = Some(error);
-                self.snapshot.last_action = Some("Ollama warm-up failed".to_string());
+                self.snapshot.last_action = Some("LocalRuntime warm-up failed".to_string());
             }
         }
         self.refresh_loaded_models(&client, &base_url);
@@ -541,12 +548,12 @@ impl OllamaExecutionState {
         self.publish_snapshot(update_tx);
     }
 
-    fn handle_unload_configured_model(&mut self, update_tx: &Sender<OllamaExecutionUpdate>) {
+    fn handle_unload_configured_model(&mut self, update_tx: &Sender<LocalRuntimeExecutionUpdate>) {
         self.maybe_refresh_snapshot(update_tx, true);
         let Some(client) = self.client.clone() else {
             self.snapshot.reachable = false;
-            self.snapshot.last_error = Some("Ollama HTTP client unavailable".to_string());
-            self.snapshot.last_action = Some("Ollama unload failed".to_string());
+            self.snapshot.last_error = Some("LocalRuntime HTTP client unavailable".to_string());
+            self.snapshot.last_action = Some("LocalRuntime unload failed".to_string());
             self.snapshot.refreshed_at = Some(Instant::now());
             self.publish_snapshot(update_tx);
             return;
@@ -556,14 +563,14 @@ impl OllamaExecutionState {
             Err(error) => {
                 self.snapshot.reachable = false;
                 self.snapshot.last_error = Some(error);
-                self.snapshot.last_action = Some("Ollama unload failed".to_string());
+                self.snapshot.last_action = Some("LocalRuntime unload failed".to_string());
                 self.snapshot.refreshed_at = Some(Instant::now());
                 self.publish_snapshot(update_tx);
                 return;
             }
         };
         let Some(model) = self.selected_model_for_runtime() else {
-            self.snapshot.last_action = Some("Ollama unload skipped".to_string());
+            self.snapshot.last_action = Some("LocalRuntime unload skipped".to_string());
             self.snapshot.refreshed_at = Some(Instant::now());
             self.publish_snapshot(update_tx);
             return;
@@ -574,13 +581,13 @@ impl OllamaExecutionState {
                 self.snapshot.reachable = true;
                 self.snapshot.last_error = None;
                 self.snapshot.last_action = Some(format!(
-                    "Unloaded local Ollama model '{}' after going offline",
+                    "Unloaded local LocalRuntime model '{}' after going offline",
                     model
                 ));
             }
             Err(error) => {
                 self.snapshot.last_error = Some(error);
-                self.snapshot.last_action = Some("Ollama unload failed".to_string());
+                self.snapshot.last_action = Some("LocalRuntime unload failed".to_string());
             }
         }
         self.refresh_loaded_models(&client, &base_url);
@@ -608,40 +615,47 @@ impl OllamaExecutionState {
 
     fn fail_job(
         &mut self,
-        update_tx: &Sender<OllamaExecutionUpdate>,
+        update_tx: &Sender<LocalRuntimeExecutionUpdate>,
         request_id: &str,
         error: String,
     ) {
         self.snapshot.last_request_id = Some(request_id.to_string());
         self.snapshot.last_error = Some(error.clone());
-        self.snapshot.last_action = Some(format!("Ollama generation failed for {}", request_id));
+        self.snapshot.last_action =
+            Some(format!("LocalRuntime generation failed for {}", request_id));
         self.snapshot.refreshed_at = Some(Instant::now());
         self.publish_snapshot(update_tx);
-        let _ = update_tx.send(OllamaExecutionUpdate::Failed(OllamaExecutionFailed {
-            request_id: request_id.to_string(),
-            error,
-        }));
+        let _ = update_tx.send(LocalRuntimeExecutionUpdate::Failed(
+            LocalRuntimeExecutionFailed {
+                request_id: request_id.to_string(),
+                error,
+            },
+        ));
     }
 }
 
-fn run_ollama_execution_loop(
-    command_rx: Receiver<OllamaExecutionCommand>,
-    update_tx: Sender<OllamaExecutionUpdate>,
-    config: OllamaExecutionConfig,
+fn run_local_runtime_execution_loop(
+    command_rx: Receiver<LocalRuntimeExecutionCommand>,
+    update_tx: Sender<LocalRuntimeExecutionUpdate>,
+    config: LocalRuntimeExecutionConfig,
 ) {
-    let mut state = OllamaExecutionState::new(config);
+    let mut state = LocalRuntimeExecutionState::new(config);
     state.maybe_refresh_snapshot(&update_tx, true);
 
     loop {
         match command_rx.recv_timeout(LANE_POLL) {
-            Ok(OllamaExecutionCommand::Refresh) => state.maybe_refresh_snapshot(&update_tx, true),
-            Ok(OllamaExecutionCommand::WarmConfiguredModel) => {
+            Ok(LocalRuntimeExecutionCommand::Refresh) => {
+                state.maybe_refresh_snapshot(&update_tx, true)
+            }
+            Ok(LocalRuntimeExecutionCommand::WarmConfiguredModel) => {
                 state.handle_warm_configured_model(&update_tx)
             }
-            Ok(OllamaExecutionCommand::UnloadConfiguredModel) => {
+            Ok(LocalRuntimeExecutionCommand::UnloadConfiguredModel) => {
                 state.handle_unload_configured_model(&update_tx)
             }
-            Ok(OllamaExecutionCommand::Generate(job)) => state.handle_generate(&update_tx, job),
+            Ok(LocalRuntimeExecutionCommand::Generate(job)) => {
+                state.handle_generate(&update_tx, job)
+            }
             Err(RecvTimeoutError::Timeout) => state.maybe_refresh_snapshot(&update_tx, false),
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -762,7 +776,7 @@ fn describe_model_selection(
 ) -> String {
     if configured_model == Some(ready_model) {
         format!(
-            "Refreshed local Ollama model inventory; using configured model '{}'",
+            "Refreshed local LocalRuntime model inventory; using configured model '{}'",
             ready_model
         )
     } else if loaded_models
@@ -770,12 +784,12 @@ fn describe_model_selection(
         .any(|candidate| candidate == ready_model)
     {
         format!(
-            "Refreshed local Ollama model inventory; auto-selected loaded model '{}'",
+            "Refreshed local LocalRuntime model inventory; auto-selected loaded model '{}'",
             ready_model
         )
     } else {
         format!(
-            "Refreshed local Ollama model inventory; auto-selected local model '{}'",
+            "Refreshed local LocalRuntime model inventory; auto-selected local model '{}'",
             ready_model
         )
     }
@@ -786,30 +800,31 @@ fn describe_missing_model_state(
     available_models: &[String],
 ) -> String {
     if available_models.is_empty() {
-        "No local Ollama text-generation models are installed".to_string()
+        "No local LocalRuntime text-generation models are installed".to_string()
     } else if let Some(configured_model) = configured_model {
         format!(
-            "Configured Ollama model '{}' is unavailable and no compatible local text-generation model was ready",
+            "Configured LocalRuntime model '{}' is unavailable and no compatible local text-generation model was ready",
             configured_model
         )
     } else {
-        "No compatible local Ollama text-generation model is ready".to_string()
+        "No compatible local LocalRuntime text-generation model is ready".to_string()
     }
 }
 
 fn validate_local_base_url(raw: &str) -> Result<Url, String> {
-    let mut url = Url::parse(raw).map_err(|error| format!("invalid Ollama base URL: {error}"))?;
+    let mut url =
+        Url::parse(raw).map_err(|error| format!("invalid LocalRuntime base URL: {error}"))?;
     if url.scheme() != "http" {
-        return Err("Ollama base URL must use http".to_string());
+        return Err("LocalRuntime base URL must use http".to_string());
     }
     let Some(host) = url.host_str() else {
-        return Err("Ollama base URL must include a host".to_string());
+        return Err("LocalRuntime base URL must include a host".to_string());
     };
     if !matches!(host, "127.0.0.1" | "localhost" | "::1") {
-        return Err("Ollama base URL must remain local-only".to_string());
+        return Err("LocalRuntime base URL must remain local-only".to_string());
     }
     if url.path() != "/" && !url.path().is_empty() {
-        return Err("Ollama base URL must not include a path".to_string());
+        return Err("LocalRuntime base URL must not include a path".to_string());
     }
     url.set_path("");
     url.set_query(None);
@@ -846,7 +861,7 @@ pub(crate) fn canonical_options_json(options: &Map<String, Value>) -> Result<Str
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect::<BTreeMap<_, _>>();
     serde_json::to_string(&canonical)
-        .map_err(|error| format!("failed to encode normalized Ollama options: {error}"))
+        .map_err(|error| format!("failed to encode normalized LocalRuntime options: {error}"))
 }
 
 pub(crate) fn build_generate_options(
@@ -911,20 +926,20 @@ fn parse_f64(key: &str, raw: &str) -> Result<f64, String> {
 fn fetch_available_models(client: &Client, base_url: &Url) -> Result<Vec<String>, String> {
     let url = base_url
         .join("api/tags")
-        .map_err(|error| format!("invalid Ollama tags URL: {error}"))?;
+        .map_err(|error| format!("invalid LocalRuntime tags URL: {error}"))?;
     let response = client
         .get(url)
         .send()
-        .map_err(|error| format!("Ollama tags request failed: {error}"))?;
+        .map_err(|error| format!("LocalRuntime tags request failed: {error}"))?;
     if !response.status().is_success() {
         return Err(format!(
-            "Ollama tags request failed with status {}",
+            "LocalRuntime tags request failed with status {}",
             response.status()
         ));
     }
     let mut models = response
-        .json::<OllamaModelsResponse>()
-        .map_err(|error| format!("Ollama tags payload invalid: {error}"))?
+        .json::<LocalRuntimeModelsResponse>()
+        .map_err(|error| format!("LocalRuntime tags payload invalid: {error}"))?
         .models
         .into_iter()
         .filter_map(|model| normalize_optional_text(model.name.as_str()))
@@ -937,20 +952,20 @@ fn fetch_available_models(client: &Client, base_url: &Url) -> Result<Vec<String>
 fn fetch_loaded_models(client: &Client, base_url: &Url) -> Result<Vec<String>, String> {
     let url = base_url
         .join("api/ps")
-        .map_err(|error| format!("invalid Ollama ps URL: {error}"))?;
+        .map_err(|error| format!("invalid LocalRuntime ps URL: {error}"))?;
     let response = client
         .get(url)
         .send()
-        .map_err(|error| format!("Ollama ps request failed: {error}"))?;
+        .map_err(|error| format!("LocalRuntime ps request failed: {error}"))?;
     if !response.status().is_success() {
         return Err(format!(
-            "Ollama ps request failed with status {}",
+            "LocalRuntime ps request failed with status {}",
             response.status()
         ));
     }
     let mut models = response
-        .json::<OllamaModelsResponse>()
-        .map_err(|error| format!("Ollama ps payload invalid: {error}"))?
+        .json::<LocalRuntimeModelsResponse>()
+        .map_err(|error| format!("LocalRuntime ps payload invalid: {error}"))?
         .models
         .into_iter()
         .filter_map(|model| normalize_optional_text(model.name.as_str()))
@@ -963,15 +978,15 @@ fn fetch_loaded_models(client: &Client, base_url: &Url) -> Result<Vec<String>, S
 fn validate_model(client: &Client, base_url: &Url, model: &str) -> Result<(), String> {
     let url = base_url
         .join("api/show")
-        .map_err(|error| format!("invalid Ollama show URL: {error}"))?;
+        .map_err(|error| format!("invalid LocalRuntime show URL: {error}"))?;
     let response = client
         .post(url)
         .json(&json!({ "model": model }))
         .send()
-        .map_err(|error| format!("Ollama show request failed: {error}"))?;
+        .map_err(|error| format!("LocalRuntime show request failed: {error}"))?;
     if !response.status().is_success() {
         return Err(format!(
-            "Ollama model '{}' failed validation with status {}",
+            "LocalRuntime model '{}' failed validation with status {}",
             model,
             response.status()
         ));
@@ -983,27 +998,27 @@ fn execute_generate(
     client: &Client,
     base_url: &Url,
     body: Value,
-) -> Result<OllamaGenerateResult, String> {
+) -> Result<LocalRuntimeGenerateResult, String> {
     let url = base_url
         .join("api/generate")
-        .map_err(|error| format!("invalid Ollama generate URL: {error}"))?;
+        .map_err(|error| format!("invalid LocalRuntime generate URL: {error}"))?;
     let response = client
         .post(url)
         .json(&body)
         .send()
-        .map_err(|error| format!("Ollama generate request failed: {error}"))?;
+        .map_err(|error| format!("LocalRuntime generate request failed: {error}"))?;
     if !response.status().is_success() {
         return Err(format!(
-            "Ollama generate request failed with status {}",
+            "LocalRuntime generate request failed with status {}",
             response.status()
         ));
     }
     let payload = response
-        .json::<OllamaGenerateResponse>()
-        .map_err(|error| format!("Ollama generate payload invalid: {error}"))?;
+        .json::<LocalRuntimeGenerateResponse>()
+        .map_err(|error| format!("LocalRuntime generate payload invalid: {error}"))?;
     let output = normalize_optional_text(payload.response.as_str())
-        .ok_or_else(|| "Ollama returned an empty text-generation response".to_string())?;
-    Ok(OllamaGenerateResult {
+        .ok_or_else(|| "LocalRuntime returned an empty text-generation response".to_string())?;
+    Ok(LocalRuntimeGenerateResult {
         output,
         metrics: LocalInferenceExecutionMetrics {
             total_duration_ns: payload.total_duration,
@@ -1024,7 +1039,7 @@ fn execute_model_lifecycle_request<T: serde::Serialize>(
 ) -> Result<(), String> {
     let url = base_url
         .join("api/generate")
-        .map_err(|error| format!("invalid Ollama generate URL: {error}"))?;
+        .map_err(|error| format!("invalid LocalRuntime generate URL: {error}"))?;
     let response = client
         .post(url)
         .json(&json!({
@@ -1034,10 +1049,10 @@ fn execute_model_lifecycle_request<T: serde::Serialize>(
             "keep_alive": keep_alive,
         }))
         .send()
-        .map_err(|error| format!("Ollama lifecycle request failed: {error}"))?;
+        .map_err(|error| format!("LocalRuntime lifecycle request failed: {error}"))?;
     if !response.status().is_success() {
         return Err(format!(
-            "Ollama lifecycle request failed with status {}",
+            "LocalRuntime lifecycle request failed with status {}",
             response.status()
         ));
     }
@@ -1045,18 +1060,18 @@ fn execute_model_lifecycle_request<T: serde::Serialize>(
 }
 
 #[derive(Deserialize)]
-struct OllamaModelsResponse {
+struct LocalRuntimeModelsResponse {
     #[serde(default)]
-    models: Vec<OllamaModelSummary>,
+    models: Vec<LocalRuntimeModelSummary>,
 }
 
 #[derive(Deserialize)]
-struct OllamaModelSummary {
+struct LocalRuntimeModelSummary {
     name: String,
 }
 
 #[derive(Deserialize)]
-struct OllamaGenerateResponse {
+struct LocalRuntimeGenerateResponse {
     response: String,
     #[serde(default)]
     total_duration: Option<u64>,
@@ -1072,7 +1087,7 @@ struct OllamaGenerateResponse {
     eval_duration: Option<u64>,
 }
 
-struct OllamaGenerateResult {
+struct LocalRuntimeGenerateResult {
     output: String,
     metrics: LocalInferenceExecutionMetrics,
 }
@@ -1080,8 +1095,8 @@ struct OllamaGenerateResult {
 #[cfg(test)]
 mod tests {
     use super::{
-        OllamaExecutionCommand, OllamaExecutionConfig, OllamaExecutionUpdate,
-        OllamaExecutionWorker, build_generate_body, build_generate_options, normalize_prompt,
+        LocalRuntimeExecutionCommand, LocalRuntimeExecutionConfig, LocalRuntimeExecutionUpdate,
+        LocalRuntimeExecutionWorker, build_generate_body, build_generate_options, normalize_prompt,
         ordered_text_generation_model_candidates, validate_local_base_url,
     };
     use crate::state::job_inbox::JobExecutionParam;
@@ -1093,14 +1108,14 @@ mod tests {
     use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
 
-    fn spawn_mock_ollama_server(
+    fn spawn_mock_local_runtime_server(
         available_models: &[&str],
         loaded_models: &[&str],
     ) -> (String, Arc<Mutex<Vec<Value>>>, JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock ollama server");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock local_runtime server");
         listener
             .set_nonblocking(true)
-            .expect("set mock ollama listener nonblocking");
+            .expect("set mock local_runtime listener nonblocking");
         let address = listener.local_addr().expect("listener addr");
         let available_models = available_models
             .iter()
@@ -1125,7 +1140,7 @@ mod tests {
                         std::thread::sleep(Duration::from_millis(10));
                         continue;
                     }
-                    Err(error) => panic!("accept mock ollama request: {error}"),
+                    Err(error) => panic!("accept mock local_runtime request: {error}"),
                 };
                 let (method, path, body) = read_http_request(&mut stream);
                 let response_body = match (method.as_str(), path.as_str()) {
@@ -1146,7 +1161,7 @@ mod tests {
                             .expect("capture mutex")
                             .push(parsed);
                         serde_json::json!({
-                            "response": "hello from ollama",
+                            "response": "hello from local_runtime",
                             "total_duration": 1_200_000,
                             "load_duration": 0,
                             "prompt_eval_count": 11,
@@ -1156,7 +1171,7 @@ mod tests {
                         })
                         .to_string()
                     }
-                    other => panic!("unexpected mock ollama request {other:?} body={body}"),
+                    other => panic!("unexpected mock local_runtime request {other:?} body={body}"),
                 };
                 write_http_response(&mut stream, 200, response_body.as_str());
             }
@@ -1308,35 +1323,38 @@ mod tests {
     }
 
     #[test]
-    fn worker_generate_emits_provenance_and_normalized_ollama_request() {
+    fn worker_generate_emits_provenance_and_normalized_local_runtime_request() {
         let (base_url, captured_generate_requests, server_handle) =
-            spawn_mock_ollama_server(&["llama3.2:latest"], &["llama3.2:latest"]);
-        let mut worker = OllamaExecutionWorker::spawn_with_config(OllamaExecutionConfig {
-            base_url: base_url.clone(),
-            configured_model: Some("llama3.2:latest".to_string()),
-            refresh_interval: Duration::from_secs(60),
-        });
+            spawn_mock_local_runtime_server(&["llama3.2:latest"], &["llama3.2:latest"]);
+        let mut worker =
+            LocalRuntimeExecutionWorker::spawn_with_config(LocalRuntimeExecutionConfig {
+                base_url: base_url.clone(),
+                configured_model: Some("llama3.2:latest".to_string()),
+                refresh_interval: Duration::from_secs(60),
+            });
         worker
-            .enqueue(OllamaExecutionCommand::Generate(super::OllamaGenerateJob {
-                request_id: "req-ollama-test".to_string(),
-                prompt: " \r\nWrite a haiku about rust\r\n".to_string(),
-                requested_model: Some("llama3.2:latest".to_string()),
-                params: vec![
-                    JobExecutionParam {
-                        key: "max_tokens".to_string(),
-                        value: "64".to_string(),
-                    },
-                    JobExecutionParam {
-                        key: "top_k".to_string(),
-                        value: "16".to_string(),
-                    },
-                    JobExecutionParam {
-                        key: "top_p".to_string(),
-                        value: "0.95".to_string(),
-                    },
-                ],
-            }))
-            .expect("queue ollama generation");
+            .enqueue(LocalRuntimeExecutionCommand::Generate(
+                super::LocalRuntimeGenerateJob {
+                    request_id: "req-local_runtime-test".to_string(),
+                    prompt: " \r\nWrite a haiku about rust\r\n".to_string(),
+                    requested_model: Some("llama3.2:latest".to_string()),
+                    params: vec![
+                        JobExecutionParam {
+                            key: "max_tokens".to_string(),
+                            value: "64".to_string(),
+                        },
+                        JobExecutionParam {
+                            key: "top_k".to_string(),
+                            value: "16".to_string(),
+                        },
+                        JobExecutionParam {
+                            key: "top_p".to_string(),
+                            value: "0.95".to_string(),
+                        },
+                    ],
+                },
+            ))
+            .expect("queue local_runtime generation");
 
         let deadline = Instant::now() + Duration::from_secs(3);
         let mut completed = None;
@@ -1345,14 +1363,14 @@ mod tests {
         while Instant::now() < deadline {
             for update in worker.drain_updates() {
                 match update {
-                    OllamaExecutionUpdate::Completed(value) => {
+                    LocalRuntimeExecutionUpdate::Completed(value) => {
                         completed = Some(value);
                         break;
                     }
-                    OllamaExecutionUpdate::Failed(value) => {
+                    LocalRuntimeExecutionUpdate::Failed(value) => {
                         failure = Some(value.error);
                     }
-                    OllamaExecutionUpdate::Snapshot(snapshot) => {
+                    LocalRuntimeExecutionUpdate::Snapshot(snapshot) => {
                         last_snapshot = Some(format!(
                             "reachable={} ready_model={:?} last_error={:?} last_action={:?}",
                             snapshot.reachable,
@@ -1361,7 +1379,7 @@ mod tests {
                             snapshot.last_action
                         ));
                     }
-                    OllamaExecutionUpdate::Started(_) => {}
+                    LocalRuntimeExecutionUpdate::Started(_) => {}
                 }
             }
             if completed.is_some() {
@@ -1372,10 +1390,10 @@ mod tests {
 
         let completed = completed.unwrap_or_else(|| {
             panic!(
-                "worker should complete mocked ollama generation failure={failure:?} snapshot={last_snapshot:?}"
+                "worker should complete mocked local_runtime generation failure={failure:?} snapshot={last_snapshot:?}"
             )
         });
-        assert_eq!(completed.output, "hello from ollama");
+        assert_eq!(completed.output, "hello from local_runtime");
         assert_eq!(
             completed.provenance.requested_model.as_deref(),
             Some("llama3.2:latest")
@@ -1414,7 +1432,7 @@ mod tests {
         assert_eq!(generate_body["options"]["top_k"], 16);
         assert_eq!(generate_body["options"]["top_p"], 0.95);
 
-        server_handle.join().expect("mock ollama thread");
+        server_handle.join().expect("mock local_runtime thread");
     }
 
     #[test]
@@ -1436,19 +1454,20 @@ mod tests {
     #[test]
     fn worker_auto_selects_loaded_model_when_no_env_model_is_set() {
         let (base_url, _, server_handle) =
-            spawn_mock_ollama_server(&["llama3.2:latest", "qwen3:8b"], &["qwen3:8b"]);
-        let mut worker = OllamaExecutionWorker::spawn_with_config(OllamaExecutionConfig {
-            base_url,
-            configured_model: None,
-            refresh_interval: Duration::from_secs(60),
-        });
+            spawn_mock_local_runtime_server(&["llama3.2:latest", "qwen3:8b"], &["qwen3:8b"]);
+        let mut worker =
+            LocalRuntimeExecutionWorker::spawn_with_config(LocalRuntimeExecutionConfig {
+                base_url,
+                configured_model: None,
+                refresh_interval: Duration::from_secs(60),
+            });
 
         let deadline = Instant::now() + Duration::from_secs(3);
         let mut ready_model = None;
         let mut last_error = None;
         while Instant::now() < deadline {
             for update in worker.drain_updates() {
-                if let OllamaExecutionUpdate::Snapshot(snapshot) = update {
+                if let LocalRuntimeExecutionUpdate::Snapshot(snapshot) = update {
                     ready_model = snapshot.ready_model.clone();
                     last_error = snapshot.last_error.clone();
                     if ready_model.is_some() {
@@ -1465,25 +1484,26 @@ mod tests {
         assert_eq!(ready_model.as_deref(), Some("qwen3:8b"));
         assert_eq!(last_error, None);
 
-        server_handle.join().expect("mock ollama thread");
+        server_handle.join().expect("mock local_runtime thread");
     }
 
     #[test]
     fn worker_falls_back_when_configured_model_is_missing_locally() {
         let (base_url, _, server_handle) =
-            spawn_mock_ollama_server(&["llama3.2:latest", "qwen3:8b"], &["qwen3:8b"]);
-        let mut worker = OllamaExecutionWorker::spawn_with_config(OllamaExecutionConfig {
-            base_url,
-            configured_model: Some("not-installed:latest".to_string()),
-            refresh_interval: Duration::from_secs(60),
-        });
+            spawn_mock_local_runtime_server(&["llama3.2:latest", "qwen3:8b"], &["qwen3:8b"]);
+        let mut worker =
+            LocalRuntimeExecutionWorker::spawn_with_config(LocalRuntimeExecutionConfig {
+                base_url,
+                configured_model: Some("not-installed:latest".to_string()),
+                refresh_interval: Duration::from_secs(60),
+            });
 
         let deadline = Instant::now() + Duration::from_secs(3);
         let mut ready_model = None;
         let mut last_error = None;
         while Instant::now() < deadline {
             for update in worker.drain_updates() {
-                if let OllamaExecutionUpdate::Snapshot(snapshot) = update {
+                if let LocalRuntimeExecutionUpdate::Snapshot(snapshot) = update {
                     ready_model = snapshot.ready_model.clone();
                     last_error = snapshot.last_error.clone();
                     if ready_model.is_some() {
@@ -1500,6 +1520,6 @@ mod tests {
         assert_eq!(ready_model.as_deref(), Some("qwen3:8b"));
         assert_eq!(last_error, None);
 
-        server_handle.join().expect("mock ollama thread");
+        server_handle.join().expect("mock local_runtime thread");
     }
 }

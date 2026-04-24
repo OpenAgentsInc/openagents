@@ -455,7 +455,7 @@ It is important to separate current repo truth from older planning language:
   training/eval/outcome records, with the live Apple-valid runtime asset
   currently produced through a toolkit-backed export lane under repo-owned
   orchestration
-- older long-horizon compute planning documents may still reference `Ollama`
+- older long-horizon compute planning documents may still reference `legacy local-runtime lane`
   from pre-prune work; treat that as historical planning context rather than
   the current retained MVP code truth
 

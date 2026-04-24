@@ -7,7 +7,7 @@ Scope: `apps/autopilot-deprecated` workbench pane only
 ## What Landed In This Slice
 
 - Added a new singleton `Local Inference` pane in `apps/autopilot-deprecated`.
-- The pane is app-owned and uses the current `local_inference_runtime` seam instead of reviving the older direct `ollama` UI approach.
+- The pane is app-owned and uses the current `local_inference_runtime` seam instead of reviving the older direct `legacy_local_runtime` UI approach.
 - It exposes:
   - runtime refresh / warm / unload controls
   - a prompt playground with model + sampling inputs
@@ -30,10 +30,10 @@ Scope: `apps/autopilot-deprecated` workbench pane only
 - `default_local_inference_runtime()` still resolves to `PsionicRuntimeAdapter::new_reference()`.
 - That is enough for the workbench shell, but it is not yet the final Metal-backed GPT-OSS loading path.
 
-3. Provider/runtime internals still use older `ollama_*` names.
+3. Provider/runtime internals still use older `legacy_local_runtime_*` names.
 
 - The new user-facing pane is `Local Inference`.
-- Internally, desktop runtime snapshots and provider mirrors still flow through fields like `state.ollama_execution` and `provider_runtime.ollama`.
+- Internally, desktop runtime snapshots and provider mirrors still flow through fields like `state.legacy_local_runtime_execution` and `provider_runtime.legacy_local_runtime`.
 - I intentionally did not rename those internals in this slice to avoid broad churn while other branch work is active.
 
 4. Backend/model-selection UX should wait for the runtime contract to grow first.

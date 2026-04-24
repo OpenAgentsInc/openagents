@@ -1,4 +1,4 @@
-# 2026-03-06 Ollama NIP-90 Compute Provider Audit
+# 2026-03-06 legacy local-runtime lane NIP-90 Compute Provider Audit
 
 > Historical note: This audit is a point-in-time snapshot from its date. Current product and architecture authority lives in `README.md`, `docs/MVP.md`, `docs/OWNERSHIP.md`, and `docs/kernel/`. File paths, issue states, and implementation-status claims here may be superseded by later commits.
 
@@ -28,20 +28,20 @@
   - `/Users/christopherdavid/code/data-vending-machines/nip89.md`
   - `/Users/christopherdavid/code/data-vending-machines/kinds/5050.md`
   - adjacent kind docs for `5900`, `5905`, `5970`
-- Ollama surface and implementation references:
-  - `/Users/christopherdavid/code/ollama/ollama/README.md`
-  - `/Users/christopherdavid/code/ollama/ollama/docs/api.md`
-  - `/Users/christopherdavid/code/ollama/ollama/docs/api/*`
-  - `/Users/christopherdavid/code/ollama/ollama/docs/openapi.yaml`
-  - `/Users/christopherdavid/code/ollama/ollama/api/types.go`
-  - `/Users/christopherdavid/code/ollama/ollama/server/routes.go`
-  - `/Users/christopherdavid/code/ollama/ollama/server/sched.go`
-  - `/Users/christopherdavid/code/ollama/ollama/envconfig/config.go`
-  - relevant open/closed Ollama issues via `gh`
+- legacy local-runtime lane surface and implementation references:
+  - `/Users/christopherdavid/code/legacy_local_runtime/legacy_local_runtime/README.md`
+  - `/Users/christopherdavid/code/legacy_local_runtime/legacy_local_runtime/docs/api.md`
+  - `/Users/christopherdavid/code/legacy_local_runtime/legacy_local_runtime/docs/api/*`
+  - `/Users/christopherdavid/code/legacy_local_runtime/legacy_local_runtime/docs/openapi.yaml`
+  - `/Users/christopherdavid/code/legacy_local_runtime/legacy_local_runtime/api/types.go`
+  - `/Users/christopherdavid/code/legacy_local_runtime/legacy_local_runtime/server/routes.go`
+  - `/Users/christopherdavid/code/legacy_local_runtime/legacy_local_runtime/server/sched.go`
+  - `/Users/christopherdavid/code/legacy_local_runtime/legacy_local_runtime/envconfig/config.go`
+  - relevant open/closed legacy local-runtime lane issues via `gh`
 
 ## Executive Verdict
 
-OpenAgents can support "sell local inference through Ollama for NIP-90 jobs" without a repo-wide redesign, but the current implementation is not yet protocol-correct or product-truthful for that role.
+OpenAgents can support "sell local inference through legacy local-runtime lane for NIP-90 jobs" without a repo-wide redesign, but the current implementation is not yet protocol-correct or product-truthful for that role.
 
 The smallest correct MVP is:
 
@@ -50,10 +50,10 @@ The smallest correct MVP is:
    - result kind `6050`
    - feedback kind `7000`
    - NIP-89 handler kind `31990`
-2. Execute accepted `5050` jobs through a local Ollama backend, not through the current Codex execution lane.
+2. Execute accepted `5050` jobs through a local legacy local-runtime lane backend, not through the current Codex execution lane.
 3. Publish only capabilities the desktop can actually serve at that moment.
 4. Return the generated text itself in the result `content`, not the current JSON execution envelope.
-5. Keep money authority exactly where the kernel docs say it belongs: wallet-confirmed settlement and explicit receipts, not Ollama metrics and not Nostr event publication alone.
+5. Keep money authority exactly where the kernel docs say it belongs: wallet-confirmed settlement and explicit receipts, not legacy local-runtime lane metrics and not Nostr event publication alone.
 
 This should be implemented as an app-owned backend inside `apps/autopilot-deprecated`, with only a small interop fix in `crates/nostr/core`. It should not be generalized into a broad multi-provider framework yet. A narrow execution-backend seam is enough for MVP.
 
@@ -69,10 +69,10 @@ The docs are internally consistent on the key product constraint:
 
 That means:
 
-- Ollama execution should live in the desktop app layer.
+- legacy local-runtime lane execution should live in the desktop app layer.
 - Shared NIP-90 parsing fixes should live in `crates/nostr/core`.
-- `crates/wgpui/` should not become the home for provider execution policy or Ollama integration.
-- Settlement must continue to depend on wallet evidence, not "Ollama says it ran."
+- `crates/wgpui/` should not become the home for provider execution policy or legacy local-runtime lane integration.
+- Settlement must continue to depend on wallet evidence, not "legacy local-runtime lane says it ran."
 
 ## Canonical Protocol Baseline For Text Generation
 
@@ -101,7 +101,7 @@ For `5050`, the relevant request surface is:
   - `text/plain`
   - `text/markdown`
 
-Important protocol implication: for the first Ollama lane, the correct event kinds are `5050`, `6050`, `7000`, and `31990`. The adjacent DVM docs for `5900`, `5905`, and `5970` are not the text-generation lane and should not shape the initial implementation beyond reminding us that encrypted NIP-90 request/feedback flows exist in the broader ecosystem.
+Important protocol implication: for the first legacy local-runtime lane lane, the correct event kinds are `5050`, `6050`, `7000`, and `31990`. The adjacent DVM docs for `5900`, `5905`, and `5970` are not the text-generation lane and should not shape the initial implementation beyond reminding us that encrypted NIP-90 request/feedback flows exist in the broader ecosystem.
 
 ## Current OpenAgents State
 
@@ -126,7 +126,7 @@ Important protocol implication: for the first Ollama lane, the correct event kin
   - publishes NIP-90 feedback and results
 - Current wallet/receipt architecture already preserves the kernel rule that settlement truth is external to model execution.
 
-### What Is Missing Or Wrong For An Ollama Provider
+### What Is Missing Or Wrong For An legacy local-runtime lane Provider
 
 #### 1. The parser rejects the DVM repo's canonical `prompt` input type.
 
@@ -150,7 +150,7 @@ This is a real interop bug and the highest-priority shared protocol fix.
 - feeds a synthetic execution prompt
 - captures final agent text
 
-That is not "sell local inference via Ollama." It is a different compute substrate.
+That is not "sell local inference via legacy local-runtime lane." It is a different compute substrate.
 
 #### 3. The current result payload shape is not DVM-friendly for `5050`.
 
@@ -182,30 +182,30 @@ This is the second biggest protocol-correctness gap after the `prompt` alias bug
 - sandbox run
 - RLM subquery
 
-An Ollama-first MVP provider cannot truthfully advertise that full set unless those kinds are actually implemented against Ollama and policy-validated. For the first cut it should publish only `5050`.
+An legacy local-runtime lane-first MVP provider cannot truthfully advertise that full set unless those kinds are actually implemented against legacy local-runtime lane and policy-validated. For the first cut it should publish only `5050`.
 
-#### 5. There is no Ollama integration at all.
+#### 5. There is no legacy local-runtime lane integration at all.
 
-A repo-wide search shows no existing `ollama` integration in the retained code. There is no:
+A repo-wide search shows no existing `legacy_local_runtime` integration in the retained code. There is no:
 
-- Ollama client
+- legacy local-runtime lane client
 - model discovery
 - provider-side model selection
 - warm/unload logic
-- mapping from DVM params to Ollama options
-- Ollama-specific health state in the UI/runtime
+- mapping from DVM params to legacy local-runtime lane options
+- legacy local-runtime lane-specific health state in the UI/runtime
 
 #### 6. Current provider prompts and outputs are wrong for a local inference provider.
 
 `provider_execution_prompt_for_active_job()` constructs a Codex-agent instruction block. That is appropriate for the current Codex lane, not for a one-shot `5050` completion.
 
-For Ollama `5050`, the job input should be normalized into a prompt and sent directly to `/api/generate`.
+For legacy local-runtime lane `5050`, the job input should be normalized into a prompt and sent directly to `/api/generate`.
 
-## Ollama Readout
+## legacy local-runtime lane Readout
 
 ### Recommended API Surface
 
-For the first `5050` implementation, use Ollama's native local API, not the OpenAI-compatibility layer.
+For the first `5050` implementation, use the legacy local-runtime lane's native local API, not the OpenAI-compatibility layer.
 
 Reason:
 
@@ -225,7 +225,7 @@ Reason:
 
 #### Important Request/Response Fields
 
-Ollama supports the knobs we need for a first text-generation lane:
+legacy local-runtime lane supports the knobs we need for a first text-generation lane:
 
 - Request:
   - `model`
@@ -269,7 +269,7 @@ Ollama supports the knobs we need for a first text-generation lane:
 
 From source and issue review:
 
-- Ollama only loads one model at a time during certain scheduler operations.
+- legacy local-runtime lane only loads one model at a time during certain scheduler operations.
 - Queue behavior is not a sufficient admission-control layer on its own.
 - Concurrency plus model reloads can deadlock or behave poorly.
 - Higher parallelism increases memory pressure materially.
@@ -307,7 +307,7 @@ Why this belongs here:
 
 ### 2. Introduce A Narrow Provider Execution Backend In `apps/autopilot-deprecated`
 
-Do not build a large provider abstraction framework. Add only the seam needed to swap the current Codex execution lane for an Ollama-backed `5050` executor.
+Do not build a large provider abstraction framework. Add only the seam needed to swap the current Codex execution lane for an legacy local-runtime lane-backed `5050` executor.
 
 Recommended shape:
 
@@ -322,7 +322,7 @@ Recommended placement:
 
 - New app-local module such as:
   - `apps/autopilot-deprecated/src/provider_execution/mod.rs`
-  - `apps/autopilot-deprecated/src/provider_execution/ollama.rs`
+  - `apps/autopilot-deprecated/src/provider_execution/legacy_local_runtime.rs`
 
 Why app-owned:
 
@@ -330,7 +330,7 @@ Why app-owned:
 - This is not a generic Nostr concern.
 - This is not a `wgpui` concern.
 
-### 3. Replace The `5050` Execution Path With Ollama
+### 3. Replace The `5050` Execution Path With legacy local-runtime lane
 
 Primary file:
 
@@ -340,16 +340,16 @@ Required change:
 
 - Accepted `5050` jobs should no longer start a Codex thread/turn.
 - They should instead:
-  - validate Ollama readiness
+  - validate legacy local-runtime lane readiness
   - normalize the prompt
-  - call the Ollama backend
+  - call the legacy local-runtime lane backend
   - capture the generated text
   - publish feedback/result events
   - record local receipts/metrics
 
-The existing Codex flow can remain for other future/internal capabilities if needed, but it must not be the execution engine for the advertised Ollama `5050` lane.
+The existing Codex flow can remain for other future/internal capabilities if needed, but it must not be the execution engine for the advertised legacy local-runtime lane `5050` lane.
 
-### 4. Add An Ollama Client And Local Provider Configuration
+### 4. Add An legacy local-runtime lane Client And Local Provider Configuration
 
 Recommended new app-owned concerns:
 
@@ -359,20 +359,20 @@ Recommended new app-owned concerns:
 - keep-alive policy
 - health / warm / loaded state
 - last successful generation metrics
-- last Ollama error
+- last legacy local-runtime lane error
 
 MVP recommendation:
 
-- Treat remote Ollama hosts as out of scope.
-- Assume the user has Ollama installed.
+- Treat remote legacy local-runtime lane hosts as out of scope.
+- Assume the user has legacy local-runtime lane installed.
 - Assume the user has already pulled at least one model.
 - Require explicit selection of a local model before advertising the provider.
 
-#### DVM To Ollama Param Mapping
+#### DVM To legacy local-runtime lane Param Mapping
 
 Required normalization:
 
-- `model` -> top-level Ollama `model`
+- `model` -> top-level legacy local-runtime lane `model`
 - `max_tokens` -> `options.num_predict`
 - `temperature` -> `options.temperature`
 - `top_k` or `top-k` -> `options.top_k`
@@ -387,9 +387,9 @@ Reasonable MVP extras if already present in request params:
 
 Important non-mapping note:
 
-- DVM `output` is a MIME hint, not a direct Ollama parameter for this MVP.
+- DVM `output` is a MIME hint, not a direct legacy local-runtime lane parameter for this MVP.
 - For `text/plain` and `text/markdown`, just return the generated text.
-- Do not use Ollama structured-output or JSON modes in the first cut.
+- Do not use legacy local-runtime lane structured-output or JSON modes in the first cut.
 
 #### Prompt Normalization
 
@@ -411,22 +411,22 @@ Primary file:
 Required change:
 
 - Replace the current static `supported_handler_kinds()` list with backend-driven capability reporting.
-- In the initial Ollama MVP, the handler should publish only:
+- In the initial legacy local-runtime lane MVP, the handler should publish only:
   - `k=5050`
 
 Publishing rules:
 
 - Do not publish a handler until:
   - a Nostr identity is ready
-  - Ollama is reachable
+  - legacy local-runtime lane is reachable
   - a configured local model exists
   - the model has been validated as usable for text generation
-- If Ollama becomes unavailable, stop claiming the provider is healthy and stop auto-accepting new jobs.
+- If legacy local-runtime lane becomes unavailable, stop claiming the provider is healthy and stop auto-accepting new jobs.
 
 Residual protocol reality:
 
 - NIP-89 handler events can linger on relays after the device goes offline.
-- That is not introduced by Ollama; it is a general limitation of the current product shape.
+- That is not introduced by legacy local-runtime lane; it is a general limitation of the current product shape.
 - MVP can tolerate this if the runtime rejects/ignores jobs while offline, but it should be called out as a follow-on product truth problem.
 
 ### 6. Fix NIP-90 Result And Feedback Semantics For `5050`
@@ -458,9 +458,9 @@ Keep metrics and provenance out of the visible result text. Store them in:
 
 Do not make payment settlement depend on result publication alone.
 
-### 7. Expand Validation And Admission Control For Ollama
+### 7. Expand Validation And Admission Control For legacy local-runtime lane
 
-Current job-inbox validation and runtime sequencing are useful, but the Ollama lane needs provider-specific rejection reasons.
+Current job-inbox validation and runtime sequencing are useful, but the legacy local-runtime lane lane needs provider-specific rejection reasons.
 
 Add truthful rejection/preflight checks for:
 
@@ -469,7 +469,7 @@ Add truthful rejection/preflight checks for:
 - missing prompt after normalization
 - unsupported output MIME type
 - encrypted request that cannot be decrypted
-- Ollama not reachable
+- legacy local-runtime lane not reachable
 - selected provider model not installed locally
 - requested `model` param not installed locally
 - requested `model` param not allowed by local policy
@@ -479,7 +479,7 @@ Add truthful rejection/preflight checks for:
 
 Important policy point:
 
-- Do not rely on Ollama queueing as the provider's concurrency control.
+- Do not rely on legacy local-runtime lane queueing as the provider's concurrency control.
 - OpenAgents should continue to own admission and keep `max_inflight = 1` for MVP.
 
 ### 8. Add Truthful UI/Runtime State For The Compute Backend
@@ -491,7 +491,7 @@ Likely touch points:
 
 The provider UI should explicitly show:
 
-- whether Ollama is reachable
+- whether legacy local-runtime lane is reachable
 - selected serving model
 - whether the model is currently warm/loaded
 - installed models discovered from `/api/tags`
@@ -504,12 +504,12 @@ The provider UI should explicitly show:
 
 - provider is connected to relays
 - provider has a selected local model
-- Ollama is reachable
+- legacy local-runtime lane is reachable
 - capability publication has succeeded or is actively retrying
 
 Do not show the provider as a healthy compute seller if those conditions are not true.
 
-### 9. Record Ollama-Specific Provenance In Local Receipts
+### 9. Record legacy local-runtime lane-Specific Provenance In Local Receipts
 
 Current receipt and earnings truth model is good and should remain.
 
@@ -545,8 +545,8 @@ Why not more:
 2. OpenAgents parses the request via shared `nip90` model types.
 3. Preflight validation classifies the request.
 4. If valid and within local policy, the runtime accepts it.
-5. For `5050`, execution is dispatched to the Ollama backend.
-6. Ollama returns generated text plus metrics.
+5. For `5050`, execution is dispatched to the legacy local-runtime lane backend.
+6. legacy local-runtime lane returns generated text plus metrics.
 7. OpenAgents publishes:
    - optional `7000 processing`
    - `6050` success result or `7000 error`
@@ -577,7 +577,7 @@ Why `/api/generate` over `/api/chat` for the first cut:
 Recommended behavior:
 
 - On provider start or `Go Online`:
-  - verify Ollama reachability
+  - verify legacy local-runtime lane reachability
   - fetch installed models with `/api/tags`
   - validate selected model
   - optionally inspect capabilities with `/api/show`
@@ -588,9 +588,9 @@ Recommended behavior:
 
 This makes "online" and "offline" more truthful from the operator's point of view.
 
-### Non-Goals For The First Ollama Cut
+### Non-Goals For The First legacy local-runtime lane Cut
 
-- No arbitrary remote Ollama server support
+- No arbitrary remote legacy local-runtime lane server support
 - No multi-kind capability advertisement beyond `5050`
 - No tool-calling
 - No structured-output / JSON-schema mode
@@ -598,7 +598,7 @@ This makes "online" and "offline" more truthful from the operator's point of vie
 - No image generation or multimodal lanes
 - No automatic model pulling/downloading from OpenAgents
 - No provider-side parallelism greater than `1`
-- No attempt to make Ollama metrics the economic authority
+- No attempt to make legacy local-runtime lane metrics the economic authority
 
 ## Concrete File-Level Change Map
 
@@ -613,21 +613,21 @@ This makes "online" and "offline" more truthful from the operator's point of vie
 
 - `apps/autopilot-deprecated/src/provider_nip90_lane.rs`
   - make capability publication backend-driven
-  - advertise only `5050` for Ollama MVP
+  - advertise only `5050` for legacy local-runtime lane MVP
   - gate capability publication on real backend health
 
 ### Job Execution
 
 - `apps/autopilot-deprecated/src/input/reducers/jobs.rs`
-  - route `5050` jobs to Ollama instead of Codex
+  - route `5050` jobs to legacy local-runtime lane instead of Codex
   - fix result `content` to be generated text
   - publish truthful feedback on failure/processing
-  - record Ollama execution metadata locally
+  - record legacy local-runtime lane execution metadata locally
 
 ### Provider Validation / Ingress
 
 - `apps/autopilot-deprecated/src/input/reducers/provider_ingress.rs`
-  - extend invalid/pending reasons for Ollama-specific preflight failures
+  - extend invalid/pending reasons for legacy local-runtime lane-specific preflight failures
 - `apps/autopilot-deprecated/src/state/job_inbox.rs`
   - no model change required in principle, but new validation reasons will surface here
 
@@ -636,11 +636,11 @@ This makes "online" and "offline" more truthful from the operator's point of vie
 - `apps/autopilot-deprecated/src/state/provider_runtime.rs`
   - add backend-health and model-state fields needed for truthful UI
 
-### New App-Owned Ollama Module(s)
+### New App-Owned legacy local-runtime lane Module(s)
 
 - likely new files under `apps/autopilot-deprecated/src/`
   - `provider_execution/*`
-  - `ollama_client/*`
+  - `legacy_local_runtime_client/*`
   - exact layout is flexible as long as ownership stays app-local
 
 ## Risk Register
@@ -653,26 +653,26 @@ This makes "online" and "offline" more truthful from the operator's point of vie
 
 ### P1
 
-- No existing Ollama health/model-selection state means the UI cannot be truthful yet.
-- Ollama scheduler behavior makes provider-side concurrency above `1` risky.
+- No existing legacy local-runtime lane health/model-selection state means the UI cannot be truthful yet.
+- legacy local-runtime lane scheduler behavior makes provider-side concurrency above `1` risky.
 - Requested model names can diverge from locally installed model names and need explicit validation.
 - `top-k` / `top-p` versus `top_k` / `top_p` spelling mismatch will cause silent option loss unless normalized.
 
 ### P2
 
 - Handler events may linger on relays after the device goes offline.
-- Encrypted request support may exist in the current lane but still needs explicit verification in the Ollama execution path.
-- Structured outputs and advanced generation modes should stay out of scope until upstream Ollama behavior is more stable.
+- Encrypted request support may exist in the current lane but still needs explicit verification in the legacy local-runtime lane execution path.
+- Structured outputs and advanced generation modes should stay out of scope until upstream legacy local-runtime lane behavior is more stable.
 
 ## Recommended Implementation Sequence
 
 1. Fix shared NIP-90 `prompt` parsing.
 2. Add a narrow app-owned provider execution backend seam.
-3. Implement the local Ollama client and model inventory/health checks.
+3. Implement the local legacy local-runtime lane client and model inventory/health checks.
 4. Route `5050` execution through `/api/generate`.
 5. Change `6050` result publication to return raw generated text.
 6. Make NIP-89 capability publication dynamic and truthful.
-7. Add provider UI/runtime state for Ollama health and selected model.
+7. Add provider UI/runtime state for legacy local-runtime lane health and selected model.
 8. Add receipts/tests for normalized prompts, option mapping, and result publication.
 
 ## Test And Validation Plan
@@ -686,7 +686,7 @@ Minimum new automated coverage:
   - `top-p` -> `top_p`
   - `max_tokens` -> `num_predict`
 - app tests for capability advertisement:
-  - healthy Ollama backend advertises only `5050`
+  - healthy legacy local-runtime lane backend advertises only `5050`
   - unhealthy backend advertises nothing
 - app tests for result publication:
   - `6050.content` is generated text, not JSON envelope
@@ -712,7 +712,7 @@ These issues should inform implementation choices, but they do not block the fir
   - `#2983`
   - `#2990`
   - `#2998`
-- Ollama:
+- legacy local-runtime lane:
   - `#7758` queue limits are not sufficient admission control
   - `#14407` reload/concurrency deadlock risk
   - `#14116` context-length and VRAM pressure risk
@@ -725,10 +725,10 @@ These issues should inform implementation choices, but they do not block the fir
 The path is clear:
 
 - Start with `5050` only.
-- Serve it with local Ollama via `/api/generate`.
+- Serve it with local legacy local-runtime lane via `/api/generate`.
 - Fix the shared `prompt` parsing bug.
 - Stop advertising unsupported kinds.
 - Publish text results as text.
 - Keep provider truth grounded in wallet-confirmed settlement and explicit local receipts.
 
-If those changes are made, OpenAgents can truthfully let a user with Ollama installed sell local text-generation compute over NIP-90 without drifting outside the MVP and kernel constraints documented in this repo.
+If those changes are made, OpenAgents can truthfully let a user with legacy local-runtime lane installed sell local text-generation compute over NIP-90 without drifting outside the MVP and kernel constraints documented in this repo.

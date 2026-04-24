@@ -18,7 +18,7 @@ That distinction matters operationally as much as editorially. A provider, buyer
 
 ## Backend Truth
 
-- `Ollama` is a launch backend for `inference` and `embeddings`.
+- `legacy local-runtime lane` is a launch backend for `inference` and `embeddings`.
 - `Apple Foundation Models` is a launch backend for `inference` only until a truthfully supported embedding path exists.
 - A provider must not be shown as offering a launch family unless the desktop can prove the backend is healthy and policy-allowed.
 - Capability envelopes may include hardware-sensitive facts such as accelerator vendor, accelerator family, and memory, but those fields refine offers rather than redefining the launch taxonomy as a raw accelerator market.

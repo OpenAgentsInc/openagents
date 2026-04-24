@@ -345,7 +345,7 @@ fn infer_product_id_for_history_row(row: &JobHistoryReceiptRow) -> Option<String
         Some("apple_foundation_models") => {
             Some("psionic.local.inference.apple_foundation_models.single_node".to_string())
         }
-        Some("gpt_oss") | Some("psionic") | Some("ollama") => {
+        Some("gpt_oss") | Some("psionic") | Some("local_runtime") => {
             Some("psionic.local.inference.gpt_oss.single_node".to_string())
         }
         _ => None,

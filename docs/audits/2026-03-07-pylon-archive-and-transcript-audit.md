@@ -112,7 +112,7 @@ This part is concrete, not aspirational. Pylon really was designed as a resident
 The provider path is the strongest implemented part of the crate:
 
 - `PylonProvider` owns relay service, DVM service, wallet hookup, backend registries, and diagnostics (`crates/pylon/src/provider.rs:94-121`).
-- It auto-detects local inference backends via `BackendRegistry::detect()`, which only probes Ollama, Apple Foundation Models, and llama.cpp (`crates/pylon/src/provider.rs:143-174`, `crates/compute/src/backends/mod.rs:237-281`).
+- It auto-detects local inference backends via `BackendRegistry::detect()`, which only probes legacy local-runtime lane, Apple Foundation Models, and llama.cpp (`crates/pylon/src/provider.rs:143-174`, `crates/compute/src/backends/mod.rs:237-281`).
 - It separately registers Codex as an agent backend for Bazaar-style NIP-90 jobs when Codex is available (`crates/pylon/src/provider.rs:176-191`).
 - It wires payment policy into `DvmService` via `min_price_msats`, `require_payment`, and `network` (`crates/pylon/src/provider.rs:276-320`).
 - The daemon event loop persists provider events like `JobReceived`, `JobStarted`, `InvoiceCreated`, `PaymentReceived`, `JobCompleted`, and `JobFailed` back into SQLite (`crates/pylon/src/cli/start.rs:287-360`).
@@ -271,7 +271,7 @@ The README says provider mode can use "OpenAI (fallback)" (`crates/pylon/README.
 
 The inspected provider inference backend registry only probes:
 
-- Ollama
+- legacy local-runtime lane
 - Apple FM
 - llama.cpp
 

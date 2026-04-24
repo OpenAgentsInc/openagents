@@ -576,7 +576,7 @@ mod tests {
                 rubric_ref: None,
                 evaluator_policy_ref: None,
             },
-            product_id: Some("ollama.text_generation".to_string()),
+            product_id: Some("local_gemma.text_generation".to_string()),
             capacity_lot_id: None,
             instrument_id: None,
             delivery_proof_id: None,

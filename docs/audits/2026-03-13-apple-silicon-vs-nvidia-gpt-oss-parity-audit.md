@@ -58,7 +58,7 @@ The main parity blocker is architectural drift, not missing inference code. GPT-
 
 - `MissionControlLocalRuntimeLane::NvidiaGptOss`
 - `PsionicGptOssRuntimeAdapter`
-- `ProviderBackendKind::Ollama`
+- `ProviderBackendKind::legacy local-runtime lane`
 - capability/provenance strings that sometimes say `psionic`
 
 Until those identities collapse into one truthful runtime model, Mission Control, the provider substrate, the control plane, and release docs will keep favoring Apple FM as the only coherent story.
@@ -97,7 +97,7 @@ That distinction matters because "Apple Silicon support" in the shipped UX curre
 | Pane visibility | Mission Control + Apple FM Workbench | Separate `GPT-OSS Workbench`, hidden on macOS |
 | Control plane | `desktop_control` and `autopilotctl` expose Apple FM actions and readiness waits | No equivalent GPT-OSS-specific control-plane actions or wait conditions |
 | Packaging / release verification | Bundled `foundation-bridge`, packaged roundtrip script checks it | No packaged GPT-OSS artifact/runbook parity |
-| Provider substrate identity | Truthful `apple_foundation_models.*` naming | Still largely expressed as `ollama.*` and `ProviderBackendKind::Ollama` |
+| Provider substrate identity | Truthful `apple_foundation_models.*` naming | Still largely expressed as `legacy_local_runtime.*` and `ProviderBackendKind::legacy local-runtime lane` |
 | Provider priority | Preferred when both backends are ready | Secondary backend when Apple FM is ready |
 | Workbench features | Sessions, streaming, structured generation, tool profiles, transcript export/restore | Warm/unload, model path, backend label, prompt playground, metrics/provenance |
 | Documentation quality | Explicit and current | Mostly historical/perf audits, not current product docs |
@@ -116,7 +116,7 @@ That distinction matters because "Apple Silicon support" in the shipped UX curre
 But the code still retains GPT-OSS in several active places:
 
 - `default_local_inference_runtime()` returns `PsionicGptOssRuntimeAdapter::new_auto()`
-- `RenderState` always stores `local_inference_runtime` plus `ollama_execution`
+- `RenderState` always stores `local_inference_runtime` plus `legacy_local_runtime_execution`
 - `PaneKind::LocalInference` is still the `GPT-OSS Workbench`
 - `MissionControlLocalRuntimeLane` still has `NvidiaGptOss`
 
@@ -213,11 +213,11 @@ The same NVIDIA GPT-OSS lane currently appears as:
 
 - `GPT-OSS Workbench`
 - `PsionicGptOssRuntimeAdapter`
-- `state.ollama_execution`
-- `provider_runtime.ollama`
-- `ProviderBackendKind::Ollama`
-- `ProviderBlocker::OllamaUnavailable`
-- kernel product ids `ollama.text_generation` and `ollama.embeddings`
+- `state.legacy_local_runtime_execution`
+- `provider_runtime.legacy_local_runtime`
+- `ProviderBackendKind::legacy local-runtime lane`
+- `ProviderBlocker::legacy local-runtime laneUnavailable`
+- kernel product ids `legacy_local_runtime.text_generation` and `legacy_local_runtime.embeddings`
 - capability metadata that sometimes uses backend string `psionic`
 
 This is not cosmetic debt. It creates concrete parity problems:
@@ -242,9 +242,9 @@ There is no embeddings command in the app-owned runtime seam.
 
 But the provider substrate and kernel layer still advertise:
 
-- `ProviderComputeProduct::OllamaEmbeddings`
-- `ollama.embeddings`
-- `meter.ollama.embeddings.v1`
+- `ProviderComputeProduct::legacy local-runtime laneEmbeddings`
+- `legacy_local_runtime.embeddings`
+- `meter.legacy_local_runtime.embeddings.v1`
 - launch bindings and forward inventory for text embeddings
 
 This is a truth gap independent of Apple FM parity. If GPT-OSS is brought back, the advertised product set must match what the runtime can actually do.
@@ -382,15 +382,15 @@ Exit criteria:
 - Mission Control decides which local-runtime story to render from one policy function
 - the policy can be widened to support GPT-OSS without rewriting pane logic
 
-### Phase 2. Rename the retained NVIDIA lane from `Ollama` to a truthful backend identity
+### Phase 2. Rename the retained NVIDIA lane from `legacy local-runtime lane` to a truthful backend identity
 
 Do this in app-owned code and the provider substrate:
 
-- `ProviderBackendKind::Ollama` -> `ProviderBackendKind::GptOss` or `ProviderBackendKind::PsionicGptOss`
-- `ProviderOllamaRuntimeState` -> `ProviderGptOssRuntimeState`
-- `state.ollama_execution` -> `state.gpt_oss_execution` or `state.local_model_execution`
-- product ids `ollama.*` -> `gpt_oss.*` once migration plan is set
-- blocker names and UI labels should stop saying `Ollama`
+- `ProviderBackendKind::legacy local-runtime lane` -> `ProviderBackendKind::GptOss` or `ProviderBackendKind::PsionicGptOss`
+- `Providerlegacy local-runtime laneRuntimeState` -> `ProviderGptOssRuntimeState`
+- `state.legacy_local_runtime_execution` -> `state.gpt_oss_execution` or `state.local_model_execution`
+- product ids `legacy_local_runtime.*` -> `gpt_oss.*` once migration plan is set
+- blocker names and UI labels should stop saying `legacy local-runtime lane`
 
 Keep this rename small and mechanical. The goal is one stable identity, not a broad redesign.
 
@@ -409,7 +409,7 @@ Fix capability drift first:
 
 Exit criteria:
 
-- no `ollama`/`psionic`/`gptoss` split in protocol-facing metadata
+- no `legacy_local_runtime`/`psionic`/`gptoss` split in protocol-facing metadata
 - advertised products exactly match executable capabilities
 
 ### Phase 4. Introduce one Mission Control local-runtime view model
@@ -559,7 +559,7 @@ This order keeps the work within current MVP ownership rules and avoids rebuildi
 
 ## Risks If We Do This In The Wrong Order
 
-- If we widen Mission Control before fixing naming, the UI will surface more `ollama`/`psionic`/`gptoss` inconsistency.
+- If we widen Mission Control before fixing naming, the UI will surface more `legacy_local_runtime`/`psionic`/`gptoss` inconsistency.
 - If we restore GPT-OSS copy before fixing provider/kernel contracts, receipts and product ids will stay misleading.
 - If we add NVIDIA product docs before the control plane exists, docs will outpace reality.
 - If we try to revive archived code, we will likely reintroduce pre-prune complexity instead of using the retained MVP seams.

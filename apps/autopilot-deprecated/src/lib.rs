@@ -49,14 +49,14 @@ mod kernel_control;
 mod labor_orchestrator;
 mod local_inference_runtime;
 mod local_runtime_capabilities;
+#[cfg(test)]
+mod local_runtime_execution;
 pub mod logging;
 mod nip28_chat_lane;
 mod nip90_compute_domain_events;
 mod nip90_compute_flow;
 mod nip90_compute_semantics;
 mod nip_sa_wallet_bridge;
-#[cfg(test)]
-mod ollama_execution;
 mod onboarding;
 mod openagents_dynamic_tools;
 mod pane_registry;
@@ -161,7 +161,10 @@ impl ApplicationHandler for AppShell {
                 self.inner.state = Some(state);
             }
             Err(err) => {
-                tracing::error!(error = format!("{err:#}"), "failed to initialize desktop renderer");
+                tracing::error!(
+                    error = format!("{err:#}"),
+                    "failed to initialize desktop renderer"
+                );
                 self.init_error = Some(err);
                 event_loop.exit();
             }

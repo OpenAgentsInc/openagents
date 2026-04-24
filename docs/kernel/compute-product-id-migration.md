@@ -29,9 +29,9 @@ Rules:
 
 | Old ID | Canonical ID |
 | --- | --- |
-| `ollama.text_generation` | `psionic.local.inference.gpt_oss.single_node` |
+| `legacy_local_runtime.text_generation` | `psionic.local.inference.gpt_oss.single_node` |
 | `gpt_oss.text_generation` | `psionic.local.inference.gpt_oss.single_node` |
-| `ollama.embeddings` | `psionic.local.embeddings.gpt_oss.single_node` |
+| `legacy_local_runtime.embeddings` | `psionic.local.embeddings.gpt_oss.single_node` |
 | `gpt_oss.embeddings` | `psionic.local.embeddings.gpt_oss.single_node` |
 | `apple_foundation_models.text_generation` | `psionic.local.inference.apple_foundation_models.single_node` |
 | `sandbox.container.exec` | `psionic.remote_sandbox.sandbox_execution.container_exec.sandbox_isolated` |

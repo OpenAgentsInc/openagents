@@ -921,7 +921,7 @@ impl StructuredCapacityLegRole {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeBackendFamily {
-    #[serde(alias = "ollama")]
+    #[serde(alias = "local_gemma")]
     GptOss,
     PooledInference,
     AppleFoundationModels,
@@ -1863,7 +1863,7 @@ pub struct ComputeCapabilityEnvelope {
     pub host_capability: Option<ComputeHostCapability>,
     #[serde(default)]
     pub apple_platform: Option<ApplePlatformCapability>,
-    #[serde(default, alias = "ollama_runtime")]
+    #[serde(default, alias = "local_runtime")]
     pub gpt_oss_runtime: Option<GptOssRuntimeCapability>,
     #[serde(default)]
     pub latency_ms_p50: Option<u32>,
@@ -1915,10 +1915,10 @@ pub const PSIONIC_REMOTE_SANDBOX_POSIX_EXEC_PRODUCT_ID: &str =
 pub fn canonical_compute_product_id(product_id: &str) -> Option<&'static str> {
     match product_id.trim() {
         PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID
-        | "ollama.text_generation"
+        | "local_gemma.text_generation"
         | "gpt_oss.text_generation" => Some(PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID),
         PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID
-        | "ollama.embeddings"
+        | "local_gemma.embeddings"
         | "gpt_oss.embeddings" => Some(PSIONIC_LOCAL_GPT_OSS_EMBEDDINGS_PRODUCT_ID),
         PSIONIC_CLUSTER_POOLED_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID
         | "psionic.cluster.inference.gpt_oss.remote_whole_request"
@@ -4828,7 +4828,7 @@ mod tests {
             Some(PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID)
         );
         assert_eq!(
-            canonical_compute_product_id("ollama.text_generation"),
+            canonical_compute_product_id("local_gemma.text_generation"),
             Some(PSIONIC_LOCAL_GPT_OSS_INFERENCE_PRODUCT_ID)
         );
         assert_eq!(
