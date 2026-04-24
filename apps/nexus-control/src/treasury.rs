@@ -112,10 +112,10 @@ const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
 const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
 const TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS: u64 = 5_000;
-const TREASURY_WALLET_REFRESH_SYNC_TIMEOUT_MS: u64 = 20_000;
 const TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES: usize = 1;
 const TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES: usize = 8;
 const TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE: usize = 100;
+const TREASURY_WALLET_REFRESH_TRACKED_PAYMENT_LOOKUP_TIMEOUT_MS: u64 = 30_000;
 const TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES: usize = 8;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_EARLY_SLACK_MS: u64 = 5 * 60_000;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_WINDOW_MS: u64 = 30 * 60_000;
@@ -4674,7 +4674,12 @@ pub async fn load_live_wallet_refresh_result_with_plan(
     }
 
     with_live_wallet(config, create_if_missing, move |wallet| async move {
-        wallet_snapshot_from_wallet_with_plan_result(wallet.as_ref(), &refresh_plan).await
+        wallet_snapshot_from_wallet_with_plan_result(
+            wallet.as_ref(),
+            &refresh_plan,
+            config.wallet_refresh_timeout_ms(),
+        )
+        .await
     })
     .await
 }
@@ -6612,6 +6617,7 @@ async fn wallet_refresh_payments(
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<WalletRefreshPaymentsResult> {
     let mut payments = Vec::new();
+    let mut seen_payment_ids = BTreeSet::new();
     let mut unresolved_payment_ids = plan.tracked_payment_ids.clone();
     let page_offsets = wallet_refresh_page_offsets(plan);
     let page_size = TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE as u32;
@@ -6625,7 +6631,7 @@ async fn wallet_refresh_payments(
 
     for page_offset in page_offsets {
         let offset = (page_offset * TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE) as u32;
-        let mut page = wallet
+        let page = wallet
             .list_payments(Some(page_size), Some(offset))
             .await
             .context("failed to list treasury Spark payments")?;
@@ -6639,11 +6645,14 @@ async fn wallet_refresh_payments(
             progress.history_pages_scanned = progress.history_pages_scanned.saturating_add(1);
         }
         for payment in &page {
-            unresolved_payment_ids.remove(payment.id.as_str());
+            track_wallet_refresh_payment(
+                &mut payments,
+                &mut seen_payment_ids,
+                &mut unresolved_payment_ids,
+                payment.clone(),
+            );
         }
-
         let page_len = page.len();
-        payments.append(&mut page);
 
         if page_len < TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE || unresolved_payment_ids.is_empty()
         {
@@ -6651,6 +6660,74 @@ async fn wallet_refresh_payments(
                 progress.history_hit_end_of_history = true;
             }
             break;
+        }
+    }
+
+    if !unresolved_payment_ids.is_empty() {
+        let pending_lookup_ids = unresolved_payment_ids.iter().cloned().collect::<Vec<_>>();
+        for payment_id in pending_lookup_ids {
+            match tokio::time::timeout(
+                Duration::from_millis(TREASURY_WALLET_REFRESH_TRACKED_PAYMENT_LOOKUP_TIMEOUT_MS),
+                wallet.refresh_transfer_payment_from_network(payment_id.as_str()),
+            )
+            .await
+            {
+                Ok(Ok(Some(payment))) => {
+                    track_wallet_refresh_payment(
+                        &mut payments,
+                        &mut seen_payment_ids,
+                        &mut unresolved_payment_ids,
+                        payment,
+                    );
+                    tracing::info!(
+                        payment_id = payment_id.as_str(),
+                        tracked_payment_count = plan.tracked_payment_count(),
+                        "treasury wallet refresh resolved tracked payout via direct Spark transfer lookup",
+                    );
+                }
+                Ok(Ok(None)) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(
+                        payment_id = payment_id.as_str(),
+                        error = %error,
+                        "treasury wallet refresh failed direct Spark transfer lookup for tracked payout",
+                    );
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        payment_id = payment_id.as_str(),
+                        timeout_ms = TREASURY_WALLET_REFRESH_TRACKED_PAYMENT_LOOKUP_TIMEOUT_MS,
+                        "treasury wallet refresh timed out during direct Spark transfer lookup for tracked payout",
+                    );
+                }
+            }
+
+            if !unresolved_payment_ids.contains(payment_id.as_str()) {
+                continue;
+            }
+
+            match wallet.get_payment(payment_id.as_str()).await {
+                Ok(payment) => {
+                    track_wallet_refresh_payment(
+                        &mut payments,
+                        &mut seen_payment_ids,
+                        &mut unresolved_payment_ids,
+                        payment,
+                    );
+                    tracing::info!(
+                        payment_id = payment_id.as_str(),
+                        tracked_payment_count = plan.tracked_payment_count(),
+                        "treasury wallet refresh resolved tracked payout via direct Spark payment lookup",
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        payment_id = payment_id.as_str(),
+                        error = %error,
+                        "treasury wallet refresh failed direct Spark payment lookup for tracked payout",
+                    );
+                }
+            }
         }
     }
 
@@ -6665,6 +6742,20 @@ async fn wallet_refresh_payments(
     }
 
     Ok(WalletRefreshPaymentsResult { payments, progress })
+}
+
+fn track_wallet_refresh_payment(
+    payments: &mut Vec<PaymentSummary>,
+    seen_payment_ids: &mut BTreeSet<String>,
+    unresolved_payment_ids: &mut BTreeSet<String>,
+    payment: PaymentSummary,
+) -> bool {
+    unresolved_payment_ids.remove(payment.id.as_str());
+    if !seen_payment_ids.insert(payment.id.clone()) {
+        return false;
+    }
+    payments.push(payment);
+    true
 }
 
 #[derive(Debug, Clone, Default)]
@@ -6719,9 +6810,13 @@ fn validate_wallet_hydration_balance(
 }
 
 async fn wallet_snapshot_from_wallet(wallet: &SparkWallet) -> Result<TreasuryWalletSnapshot> {
-    wallet_snapshot_from_wallet_with_plan_result(wallet, &TreasuryWalletRefreshPlan::recent_only())
-        .await
-        .map(|result| result.snapshot)
+    wallet_snapshot_from_wallet_with_plan_result(
+        wallet,
+        &TreasuryWalletRefreshPlan::recent_only(),
+        20_000,
+    )
+    .await
+    .map(|result| result.snapshot)
 }
 
 async fn wallet_snapshot_from_wallet_for_funding_target(
@@ -6747,9 +6842,12 @@ async fn wallet_snapshot_from_wallet_for_funding_target(
 async fn wallet_snapshot_from_wallet_with_plan_result(
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
+    wallet_refresh_timeout_ms: u64,
 ) -> Result<TreasuryWalletRefreshResult> {
+    let wallet_refresh_timeout_ms =
+        wallet_refresh_timeout_ms.max(TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS);
     let (hydration_mode, runtime_detail) = match tokio::time::timeout(
-        Duration::from_millis(TREASURY_WALLET_REFRESH_SYNC_TIMEOUT_MS),
+        Duration::from_millis(wallet_refresh_timeout_ms),
         wallet.sync_wallet_state(),
     )
     .await
@@ -6767,10 +6865,10 @@ async fn wallet_snapshot_from_wallet_with_plan_result(
         }
         Err(_) => {
             let detail = format!(
-                "sync_wallet_timeout:{TREASURY_WALLET_REFRESH_SYNC_TIMEOUT_MS}; using cached balance and bounded payment scan"
+                "sync_wallet_timeout:{wallet_refresh_timeout_ms}; using cached balance and bounded payment scan"
             );
             tracing::warn!(
-                timeout_ms = TREASURY_WALLET_REFRESH_SYNC_TIMEOUT_MS,
+                timeout_ms = wallet_refresh_timeout_ms,
                 "treasury wallet refresh fell back after Spark sync timed out"
             );
             ("cached_balance_after_sync_timeout", Some(detail))
@@ -6799,7 +6897,11 @@ async fn wallet_snapshot_from_wallet_with_plan(
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletSnapshot> {
-    wallet_snapshot_from_wallet_with_plan_result(wallet, plan)
+    wallet_snapshot_from_wallet_with_plan_result(
+        wallet,
+        plan,
+        20_000,
+    )
         .await
         .map(|result| result.snapshot)
 }
@@ -7149,12 +7251,13 @@ mod tests {
         dispatch_live_payouts, parse_treasury_command, payout_phase_offset_ms, payout_window_key,
         payout_window_started_at, payout_window_started_at_for_identity,
         set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        treasury_test_hook_lock, validate_wallet_hydration_balance,
+        track_wallet_refresh_payment, treasury_test_hook_lock, validate_wallet_hydration_balance,
         verify_payout_target_registration_signature, wallet_refresh_page_offsets,
         wallet_refresh_payment_page_budget, write_json_file,
     };
     use openagents_provider_substrate::sign_provider_payout_target_registration;
     use openagents_spark::PaymentSummary;
+    use std::collections::BTreeSet;
     use std::fs;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -10654,6 +10757,42 @@ mod tests {
             page_offsets.len(),
             TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES
         );
+    }
+
+    #[test]
+    fn track_wallet_refresh_payment_deduplicates_and_clears_tracked_ids() {
+        let mut payments = Vec::new();
+        let mut seen_payment_ids = BTreeSet::new();
+        let mut unresolved_payment_ids = BTreeSet::from([
+            "pay-confirm-me".to_string(),
+            "pay-still-pending".to_string(),
+        ]);
+        let payment = PaymentSummary {
+            id: "pay-confirm-me".to_string(),
+            direction: "send".to_string(),
+            status: "completed".to_string(),
+            amount_sats: 25,
+            timestamp: 1_777_000_000,
+            ..PaymentSummary::default()
+        };
+
+        assert!(track_wallet_refresh_payment(
+            &mut payments,
+            &mut seen_payment_ids,
+            &mut unresolved_payment_ids,
+            payment.clone(),
+        ));
+        assert_eq!(payments.len(), 1);
+        assert!(!unresolved_payment_ids.contains("pay-confirm-me"));
+
+        assert!(!track_wallet_refresh_payment(
+            &mut payments,
+            &mut seen_payment_ids,
+            &mut unresolved_payment_ids,
+            payment,
+        ));
+        assert_eq!(payments.len(), 1);
+        assert!(unresolved_payment_ids.contains("pay-still-pending"));
     }
 
     #[test]

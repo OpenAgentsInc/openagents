@@ -6867,6 +6867,7 @@ dependencies = [
  "dirs 6.0.0",
  "hex",
  "spark",
+ "spark-wallet",
  "thiserror 2.0.18",
 ]
 

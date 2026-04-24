@@ -70,6 +70,14 @@ Do not retry production funding-target calls as a debugging loop; reproduce the
 wallet/funding behavior locally or in the private treasury runner first, then
 use hosted Nexus only as the live confirmation surface.
 
+The periodic wallet refresh loop has a separate sync timeout budget from the
+funding-target path. Current Nexus should derive that sync budget from
+`wallet_status_refresh_seconds` instead of hard-coding `20000` ms, because the
+hosted treasury wallet can accumulate enough history that a full Spark sync
+takes materially longer than a short funding-target read. If the live wallet
+history grows and refresh starts timing out, raise the configured wallet refresh
+interval/timeout budget before treating the wallet as permanently degraded.
+
 ## Paced Homework Dispatch
 
 Admins can pace accepted-work payouts by launching bounded batches of homework
@@ -747,6 +755,12 @@ Continuity alerts:
   pending payout work and is recomputed live from current treasury state, so a
   hung dispatch cycle still surfaces a critical alert through
   `/v1/treasury/status` and `/api/stats`.
+- wallet refresh now treats tracked payout ids as first-class reconciliation
+  targets. If the bounded paged history scan misses a tracked `payment_id`,
+  Nexus follows up with a direct Spark payment lookup for that exact id before
+  leaving the payout unresolved. A single missing history page should not hold
+  `confirmations_stalled` open for hours while newer payouts are already
+  confirming.
 - critical alerts are also reflected directly in `payout_loop_health` and
   `degraded_reason`, so operators do not need to infer failures from homepage
   behavior.

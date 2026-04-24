@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WATCHDOG_INSTALL_SCRIPT="${SCRIPT_DIR}/10-install-treasury-watchdog.sh"
+PUBLIC_WATCHDOG_INSTALL_SCRIPT="${SCRIPT_DIR}/16-install-public-watchdog.sh"
 RUNTIME_ENV_VARS=(
   NEXUS_CONTROL_KERNEL_STATE_PATH
   NEXUS_CONTROL_TRAINING_TRN_IDENTITY_PATH
@@ -706,6 +707,10 @@ gcloud compute ssh "$NEXUS_VM" \
 
 if [[ -x "$WATCHDOG_INSTALL_SCRIPT" ]]; then
   bash "$WATCHDOG_INSTALL_SCRIPT"
+fi
+
+if [[ -x "$PUBLIC_WATCHDOG_INSTALL_SCRIPT" ]]; then
+  bash "$PUBLIC_WATCHDOG_INSTALL_SCRIPT"
 fi
 
 perform_post_restart_smoke_check "$DEPLOY_IMAGE" "$PREVIOUS_DEPLOY_IMAGE"

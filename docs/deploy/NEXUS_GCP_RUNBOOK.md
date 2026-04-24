@@ -206,6 +206,39 @@ PATH="$old_path"
 Never paste raw bearer tokens, wallet mnemonics, or API keys into runbooks,
 issue comments, receipts, or normal terminal output.
 
+### 3.1) Public outage emergency rule
+
+Treat public Nexus reachability failures as emergency production work.
+
+Symptoms that qualify:
+
+- `https://nexus.openagents.com/api/stats` returns Cloudflare `530` / `1033`
+- the public provider heartbeat path fails from live Pylons
+- the hosted online fleet suddenly drops because the public Nexus hostname is
+  unreachable
+
+Do not just note that Nexus is degraded and continue other work. Restore the
+public path first, then return to secondary issue work.
+
+Fast triage order:
+
+```bash
+curl -I https://nexus.openagents.com/api/stats
+
+gcloud compute ssh nexus-mainnet-1 --tunnel-through-iap \
+  --project openagentsgemini --zone us-central1-a \
+  --command='sudo systemctl --no-pager --full status nexus-relay nexus-cloudflared | sed -n "1,120p"'
+
+gcloud compute ssh nexus-mainnet-1 --tunnel-through-iap \
+  --project openagentsgemini --zone us-central1-a \
+  --command='curl -fsS http://127.0.0.1:8080/healthz'
+```
+
+If the VM-local origin is healthy but the public host is still down, repair the
+tunnel path first. If the guest network stack itself is broken and the VM
+cannot reach metadata or the public internet, reset the VM immediately instead
+of waiting for the condition to clear on its own.
+
 ### 3.2) Issue #4413 live proof checklist
 
 This checklist captures the operational mistakes and recovery path from the
@@ -369,6 +402,17 @@ redeploying the Nexus container:
 
 ```bash
 scripts/deploy/nexus/10-install-treasury-watchdog.sh
+```
+
+The same deploy path now installs a public reachability watchdog. It checks the
+VM-local `/healthz`, the public `https://nexus.openagents.com/api/stats` path,
+and both `nexus-relay` and `nexus-cloudflared` systemd services. If local
+origin health fails it restarts `nexus-relay`; if the local origin is healthy
+but the public host returns `530` / `1033` or goes dark, it restarts
+`nexus-cloudflared`. Refresh only that watchdog with:
+
+```bash
+scripts/deploy/nexus/16-install-public-watchdog.sh
 ```
 
 The same deploy script now installs the default hosted homework auto-dispatcher

@@ -136,6 +136,14 @@ Default to:
   `DEPLOY_IMAGE=... bash scripts/deploy/nexus/04-verify-gates.sh`
 - After deploy, also verify `https://nexus.openagents.com/v1/treasury/status`
   and any task-specific payout or receipt checks required by the change.
+- Treat public Nexus reachability failures as emergencies. If
+  `https://nexus.openagents.com/api/stats` or the public provider heartbeat
+  path returns Cloudflare `530` / `1033`, if Pylon nodes start reporting Nexus
+  heartbeat failures, or if the hosted online fleet collapses because the
+  public Nexus origin is unreachable, stop normal issue work and restore public
+  reachability first. Check `nexus-relay`, `nexus-cloudflared`, the VM-local
+  `http://127.0.0.1:8080/healthz` origin, and the public hostname in that
+  order. Do not leave production red while continuing unrelated tasks.
 - To generate a hosted Nexus treasury Lightning funding invoice, use the
   documented funding-target endpoint instead of touching wallet files directly:
   `POST https://nexus.openagents.com/v1/treasury/funding-target` with JSON such
