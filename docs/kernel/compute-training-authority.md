@@ -749,6 +749,21 @@ therefore fails closed on explicit mismatches such as:
 This keeps scheduler refusal semantics legible instead of collapsing every
 missed assignment into a generic "run not found" path.
 
+Validator closeout claims now follow the same rule. When
+`POST /api/training/validator-challenges/claim` cannot hand a validator a
+challenge, Nexus reports the specific coordination conflict instead of
+flattening everything into `training_validator_challenge_unavailable`.
+
+The retained conflict reasons now distinguish at least:
+
+- `training_validator_self_validation_forbidden`
+- `training_validator_challenge_already_leased`
+- `training_validator_challenge_terminal`
+
+That makes self-validation exclusions explicit in proof and live closeout
+flows, so operators no longer need validator-pubkey folklore to understand why
+one validator identity cannot claim a sealed window.
+
 ## HTTP Authority Surface
 
 Nexus now exposes:

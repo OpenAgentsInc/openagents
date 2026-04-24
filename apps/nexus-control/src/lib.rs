@@ -2908,6 +2908,14 @@ struct TrainingValidatorChallengeCoordinatorResponse {
     target_bindings: Vec<TrainingValidatorTargetAssignmentBinding>,
 }
 
+#[derive(Debug, Default)]
+struct TrainingValidatorClaimSelectionSummary {
+    matching_windows: u64,
+    self_validation_exclusions: u64,
+    already_leased_exclusions: u64,
+    terminal_exclusions: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct TrainingWindowCoordinatorResponse {
     window: ComputeAdapterTrainingWindow,
@@ -5384,6 +5392,21 @@ fn training_validator_targets_own_assignments(
                 validator_id,
             )
         })
+}
+
+fn training_validator_claim_unavailable_reason(
+    summary: &TrainingValidatorClaimSelectionSummary,
+) -> &'static str {
+    if summary.self_validation_exclusions > 0 {
+        return "training_validator_self_validation_forbidden";
+    }
+    if summary.already_leased_exclusions > 0 {
+        return "training_validator_challenge_already_leased";
+    }
+    if summary.terminal_exclusions > 0 && summary.matching_windows > 0 {
+        return "training_validator_challenge_terminal";
+    }
+    "training_validator_challenge_unavailable"
 }
 
 fn training_window_recovery_source_node_ids(
@@ -13840,6 +13863,7 @@ async fn claim_training_validator_challenge(
             TrainingWindowMetadata,
             TrainingWindowValidationChallengePlan,
         )>;
+        let mut selection_summary = TrainingValidatorClaimSelectionSummary::default();
         for window in windows {
             if request
                 .requested_training_run_id
@@ -13878,8 +13902,9 @@ async fn claim_training_validator_challenge(
             let Some(validation) = metadata.validation.as_ref() else {
                 continue;
             };
+            selection_summary.matching_windows = selection_summary.matching_windows.saturating_add(1);
             for challenge_plan in &validation.challenges {
-                if training_validator_targets_own_assignments(
+                let targets_own_assignments = training_validator_targets_own_assignments(
                     metadata.assignment_plans.as_slice(),
                     store
                         .training_scheduler
@@ -13887,7 +13912,11 @@ async fn claim_training_validator_challenge(
                         .get(window.training_run_id.as_str()),
                     challenge_plan,
                     node.node_pubkey_hex.as_str(),
-                ) {
+                );
+                if targets_own_assignments {
+                    selection_summary.self_validation_exclusions = selection_summary
+                        .self_validation_exclusions
+                        .saturating_add(1);
                     continue;
                 }
                 let Some(snapshot) = store
@@ -13906,14 +13935,26 @@ async fn claim_training_validator_challenge(
                     selected = Some((window.clone(), metadata.clone(), challenge_plan.clone()));
                     break;
                 }
-                if selected.is_none()
-                    && matches!(
-                        snapshot.status,
-                        validator_service::ValidatorChallengeStatus::Queued
-                            | validator_service::ValidatorChallengeStatus::Retrying
-                    )
-                {
-                    selected = Some((window.clone(), metadata.clone(), challenge_plan.clone()));
+                match snapshot.status {
+                    validator_service::ValidatorChallengeStatus::Queued
+                    | validator_service::ValidatorChallengeStatus::Retrying => {
+                        if selected.is_none() {
+                            selected =
+                                Some((window.clone(), metadata.clone(), challenge_plan.clone()));
+                        }
+                    }
+                    validator_service::ValidatorChallengeStatus::Leased => {
+                        selection_summary.already_leased_exclusions = selection_summary
+                            .already_leased_exclusions
+                            .saturating_add(1);
+                    }
+                    validator_service::ValidatorChallengeStatus::Verified
+                    | validator_service::ValidatorChallengeStatus::Rejected
+                    | validator_service::ValidatorChallengeStatus::TimedOut => {
+                        selection_summary.terminal_exclusions = selection_summary
+                            .terminal_exclusions
+                            .saturating_add(1);
+                    }
                 }
             }
             if selected.is_some() {
@@ -13921,9 +13962,18 @@ async fn claim_training_validator_challenge(
             }
         }
         let Some((window, metadata, challenge_plan)) = selected else {
-            return Err(kernel_api_error(
-                "training_validator_challenge_unavailable".to_string(),
-            ));
+            let reason = training_validator_claim_unavailable_reason(&selection_summary);
+            tracing::warn!(
+                node_pubkey_hex = request.node_pubkey_hex.as_str(),
+                requested_training_run_id = ?request.requested_training_run_id,
+                requested_network_id = ?request.requested_network_id,
+                matching_windows = selection_summary.matching_windows,
+                self_validation_exclusions = selection_summary.self_validation_exclusions,
+                already_leased_exclusions = selection_summary.already_leased_exclusions,
+                terminal_exclusions = selection_summary.terminal_exclusions,
+                "training validator claim found no claimable challenge"
+            );
+            return Err(kernel_api_error(reason.to_string()));
         };
         let result = store
             .kernel
@@ -21370,6 +21420,9 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "training_scheduler_idempotency_conflict"
         | "training_window_validation_incomplete"
         | "training_window_validation_held"
+        | "training_validator_self_validation_forbidden"
+        | "training_validator_challenge_already_leased"
+        | "training_validator_challenge_terminal"
         | "training_validator_challenge_unavailable" => StatusCode::CONFLICT,
         "work_unit_id_missing"
         | "contract_id_missing"
@@ -39629,7 +39682,7 @@ mod tests {
         let error = response_json::<serde_json::Value>(validator_claim).await?;
         assert_eq!(
             error.get("reason").and_then(serde_json::Value::as_str),
-            Some("training_validator_challenge_unavailable")
+            Some("training_validator_self_validation_forbidden")
         );
 
         Ok(())
@@ -41202,7 +41255,7 @@ mod tests {
         let error = response_json::<serde_json::Value>(validator_claim).await?;
         assert_eq!(
             error.get("reason").and_then(serde_json::Value::as_str),
-            Some("training_validator_challenge_unavailable")
+            Some("training_validator_self_validation_forbidden")
         );
 
         Ok(())
