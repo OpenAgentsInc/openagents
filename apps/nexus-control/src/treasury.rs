@@ -824,6 +824,10 @@ pub struct TreasuryStatusResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_wallet_sync_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_wallet_refresh_attempt_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_last_error: Option<String>,
@@ -869,6 +873,10 @@ pub struct TreasuryStatusResponse {
     pub backlog_total: u64,
     #[serde(default)]
     pub backlog_retryable: u64,
+    #[serde(default)]
+    pub pending_confirmation_count: u64,
+    #[serde(default)]
+    pub tracked_payment_backlog_count: u64,
     #[serde(default)]
     pub eligible_online_payout_targets: u64,
     #[serde(default)]
@@ -1044,6 +1052,8 @@ pub struct TreasuryPublicSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_wallet_sync_at_unix_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_wallet_refresh_attempt_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_last_error: Option<String>,
@@ -1090,6 +1100,10 @@ pub struct TreasuryPublicSnapshot {
     pub backlog_total: u64,
     #[serde(default)]
     pub backlog_retryable: u64,
+    #[serde(default)]
+    pub pending_confirmation_count: u64,
+    #[serde(default)]
+    pub tracked_payment_backlog_count: u64,
     pub eligible_online_payout_targets: u64,
     pub sellable_pylons_online_now: u64,
     #[serde(default)]
@@ -1157,6 +1171,8 @@ pub struct TreasuryPublicStats {
     pub registered_payout_identities: u64,
     pub wallet_balance_sats: u64,
     pub wallet_balance_updated_at_unix_ms: Option<u64>,
+    pub last_wallet_sync_at_unix_ms: Option<u64>,
+    pub last_wallet_refresh_attempt_at_unix_ms: Option<u64>,
     pub wallet_runtime_status: Option<String>,
     pub wallet_last_error: Option<String>,
     pub wallet_hydration_mode: Option<String>,
@@ -1175,6 +1191,8 @@ pub struct TreasuryPublicStats {
     pub wallet_sync_lag_ms: Option<u64>,
     pub backlog_total: u64,
     pub backlog_retryable: u64,
+    pub pending_confirmation_count: u64,
+    pub tracked_payment_backlog_count: u64,
     pub eligible_online_payout_targets: u64,
     pub sellable_pylons_online_now: u64,
     pub inference_ready_online_payout_targets: u64,
@@ -2624,6 +2642,24 @@ impl TreasuryState {
         (backlog_total, backlog_retryable)
     }
 
+    fn confirmation_visibility_counts(&self) -> (u64, u64) {
+        let mut pending_confirmation_count = 0u64;
+        let mut tracked_payment_backlog_count = 0u64;
+        for record in self.payout_records_by_key.values() {
+            if record.payment_id.is_none() {
+                continue;
+            }
+            if record.status != "confirmed" {
+                tracked_payment_backlog_count =
+                    tracked_payment_backlog_count.saturating_add(1);
+            }
+            if record.status == "dispatched" {
+                pending_confirmation_count = pending_confirmation_count.saturating_add(1);
+            }
+        }
+        (pending_confirmation_count, tracked_payment_backlog_count)
+    }
+
     fn active_canonical_public_snapshot(
         &self,
         now_unix_ms: u64,
@@ -2760,6 +2796,8 @@ impl TreasuryState {
         let mut payouts_failed_24h = 0u64;
         let mut payouts_skipped_24h = 0u64;
         let (backlog_total, backlog_retryable) = self.backlog_counts();
+        let (pending_confirmation_count, tracked_payment_backlog_count) =
+            self.confirmation_visibility_counts();
 
         for record in self.payout_records_by_key.values() {
             if record.status == "dispatched" && !record.counted_in_paid_total {
@@ -2807,6 +2845,7 @@ impl TreasuryState {
             wallet_balance_sats: self.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: self.wallet_balance_updated_at_unix_ms,
             last_wallet_sync_at_unix_ms: self.last_wallet_sync_at_unix_ms,
+            last_wallet_refresh_attempt_at_unix_ms: self.last_wallet_refresh_attempt_at_unix_ms,
             wallet_runtime_status,
             wallet_last_error,
             wallet_storage_runtime_mode: self.wallet_storage_runtime_mode(),
@@ -2868,6 +2907,8 @@ impl TreasuryState {
             payouts_skipped_24h,
             backlog_total,
             backlog_retryable,
+            pending_confirmation_count,
+            tracked_payment_backlog_count,
             eligible_online_payout_targets: continuity.eligible_online_payout_targets,
             sellable_pylons_online_now: continuity.sellable_pylons_online_now,
             inference_ready_online_payout_targets: continuity.inference_ready_online_payout_targets,
@@ -2939,10 +2980,7 @@ impl TreasuryState {
     }
 
     pub fn public_stats(&self, config: &TreasuryConfig, now_unix_ms: u64) -> TreasuryPublicStats {
-        let snapshot = self
-            .public_snapshot
-            .clone()
-            .unwrap_or_else(|| self.build_public_snapshot(config, now_unix_ms));
+        let snapshot = self.build_public_snapshot(config, now_unix_ms);
         let continuity = self.continuity_signal_snapshot(config, now_unix_ms);
         let (wallet_runtime_status, wallet_last_error) =
             self.wallet_runtime_view(config, now_unix_ms);
@@ -2988,6 +3026,8 @@ impl TreasuryState {
             registered_payout_identities: snapshot.registered_payout_identities,
             wallet_balance_sats: snapshot.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: snapshot.wallet_balance_updated_at_unix_ms,
+            last_wallet_sync_at_unix_ms: snapshot.last_wallet_sync_at_unix_ms,
+            last_wallet_refresh_attempt_at_unix_ms: snapshot.last_wallet_refresh_attempt_at_unix_ms,
             wallet_runtime_status,
             wallet_last_error,
             wallet_hydration_mode,
@@ -3006,6 +3046,8 @@ impl TreasuryState {
             wallet_sync_lag_ms,
             backlog_total: snapshot.backlog_total,
             backlog_retryable: snapshot.backlog_retryable,
+            pending_confirmation_count: snapshot.pending_confirmation_count,
+            tracked_payment_backlog_count: snapshot.tracked_payment_backlog_count,
             eligible_online_payout_targets: snapshot.eligible_online_payout_targets,
             sellable_pylons_online_now: snapshot.sellable_pylons_online_now,
             inference_ready_online_payout_targets: snapshot.inference_ready_online_payout_targets,
@@ -3255,6 +3297,9 @@ impl TreasuryState {
             registered_payout_identities: stats.registered_payout_identities,
             wallet_balance_sats: stats.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: stats.wallet_balance_updated_at_unix_ms,
+            last_wallet_sync_at_unix_ms: stats.last_wallet_sync_at_unix_ms,
+            last_wallet_refresh_attempt_at_unix_ms: stats
+                .last_wallet_refresh_attempt_at_unix_ms,
             wallet_runtime_status: stats.wallet_runtime_status,
             wallet_last_error: stats.wallet_last_error,
             wallet_hydration_mode: stats.wallet_hydration_mode,
@@ -3284,6 +3329,8 @@ impl TreasuryState {
             wallet_sync_lag_ms: stats.wallet_sync_lag_ms,
             backlog_total: stats.backlog_total,
             backlog_retryable: stats.backlog_retryable,
+            pending_confirmation_count: stats.pending_confirmation_count,
+            tracked_payment_backlog_count: stats.tracked_payment_backlog_count,
             eligible_online_payout_targets: stats.eligible_online_payout_targets,
             sellable_pylons_online_now: stats.sellable_pylons_online_now,
             inference_ready_online_payout_targets: stats.inference_ready_online_payout_targets,
@@ -6289,11 +6336,31 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
     if let Some(snapshot_age_ms) = response.snapshot_age_ms {
         lines.push(format!("snapshot_age_ms: {snapshot_age_ms}"));
     }
+    if let Some(last_wallet_sync_at_unix_ms) = response.last_wallet_sync_at_unix_ms {
+        lines.push(format!(
+            "last_wallet_sync_at_unix_ms: {last_wallet_sync_at_unix_ms}"
+        ));
+    }
+    if let Some(last_wallet_refresh_attempt_at_unix_ms) =
+        response.last_wallet_refresh_attempt_at_unix_ms
+    {
+        lines.push(format!(
+            "last_wallet_refresh_attempt_at_unix_ms: {last_wallet_refresh_attempt_at_unix_ms}"
+        ));
+    }
     if let Some(wallet_sync_lag_ms) = response.wallet_sync_lag_ms {
         lines.push(format!("wallet_sync_lag_ms: {wallet_sync_lag_ms}"));
     }
     lines.push(format!("backlog_total: {}", response.backlog_total));
     lines.push(format!("backlog_retryable: {}", response.backlog_retryable));
+    lines.push(format!(
+        "pending_confirmation_count: {}",
+        response.pending_confirmation_count
+    ));
+    lines.push(format!(
+        "tracked_payment_backlog_count: {}",
+        response.tracked_payment_backlog_count
+    ));
     lines.push(format!(
         "eligible_online_payout_targets: {}",
         response.eligible_online_payout_targets

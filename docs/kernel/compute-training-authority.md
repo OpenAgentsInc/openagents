@@ -275,6 +275,30 @@ answers:
 - what artifacts and digests identify the accepted work
 - what public caveats still apply to settlement or validation
 
+The snapshot now also carries cache-truth metadata:
+
+- `snapshot_source`
+  - `cache_fresh` when Nexus is serving the current cached read model
+  - `live` when the endpoint rebuilt the run detail directly from authority
+    state
+  - `cache_stale` when the live store is busy and Nexus must fall back to an
+    older cached snapshot
+  - `cache_stale_live_store_busy` when the caller explicitly requested
+    `?refresh=true` but Nexus still had to fall back to stale cached state
+- `snapshot_age_ms`
+- `snapshot_stale`
+
+Mutation paths that change public run interpretation now rebuild the named-run
+cache immediately after:
+
+- window seal
+- window reconcile
+- validator challenge finalize
+
+That keeps public homework-run pages consistent without forcing every caller to
+poll `?refresh=true`, while still degrading gracefully to cached state instead
+of failing `503` when the live store is temporarily busy.
+
 ## Homework Admin Launch Path
 
 Nexus now exposes one authenticated homework-dispatch surface for the bounded

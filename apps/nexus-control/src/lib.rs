@@ -1419,6 +1419,11 @@ const fn homework_launch_pay_only_on_accept_default() -> bool {
 const TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS: u64 = 15_000;
 const TRAINING_PUBLIC_MIRROR_MAX_AGE_MS: u64 = 120_000;
 const TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS: u64 = 120_000;
+const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_LIVE: &str = "live";
+const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_CACHE_FRESH: &str = "cache_fresh";
+const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_CACHE_STALE: &str = "cache_stale";
+const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_CACHE_STALE_LIVE_STORE_BUSY: &str =
+    "cache_stale_live_store_busy";
 const TRAINING_ARTIFACT_RESOLVER_P95_MAX_MS: u64 = 750;
 const TRAINING_ARTIFACT_SIGNED_ACCESS_P95_MAX_MS: u64 = 1_000;
 const TRAINING_LAUNCH_LATENCY_SAMPLE_LIMIT: usize = 64;
@@ -8706,6 +8711,8 @@ fn build_api_router_with_state(state: AppState) -> Router {
             post(complete_starter_demand_offer),
         )
         .route("/v1/treasury/status", get(treasury_status))
+        .route("/api/admin/treasury/refresh", post(refresh_treasury_status))
+        .route("/v1/admin/treasury/refresh", post(refresh_treasury_status))
         .route(
             "/v1/treasury/integration/export",
             get(treasury_integration_export),
@@ -9127,10 +9134,17 @@ async fn get_training_run_detail(
     let store = match try_read_store(&state, "training_run_detail_live_store_busy") {
         Ok(store) => store,
         Err(error) => {
-            if !query.refresh
-                && let Some(snapshot) =
-                    cached_training_run_detail_snapshot_any_age(&state, training_run_id.as_str())
-            {
+            let fallback_source = if query.refresh {
+                TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_CACHE_STALE_LIVE_STORE_BUSY
+            } else {
+                TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_CACHE_STALE
+            };
+            if let Some(snapshot) = cached_training_run_detail_snapshot_any_age(
+                &state,
+                training_run_id.as_str(),
+                now,
+                fallback_source,
+            ) {
                 return Ok(Json(snapshot));
             }
             return Err(error);
@@ -9141,7 +9155,7 @@ async fn get_training_run_detail(
     let launch_metrics = training_launch_live_metrics_snapshot(&state);
     let detail_context =
         training_run_detail_context(&state.config, &store, &summary, &launch_metrics, now);
-    let snapshot = training_run_detail_snapshot(
+    let mut snapshot = training_run_detail_snapshot(
         &store,
         &summary,
         &visualization,
@@ -9157,6 +9171,11 @@ async fn get_training_run_detail(
         },
         _ => kernel_api_error(reason),
     })?;
+    apply_training_run_detail_snapshot_context(
+        &mut snapshot,
+        now,
+        TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_LIVE,
+    );
     replace_training_run_detail_cache(&state, snapshot.clone());
     Ok(Json(snapshot))
 }
@@ -10959,6 +10978,23 @@ async fn rebuild_training_run_detail_cache(
     };
     replace_training_run_detail_cache(state, run_detail.clone());
     Ok(run_detail)
+}
+
+async fn refresh_training_run_detail_cache_after_mutation(
+    state: &AppState,
+    training_run_id: &str,
+    mutation: &str,
+) {
+    if let Err(error) = rebuild_training_run_detail_cache(state, training_run_id).await {
+        tracing::error!(
+            training_run_id,
+            mutation,
+            status = ?error.status,
+            error = error.error,
+            reason = %error.reason,
+            "training run detail cache refresh failed after mutation",
+        );
+    }
 }
 
 async fn launch_cs336_a1_demo_run(
@@ -13372,6 +13408,12 @@ async fn seal_training_window(
         receipt_event,
         snapshot_event,
     );
+    refresh_training_run_detail_cache_after_mutation(
+        &state,
+        response.window.training_run_id.as_str(),
+        "seal_training_window",
+    )
+    .await;
     Ok(Json(response))
 }
 
@@ -13703,6 +13745,12 @@ async fn reconcile_training_window(
         window_receipt_event,
         window_snapshot_event,
     );
+    refresh_training_run_detail_cache_after_mutation(
+        &state,
+        response.window.training_run_id.as_str(),
+        "reconcile_training_window",
+    )
+    .await;
     Ok(Json(response))
 }
 
@@ -14466,6 +14514,12 @@ async fn finalize_training_validator_challenge(
         window_receipt_event,
         window_snapshot_event,
     );
+    refresh_training_run_detail_cache_after_mutation(
+        &state,
+        response.training_run_id.as_str(),
+        "finalize_training_validator_challenge",
+    )
+    .await;
     Ok(Json(response))
 }
 
@@ -16654,6 +16708,15 @@ async fn treasury_status(
     drop(store);
     replace_treasury_status_cache(&state, status.clone());
     Ok(Json(status))
+}
+
+async fn refresh_treasury_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<TreasuryStatusResponse>, ApiError> {
+    authenticate_admin_bearer_token(&state, &headers)?;
+    force_treasury_wallet_refresh(&state, false).await?;
+    treasury_status(State(state)).await
 }
 
 async fn treasury_integration_export(
@@ -22453,6 +22516,57 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
     finish_treasury_wallet_refresh_cycle();
 }
 
+async fn force_treasury_wallet_refresh(
+    state: &AppState,
+    create_if_missing: bool,
+) -> Result<(), ApiError> {
+    let treasury_enabled = {
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store.treasury.treasury_enabled(&state.config.treasury)
+    };
+    if !treasury_enabled {
+        let _ = force_refresh_treasury_status_cache(state, now_unix_ms());
+        return Ok(());
+    }
+
+    if !try_begin_treasury_wallet_refresh_cycle() {
+        return Err(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: "treasury_wallet_refresh_in_flight".to_string(),
+        });
+    }
+
+    let wallet_refresh_timeout_ms = state.config.treasury.wallet_refresh_timeout_ms();
+    let refresh_result = tokio::time::timeout(
+        Duration::from_millis(wallet_refresh_timeout_ms),
+        refresh_treasury_wallet_state(state, create_if_missing),
+    )
+    .await;
+    if refresh_result.is_err() {
+        let timeout_reason = format!("wallet_refresh_timeout:{wallet_refresh_timeout_ms}");
+        tracing::error!("treasury wallet refresh timed out: {timeout_reason}");
+        if let Ok(mut store) = state.store.write() {
+            let now = now_unix_ms();
+            store
+                .treasury
+                .record_wallet_refresh_error(timeout_reason, now);
+            store
+                .treasury
+                .refresh_public_snapshot_in_memory(&state.config.treasury, now);
+        }
+    }
+    let now = now_unix_ms();
+    let _ = force_refresh_public_stats_cache(state, now);
+    let _ = force_refresh_treasury_status_cache(state, now);
+    finish_treasury_wallet_refresh_cycle();
+    Ok(())
+}
+
 async fn apply_treasury_dispatch_batch(state: &AppState, batch: TreasuryDispatchBatchResult) {
     let now = now_unix_ms();
     if let Ok(mut store) = state.store.write() {
@@ -24011,6 +24125,9 @@ fn training_run_detail_snapshot(
 
     Ok(PublicTrainingRunDetailSnapshot {
         generated_at_unix_ms: now_unix_ms,
+        snapshot_source: TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_LIVE.to_string(),
+        snapshot_age_ms: 0,
+        snapshot_stale: false,
         training_run_id,
         run,
         featured_window_id,
@@ -25387,35 +25504,53 @@ fn replace_training_run_detail_cache(state: &AppState, snapshot: PublicTrainingR
     }
 }
 
+fn apply_training_run_detail_snapshot_context(
+    snapshot: &mut PublicTrainingRunDetailSnapshot,
+    now_unix_ms: u64,
+    source: &str,
+) {
+    snapshot.snapshot_source = source.to_string();
+    snapshot.snapshot_age_ms = now_unix_ms.saturating_sub(snapshot.generated_at_unix_ms);
+    snapshot.snapshot_stale = snapshot.snapshot_age_ms > TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS;
+}
+
 fn cached_training_run_detail_snapshot(
     state: &AppState,
     training_run_id: &str,
     now_unix_ms: u64,
 ) -> Option<PublicTrainingRunDetailSnapshot> {
-    let snapshot = state
+    let mut snapshot = state
         .training_run_detail_cache
         .try_read()
         .ok()?
         .get(training_run_id)
         .cloned()?;
-    if now_unix_ms.saturating_sub(snapshot.generated_at_unix_ms)
-        > TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS
-    {
+    let age_ms = now_unix_ms.saturating_sub(snapshot.generated_at_unix_ms);
+    if age_ms > TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS {
         return None;
     }
+    apply_training_run_detail_snapshot_context(
+        &mut snapshot,
+        now_unix_ms,
+        TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_CACHE_FRESH,
+    );
     Some(snapshot)
 }
 
 fn cached_training_run_detail_snapshot_any_age(
     state: &AppState,
     training_run_id: &str,
+    now_unix_ms: u64,
+    source: &str,
 ) -> Option<PublicTrainingRunDetailSnapshot> {
-    state
+    let mut snapshot = state
         .training_run_detail_cache
         .try_read()
         .ok()?
         .get(training_run_id)
-        .cloned()
+        .cloned()?;
+    apply_training_run_detail_snapshot_context(&mut snapshot, now_unix_ms, source);
+    Some(snapshot)
 }
 
 fn record_training_launch_latency_sample(
@@ -32619,6 +32754,128 @@ mod tests {
         let error: ErrorResponse = response_json(status_response).await?;
         assert_eq!(error.reason, "treasury_status_cache_busy");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_treasury_refresh_route_requires_admin_bearer_token() -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("treasury-admin".to_string());
+        let app = build_router_with_state(build_app_state(config));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/treasury/refresh")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let error: ErrorResponse = response_json(response).await?;
+        assert_eq!(error.reason, "missing_admin_bearer_token");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_treasury_refresh_route_forces_wallet_refresh_and_reports_confirmation_visibility(
+    ) -> Result<()> {
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("treasury-admin".to_string());
+        config.treasury.enabled = true;
+        config.treasury.wallet_status_refresh_seconds = 60;
+        let state = build_app_state(config);
+        let app = build_router_with_state(state.clone());
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
+        let hook_calls = Arc::new(AtomicUsize::new(0));
+        let hook_calls_clone = hook_calls.clone();
+
+        set_test_wallet_snapshot_hook(Some(Arc::new(move || {
+            let call_index = hook_calls_clone.fetch_add(1, Ordering::SeqCst);
+            Ok(TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                wallet_hydration_mode: None,
+                wallet_payment_scan_mode: None,
+                balance_sats: if call_index == 0 { 500 } else { 710 },
+                payments: Vec::new(),
+            })
+        })));
+
+        run_treasury_wallet_refresh_cycle(&state, true).await;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 1);
+
+        let now = now_unix_ms();
+        {
+            let mut store = state.store.write().expect("store write for tracked payout");
+            store.treasury.payout_records_by_key.insert(
+                "window-confirm:pubkey-confirm".to_string(),
+                TreasuryPayoutRecord {
+                    payout_key: "window-confirm:pubkey-confirm".to_string(),
+                    nostr_pubkey_hex: "pubkey-confirm".to_string(),
+                    payout_target: "spark:confirm".to_string(),
+                    amount_sats: 25,
+                    status: "dispatched".to_string(),
+                    reason: None,
+                    payment_id: Some("pay-confirm-visible".to_string()),
+                    window_started_at_unix_ms: now.saturating_sub(10_000),
+                    window_ends_at_unix_ms: now.saturating_sub(5_000),
+                    created_at_unix_ms: now.saturating_sub(10_000),
+                    updated_at_unix_ms: now.saturating_sub(1_000),
+                    sellable_at_window_open: true,
+                    dispatch_receipt_recorded: true,
+                    confirm_receipt_recorded: false,
+                    fail_receipt_recorded: false,
+                    skip_receipt_recorded: false,
+                    counted_in_paid_total: false,
+                    classification: TreasuryPayoutClassification {
+                        payout_class: TreasuryPayoutClass::AcceptedWork,
+                        ..TreasuryPayoutClassification::default()
+                    },
+                },
+            );
+        }
+        {
+            let store = state.store.read().expect("store read after tracked payout");
+            let direct_status = store
+                .treasury
+                .status_response(&state.config.treasury, now_unix_ms());
+            assert_eq!(direct_status.pending_confirmation_count, 1);
+            assert_eq!(direct_status.tracked_payment_backlog_count, 1);
+        }
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/treasury/refresh")
+                    .header("authorization", "Bearer treasury-admin")
+                    .body(Body::empty())?,
+            )
+            .await?;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let status: TreasuryStatusResponse = response_json(response).await?;
+        assert_eq!(hook_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(status.wallet_balance_sats, 710);
+        assert!(status.last_wallet_sync_at_unix_ms.is_some());
+        assert!(status.last_wallet_refresh_attempt_at_unix_ms.is_some());
+        {
+            let store = state.store.read().expect("store read after refresh route");
+            let direct_status = store
+                .treasury
+                .status_response(&state.config.treasury, now_unix_ms());
+            assert_eq!(direct_status.pending_confirmation_count, 1);
+            assert_eq!(direct_status.tracked_payment_backlog_count, 1);
+        }
+        assert_eq!(status.pending_confirmation_count, 1);
+        assert_eq!(status.tracked_payment_backlog_count, 1);
+
+        set_test_wallet_snapshot_hook(None);
         Ok(())
     }
 
@@ -43252,6 +43509,8 @@ mod tests {
         let detail = response_json::<PublicTrainingRunDetailSnapshot>(detail_response).await?;
 
         assert_eq!(detail.training_run_id, training_run_id);
+        assert_eq!(detail.snapshot_source, "cache_fresh");
+        assert!(!detail.snapshot_stale);
         assert_eq!(detail.run.training_run_id, training_run_id);
         assert_eq!(detail.run.network_id, "trainnet.alpha");
         assert_eq!(detail.featured_window_id.as_deref(), Some("window.0001"));
@@ -43332,6 +43591,8 @@ mod tests {
         let cached_detail =
             response_json::<PublicTrainingRunDetailSnapshot>(cached_detail_response).await?;
         assert_eq!(cached_detail.run.run_status, "cached-only");
+        assert_eq!(cached_detail.snapshot_source, "cache_fresh");
+        assert!(!cached_detail.snapshot_stale);
 
         let refreshed_detail_response = app
             .clone()
@@ -43346,6 +43607,8 @@ mod tests {
         let refreshed_detail =
             response_json::<PublicTrainingRunDetailSnapshot>(refreshed_detail_response).await?;
         assert_eq!(refreshed_detail.run.run_status, "running");
+        assert_eq!(refreshed_detail.snapshot_source, "live");
+        assert!(!refreshed_detail.snapshot_stale);
 
         {
             let mut cache = state
@@ -43375,10 +43638,34 @@ mod tests {
         let stale_detail =
             response_json::<PublicTrainingRunDetailSnapshot>(stale_detail_response).await?;
         assert_eq!(stale_detail.training_run_id, training_run_id);
+        assert_eq!(stale_detail.snapshot_source, "cache_stale");
+        assert!(stale_detail.snapshot_stale);
         assert_eq!(
             stale_detail.featured_window_id.as_deref(),
             Some("window.0001")
         );
+
+        let store_guard = state.store.write().expect("hold live store write lock");
+        let stale_refresh_response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.clone().oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}?refresh=true"))
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("refresh training run detail cache should return stale cache while store is busy")?;
+        drop(store_guard);
+        assert_eq!(stale_refresh_response.status(), StatusCode::OK);
+        let stale_refresh_detail =
+            response_json::<PublicTrainingRunDetailSnapshot>(stale_refresh_response).await?;
+        assert_eq!(
+            stale_refresh_detail.snapshot_source,
+            "cache_stale_live_store_busy"
+        );
+        assert!(stale_refresh_detail.snapshot_stale);
 
         Ok(())
     }
