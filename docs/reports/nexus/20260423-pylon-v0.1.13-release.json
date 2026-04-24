@@ -1,0 +1,68 @@
+{
+  "generated_at": "2026-04-24T07:05:30Z",
+  "status": "completed",
+  "owner_repo": "OpenAgentsInc/openagents",
+  "release_commit": {
+    "git_sha": "8590d04a78fb69e984274fb9bddc6387d4edd440",
+    "summary": "Scrub legacy runtime references from Pylon"
+  },
+  "release": {
+    "tag": "pylon-v0.1.13",
+    "name": "Pylon v0.1.13",
+    "url": "https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.1.13",
+    "target_commitish": "8590d04a78fb69e984274fb9bddc6387d4edd440",
+    "assets": [
+      {
+        "name": "pylon-v0.1.13-darwin-arm64.tar.gz",
+        "url": "https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.1.13/pylon-v0.1.13-darwin-arm64.tar.gz",
+        "sha256": "de995efc90675d90108785a2790e0c2bc4099cd0ef6eaff2d8ae58fccc234a66"
+      },
+      {
+        "name": "pylon-v0.1.13-darwin-arm64.tar.gz.sha256",
+        "url": "https://github.com/OpenAgentsInc/openagents/releases/download/pylon-v0.1.13/pylon-v0.1.13-darwin-arm64.tar.gz.sha256",
+        "sha256": "a9ece73e16a1ddce07f21d8f725e2f6b100a5d7bd5c9f7d23b1958cd5c22ab54"
+      }
+    ]
+  },
+  "npm_package": {
+    "name": "@openagentsinc/pylon",
+    "version": "0.1.13",
+    "shasum": "e728207558855e1549e72a59685476141aec009b",
+    "integrity": "sha512-mRyzDvK5nR5g9fK/nSM21DCPb/b7kSI/KWs22UTmsncNoio3ikAd60RwoPNU1VbllWFiKQCg8vwjQ4G8IaqmEw==",
+    "bin": {
+      "pylon": "bin/pylon"
+    }
+  },
+  "verification": {
+    "search": {
+      "command": "rg -n -i \"ollama\" /Users/christopherdavid/work --glob '!**/target/**' --glob '!**/node_modules/**' --glob '!**/vendor/**' --glob '!**/.git/**' --glob '!**/competition/**' --glob '!**/backroom/**'",
+      "result": "no matches in owned live repos after scrub"
+    },
+    "openagents": [
+      "bun test packages/pylon-bootstrap/test/bootstrap.test.js",
+      "cargo test -p openagents-kernel-core -p openagents-provider-substrate -p pylon -p nexus-control --no-run"
+    ],
+    "openagents_com": [
+      "bun run lint:check -- resources/js/pages/welcome.tsx",
+      "bun run types:check"
+    ],
+    "workspace": [
+      "bash -n scripts/bootstrap-gcp-pylon.sh"
+    ],
+    "public_smoke": [
+      "npm pack --dry-run (packages/pylon-bootstrap)",
+      "npx @openagentsinc/pylon@0.1.13 --help"
+    ]
+  },
+  "summary": {
+    "what_changed": [
+      "Removed legacy runtime wording from the public onboarding and bootstrap docs.",
+      "Removed automatic runtime import and uninstall attempts from Pylon's local Gemma path.",
+      "Published a new public Pylon binary tag and npm package so the scrub is available through the normal install path."
+    ],
+    "notes": [
+      "This receipt covers the darwin-arm64 binary release plus npm publish.",
+      "Hosted Nexus homework scheduling still uses min_pylon_version=0.1.12 at the server side; 0.1.13 is the current recommended public build."
+    ]
+  }
+}

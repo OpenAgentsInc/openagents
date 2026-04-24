@@ -224,7 +224,9 @@ and kept Gemma diagnostics/downloads opt-in during homework onboarding.
 it fixed the Psionic-backed Mac training-worker launch path. `pylon-v0.1.13`
 is the current recommended public build because it keeps that path while
 removing the last legacy runtime wording and automatic runtime mutation from the
-public install/runtime flow. The `0.1.11` release receipt is
+public install/runtime flow. The `0.1.13` release receipt is
+[docs/reports/nexus/20260423-pylon-v0.1.13-release.json](docs/reports/nexus/20260423-pylon-v0.1.13-release.json).
+The `0.1.11` release receipt is
 [docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json](docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json).
 The prior full accepted-work payout proof remains
 [docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json](docs/reports/nexus/20260423-050434-pylon-v0.1.10-release.json).
