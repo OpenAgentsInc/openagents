@@ -153,6 +153,7 @@ use crate::kernel::{
     RecordTrainingNodeHeartbeatResponse, RetryValidatorChallengeRequest,
     ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse, SnapshotProjectionEvent,
     TrainingCoordinatorAck, TrainingNodeQuery, TrainingNodeRoleClaim,
+    TrainingNodeSchedulerAvailabilityDimension, TrainingNodeSchedulerAvailabilityProjection,
     TrainingTrnPublicationPointer, TrainingTrnPublicationRecord, TrainingTrnPublicationTemplate,
     TrainingTrnRelayPublicationOutcome, TrainingValidatorChallengeFinalizationSource,
 };
@@ -1553,12 +1554,32 @@ struct StarterDemandState {
     offers_by_session: HashMap<String, Vec<StarterDemandOfferRecord>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct TrainingSchedulerState {
     runs_by_training_run_id: HashMap<String, ScheduledTrainingRun>,
     launch_coordinators_by_training_run_id: HashMap<String, TrainingLaunchCoordinatorRecord>,
     lease_idempotency: HashMap<String, TrainingLeaseIdempotentRecord>,
     rollout_policy: TrainingRolloutPolicy,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct TrainingSchedulerNodeAssignmentBinding {
+    training_run_id: String,
+    window_id: String,
+    assignment_id: String,
+    state: TrainingAssignmentState,
+    issued_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum TrainingSchedulerRunAvailability {
+    Ready {
+        window_id: String,
+    },
+    Blocked {
+        reason: &'static str,
+        window_id: String,
+    },
 }
 
 const TRAINING_SCHEDULER_STATE_SCHEMA_VERSION: u32 = 1;
@@ -2288,6 +2309,19 @@ fn scheduled_assignment_window_matches_for_run(
     window_id: &str,
 ) -> bool {
     scheduled_assignment_window_id_for_run(assignment, training_run_id, window_id) == window_id
+}
+
+fn training_scheduler_assignment_activity_reason(state: TrainingAssignmentState) -> &'static str {
+    match state {
+        TrainingAssignmentState::Leased => "training_scheduler_assignment_leased",
+        TrainingAssignmentState::Acked => "training_scheduler_assignment_acked",
+        TrainingAssignmentState::Active => "training_scheduler_assignment_active",
+        TrainingAssignmentState::Planned => "training_scheduler_assignment_planned",
+        TrainingAssignmentState::Completed => "training_scheduler_assignment_completed",
+        TrainingAssignmentState::Expired => "training_scheduler_assignment_expired",
+        TrainingAssignmentState::Drained => "training_scheduler_assignment_drained",
+        TrainingAssignmentState::Failed => "training_scheduler_assignment_failed",
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -3780,13 +3814,11 @@ impl TrainingSchedulerState {
         }
     }
 
-    fn active_assignment_response_for_node(
+    fn active_assignment_binding_for_node(
         &self,
         node_pubkey_hex: &str,
         role: TrainingNodeRoleClaim,
-        idempotency_key: &str,
-        recorded_at_ms: i64,
-    ) -> Option<RecordTrainingRunLeaseResponse> {
+    ) -> Option<TrainingSchedulerNodeAssignmentBinding> {
         self.runs_by_training_run_id
             .values()
             .filter_map(|run| {
@@ -3794,19 +3826,75 @@ impl TrainingSchedulerState {
                     return None;
                 }
                 run.active_assignment_for_node(node_pubkey_hex, role)
-                    .map(|assignment| {
-                        (
-                            assignment.issued_at_ms.unwrap_or_default(),
-                            run.response_for_assignment(
-                                assignment,
-                                idempotency_key,
-                                recorded_at_ms,
-                            ),
-                        )
+                    .map(|assignment| TrainingSchedulerNodeAssignmentBinding {
+                        training_run_id: run.training_run_id.clone(),
+                        window_id: run.current_window_id.clone(),
+                        assignment_id: assignment.assignment_id.clone(),
+                        state: assignment.state,
+                        issued_at_ms: assignment.issued_at_ms.unwrap_or_default(),
                     })
             })
-            .max_by(|lhs, rhs| lhs.0.cmp(&rhs.0))
-            .map(|(_, response)| response)
+            .max_by(|lhs, rhs| lhs.issued_at_ms.cmp(&rhs.issued_at_ms))
+    }
+
+    fn active_assignment_response_for_node(
+        &self,
+        node_pubkey_hex: &str,
+        role: TrainingNodeRoleClaim,
+        idempotency_key: &str,
+        recorded_at_ms: i64,
+    ) -> Option<RecordTrainingRunLeaseResponse> {
+        let binding = self.active_assignment_binding_for_node(node_pubkey_hex, role)?;
+        let run = self
+            .runs_by_training_run_id
+            .get(binding.training_run_id.as_str())?;
+        let assignment = run.assignments.iter().find(|assignment| {
+            assignment.assignment_id == binding.assignment_id
+                && scheduled_assignment_window_matches_for_run(
+                    assignment,
+                    run.training_run_id.as_str(),
+                    binding.window_id.as_str(),
+                )
+                && assignment.node_pubkey_hex.as_deref() == Some(node_pubkey_hex)
+        })?;
+        Some(run.response_for_assignment(assignment, idempotency_key, recorded_at_ms))
+    }
+
+    fn run_availability_for_claim(
+        &self,
+        run: &ComputeTrainingRun,
+        metadata: &TrainingSchedulerRunMetadata,
+        role: TrainingNodeRoleClaim,
+    ) -> TrainingSchedulerRunAvailability {
+        let fallback_window_id = self
+            .runs_by_training_run_id
+            .get(run.training_run_id.as_str())
+            .map(|scheduled_run| scheduled_run.current_window_id.clone())
+            .unwrap_or_else(|| {
+                metadata
+                    .initial_window_id
+                    .clone()
+                    .unwrap_or_else(|| "window.0001".to_string())
+            });
+        if training_run_requires_scheduler_residency_for_claims(run)
+            && !self
+                .runs_by_training_run_id
+                .contains_key(run.training_run_id.as_str())
+        {
+            return TrainingSchedulerRunAvailability::Blocked {
+                reason: "training_scheduler_run_not_found",
+                window_id: fallback_window_id,
+            };
+        }
+        if let Some(scheduled_run) = self
+            .runs_by_training_run_id
+            .get(run.training_run_id.as_str())
+        {
+            return scheduled_run.availability_for_role(role);
+        }
+        TrainingSchedulerRunAvailability::Ready {
+            window_id: fallback_window_id,
+        }
     }
 
     fn claim_lease(
@@ -3934,28 +4022,18 @@ impl TrainingSchedulerState {
             {
                 return Err("training_scheduler_run_not_found".to_string());
             }
+            if let TrainingSchedulerRunAvailability::Blocked { reason, .. } =
+                self.run_availability_for_claim(&run, &metadata, request.role)
+            {
+                return Err(reason.to_string());
+            }
             return Ok(run);
         }
 
         let mut best_match: Option<((u8, u8, u8, i64), ComputeTrainingRun)> = None;
+        let mut best_blocked: Option<((u8, u8, u8, i64), &'static str)> = None;
         for run in candidate_runs {
             if !training_run_schedulable(&run) {
-                continue;
-            }
-            if training_run_requires_scheduler_residency_for_claims(run)
-                && !self
-                    .runs_by_training_run_id
-                    .contains_key(run.training_run_id.as_str())
-            {
-                continue;
-            }
-            if self
-                .runs_by_training_run_id
-                .get(run.training_run_id.as_str())
-                .is_some_and(|scheduled_run| {
-                    !scheduled_run.window_state.permits_assignment_claims()
-                })
-            {
                 continue;
             }
             let Ok(metadata) = training_scheduler_metadata_from_run(&run) else {
@@ -3985,15 +4063,30 @@ impl TrainingSchedulerState {
                 continue;
             }
             let priority = training_scheduler_run_priority(request.role, run);
-            if best_match
-                .as_ref()
-                .is_none_or(|(best_priority, _)| priority > *best_priority)
-            {
-                best_match = Some((priority, run.clone()));
+            match self.run_availability_for_claim(run, &metadata, request.role) {
+                TrainingSchedulerRunAvailability::Ready { .. } => {
+                    if best_match
+                        .as_ref()
+                        .is_none_or(|(best_priority, _)| priority > *best_priority)
+                    {
+                        best_match = Some((priority, run.clone()));
+                    }
+                }
+                TrainingSchedulerRunAvailability::Blocked { reason, .. } => {
+                    if best_blocked
+                        .as_ref()
+                        .is_none_or(|(best_priority, _)| priority > *best_priority)
+                    {
+                        best_blocked = Some((priority, reason));
+                    }
+                }
             }
         }
         if let Some((_, run)) = best_match {
             return Ok(run);
+        }
+        if let Some((_, reason)) = best_blocked {
+            return Err(reason.to_string());
         }
 
         let _ = now_unix_ms;
@@ -4243,69 +4336,117 @@ impl ScheduledTrainingRun {
             })
     }
 
-    fn has_claimable_or_replaceable_assignment(&self, role: TrainingNodeRoleClaim) -> bool {
-        if self.next_available_assignment_index(role).is_some() {
-            return true;
-        }
-        (1..=self.role_plan.target_count(role)).any(|slot_ordinal| {
-            self.assignments
-                .iter()
-                .filter(|assignment| {
-                    assignment.role == role && assignment.slot_ordinal == slot_ordinal
-                })
-                .max_by(|left, right| left.attempt.cmp(&right.attempt))
-                .is_some_and(|assignment| {
-                    matches!(
+    fn latest_assignment_for_slot(
+        &self,
+        role: TrainingNodeRoleClaim,
+        slot_ordinal: u32,
+    ) -> Option<&ScheduledTrainingAssignment> {
+        self.assignments
+            .iter()
+            .filter(|assignment| assignment.role == role && assignment.slot_ordinal == slot_ordinal)
+            .max_by(|left, right| left.attempt.cmp(&right.attempt))
+    }
+
+    fn current_window_latest_assignment_for_slot(
+        &self,
+        role: TrainingNodeRoleClaim,
+        slot_ordinal: u32,
+    ) -> Option<&ScheduledTrainingAssignment> {
+        self.assignments
+            .iter()
+            .filter(|assignment| {
+                assignment.role == role
+                    && assignment.slot_ordinal == slot_ordinal
+                    && scheduled_assignment_window_matches_for_run(
+                        assignment,
+                        self.training_run_id.as_str(),
+                        self.current_window_id.as_str(),
+                    )
+            })
+            .max_by(|left, right| left.attempt.cmp(&right.attempt))
+    }
+
+    fn next_assignment_attempt_for_slot(
+        &self,
+        role: TrainingNodeRoleClaim,
+        slot_ordinal: u32,
+    ) -> u32 {
+        self.latest_assignment_for_slot(role, slot_ordinal)
+            .map_or(1, |assignment| assignment.attempt.saturating_add(1))
+    }
+
+    fn replacement_assignment_slot(&self, role: TrainingNodeRoleClaim) -> Option<(u32, u32)> {
+        for slot_ordinal in 1..=self.role_plan.target_count(role) {
+            match self.current_window_latest_assignment_for_slot(role, slot_ordinal) {
+                Some(assignment)
+                    if !matches!(
                         assignment.state,
                         TrainingAssignmentState::Expired
                             | TrainingAssignmentState::Failed
                             | TrainingAssignmentState::Drained
-                    )
-                })
-        })
+                    ) =>
+                {
+                    continue;
+                }
+                Some(_) | None => {
+                    return Some((
+                        slot_ordinal,
+                        self.next_assignment_attempt_for_slot(role, slot_ordinal),
+                    ));
+                }
+            }
+        }
+        None
+    }
+
+    fn has_claimable_or_replaceable_assignment(&self, role: TrainingNodeRoleClaim) -> bool {
+        self.next_available_assignment_index(role).is_some()
+            || self.replacement_assignment_slot(role).is_some()
     }
 
     fn plan_replacement_assignment(&mut self, role: TrainingNodeRoleClaim) -> Option<usize> {
-        for slot_ordinal in 1..=self.role_plan.target_count(role) {
-            let latest = self
-                .assignments
-                .iter()
-                .enumerate()
-                .filter(|(_, assignment)| {
-                    assignment.role == role && assignment.slot_ordinal == slot_ordinal
-                })
-                .max_by(|(_, lhs), (_, rhs)| lhs.attempt.cmp(&rhs.attempt))?;
-            if !matches!(
-                latest.1.state,
-                TrainingAssignmentState::Expired
-                    | TrainingAssignmentState::Failed
-                    | TrainingAssignmentState::Drained
-            ) {
-                continue;
-            }
-            let next_attempt = latest.1.attempt.saturating_add(1);
-            self.assignments.push(ScheduledTrainingAssignment {
-                assignment_id: pylon_training_assignment_id(
-                    self.training_run_id.as_str(),
-                    self.current_window_id.as_str(),
-                    role.label(),
-                    slot_ordinal,
-                    next_attempt,
-                ),
-                window_id: self.current_window_id.clone(),
-                role,
+        let (slot_ordinal, next_attempt) = self.replacement_assignment_slot(role)?;
+        self.assignments.push(ScheduledTrainingAssignment {
+            assignment_id: pylon_training_assignment_id(
+                self.training_run_id.as_str(),
+                self.current_window_id.as_str(),
+                role.label(),
                 slot_ordinal,
-                attempt: next_attempt,
-                state: TrainingAssignmentState::Planned,
-                node_pubkey_hex: None,
-                lease_id: None,
-                issued_at_ms: None,
-                expires_at_ms: None,
-                manifest_digest: None,
-            });
-            return Some(self.assignments.len() - 1);
+                next_attempt,
+            ),
+            window_id: self.current_window_id.clone(),
+            role,
+            slot_ordinal,
+            attempt: next_attempt,
+            state: TrainingAssignmentState::Planned,
+            node_pubkey_hex: None,
+            lease_id: None,
+            issued_at_ms: None,
+            expires_at_ms: None,
+            manifest_digest: None,
+        });
+        Some(self.assignments.len() - 1)
+    }
+
+    fn availability_for_role(
+        &self,
+        role: TrainingNodeRoleClaim,
+    ) -> TrainingSchedulerRunAvailability {
+        if !self.window_state.permits_assignment_claims() {
+            return TrainingSchedulerRunAvailability::Blocked {
+                reason: "training_scheduler_run_not_schedulable",
+                window_id: self.current_window_id.clone(),
+            };
         }
-        None
+        if self.has_claimable_or_replaceable_assignment(role) {
+            return TrainingSchedulerRunAvailability::Ready {
+                window_id: self.current_window_id.clone(),
+            };
+        }
+        TrainingSchedulerRunAvailability::Blocked {
+            reason: "training_scheduler_assignment_unavailable",
+            window_id: self.current_window_id.clone(),
+        }
     }
 
     fn response_for_assignment(
@@ -4453,6 +4594,10 @@ impl ScheduledTrainingRun {
         kernel: &KernelState,
         now_unix_ms: i64,
     ) {
+        let fallback_window_id = metadata
+            .initial_window_id
+            .clone()
+            .unwrap_or_else(|| "window.0001".to_string());
         self.network_id = metadata.network_id.clone();
         self.artifact_bucket_uri = metadata.artifact_bucket_uri.clone();
         self.role_plan = TrainingSchedulerRolePlan {
@@ -4464,12 +4609,6 @@ impl ScheduledTrainingRun {
             .checkpoint_ref
             .clone()
             .or_else(|| run.checkpoint_binding.latest_checkpoint_ref.clone());
-        if self.current_window_id.is_empty() {
-            self.current_window_id = metadata
-                .initial_window_id
-                .clone()
-                .unwrap_or_else(|| "window.0001".to_string());
-        }
         if let Some(window) = kernel
             .list_compute_adapter_training_windows(Some(run.training_run_id.as_str()), None)
             .into_iter()
@@ -4503,9 +4642,17 @@ impl ScheduledTrainingRun {
                     _ => TrainingSchedulerWindowState::Accepted,
                 },
             };
+            self.current_window_id =
+                if matches!(window.status, ComputeAdapterWindowStatus::Reconciled) {
+                    training_window_next_id(window.window_id.as_str())
+                } else {
+                    window.window_id.clone()
+                };
             self.updated_at_ms = self.updated_at_ms.max(window.recorded_at_ms);
         } else {
-            self.window_state = TrainingSchedulerWindowState::Active;
+            if self.current_window_id.is_empty() {
+                self.current_window_id = fallback_window_id;
+            }
         }
         self.updated_at_ms = self
             .updated_at_ms
@@ -12972,6 +13119,11 @@ async fn execute_training_run_lease_claim(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
+    {
+        let store = &mut *store;
+        let (kernel, training_scheduler) = (&store.kernel, &mut store.training_scheduler);
+        training_scheduler.recover_from_kernel(kernel, request.requested_at_ms);
+    }
     let node = store
         .kernel
         .get_admitted_training_node(
@@ -13902,7 +14054,8 @@ async fn claim_training_validator_challenge(
             let Some(validation) = metadata.validation.as_ref() else {
                 continue;
             };
-            selection_summary.matching_windows = selection_summary.matching_windows.saturating_add(1);
+            selection_summary.matching_windows =
+                selection_summary.matching_windows.saturating_add(1);
             for challenge_plan in &validation.challenges {
                 let targets_own_assignments = training_validator_targets_own_assignments(
                     metadata.assignment_plans.as_slice(),
@@ -13951,9 +14104,8 @@ async fn claim_training_validator_challenge(
                     validator_service::ValidatorChallengeStatus::Verified
                     | validator_service::ValidatorChallengeStatus::Rejected
                     | validator_service::ValidatorChallengeStatus::TimedOut => {
-                        selection_summary.terminal_exclusions = selection_summary
-                            .terminal_exclusions
-                            .saturating_add(1);
+                        selection_summary.terminal_exclusions =
+                            selection_summary.terminal_exclusions.saturating_add(1);
                     }
                 }
             }
@@ -15616,6 +15768,187 @@ fn training_authority_refresh_node_views(
         .collect())
 }
 
+fn training_scheduler_availability_idle(
+    reason: Option<&str>,
+) -> TrainingNodeSchedulerAvailabilityDimension {
+    TrainingNodeSchedulerAvailabilityDimension {
+        state: "idle".to_string(),
+        reason: reason.map(str::to_string),
+        training_run_id: None,
+        window_id: None,
+        assignment_id: None,
+        challenge_id: None,
+    }
+}
+
+fn training_scheduler_availability_ready(
+    training_run_id: &str,
+    window_id: &str,
+) -> TrainingNodeSchedulerAvailabilityDimension {
+    TrainingNodeSchedulerAvailabilityDimension {
+        state: "ready".to_string(),
+        reason: None,
+        training_run_id: Some(training_run_id.to_string()),
+        window_id: Some(window_id.to_string()),
+        assignment_id: None,
+        challenge_id: None,
+    }
+}
+
+fn training_scheduler_availability_busy(
+    reason: &str,
+    binding: &TrainingSchedulerNodeAssignmentBinding,
+) -> TrainingNodeSchedulerAvailabilityDimension {
+    TrainingNodeSchedulerAvailabilityDimension {
+        state: "busy".to_string(),
+        reason: Some(reason.to_string()),
+        training_run_id: Some(binding.training_run_id.clone()),
+        window_id: Some(binding.window_id.clone()),
+        assignment_id: Some(binding.assignment_id.clone()),
+        challenge_id: None,
+    }
+}
+
+fn training_scheduler_availability_blocked(
+    reason: &str,
+    training_run_id: Option<&str>,
+    window_id: Option<&str>,
+) -> TrainingNodeSchedulerAvailabilityDimension {
+    TrainingNodeSchedulerAvailabilityDimension {
+        state: "blocked".to_string(),
+        reason: Some(reason.to_string()),
+        training_run_id: training_run_id.map(str::to_string),
+        window_id: window_id.map(str::to_string),
+        assignment_id: None,
+        challenge_id: None,
+    }
+}
+
+fn training_node_assignment_scheduler_availability(
+    kernel: &KernelState,
+    scheduler: &TrainingSchedulerState,
+    node: &AdmittedTrainingNodeView,
+    requested_network_id: Option<&str>,
+    role: TrainingNodeRoleClaim,
+) -> TrainingNodeSchedulerAvailabilityDimension {
+    if !training_authority_view_claimability_ready(node, role) {
+        return training_scheduler_availability_blocked(
+            training_authority_view_claimability_reason(node, role)
+                .unwrap_or("training_scheduler_node_ineligible"),
+            None,
+            None,
+        );
+    }
+    if let Some(binding) =
+        scheduler.active_assignment_binding_for_node(node.node_pubkey_hex.as_str(), role)
+    {
+        return training_scheduler_availability_busy(
+            training_scheduler_assignment_activity_reason(binding.state),
+            &binding,
+        );
+    }
+
+    let mut best_ready: Option<((u8, u8, u8, i64), String, String)> = None;
+    let mut best_blocked: Option<((u8, u8, u8, i64), String, String, &'static str)> = None;
+    for run in kernel.list_compute_training_runs(None, None, None) {
+        if !training_run_schedulable(&run) {
+            continue;
+        }
+        let Ok(metadata) = training_scheduler_metadata_from_run(&run) else {
+            continue;
+        };
+        if requested_network_id.is_some_and(|expected| metadata.network_id != expected) {
+            continue;
+        }
+        let Ok(run_definition) = training_scheduler_run_definition(kernel, &run) else {
+            continue;
+        };
+        if training_node_scheduler_run_mismatch_reason_with_definition(
+            scheduler.rollout_policy(),
+            node,
+            &run,
+            &metadata,
+            role,
+            &run_definition,
+        )
+        .is_some()
+        {
+            continue;
+        }
+        let priority = training_scheduler_run_priority(role, &run);
+        match scheduler.run_availability_for_claim(&run, &metadata, role) {
+            TrainingSchedulerRunAvailability::Ready { window_id } => {
+                if best_ready
+                    .as_ref()
+                    .is_none_or(|(best_priority, _, _)| priority > *best_priority)
+                {
+                    best_ready = Some((priority, run.training_run_id.clone(), window_id));
+                }
+            }
+            TrainingSchedulerRunAvailability::Blocked { reason, window_id } => {
+                if best_blocked
+                    .as_ref()
+                    .is_none_or(|(best_priority, _, _, _)| priority > *best_priority)
+                {
+                    best_blocked = Some((priority, run.training_run_id.clone(), window_id, reason));
+                }
+            }
+        }
+    }
+
+    if let Some((_, training_run_id, window_id)) = best_ready {
+        return training_scheduler_availability_ready(training_run_id.as_str(), window_id.as_str());
+    }
+    if let Some((_, training_run_id, window_id, reason)) = best_blocked {
+        return training_scheduler_availability_blocked(
+            reason,
+            Some(training_run_id.as_str()),
+            Some(window_id.as_str()),
+        );
+    }
+    training_scheduler_availability_idle(None)
+}
+
+fn training_node_validator_scheduler_availability(
+    node: &AdmittedTrainingNodeView,
+) -> TrainingNodeSchedulerAvailabilityDimension {
+    if !training_authority_view_claimability_ready(node, TrainingNodeRoleClaim::Validator) {
+        return training_scheduler_availability_blocked(
+            training_authority_view_claimability_reason(node, TrainingNodeRoleClaim::Validator)
+                .unwrap_or("training_scheduler_node_ineligible"),
+            None,
+            None,
+        );
+    }
+    training_scheduler_availability_idle(None)
+}
+
+fn training_authority_attach_scheduler_availability(
+    kernel: &KernelState,
+    scheduler: &TrainingSchedulerState,
+    mut node: AdmittedTrainingNodeView,
+) -> AdmittedTrainingNodeView {
+    let requested_network_id = node.readiness.requested_network_id.as_deref();
+    node.scheduler_availability = Some(TrainingNodeSchedulerAvailabilityProjection {
+        worker_assignment: training_node_assignment_scheduler_availability(
+            kernel,
+            scheduler,
+            &node,
+            requested_network_id,
+            TrainingNodeRoleClaim::Worker,
+        ),
+        validator_challenge: training_node_validator_scheduler_availability(&node),
+        recovery_source_assignment: training_node_assignment_scheduler_availability(
+            kernel,
+            scheduler,
+            &node,
+            requested_network_id,
+            TrainingNodeRoleClaim::RecoverySource,
+        ),
+    });
+    node
+}
+
 fn training_authority_freshest_node_views_by_pubkey(
     nodes: Vec<AdmittedTrainingNodeView>,
 ) -> Vec<AdmittedTrainingNodeView> {
@@ -16713,6 +17046,14 @@ async fn list_training_nodes(
         now,
     )
     .map_err(kernel_api_error)?;
+    let mut scheduler = store.training_scheduler.clone();
+    scheduler.recover_from_kernel(&store.kernel, now);
+    let nodes = nodes
+        .into_iter()
+        .map(|node| {
+            training_authority_attach_scheduler_availability(&store.kernel, &scheduler, node)
+        })
+        .collect::<Vec<_>>();
     Ok(Json(nodes))
 }
 
@@ -16737,6 +17078,9 @@ async fn get_training_node(
         .ok_or_else(|| kernel_api_error("training_node_not_found".to_string()))?;
     let node =
         training_authority_refresh_node_view(&store.kernel, node, now).map_err(kernel_api_error)?;
+    let mut scheduler = store.training_scheduler.clone();
+    scheduler.recover_from_kernel(&store.kernel, now);
+    let node = training_authority_attach_scheduler_availability(&store.kernel, &scheduler, node);
     Ok(Json(node))
 }
 
@@ -32833,8 +33177,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admin_treasury_refresh_route_forces_wallet_refresh_and_reports_confirmation_visibility(
-    ) -> Result<()> {
+    async fn admin_treasury_refresh_route_forces_wallet_refresh_and_reports_confirmation_visibility()
+    -> Result<()> {
         let mut config = test_config()?;
         config.admin_bearer_token = Some("treasury-admin".to_string());
         config.treasury.enabled = true;
@@ -36133,6 +36477,131 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn training_node_scheduler_availability_surfaces_blocked_worker_reason() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = now_unix_ms().saturating_sub(10_000);
+        let training_run_id = "run.scheduler.node-blocked";
+        let network_id = "trainnet.alpha";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            "node-alpha-blocked",
+            "sha256:build-alpha-blocked",
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut node_beta = training_node_admission_request(
+                "node-beta-blocked",
+                "sha256:build-beta-blocked",
+                vec!["trainnet.alpha"],
+                Vec::new(),
+                Some(512),
+            );
+            node_beta.requested_at_ms = created_at_ms as i64 + 800;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-beta-blocked", created_at_ms + 800),
+                    node_beta,
+                )
+                .expect("admit node beta");
+            let mut heartbeat_beta =
+                training_node_heartbeat_request("node-beta-blocked", "sha256:build-beta-blocked");
+            heartbeat_beta.recorded_at_ms = created_at_ms as i64 + 850;
+            heartbeat_beta.last_heartbeat_at_ms = Some(created_at_ms as i64 + 850);
+            heartbeat_beta.training_run_id = training_run_id.to_string();
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-beta-blocked", created_at_ms + 850),
+                    heartbeat_beta,
+                )
+                .expect("heartbeat node beta");
+        }
+
+        let alpha_claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.node-blocked.alpha",
+                            created_at_ms as i64 + 1_000,
+                            "node-alpha-blocked",
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(alpha_claim_response.status(), StatusCode::OK);
+        let alpha_claim =
+            response_json::<RecordTrainingRunLeaseResponse>(alpha_claim_response).await?;
+
+        let mut heartbeat =
+            training_node_heartbeat_request("node-alpha-blocked", "sha256:build-alpha-blocked");
+        heartbeat.idempotency_key = "idemp.training.heartbeat.node-blocked.alpha".to_string();
+        heartbeat.recorded_at_ms = created_at_ms as i64 + 1_050;
+        heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 1_050);
+        heartbeat.training_run_id = training_run_id.to_string();
+        heartbeat.window_id = alpha_claim.window_id.clone();
+        heartbeat.assignment_id = alpha_claim.assignment_id.clone();
+        heartbeat.lease_id = alpha_claim.lease_id.clone();
+        heartbeat.desired_state = TrainingNodeDesiredState::Running;
+        heartbeat.process_state = TrainingNodeProcessState::Running;
+
+        let alpha_active = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/heartbeats")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&heartbeat)?))?,
+            )
+            .await?;
+        assert_eq!(alpha_active.status(), StatusCode::OK);
+
+        let node_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-beta-blocked")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(node_response.status(), StatusCode::OK);
+        let node = response_json::<AdmittedTrainingNodeView>(node_response).await?;
+        let availability = node
+            .scheduler_availability
+            .as_ref()
+            .expect("scheduler availability");
+        assert_eq!(availability.worker_assignment.state, "blocked");
+        assert_eq!(
+            availability.worker_assignment.reason.as_deref(),
+            Some("training_scheduler_assignment_unavailable")
+        );
+        assert_eq!(
+            availability.worker_assignment.training_run_id.as_deref(),
+            Some(training_run_id)
+        );
+        assert_eq!(
+            availability.worker_assignment.window_id.as_deref(),
+            Some("window.0001")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn training_node_admission_rejects_missing_build_digest() -> Result<()> {
         let app = build_router(test_config()?);
         let mut request = training_node_admission_request(
@@ -36468,7 +36937,7 @@ mod tests {
     -> Result<()> {
         let state = build_app_state(test_config()?);
         let app = build_api_router_with_state(state.clone());
-        let created_at_ms = 1_762_491_301_000u64;
+        let created_at_ms = now_unix_ms().saturating_sub(10_000);
         let training_run_id = "run.scheduler.closeout.advance";
         let network_id = "trainnet.alpha";
         let node_pubkey_hex = "node-closeout-advance";
@@ -36601,6 +37070,7 @@ mod tests {
         }
 
         let stale_active_claim_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -36617,18 +37087,59 @@ mod tests {
                     )?))?,
             )
             .await?;
+        assert_eq!(stale_active_claim_response.status(), StatusCode::OK);
+        let stale_active_replacement =
+            response_json::<RecordTrainingRunLeaseResponse>(stale_active_claim_response).await?;
         assert_eq!(
-            stale_active_claim_response.status(),
-            StatusCode::BAD_REQUEST
+            stale_active_replacement.window_id, "window.0002",
+            "advanced runs should materialize a fresh current-window lease instead of pinning on an old window assignment",
         );
-        let stale_active_error =
-            response_json::<serde_json::Value>(stale_active_claim_response).await?;
+        assert_ne!(
+            stale_active_replacement.assignment_id, first_lease.assignment_id,
+            "stale old-window assignments must not be replayed as leases for the advanced current window",
+        );
+
+        {
+            let store = state.store.read().expect("read store");
+            let scheduled_run = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get(training_run_id)
+                .expect("scheduled run");
+            assert!(
+                scheduled_run.assignments.iter().any(|assignment| {
+                    assignment.assignment_id == stale_active_replacement.assignment_id
+                        && assignment.window_id == "window.0002"
+                        && assignment.state == TrainingAssignmentState::Leased
+                }),
+                "scheduler should create a fresh current-window assignment when only stale historical assignments exist",
+            );
+        }
+
+        let node_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/nodes/node-closeout-advance")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(node_response.status(), StatusCode::OK);
+        let node = response_json::<AdmittedTrainingNodeView>(node_response).await?;
         assert_eq!(
-            stale_active_error
-                .get("reason")
-                .and_then(serde_json::Value::as_str),
-            Some("training_scheduler_assignment_unavailable"),
-            "old window assignments must not be replayed as leases for the advanced current window",
+            node.scheduler_availability
+                .as_ref()
+                .map(|availability| availability.worker_assignment.state.as_str()),
+            Some("busy"),
+        );
+        assert_eq!(
+            node.scheduler_availability
+                .as_ref()
+                .and_then(|availability| {
+                    availability.worker_assignment.assignment_id.as_deref()
+                }),
+            Some(stale_active_replacement.assignment_id.as_str()),
         );
 
         Ok(())
@@ -43709,7 +44220,9 @@ mod tests {
             ),
         )
         .await
-        .expect("refresh training run detail cache should return stale cache while store is busy")?;
+        .expect(
+            "refresh training run detail cache should return stale cache while store is busy",
+        )?;
         drop(store_guard);
         assert_eq!(stale_refresh_response.status(), StatusCode::OK);
         let stale_refresh_detail =
@@ -49775,6 +50288,7 @@ mod tests {
                         recovery_source_assignment: ready,
                     },
                 },
+                scheduler_availability: None,
             },
             Some(&super::TrainingAuthorityReputationSubjectSnapshot {
                 labels: vec!["authority::trn/build::admitted".to_string()],
@@ -49877,6 +50391,7 @@ mod tests {
                         recovery_source_assignment: ready,
                     },
                 },
+                scheduler_availability: None,
             },
             Some(&super::TrainingAuthorityReputationSubjectSnapshot {
                 labels: vec!["authority::trn/validator::inconsistent".to_string()],
