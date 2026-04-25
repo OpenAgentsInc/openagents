@@ -281,6 +281,10 @@ fn runtime_status_for_state(state: &RenderState) -> ProviderRuntimeStatusSnapsho
             .last_completed_job_at
             .and_then(approx_epoch_ms_for_instant),
         last_authoritative_event_id: state.provider_runtime.last_authoritative_event_id.clone(),
+        last_presence_heartbeat_success_at_ms: None,
+        last_presence_heartbeat_failure_at_ms: None,
+        last_payout_target_sync_success_at_ms: None,
+        last_payout_target_sync_failure_at_ms: None,
         execution_backend_label: state.provider_runtime.execution_backend_label().to_string(),
         provider_blocker_codes: state
             .provider_blockers()

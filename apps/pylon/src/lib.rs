@@ -160,6 +160,8 @@ const DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS: u64 = 5_000;
 const DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS: u64 = 1;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
+const PROVIDER_PRESENCE_HEARTBEAT_RECOVERY_GRACE_MS: u64 = 30_000;
+const PROVIDER_PAYOUT_TARGET_SYNC_RECOVERY_GRACE_MS: u64 = 900_000;
 const DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS: usize = 3;
 const DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS: u64 = 50;
 #[allow(dead_code)]
@@ -187,6 +189,14 @@ struct ProviderHostTelemetryCacheEntry {
     config_path: PathBuf,
     refreshed_at: Instant,
     snapshot: ProviderHostTelemetrySnapshot,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct ProviderControlPlaneStatusSnapshot {
+    last_presence_heartbeat_success_at_ms: Option<i64>,
+    last_presence_heartbeat_failure_at_ms: Option<i64>,
+    last_payout_target_sync_success_at_ms: Option<i64>,
+    last_payout_target_sync_failure_at_ms: Option<i64>,
 }
 
 static PROVIDER_HOST_TELEMETRY_CACHE: OnceLock<Mutex<Option<ProviderHostTelemetryCacheEntry>>> =
@@ -21054,6 +21064,7 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
     let mut provider_presence_online = false;
     let mut provider_presence_error = None::<String>;
     let mut provider_payout_target_error = None::<String>;
+    let mut provider_control_plane_status = ProviderControlPlaneStatusSnapshot::default();
     let mut previous_snapshot = None::<ProviderPersistedSnapshot>;
     let mut training_supervisor_process = None::<PylonTrainingSupervisorProcess>;
     let mut needs_sync = true;
@@ -21157,6 +21168,7 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
                     provider_presence_error.as_deref(),
                     provider_payout_target_error.as_deref(),
                 ),
+                Some(&provider_control_plane_status),
             )
             .await
             {
@@ -21247,6 +21259,10 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
                 .await
                 {
                     provider_presence_online = false;
+                    let now_ms = now_epoch_ms();
+                    provider_control_plane_status.last_presence_heartbeat_failure_at_ms =
+                        Some(now_ms);
+                    needs_sync = true;
                     if update_provider_control_plane_error(
                         &mut provider_presence_error,
                         Some(format_anyhow_error_chain(&error)),
@@ -21259,6 +21275,11 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
                     );
                 } else {
                     provider_presence_online = true;
+                    let now_ms = now_epoch_ms();
+                    provider_control_plane_status.last_presence_heartbeat_success_at_ms =
+                        Some(now_ms);
+                    provider_control_plane_status.last_presence_heartbeat_failure_at_ms = None;
+                    needs_sync = true;
                     if update_provider_control_plane_error(&mut provider_presence_error, None) {
                         needs_sync = true;
                     }
@@ -21279,7 +21300,10 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
                 )
                 .await
                 {
-                    provider_presence_online = false;
+                    let now_ms = now_epoch_ms();
+                    provider_control_plane_status.last_payout_target_sync_failure_at_ms =
+                        Some(now_ms);
+                    needs_sync = true;
                     if update_provider_control_plane_error(
                         &mut provider_payout_target_error,
                         Some(format_anyhow_error_chain(&error)),
@@ -21290,11 +21314,16 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
                         "warning: failed to register pylon payout target with Nexus: {}",
                         format_anyhow_error_chain(&error)
                     );
-                } else if update_provider_control_plane_error(
-                    &mut provider_payout_target_error,
-                    None,
-                ) {
+                } else {
+                    let now_ms = now_epoch_ms();
+                    provider_control_plane_status.last_payout_target_sync_success_at_ms =
+                        Some(now_ms);
+                    provider_control_plane_status.last_payout_target_sync_failure_at_ms = None;
                     needs_sync = true;
+                    if update_provider_control_plane_error(&mut provider_payout_target_error, None)
+                    {
+                        needs_sync = true;
+                    }
                 }
                 next_provider_payout_target_sync_at =
                     Instant::now() + provider_payout_target_sync_interval;
@@ -21376,6 +21405,7 @@ async fn build_snapshot(
     desired_mode: ProviderDesiredMode,
     previous_snapshot: Option<&ProviderPersistedSnapshot>,
     runtime_error_override: Option<String>,
+    control_plane_status: Option<&ProviderControlPlaneStatusSnapshot>,
 ) -> Result<ProviderPersistedSnapshot> {
     let availability = detect_availability(config).await?;
     Ok(build_snapshot_from_availability(
@@ -21385,6 +21415,7 @@ async fn build_snapshot(
         previous_snapshot,
         availability,
         runtime_error_override,
+        control_plane_status,
     ))
 }
 
@@ -21533,6 +21564,7 @@ async fn load_status_with_store(
             previous_snapshot,
             availability,
             None,
+            None,
         ),
         Err(error) => build_error_snapshot(
             config,
@@ -21590,15 +21622,18 @@ fn build_snapshot_from_availability(
     previous_snapshot: Option<&ProviderPersistedSnapshot>,
     availability: ProviderAvailability,
     runtime_error: Option<String>,
+    control_plane_status: Option<&ProviderControlPlaneStatusSnapshot>,
 ) -> ProviderPersistedSnapshot {
     let captured_at_ms = now_epoch_ms();
     let products = products_from_availability(config, &availability);
     let runtime = derive_runtime_snapshot(
+        captured_at_ms,
         desired_mode,
         previous_snapshot.map(|snapshot| &snapshot.runtime),
         &availability,
         products.as_slice(),
         runtime_error.clone(),
+        control_plane_status,
     );
     let mut earnings = previous_snapshot
         .and_then(|snapshot| snapshot.earnings.clone())
@@ -21655,17 +21690,51 @@ fn build_snapshot_from_availability(
 }
 
 fn derive_runtime_snapshot(
+    captured_at_ms: i64,
     desired_mode: ProviderDesiredMode,
     previous_runtime: Option<&ProviderRuntimeStatusSnapshot>,
     availability: &ProviderAvailability,
     products: &[ProviderAdvertisedProduct],
     runtime_error: Option<String>,
+    control_plane_status: Option<&ProviderControlPlaneStatusSnapshot>,
 ) -> ProviderRuntimeStatusSnapshot {
     let eligible_products = products.iter().filter(|product| product.eligible).count();
     let enabled_products = products.iter().filter(|product| product.enabled).count();
     let queue_depth = previous_runtime.map_or(0, |runtime| runtime.queue_depth);
+    let (
+        heartbeat_success_at_ms,
+        heartbeat_failure_at_ms,
+        payout_target_success_at_ms,
+        payout_target_failure_at_ms,
+    ) = if let Some(control_plane_status) = control_plane_status {
+        (
+            control_plane_status.last_presence_heartbeat_success_at_ms,
+            control_plane_status.last_presence_heartbeat_failure_at_ms,
+            control_plane_status.last_payout_target_sync_success_at_ms,
+            control_plane_status.last_payout_target_sync_failure_at_ms,
+        )
+    } else {
+        (
+            previous_runtime.and_then(|runtime| runtime.last_presence_heartbeat_success_at_ms),
+            previous_runtime.and_then(|runtime| runtime.last_presence_heartbeat_failure_at_ms),
+            previous_runtime.and_then(|runtime| runtime.last_payout_target_sync_success_at_ms),
+            previous_runtime.and_then(|runtime| runtime.last_payout_target_sync_failure_at_ms),
+        )
+    };
+    let heartbeat_retrying = heartbeat_failure_at_ms.is_some_and(|failure_at_ms| {
+        captured_at_ms.saturating_sub(failure_at_ms)
+            <= i64::try_from(PROVIDER_PRESENCE_HEARTBEAT_RECOVERY_GRACE_MS).unwrap_or(i64::MAX)
+    });
+    let payout_target_retrying = payout_target_failure_at_ms.is_some_and(|failure_at_ms| {
+        captured_at_ms.saturating_sub(failure_at_ms)
+            <= i64::try_from(PROVIDER_PAYOUT_TARGET_SYNC_RECOVERY_GRACE_MS).unwrap_or(i64::MAX)
+    });
     let state = if runtime_error.is_some() {
-        "error".to_string()
+        if heartbeat_retrying || payout_target_retrying {
+            "retrying".to_string()
+        } else {
+            "error".to_string()
+        }
     } else {
         match desired_mode {
             ProviderDesiredMode::Paused => "paused".to_string(),
@@ -21678,12 +21747,13 @@ fn derive_runtime_snapshot(
     };
     let mode = match state.as_str() {
         "online" => ProviderMode::Online,
-        "degraded" | "draining" | "error" => ProviderMode::Degraded,
+        "degraded" | "draining" | "error" | "retrying" => ProviderMode::Degraded,
         _ => ProviderMode::Offline,
     };
     let degraded_reason_code = match state.as_str() {
         "degraded" => Some("NO_ELIGIBLE_SUPPLY".to_string()),
-        "error" => Some("STATUS_BUILD_ERROR".to_string()),
+        "retrying" => Some("NEXUS_PROVIDER_CONTROL_PLANE_RETRYING".to_string()),
+        "error" => Some("NEXUS_PROVIDER_CONTROL_PLANE_FAILED".to_string()),
         "draining" => Some("DRAINING_PENDING_WORK".to_string()),
         _ => None,
     };
@@ -21696,6 +21766,7 @@ fn derive_runtime_snapshot(
         "ready" => format!("pylon is ready with {eligible_products} sellable launch products"),
         "paused" => "pylon is paused".to_string(),
         "draining" => "pylon is draining in-flight work".to_string(),
+        "retrying" => "pylon is reconnecting to Nexus".to_string(),
         "degraded" => format!(
             "pylon cannot go online because {enabled_products} enabled products are not sellable"
         ),
@@ -21712,6 +21783,8 @@ fn derive_runtime_snapshot(
             Some(ProviderFailureClass::Reconciliation)
         } else if state == "degraded" {
             Some(ProviderFailureClass::Execution)
+        } else if state == "retrying" {
+            None
         } else {
             None
         },
@@ -21730,6 +21803,10 @@ fn derive_runtime_snapshot(
             .and_then(|runtime| runtime.last_completed_job_at_epoch_ms),
         last_authoritative_event_id: previous_runtime
             .and_then(|runtime| runtime.last_authoritative_event_id.clone()),
+        last_presence_heartbeat_success_at_ms: heartbeat_success_at_ms,
+        last_presence_heartbeat_failure_at_ms: heartbeat_failure_at_ms,
+        last_payout_target_sync_success_at_ms: payout_target_success_at_ms,
+        last_payout_target_sync_failure_at_ms: payout_target_failure_at_ms,
         execution_backend_label: execution_backend_label(availability, products),
         provider_blocker_codes: provider_blocker_codes(availability, products, state.as_str()),
     }
@@ -21774,6 +21851,10 @@ fn build_unconfigured_snapshot(
             .and_then(|snapshot| snapshot.runtime.last_completed_job_at_epoch_ms),
         last_authoritative_event_id: previous_snapshot
             .and_then(|snapshot| snapshot.runtime.last_authoritative_event_id.clone()),
+        last_presence_heartbeat_success_at_ms: None,
+        last_presence_heartbeat_failure_at_ms: None,
+        last_payout_target_sync_success_at_ms: None,
+        last_payout_target_sync_failure_at_ms: None,
         execution_backend_label: "not configured".to_string(),
         provider_blocker_codes: vec!["CONFIG_MISSING".to_string(), "IDENTITY_MISSING".to_string()],
     };
@@ -21819,6 +21900,7 @@ fn build_error_snapshot(
         previous_snapshot,
         ProviderAvailability::default(),
         Some(error_detail),
+        None,
     )
 }
 
@@ -21883,6 +21965,12 @@ fn provider_blocker_codes(
         && matches!(state, "degraded" | "draining" | "offline")
     {
         codes.push("NO_ELIGIBLE_SUPPLY".to_string());
+    }
+    if state == "retrying" {
+        codes.push("NEXUS_PROVIDER_CONTROL_PLANE_RETRYING".to_string());
+    }
+    if state == "error" {
+        codes.push("NEXUS_PROVIDER_CONTROL_PLANE_FAILED".to_string());
     }
     codes
 }
@@ -26379,17 +26467,19 @@ mod tests {
         GemmaDiagnosticReport, GemmaDiagnosticRequest, GemmaDiagnosticResult,
         GemmaDiagnosticRunReceipt, GemmaDownloadEvent, GemmaDownloadTransport, GemmaSelector,
         JobsReport, LocalGemmaChatBackend, LocalGemmaChatEvent, LocalGemmaChatMessage,
-        PSION_CS336_A1_DEMO_LANE_ID, PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
+        PROVIDER_PRESENCE_HEARTBEAT_RECOVERY_GRACE_MS, PSION_CS336_A1_DEMO_LANE_ID,
+        PYLON_TRAINING_ADAPTER_FAMILY, PYLON_TRAINING_ADAPTER_FORMAT,
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CHECKPOINT_FAMILY,
         PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF, PYLON_TRAINING_ENVIRONMENT_REF,
-        PYLON_TRAINING_VALIDATOR_POLICY_REF, PsionicRepoRootCandidate, PsionicTrainRuntimeSurface,
-        PylonConfig, PylonLedger, PylonLedgerJob, PylonSettlementRecord,
-        PylonTrainingActiveRuntimeState, PylonTrainingArtifactStoreClient,
-        PylonTrainingAssignmentAckRequest, PylonTrainingCheckpointPublicationRequest,
-        PylonTrainingCloseoutCacheEntry, PylonTrainingContributionOutcomeCacheEntry,
-        PylonTrainingCoordinatorAck, PylonTrainingCoordinatorClient,
-        PylonTrainingDrainNoticeRequest, PylonTrainingFailureNoticeRequest,
-        PylonTrainingFailureReceipt, PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
+        PYLON_TRAINING_VALIDATOR_POLICY_REF, ProviderControlPlaneStatusSnapshot,
+        PsionicRepoRootCandidate, PsionicTrainRuntimeSurface, PylonConfig, PylonLedger,
+        PylonLedgerJob, PylonSettlementRecord, PylonTrainingActiveRuntimeState,
+        PylonTrainingArtifactStoreClient, PylonTrainingAssignmentAckRequest,
+        PylonTrainingCheckpointPublicationRequest, PylonTrainingCloseoutCacheEntry,
+        PylonTrainingContributionOutcomeCacheEntry, PylonTrainingCoordinatorAck,
+        PylonTrainingCoordinatorClient, PylonTrainingDrainNoticeRequest,
+        PylonTrainingFailureNoticeRequest, PylonTrainingFailureReceipt,
+        PylonTrainingHeartbeatRequest, PylonTrainingLeaseCacheEntry,
         PylonTrainingManifestCacheEntry, PylonTrainingNodeAdmissionRequest,
         PylonTrainingPublicationPointer, PylonTrainingPublicationRecord,
         PylonTrainingPublicationTemplate, PylonTrainingReputationLabelCacheEntry,
@@ -41920,6 +42010,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 sandbox: ProviderSandboxAvailability::default(),
             },
             None,
+            None,
         );
 
         report_provider_presence_heartbeat_for_snapshot(
@@ -42131,6 +42222,65 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             Some("nexus payout-target sync failed: challenge timed out"),
         );
         assert_eq!(provider_control_plane_runtime_error(None, None), None);
+    }
+
+    #[test]
+    fn control_plane_retrying_stays_soft_for_fresh_failures_then_escalates() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.json");
+        let config = load_or_create_config(config_path.as_path()).expect("config");
+        let fresh_failure = ProviderControlPlaneStatusSnapshot {
+            last_presence_heartbeat_failure_at_ms: Some(now_epoch_ms()),
+            ..ProviderControlPlaneStatusSnapshot::default()
+        };
+        let retrying_snapshot = build_snapshot_from_availability(
+            &config,
+            None,
+            ProviderDesiredMode::Online,
+            None,
+            ProviderAvailability::default(),
+            Some("nexus provider heartbeat failed: request timed out".to_string()),
+            Some(&fresh_failure),
+        );
+        assert_eq!(
+            retrying_snapshot.runtime.authoritative_status.as_deref(),
+            Some("retrying")
+        );
+        assert_eq!(
+            retrying_snapshot.runtime.degraded_reason_code.as_deref(),
+            Some("NEXUS_PROVIDER_CONTROL_PLANE_RETRYING")
+        );
+        assert!(
+            retrying_snapshot
+                .runtime
+                .authoritative_error_class
+                .is_none()
+        );
+
+        let stale_failure = ProviderControlPlaneStatusSnapshot {
+            last_presence_heartbeat_failure_at_ms: Some(
+                now_epoch_ms()
+                    .saturating_sub(PROVIDER_PRESENCE_HEARTBEAT_RECOVERY_GRACE_MS as i64 + 1),
+            ),
+            ..ProviderControlPlaneStatusSnapshot::default()
+        };
+        let failed_snapshot = build_snapshot_from_availability(
+            &config,
+            None,
+            ProviderDesiredMode::Online,
+            None,
+            ProviderAvailability::default(),
+            Some("nexus provider heartbeat failed: request timed out".to_string()),
+            Some(&stale_failure),
+        );
+        assert_eq!(
+            failed_snapshot.runtime.authoritative_status.as_deref(),
+            Some("error")
+        );
+        assert_eq!(
+            failed_snapshot.runtime.degraded_reason_code.as_deref(),
+            Some("NEXUS_PROVIDER_CONTROL_PLANE_FAILED")
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -43517,6 +43667,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             ProviderDesiredMode::Online,
             None,
             availability,
+            None,
             None,
         );
 
@@ -45715,6 +45866,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             None,
             availability.clone(),
             None,
+            None,
         );
         snapshot.inventory_rows = inventory_rows(
             &super::products_from_availability(&config, &availability),
@@ -45965,6 +46117,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 None,
                 availability,
                 None,
+                None,
             )),
         };
 
@@ -45997,6 +46150,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             ProviderDesiredMode::Offline,
             None,
             availability,
+            None,
             None,
         );
 
@@ -46868,6 +47022,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             ProviderDesiredMode::Online,
             None,
             ProviderAvailability::default(),
+            None,
             None,
         );
         let admin_config = provider_admin_config(&config)?;

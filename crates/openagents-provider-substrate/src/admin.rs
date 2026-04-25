@@ -168,6 +168,14 @@ pub struct ProviderRuntimeStatusSnapshot {
     pub degraded_reason_code: Option<String>,
     pub authoritative_status: Option<String>,
     pub authoritative_error_class: Option<ProviderFailureClass>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_presence_heartbeat_success_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_presence_heartbeat_failure_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_payout_target_sync_success_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_payout_target_sync_failure_at_ms: Option<i64>,
     pub queue_depth: u32,
     pub online_uptime_seconds: u64,
     pub inventory_session_started_at_ms: Option<i64>,
@@ -186,6 +194,10 @@ impl Default for ProviderRuntimeStatusSnapshot {
             degraded_reason_code: None,
             authoritative_status: None,
             authoritative_error_class: None,
+            last_presence_heartbeat_success_at_ms: None,
+            last_presence_heartbeat_failure_at_ms: None,
+            last_payout_target_sync_success_at_ms: None,
+            last_payout_target_sync_failure_at_ms: None,
             queue_depth: 0,
             online_uptime_seconds: 0,
             inventory_session_started_at_ms: None,
@@ -1467,6 +1479,10 @@ mod tests {
                 degraded_reason_code: None,
                 authoritative_status: Some("ready".to_string()),
                 authoritative_error_class: None,
+                last_presence_heartbeat_success_at_ms: None,
+                last_presence_heartbeat_failure_at_ms: None,
+                last_payout_target_sync_success_at_ms: None,
+                last_payout_target_sync_failure_at_ms: None,
                 queue_depth: 1,
                 online_uptime_seconds: 45,
                 inventory_session_started_at_ms: Some(1_762_300_000_000),

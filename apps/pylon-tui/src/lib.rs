@@ -2756,6 +2756,12 @@ impl AppShell {
             ));
         }
         if self.last_error.is_some() {
+            if matches!(
+                self.operator_stats.runtime_status.as_deref(),
+                Some("retrying")
+            ) {
+                return vec![top_line, Line::from(bottom_spans)];
+            }
             bottom_spans.push(Span::raw("  "));
             bottom_spans.push(Span::styled(
                 "refresh error",
@@ -2855,6 +2861,7 @@ impl AppShell {
             "Earning now" => "This node is processing paid homework".to_string(),
             "Waiting for payout" => "Work is done. Waiting for sats to settle".to_string(),
             "Ready to earn" => "Standing by for the next homework job".to_string(),
+            "Reconnecting" => "Retrying Nexus control-plane sync".to_string(),
             "Preparing to earn" => {
                 detail.unwrap_or_else(|| "Booting local earnings lane".to_string())
             }
@@ -2983,7 +2990,12 @@ impl AppShell {
     }
 
     fn summary_lines(&self) -> Vec<Line<'static>> {
-        let health_label = if self.last_error.is_some() {
+        let health_label = if matches!(
+            self.operator_stats.runtime_status.as_deref(),
+            Some("retrying")
+        ) {
+            "reconnecting"
+        } else if self.last_error.is_some() {
             "needs attention"
         } else if matches!(
             self.operator_stats.runtime_status.as_deref(),
@@ -3689,6 +3701,15 @@ impl AppShell {
                 Some("Online setup is ready.".to_string()),
             ),
             Some("paused") => ("Paused".to_string(), None),
+            Some("retrying") => (
+                "Reconnecting".to_string(),
+                Some(
+                    self.operator_stats
+                        .runtime_error
+                        .clone()
+                        .unwrap_or_else(|| "Retrying Nexus control-plane sync.".to_string()),
+                ),
+            ),
             Some("degraded") => (
                 "Needs attention".to_string(),
                 self.operator_stats.runtime_error.clone(),
@@ -5008,7 +5029,7 @@ fn reveal_wallet_recovery_phrase(config_path: &Path) -> Result<String> {
 fn state_badge_style(label: &str) -> Style {
     match label {
         "Earning now" | "Ready to earn" | "Listening for work" | "healthy" => success_accent(),
-        "Waiting for payout" | "warming up" | "Connecting" => warning_accent(),
+        "Waiting for payout" | "warming up" | "Connecting" | "reconnecting" => warning_accent(),
         "Needs attention" => danger_accent(),
         _ => shell_accent(),
     }
@@ -6107,6 +6128,37 @@ mod tests {
                 .as_deref()
                 .is_some_and(|value| value.contains("Connecting provider presence"))
         );
+    }
+
+    #[test]
+    fn operator_panel_treats_retrying_nexus_control_plane_as_reconnecting() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.last_refresh_at = Some(Instant::now());
+        app.operator_stats = OperatorPanelStats {
+            desired_mode: ProviderDesiredMode::Online,
+            runtime_status: Some("retrying".to_string()),
+            runtime_error: Some("nexus provider heartbeat failed: request timed out".to_string()),
+            provider_presence_online: false,
+            wallet_runtime_status: Some("connected".to_string()),
+            ..OperatorPanelStats::default()
+        };
+
+        let (state, detail) = app.operator_state_label_and_detail();
+        assert_eq!(state, "Reconnecting");
+        assert!(
+            detail
+                .as_deref()
+                .is_some_and(|value| value.contains("heartbeat failed"))
+        );
+
+        let summary = app
+            .summary_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(summary.contains("reconnecting"));
+        assert!(!summary.contains("needs attention"));
     }
 
     #[test]
