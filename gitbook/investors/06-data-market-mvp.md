@@ -1,101 +1,70 @@
 [Home](../README.md) · [Investor Path](README.md) · **06. Data Market MVP**
 
-# 6. Data Market MVP
+# 6. Data Market — A Second Way to Get Paid
 
 > _"The current Data Market is a real secondary MVP slice, not just a spec."_
 >
-> — [`README.md`, OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents/blob/main/README.md)
+> — [`OpenAgentsInc/openagents` README](https://github.com/OpenAgentsInc/openagents/blob/main/README.md)
 
 **You will learn:**
 
-- How NIP-90 kinds **5960 / 6960 / 31990** define request, result, and handler
-- The live relay set (`wss://relay.damus.io`, `wss://relay.primal.net`)
-- What an open, contestable machine-service market looks like on Nostr
+- Why a Data Market matters
+- What a single operator can sell once compute and data both pay
+- What we ship today vs. what's roadmap
 
-## The second shipped market
+## The second live market
 
-Compute is market #1. Data is market #2, and it already ships in-repo alongside Autopilot. From the [`README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/README.md):
+Compute is market #1. Data is market #2. Both already work. Both already settle in Bitcoin. Both ship in the same desktop app.
 
-> _"What exists now:_
->
-> - _`Data Seller`: a dedicated conversational seller lane for drafting, exact preview, confirm, publish, grant issuance, payment-required feedback, delivery, and revocation_
-> - _`Data Market`: a read-only market snapshot and operator-facing lifecycle pane that now surfaces packaging posture, redacted Codex-export markers, and recent fulfillment activity_
-> - _`Data Buyer`: a narrow buyer surface that selects a visible asset/default offer, shows the bundle/posture being purchased, and publishes a targeted request_
-> - _`autopilotctl data-market ...`: full shell-first control over the same app-owned seller/buyer state machine_
-> - _`autopilot_headless_data_market`: a no-window runtime for scripts, operators, and agents_
-> - _repo-owned skills for both conversational and CLI-first seller flows"_
+**Compute** sells your machine's time. **Data** sells access to packaged, permissioned context — datasets you've built, conversations you own, artifacts your work has produced. The buyer requests, you confirm, payment is made, access is granted, and you keep the right to revoke.
+
+That last part matters. Every grant is paired with a `RevocationReceipt`. If a buyer misuses what they bought, you turn it off. The kernel keeps the audit trail.
 
 ## Why a Data Market at all
 
-The five-market framing ([Chapter 2](02-five-markets.md)) is only coherent if data can be priced and settled like compute can. Without a Data Market, agents silently scrape, and the labor they produce is built on un-permissioned context. The Data Market is how OpenAgents brings the data layer into the _verifiable outcomes under uncertainty_ primitive.
+The five-market story only works if data can be priced and settled like compute can. Without it, agents silently scrape, and every layer above — labor, liquidity, risk — is built on un-permissioned context.
 
-Kernel objects behind the market, from [`README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/README.md):
+The Data Market is how OpenAgents drags the data layer into the same _verifiable outcomes under uncertainty_ primitive that the rest of the kernel runs on. It's the difference between scraping and selling.
 
-> _"Kernel authority owns `DataAsset`, `AccessGrant`, `DeliveryBundle`, and `RevocationReceipt`. Desktop, CLI, and skills all drive the same app-owned data-market logic through typed desktop-control actions."_
+## What ships today
 
-Every transaction produces a signed receipt. Every revocation produces one too. If a delivery fails, the `RevocationReceipt` is the canonical audit artifact.
+The Data Market is published live on **two public Nostr relays** — `wss://relay.damus.io` and `wss://relay.primal.net`. Independent infrastructure. No OpenAgents-controlled relay in the loop. The full buyer-to-seller flow has been verified end-to-end, on the open network, against relays we don't run.
 
-## The NIP-90 data-vending profile
+Inside the desktop app:
 
-From [`README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/README.md):
+- A **seller** lane for drafting an asset, previewing exactly what will be shared, confirming, publishing, granting access, and revoking.
+- A **market** lane that shows the live snapshot of what's been published.
+- A **buyer** lane that picks an asset, sees the bundle being purchased, and publishes a targeted request.
 
-> _"Transport is a targeted NIP-90 data-vending profile:_
->
-> - _request kind `5960`_
-> - _result kind `6960`_
-> - _handler/capability kind `31990`"_
+Every lane is also accessible from the shell via `autopilotctl data-market`, and via a no-window headless runtime for daemons, agents, and skill flows. Same state machine, same acceptance semantics, no shadow truth between surfaces.
 
-These are Nostr's data-vending kinds reused for a permissioned, paid, targeted access flow. The strict public-relay verification path runs live against:
+## Two ways to earn from one operator
 
-- `wss://relay.damus.io`
-- `wss://relay.primal.net`
+Here's the architectural payoff: a single Pylon operator can turn on _both_ revenue surfaces.
 
-That's two public relays — independent of any OpenAgents-controlled infrastructure — where the full buyer-to-seller flow has been verified end to end. The Data Market is not a localhost demo; it is live on the open Nostr network.
+The same machine that earns 25 sats per accepted CS336 contribution can also list a Data Market handler — a packaged dataset, a research artifact, a project context bundle — and earn from buyers requesting that data. Two streams, one identity, one wallet.
 
-{% hint style="info" %}
-**NIP-89 note.** Kind `31990` is the NIP-89 *handler / capability* event shape. The Data Market publishes a NIP-89-style handler advertisement today; full NIP-89 conformance across the `crates/nostr/core` stack is still in progress per the [2026-02-27 Nostr gap analysis](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-nostr-full-vision-nip-gap-analysis.md). Treat `31990` as "NIP-89-shaped" until the gap analysis closes, not as a claim of full NIP-89 implementation.
-{% endhint %}
+That's why Compute and Data went first: they're the two supply-side lanes a single operator can turn on, in any order, without rearchitecting anything above them. Labor (market #3) consumes both. Liquidity (#4) and Risk (#5) follow.
 
-## Three ways to drive the same state machine
+## Honest scope
 
-The Data Market is intentionally read-heavy in the UI and mutation-heavy on the shell. From the [`README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/README.md):
-
-> _"The panes are intentionally read-heavy: `autopilotctl` and headless/skill flows steer mutations, while the UI exposes the exact preview, package, posture, request, payment, delivery, and revocation truth."_
-
-| Surface                        | Who uses it                              |
-| ------------------------------ | ---------------------------------------- |
-| `Data Seller` pane             | Human operators, drafting and reviewing  |
-| `autopilotctl data-market`     | Shell-first operators, CI, scripted QA   |
-| `autopilot_headless_data_market` | No-window daemons, agents, skills runtime |
-| `seller-prompt "<prompt>"`     | Terminal-driven agent-seller automation  |
-
-All four routes drive the same app-owned seller/buyer state machine with identical acceptance semantics. No side-car truth, no shadow state.
-
-## What ships, concretely
-
-For operators who want to drive the loop today:
-
-- Implementation and status: [`docs/kernel/markets/data-market.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/kernel/markets/data-market.md)
-- CLI and headless runbook: [`docs/headless-data-market.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/headless-data-market.md)
-- Latest seller-prompt paid-flow proof: [`docs/audits/2026-03-21-data-seller-one-sentence-prompt-paid-flow-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-03-21-data-seller-one-sentence-prompt-paid-flow-audit.md)
-- Implementation spec and backlog: [`docs/plans/data-market-mvp-implementation-spec.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/plans/data-market-mvp-implementation-spec.md)
-- Repo-owned skills: [`skills/README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/skills/README.md)
-
-## What does not ship (honest scope)
-
-From [`docs/MVP.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md):
+The Data Market is **not** a catalog discovery experience yet. It's a narrow, targeted-request lane that proves the kernel primitives work under live relay conditions. From [`docs/MVP.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md):
 
 > _"We are intentionally not shipping… broad public Data Market discovery, catalog search, or rich buyer procurement UX beyond the current narrow targeted-request flow… a broad end-user finetuning product, raw chat-log upload flow, or multi-family finetuning platform claim."_
 
-The current Data Market is not Amazon for datasets. It is a narrow targeted-request lane that proves the kernel primitives work under live relay conditions. Broader discovery UX, open cataloging, and multi-family fine-tuning are explicit post-MVP lanes.
+What ships today is the rails — request, payment, delivery, revocation, signed receipts on every step — verified on independent infrastructure. The catalog UX, multi-family finetuning, and broad discovery are explicit post-MVP lanes.
 
-## How the Data Market compounds the Compute Market
+## How it compounds compute
 
-If Compute is supply-side and Autopilot is the wedge, Data is the _second_ revenue surface a Pylon operator can opt into. A machine that already earns Bitcoin for training work can next sell packaged local data — stored conversations, curated artifacts, project context — at a price the kernel settles, under grants it can revoke.
+If Compute is the first revenue surface a Pylon operator turns on, Data is the second. A machine that already earns Bitcoin for training work can next sell packaged local data — stored conversations, curated artifacts, project context — at a price the kernel settles, under grants the operator can revoke.
 
-That is the architectural reason Compute and Data are the first two markets live: they're the two supply-side lanes a single operator can turn on, in any order, without rearchitecting anything above them.
+That compounding is why this is one company instead of five. Every market makes every other market more valuable to the same operator.
 
-Labor (market #3) consumes compute and data; Liquidity (market #4) moves value across rails; Risk (market #5) underwrites outcomes. They are all programmable extensions of the same kernel primitive — and they all inherit the same receipt + revocation model that the Data Market proves out today.
+---
+
+{% hint style="info" %}
+**Under the hood.** Developers building handlers should go to the [Developer Path → Build a Data Market handler](../developers/data-market-handler.md). It walks through the full NIP-90 data-vending profile (request kind `5960`, result kind `6960`, handler advertisement kind `31990`), the live relay set, the kernel object model (`DataAsset`, `AccessGrant`, `DeliveryBundle`, `RevocationReceipt`), and a code skeleton for publishing your own handler. The implementation spec is [`packages/data-market-mvp/README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/packages/data-market-mvp/README.md). Note: kind `31990` is NIP-89-shaped today; full NIP-89 conformance across `crates/nostr/core` is in progress per the [2026-02-27 gap analysis](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-nostr-full-vision-nip-gap-analysis.md).
+{% endhint %}
 
 ---
 

@@ -8,90 +8,90 @@
 
 **You will learn:**
 
-- The twelve-month arc across the five markets
-- The cross-cutting infrastructure work (Psionic, authority hardening, self-hosting)
-- How to reach Christopher David about the seed round
+- The twelve-month arc, market by market
+- The three pieces of infrastructure that cut across all of it
+- How to reach Christopher David
 
 ## Where we are, in one paragraph
 
-OpenAgents is a live project. Pylon is at [v0.1.13](https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.1.13) on the public npm registry as `@openagentsinc/pylon`. The `pylon` lane has a reproducible end-to-end [earning proof](https://github.com/OpenAgentsInc/openagents/tree/main/docs/reports) dated 2026-04-23 — sats moved from `0 → 25` on a CS336 A1 homework run, payout id `019db8a2-98d2-7890-95e4-6a1d78709a3c` settled through Treasury. The Data market is already on relay at `wss://relay.damus.io` and `wss://relay.primal.net` using NIP-90 kinds `5960`, `6960`, `31990`. On the compute-milestone side, the OAPN podcast announced the crossover to more than 1,300 online Pylons and more than 1,000,000 sats paid out to contributors (OAPN #5, _Distributed Training_).
+OpenAgents is a live project. Pylon is at [v0.1.13](https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.1.13) on the public npm registry. The earning loop has a reproducible end-to-end [proof](https://github.com/OpenAgentsInc/openagents/tree/main/docs/reports) dated 2026-04-23 — `0 → 25 sats`, real Lightning, payout id `019db8a2-98d2-…`. The Data Market is published on the public Nostr relays at `wss://relay.damus.io` and `wss://relay.primal.net`. The network has crossed 1,300 Pylons online and 1,000,000+ sats paid out (OAPN #5).
 
 We are not at clearing prices. We are not at an equilibrium cap table. We are at the narrow, demonstrable wedge that [Chapter 3](03-autopilot-wedge.md) describes: _a single user can install an app and earn Bitcoin for useful machine work, today._
 
-## The twelve-month roadmap, by market
+Twelve months from now, we'll be at the next thing.
 
-The five markets introduced in [Chapter 2](02-five-markets.md) advance at different speeds. What follows is the repo-grounded roadmap, with honest scope.
+## The twelve-month arc, by market
 
-### Compute Market — from starter jobs to the 20 GW wedge
+### Compute — from starter jobs to the 20 GW wedge
 
-**Now.** CS336 A1 is the anchor paid-training job. Starter-grade jobs for devices that can't run the full training loop. Hosted Nexus is the buyer of first resort. The [MVP](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md) is explicit: _"A usable v0.1 MVP pane surface that lets a non-technical earner install the app, come online, take paid training work, see payout, and keep going — without needing to operate the CLI or inspect logs."_
+**Now.** CS336 paid-training is the starter lane. OpenAgents is buyer of first resort. Real work, real payouts, signed receipts on every contribution.
 
-**Next six months.** Broaden the job menu past CS336 A1. Land a second paid-training lane that does not require the OpenAgents-hosted subsidy. Stand up device-bound attestation for starter eligibility so the subsidy-gated lane is harder to spoof (the [MVP doc](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md) calls out this as post-MVP hardening: _"Stronger anti-spoofing (device-bound proofs, richer attestation) is hardening work on the roadmap"_). Begin reporting the decentralized model-training milestone referenced in the [Demo Day pitch](../assets/clips/cdavid-demoday-highlight-90s.mp4): _"by the time you watch this, we will have begun what we believe is about to be the largest decentralized model training run in history."_
+**Next six months.** Broaden the job menu past CS336 — a second paid-training lane, more starter-grade jobs for devices that can't run the heavy training loop, and a stronger anti-spoofing layer so the subsidized lane is harder to game. Ship the next milestones of the largest decentralized model-training run in history, which we have begun this month.
 
-**Twelve months.** Move from starter-job anchor pricing toward a real venue-maker price. Open the buyer seat — not just hosted Nexus dispatching, but third parties buying compute through kind `5960` requests. This is the inflection from "OpenAgents pays 25 sats to train CS336 A1" to "anyone can buy trained tokens from retail providers on an open market."
+**Twelve months.** Open the buyer seat. Move from "OpenAgents pays 25 sats to train CS336" to "anyone can buy trained tokens, embeddings, or fine-tunes from retail providers on an open market." That's the inflection from supply-side seeding to a real venue.
 
-### Data Market — from kind 5960 MVP to paid retrieval
+### Data — from MVP to paid retrieval
 
-**Now.** Kind `5960 → 6960 / 31990` is live on open relays. The provider schema and trust-minimized flow are specified in [`packages/data-market-mvp/README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/packages/data-market-mvp/README.md).
+**Now.** Live on two independent public relays. Targeted-request flow with permissioned grants and revocation receipts. Same kernel primitives that the Compute Market uses.
 
-**Next six months.** Grow the handler registry past the seed providers — more publicly-listed kind `31990` capability events. Lightning escrow for paid retrieval. Ratings rollup across handlers.
+**Next six months.** Grow the handler registry past the seed providers. Lightning escrow for paid retrieval. A ratings layer across handlers so buyers can choose by track record.
 
-**Twelve months.** Close the loop from buyer-initiated kind `5960` to buyer-paid-on-delivery kind `6960`. This is the bridge from "discoverable machine services" to "priced, contestable machine services" on an open relay set.
+**Twelve months.** Close the loop from buyer-initiated request to buyer-paid-on-delivery, on the open relay set. Bridge from "discoverable machine services" to "priced, contestable machine services."
 
-### Labor Market — Forge, Probe, and paid contributor work
+### Labor — Forge, Probe, and paid contributors
 
-**Now.** OpenAgents has paid out more to developer contributors than most AI labs have ever paid, according to the [Demo Day pitch](../assets/clips/cdavid-demoday-highlight-90s.mp4): _"We've paid more Bitcoin, we've paid more anything to developers than every other AI lab combined."_ Developer bounties were reactivated on OAPN #6, [_Pay the People_](https://openagents.substack.com/).
+**Now.** OpenAgents has paid out more Bitcoin to developer contributors than most AI labs have paid to engineers, period. From the Demo Day pitch:
 
-**Next six months.** Productize the internal Forge + Probe pattern Chris described on OAPN #6:
+> _"We've paid more Bitcoin, we've paid more anything to developers than every other AI lab combined."_
 
-> _"Imagine so you've got Forge, the software factory. Forge should be able to deploy multiple probes. Insert StarCraft analogy here, but like the Forge, you know, you're equipping probes with arms. A bunch of AI teams have created their own versions of that blog post that came out from Ramp. They built this inspect agent that was just kind of tailored to their team's workflow. One system where all their developers can push changes and do PRs. We're we're we've already begun building this internally."_
+Developer bounties were reactivated on OAPN #6, _Pay the People_.
+
+**Next six months.** Productize the Forge + Probe pattern Chris described:
+
+> _"Forge should be able to deploy multiple probes. Insert StarCraft analogy here, but like the Forge, you know, you're equipping probes with arms… One system where all their developers can push changes and do PRs. We've already begun building this internally."_
 >
 > — Christopher David, OAPN #6
 
-**Twelve months.** A business-targeted Autopilot surface — same kernel, same receipts, a different pane inventory. Chris on OAPN #6:
+**Twelve months.** A business-targeted Autopilot — same kernel, same receipts, a different pane inventory. Chris on OAPN #6:
 
 > _"There will be a business version of that for like putting your business on autopilot. Intended to be a drop-in replacement for Microsoft Copilot."_
->
-> — OAPN #6
 
-### Liquidity Market — from Treasury routing to open float
+### Liquidity — from Treasury rails to open underwriting
 
-**Now.** `TreasuryRouter` cuts starter-job payouts; [Spark](https://spark.money) rails are live on both ends of the earning proof (worker destination `spark1pgssyt…`, payment id `019db8a2-…`).
+**Now.** The Treasury cuts every starter-job payout. Lightning rails are live on both ends of the earning proof.
 
-**Next six months.** Formalize the open-treasury surface. Publish kernel-signed reports so any holder can reconcile balances, payouts, and reserves without trusting a Treasury blob. FROSTR (the multi-sig primitive in the OpenAgents orbit) enters this lane for split-key issuance. Threshold-signing interop is a still-to-be-defined surface — the [2026-02-27 Nostr gap analysis](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-nostr-full-vision-nip-gap-analysis.md) flags a *Bifrost Threshold Coordination Profile* as an open observation rather than an off-the-shelf NIP, so this lane also involves canonical-NIP draft work, not just integration of an existing spec.
+**Next six months.** Formalize the open-treasury surface — kernel-signed reports any holder can reconcile against, without trusting a Treasury blob. Begin work on threshold signing for split-key issuance.
 
-**Twelve months.** Multiple underwriters. Today, the hosted Nexus is effectively subsidizing starter paid-training demand. In twelve months, third parties can be the underwriter for classes of jobs they care about — companies that want an open American model trained, researchers who want retail compute supplied to a bounty pool, or app platforms that want data-market handler availability at a minimum SLA.
+**Twelve months.** Multiple underwriters. Today, OpenAgents subsidizes starter paid-training demand. In twelve months, third parties become underwriters for classes of jobs they care about — companies that want an open American model trained, researchers funding retail compute pools, app platforms that want minimum SLA for their handlers.
 
-### Risk Market — the quiet one
+### Risk — the quiet one
 
-**Now.** No live underwriting layer. The five-market diagram names Risk because, as [Chapter 7](07-economy-kernel.md) argues, the other four do not function without it. Today, OpenAgents itself absorbs almost all of the risk that starter work will be invalid — because OpenAgents is itself buyer, underwriter, and subsidizer at once.
+**Now.** No live underwriting layer. OpenAgents itself is currently absorbing the risk that starter work will be invalid — because we are buyer, underwriter, and subsidizer at once.
 
-**Next twelve months.** Replace that implicit OpenAgents underwriting with explicit, kernel-authored risk receipts. A kind `5960` request can carry a risk addendum describing the coverage pool. A settled payout becomes a data point for pricing the next job of the same shape. A malfunctioning handler can be priced out, or priced in at a discount, without taking the whole marketplace down. This is the slow market to build and the most defensible once it exists.
+**Next twelve months.** Replace that implicit underwriting with explicit, kernel-authored risk receipts. A request can carry a risk addendum describing its coverage pool. A settled payout becomes a data point for pricing the next job of the same shape. A malfunctioning handler can be priced out, or priced in at a discount.
 
-## Cross-cutting infrastructure work
+This is the slow market to build, and the most defensible one once it exists.
 
-Three things cut across all five markets and belong on the twelve-month arc regardless of sector:
+## Three pieces of infrastructure that cut across everything
 
-- **Psionic** — the in-house inference runtime introduced on the [Demo Day pitch](../assets/clips/cdavid-demoday-highlight-90s.mp4): _"Psionic from Open Agents, 518 tokens per second. We've since gotten that up to 530. It's not because we're better ML engineers. We are better software engineers."_ Psionic is the substrate that lets Autopilot Pylons do inference, training, and validation work without renting cloud GPUs.
-- **Authority hardening** — [ADR-0001](https://github.com/OpenAgentsInc/openagents/blob/main/docs/adr/0001-authority-boundaries.md) stays the spec; what needs to ship is stronger attestation for provider identity (see the MVP doc's _"device-bound proofs, richer attestation"_), and independent audit of the ADR-approved Spacetime exception class.
-- **Self-hosting turnkey** — Autopilot already supports pointing at user-owned Nexus + relay sets. The twelve-month goal is to make that the default story for any user who wants it — same receipts, same authority lanes, _different_ underwriter.
+- **Psionic.** The in-house ML engine that makes a home GPU competitive with rented cloud compute. Already 30% faster than Ollama on the benchmarks, getting faster.
+- **Audit-grade trust.** The architecture where the receipts can't lie even if the app does. The continuing work is stronger device-bound attestation and independent audits of the components that touch the user's wallet.
+- **Self-hosting turnkey.** Autopilot already supports pointing at user-owned backends and relay sets. The twelve-month goal is to make that the default story for any user who wants to run their own — same receipts, same authority lanes, different underwriter.
 
-## What this adds up to
+## What this all adds up to
 
-Read alongside [Chapter 1](01-why-openagents.md), the twelve-month plan resolves to two lines:
+Two lines:
 
-1. _Keep the Autopilot wedge narrow, demonstrable, and reproducible — so that any interested party can install, earn, and reconcile without trusting us._
-2. _Widen the authority and underwriting surfaces so that OpenAgents is the buyer-of-first-resort on an open network, not the owner of the network._
+1. **Keep the wedge narrow, demonstrable, and reproducible** — so any interested party can install, earn, and reconcile without trusting us.
+2. **Widen the underwriting surface** — so OpenAgents is the buyer-of-first-resort on an open network, not the owner of the network.
 
-The [Demo Day pitch](../assets/clips/cdavid-demoday-highlight-90s.mp4) put the stakes plainly:
+The Demo Day pitch put the stakes plainly:
 
 > _"The company that unlocks any percentage of this twenty gigawatts has a path to becoming the most valuable company in the world. Wouldn't it be cool if that was a Bitcoin company?"_
->
-> — Christopher David, Bitcoinfi Demo Day 2026
 
 <figure>
   <img src="../assets/graphics/slide-20gw-stranded-compute.jpg" alt="Demo Day slide — 20 GW of stranded consumer compute vs OpenAI's 2 GW" />
-  <figcaption>The compute-gap slide from the Demo Day pitch — OpenAI at 2 GW, stranded consumer compute at 20 GW. The twelve-month arc is about unlocking even a small percentage of that gap.</figcaption>
+  <figcaption>OpenAI runs on roughly 2 GW. Stranded consumer compute is closer to 20 GW. The twelve-month arc is about unlocking even a small percentage of that gap.</figcaption>
 </figure>
 
 ## The ask
@@ -100,34 +100,38 @@ OpenAgents is raising a seed round. No figure, no terms, and no dilution targets
 
 <figure>
   <img src="../assets/graphics/slide-team-and-backers.jpg" alt="Demo Day slide — team and existing backers" />
-  <figcaption>Team (Christopher David, Kevin Fremon, Michael Ovsen, Car Gonzalez, Ben Silone, McDonald Aladi, Sophia Bailey Savoy, Timothy C. Maher) and existing backers (Wolf, NYDIG, Hivemind VC, Draper Associates, Draper Dragon).</figcaption>
+  <figcaption>Team — Christopher David, Kevin Fremon, Michael Ovsen, Car Gonzalez, Ben Silone, McDonald Aladi, Sophia Bailey Savoy, Timothy C. Maher. Existing backers — Wolf, NYDIG, Hivemind VC, Draper Associates, Draper Dragon.</figcaption>
 </figure>
 
-The closer from the [Demo Day pitch](../assets/clips/cdavid-demoday-highlight-90s.mp4) is the exact framing we use:
+The closer Chris uses on stage:
 
 > _"I built a team. I've worked with some of these people for over a decade — Bitcoiners, open protocol people. We're shipping product. We're backed by some of the best early-stage Bitcoin investors in the space. Hopefully soon to include some of you. We're raising a seed round. Help us out."_
->
-> — Christopher David
 
-If you are reading this GitBook ahead of Bitcoin Vegas 2026 and want to talk, the right path is:
+If you're reading this ahead of Bitcoin Vegas 2026 and want to talk, the right paths are, in order:
 
-1. **Panel.** [Christopher David](https://github.com/christophergalaxie) is speaking on the _"Why AI Agents Want Bitcoin"_ panel on the Open Source stage, 10:45 AM.
-2. **Warm intro.** If you already know an existing OpenAgents investor or contributor, a warm introduction is the highest-signal path.
-3. **Demo.** You can install Pylon today with `npx @openagentsinc/pylon@0.1.13` and earn on CS336 A1 yourself. The [earning proof](https://github.com/OpenAgentsInc/openagents/tree/main/docs/reports) is reproducible on a `darwin-arm64` machine.
-4. **Read the receipts.** [Chapter 9](09-proof-receipts.md) points at the two signed artifacts that matter most. If those do not already answer the "can you ship, does the money move" diligence question, nothing the deck says will.
+1. **The panel.** [Christopher David](https://x.com/OpenAgentsInc) is on the _"Why AI Agents Want Bitcoin"_ panel — Open Source stage, 10:45 AM.
+2. **A warm intro.** If you already know an existing OpenAgents investor or contributor, that's the highest-signal path.
+3. **The demo.** You can install Pylon today with `npx @openagentsinc/pylon` and earn 25 sats yourself.
+4. **The receipts.** [Chapter 9](09-proof-receipts.md) points at the two signed artifacts that matter most. If those don't already answer the diligence question, the deck won't either.
 
-Conversations are active. No terms have been shared publicly and no round size is published in this book — those are on purpose, and belong in direct conversation.
+Conversations are active. No terms are public.
 
 ## Where to find the source of truth
 
 - Upstream repo: [`OpenAgentsInc/openagents`](https://github.com/OpenAgentsInc/openagents)
-- Release feed: [`/releases`](https://github.com/OpenAgentsInc/openagents/releases)
+- Releases: [`/releases`](https://github.com/OpenAgentsInc/openagents/releases)
 - Proof receipts: [`docs/reports/`](https://github.com/OpenAgentsInc/openagents/tree/main/docs/reports)
 - Architecture decisions: [`docs/adr/`](https://github.com/OpenAgentsInc/openagents/tree/main/docs/adr)
-- Developer substack: [openagents.substack.com](https://openagents.substack.com)
+- Developer Substack: [openagents.substack.com](https://openagents.substack.com)
 - YouTube (OAPN, demos, build logs): [`@OpenAgentsInc`](https://www.youtube.com/@OpenAgentsInc)
 
-This GitBook will stay in sync with the repo. Every claim in every chapter is cross-referenced to a file, commit, or receipt in [OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents). If any claim drifts from the source, the receipts are the authority — not the chapter prose.
+This GitBook stays in sync with the repo. Every claim is anchored to a file, commit, or receipt in [OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents). If any claim drifts from the source, the receipts are the authority — not the chapter prose.
+
+---
+
+{% hint style="info" %}
+**Under the hood.** Engineers wanting to build on the roadmap should start in the [Developer Path](../developers/README.md). The Bifrost Threshold Coordination Profile (the open NIP-draft work blocking the Liquidity Market expansion) is detailed in the [2026-02-27 Nostr gap analysis](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-nostr-full-vision-nip-gap-analysis.md). The current Tier-A NIP gap (NIP-42, NIP-65, NIP-17, NIP-57, NIP-47, NIP-98) is tracked in the same audit.
+{% endhint %}
 
 ---
 

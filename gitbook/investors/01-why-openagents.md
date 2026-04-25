@@ -8,64 +8,60 @@
 
 **You will learn:**
 
-- Why we exist — "America has no frontier open-source AI lab"
-- The Bitcoin-native thesis behind open-source AI
-- What we've already shipped vs. what's still to build
+- Why this company exists — and why it has to be a Bitcoin company
+- What we've already shipped vs. what we're raising to build
+- The 90-second version of the pitch
 
 ## The wound
 
-Open American AI is in a bad place in 2026, and the layer below it — the compute that trains and serves frontier models — is worse.
+In 2026, American open-source AI is in a bad place. The names that carried it from 2023 to 2025 either left the field or were taken off it.
 
-Chris walks through the wound on stage in four beats:
+Meta abandoned Llama, and with it abandoned open source. NVIDIA's "open" models only run on NVIDIA hardware — that's a vendor lock-in dressed up as open source, not the real thing. Allen AI tried to be the American DeepSeek — small, scrappy, independent — and Microsoft acqui-hired their core team. The lab didn't survive.
 
-- **Meta abandoned Llama** and abandoned open source. The lab that carried American open weights from 2023 to 2025 no longer ships frontier open models.
-- **NVIDIA's top open models are not frontier, and they only work on NVIDIA hardware** — not AMD, not Apple. That's a vendor-hardware lock-in dressed up as open source.
-- **Allen AI tried to be the "American DeepSeek" — a small, scrappy, independent lab** — and _"their core team got raided by Microsoft, acqui-hired. They now don't have the resources to continue training models."_
-- **The companies that used to depend on American models like Llama are switching to Chinese models** because China is leading on open-source weights. _"In 2026, building a supply-chain dependency on China does not make sense."_
-
-Chris names the answer in one sentence:
-
-> _"OpenAgents is America's leading open-source AI lab. Hey, there's not many open-source AI labs, but we're leading. Proudly based in Austin, Texas, Bitcoin capital of the world."_
+Meanwhile, the companies that used to depend on Llama are switching to Chinese models, because China is the only place still shipping frontier open weights. In 2026, building America's AI supply chain on top of Chinese models is not a strategy. It's the absence of one.
 
 <figure>
   <img src="../assets/graphics/slide-problem-no-frontier-lab.jpg" alt="Slide: America has no frontier open-source AI lab">
   <figcaption>BitcoinFi Demo Day, April 21, 2026 — the wound in one slide.</figcaption>
 </figure>
 
-## The two linked problems the repo names
+Chris names the answer in one breath:
 
-The public monorepo at [OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents) states the same wound from a product-architectural angle. The [`README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/README.md) opens:
+> _"OpenAgents is America's leading open-source AI lab. Hey, there's not many open-source AI labs, but we're leading. Proudly based in Austin, Texas, Bitcoin capital of the world."_
 
-> _"OpenAgents is building the economic infrastructure for machine work. We are focused on two linked problems in AI:_
->
-> - _agent misuse can create massive economic damage when output outruns verification_
-> - _compute supply is constrained, so capacity has to be allocated more intelligently"_
+## What we are, in three lines
 
-The stage wound and the repo wound are the same door from two angles: if America has no frontier open-source lab, the cause is compute supply that concentrates in a few hands and autonomy that runs without verified settlement. Fix the compute allocation and the verification substrate, and you fix the lab problem at the layer that actually matters.
+**A lab.** We're the world's second open-source reproduction of Percepta's _"Can LLMs Be Computers?"_ paper. We ship Psionic — the world's fastest edge inference engine, 30% faster than Ollama on the same hardware. And as of this month, we've begun what we believe is about to be the largest decentralized model-training run in history.
 
-## What we are, in one breath
+**A marketplace.** Five interlocking markets — Compute, Data, Labor, Liquidity, Risk — that settle autonomous machine work in Bitcoin. Detail in [Chapter 2](02-five-markets.md).
 
-OpenAgents is:
-
-1. **A lab** — currently the world's second open-source reproduction of Percepta's _"Can LLMs Be Computers?"_, shipping Psionic (the world's fastest edge inference engine, 30% faster than Ollama), Probe (our coding agent runtime), WGPUI (GPU-accelerated desktop UI), and, as of this month, the beginnings of what we believe will be the largest decentralized model-training run in history.
-2. **A marketplace** — five interlocking markets (Compute, Data, Labor, Liquidity, Risk) that settle autonomous machine work in Bitcoin, on one shared economic kernel.
-3. **A shipped product** — _Autopilot_, the desktop wedge that turns your machine into a Bitcoin-paying compute provider today, with live earning proofs recorded in the monorepo's [`docs/reports/nexus/`](https://github.com/OpenAgentsInc/openagents/tree/main/docs/reports/nexus).
-
-The rest of this GitBook is the architecture that makes all three possible on one stack.
+**A shipped product.** Autopilot turns your computer into a Bitcoin-paying compute provider, today. Real machines, real Bitcoin, real receipts. Detail in [Chapter 3](03-autopilot-wedge.md) and the proof in [Chapter 9](09-proof-receipts.md).
 
 ## Why Bitcoin, why now
 
-On _OAPN #2 — Pylon Launch_, Chris frames why the Bitcoin-Lightning-Nostr substrate is unavoidable for this layer:
+Agents need a native unit of account. Something that settles across machines, crosses borders without permission, and carries a cryptographic proof of work. In 2026, only one thing fits.
+
+Chris on _OAPN #2 — Pylon Launch_:
 
 > _"We have the benefit in the Bitcoin space of everyone already speaking the same language. We speak Bitcoin at the base layer. We speak Lightning and other related L2s that all use Lightning for interop. There's increasing consensus around Nostr for this sort of like data layer that's adjacent, but not like spraying data onto the chains. So we've got all the makings of decentralized applications — all the substrate for what should be like the agentic AI layers."_
+>
+> — [_OAPN #2, Pylon Launch_](https://www.youtube.com/watch?v=uvRO-E9SXI8)
 
-— [_OAPN #2, Pylon Launch_, ~minute 2](https://www.youtube.com/watch?v=uvRO-E9SXI8)
+The substrate already exists. The applications don't. That's the gap we're filling.
 
-Agents need a native unit of account that settles across machines, crosses borders without permission, and carries a cryptographic proof of work. Bitcoin is the only asset that has all three properties in 2026.
+## The 20 GW question
+
+Bitcoin's total mining capacity is roughly 20 gigawatts of electricity, distributed across hundreds of thousands of independent operators worldwide. That same capacity, redirected toward useful machine work, is bigger than any single AI hyperscaler today.
+
+The Demo Day slide makes the comparison directly: OpenAI runs on roughly 2 GW. Stranded consumer compute — the GPUs in millions of gaming rigs, workstations, and idle home machines — is closer to 20 GW.
+
+The company that unlocks even a small percentage of that gap has a path to becoming the most valuable company in the world. The only question is whose stack the unlock runs on.
 
 ## Why Vegas, why this panel
 
-At Bitcoin 2026 (Las Vegas), Chris is on the **"Why AI Agents Want Bitcoin"** panel (Open Source Stage, 10:45 AM) alongside Erik Cativo (Cashu), Roland Bewick (Alby), and Eric Hadley (Hyperdope, moderating). That panel is the public version of this document. This GitBook is the long form, for investors who want the architecture behind the panel.
+At Bitcoin 2026 in Las Vegas, Chris is on the **"Why AI Agents Want Bitcoin"** panel — Open Source Stage, 10:45 AM — alongside Erik Cativo (Cashu), Roland Bewick (Alby), and Eric Hadley (Hyperdope, moderating).
+
+That panel is the public version of this document. This GitBook is the long form, written for investors who want the architecture behind the panel and the receipts behind the architecture.
 
 ## The 90-second version
 
@@ -74,6 +70,12 @@ Christopher David, BitcoinFi Accelerator Demo Day — 90-second highlight from t
 {% endembed %}
 
 For the full 4:55 Demo Day segment, see [`assets/clips/cdavid-demoday-41m38s-full.mp4`](../assets/clips/cdavid-demoday-41m38s-full.mp4) or the broadcast at [bitcoinfi.network/demoday](https://bitcoinfi.network/demoday) starting around the 41:38 mark.
+
+---
+
+{% hint style="info" %}
+**Under the hood.** The full repo problem statement (_"agent misuse can create massive economic damage when output outruns verification… compute supply is constrained, so capacity has to be allocated more intelligently"_) lives in [`OpenAgentsInc/openagents`](https://github.com/OpenAgentsInc/openagents/blob/main/README.md). Engineers should start in the [Developer Path](../developers/README.md).
+{% endhint %}
 
 ---
 

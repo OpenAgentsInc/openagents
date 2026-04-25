@@ -1,6 +1,6 @@
-[Home](../README.md) · [Investor Path](README.md) · **08. Authority & Ownership**
+[Home](../README.md) · [Investor Path](README.md) · **08. Audit-Grade Trust**
 
-# 8. Authority & Ownership
+# 8. Audit-Grade Trust
 
 > _"The app must never 'feel like it paid you' unless it actually did. The architecture exists to enforce that honesty."_
 >
@@ -8,97 +8,78 @@
 
 **You will learn:**
 
-- [ADR-0001](https://github.com/OpenAgentsInc/openagents/blob/main/docs/adr/0001-authority-boundaries.md)'s domain-scoped authority matrix
-- Why Spacetime is **not** a money authority
-- How TreasuryRouter and the Kernel Authority API stay separate from the desktop
+- Why the receipts can't lie even if the app does
+- The non-negotiable invariant that protects the user's money
+- What "self-hosting" really means here
 
-## The non-negotiable invariant
+## The honesty invariant
 
-Authority — the power to change economic truth — is kept out of the client. Every money-moving, settlement-finalizing, or verdict-closing action routes through **TreasuryRouter** and the **Kernel Authority API**, both backend services. That is the single non-negotiable invariant of the OpenAgents stack.
+Authority — the power to change economic truth — is kept out of the app on the user's machine. Money movement, settlement finalization, verdict closure — all of it happens on the backend, on services we run (or that someone else runs in our place).
 
-From [`docs/MVP.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md):
+That sounds bureaucratic. It's not. It's the single non-negotiable invariant of the OpenAgents stack.
 
-> _"This MVP is a money-moving, network-participating desktop app. That means the system's guarantees matter. There are a few invariants we will not violate because they protect determinism, safety, and our ability to evolve without breaking users."_
+Why? Because a desktop client is not trustworthy. Devices get compromised. UIs lag. Code has bugs. If the client could change money, then a glitchy display _would_ be a stolen sat. By moving authority to a separate service, we make sure that **a broken client can never create a real loss**. The wallet number can be late. The wallet number cannot be wrong.
 
-## The domain-scoped authority matrix
+## What this means for an investor
 
-From [`docs/MVP.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md):
+Three things follow:
 
-| Domain                                   | Authority Owner                    | Spacetime reducer authority |
-| ---------------------------------------- | ---------------------------------- | --------------------------- |
-| Money / settlement / wallet truth        | authenticated command lanes        | **no**                      |
-| Trust / policy / security verdicts       | authenticated command lanes        | **no**                      |
-| Provider / device online presence        | Spacetime presence reducers        | yes                         |
-| Replay checkpoints / cursor continuity   | Spacetime checkpoint reducers      | yes                         |
-| Non-monetary projections / counters      | Spacetime projection reducers/queries | yes                      |
+1. **The audit trail lives in the receipts**, not in UI state. Every settled payout in the public reports folder is a kernel-signed receipt — not a screenshot, not a database export. A diligence partner reads receipts.
 
-Canonical ADR: [`docs/adr/ADR-0001-spacetime-domain-authority-matrix.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/adr/ADR-0001-spacetime-domain-authority-matrix.md).
+2. **The client is untrusted by design.** A malicious or broken Autopilot install cannot create monetary gain. Only the kernel can authorize payment, and the kernel demands authenticated command lanes. There is no "go around" path.
 
-The matrix is the whole game. If money or policy verdicts are at stake, the write has to come through an authenticated command lane; Spacetime cannot mutate those domains no matter how convenient it would be. For presence, projections, and checkpoints — domains where consensus speeds up the UX but cannot cause monetary loss if they drift — Spacetime reducers are authoritative precisely because they _can't_ cost you money.
+3. **Self-hosting is real.** The desktop can be pointed at a user-owned backend with their own relay set. OpenAgents does not sit in the middle of authorized work. We are the buyer of first resort _on_ the open network — we are not the network.
 
-## Why this split exists
+## A concrete example
 
-From [`README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/README.md):
+The first earning proof, dated 2026-04-23 (full receipt in [Chapter 9](09-proof-receipts.md)), exposed the architecture working as designed.
 
-> _"This separation is intentional:_
->
-> - _local runtime executes work_
-> - _backend authority mutates economic truth_
-> - _coordination channels project progress_
-> - _receipts provide the canonical audit trail"_
+Several minutes _after_ the kernel had already confirmed and settled the 25-sat payout, the local desktop projection still showed the run as _"dispatched / pending."_ The backend was already done. The UI was catching up.
 
-Four surfaces, four responsibilities, one kernel behind them all. No one surface can corrupt another's truth.
+If the desktop had been the authority, that delay would have been a confused user staring at a wallet that "hadn't paid yet." Instead, the wallet balance was correct. The kernel knew. The receipt was already signed. The user-facing status said _"Homework paid"_ because that's what the receipts said.
 
-## Desktop ownership boundaries
+The proof writes this up by name as proof that the architecture works:
 
-The full module-ownership map is [`docs/OWNERSHIP.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/OWNERSHIP.md). A few highlights directly relevant to the investor read:
+> _"That is an observation about the worker-local projection lag, not a payout failure. The user-facing status was already 'Homework paid', and the wallet balance/history confirmed receipt."_
 
-- **`apps/autopilot-deprecated`** — current WGPUI desktop surface + embedded runtime for MVP execution. This is where most of the current shipped product lives.
-- **`apps/autopilot`** — new Tauri shell scaffold for the next product direction. _"Do not call that app `autopilot-tauri`. The product name is `Autopilot`; Tauri is the desktop shell implementation."_ ([`README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/README.md))
-- **`apps/nexus-control`** — the current in-repo backend authority slice; hosts retained mutation and projection entry points the desktop calls.
-- **`openagents-kernel-core`** — the kernel authority crate (normative spec in [`docs/kernel/economy-kernel.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/kernel/economy-kernel.md)).
+UI lag is fine. Authority lag would be a bug. We've designed for the first and ruled out the second.
 
-From [`docs/MVP.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md):
+## What runs where
 
-> _"The retained implementation is Rust-only. We do not ship a split-brain authority system. Cross-boundary contracts are proto-first. The desktop app and services talk in typed, versioned contracts."_
+Not everything has to be authoritative. The system uses a different layer for each job:
 
-Rust for authority-bearing code. Typed proto contracts across every boundary. No split-brain.
+- **Money, settlement, wallet truth, policy verdicts** — backend authority. Always. Never the client.
+- **Provider presence, "is the device online", cursor continuity** — distributed sync, fast and good. Wrong here is cheap.
+- **Receipts, audit trails** — signed by the kernel, written to the public repo, verifiable by anyone.
 
-## The default backend stack (Nexus)
+That separation is _why_ we can ship a desktop wedge that handles real Bitcoin without lying to its users. The UI can be wrong; the receipts are right.
 
-Nexus is the OpenAgents-hosted, open-source, self-hostable server-authority role. It is the desktop's default endpoint for:
+## The default backend, today
 
-- `POST /api/sync/token` token issuance
-- auth / session flows
-- public stats
-- primary Nostr relay / index path
-- starter-job dispatch for the CS336 A1 homework lane
+OpenAgents hosts the default backend. It's open-source. It's self-hostable. Anyone can run their own. Today it ships:
 
-Users and organizations can replace the default with their own Nexus deployment, including pointing Autopilot at their own Nexus with its own relay set. Starter-job guarantees are OpenAgents-hosted for now; self-hosted Nexus is free to run the same software but does not automatically inherit the subsidy-backed demand.
+- The starter-job dispatcher (the source of the 25-sat CS336 paid-training jobs)
+- The token issuance and session flow
+- The primary Nostr relay/index path
+- Public stats reporting
 
-## Why the starter-job lane is gated
+A user or organization that wants to operate fully on their own — own backend, own relays, own underwriter — can do that today. The starter-job demand stays with whoever underwrites it. That's the part we run for now. Everything else is configurable.
 
-From [`docs/MVP.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md):
+This matters for investor diligence in a specific way: it means OpenAgents is not the chokepoint. We are providing the buyer of first resort and a reference deployment. The network can outlive any specific operator, including us.
 
-> _"Eligibility for those starter jobs should be enforced from Nexus-side proof, not from a user-supplied `client` tag alone. The practical near-term rule is: if the OpenAgents-hosted Nexus can prove the provider is connected through an authenticated Autopilot session with bound Nostr identity, that is sufficient for MVP."_
+## Why this is the moat, not the feature
 
-Self-reported `client` tags are a Nostr-level convention; they can be spoofed. The starter-job lane is gated on _authenticated_ Autopilot sessions instead, so the subsidy can't be siphoned by anonymous spoofers. Stronger anti-spoofing (device-bound proofs, richer attestation) is hardening work on the roadmap.
+The companies that win the AI infrastructure layer will win on trust. Every other lane competes on speed or features; trust competes on architecture.
 
-## Why Spacetime is not a money authority
+Most "decentralized AI" projects shipped a feature. They have a token, a marketplace, a dashboard. What they don't have is an architecture where the wallet number matches a signed receipt _the user can verify themselves, against a public repo, on a different machine._
 
-From [`docs/MVP.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md):
+That's what audit-grade trust means here. The receipts are the architecture. The architecture is the company.
 
-> _"Sync/replay remains non-authoritative by default, with one explicit exception class: ADR-approved app-db domains (presence/checkpoints/projections) may be Spacetime-authoritative."_
+---
 
-Spacetime is a live sync substrate — very good at distributed presence, cursor continuity, and projection. It is _not_ where verdicts are finalized. The explicit exception class exists so we can use Spacetime authoritatively where being wrong is cheap (was the device online? is the cursor caught up?) and never where being wrong is expensive (did the wallet receive 25 sats?).
-
-## What this means for investor diligence
-
-Three things follow from the authority model:
-
-1. **The audit trail lives in receipts**, not in UI state. Every settled payout in `docs/reports/nexus/*.json` is a kernel-signed receipt, not a UI screenshot.
-2. **The client is untrusted by design**. A malicious or broken desktop cannot create monetary gain — only the kernel can, and the kernel demands authenticated command lanes.
-3. **Self-hosting is possible today**. The desktop can be pointed at a user-owned Nexus + relay set. OpenAgents does not sit in the middle of authorized work; it is the buyer of first resort _on_ the open network.
+{% hint style="info" %}
+**Under the hood.** The full domain-scoped authority matrix, ADR-0001's Spacetime exception class, the OWNERSHIP map of which crate owns what, and the device-bound attestation roadmap are all in the [Developer Path → Economy Kernel integration](../developers/kernel-integration.md) and [`docs/adr/0001-authority-boundaries.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/adr/0001-authority-boundaries.md).
+{% endhint %}
 
 ---
 
