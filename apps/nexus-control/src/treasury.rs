@@ -3638,21 +3638,6 @@ impl TreasuryState {
         config: &TreasuryConfig,
         now_unix_ms: u64,
     ) -> Option<String> {
-        let policy = self.active_policy(config);
-        if self
-            .oldest_continuity_relevant_pending_payout_updated_at_unix_ms(
-                &["dispatched"],
-                config,
-                now_unix_ms,
-                &policy,
-            )
-            .is_some_and(|oldest_updated_at_unix_ms| {
-                now_unix_ms.saturating_sub(oldest_updated_at_unix_ms)
-                    >= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
-            })
-        {
-            return Some("confirmations_stalled".to_string());
-        }
         let (pending_confirmation_count, _, _) =
             self.confirmation_visibility_counts(config, now_unix_ms);
         if pending_confirmation_count >= TREASURY_AVAILABILITY_DISPATCH_BACKLOG_GUARD_LIMIT {
@@ -12420,17 +12405,14 @@ mod tests {
                 classification: TreasuryPayoutClassification::default(),
             },
         );
-        assert_eq!(
-            state.availability_dispatch_suppression_reason(&config, now_unix_ms),
-            Some("confirmations_stalled".to_string())
-        );
+        assert_eq!(state.availability_dispatch_suppression_reason(&config, now_unix_ms), None);
 
         let prepared =
             state.prepare_due_payouts(&config, &[test_online_identity("pubkey-a")], now_unix_ms);
 
         assert!(
-            prepared.dispatch_plans.is_empty(),
-            "unexpected dispatch plans: {:?}",
+            !prepared.dispatch_plans.is_empty(),
+            "dispatch should continue during confirmation stalls: {:?}",
             prepared.dispatch_plans
         );
     }

@@ -691,7 +691,7 @@ export NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=25
 export NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600
 export NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE=true
 export NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000
-export NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=inference_ready
+export NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=presence_only
 export NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true
 export NEXUS_CONTROL_TREASURY_WALLET_STATUS_REFRESH_SECONDS=30
 export NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4
@@ -725,11 +725,11 @@ Why the extra two envs matter:
   reduces Spark transfer pressure to `0.4` sends/second even if the eligible
   set reaches `240` providers, while keeping the daily ceiling under
   `864000 sats` at that scale.
-- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=inference_ready` shifts new
-  placeholder windows away from pure presence and toward clients that are
-  actually ready to serve the local Gemma lane. Old persisted policy blobs that
-  predate this field still preserve their legacy `presence_only` behavior until
-  you explicitly apply the tighter policy.
+- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=presence_only` keeps the
+  current production placeholder lane aligned with raw online presence. This is
+  the current operator default because the live earning flow must continue
+  through Nexus recovery and should not depend on local Gemma readiness unless
+  you explicitly tighten it later.
 - `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true` blocks extra
   placeholder payouts when several clients appear to be the same underlying
   machine. This is only for placeholder/readiness accrual; accepted-work
