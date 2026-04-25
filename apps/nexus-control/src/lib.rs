@@ -163,10 +163,11 @@ use crate::treasury::{
     ProviderPayoutTargetRegistrationResponse, TreasuryCanonicalPublicSnapshot, TreasuryConfig,
     TreasuryDispatchBatchResult, TreasuryFundingTargetRequest, TreasuryFundingTargetResponse,
     TreasuryIntegrationExportResponse, TreasuryIntegrationImportResponse, TreasuryPayoutClass,
-    TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPublicStats,
-    TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse,
-    TreasuryTrainingPayoutLedgerSummary, create_live_funding_target, dispatch_live_payouts,
-    load_live_wallet_refresh_result_with_plan, parse_pylon_client_version,
+    TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPlaceholderPayoutMode,
+    TreasuryPublicStats, TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState,
+    TreasuryStatusResponse, TreasuryTrainingPayoutLedgerSummary, create_live_funding_target,
+    dispatch_live_payouts, load_live_wallet_refresh_result_with_plan,
+    parse_pylon_client_version,
 };
 
 pub use crate::treasury::{
@@ -22812,10 +22813,16 @@ fn availability_stipend_gate_for_admitted_node(
 
 fn annotate_treasury_availability_stipend_eligibility(
     kernel: &crate::kernel::KernelState,
+    payout_mode: TreasuryPlaceholderPayoutMode,
     online_identities: &mut [OnlinePylonIdentity],
     now_unix_ms: u64,
 ) {
     for identity in online_identities {
+        if payout_mode == TreasuryPlaceholderPayoutMode::PresenceOnly {
+            identity.availability_stipend_eligible = true;
+            identity.availability_stipend_gate_reason = None;
+            continue;
+        }
         let admitted = kernel.get_admitted_training_node(
             identity.nostr_pubkey_hex.as_str(),
             None,
@@ -22851,6 +22858,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
         );
         annotate_treasury_availability_stipend_eligibility(
             &store.kernel,
+            state.config.treasury.placeholder_payout_mode,
             online_identities.as_mut_slice(),
             cycle_started_at_unix_ms,
         );
@@ -32168,6 +32176,7 @@ mod tests {
             );
             annotate_treasury_availability_stipend_eligibility(
                 &store.kernel,
+                state.config.treasury.placeholder_payout_mode,
                 online_identities.as_mut_slice(),
                 recorded_at_ms,
             );
@@ -32180,6 +32189,50 @@ mod tests {
                 identity.availability_stipend_gate_reason.as_deref(),
                 Some("missing_worker_role")
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn treasury_availability_annotation_presence_only_skips_training_admission_gate() -> Result<()>
+    {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = 25;
+        config.treasury.payout_interval_seconds = 60;
+        config.treasury.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::PresenceOnly;
+        let state = build_app_state(config);
+
+        let recorded_at_ms = 1_800_000u64;
+        let node_pubkey_hex = "2".repeat(64);
+        {
+            let mut store = state.store.write().expect("write store");
+            let request = provider_presence_request(
+                node_pubkey_hex.as_str(),
+                "session-presence-only",
+                "presence-only",
+                1,
+                "online",
+            );
+            store
+                .provider_presence
+                .record_heartbeat(request, recorded_at_ms);
+            let mut online_identities = store.provider_presence.online_identities(
+                recorded_at_ms,
+                state.config.provider_presence_stale_after_ms,
+            );
+            annotate_treasury_availability_stipend_eligibility(
+                &store.kernel,
+                state.config.treasury.placeholder_payout_mode,
+                online_identities.as_mut_slice(),
+                recorded_at_ms,
+            );
+            let identity = online_identities
+                .iter()
+                .find(|identity| identity.nostr_pubkey_hex == node_pubkey_hex)
+                .expect("annotated presence-only identity");
+            assert!(identity.availability_stipend_eligible);
+            assert_eq!(identity.availability_stipend_gate_reason, None);
         }
         Ok(())
     }

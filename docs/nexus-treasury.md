@@ -435,12 +435,20 @@ window actually means:
 - `disabled` stops placeholder accrual entirely while leaving accepted-work
   payouts alone
 
-In all non-disabled modes, "otherwise-eligible" now still means:
+In all non-disabled modes, "otherwise-eligible" always means:
 
 - a registered payout target exists
-- the identity is admitted as a worker-capable training node
-- the admitted worker lane is online, eligible, and claimable under current
-  kernel readiness
+- host/payout-target dedupe allows a single beneficiary winner for the current
+  payout window
+- any configured version floor is satisfied
+
+Additional readiness depends on payout mode:
+
+- `presence_only` does not require an admitted training-node record; the
+  beneficiary only has to be online under the current provider-presence view
+- `inference_ready` still requires the beneficiary to be admitted as a
+  worker-capable training node, with an online, eligible, and claimable worker
+  lane under current kernel readiness
 
 `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true` makes host cluster the
 first availability beneficiary key. Nexus derives a best-effort host
