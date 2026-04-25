@@ -14,7 +14,7 @@
 
 ## Where we are, in one paragraph
 
-OpenAgents is a live project. Pylon is at [v0.1.13](https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.1.13) on the public npm registry as `@openagentsinc/pylon`. The Autopilot desktop has a production-class [earning proof](https://github.com/OpenAgentsInc/openagents/tree/main/docs/reports) dated 2026-04-23 — sats moved from `0 → 25` on a CS336 A1 homework run, payout id `019db8a2-98d2-7890-95e4-6a1d78709a3c` settled through Treasury. The Data market is already on relay at `wss://relay.damus.io` and `wss://relay.primal.net` using NIP-90 kinds `5960`, `6960`, `31990`. On the compute-milestone side, the OAPN podcast announced the crossover to more than 1,300 online Pylons and more than 1,000,000 sats paid out to contributors (OAPN #5, _Distributed Training_).
+OpenAgents is a live project. Pylon is at [v0.1.13](https://github.com/OpenAgentsInc/openagents/releases/tag/pylon-v0.1.13) on the public npm registry as `@openagentsinc/pylon`. The `pylon` lane has a reproducible end-to-end [earning proof](https://github.com/OpenAgentsInc/openagents/tree/main/docs/reports) dated 2026-04-23 — sats moved from `0 → 25` on a CS336 A1 homework run, payout id `019db8a2-98d2-7890-95e4-6a1d78709a3c` settled through Treasury. The Data market is already on relay at `wss://relay.damus.io` and `wss://relay.primal.net` using NIP-90 kinds `5960`, `6960`, `31990`. On the compute-milestone side, the OAPN podcast announced the crossover to more than 1,300 online Pylons and more than 1,000,000 sats paid out to contributors (OAPN #5, _Distributed Training_).
 
 We are not at clearing prices. We are not at an equilibrium cap table. We are at the narrow, demonstrable wedge that [Chapter 3](03-autopilot-wedge.md) describes: _a single user can install an app and earn Bitcoin for useful machine work, today._
 
@@ -58,7 +58,7 @@ The five markets introduced in [Chapter 2](02-five-markets.md) advance at differ
 
 **Now.** `TreasuryRouter` cuts starter-job payouts; [Spark](https://spark.money) rails are live on both ends of the earning proof (worker destination `spark1pgssyt…`, payment id `019db8a2-…`).
 
-**Next six months.** Formalize the open-treasury surface. Publish kernel-signed reports so any holder can reconcile balances, payouts, and reserves without trusting a Treasury blob. FROSTR (the multi-sig primitive in the OpenAgents orbit) enters this lane for split-key issuance.
+**Next six months.** Formalize the open-treasury surface. Publish kernel-signed reports so any holder can reconcile balances, payouts, and reserves without trusting a Treasury blob. FROSTR (the multi-sig primitive in the OpenAgents orbit) enters this lane for split-key issuance. Threshold-signing interop is a still-to-be-defined surface — the [2026-02-27 Nostr gap analysis](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-nostr-full-vision-nip-gap-analysis.md) flags a *Bifrost Threshold Coordination Profile* as an open observation rather than an off-the-shelf NIP, so this lane also involves canonical-NIP draft work, not just integration of an existing spec.
 
 **Twelve months.** Multiple underwriters. Today, the hosted Nexus is effectively subsidizing starter paid-training demand. In twelve months, third parties can be the underwriter for classes of jobs they care about — companies that want an open American model trained, researchers who want retail compute supplied to a bounty pool, or app platforms that want data-market handler availability at a minimum SLA.
 

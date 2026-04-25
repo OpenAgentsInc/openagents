@@ -61,23 +61,29 @@ On-stage at Demo Day, Chris points to the same moment from the supply side: the 
 
 ## The pane + command surface
 
-Every user-facing feature in Autopilot is reachable by exactly one command-palette command opening exactly one pane. From [`docs/MVP.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md):
+Autopilot is **intended** to be reachable through a 1:1 surface: every user-facing feature mapped to exactly one command-palette command opening exactly one pane. That's the MVP-spec shape from [`docs/MVP.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/MVP.md). In the current v0.1 code, the pane/command enumeration is still duplicated across several authorities (pane kind, descriptor, command registry, dispatch, hotbar) — tightening that to one source of truth is open architecture work tracked in the monthly audit cadence under [`docs/audits/`](https://github.com/OpenAgentsInc/openagents/tree/main/docs/audits).
 
-| Pane                     | Command ID                  | What it covers                                                 |
-| ------------------------ | --------------------------- | -------------------------------------------------------------- |
-| Autopilot Chat           | `pane.autopilot_chat`       | Personal agent thread + local execution                         |
-| Go Online                | `pane.go_online`            | Provider mode toggle and lifecycle                              |
-| Provider Status          | `pane.provider_status`      | Uptime, heartbeat, degraded/error visibility                    |
-| Job Inbox                | `pane.job_inbox`            | Incoming NIP-90 intake                                          |
-| Active Job               | `pane.active_job`           | `received → running → delivered → paid`                         |
-| Earnings Scoreboard      | `pane.earnings_scoreboard`  | Sats/day, lifetime sats, jobs/day, last result                  |
-| Spark Lightning Wallet   | `pane.wallet`               | Balance, receive, send, history                                 |
-| Pay Lightning Invoice    | `pane.pay_invoice`          | Withdraw / prove custody                                        |
-| Relay Connections        | `pane.relay_connections`    | Nostr relay connectivity + failure diagnosis                    |
-| Sync Health              | `pane.sync_health`          | Spacetime subscription and cursor state                         |
-| Starter Jobs             | `pane.starter_jobs`         | Seed-demand visibility for first earnings                       |
+The pane inventory below uses a `Source` column so readers can see what's backed by real runtime today vs. locally simulated for the v0.1 earning-loop cut. This follows the `source: runtime|wallet|local` badge recommendation from the [2026-02-26 pane-system full audit](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-pane-system-full-audit.md):
+
+| Pane                     | Command ID                  | What it covers                                                 | Source (v0.1)    |
+| ------------------------ | --------------------------- | -------------------------------------------------------------- | ---------------- |
+| Autopilot Chat           | `pane.autopilot_chat`       | Personal agent thread + local execution                         | `local` — simulated timed-status thread; Codex-lane execution not yet driven from this pane |
+| Go Online                | `pane.go_online`            | Provider mode toggle and lifecycle                              | `local` — UI drives a local state machine; provider runtime boot is not yet wired through |
+| Provider Status          | `pane.provider_status`      | Uptime, heartbeat, degraded/error visibility                    | `local` — includes a `relay: unknown (lane pending)` placeholder |
+| Job Inbox                | `pane.job_inbox`            | Incoming NIP-90 intake                                          | `local` — seeded requests, accept/reject stays in-app; not yet subscribed to NIP-90 |
+| Active Job               | `pane.active_job`           | `received → running → delivered → paid`                         | `local` — seeded lifecycle advanced locally |
+| Earnings Scoreboard      | `pane.earnings_scoreboard`  | Sats/day, lifetime sats, jobs/day, last result                  | `hybrid` — `wallet` balance is real; job/sat counters still source from the simulated lanes above |
+| Spark Lightning Wallet   | `pane.wallet`               | Balance, receive, send, history                                 | `wallet` — real Spark wallet |
+| Pay Lightning Invoice    | `pane.pay_invoice`          | Withdraw / prove custody                                        | `wallet` — real Spark send path |
+| Relay Connections        | `pane.relay_connections`    | Nostr relay connectivity + failure diagnosis                    | `local` — seeded rows, local mutate/retry; no relay IO yet |
+| Sync Health              | `pane.sync_health`          | Spacetime subscription and cursor state                         | `local` — seeded counters; no live Spacetime subscription yet |
+| Starter Jobs             | `pane.starter_jobs`         | Seed-demand visibility for first earnings                       | `local` — seeded queue surfaces the `pylon` lane; the real earning proof (Ch. 9) is produced by the headless `pylon` binary, not this pane |
 
 The full inventory — 19 panes covering every MVP lane — is canonical in the MVP doc. Every one of them exists to resolve an ambiguity the user would otherwise have to trust on faith.
+
+{% hint style="info" %}
+**Honest-scope note.** The panes above are the v0.1 *UI surface*. The **earning proof dated 2026-04-23 was produced by the headless `pylon` binary**, not by a user driving `Job Inbox` / `Active Job` in the desktop app. Wiring those panes to the same live runtime that `pylon` already runs on is the concrete next slice of product work. See [Chapter 9 — Proof Receipts](09-proof-receipts.md) for the actual run, and [Chapter 5 — Pylon Provider](05-pylon-provider.md) for what's live today.
+{% endhint %}
 
 ## Two-sided marketplace, collapsed into one app
 

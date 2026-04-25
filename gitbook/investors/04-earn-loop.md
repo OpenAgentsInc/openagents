@@ -35,6 +35,10 @@ The earn loop is not a subsidy-for-uptime loop. It is an _accepted-work_ loop: r
 8. User can withdraw over Lightning — does not need to go offline first
 ```
 
+{% hint style="info" %}
+**Which path produced the 2026-04-23 proof.** Steps 2–7 above are accurate for the **`pylon` headless lane** — the way the receipts in [Chapter 9](09-proof-receipts.md) were generated (a `pylon` provider + a separate validator `pylon` on `wss://relay.damus.io` and `wss://relay.primal.net`). Those same steps are **not yet** what happens when a user drives the `Job Inbox` / `Active Job` panes in the desktop UI today; those panes currently run on locally seeded state for the v0.1 cut (see the `Source` column in [Chapter 3](03-autopilot-wedge.md#the-pane--command-surface)). Wiring the desktop panes to the same runtime that the `pylon` binary already ships is the next slice of product work.
+{% endhint %}
+
 Every step has a visible pane in Autopilot and a matching `autopilotctl` or `pylon` command for scripted proof.
 
 ## The quantitative floor today

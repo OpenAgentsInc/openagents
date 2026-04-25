@@ -52,6 +52,10 @@ These are Nostr's data-vending kinds reused for a permissioned, paid, targeted a
 
 That's two public relays — independent of any OpenAgents-controlled infrastructure — where the full buyer-to-seller flow has been verified end to end. The Data Market is not a localhost demo; it is live on the open Nostr network.
 
+{% hint style="info" %}
+**NIP-89 note.** Kind `31990` is the NIP-89 *handler / capability* event shape. The Data Market publishes a NIP-89-style handler advertisement today; full NIP-89 conformance across the `crates/nostr/core` stack is still in progress per the [2026-02-27 Nostr gap analysis](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-nostr-full-vision-nip-gap-analysis.md). Treat `31990` as "NIP-89-shaped" until the gap analysis closes, not as a claim of full NIP-89 implementation.
+{% endhint %}
+
 ## Three ways to drive the same state machine
 
 The Data Market is intentionally read-heavy in the UI and mutation-heavy on the shell. From the [`README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/README.md):
