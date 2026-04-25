@@ -7,6 +7,7 @@ import {
   bootstrapInstalledPylon,
   ensureReleaseInstall,
   launchInstalledPylon,
+  launchInstalledPylonWithUpdates,
   resolveBootstrapOutcome,
   resolvePlatformTarget,
   renderBootstrapSummary,
@@ -85,9 +86,10 @@ Description:
   and build it locally instead. Cache the binaries, run the first-run smoke
   path, and then start the Pylon terminal UI by default. The terminal UI manages
   the earning worker and keeps live status visible. The launcher checks GitHub
-  for newer tagged pylon-v... releases on
-  each default run, but only caches the standalone binaries under the local
-  bootstrap root; it does not replace your global npm or bun pylon command.
+  for newer tagged pylon-v... releases on each default run and every 30 seconds
+  while the dashboard is open. Only releases initiated by AtlantisPleb are
+  accepted. New standalone binaries are cached under the local bootstrap root;
+  the global npm or bun pylon command is not replaced.
 
 Options:
   --version <x.y.z>                    Resolve a specific Pylon release.
@@ -107,6 +109,8 @@ Options:
   --skip-model-download                Keep the curated GGUF cache skipped.
   --skip-diagnostics                   Keep optional pylon gemma diagnose skipped.
   --no-launch                          Do not start pylon-tui after bootstrap.
+  --no-updates                         Disable 30-second GitHub release polling
+                                       and dashboard restart while pylon runs.
   --verbose                            Print extra network and recovery detail.
   --debug-network                      Alias for --verbose.
   --json                               Emit a machine-readable JSON summary.
@@ -132,6 +136,7 @@ export function parseArgs(argv) {
     skipModelDownload: true,
     skipDiagnostics: true,
     noLaunch: false,
+    noUpdates: false,
     verbose: false,
     json: false,
     help: false,
@@ -197,6 +202,9 @@ export function parseArgs(argv) {
       case "--no-launch":
         options.noLaunch = true;
         break;
+      case "--no-updates":
+        options.noUpdates = true;
+        break;
       case "--verbose":
       case "--debug-network":
         options.verbose = true;
@@ -232,7 +240,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   const {
     ensureReleaseInstallImpl = ensureReleaseInstall,
     bootstrapInstalledPylonImpl = bootstrapInstalledPylon,
-    launchInstalledPylonImpl = launchInstalledPylon,
+    launchInstalledPylonImpl = launchInstalledPylonWithUpdates,
     createTelemetryClientImpl = createTelemetryClient,
   } = dependencies;
   const options = parseArgs(argv);
@@ -318,10 +326,12 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
             ...options,
             ...install,
             version: install.version,
+            pinnedVersion: Boolean(options.version),
           },
           {
             ...dependencies,
             onStatus: reporter?.status,
+            telemetryClient,
           },
         );
       } else {

@@ -150,6 +150,13 @@ npm install -g @openagentsinc/pylon
 pylon
 ```
 
+By default, the package-managed launcher checks trusted GitHub `pylon-v...`
+releases while the Pylon terminal UI is open. If a newer release initiated by
+`AtlantisPleb` appears, the launcher downloads and verifies the matching
+standalone binary, then restarts the local dashboard from the updated cache.
+Use `pylon --no-updates` only when you intentionally need to keep the currently
+installed cached binary running.
+
 Keep that process running. Pylon creates local node identity and wallet state,
 marks the node online, advertises eligible capabilities to Nexus, asks for
 available work, executes assigned jobs locally, and watches for accepted-work
@@ -160,8 +167,12 @@ paid when assigned work closes out as accepted.
 
 Current production truth:
 
-- The current recommended paid-training release is `pylon-v0.1.13` through
-  `@openagentsinc/pylon` `0.1.13` or newer.
+- The current recommended paid-training launcher is `@openagentsinc/pylon`
+  `0.1.14` or newer. It resolves the latest trusted `pylon-v...` release asset
+  and keeps the running dashboard updated unless `--no-updates` or a pinned
+  `--version` is used.
+- The latest trusted standalone binary release remains `pylon-v0.1.13` until a
+  newer GitHub `pylon-v...` release asset is published by `AtlantisPleb`.
 - The live paid work class is bounded hosted homework/training work, currently
   the CS336 A1 starter lane used to prove the earning loop.
 - Work is not yet a fully open demand marketplace. Hosted Nexus currently

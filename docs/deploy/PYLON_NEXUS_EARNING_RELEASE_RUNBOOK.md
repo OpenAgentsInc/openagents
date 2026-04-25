@@ -66,6 +66,16 @@ Use this sequence for public earning-loop changes:
 Do not reverse steps 5 and 7. A Cloud Build image from an unpushed detached
 worktree can run, but it cannot honestly close the issue.
 
+Npm bootstrap-only changes can publish a new `@openagentsinc/pylon` package
+without cutting a new GitHub `pylon-vX.Y.Z` binary release when the Rust Pylon
+binary did not change. As of `@openagentsinc/pylon` `0.1.14`, the default
+launcher keeps the cached standalone binary current by checking GitHub Releases
+every 30 seconds while `pylon-tui` is open, accepting only `pylon-v...` releases
+whose GitHub release author is `AtlantisPleb`, then restarting the dashboard
+from the newly installed cache path. `pylon --no-updates` disables that
+background polling, and `pylon --version <x.y.z>` remains a pinned run that
+does not auto-upgrade.
+
 ## Version Floor Rules
 
 For the current hosted training earning path, the minimum public Pylon release
@@ -95,6 +105,10 @@ closeout:
   Pylon prefers a current `target/release/psionic-train` binary when it exists,
   falls back to `cargo run --release` instead of debug Cargo, and records
   signal/log-tail diagnostics when the supervisor exits without a normal code.
+- `@openagentsinc/pylon` `0.1.14` is a package-managed launcher update, not a
+  Rust binary release: it adds the 30-second trusted GitHub release
+  auto-updater and the `--no-updates` escape hatch. It still runs the latest
+  trusted `pylon-v...` standalone binary asset available for the machine.
 
 Nexus must enforce the same floor for new hosted starter runs:
 
