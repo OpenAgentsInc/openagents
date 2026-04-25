@@ -223,10 +223,20 @@ classifies:
 - share basis and weight metadata
 - weak-device versus strong-lane bearing
 
-For the current launch-hardening slice, accepted-work closeouts still settle off
-the shared `payout_sats_per_window` treasury setting. That means the split
-counters are real and public now, but they are still fed by the same wallet,
-dispatch loop, and budget policy that drive the generic hosted treasury totals.
+Accepted-work closeouts and availability stipends now share the same hosted
+wallet and dispatch loop, but they no longer share one policy object.
+
+- accepted-work defaults use `accepted_work_policy`
+- availability stipends use `availability_policy`
+- both still project into the same hosted treasury totals and class-specific
+  counters
+
+The accepted-work path now reads its default payout amount from
+`accepted_work_default_payout_sats` and its 24h budget cap from
+`accepted_work_daily_budget_cap_sats`. Availability stipends keep using the
+existing stipend-oriented interval, amount, mode, version-floor, and budget
+fields. Changing the stipend amount, stipend cadence, or availability-send
+concurrency must not change accepted-work closeout payouts.
 
 Weak-device accepted-work payouts are allowed to dispatch without requiring the
 node to still be online at payout time, as long as the closeout was accepted
@@ -277,17 +287,45 @@ Bootstrap / explicit policy-apply envs:
 - `NEXUS_CONTROL_TREASURY_ENABLED`
 - `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW`
 - `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS`
+- `NEXUS_CONTROL_TREASURY_ACCEPTED_WORK_DEFAULT_PAYOUT_SATS`
 - `NEXUS_CONTROL_TREASURY_REQUIRE_SELLABLE`
 - `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS`
+- `NEXUS_CONTROL_TREASURY_ACCEPTED_WORK_DAILY_BUDGET_CAP_SATS`
+- `NEXUS_CONTROL_TREASURY_AVAILABILITY_MAX_CONCURRENT_SENDS`
 - `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE`
 - `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS`
 - `NEXUS_CONTROL_TREASURY_POLICY_APPLY_ENV`
 - `NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE`
 - `NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON`
 
+Availability policy still owns the per-identity stipend cadence. The current
+env mapping is:
+
+- `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW`:
+  availability payout amount per window
+- `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS`:
+  availability stipend cadence
+- `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS`:
+  availability stipend 24h budget cap
+- `NEXUS_CONTROL_TREASURY_AVAILABILITY_MAX_CONCURRENT_SENDS`:
+  availability stipend send concurrency
+- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE`:
+  availability eligibility mode
+
+Accepted-work policy now bootstraps separately:
+
+- `NEXUS_CONTROL_TREASURY_ACCEPTED_WORK_DEFAULT_PAYOUT_SATS`:
+  accepted-work default payout amount
+- `NEXUS_CONTROL_TREASURY_ACCEPTED_WORK_DAILY_BUDGET_CAP_SATS`:
+  accepted-work 24h budget cap
+
+If the new accepted-work envs are unset, Nexus preserves legacy behavior by
+bootstrapping them from the historical shared values on first read of legacy
+policy state. After bootstrap, the persisted runtime policy is authoritative.
+
 `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS` is still the per-identity
-stipend cadence. `nexus-control` now phases each identity deterministically
-within that interval, so online Pylons still receive one payout per interval
+availability cadence. `nexus-control` now phases each identity deterministically
+within that interval, so eligible Pylons still receive one stipend per interval
 but dispatches roll across the window instead of bunching on a single wall-clock
 boundary.
 
@@ -298,14 +336,18 @@ time, reconciles any missed per-identity windows after restarts, and clamps
 recovery to `NEXUS_CONTROL_TREASURY_RECONCILIATION_HORIZON_SECONDS` so a stale
 node does not try to replay an unbounded backlog blindly.
 
-`NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS` controls how many live wallet
-sends can be dispatched concurrently inside one payout cycle. The default is
-`16`, clamped to `64`. This matters in production because too-low concurrency
-can hold the wallet-operation lock long enough that a nominal `20s` payout
-interval stretches into `40-60s` effective receive spacing once many Pylons are
-eligible at the same time. The hosted production Nexus should currently pin
-this lower than the default to avoid wedging entire send batches behind a
-Spark-side stall.
+`NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS` remains the global send ceiling
+for accepted-work and bonus dispatch. The default is `16`, clamped to `64`.
+This matters in production because too-low concurrency can hold the
+wallet-operation lock long enough that a nominal `20s` payout interval
+stretches into `40-60s` effective receive spacing once many Pylons are eligible
+at the same time. The hosted production Nexus should currently pin this lower
+than the default to avoid wedging entire send batches behind a Spark-side
+stall.
+
+`NEXUS_CONTROL_TREASURY_AVAILABILITY_MAX_CONCURRENT_SENDS` now lets the
+availability lane run with a different ceiling without changing accepted-work
+closeout behavior. If unset, it inherits the global send ceiling.
 
 Accepted-work sends now have an additional hard cap inside `nexus-control`:
 even if `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS` is higher, accepted-work
@@ -320,17 +362,20 @@ homework-only:
 - `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW=25`
 - `NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS=600`
 - `NEXUS_CONTROL_TREASURY_DAILY_BUDGET_CAP_SATS=1000000`
+- `NEXUS_CONTROL_TREASURY_ACCEPTED_WORK_DEFAULT_PAYOUT_SATS=25`
+- `NEXUS_CONTROL_TREASURY_ACCEPTED_WORK_DAILY_BUDGET_CAP_SATS=1000000`
 - `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4`
+- `NEXUS_CONTROL_TREASURY_AVAILABILITY_MAX_CONCURRENT_SENDS=4`
 - `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=disabled`
 - `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true`
 
-That policy disables periodic placeholder stipends entirely. The
-`payout_sats_per_window` value remains available for accepted-work closeouts,
-including homework runs, but Nexus must not create new presence-only,
-inference-ready, or disabled-placeholder payout windows. The global `4`-send
-cap plus the internal accepted-work cap keeps real homework payout waves small
-and predictable while still allowing more than one worker to settle in the same
-cycle.
+That policy disables periodic placeholder stipends entirely. The availability
+settings remain present but disabled for new stipends, while accepted-work
+defaults stay explicit for homework closeouts. Nexus must not create new
+presence-only, inference-ready, or disabled-placeholder payout windows. The
+global `4`-send cap plus the internal accepted-work cap keeps real homework
+payout waves small and predictable while still allowing more than one worker to
+settle in the same cycle.
 
 `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE` controls what a placeholder
 window actually means:
@@ -743,7 +788,25 @@ Operator-safe policy audit now also projects through `GET /v1/treasury/status`:
 - `policy_checksum`
 - `policy_runtime_status`
 - `policy_last_error`
+- `accepted_work_policy`
+- `availability_policy`
 - `recent_policy_changes`
+
+`accepted_work_policy` and `availability_policy` are separate operator-readable
+objects. Current status payloads expose:
+
+- `accepted_work_policy.default_payout_sats`
+- `accepted_work_policy.daily_budget_cap_sats`
+- `availability_policy.payout_sats_per_window`
+- `availability_policy.payout_interval_seconds`
+- `availability_policy.require_sellable`
+- `availability_policy.daily_budget_cap_sats`
+- `availability_policy.max_concurrent_sends`
+- `availability_policy.payout_mode`
+- `availability_policy.dedupe_hosts`
+- `availability_policy.version_floor`
+- `availability_policy.version_floor_started_at_unix_ms`
+- `availability_policy.version_gate_active`
 
 Continuity alerts:
 
