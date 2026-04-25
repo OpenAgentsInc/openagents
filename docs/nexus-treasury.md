@@ -931,6 +931,12 @@ Continuity alerts:
   beneficiary until the older one settles or fails. Other beneficiaries remain
   eligible. This prevents one slow-settling payout target from accumulating a
   large pile of real sends while the rest of the fleet is waiting.
+- very old legacy identity-scoped stipend rows are now quarantined into a
+  separate operator-attention bucket once they outlive the normal
+  reconciliation horizon. Nexus keeps those historical real-send rows visible
+  through treasury status, but they no longer count as current
+  continuity-relevant confirmation work and no longer globally suppress the
+  current beneficiary-scoped presence rail forever.
 - critical alerts are also reflected directly in `payout_loop_health` and
   `degraded_reason`, so operators do not need to infer failures from homepage
   behavior.

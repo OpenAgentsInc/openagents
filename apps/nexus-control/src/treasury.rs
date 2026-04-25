@@ -117,6 +117,7 @@ const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
 const TREASURY_STATUS_PAYOUT_TARGET_ROW_LIMIT: usize = 64;
 const TREASURY_STATUS_PAYOUT_LEDGER_ROW_LIMIT: usize = 64;
 const TREASURY_STATUS_AVAILABILITY_DEBUG_ROW_LIMIT: usize = 128;
+const TREASURY_STATUS_LEGACY_AVAILABILITY_ATTENTION_LIMIT: usize = 32;
 const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
 const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
@@ -1069,6 +1070,8 @@ pub struct TreasuryStatusResponse {
     #[serde(default)]
     pub tracked_payment_backlog_count: u64,
     #[serde(default)]
+    pub legacy_availability_confirmation_attention_count: u64,
+    #[serde(default)]
     pub availability_online_identities_now: u64,
     #[serde(default)]
     pub availability_online_host_clusters_now: u64,
@@ -1185,6 +1188,9 @@ pub struct TreasuryStatusResponse {
     pub recent_training_payouts: Vec<TreasuryTrainingPayoutLedgerEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub availability_beneficiary_debug_rows: Vec<TreasuryAvailabilityBeneficiaryDebugRow>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub legacy_availability_confirmation_attention_rows:
+        Vec<TreasuryLegacyAvailabilityAttentionRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -1223,6 +1229,19 @@ pub struct TreasuryTrainingPayoutLedgerEntry {
     pub sellable_at_window_open: bool,
     #[serde(default)]
     pub classification: TreasuryPayoutClassification,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryLegacyAvailabilityAttentionRow {
+    pub payout_key: String,
+    pub nostr_pubkey_hex: String,
+    pub payout_target: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payment_id: Option<String>,
+    pub window_started_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+    pub age_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1366,6 +1385,8 @@ pub struct TreasuryPublicSnapshot {
     #[serde(default)]
     pub tracked_payment_backlog_count: u64,
     #[serde(default)]
+    pub legacy_availability_confirmation_attention_count: u64,
+    #[serde(default)]
     pub availability_online_identities_now: u64,
     #[serde(default)]
     pub availability_online_host_clusters_now: u64,
@@ -1472,6 +1493,7 @@ pub struct TreasuryPublicStats {
     pub backlog_retryable: u64,
     pub pending_confirmation_count: u64,
     pub tracked_payment_backlog_count: u64,
+    pub legacy_availability_confirmation_attention_count: u64,
     pub availability_online_identities_now: u64,
     pub availability_online_host_clusters_now: u64,
     pub availability_stipend_eligible_beneficiaries_now: u64,
@@ -2367,6 +2389,86 @@ fn placeholder_liveness_record_can_compact(record: &TreasuryPayoutRecord) -> boo
 }
 
 impl TreasuryState {
+    fn legacy_identity_scoped_availability_scope<'a>(
+        record: &'a TreasuryPayoutRecord,
+    ) -> Option<&'a str> {
+        let (_, scope) = record.payout_key.split_once(':')?;
+        if scope.starts_with("availability-beneficiary:")
+            || scope.starts_with("availability-identity:")
+        {
+            return None;
+        }
+        Some(scope)
+    }
+
+    fn legacy_availability_confirmation_attention_record(
+        &self,
+        record: &TreasuryPayoutRecord,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+        policy: &TreasuryRuntimePolicy,
+    ) -> bool {
+        if record.classification.effective_payout_class() != TreasuryPayoutClass::PlaceholderLiveness
+        {
+            return false;
+        }
+        if !record.classification.continuity_alert_relevant(policy) {
+            return false;
+        }
+        if !matches!(record.status.as_str(), "dispatching" | "dispatched") {
+            return false;
+        }
+        if record.payment_id.is_none() {
+            return false;
+        }
+        if Self::legacy_identity_scoped_availability_scope(record).is_none() {
+            return false;
+        }
+        now_unix_ms.saturating_sub(record.updated_at_unix_ms)
+            >= config
+                .reconciliation_horizon_ms()
+                .max(TREASURY_CONTINUITY_ALERT_THRESHOLD_MS)
+    }
+
+    fn legacy_availability_confirmation_attention_rows(
+        &self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> Vec<TreasuryLegacyAvailabilityAttentionRow> {
+        let policy = self.active_policy(config);
+        let mut rows = self
+            .payout_records_by_key
+            .values()
+            .filter(|record| {
+                self.legacy_availability_confirmation_attention_record(
+                    record,
+                    config,
+                    now_unix_ms,
+                    &policy,
+                )
+            })
+            .map(|record| TreasuryLegacyAvailabilityAttentionRow {
+                payout_key: record.payout_key.clone(),
+                nostr_pubkey_hex: record.nostr_pubkey_hex.clone(),
+                payout_target: record.payout_target.clone(),
+                status: record.status.clone(),
+                payment_id: record.payment_id.clone(),
+                window_started_at_unix_ms: record.window_started_at_unix_ms,
+                updated_at_unix_ms: record.updated_at_unix_ms,
+                age_ms: now_unix_ms.saturating_sub(record.updated_at_unix_ms),
+            })
+            .collect::<Vec<_>>();
+
+        rows.sort_by(|left, right| {
+            right
+                .updated_at_unix_ms
+                .cmp(&left.updated_at_unix_ms)
+                .then_with(|| left.payout_key.cmp(&right.payout_key))
+        });
+        rows.truncate(TREASURY_STATUS_LEGACY_AVAILABILITY_ATTENTION_LIMIT);
+        rows
+    }
+
     fn availability_existing_payout_key_scope(
         disposition: &AvailabilityIdentityDisposition,
     ) -> String {
@@ -3222,11 +3324,15 @@ impl TreasuryState {
         let oldest_dispatch_pending_at_unix_ms = self
             .oldest_continuity_relevant_pending_payout_updated_at_unix_ms(
                 &["queued", "dispatching"],
+                config,
+                now_unix_ms,
                 &policy,
             );
         let oldest_confirmation_pending_at_unix_ms = self
             .oldest_continuity_relevant_pending_payout_updated_at_unix_ms(
                 &["queued", "dispatching", "dispatched"],
+                config,
+                now_unix_ms,
                 &policy,
             );
 
@@ -3396,12 +3502,22 @@ impl TreasuryState {
     fn oldest_continuity_relevant_pending_payout_updated_at_unix_ms(
         &self,
         statuses: &[&str],
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
         policy: &TreasuryRuntimePolicy,
     ) -> Option<u64> {
         self.payout_records_by_key
             .values()
             .filter(|record| statuses.contains(&record.status.as_str()))
             .filter(|record| record.classification.continuity_alert_relevant(policy))
+            .filter(|record| {
+                !self.legacy_availability_confirmation_attention_record(
+                    record,
+                    config,
+                    now_unix_ms,
+                    policy,
+                )
+            })
             .map(|record| record.updated_at_unix_ms)
             .min()
     }
@@ -3448,10 +3564,22 @@ impl TreasuryState {
         (backlog_total, backlog_retryable)
     }
 
-    fn confirmation_visibility_counts(&self) -> (u64, u64) {
+    fn confirmation_visibility_counts(&self, config: &TreasuryConfig, now_unix_ms: u64) -> (u64, u64, u64) {
         let mut pending_confirmation_count = 0u64;
         let mut tracked_payment_backlog_count = 0u64;
+        let mut legacy_availability_confirmation_attention_count = 0u64;
+        let policy = self.active_policy(config);
         for record in self.payout_records_by_key.values() {
+            if self.legacy_availability_confirmation_attention_record(
+                record,
+                config,
+                now_unix_ms,
+                &policy,
+            ) {
+                legacy_availability_confirmation_attention_count =
+                    legacy_availability_confirmation_attention_count.saturating_add(1);
+                continue;
+            }
             if record.payment_id.is_none() {
                 continue;
             }
@@ -3462,7 +3590,11 @@ impl TreasuryState {
                 pending_confirmation_count = pending_confirmation_count.saturating_add(1);
             }
         }
-        (pending_confirmation_count, tracked_payment_backlog_count)
+        (
+            pending_confirmation_count,
+            tracked_payment_backlog_count,
+            legacy_availability_confirmation_attention_count,
+        )
     }
 
     fn availability_dispatch_suppression_reason(
@@ -3474,6 +3606,8 @@ impl TreasuryState {
         if self
             .oldest_continuity_relevant_pending_payout_updated_at_unix_ms(
                 &["dispatched"],
+                config,
+                now_unix_ms,
                 &policy,
             )
             .is_some_and(|oldest_updated_at_unix_ms| {
@@ -3483,7 +3617,8 @@ impl TreasuryState {
         {
             return Some("confirmations_stalled".to_string());
         }
-        let (pending_confirmation_count, _) = self.confirmation_visibility_counts();
+        let (pending_confirmation_count, _, _) =
+            self.confirmation_visibility_counts(config, now_unix_ms);
         if pending_confirmation_count >= TREASURY_AVAILABILITY_DISPATCH_BACKLOG_GUARD_LIMIT {
             return Some("pending_confirmation_backlog_guard_active".to_string());
         }
@@ -3626,8 +3761,11 @@ impl TreasuryState {
         let mut payouts_failed_24h = 0u64;
         let mut payouts_skipped_24h = 0u64;
         let (backlog_total, backlog_retryable) = self.backlog_counts();
-        let (pending_confirmation_count, tracked_payment_backlog_count) =
-            self.confirmation_visibility_counts();
+        let (
+            pending_confirmation_count,
+            tracked_payment_backlog_count,
+            legacy_availability_confirmation_attention_count,
+        ) = self.confirmation_visibility_counts(config, now_unix_ms);
 
         for record in self.payout_records_by_key.values() {
             if record.status == "dispatched" && !record.counted_in_paid_total {
@@ -3734,6 +3872,7 @@ impl TreasuryState {
             backlog_retryable,
             pending_confirmation_count,
             tracked_payment_backlog_count,
+            legacy_availability_confirmation_attention_count,
             availability_online_identities_now: continuity.availability_online_identities_now,
             availability_online_host_clusters_now: continuity.availability_online_host_clusters_now,
             availability_stipend_eligible_beneficiaries_now: continuity
@@ -3802,6 +3941,9 @@ impl TreasuryState {
             snapshot.payouts_skipped_24h = canonical.payouts_skipped_24h;
             snapshot.backlog_total = canonical.backlog_total;
             snapshot.backlog_retryable = canonical.backlog_retryable;
+            snapshot.pending_confirmation_count = 0;
+            snapshot.tracked_payment_backlog_count = 0;
+            snapshot.legacy_availability_confirmation_attention_count = 0;
             snapshot.active_continuity_alerts = Vec::new();
             snapshot.degraded_reason = if canonical.health_status == "healthy" {
                 None
@@ -3898,6 +4040,8 @@ impl TreasuryState {
             backlog_retryable: snapshot.backlog_retryable,
             pending_confirmation_count: snapshot.pending_confirmation_count,
             tracked_payment_backlog_count: snapshot.tracked_payment_backlog_count,
+            legacy_availability_confirmation_attention_count: snapshot
+                .legacy_availability_confirmation_attention_count,
             availability_online_identities_now: snapshot.availability_online_identities_now,
             availability_online_host_clusters_now: snapshot.availability_online_host_clusters_now,
             availability_stipend_eligible_beneficiaries_now: snapshot
@@ -4165,6 +4309,8 @@ impl TreasuryState {
         let training_payout_ledger_summary = self.training_payout_ledger_summary();
         let payout_target_identities = self.payout_target_identity_rows();
         let recent_training_payouts = self.recent_training_payouts();
+        let legacy_availability_confirmation_attention_rows =
+            self.legacy_availability_confirmation_attention_rows(config, now_unix_ms);
         TreasuryStatusResponse {
             authority: "openagents-hosted-nexus".to_string(),
             treasury_enabled: stats.treasury_enabled,
@@ -4215,6 +4361,8 @@ impl TreasuryState {
             backlog_retryable: stats.backlog_retryable,
             pending_confirmation_count: stats.pending_confirmation_count,
             tracked_payment_backlog_count: stats.tracked_payment_backlog_count,
+            legacy_availability_confirmation_attention_count: stats
+                .legacy_availability_confirmation_attention_count,
             availability_online_identities_now: stats.availability_online_identities_now,
             availability_online_host_clusters_now: stats.availability_online_host_clusters_now,
             availability_stipend_eligible_beneficiaries_now: stats
@@ -4302,6 +4450,7 @@ impl TreasuryState {
             payout_target_identities,
             recent_training_payouts,
             availability_beneficiary_debug_rows: self.availability_beneficiary_debug_rows.clone(),
+            legacy_availability_confirmation_attention_rows,
         }
     }
 
@@ -12032,7 +12181,7 @@ mod tests {
         state.payout_records_by_key.insert(
             "stalled-dispatch".to_string(),
             TreasuryPayoutRecord {
-                payout_key: "stalled-dispatch".to_string(),
+                payout_key: "1770000:availability-beneficiary:host:sha256:stalled".to_string(),
                 nostr_pubkey_hex: "pubkey-stalled".to_string(),
                 payout_target: "spark:stalled".to_string(),
                 amount_sats: 25,
@@ -12066,6 +12215,67 @@ mod tests {
             prepared.dispatch_plans.is_empty(),
             "unexpected dispatch plans: {:?}",
             prepared.dispatch_plans
+        );
+    }
+
+    #[test]
+    fn legacy_identity_scoped_availability_rows_become_attention_without_stalling_current_rail() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 2_000_000u64;
+
+        state.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        state.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        state.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms);
+
+        state.payout_records_by_key.insert(
+            "1770000:pubkey-a".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "1770000:pubkey-a".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 25,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("legacy-payment-a".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                created_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000),
+                updated_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        assert_eq!(
+            state.availability_dispatch_suppression_reason(&config, now_unix_ms),
+            None
+        );
+
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_ne!(
+            stats.degraded_reason.as_deref(),
+            Some("continuity_alert:confirmations_stalled")
+        );
+        assert_eq!(stats.pending_confirmation_count, 0);
+        assert_eq!(stats.tracked_payment_backlog_count, 0);
+        assert_eq!(stats.legacy_availability_confirmation_attention_count, 1);
+
+        let status = state.status_response(&config, now_unix_ms);
+        assert_eq!(status.pending_confirmation_count, 0);
+        assert_eq!(status.tracked_payment_backlog_count, 0);
+        assert_eq!(status.legacy_availability_confirmation_attention_count, 1);
+        assert_eq!(status.legacy_availability_confirmation_attention_rows.len(), 1);
+        assert_eq!(
+            status.legacy_availability_confirmation_attention_rows[0].payout_key,
+            "1770000:pubkey-a"
         );
     }
 
