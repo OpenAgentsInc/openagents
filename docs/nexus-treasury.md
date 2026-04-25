@@ -187,6 +187,8 @@ Split totals:
 
 - `nexus_accepted_work_payout_sats_paid_total`
 - `nexus_accepted_work_payout_sats_paid_24h`
+- `nexus_availability_stipend_payout_sats_paid_total`
+- `nexus_availability_stipend_payout_sats_paid_24h`
 - `nexus_placeholder_payout_sats_paid_total`
 - `nexus_placeholder_payout_sats_paid_24h`
 - `nexus_beta_bonus_payout_sats_paid_total`
@@ -200,7 +202,8 @@ Interpretation rules:
 
 - `nexus_payout_sats_paid_total` remains the umbrella hosted-treasury total.
 - `nexus_accepted_work_*` is the accepted-work slice inside that umbrella.
-- `nexus_placeholder_*` is the legacy liveness / placeholder slice.
+- `nexus_availability_stipend_*` is the canonical availability-stipend slice.
+- `nexus_placeholder_*` remains as the legacy alias for the same stipend slice.
 - `nexus_beta_bonus_*` is the bonus / operator-adjusted slice.
 - `nexus_weak_device_accepted_work_*` and
   `nexus_strong_lane_accepted_work_*` subdivide accepted-work payouts by lane.
@@ -243,6 +246,44 @@ node to still be online at payout time, as long as the closeout was accepted
 and the node has a registered payout target. That preserves payout continuity
 for validation-replay style work classes that may close after the worker has
 gone idle.
+
+## Availability Stipend Observability
+
+`GET /v1/treasury/status` and the treasury data folded into `/api/stats` now
+separate availability-stipend state from accepted-work state explicitly.
+
+Canonical beneficiary counters:
+
+- `availability_online_identities_now`
+- `availability_online_host_clusters_now`
+- `availability_stipend_eligible_beneficiaries_now`
+- `duplicate_host_blocked_beneficiaries_now`
+- `duplicate_payout_target_blocked_beneficiaries_now`
+- `missing_payout_target_blocked_beneficiaries_now`
+- `version_floor_blocked_beneficiaries_now`
+- `readiness_blocked_beneficiaries_now`
+
+Legacy compatibility counters still remain:
+
+- `eligible_online_payout_targets`
+- `duplicate_host_placeholder_blocked_online_targets`
+- `min_new_accrual_version_blocked_online_targets`
+- `min_new_accrual_unknown_version_online_targets`
+
+`treasury status` also exposes `availability_beneficiary_debug_rows`. Each row
+traces one current online identity through:
+
+- identity pubkey and client version
+- host fingerprint and registered payout target
+- beneficiary kind and beneficiary dedupe key
+- final stipend verdict reason
+- whether the identity is stipend-eligible now
+- the current stipend payout key
+- the current payout row status and skip reason when a row already exists
+
+Use that debug register when the operator needs to answer "why is this worker
+not accruing?" or "which row owns this beneficiary right now?" without reading
+raw payout-ledger rows by hand.
 
 ## Supported Breez Floor
 

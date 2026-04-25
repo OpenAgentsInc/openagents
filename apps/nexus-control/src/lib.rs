@@ -23149,6 +23149,10 @@ fn runtime_snapshot(
             .accepted_work_payout_sats_paid_total,
         nexus_accepted_work_payout_sats_paid_24h: treasury_runtime
             .accepted_work_payout_sats_paid_24h,
+        nexus_availability_stipend_payout_sats_paid_total: treasury_runtime
+            .availability_stipend_payout_sats_paid_total,
+        nexus_availability_stipend_payout_sats_paid_24h: treasury_runtime
+            .availability_stipend_payout_sats_paid_24h,
         nexus_placeholder_payout_sats_paid_total: treasury_runtime
             .placeholder_payout_sats_paid_total,
         nexus_placeholder_payout_sats_paid_24h: treasury_runtime.placeholder_payout_sats_paid_24h,
@@ -23166,12 +23170,28 @@ fn runtime_snapshot(
         nexus_payouts_confirmed_24h: treasury_runtime.payouts_confirmed_24h,
         nexus_payouts_failed_24h: treasury_runtime.payouts_failed_24h,
         nexus_payouts_skipped_24h: treasury_runtime.payouts_skipped_24h,
+        nexus_availability_online_identities_now: treasury_runtime
+            .availability_online_identities_now,
+        nexus_availability_online_host_clusters_now: treasury_runtime
+            .availability_online_host_clusters_now,
+        nexus_availability_stipend_eligible_beneficiaries_now: treasury_runtime
+            .availability_stipend_eligible_beneficiaries_now,
         nexus_placeholder_payout_eligible_online_targets: treasury_runtime
             .eligible_online_payout_targets,
         nexus_inference_ready_online_payout_targets: treasury_runtime
             .inference_ready_online_payout_targets,
         nexus_duplicate_host_placeholder_blocked_online_targets: treasury_runtime
             .duplicate_host_placeholder_blocked_online_targets,
+        nexus_duplicate_host_blocked_beneficiaries_now: treasury_runtime
+            .duplicate_host_placeholder_blocked_online_targets,
+        nexus_duplicate_payout_target_blocked_beneficiaries_now: treasury_runtime
+            .duplicate_payout_target_blocked_beneficiaries_now,
+        nexus_missing_payout_target_blocked_beneficiaries_now: treasury_runtime
+            .missing_payout_target_blocked_beneficiaries_now,
+        nexus_version_floor_blocked_beneficiaries_now: treasury_runtime
+            .version_floor_blocked_beneficiaries_now,
+        nexus_readiness_blocked_beneficiaries_now: treasury_runtime
+            .readiness_blocked_beneficiaries_now,
         training_nodes_admitted: training_metrics.admitted_nodes,
         training_admitted_contributors: training_metrics.admitted_nodes,
         training_assigned_contributors: training_metrics.assigned_contributors,
@@ -26636,11 +26656,11 @@ mod tests {
         TrainingWindowDefensibilityArtifactAudit, TrainingWindowDefensibilityAudit,
         TrainingWindowDefensibilityPromotionAudit, TrainingWindowDefensibilityValidatorAudit,
         TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
-        annotate_treasury_availability_stipend_eligibility,
-        training_contributor_tier_projection, training_fleet_abuse_snapshot,
-        training_scheduler_metadata_from_run, training_window_closeout_outcome,
-        training_window_closeout_status, training_window_closeout_treasury_payout_requests,
-        training_window_metadata_from_value, training_window_metadata_value, validator_service,
+        annotate_treasury_availability_stipend_eligibility, training_contributor_tier_projection,
+        training_fleet_abuse_snapshot, training_scheduler_metadata_from_run,
+        training_window_closeout_outcome, training_window_closeout_status,
+        training_window_closeout_treasury_payout_requests, training_window_metadata_from_value,
+        training_window_metadata_value, validator_service,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -26796,24 +26816,23 @@ mod tests {
         AdmittedTrainingNodeView, AppState, ControlStore, DEFAULT_COMPUTE_POLICY_BUNDLE_ID,
         DEFAULT_COMPUTE_POLICY_VERSION, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
         DesktopSessionCreateRequest, DesktopSessionResponse, FinalizeValidatorChallengeRequest,
-        HomeworkLaunchPayoutRequest, LaunchCs336A1DemoRunRequest,
-        LaunchCs336A1DemoRunResponse, LaunchHomeworkRunRequest, LaunchHomeworkRunResponse,
-        LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse, NexusHomepageResponse,
-        PROVIDER_PRESENCE_RETENTION_WINDOW_MS,
-        PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
-        PlanTrainingWindowRequest, ProviderPresenceHeartbeatRequest,
-        ProviderPresenceOfflineRequest, ProviderPresenceResponse, ProviderPresenceState,
-        PublicStatsSnapshot, PublishTrainingCheckpointRequest, PublishTrainingCheckpointResponse,
-        ReconcileTrainingWindowRequest, RecordTrainingAssignmentAckRequest,
-        RecordTrainingAssignmentAckResponse, RecordTrainingRunLeaseRequest,
-        RecordTrainingRunLeaseResponse, RecordTrainingWindowProgressRequest,
-        RecordTrainingWindowProgressResponse, ScheduleValidatorChallengeRequest,
-        ScheduleValidatorChallengeResponse, SealTrainingWindowRequest, ServiceConfig,
-        StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
-        StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
-        StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
-        SyncTokenResponse, TrainingArtifactSignedUrlConfig, TrainingAssignmentState,
-        TrainingVisualizationResponse, TrainingWindowContributionInput,
+        HomeworkLaunchPayoutRequest, LaunchCs336A1DemoRunRequest, LaunchCs336A1DemoRunResponse,
+        LaunchHomeworkRunRequest, LaunchHomeworkRunResponse, LeaseValidatorChallengeRequest,
+        LeaseValidatorChallengeResponse, NexusHomepageResponse,
+        PROVIDER_PRESENCE_RETENTION_WINDOW_MS, PYLON_TRAINING_LEASE_DURATION_MS,
+        PYLON_TRAINING_SEAL_GRACE_PERIOD_MS, PlanTrainingWindowRequest,
+        ProviderPresenceHeartbeatRequest, ProviderPresenceOfflineRequest, ProviderPresenceResponse,
+        ProviderPresenceState, PublicStatsSnapshot, PublishTrainingCheckpointRequest,
+        PublishTrainingCheckpointResponse, ReconcileTrainingWindowRequest,
+        RecordTrainingAssignmentAckRequest, RecordTrainingAssignmentAckResponse,
+        RecordTrainingRunLeaseRequest, RecordTrainingRunLeaseResponse,
+        RecordTrainingWindowProgressRequest, RecordTrainingWindowProgressResponse,
+        ScheduleValidatorChallengeRequest, ScheduleValidatorChallengeResponse,
+        SealTrainingWindowRequest, ServiceConfig, StarterDemandAckRequest,
+        StarterDemandAckResponse, StarterDemandCompleteRequest, StarterDemandCompleteResponse,
+        StarterDemandHeartbeatRequest, StarterDemandHeartbeatResponse, StarterDemandPollRequest,
+        StarterDemandPollResponse, SyncTokenResponse, TrainingArtifactSignedUrlConfig,
+        TrainingAssignmentState, TrainingVisualizationResponse, TrainingWindowContributionInput,
         TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
         build_api_router_with_state, build_app_state, build_router, build_router_with_state,
         homework_launch_effective_payout_amount_sats, now_unix_ms, random_token,
@@ -26948,7 +26967,10 @@ mod tests {
             pay_only_on_accept: true,
         };
 
-        assert_eq!(homework_launch_effective_payout_amount_sats(&config, &payout), 240);
+        assert_eq!(
+            homework_launch_effective_payout_amount_sats(&config, &payout),
+            240
+        );
     }
 
     async fn spawn_training_artifact_upload_sink(
