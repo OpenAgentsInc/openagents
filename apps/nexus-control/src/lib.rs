@@ -166,8 +166,7 @@ use crate::treasury::{
     TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPlaceholderPayoutMode,
     TreasuryPublicStats, TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState,
     TreasuryStatusResponse, TreasuryTrainingPayoutLedgerSummary, create_live_funding_target,
-    dispatch_live_payouts, load_live_wallet_refresh_result_with_plan,
-    parse_pylon_client_version,
+    dispatch_live_payouts, load_live_wallet_refresh_result_with_plan, parse_pylon_client_version,
 };
 
 pub use crate::treasury::{

@@ -2023,10 +2023,41 @@ export async function launchInstalledPylonWithUpdates(
     spawnProcessImpl = spawn,
     updateCheckIntervalMs = DEFAULT_UPDATE_CHECK_INTERVAL_MS,
     onStatus = null,
+    telemetryClient = null,
     ...dependencies
   } = {},
 ) {
+  const currentReleaseTag =
+    options.tagName ?? `pylon-v${normalizeVersion(options.version)}`;
+  const updateTelemetryBase = {
+    current_release_tag: currentReleaseTag,
+    current_version: normalizeVersion(options.version),
+    os: options.target?.os ?? null,
+    arch: options.target?.arch ?? null,
+    platform_key:
+      options.target?.os && options.target?.arch
+        ? `${options.target.os}-${options.target.arch}`
+        : null,
+    install_source: installSourceForTelemetry(
+      options.installMethod,
+      Boolean(options.cached),
+    ),
+    update_check_interval_ms: updateCheckIntervalMs,
+  };
+
   if (options.noUpdates || options.pinnedVersion) {
+    emitTelemetry(
+      telemetryClient,
+      options.noUpdates
+        ? "installer_update_disabled"
+        : "installer_update_pinned_run",
+      {
+        ...updateTelemetryBase,
+        update_mode: options.noUpdates ? "no_updates" : "pinned_version",
+        update_reason: options.noUpdates ? "--no-updates" : "--version",
+      },
+    );
+    await telemetryClient?.flush?.();
     return launchInstalledPylon(options, { ...dependencies, onStatus });
   }
 
@@ -2035,6 +2066,7 @@ export async function launchInstalledPylonWithUpdates(
     version: normalizeVersion(options.version),
   };
   let lastUpdateError = null;
+  let pendingRestartTelemetry = null;
 
   while (true) {
     const pylonTuiPath = path.resolve(current.pylonTuiPath);
@@ -2043,6 +2075,14 @@ export async function launchInstalledPylonWithUpdates(
       "Starting Pylon terminal UI",
       `${path.basename(pylonTuiPath)} manages the earning worker`,
     );
+    if (pendingRestartTelemetry) {
+      emitTelemetry(telemetryClient, "installer_update_restart_succeeded", {
+        ...pendingRestartTelemetry,
+        restarted_release_tag: current.tagName,
+        restarted_version: current.version,
+      });
+      pendingRestartTelemetry = null;
+    }
     const child = spawnPylonTui(pylonTuiPath, current, spawnProcessImpl);
     const childExit = waitForChildExit(child);
     let restartForUpdate = false;
@@ -2065,6 +2105,12 @@ export async function launchInstalledPylonWithUpdates(
         );
       }
 
+      emitTelemetry(telemetryClient, "installer_update_check_started", {
+        ...updateTelemetryBase,
+        observed_release_tag: current.tagName,
+        observed_version: current.version,
+      });
+
       try {
         const install = await ensureReleaseInstallImpl(
           {
@@ -2080,12 +2126,70 @@ export async function launchInstalledPylonWithUpdates(
         if (!isNewerPylonVersion(install.version, current.version)) {
           continue;
         }
+        emitTelemetry(telemetryClient, "installer_update_available", {
+          ...updateTelemetryBase,
+          observed_release_tag: current.tagName,
+          observed_version: current.version,
+          available_release_tag: install.tagName,
+          available_version: install.version,
+          available_install_source: installSourceForTelemetry(
+            install.installMethod,
+            Boolean(install.cached),
+          ),
+        });
+        if (
+          install.installMethod === RELEASE_ASSET_INSTALL_METHOD &&
+          !install.cached
+        ) {
+          emitTelemetry(telemetryClient, "installer_update_downloaded", {
+            ...updateTelemetryBase,
+            observed_release_tag: current.tagName,
+            observed_version: current.version,
+            available_release_tag: install.tagName,
+            available_version: install.version,
+          });
+          emitTelemetry(telemetryClient, "installer_update_verified", {
+            ...updateTelemetryBase,
+            observed_release_tag: current.tagName,
+            observed_version: current.version,
+            available_release_tag: install.tagName,
+            available_version: install.version,
+          });
+        }
+        emitTelemetry(telemetryClient, "installer_update_applied", {
+          ...updateTelemetryBase,
+          previous_release_tag: current.tagName,
+          previous_version: current.version,
+          applied_release_tag: install.tagName,
+          applied_version: install.version,
+          applied_install_source: installSourceForTelemetry(
+            install.installMethod,
+            Boolean(install.cached),
+          ),
+        });
         emitStatus(
           onStatus,
           "Installed newer Pylon release",
           `${install.tagName}; restarting dashboard`,
         );
+        emitTelemetry(telemetryClient, "installer_update_restart_attempted", {
+          ...updateTelemetryBase,
+          previous_release_tag: current.tagName,
+          previous_version: current.version,
+          restart_target_release_tag: install.tagName,
+          restart_target_version: install.version,
+        });
         await stopChild(child);
+        pendingRestartTelemetry = {
+          previous_release_tag: current.tagName,
+          previous_version: current.version,
+          applied_release_tag: install.tagName,
+          applied_version: install.version,
+          applied_install_source: installSourceForTelemetry(
+            install.installMethod,
+            Boolean(install.cached),
+          ),
+        };
         current = {
           ...options,
           ...install,
@@ -2094,6 +2198,12 @@ export async function launchInstalledPylonWithUpdates(
         restartForUpdate = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        emitTelemetry(telemetryClient, "installer_update_failed", {
+          ...updateTelemetryBase,
+          observed_release_tag: current.tagName,
+          observed_version: current.version,
+          ...telemetryFailureContext(error, "update_check"),
+        });
         if (message !== lastUpdateError) {
           emitStatus(onStatus, "Pylon update check failed", message);
           lastUpdateError = message;

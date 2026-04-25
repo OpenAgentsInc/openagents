@@ -34,8 +34,9 @@ The launcher:
 - prompts before installing the Rust toolchain via `rustup` if a source build
   is needed and `cargo` / `rustc` are missing
 - emits best-effort anonymous installer telemetry to `openagents.com` so the
-  public stats page can show install starts, completions, source-build fallbacks,
-  Rust prompts, and smoke-test outcomes
+  public stats page can show install starts, completions, source-build
+  fallbacks, update checks, restart behavior, Rust prompts, and smoke-test
+  outcomes
 - downloads the archive and published SHA-256 checksum
 - verifies the checksum before extracting
 - caches the unpacked binaries under `~/.openagents/pylon/bootstrap/`
