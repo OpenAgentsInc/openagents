@@ -22,8 +22,8 @@ This pathway is for developers who want to build on OpenAgents — run a Pylon, 
 
 Even while this path is being written, three things are already actionable:
 
-1. **Install Pylon.** `npx @openagentsinc/pylon@0.1.13 --help`. Source + docs in [`OpenAgentsInc/openagents`](https://github.com/OpenAgentsInc/openagents).
-2. **Publish a NIP-90 Data Market handler** — the current relays are `wss://relay.damus.io` and `wss://relay.primal.net`; the spec lives in [`packages/data-market-mvp/README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/packages/data-market-mvp/README.md). Kinds in use: **5960** (request), **6960** (result), **31990** (handler/capability).
+1. **Install Pylon.** `npx @openagentsinc/pylon@0.1.13 --help`. Source + docs in [`OpenAgentsInc/openagents`](https://github.com/OpenAgentsInc/openagents); the GitBook draft you're reading is published from the [`OV1-Kenobi/openagents`](https://github.com/OV1-Kenobi/openagents/tree/gitbook/vegas-btc-2026/gitbook) fork pending merge upstream.
+2. **Publish a NIP-90 Data Market handler** — the current relays are `wss://relay.damus.io` and `wss://relay.primal.net`; the spec lives in [`packages/data-market-mvp/README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/packages/data-market-mvp/README.md). Kinds in use: **5960** (request), **6960** (result), **31990** (NIP-89-shaped handler/capability ad — partial conformance today, see [Data Market handler](data-market-handler.md)).
 3. **Pick up a developer bounty.** Bounties are announced on [OAPN](https://openagents.substack.com) (see episode #6, _Pay the People_).
 
 ## Path outline
@@ -40,11 +40,11 @@ Even while this path is being written, three things are already actionable:
 5. **Psionic runtimes** — what the edge ML framework gives you, how to wire in new inference and training code.
 6. **Validator patterns** — the separate-validator-Pylon model, artifact refresh, retry semantics.
 
-### Part 3 — Data Market (NIP-90)
+### Part 3 — Data Market (NIP-90 + NIP-89 partial)
 
-7. **Kinds 5960 / 6960 / 31990 end-to-end** — request, result, handler advertisement.
-8. **Handler registration and discovery** — publishing a kind 31990 capability event.
-9. **Payment flows** — Lightning escrow, zap-on-delivery, receipts.
+7. **Kinds 5960 / 6960 / 31990 end-to-end** — request, result, NIP-89-shaped handler advertisement (full conformance pending; see the [NIP gap analysis](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-nostr-full-vision-nip-gap-analysis.md)).
+8. **Handler registration and discovery** — publishing a kind 31990 capability event today; NIP-89 conformance landing alongside the broader Tier-A NIP work.
+9. **Payment flows** — Lightning invoice, settlement-on-delivery, kernel-minted receipts. NIP-57 zap integration is on the Tier-A roadmap; today's lane is direct Lightning.
 
 ### Part 4 — Economy Kernel
 

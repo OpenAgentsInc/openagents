@@ -46,7 +46,7 @@ Optional public-facing wrappers — NIP-99 classifieds, NIP-15 storefront, NIP-2
 **Honest scope.**
 
 - Kind `31990` as published today is **NIP-89-shaped** but not yet fully NIP-89-conformant. Field-by-field gap captured in [`docs/audits/2026-02-27-nostr-full-vision-nip-gap-analysis.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-nostr-full-vision-nip-gap-analysis.md).
-- That same audit flags six **Tier-A canonical NIPs** still pending in [`crates/nostr/core`](https://github.com/OpenAgentsInc/openagents/tree/main/crates/nostr/core): NIP-42 (auth), NIP-65 (relay lists), NIP-17 (DMs), NIP-57 (zaps), NIP-47 (NWC), NIP-98 (HTTP auth). Don't assume these are wired in your handler yet.
+- That same audit flags **Tier-A canonical NIPs** still pending in [`crates/nostr/core`](https://github.com/OpenAgentsInc/openagents/tree/main/crates/nostr/core): NIP-42 (auth), NIP-65 (relay lists), NIP-17 (DMs), NIP-57 (zaps), NIP-47 (NWC), NIP-98 (HTTP auth) — plus NIP-89 itself, where today's kind 31990 advertisement is shape-compatible but not yet field-by-field conformant. Don't assume any of these are fully wired in your handler yet.
 - Authoritative spec is [`packages/data-market-mvp/README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/packages/data-market-mvp/README.md) plus [`crates/data-market/`](https://github.com/OpenAgentsInc/openagents/tree/main/crates/data-market) and [`docs/plans/data-market-mvp-implementation-spec.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/plans/data-market-mvp-implementation-spec.md).
 {% endhint %}
 
@@ -93,7 +93,7 @@ The handler runtime walks every order through six states (per [`docs/plans/data-
 The shape below is illustrative — see [`crates/data-market/`](https://github.com/OpenAgentsInc/openagents/tree/main/crates/data-market) for the production runtime. Use it as a mental model, not a copy-paste target.
 
 ```rust
-// 1. Advertise capability (NIP-31990, NIP-89-shaped)
+// 1. Advertise capability (kind 31990, NIP-89-shaped handler ad)
 let handler_event = HandlerAdvertisement::builder()
     .kinds([5960])
     .pricing_hint(PricingHint::PerJob { sats_min: 25 })

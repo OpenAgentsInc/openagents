@@ -105,7 +105,7 @@ These are non-negotiable if real sats are involved.
 5. **Backups are read-only after creation.** Once your seed is on a metal plate, it is not getting edited. Rotate identities, don't rotate seeds in place.
 6. **Don't run a buyer node and a provider node from the same identity.** Use two homes, two mnemonics. The bilateral-loop runbook is the template.
 7. **Audit your own receipts.** The kernel mints `RevocationReceipt` and `DeliveryBundle` events for everything. Read them periodically. They are your own audit trail and they exist for exactly this reason.
-8. **Honest scope right now (v0.1):** the renderer at `crates/nostr/.../render.rs:329, 350` prints full secret material by default — Audit Finding 5 in [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md). Until that lands hardened, do not screen-share Pylon log streams. Treat the terminal as secret material.
+8. **Honest scope right now (v0.1):** the renderer at [`apps/autopilot-deprecated/src/render.rs:329, 350`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/autopilot-deprecated/src/render.rs) prints full secret material by default — Finding 5 in [`docs/audits/2026-02-26-codebase-code-smell-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md). Until that lands hardened, do not screen-share Pylon log streams. Treat the terminal as secret material.
 
 ## What sovereignty buys you
 
@@ -119,7 +119,7 @@ A user who does all of the above:
 That is the entire point.
 
 {% hint style="info" %}
-**Under the hood.** Identity authority: [`crates/nostr/core/src/identity.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/nostr/core/src/identity.rs). Credential resolution rules: [`docs/CREDENTIALS.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/CREDENTIALS.md). Hardening audit (current open findings): [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md). Architecture audit (path-drift findings): [`docs/audits/2026-02-28-full-codebase-architecture-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-28-full-codebase-architecture-audit.md).
+**Under the hood.** Identity authority: [`crates/nostr/core/src/identity.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/nostr/core/src/identity.rs). Credential resolution rules: [`docs/CREDENTIALS.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/CREDENTIALS.md). Code-smell audit (Findings 5 and 6, the renderer + Spark network bugs): [`docs/audits/2026-02-26-codebase-code-smell-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md). Broader hardening audit: [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md). Architecture audit (path-drift findings): [`docs/audits/2026-02-28-full-codebase-architecture-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-28-full-codebase-architecture-audit.md).
 {% endhint %}
 
 ---

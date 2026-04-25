@@ -64,7 +64,11 @@ When the desktop installer ships:
 2. Open the Provider Control pane.
 3. Click **Go Online**.
 
-Same loop, just wrapped in panes. The pane's online/offline switch is the same authority as `autopilotctl`'s `online` / `offline` verbs — both flip the same app-owned snapshot.
+Same loop, wrapped in panes. Honest scope on what the pane does today versus what it will do at GA:
+
+{% hint style="warning" %}
+**v0.1 desktop pane is a simulation.** The WGPUI Go Online pane in the desktop app currently drives a simulated provider lifecycle so the UI flows can be exercised independent of a live Pylon. The lane that actually publishes a kind `31990` capability ad, takes paid kind `5960` requests, and increments your wallet is the **packaged-app `autopilotctl` surface plus the `cargo pylon` binary**. Until the WGPUI pane is wired to the live Pylon backend, the binary and `autopilotctl` are the authoritative path. The pane will reach parity ahead of GA — at that point its online/offline switch becomes the same authority as `autopilotctl`'s `online` / `offline` verbs (both flipping the same app-owned snapshot in the packaged-app autopilotctl lane).
+{% endhint %}
 
 ## Going online — agentic users
 

@@ -40,18 +40,32 @@ The loop has known stall points. Each one has a diagnostic ladder. Walk the rung
 
 1. **Did the invoice expire?** Lightning invoices have short windows. Re-generate from the receiving wallet and try again.
 2. **Is there a path?** No-route errors mean Lightning network conditions, not Pylon. Try a smaller amount or a different destination.
-3. **Regtest vs other networks.** v0.1 is Regtest only ([`crates/spark/src/wallet.rs:22`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/wallet.rs), Audit Finding 6). A Testnet or mainnet invoice will not pay out — those flags are silently remapped to Regtest in v0.1.
+3. **Regtest vs other networks.** v0.1 is Regtest only ([`crates/spark/src/wallet.rs:22`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/wallet.rs), Finding 6 in the [code-smell audit](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md)). A Testnet or mainnet invoice will not pay out — those flags are silently remapped to Regtest in v0.1.
 4. **Confirm the kernel saw the outbound.** If the local Spark balance decremented but the kernel has no outbound entry, that is a state mismatch worth filing.
 
 ## "I can see my secret keys in the terminal — is that a bug?"
 
-Yes. It's a known one. The renderer at `crates/nostr/.../render.rs:329, 350` prints full secret material in its default state — Audit Finding 5 in [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md). Until that lands hardened:
+Yes. It's a known one. The renderer at [`apps/autopilot-deprecated/src/render.rs:329, 350`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/autopilot-deprecated/src/render.rs) prints full secret material in its default state — Finding 5 in [`docs/audits/2026-02-26-codebase-code-smell-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md). Until that lands hardened:
 
 - Treat Pylon terminal output as secret material.
 - Don't screen-share Pylon log streams.
 - Redact log output before pasting it into bug reports.
 
 This is on the v0.1 fix list, not in steady state.
+
+## "The desktop Go Online pane says I'm online but no events are landing"
+
+**Symptoms:** the WGPUI Go Online pane shows green / online, but no kind `31990` capability ad appears on the relays and no kind `5960` requests arrive.
+
+In v0.1 the desktop Go Online pane is a UI simulation — it is not yet wired to the live Pylon backend. The lane that actually publishes capability and takes work is the packaged-app `autopilotctl` surface plus the `cargo pylon` binary.
+
+1. **Confirm via `autopilotctl`, not the pane.**
+   ```bash
+   autopilotctl provider status
+   ```
+   That output is the truth. If it shows offline while the pane shows online, trust `autopilotctl`.
+2. **Bring the live lane online from the CLI.** Use `cargo pylon` (or `autopilotctl` per [`docs/headless-compute.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/headless-compute.md)). The desktop pane will reach parity with that lane ahead of GA; until then the CLI is the working path.
+3. **Don't file a bug just because the pane and the CLI disagree** — that is the v0.1 simulation gap, not a regression. Worth filing if `autopilotctl` itself disagrees with the kernel-signed events on relay.
 
 ## "Credential isn't being picked up by the runtime"
 
@@ -94,7 +108,7 @@ If logs and panes disagree but the kernel events are consistent — check your p
 If you're stuck on `awaiting_payment` and the buyer never paid — that's normal. The lifecycle aborts and you move on.
 
 {% hint style="info" %}
-**Under the hood.** Identity loader: [`crates/nostr/core/src/identity.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/nostr/core/src/identity.rs). Lifecycle states: [`docs/plans/data-market-mvp-implementation-spec.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/plans/data-market-mvp-implementation-spec.md). Open hardening findings: [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md). Open architecture findings: [`docs/audits/2026-02-28-full-codebase-architecture-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-28-full-codebase-architecture-audit.md).
+**Under the hood.** Identity loader: [`crates/nostr/core/src/identity.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/nostr/core/src/identity.rs). Lifecycle states: [`docs/plans/data-market-mvp-implementation-spec.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/plans/data-market-mvp-implementation-spec.md). Findings 5 and 6 are in the code-smell audit: [`docs/audits/2026-02-26-codebase-code-smell-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md). Open architecture findings: [`docs/audits/2026-02-28-full-codebase-architecture-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-28-full-codebase-architecture-audit.md). Broader hardening posture: [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md).
 {% endhint %}
 
 ---

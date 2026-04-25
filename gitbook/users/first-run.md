@@ -24,7 +24,7 @@ One mnemonic. Two roles:
 If you back up `identity.mnemonic`, you have backed up your identity AND your wallet. If you lose it, both are gone.
 
 {% hint style="warning" %}
-**Path drift warning.** You may see references in older code or settings to `~/.openagents/nostr/identity.json`. That path is **not** the authoritative identity store — it appears as drift in `SettingsDocumentV1`'s default in `crates/autopilot-desktop/.../app_state.rs:1372` and is flagged in [`docs/audits/2026-02-28-full-codebase-architecture-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-28-full-codebase-architecture-audit.md). Anchor your backups to `~/.openagents/pylon/identity.mnemonic` and only that path.
+**Path drift warning.** You may see references in older code or settings to `~/.openagents/nostr/identity.json`. That path is **not** the authoritative identity store — it appears as drift in `SettingsDocumentV1`'s default in [`apps/autopilot-desktop/src/app_state.rs:1372`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/autopilot-desktop/src/app_state.rs) and is flagged in [`docs/audits/2026-02-28-full-codebase-architecture-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-28-full-codebase-architecture-audit.md). Anchor your backups to `~/.openagents/pylon/identity.mnemonic` and only that path.
 {% endhint %}
 
 ## The first-run checklist

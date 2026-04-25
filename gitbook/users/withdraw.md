@@ -6,6 +6,10 @@ Withdrawing is the other half of the loop. Sats came in through paid jobs; this 
 
 If withdrawing doesn't work, the loop hasn't closed. So this page is also where the protocol's sovereignty claim gets tested in the most concrete way.
 
+{% hint style="warning" %}
+**Regtest only in v0.1.** Read this before any of the mechanics below. The Spark wallet network selector at [`crates/spark/src/wallet.rs:22`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/wallet.rs) silently remaps Testnet and Signet to Regtest — Finding 6 in [`docs/audits/2026-02-26-codebase-code-smell-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md). Every withdrawal target, invoice, and balance discussed below is Regtest until that finding is closed. Don't paste a mainnet invoice expecting it to settle.
+{% endhint %}
+
 ## What withdrawal is, mechanically
 
 You paste a Lightning invoice from an external wallet. The Spark wallet inside Pylon (or Autopilot) signs the outbound HTLC with keys derived from your mnemonic. The HTLC clears across Lightning. The receiving wallet confirms. Pylon's local ledger records the outbound entry and the kernel mints the corresponding accounting receipt.
@@ -40,14 +44,12 @@ All three should agree. If they don't, treat the kernel record as authoritative 
 
 ## Honest scope — same v0.1 caveats
 
-The two open audit findings from the [Wallet](wallet.md) page apply to withdrawal too. Repeating them here because they matter at the moment you're about to move sats.
+The Regtest caveat at the top of this page is the most consequential one. Two more belong here at the moment you're about to move sats.
 
 {% hint style="warning" %}
-**1. Regtest-only network in v0.1.** The Spark wallet network selector at [`crates/spark/src/wallet.rs:22`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/wallet.rs) silently remaps Testnet and Signet to Regtest (Audit Finding 6 in [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md)). Withdrawal targets in v0.1 are Regtest invoices. Do not assume Testnet or mainnet behavior until that finding is closed.
+**1. Secret material is not masked by default during withdrawal flows.** The renderer at [`apps/autopilot-deprecated/src/render.rs:329, 350`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/autopilot-deprecated/src/render.rs) prints full secret material in its default state — Finding 5 in [`docs/audits/2026-02-26-codebase-code-smell-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md). Don't screen-share. Don't paste log output into bug reports without redaction.
 
-**2. Secret material is not masked by default during withdrawal flows.** The renderer at `crates/nostr/.../render.rs:329, 350` prints full secret material (Audit Finding 5). Don't screen-share, don't paste log output into bug reports without redaction.
-
-**3. Withdrawal authority is the mnemonic.** There is no second factor. There is no recovery email. The signing key is derived directly from `~/.openagents/pylon/identity.mnemonic` ([`crates/spark/src/spark_wallet.rs:380`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/spark_wallet.rs)). If that file is gone, the wallet is gone. If that file is in someone else's hands, the wallet is in someone else's hands.
+**2. Withdrawal authority is the mnemonic.** There is no second factor. There is no recovery email. The signing key is derived directly from `~/.openagents/pylon/identity.mnemonic` ([`crates/spark/src/spark_wallet.rs:380`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/spark_wallet.rs)). If that file is gone, the wallet is gone. If that file is in someone else's hands, the wallet is in someone else's hands.
 {% endhint %}
 
 ## For agentic users
@@ -64,7 +66,7 @@ If an agent is authorized to withdraw on your behalf — typically remitting ear
 Lightning withdrawals can stall for boring reasons (no path, peer offline, invoice expired). They can also stall for less boring reasons (Pylon not picking up settlement, kernel not receiving the outbound event). [Troubleshooting](troubleshooting.md) walks the diagnostic ladder.
 
 {% hint style="info" %}
-**Under the hood.** Withdrawal authority and signing path: [`crates/spark/src/spark_wallet.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/spark_wallet.rs). Network-selection caveat: [`crates/spark/src/wallet.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/wallet.rs). Hardening audit (open findings): [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md).
+**Under the hood.** Withdrawal authority and signing path: [`crates/spark/src/spark_wallet.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/spark_wallet.rs). Network-selection caveat: [`crates/spark/src/wallet.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/wallet.rs). Findings 5 and 6 are in the code-smell audit: [`docs/audits/2026-02-26-codebase-code-smell-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md). Broader hardening posture: [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md).
 {% endhint %}
 
 ---

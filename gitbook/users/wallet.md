@@ -44,14 +44,16 @@ In all three cases the authority is the mnemonic. In all three cases the receipt
 
 ## Honest scope — what's wired in v0.1
 
-Three things to be straight about right now. These are open audit findings, not future-state ambiguity.
+{% hint style="warning" %}
+**Regtest only.** Read this before any of the funding or spending mechanics on this page. The Spark wallet network selector in [`crates/spark/src/wallet.rs:22`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/wallet.rs) silently remaps Testnet and Signet to Regtest — Finding 6 in [`docs/audits/2026-02-26-codebase-code-smell-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md). For v0.1 every payout, balance, and withdrawal on this page is Regtest sats. Honest mainnet posture lands when that finding is resolved. Plan accordingly before you fund or attempt to spend anything material.
+{% endhint %}
+
+Two more things to be straight about. Open audit findings, not future-state ambiguity.
 
 {% hint style="warning" %}
-**1. Regtest only — Testnet/Signet flags are silently remapped.** The Spark wallet config in [`crates/spark/src/wallet.rs:22`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/wallet.rs) silently remaps Testnet and Signet to Regtest (Audit Finding 6 in [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md)). For v0.1, the network is Regtest. Don't expect Testnet or Signet behavior even if a setting appears to enable them. Honest mainnet posture lands when this finding is resolved.
+**1. Secret material is not masked by default.** The renderer at [`apps/autopilot-deprecated/src/render.rs:329, 350`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/autopilot-deprecated/src/render.rs) prints full secret material in its default state — Finding 5 in [`docs/audits/2026-02-26-codebase-code-smell-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md). Terminal output from Pylon and the wallet pane, in v0.1, contains material you should treat as secret. Don't screen-share Pylon log streams. Don't paste them into bug reports without redacting.
 
-**2. Secret material is not masked by default.** The renderer at `crates/nostr/.../render.rs:329, 350` prints full secret material in its default state (Audit Finding 5 in the same hardening audit). That means the terminal output from Pylon and the wallet pane, in v0.1, contains material you should treat as secret. Don't screen-share Pylon log streams. Don't paste them into bug reports without redacting.
-
-**3. The wallet derives from the same mnemonic as your identity.** This is by design but it is also a single point of failure. There is no separate wallet seed. Backup discipline for the mnemonic is wallet-backup discipline. See [Sovereignty & OpSec](sovereignty.md) for the full custody model.
+**2. The wallet derives from the same mnemonic as your identity.** This is by design but it is also a single point of failure. There is no separate wallet seed. Backup discipline for the mnemonic is wallet-backup discipline. See [Sovereignty & OpSec](sovereignty.md) for the full custody model.
 {% endhint %}
 
 ## Watching the balance
@@ -69,7 +71,7 @@ If any of the three disagree, trust the kernel events. Logs and panes are projec
 Wallet stuck on "pending"? Balance not updating after a job clears? See [Troubleshooting](troubleshooting.md).
 
 {% hint style="info" %}
-**Under the hood.** Spark wallet implementation: [`crates/spark/src/spark_wallet.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/spark_wallet.rs). Wallet network selection: [`crates/spark/src/wallet.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/wallet.rs). Open hardening findings: [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md).
+**Under the hood.** Spark wallet implementation: [`crates/spark/src/spark_wallet.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/spark_wallet.rs). Wallet network selection: [`crates/spark/src/wallet.rs`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/spark/src/wallet.rs). Findings 5 and 6 are in the code-smell audit: [`docs/audits/2026-02-26-codebase-code-smell-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-26-codebase-code-smell-audit.md). Broader hardening posture: [`docs/audits/2026-02-27-full-system-hardening-audit.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/2026-02-27-full-system-hardening-audit.md).
 {% endhint %}
 
 ---

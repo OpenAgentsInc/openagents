@@ -54,7 +54,7 @@ Autopilot is the desktop app that wraps Pylon plus a wallet, a credentials vault
 
 The pathway is written for both.
 
-**Human users.** People at a laptop, clicking Go Online, watching the wallet tick up, withdrawing to their own Lightning wallet at the end of the week. The chapters below assume this voice by default.
+**Human users.** People at a laptop earning sats from paid jobs that route through Pylon and out to their own Lightning wallet. Today the steady path is the CLI — `cargo pylon`, watch the log lines, watch the kernel-signed receipts. The desktop pane with a Go Online button is in flight (the WGPUI Go Online pane ships as a v0.1 simulation; the live earning lane is the packaged `cargo pylon` binary and the headless `autopilotctl` surface). The chapters below assume the CLI as the working path and call out where the desktop pane catches up.
 
 **Agentic users.** Autonomous agents — yours or someone else's — that hold their own Nostr keys, fund their own Spark wallets, and operate Pylon nodes without a human in the loop. Every chapter calls out the agentic-user variant where it matters: identity scoping, wallet isolation, headless runtime selection, OpSec posture.
 
