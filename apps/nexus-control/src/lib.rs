@@ -9715,7 +9715,7 @@ fn homework_launch_effective_payout_amount_sats(
     }
     payout
         .amount_sats
-        .unwrap_or(config.treasury.payout_sats_per_window)
+        .unwrap_or(config.treasury.accepted_work_default_payout_sats)
 }
 
 fn training_run_homework_launch_metadata(training_run: &ComputeTrainingRun) -> Option<&Value> {
@@ -11196,7 +11196,7 @@ async fn launch_cs336_a1_demo_run(
             payout: HomeworkLaunchPayoutRequest {
                 enabled: true,
                 rail: Some("bitcoin_lightning".to_string()),
-                amount_sats: Some(state.config.treasury.payout_sats_per_window),
+                amount_sats: Some(state.config.treasury.accepted_work_default_payout_sats),
                 pay_only_on_accept: true,
             },
         },
@@ -13797,7 +13797,7 @@ async fn reconcile_training_window(
         let treasury_payout_requests = training_window_closeout_treasury_payout_requests(
             training_run_homework_payout_amount_sats(
                 &training_run,
-                state.config.treasury.payout_sats_per_window,
+                state.config.treasury.accepted_work_default_payout_sats,
             ),
             &updated_window,
             contribution_outcomes.as_slice(),
@@ -26727,9 +26727,10 @@ mod tests {
         AdmittedTrainingNodeView, AppState, ControlStore, DEFAULT_COMPUTE_POLICY_BUNDLE_ID,
         DEFAULT_COMPUTE_POLICY_VERSION, DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS,
         DesktopSessionCreateRequest, DesktopSessionResponse, FinalizeValidatorChallengeRequest,
-        LaunchCs336A1DemoRunRequest, LaunchCs336A1DemoRunResponse, LaunchHomeworkRunRequest,
-        LaunchHomeworkRunResponse, LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse,
-        NexusHomepageResponse, PROVIDER_PRESENCE_RETENTION_WINDOW_MS,
+        HomeworkLaunchPayoutRequest, LaunchCs336A1DemoRunRequest,
+        LaunchCs336A1DemoRunResponse, LaunchHomeworkRunRequest, LaunchHomeworkRunResponse,
+        LeaseValidatorChallengeRequest, LeaseValidatorChallengeResponse, NexusHomepageResponse,
+        PROVIDER_PRESENCE_RETENTION_WINDOW_MS,
         PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
         PlanTrainingWindowRequest, ProviderPresenceHeartbeatRequest,
         ProviderPresenceOfflineRequest, ProviderPresenceResponse, ProviderPresenceState,
@@ -26746,9 +26747,9 @@ mod tests {
         TrainingVisualizationResponse, TrainingWindowContributionInput,
         TrainingWindowCoordinatorResponse, TransitionTrainingWindowRequest, TreasuryConfig,
         build_api_router_with_state, build_app_state, build_router, build_router_with_state,
-        now_unix_ms, random_token, run_cs336_homework_auto_dispatch_cycle,
-        run_treasury_dispatch_cycle, run_treasury_wallet_refresh_cycle,
-        training_kernel_mutation_context,
+        homework_launch_effective_payout_amount_sats, now_unix_ms, random_token,
+        run_cs336_homework_auto_dispatch_cycle, run_treasury_dispatch_cycle,
+        run_treasury_wallet_refresh_cycle, training_kernel_mutation_context,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -26805,8 +26806,11 @@ mod tests {
                 payout_interval_seconds: 60,
                 require_sellable: false,
                 daily_budget_cap_sats: 1_000,
+                accepted_work_default_payout_sats: 0,
+                accepted_work_daily_budget_cap_sats: 1_000,
                 placeholder_payout_mode: TreasuryPlaceholderPayoutMode::InferenceReady,
                 dedupe_placeholder_hosts: true,
+                availability_max_concurrent_sends: 16,
                 min_new_accrual_pylon_version: None,
                 min_new_accrual_started_at_unix_ms: None,
                 reconciliation_horizon_seconds: 300,
@@ -26860,6 +26864,22 @@ mod tests {
             },
             dir,
         ))
+    }
+
+    #[test]
+    fn homework_launch_default_payout_uses_accepted_work_policy_not_availability_stipend() {
+        let mut config = test_config().expect("test config");
+        config.treasury.accepted_work_default_payout_sats = 240;
+        config.treasury.payout_sats_per_window = 25;
+
+        let payout = HomeworkLaunchPayoutRequest {
+            enabled: true,
+            rail: Some("bitcoin_lightning".to_string()),
+            amount_sats: None,
+            pay_only_on_accept: true,
+        };
+
+        assert_eq!(homework_launch_effective_payout_amount_sats(&config, &payout), 240);
     }
 
     async fn spawn_training_artifact_upload_sink(
