@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b0d10"/><stop offset="1" stop-color="#14181d"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#bg)"/>
+  <text x="24" y="34" fill="#9aa4b2" font-size="10" letter-spacing="2">\\  MARKET 5</text>
+  <text x="24" y="70" fill="#9AE66E" font-size="32" font-weight="700">RISK</text>
+  <line x1="24" y1="88" x2="90" y2="88" stroke="#9AE66E" stroke-width="2"/>
+  <text x="24" y="118" fill="#e6edf3" font-size="12">underwriting layer · kernel-signed</text>
+  <text x="24" y="138" fill="#e6edf3" font-size="12">risk receipts · coverage pools</text>
+  <text x="24" y="158" fill="#9aa4b2" font-size="11">slowest market · most defensible</text>
+  <g transform="translate(300 115)" fill="none" stroke="#9AE66E" stroke-width="2">
+    <path d="M0 -40 L28 -12 L28 20 Q28 38 0 44 Q-28 38 -28 20 L-28 -12 Z" fill="#9AE66E" opacity="0.15"/>
+    <path d="M0 -40 L28 -12 L28 20 Q28 38 0 44 Q-28 38 -28 20 L-28 -12 Z"/>
+    <path d="M-10 4 L-2 14 L14 -6" fill="none" stroke-width="3"/>
+  </g>
+  <text x="24" y="218" fill="#5a6271" font-size="10" letter-spacing="1">openagents · risk market</text>
+</svg>

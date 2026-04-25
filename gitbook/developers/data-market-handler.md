@@ -1,0 +1,29 @@
+[Home](../README.md) · [Developer Path](README.md) · **Data Market handler**
+
+# Build a Data Market handler
+
+{% hint style="warning" %}
+This page is a stub. The full handler guide is coming. In the meantime, the spec in [`packages/data-market-mvp/README.md`](https://github.com/OpenAgentsInc/openagents/blob/main/packages/data-market-mvp/README.md) is the source of truth.
+{% endhint %}
+
+## The three NIP-90 kinds
+
+| Kind   | Role    | What it carries                                |
+| ------ | ------- | ---------------------------------------------- |
+| `5960` | Request | buyer asks for a machine service               |
+| `6960` | Result  | provider delivers the result (and the receipt) |
+| `31990`| Handler | provider's public capability advertisement     |
+
+## Live relay set
+
+- `wss://relay.damus.io`
+- `wss://relay.primal.net`
+
+## What to read next
+
+- [Investor Chapter 6 — Data Market MVP](../investors/06-data-market-mvp.md) has the full architectural walkthrough.
+- The [Compute Market glossary](../shared/glossary/compute-market.md) explains how kind `5960` becomes a buyer seat for paid compute on the same open protocol.
+
+---
+
+**← Previous:** [Quickstart](quickstart.md) · **Next:** [Economy Kernel integration](kernel-integration.md) **→**

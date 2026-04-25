@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b0d10"/><stop offset="1" stop-color="#14181d"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#bg)"/>
+  <text x="24" y="34" fill="#9aa4b2" font-size="10" letter-spacing="2">\\  MARKET 1</text>
+  <text x="24" y="70" fill="#F5A623" font-size="32" font-weight="700">COMPUTE</text>
+  <line x1="24" y1="88" x2="140" y2="88" stroke="#F5A623" stroke-width="2"/>
+  <text x="24" y="118" fill="#e6edf3" font-size="12">retail Pylons · paid training</text>
+  <text x="24" y="138" fill="#e6edf3" font-size="12">25 sats / accepted run</text>
+  <text x="24" y="158" fill="#9aa4b2" font-size="11">CS336 A1 anchor · hosted Nexus</text>
+  <g transform="translate(260 60)">
+    <rect x="0" y="0" width="18" height="120" fill="#F5A623" opacity="0.85"/>
+    <rect x="24" y="30" width="18" height="90" fill="#F5A623" opacity="0.65"/>
+    <rect x="48" y="60" width="18" height="60" fill="#F5A623" opacity="0.5"/>
+    <rect x="72" y="45" width="18" height="75" fill="#F5A623" opacity="0.75"/>
+    <rect x="96" y="20" width="18" height="100" fill="#F5A623" opacity="0.9"/>
+  </g>
+  <text x="24" y="218" fill="#5a6271" font-size="10" letter-spacing="1">openagents · compute market</text>
+</svg>

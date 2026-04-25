@@ -1,0 +1,22 @@
+root: ./
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md
+
+redirects:
+  # Legacy single-path chapter URLs → new investor pathway
+  chapters/01-why-openagents: investors/01-why-openagents.md
+  chapters/02-the-five-markets: investors/02-five-markets.md
+  chapters/03-autopilot-wedge: investors/03-autopilot-wedge.md
+  chapters/04-earn-loop: investors/04-earn-loop.md
+  chapters/05-pylon-provider: investors/05-pylon-provider.md
+  chapters/06-data-market-mvp: investors/06-data-market-mvp.md
+  chapters/07-economy-kernel: investors/07-economy-kernel.md
+  chapters/08-authority-model: investors/08-authority-model.md
+  chapters/09-proof-receipts: investors/09-proof-receipts.md
+  chapters/10-roadmap-and-ask: investors/10-roadmap-and-ask.md
+  # Legacy glossary paths
+  assets/glosses/compute-market: shared/glossary/compute-market.md
+  assets/glosses/risk-market: shared/glossary/risk-market.md
+  assets/glosses/treasury-router: shared/glossary/treasury-router.md

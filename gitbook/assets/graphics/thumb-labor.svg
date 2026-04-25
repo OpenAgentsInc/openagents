@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b0d10"/><stop offset="1" stop-color="#14181d"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#bg)"/>
+  <text x="24" y="34" fill="#9aa4b2" font-size="10" letter-spacing="2">\\  MARKET 3</text>
+  <text x="24" y="70" fill="#4BA3FF" font-size="32" font-weight="700">LABOR</text>
+  <line x1="24" y1="88" x2="120" y2="88" stroke="#4BA3FF" stroke-width="2"/>
+  <text x="24" y="118" fill="#e6edf3" font-size="12">Forge · Probe · developer bounties</text>
+  <text x="24" y="138" fill="#e6edf3" font-size="12">paid contributor work</text>
+  <text x="24" y="158" fill="#9aa4b2" font-size="11">&gt; any AI lab ever paid contributors</text>
+  <g transform="translate(280 70)" stroke="#4BA3FF" stroke-width="1.5" fill="none">
+    <rect x="0" y="0" width="24" height="24" fill="#4BA3FF"/>
+    <rect x="40" y="0" width="24" height="24" fill="#4BA3FF" opacity="0.7"/>
+    <rect x="0" y="40" width="24" height="24" fill="#4BA3FF" opacity="0.7"/>
+    <rect x="40" y="40" width="24" height="24" fill="#4BA3FF" opacity="0.9"/>
+    <rect x="80" y="20" width="24" height="24" fill="#4BA3FF" opacity="0.55"/>
+    <rect x="80" y="60" width="24" height="24" fill="#4BA3FF" opacity="0.45"/>
+  </g>
+  <text x="24" y="218" fill="#5a6271" font-size="10" letter-spacing="1">openagents · labor market</text>
+</svg>

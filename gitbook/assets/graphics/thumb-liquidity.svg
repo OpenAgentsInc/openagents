@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b0d10"/><stop offset="1" stop-color="#14181d"/>
+    </linearGradient>
+    <linearGradient id="coin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFCD4B"/><stop offset="1" stop-color="#F7931A"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="240" fill="url(#bg)"/>
+  <text x="24" y="34" fill="#9aa4b2" font-size="10" letter-spacing="2">\\  MARKET 4</text>
+  <text x="24" y="70" fill="#F7931A" font-size="32" font-weight="700">LIQUIDITY</text>
+  <line x1="24" y1="88" x2="150" y2="88" stroke="#F7931A" stroke-width="2"/>
+  <text x="24" y="118" fill="#e6edf3" font-size="12">TreasuryRouter · Spark · Lightning</text>
+  <text x="24" y="138" fill="#e6edf3" font-size="12">kernel-signed payout receipts</text>
+  <text x="24" y="158" fill="#9aa4b2" font-size="11">0 → 25 sats · 019db8a2-98d2-...</text>
+  <g transform="translate(300 120)">
+    <circle cx="0" cy="0" r="44" fill="url(#coin)" stroke="#F7931A"/>
+    <text x="0" y="12" fill="#1a0e00" font-size="38" text-anchor="middle" font-weight="700">₿</text>
+  </g>
+  <text x="24" y="218" fill="#5a6271" font-size="10" letter-spacing="1">openagents · liquidity market</text>
+</svg>
