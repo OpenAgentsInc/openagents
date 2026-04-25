@@ -8503,6 +8503,8 @@ impl ProviderPresenceState {
                     client_version,
                     inference_ready,
                     host_fingerprint,
+                    availability_stipend_eligible: false,
+                    availability_stipend_gate_reason: None,
                 },
             )
             .collect()
@@ -22764,6 +22766,67 @@ async fn run_cs336_homework_auto_dispatch_cycle(
     result
 }
 
+fn availability_stipend_gate_for_admitted_node(
+    node: Option<&crate::kernel::AdmittedTrainingNodeView>,
+) -> (bool, Option<String>) {
+    let Some(node) = node else {
+        return (false, Some("missing_admitted_training_node".to_string()));
+    };
+    if !node.role_claims.contains(&TrainingNodeRoleClaim::Worker) {
+        return (false, Some("missing_worker_role".to_string()));
+    }
+    if !node.online {
+        return (false, Some("training_node_offline".to_string()));
+    }
+    if !node.eligible {
+        return (false, Some("training_node_ineligible".to_string()));
+    }
+    if !node.readiness.role_status.worker.ready {
+        return (
+            false,
+            Some(
+                node.readiness
+                    .role_status
+                    .worker
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| "worker_role_not_ready".to_string()),
+            ),
+        );
+    }
+    if !node.readiness.claimability_status.worker_assignment.ready {
+        return (
+            false,
+            Some(
+                node.readiness
+                    .claimability_status
+                    .worker_assignment
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| "worker_assignment_not_ready".to_string()),
+            ),
+        );
+    }
+    (true, None)
+}
+
+fn annotate_treasury_availability_stipend_eligibility(
+    kernel: &crate::kernel::KernelState,
+    online_identities: &mut [OnlinePylonIdentity],
+    now_unix_ms: u64,
+) {
+    for identity in online_identities {
+        let admitted = kernel.get_admitted_training_node(
+            identity.nostr_pubkey_hex.as_str(),
+            None,
+            now_unix_ms as i64,
+        );
+        let (eligible, reason) = availability_stipend_gate_for_admitted_node(admitted.as_ref());
+        identity.availability_stipend_eligible = eligible;
+        identity.availability_stipend_gate_reason = reason;
+    }
+}
+
 async fn run_treasury_dispatch_cycle(state: &AppState) {
     if !try_begin_treasury_dispatch_cycle() {
         return;
@@ -22782,9 +22845,14 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
             .treasury
             .refresh_public_snapshot_in_memory(&state.config.treasury, cycle_started_at_unix_ms);
         store.provider_presence.prune(cycle_started_at_unix_ms);
-        let online_identities = store.provider_presence.online_identities(
+        let mut online_identities = store.provider_presence.online_identities(
             cycle_started_at_unix_ms,
             state.config.provider_presence_stale_after_ms,
+        );
+        annotate_treasury_availability_stipend_eligibility(
+            &store.kernel,
+            online_identities.as_mut_slice(),
+            cycle_started_at_unix_ms,
         );
         store.treasury.observe_payout_eligibility(
             &state.config.treasury,
@@ -26568,6 +26636,7 @@ mod tests {
         TrainingWindowDefensibilityArtifactAudit, TrainingWindowDefensibilityAudit,
         TrainingWindowDefensibilityPromotionAudit, TrainingWindowDefensibilityValidatorAudit,
         TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
+        annotate_treasury_availability_stipend_eligibility,
         training_contributor_tier_projection, training_fleet_abuse_snapshot,
         training_scheduler_metadata_from_run, training_window_closeout_outcome,
         training_window_closeout_status, training_window_closeout_treasury_payout_requests,
@@ -32031,6 +32100,66 @@ mod tests {
             .expect("presence-only identity");
         assert!(!not_ready_identity.inference_ready);
         assert!(not_ready_identity.host_fingerprint.is_some());
+    }
+
+    #[test]
+    fn treasury_availability_annotation_requires_admitted_worker_role() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        config.treasury.payout_sats_per_window = 25;
+        config.treasury.payout_interval_seconds = 60;
+        config.treasury.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::InferenceReady;
+        let state = build_app_state(config);
+
+        let recorded_at_ms = 1_800_000u64;
+        let node_pubkey_hex = "1".repeat(64);
+        let build_version = current_homework_launch_build_version_for_test();
+        let release_id = current_homework_launch_release_id_for_test();
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms,
+            node_pubkey_hex.as_str(),
+            "sha256:validator-only",
+            "trainnet.cs336.a1.demo",
+            release_id.as_str(),
+            build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Validator],
+            Some("spark:validator-only"),
+        );
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut request = provider_presence_request(
+                node_pubkey_hex.as_str(),
+                "session-validator",
+                "validator-only",
+                1,
+                "online",
+            );
+            request.client_version = Some(format!("pylon/{build_version}"));
+            store
+                .provider_presence
+                .record_heartbeat(request, recorded_at_ms);
+            let mut online_identities = store.provider_presence.online_identities(
+                recorded_at_ms,
+                state.config.provider_presence_stale_after_ms,
+            );
+            annotate_treasury_availability_stipend_eligibility(
+                &store.kernel,
+                online_identities.as_mut_slice(),
+                recorded_at_ms,
+            );
+            let identity = online_identities
+                .iter()
+                .find(|identity| identity.nostr_pubkey_hex == node_pubkey_hex)
+                .expect("annotated validator identity");
+            assert!(!identity.availability_stipend_eligible);
+            assert_eq!(
+                identity.availability_stipend_gate_reason.as_deref(),
+                Some("missing_worker_role")
+            );
+        }
+        Ok(())
     }
 
     #[test]
