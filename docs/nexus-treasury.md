@@ -925,6 +925,12 @@ Continuity alerts:
   until reconciliation catches up. This prevents treasury from continuing to
   spray real sends while the operator truth is already telling us confirmation
   visibility is degraded.
+- availability stipend dispatch also applies beneficiary-local backpressure.
+  If one beneficiary already has an older unresolved stipend in `dispatching`
+  or `dispatched`, Nexus does not mint another stipend payout for that same
+  beneficiary until the older one settles or fails. Other beneficiaries remain
+  eligible. This prevents one slow-settling payout target from accumulating a
+  large pile of real sends while the rest of the fleet is waiting.
 - critical alerts are also reflected directly in `payout_loop_health` and
   `degraded_reason`, so operators do not need to infer failures from homepage
   behavior.

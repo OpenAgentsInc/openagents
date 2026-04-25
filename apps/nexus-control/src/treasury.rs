@@ -2367,6 +2367,43 @@ fn placeholder_liveness_record_can_compact(record: &TreasuryPayoutRecord) -> boo
 }
 
 impl TreasuryState {
+    fn availability_existing_payout_key_scope(
+        disposition: &AvailabilityIdentityDisposition,
+    ) -> String {
+        disposition
+            .beneficiary
+            .as_ref()
+            .map(|beneficiary| format!("availability-beneficiary:{}", beneficiary.key))
+            .unwrap_or_else(|| {
+                format!(
+                    "availability-identity:{}",
+                    disposition.identity.nostr_pubkey_hex
+                )
+            })
+    }
+
+    fn availability_disposition_payout_key_scope(
+        disposition: &AvailabilityIdentityDisposition,
+    ) -> String {
+        if disposition.allowed() {
+            disposition
+                .beneficiary
+                .as_ref()
+                .map(|beneficiary| format!("availability-beneficiary:{}", beneficiary.key))
+                .unwrap_or_else(|| {
+                    format!(
+                        "availability-identity:{}",
+                        disposition.identity.nostr_pubkey_hex
+                    )
+                })
+        } else {
+            format!(
+                "availability-identity:{}",
+                disposition.identity.nostr_pubkey_hex
+            )
+        }
+    }
+
     pub fn new(state_path: PathBuf) -> Self {
         let mut loaded = match fs::read_to_string(state_path.as_path()) {
             Ok(payload) => match serde_json::from_str::<Self>(payload.as_str()) {
@@ -2814,34 +2851,56 @@ impl TreasuryState {
             }
         }
 
+        for disposition in dispositions.iter_mut() {
+            if disposition.verdict_reason.is_some() {
+                continue;
+            }
+            if self
+                .availability_oldest_unsettled_stipend_payout_key(disposition)
+                .is_some()
+            {
+                disposition.verdict_reason =
+                    Some("beneficiary_unsettled_stipend_backpressure".to_string());
+            }
+        }
+
         dispositions
     }
 
-    fn availability_current_payout_key(
+    fn availability_oldest_unsettled_stipend_payout_key(
+        &self,
         disposition: &AvailabilityIdentityDisposition,
     ) -> Option<String> {
         let current_window_started_at_unix_ms = disposition.current_window_started_at_unix_ms?;
-        let payout_key_scope = if disposition.allowed() {
-            disposition
-                .beneficiary
-                .as_ref()
-                .map(|beneficiary| format!("availability-beneficiary:{}", beneficiary.key))
-                .unwrap_or_else(|| {
-                    format!(
-                        "availability-identity:{}",
-                        disposition.identity.nostr_pubkey_hex
-                    )
-                })
-        } else {
-            format!(
-                "availability-identity:{}",
-                disposition.identity.nostr_pubkey_hex
-            )
-        };
-        Some(payout_window_key(
-            current_window_started_at_unix_ms,
-            payout_key_scope.as_str(),
-        ))
+        let payout_key_scope = Self::availability_existing_payout_key_scope(disposition);
+        self.payout_records_by_key
+            .values()
+            .filter(|record| {
+                record.classification.effective_payout_class()
+                    == TreasuryPayoutClass::PlaceholderLiveness
+                    && matches!(record.status.as_str(), "dispatching" | "dispatched")
+                    && record.window_started_at_unix_ms < current_window_started_at_unix_ms
+                    && record
+                        .payout_key
+                        .split_once(':')
+                        .is_some_and(|(_, scope)| scope == payout_key_scope)
+            })
+            .min_by_key(|record| record.window_started_at_unix_ms)
+            .map(|record| record.payout_key.clone())
+    }
+
+    fn availability_current_payout_key(
+        &self,
+        disposition: &AvailabilityIdentityDisposition,
+    ) -> Option<String> {
+        let current_window_started_at_unix_ms = disposition.current_window_started_at_unix_ms?;
+        let payout_key_scope = Self::availability_disposition_payout_key_scope(disposition);
+        let current_payout_key =
+            payout_window_key(current_window_started_at_unix_ms, payout_key_scope.as_str());
+        if self.payout_records_by_key.contains_key(current_payout_key.as_str()) {
+            return Some(current_payout_key);
+        }
+        self.availability_oldest_unsettled_stipend_payout_key(disposition)
     }
 
     fn availability_observability_snapshot(
@@ -2943,7 +3002,7 @@ impl TreasuryState {
                         snapshot.readiness_blocked_online_targets.saturating_add(1);
                 }
 
-                let current_payout_key = Self::availability_current_payout_key(&disposition);
+                let current_payout_key = self.availability_current_payout_key(&disposition);
                 let current_payout_record = current_payout_key
                     .as_ref()
                     .and_then(|key| self.payout_records_by_key.get(key));
@@ -4791,6 +4850,8 @@ impl TreasuryState {
 
         for disposition in dispositions {
             let identity = &disposition.identity;
+            let transient_unsettled_backpressure = disposition.verdict_reason.as_deref()
+                == Some("beneficiary_unsettled_stipend_backpressure");
             let beneficiary_phase_key = disposition
                 .beneficiary
                 .as_ref()
@@ -4827,6 +4888,9 @@ impl TreasuryState {
                     .unwrap_or_default();
 
                 if !self.payout_records_by_key.contains_key(&payout_key) {
+                    if transient_unsettled_backpressure {
+                        break;
+                    }
                     if let Some(reason) = disposition.verdict_reason.clone() {
                         let record = TreasuryPayoutRecord {
                             payout_key: payout_key.clone(),
@@ -12003,6 +12067,173 @@ mod tests {
             "unexpected dispatch plans: {:?}",
             prepared.dispatch_plans
         );
+    }
+
+    #[test]
+    fn unresolved_stipend_backpressure_blocks_only_that_beneficiary() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 1_800_000u64;
+        let payout_interval_ms = config.payout_interval_ms();
+        for (nostr_pubkey_hex, spark_address) in
+            [("pubkey-a", "spark:alice"), ("pubkey-b", "spark:bob")]
+        {
+            state.payout_targets_by_identity.insert(
+                nostr_pubkey_hex.to_string(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                    source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    spark_address: spark_address.to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+        }
+
+        let beneficiary_key_a = "host:sha256:host-a";
+        let current_window_a =
+            payout_window_started_at_for_identity(now_unix_ms, payout_interval_ms, beneficiary_key_a);
+        let older_window_a = current_window_a.saturating_sub(payout_interval_ms);
+        state.payout_records_by_key.insert(
+            payout_window_key(
+                older_window_a,
+                availability_beneficiary_scope_key(beneficiary_key_a).as_str(),
+            ),
+            TreasuryPayoutRecord {
+                payout_key: payout_window_key(
+                    older_window_a,
+                    availability_beneficiary_scope_key(beneficiary_key_a).as_str(),
+                ),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 25,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("payment-older-a".to_string()),
+                window_started_at_unix_ms: older_window_a,
+                window_ends_at_unix_ms: older_window_a.saturating_add(payout_interval_ms),
+                created_at_unix_ms: older_window_a,
+                updated_at_unix_ms: now_unix_ms.saturating_sub(1_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::PlaceholderLiveness,
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let online = vec![
+            OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.13".to_string()),
+                host_fingerprint: Some("sha256:host-a".to_string()),
+                ..test_online_identity("pubkey-a")
+            },
+            OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.13".to_string()),
+                host_fingerprint: Some("sha256:host-b".to_string()),
+                ..test_online_identity("pubkey-b")
+            },
+        ];
+
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:bob");
+
+        let status = state.status_response(&config, now_unix_ms);
+        let row_a = status
+            .availability_beneficiary_debug_rows
+            .iter()
+            .find(|row| row.nostr_pubkey_hex == "pubkey-a")
+            .expect("row a");
+        assert!(!row_a.availability_stipend_eligible_now);
+        assert_eq!(
+            row_a.verdict_reason,
+            "beneficiary_unsettled_stipend_backpressure"
+        );
+        assert_eq!(row_a.current_payout_status.as_deref(), Some("dispatched"));
+
+        let row_b = status
+            .availability_beneficiary_debug_rows
+            .iter()
+            .find(|row| row.nostr_pubkey_hex == "pubkey-b")
+            .expect("row b");
+        assert!(row_b.availability_stipend_eligible_now);
+        assert_eq!(row_b.verdict_reason, "eligible");
+    }
+
+    #[test]
+    fn beneficiary_backpressure_clears_after_old_stipend_confirms() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 1_800_000u64;
+        let payout_interval_ms = config.payout_interval_ms();
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let beneficiary_key_a = "host:sha256:host-a";
+        let current_window_a =
+            payout_window_started_at_for_identity(now_unix_ms, payout_interval_ms, beneficiary_key_a);
+        let older_window_a = current_window_a.saturating_sub(payout_interval_ms);
+        state.payout_records_by_key.insert(
+            payout_window_key(
+                older_window_a,
+                availability_beneficiary_scope_key(beneficiary_key_a).as_str(),
+            ),
+            TreasuryPayoutRecord {
+                payout_key: payout_window_key(
+                    older_window_a,
+                    availability_beneficiary_scope_key(beneficiary_key_a).as_str(),
+                ),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 25,
+                status: "confirmed".to_string(),
+                reason: None,
+                payment_id: Some("payment-older-a".to_string()),
+                window_started_at_unix_ms: older_window_a,
+                window_ends_at_unix_ms: older_window_a.saturating_add(payout_interval_ms),
+                created_at_unix_ms: older_window_a,
+                updated_at_unix_ms: now_unix_ms.saturating_sub(1_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: true,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: true,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::PlaceholderLiveness,
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let prepared = state.prepare_due_payouts(
+            &config,
+            &[OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.13".to_string()),
+                host_fingerprint: Some("sha256:host-a".to_string()),
+                ..test_online_identity("pubkey-a")
+            }],
+            now_unix_ms,
+        );
+
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:alice");
     }
 
     #[test]
