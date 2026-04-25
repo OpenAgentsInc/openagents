@@ -3677,6 +3677,9 @@ impl AppShell {
                 )),
             );
         }
+        if let Some(issue) = self.worker_runtime_issue.as_ref() {
+            return ("Needs attention".to_string(), Some(issue.clone()));
+        }
         if let Some(detail) = self.startup_detail() {
             return ("Preparing to earn".to_string(), Some(detail));
         }
@@ -3722,9 +3725,6 @@ impl AppShell {
     }
 
     fn startup_detail(&self) -> Option<String> {
-        if let Some(issue) = self.worker_runtime_issue.as_ref() {
-            return Some(issue.clone());
-        }
         if self.last_refresh_at.is_none() && self.operator_stats.runtime_status.is_none() {
             return Some(
                 "Starting local checks for wallet, worker, and homework status.".to_string(),
@@ -6070,6 +6070,16 @@ mod tests {
                 .as_deref()
                 .is_some_and(|value| value.contains("Starting local checks"))
         );
+        app.worker_runtime_issue =
+            Some("Managed earning worker exited with exit status: 1".to_string());
+        let (state, detail) = app.operator_state_label_and_detail();
+        assert_eq!(state, "Needs attention");
+        assert!(
+            detail
+                .as_deref()
+                .is_some_and(|value| value.contains("Managed earning worker exited"))
+        );
+        app.worker_runtime_issue = None;
         app.operator_stats = OperatorPanelStats {
             desired_mode: ProviderDesiredMode::Online,
             runtime_status: Some("online".to_string()),
