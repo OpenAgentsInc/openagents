@@ -128,6 +128,8 @@ const TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES: usize = 8;
 const TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE: usize = 100;
 const TREASURY_WALLET_REFRESH_TRACKED_PAYMENT_LOOKUP_TIMEOUT_MS: u64 = 30_000;
 const TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES: usize = 8;
+const TREASURY_AVAILABILITY_DISPATCH_BACKLOG_GUARD_LIMIT: u64 =
+    TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE as u64;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_EARLY_SLACK_MS: u64 = 5 * 60_000;
 const TREASURY_ORPHAN_SEND_PAYMENT_MATCH_WINDOW_MS: u64 = 30 * 60_000;
 const TREASURY_PUBLIC_SNAPSHOT_SOURCE_LOCAL: &str = "nexus_control";
@@ -1122,21 +1124,41 @@ pub struct TreasuryStatusResponse {
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
     #[serde(default)]
+    pub payout_sats_in_flight_total: u64,
+    #[serde(default)]
+    pub payout_sats_in_flight_24h: u64,
+    #[serde(default)]
     pub accepted_work_payout_sats_paid_total: u64,
     #[serde(default)]
     pub accepted_work_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub accepted_work_payout_sats_in_flight_total: u64,
+    #[serde(default)]
+    pub accepted_work_payout_sats_in_flight_24h: u64,
     #[serde(default)]
     pub availability_stipend_payout_sats_paid_total: u64,
     #[serde(default)]
     pub availability_stipend_payout_sats_paid_24h: u64,
     #[serde(default)]
+    pub availability_stipend_payout_sats_in_flight_total: u64,
+    #[serde(default)]
+    pub availability_stipend_payout_sats_in_flight_24h: u64,
+    #[serde(default)]
     pub placeholder_payout_sats_paid_total: u64,
     #[serde(default)]
     pub placeholder_payout_sats_paid_24h: u64,
     #[serde(default)]
+    pub placeholder_payout_sats_in_flight_total: u64,
+    #[serde(default)]
+    pub placeholder_payout_sats_in_flight_24h: u64,
+    #[serde(default)]
     pub beta_bonus_payout_sats_paid_total: u64,
     #[serde(default)]
     pub beta_bonus_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub beta_bonus_payout_sats_in_flight_total: u64,
+    #[serde(default)]
+    pub beta_bonus_payout_sats_in_flight_24h: u64,
     #[serde(default)]
     pub weak_device_accepted_work_payout_sats_paid_total: u64,
     #[serde(default)]
@@ -1288,21 +1310,41 @@ pub struct TreasuryPublicSnapshot {
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
     #[serde(default)]
+    pub payout_sats_in_flight_total: u64,
+    #[serde(default)]
+    pub payout_sats_in_flight_24h: u64,
+    #[serde(default)]
     pub accepted_work_payout_sats_paid_total: u64,
     #[serde(default)]
     pub accepted_work_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub accepted_work_payout_sats_in_flight_total: u64,
+    #[serde(default)]
+    pub accepted_work_payout_sats_in_flight_24h: u64,
     #[serde(default)]
     pub availability_stipend_payout_sats_paid_total: u64,
     #[serde(default)]
     pub availability_stipend_payout_sats_paid_24h: u64,
     #[serde(default)]
+    pub availability_stipend_payout_sats_in_flight_total: u64,
+    #[serde(default)]
+    pub availability_stipend_payout_sats_in_flight_24h: u64,
+    #[serde(default)]
     pub placeholder_payout_sats_paid_total: u64,
     #[serde(default)]
     pub placeholder_payout_sats_paid_24h: u64,
     #[serde(default)]
+    pub placeholder_payout_sats_in_flight_total: u64,
+    #[serde(default)]
+    pub placeholder_payout_sats_in_flight_24h: u64,
+    #[serde(default)]
     pub beta_bonus_payout_sats_paid_total: u64,
     #[serde(default)]
     pub beta_bonus_payout_sats_paid_24h: u64,
+    #[serde(default)]
+    pub beta_bonus_payout_sats_in_flight_total: u64,
+    #[serde(default)]
+    pub beta_bonus_payout_sats_in_flight_24h: u64,
     #[serde(default)]
     pub weak_device_accepted_work_payout_sats_paid_total: u64,
     #[serde(default)]
@@ -1454,14 +1496,24 @@ pub struct TreasuryPublicStats {
     pub degraded_reason: Option<String>,
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
+    pub payout_sats_in_flight_total: u64,
+    pub payout_sats_in_flight_24h: u64,
     pub accepted_work_payout_sats_paid_total: u64,
     pub accepted_work_payout_sats_paid_24h: u64,
+    pub accepted_work_payout_sats_in_flight_total: u64,
+    pub accepted_work_payout_sats_in_flight_24h: u64,
     pub availability_stipend_payout_sats_paid_total: u64,
     pub availability_stipend_payout_sats_paid_24h: u64,
+    pub availability_stipend_payout_sats_in_flight_total: u64,
+    pub availability_stipend_payout_sats_in_flight_24h: u64,
     pub placeholder_payout_sats_paid_total: u64,
     pub placeholder_payout_sats_paid_24h: u64,
+    pub placeholder_payout_sats_in_flight_total: u64,
+    pub placeholder_payout_sats_in_flight_24h: u64,
     pub beta_bonus_payout_sats_paid_total: u64,
     pub beta_bonus_payout_sats_paid_24h: u64,
+    pub beta_bonus_payout_sats_in_flight_total: u64,
+    pub beta_bonus_payout_sats_in_flight_24h: u64,
     pub weak_device_accepted_work_payout_sats_paid_total: u64,
     pub weak_device_accepted_work_payout_sats_paid_24h: u64,
     pub strong_lane_accepted_work_payout_sats_paid_total: u64,
@@ -2332,7 +2384,7 @@ impl TreasuryState {
         changed |= loaded.backfill_classified_payout_totals();
         loaded.public_snapshot = None;
         changed |= loaded.trim_policy_change_history();
-        changed |= loaded.trim_retention();
+        changed |= loaded.trim_retention(now_unix_ms());
         loaded.rebuild_payment_index();
         loaded.state_path = Some(state_path);
         if changed {
@@ -3354,6 +3406,31 @@ impl TreasuryState {
         (pending_confirmation_count, tracked_payment_backlog_count)
     }
 
+    fn availability_dispatch_suppression_reason(
+        &self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> Option<String> {
+        let policy = self.active_policy(config);
+        if self
+            .oldest_continuity_relevant_pending_payout_updated_at_unix_ms(
+                &["dispatched"],
+                &policy,
+            )
+            .is_some_and(|oldest_updated_at_unix_ms| {
+                now_unix_ms.saturating_sub(oldest_updated_at_unix_ms)
+                    >= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
+            })
+        {
+            return Some("confirmations_stalled".to_string());
+        }
+        let (pending_confirmation_count, _) = self.confirmation_visibility_counts();
+        if pending_confirmation_count >= TREASURY_AVAILABILITY_DISPATCH_BACKLOG_GUARD_LIMIT {
+            return Some("pending_confirmation_backlog_guard_active".to_string());
+        }
+        None
+    }
+
     fn active_canonical_public_snapshot(
         &self,
         now_unix_ms: u64,
@@ -3483,8 +3560,8 @@ impl TreasuryState {
         let window_started_at_unix_ms = now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS);
         let cumulative_totals = self.cumulative_payout_totals();
         let mut confirmed_24h_totals = TreasuryPayoutTotals::default();
-        let mut unconfirmed_visible_totals = TreasuryPayoutTotals::default();
-        let mut unconfirmed_visible_24h_totals = TreasuryPayoutTotals::default();
+        let mut in_flight_totals = TreasuryPayoutTotals::default();
+        let mut in_flight_24h_totals = TreasuryPayoutTotals::default();
         let mut payouts_dispatched_24h = 0u64;
         let mut payouts_confirmed_24h = 0u64;
         let mut payouts_failed_24h = 0u64;
@@ -3495,10 +3572,9 @@ impl TreasuryState {
 
         for record in self.payout_records_by_key.values() {
             if record.status == "dispatched" && !record.counted_in_paid_total {
-                unconfirmed_visible_totals.add_amount(record.amount_sats, &record.classification);
+                in_flight_totals.add_amount(record.amount_sats, &record.classification);
                 if record.updated_at_unix_ms >= window_started_at_unix_ms {
-                    unconfirmed_visible_24h_totals
-                        .add_amount(record.amount_sats, &record.classification);
+                    in_flight_24h_totals.add_amount(record.amount_sats, &record.classification);
                 }
             }
             if record.updated_at_unix_ms < window_started_at_unix_ms {
@@ -3551,58 +3627,46 @@ impl TreasuryState {
             last_payout_reconciliation_at_unix_ms: self.last_payout_reconciliation_at_unix_ms,
             payout_loop_last_started_at_unix_ms: self.payout_loop_last_started_at_unix_ms,
             payout_loop_last_completed_at_unix_ms: self.payout_loop_last_completed_at_unix_ms,
-            payout_sats_paid_total: cumulative_totals
-                .payout_sats_paid_total
-                .saturating_add(unconfirmed_visible_totals.payout_sats_paid_total),
-            payout_sats_paid_24h: confirmed_24h_totals
-                .payout_sats_paid_total
-                .saturating_add(unconfirmed_visible_24h_totals.payout_sats_paid_total),
+            payout_sats_paid_total: cumulative_totals.payout_sats_paid_total,
+            payout_sats_paid_24h: confirmed_24h_totals.payout_sats_paid_total,
+            payout_sats_in_flight_total: in_flight_totals.payout_sats_paid_total,
+            payout_sats_in_flight_24h: in_flight_24h_totals.payout_sats_paid_total,
             accepted_work_payout_sats_paid_total: cumulative_totals
-                .accepted_work_payout_sats_paid_total
-                .saturating_add(unconfirmed_visible_totals.accepted_work_payout_sats_paid_total),
+                .accepted_work_payout_sats_paid_total,
             accepted_work_payout_sats_paid_24h: confirmed_24h_totals
-                .accepted_work_payout_sats_paid_total
-                .saturating_add(
-                    unconfirmed_visible_24h_totals.accepted_work_payout_sats_paid_total,
-                ),
+                .accepted_work_payout_sats_paid_total,
+            accepted_work_payout_sats_in_flight_total: in_flight_totals
+                .accepted_work_payout_sats_paid_total,
+            accepted_work_payout_sats_in_flight_24h: in_flight_24h_totals
+                .accepted_work_payout_sats_paid_total,
             availability_stipend_payout_sats_paid_total: cumulative_totals
-                .placeholder_payout_sats_paid_total
-                .saturating_add(unconfirmed_visible_totals.placeholder_payout_sats_paid_total),
+                .placeholder_payout_sats_paid_total,
             availability_stipend_payout_sats_paid_24h: confirmed_24h_totals
-                .placeholder_payout_sats_paid_total
-                .saturating_add(unconfirmed_visible_24h_totals.placeholder_payout_sats_paid_total),
-            placeholder_payout_sats_paid_total: cumulative_totals
-                .placeholder_payout_sats_paid_total
-                .saturating_add(unconfirmed_visible_totals.placeholder_payout_sats_paid_total),
-            placeholder_payout_sats_paid_24h: confirmed_24h_totals
-                .placeholder_payout_sats_paid_total
-                .saturating_add(unconfirmed_visible_24h_totals.placeholder_payout_sats_paid_total),
-            beta_bonus_payout_sats_paid_total: cumulative_totals
-                .beta_bonus_payout_sats_paid_total
-                .saturating_add(unconfirmed_visible_totals.beta_bonus_payout_sats_paid_total),
-            beta_bonus_payout_sats_paid_24h: confirmed_24h_totals
-                .beta_bonus_payout_sats_paid_total
-                .saturating_add(unconfirmed_visible_24h_totals.beta_bonus_payout_sats_paid_total),
+                .placeholder_payout_sats_paid_total,
+            availability_stipend_payout_sats_in_flight_total: in_flight_totals
+                .placeholder_payout_sats_paid_total,
+            availability_stipend_payout_sats_in_flight_24h: in_flight_24h_totals
+                .placeholder_payout_sats_paid_total,
+            placeholder_payout_sats_paid_total: cumulative_totals.placeholder_payout_sats_paid_total,
+            placeholder_payout_sats_paid_24h: confirmed_24h_totals.placeholder_payout_sats_paid_total,
+            placeholder_payout_sats_in_flight_total: in_flight_totals
+                .placeholder_payout_sats_paid_total,
+            placeholder_payout_sats_in_flight_24h: in_flight_24h_totals
+                .placeholder_payout_sats_paid_total,
+            beta_bonus_payout_sats_paid_total: cumulative_totals.beta_bonus_payout_sats_paid_total,
+            beta_bonus_payout_sats_paid_24h: confirmed_24h_totals.beta_bonus_payout_sats_paid_total,
+            beta_bonus_payout_sats_in_flight_total: in_flight_totals
+                .beta_bonus_payout_sats_paid_total,
+            beta_bonus_payout_sats_in_flight_24h: in_flight_24h_totals
+                .beta_bonus_payout_sats_paid_total,
             weak_device_accepted_work_payout_sats_paid_total: cumulative_totals
-                .weak_device_accepted_work_payout_sats_paid_total
-                .saturating_add(
-                    unconfirmed_visible_totals.weak_device_accepted_work_payout_sats_paid_total,
-                ),
+                .weak_device_accepted_work_payout_sats_paid_total,
             weak_device_accepted_work_payout_sats_paid_24h: confirmed_24h_totals
-                .weak_device_accepted_work_payout_sats_paid_total
-                .saturating_add(
-                    unconfirmed_visible_24h_totals.weak_device_accepted_work_payout_sats_paid_total,
-                ),
+                .weak_device_accepted_work_payout_sats_paid_total,
             strong_lane_accepted_work_payout_sats_paid_total: cumulative_totals
-                .strong_lane_accepted_work_payout_sats_paid_total
-                .saturating_add(
-                    unconfirmed_visible_totals.strong_lane_accepted_work_payout_sats_paid_total,
-                ),
+                .strong_lane_accepted_work_payout_sats_paid_total,
             strong_lane_accepted_work_payout_sats_paid_24h: confirmed_24h_totals
-                .strong_lane_accepted_work_payout_sats_paid_total
-                .saturating_add(
-                    unconfirmed_visible_24h_totals.strong_lane_accepted_work_payout_sats_paid_total,
-                ),
+                .strong_lane_accepted_work_payout_sats_paid_total,
             payouts_dispatched_24h,
             payouts_confirmed_24h,
             payouts_failed_24h,
@@ -3663,6 +3727,16 @@ impl TreasuryState {
             };
             snapshot.payout_sats_paid_total = canonical.payout_sats_paid_total;
             snapshot.payout_sats_paid_24h = canonical.payout_sats_paid_24h;
+            snapshot.payout_sats_in_flight_total = 0;
+            snapshot.payout_sats_in_flight_24h = 0;
+            snapshot.accepted_work_payout_sats_in_flight_total = 0;
+            snapshot.accepted_work_payout_sats_in_flight_24h = 0;
+            snapshot.availability_stipend_payout_sats_in_flight_total = 0;
+            snapshot.availability_stipend_payout_sats_in_flight_24h = 0;
+            snapshot.placeholder_payout_sats_in_flight_total = 0;
+            snapshot.placeholder_payout_sats_in_flight_24h = 0;
+            snapshot.beta_bonus_payout_sats_in_flight_total = 0;
+            snapshot.beta_bonus_payout_sats_in_flight_24h = 0;
             snapshot.payouts_dispatched_24h = canonical.payouts_dispatched_24h;
             snapshot.payouts_confirmed_24h = canonical.payouts_confirmed_24h;
             snapshot.payouts_failed_24h = canonical.payouts_failed_24h;
@@ -3801,16 +3875,32 @@ impl TreasuryState {
             degraded_reason,
             payout_sats_paid_total: snapshot.payout_sats_paid_total,
             payout_sats_paid_24h: snapshot.payout_sats_paid_24h,
+            payout_sats_in_flight_total: snapshot.payout_sats_in_flight_total,
+            payout_sats_in_flight_24h: snapshot.payout_sats_in_flight_24h,
             accepted_work_payout_sats_paid_total: snapshot.accepted_work_payout_sats_paid_total,
             accepted_work_payout_sats_paid_24h: snapshot.accepted_work_payout_sats_paid_24h,
+            accepted_work_payout_sats_in_flight_total: snapshot
+                .accepted_work_payout_sats_in_flight_total,
+            accepted_work_payout_sats_in_flight_24h: snapshot
+                .accepted_work_payout_sats_in_flight_24h,
             availability_stipend_payout_sats_paid_total: snapshot
                 .availability_stipend_payout_sats_paid_total,
             availability_stipend_payout_sats_paid_24h: snapshot
                 .availability_stipend_payout_sats_paid_24h,
+            availability_stipend_payout_sats_in_flight_total: snapshot
+                .availability_stipend_payout_sats_in_flight_total,
+            availability_stipend_payout_sats_in_flight_24h: snapshot
+                .availability_stipend_payout_sats_in_flight_24h,
             placeholder_payout_sats_paid_total: snapshot.placeholder_payout_sats_paid_total,
             placeholder_payout_sats_paid_24h: snapshot.placeholder_payout_sats_paid_24h,
+            placeholder_payout_sats_in_flight_total: snapshot
+                .placeholder_payout_sats_in_flight_total,
+            placeholder_payout_sats_in_flight_24h: snapshot
+                .placeholder_payout_sats_in_flight_24h,
             beta_bonus_payout_sats_paid_total: snapshot.beta_bonus_payout_sats_paid_total,
             beta_bonus_payout_sats_paid_24h: snapshot.beta_bonus_payout_sats_paid_24h,
+            beta_bonus_payout_sats_in_flight_total: snapshot.beta_bonus_payout_sats_in_flight_total,
+            beta_bonus_payout_sats_in_flight_24h: snapshot.beta_bonus_payout_sats_in_flight_24h,
             weak_device_accepted_work_payout_sats_paid_total: snapshot
                 .weak_device_accepted_work_payout_sats_paid_total,
             weak_device_accepted_work_payout_sats_paid_24h: snapshot
@@ -4109,16 +4199,31 @@ impl TreasuryState {
                 .collect(),
             payout_sats_paid_total: stats.payout_sats_paid_total,
             payout_sats_paid_24h: stats.payout_sats_paid_24h,
+            payout_sats_in_flight_total: stats.payout_sats_in_flight_total,
+            payout_sats_in_flight_24h: stats.payout_sats_in_flight_24h,
             accepted_work_payout_sats_paid_total: stats.accepted_work_payout_sats_paid_total,
             accepted_work_payout_sats_paid_24h: stats.accepted_work_payout_sats_paid_24h,
+            accepted_work_payout_sats_in_flight_total: stats
+                .accepted_work_payout_sats_in_flight_total,
+            accepted_work_payout_sats_in_flight_24h: stats
+                .accepted_work_payout_sats_in_flight_24h,
             availability_stipend_payout_sats_paid_total: stats
                 .availability_stipend_payout_sats_paid_total,
             availability_stipend_payout_sats_paid_24h: stats
                 .availability_stipend_payout_sats_paid_24h,
+            availability_stipend_payout_sats_in_flight_total: stats
+                .availability_stipend_payout_sats_in_flight_total,
+            availability_stipend_payout_sats_in_flight_24h: stats
+                .availability_stipend_payout_sats_in_flight_24h,
             placeholder_payout_sats_paid_total: stats.placeholder_payout_sats_paid_total,
             placeholder_payout_sats_paid_24h: stats.placeholder_payout_sats_paid_24h,
+            placeholder_payout_sats_in_flight_total: stats
+                .placeholder_payout_sats_in_flight_total,
+            placeholder_payout_sats_in_flight_24h: stats.placeholder_payout_sats_in_flight_24h,
             beta_bonus_payout_sats_paid_total: stats.beta_bonus_payout_sats_paid_total,
             beta_bonus_payout_sats_paid_24h: stats.beta_bonus_payout_sats_paid_24h,
+            beta_bonus_payout_sats_in_flight_total: stats.beta_bonus_payout_sats_in_flight_total,
+            beta_bonus_payout_sats_in_flight_24h: stats.beta_bonus_payout_sats_in_flight_24h,
             weak_device_accepted_work_payout_sats_paid_total: stats
                 .weak_device_accepted_work_payout_sats_paid_total,
             weak_device_accepted_work_payout_sats_paid_24h: stats
@@ -4322,6 +4427,11 @@ impl TreasuryState {
         } else {
             self.payout_loop_runtime_status = Some("idle".to_string());
             self.payout_loop_last_error = None;
+            self.last_payout_reconciliation_at_unix_ms = Some(
+                self.last_payout_reconciliation_at_unix_ms
+                    .unwrap_or(now_unix_ms)
+                    .max(now_unix_ms),
+            );
         }
     }
 
@@ -4432,7 +4542,7 @@ impl TreasuryState {
         };
         self.payout_targets_by_identity
             .insert(request.nostr_pubkey_hex.clone(), target.clone());
-        self.trim_retention();
+        self.trim_retention(now_unix_ms);
         self.persist();
 
         let mut attributes = BTreeMap::new();
@@ -4590,7 +4700,7 @@ impl TreasuryState {
         now_unix_ms: u64,
     ) -> TreasuryPayoutPreparation {
         let mut changed = self.normalize_legacy_payout_classes();
-        changed |= self.trim_retention();
+        changed |= self.trim_retention(now_unix_ms);
         let (mut receipt_events, stale_changed) = self.expire_stale_dispatches(config, now_unix_ms);
         changed |= stale_changed;
         let policy = self.active_policy(config);
@@ -4657,9 +4767,27 @@ impl TreasuryState {
         let payout_interval_ms = policy.payout_interval_ms();
         let (reconciliation_started_at_unix_ms, reconciliation_degraded_reason) =
             self.payout_reconciliation_started_at(config, now_unix_ms);
+        let availability_dispatch_suppression_reason =
+            self.availability_dispatch_suppression_reason(config, now_unix_ms);
         let placeholder_classification = policy.placeholder_payout_classification();
         let dispositions =
             self.availability_identity_dispositions(&policy, online_identities, now_unix_ms);
+
+        if availability_dispatch_suppression_reason.is_some() {
+            let observability =
+                self.availability_observability_snapshot(&policy, online_identities, now_unix_ms);
+            self.apply_availability_observability_snapshot(observability);
+            if changed {
+                self.refresh_public_snapshot(config, now_unix_ms);
+            } else {
+                self.refresh_public_snapshot_in_memory(config, now_unix_ms);
+            }
+            return TreasuryPayoutPreparation {
+                dispatch_plans,
+                receipt_events,
+                reconciliation_degraded_reason,
+            };
+        }
 
         for disposition in dispositions {
             let identity = &disposition.identity;
@@ -5112,7 +5240,7 @@ impl TreasuryState {
             persist_needed = true;
         }
 
-        persist_needed |= self.trim_retention();
+        persist_needed |= self.trim_retention(now_unix_ms);
         if persist_needed {
             self.persist();
         }
@@ -5279,9 +5407,8 @@ impl TreasuryState {
         self.registration_challenges_by_key.len() != before
     }
 
-    fn trim_retention(&mut self) -> bool {
+    fn trim_retention(&mut self, now_unix_ms: u64) -> bool {
         let mut changed = false;
-        let now_unix_ms = now_unix_ms();
         if self.next_challenge_nonce == 0 {
             self.next_challenge_nonce = 1;
             changed = true;
@@ -9180,7 +9307,7 @@ mod tests {
             },
         );
 
-        assert!(state.trim_retention());
+        assert!(state.trim_retention(now_unix_ms));
 
         let placeholder_count = state
             .payout_records_by_key
@@ -10560,7 +10687,7 @@ mod tests {
     }
 
     #[test]
-    fn public_stats_include_unconfirmed_dispatched_sats_in_visible_total() {
+    fn public_stats_keep_unconfirmed_dispatched_sats_out_of_paid_totals() {
         let mut state = TreasuryState::default();
         let config = test_treasury_config();
         let now_unix_ms = super::now_unix_ms();
@@ -10593,8 +10720,10 @@ mod tests {
         );
 
         let stats: TreasuryPublicStats = state.public_stats(&config, now_unix_ms);
-        assert_eq!(stats.payout_sats_paid_total, 122);
-        assert_eq!(stats.payout_sats_paid_24h, 2);
+        assert_eq!(stats.payout_sats_paid_total, 120);
+        assert_eq!(stats.payout_sats_paid_24h, 0);
+        assert_eq!(stats.payout_sats_in_flight_total, 2);
+        assert_eq!(stats.payout_sats_in_flight_24h, 2);
         assert_eq!(stats.payouts_dispatched_24h, 1);
         assert_eq!(stats.payouts_confirmed_24h, 0);
     }
@@ -11811,8 +11940,69 @@ mod tests {
         assert_eq!(state.last_payout_reconciliation_at_unix_ms, Some(1_234_567));
 
         state.note_payout_loop_completed(1_345_678, None);
-        assert_eq!(state.last_payout_reconciliation_at_unix_ms, Some(1_234_567));
+        assert_eq!(state.last_payout_reconciliation_at_unix_ms, Some(1_345_678));
         assert_eq!(state.payout_loop_last_completed_at_unix_ms, Some(1_345_678));
+    }
+
+    #[test]
+    fn availability_dispatch_is_suppressed_during_confirmation_stall() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.enabled = true;
+        config.payout_sats_per_window = 25;
+        let now_unix_ms = 2_000_000u64;
+        let payout_interval_ms = config.payout_interval_ms();
+
+        state.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms.saturating_sub(payout_interval_ms));
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: now_unix_ms.saturating_sub(10),
+                last_verified_at_unix_ms: now_unix_ms.saturating_sub(10),
+            },
+        );
+        state.payout_records_by_key.insert(
+            "stalled-dispatch".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "stalled-dispatch".to_string(),
+                nostr_pubkey_hex: "pubkey-stalled".to_string(),
+                payout_target: "spark:stalled".to_string(),
+                amount_sats: 25,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("payment-stalled".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(payout_interval_ms * 2),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(payout_interval_ms),
+                created_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000),
+                updated_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+        assert_eq!(
+            state.availability_dispatch_suppression_reason(&config, now_unix_ms),
+            Some("confirmations_stalled".to_string())
+        );
+
+        let prepared =
+            state.prepare_due_payouts(&config, &[test_online_identity("pubkey-a")], now_unix_ms);
+
+        assert!(
+            prepared.dispatch_plans.is_empty(),
+            "unexpected dispatch plans: {:?}",
+            prepared.dispatch_plans
+        );
     }
 
     #[test]

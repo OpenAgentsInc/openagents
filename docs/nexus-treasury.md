@@ -751,6 +751,8 @@ Public-safe treasury counters now project through `nexus-control /api/stats`:
 - `nexus_registered_payout_identities`
 - `nexus_payout_sats_paid_total`
 - `nexus_payout_sats_paid_24h`
+- `nexus_payout_sats_in_flight_total`
+- `nexus_payout_sats_in_flight_24h`
 - `nexus_payouts_dispatched_24h`
 - `nexus_payouts_confirmed_24h`
 - `nexus_payouts_failed_24h`
@@ -840,6 +842,15 @@ tracked-payment visibility honest after payout mutations and makes
 `pending_confirmation_count` / `tracked_payment_backlog_count` reflect the
 current ledger immediately, even before an unrelated snapshot rebuild lands.
 
+Public payout totals are now split into two explicit buckets:
+
+- `*_payout_sats_paid_*` means confirmed-and-counted payout sats only.
+- `*_payout_sats_in_flight_*` means real dispatched payout sats that still have
+  a `payment_id` but have not reconciled to `confirmed` yet.
+
+This keeps the public board honest about actual settled payout truth while
+still showing operators that treasury has already initiated real sends.
+
 Operator-safe policy audit now also projects through `GET /v1/treasury/status`:
 
 - `policy_schema_version`
@@ -907,6 +918,13 @@ Continuity alerts:
   leaving the payout unresolved. A single missing history page should not hold
   `confirmations_stalled` open for hours while newer payouts are already
   confirming.
+- availability stipend dispatch is now suppressed while confirmation
+  continuity is already broken. If a continuity-relevant dispatched payout is
+  older than the stall threshold, or the pending-confirmation backlog reaches
+  the bounded refresh page size, the stipend loop stops minting new dispatches
+  until reconciliation catches up. This prevents treasury from continuing to
+  spray real sends while the operator truth is already telling us confirmation
+  visibility is degraded.
 - critical alerts are also reflected directly in `payout_loop_health` and
   `degraded_reason`, so operators do not need to infer failures from homepage
   behavior.
