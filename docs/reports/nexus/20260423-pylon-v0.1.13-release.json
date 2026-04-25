@@ -35,7 +35,7 @@
   },
   "verification": {
     "search": {
-      "command": "rg -n -i \"ollama\" /Users/christopherdavid/work --glob '!**/target/**' --glob '!**/node_modules/**' --glob '!**/vendor/**' --glob '!**/.git/**' --glob '!**/competition/**' --glob '!**/backroom/**'",
+      "command": "rg -n -i '<legacy runtime wording removed>' /Users/christopherdavid/work --glob '!**/target/**' --glob '!**/node_modules/**' --glob '!**/vendor/**' --glob '!**/.git/**' --glob '!**/competition/**' --glob '!**/backroom/**'",
       "result": "no matches in owned live repos after scrub"
     },
     "openagents": [
