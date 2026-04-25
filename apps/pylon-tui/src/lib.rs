@@ -4758,7 +4758,11 @@ fn compute_operator_panel_stats_at(
         .and_then(|value| value.earnings.as_ref())
         .map(|earnings| earnings.lifetime_sats)
         .unwrap_or(0);
-    let total_earnings_sats = snapshot_lifetime_earnings_sats.max(settled_sats_lifetime);
+    let wallet_credited_lifetime_sats = ledger.wallet.credits.credited_lifetime_sats;
+    let total_earnings_sats = snapshot_lifetime_earnings_sats
+        .max(settled_sats_lifetime)
+        .max(wallet_credited_lifetime_sats)
+        .max(session_earnings_sats);
     let last_job_result = snapshot
         .and_then(|value| value.earnings.as_ref())
         .map(|earnings| earnings.last_job_result.as_str())
@@ -5708,9 +5712,9 @@ mod tests {
         parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
         parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
         recent_provider_activity, render_rank_progress_spans, shell_title,
-        should_publish_provider_presence, stabilize_operator_panel_stats,
-        stacker_rank_progress, summarize_chat_metrics, transcript_viewport_height,
-        transcript_wrap_width, wrapped_row_count,
+        should_publish_provider_presence, stabilize_operator_panel_stats, stacker_rank_progress,
+        summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
+        wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use openagents_provider_substrate::{ProviderDesiredMode, ProviderPersistedSnapshot};
@@ -6553,6 +6557,40 @@ mod tests {
         );
 
         assert_eq!(stats.jobs_settled_24h, 1);
+    }
+
+    #[test]
+    fn compute_operator_panel_stats_never_reports_lifetime_below_session_stack() {
+        let now_ms = 1_762_700_500_000_u64;
+        let mut ledger = pylon::PylonLedger::default();
+        ledger
+            .wallet
+            .payments
+            .push(pylon::PylonWalletPaymentRecord {
+                payment_id: "payment-session-001".to_string(),
+                direction: "receive".to_string(),
+                status: "completed".to_string(),
+                amount_sats: 295,
+                fees_sats: 0,
+                method: "spark".to_string(),
+                description: Some("availability stipend".to_string()),
+                invoice: None,
+                created_at_ms: now_ms - 800,
+                updated_at_ms: now_ms - 700,
+            });
+
+        let stats = compute_operator_panel_stats_at(
+            ProviderDesiredMode::Online,
+            true,
+            None,
+            None,
+            &ledger,
+            now_ms - 1_000,
+            now_ms,
+        );
+
+        assert_eq!(stats.session_earnings_sats, 295);
+        assert_eq!(stats.total_earnings_sats, 295);
     }
 
     #[test]
