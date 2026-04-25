@@ -14,6 +14,10 @@ WORK  ─▶  VERIFY  ─▶  RECEIPT  ─▶  POLICY  ─▶  THROTTLE  ─▶ 
 
 Every loop iteration = one settled sat · one signed receipt · one policy delta. See [`assets/graphics/sv-control-loop.svg`](../assets/graphics/sv-control-loop.svg) for the full diagram.
 
+## The authority objects
+
+<figure><img src="../assets/graphics/kernel-authority-objects.svg" alt="Five kernel authority objects"><figcaption>The five signed objects the kernel mints and revokes. See the Data Market handler guide for how each one ties to a NIP-90 event.</figcaption></figure>
+
 ## Authority boundaries — ADR-0001
 
 **Spacetime is not an authority for money or verdicts.** The kernel is. The `TreasuryRouter` cuts and signs every accepted-work payout. The desktop can lag; the money is still correct.

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 460" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b0d10"/>
+      <stop offset="1" stop-color="#14181d"/>
+    </linearGradient>
+    <linearGradient id="self" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a2820"/>
+      <stop offset="1" stop-color="#101c14"/>
+    </linearGradient>
+    <linearGradient id="remote" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a1c1c"/>
+      <stop offset="1" stop-color="#190f0f"/>
+    </linearGradient>
+    <linearGradient id="head" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22282f"/>
+      <stop offset="1" stop-color="#171c22"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="920" height="460" fill="url(#bg)"/>
+
+  <text x="460" y="32" fill="#e6edf3" font-size="16" text-anchor="middle" letter-spacing="2">INFERENCE POSTURE · CUSTODY MATRIX</text>
+  <text x="460" y="54" fill="#7d8493" font-size="11" text-anchor="middle">same sats earned · different parties see your work</text>
+
+  <!-- Header row -->
+  <rect x="60"  y="100" width="220" height="50" rx="4" fill="url(#head)" stroke="#3d4654"/>
+  <text x="170" y="130" fill="#9aa4b2" font-size="11" text-anchor="middle">CUSTODY OF</text>
+
+  <rect x="290" y="100" width="300" height="50" rx="4" fill="url(#self)" stroke="#9bd99b" stroke-width="1.5"/>
+  <text x="440" y="124" fill="#9bd99b" font-size="13" text-anchor="middle" font-weight="700">Self-hosted</text>
+  <text x="440" y="142" fill="#7d8493" font-size="9" text-anchor="middle">gpt-oss · Apple FM · pooled mesh</text>
+
+  <rect x="600" y="100" width="280" height="50" rx="4" fill="url(#remote)" stroke="#d09a9a" stroke-width="1.5"/>
+  <text x="740" y="124" fill="#d09a9a" font-size="13" text-anchor="middle" font-weight="700">Remote</text>
+  <text x="740" y="142" fill="#7d8493" font-size="9" text-anchor="middle">credentialed external provider</text>
+
+  <!-- Row 1: Weights -->
+  <rect x="60"  y="160" width="220" height="60" rx="4" fill="url(#head)" stroke="#3d4654"/>
+  <text x="170" y="195" fill="#e6edf3" font-size="12" text-anchor="middle">Weights</text>
+  <rect x="290" y="160" width="300" height="60" rx="4" fill="url(#self)" stroke="#3d4654"/>
+  <text x="440" y="195" fill="#9bd99b" font-size="12" text-anchor="middle" font-weight="700">You</text>
+  <rect x="600" y="160" width="280" height="60" rx="4" fill="url(#remote)" stroke="#3d4654"/>
+  <text x="740" y="195" fill="#d09a9a" font-size="12" text-anchor="middle" font-weight="700">Provider</text>
+
+  <!-- Row 2: Prompt -->
+  <rect x="60"  y="230" width="220" height="60" rx="4" fill="url(#head)" stroke="#3d4654"/>
+  <text x="170" y="265" fill="#e6edf3" font-size="12" text-anchor="middle">The prompt</text>
+  <rect x="290" y="230" width="300" height="60" rx="4" fill="url(#self)" stroke="#3d4654"/>
+  <text x="440" y="265" fill="#9bd99b" font-size="12" text-anchor="middle" font-weight="700">You</text>
+  <rect x="600" y="230" width="280" height="60" rx="4" fill="url(#remote)" stroke="#3d4654"/>
+  <text x="740" y="265" fill="#d09a9a" font-size="12" text-anchor="middle" font-weight="700">Provider sees it</text>
+
+  <!-- Row 3: Output -->
+  <rect x="60"  y="300" width="220" height="60" rx="4" fill="url(#head)" stroke="#3d4654"/>
+  <text x="170" y="335" fill="#e6edf3" font-size="12" text-anchor="middle">The output</text>
+  <rect x="290" y="300" width="300" height="60" rx="4" fill="url(#self)" stroke="#3d4654"/>
+  <text x="440" y="335" fill="#9bd99b" font-size="12" text-anchor="middle" font-weight="700">You</text>
+  <rect x="600" y="300" width="280" height="60" rx="4" fill="url(#remote)" stroke="#3d4654"/>
+  <text x="740" y="335" fill="#d09a9a" font-size="12" text-anchor="middle" font-weight="700">Provider sees it</text>
+
+  <!-- Row 4: Sats earned -->
+  <rect x="60"  y="370" width="220" height="60" rx="4" fill="url(#head)" stroke="#F5A623"/>
+  <text x="170" y="405" fill="#F5A623" font-size="12" text-anchor="middle" font-weight="700">Sats earned</text>
+  <rect x="290" y="370" width="300" height="60" rx="4" fill="url(#self)" stroke="#F5A623"/>
+  <text x="440" y="405" fill="#F5A623" font-size="12" text-anchor="middle" font-weight="700">Same</text>
+  <rect x="600" y="370" width="280" height="60" rx="4" fill="url(#remote)" stroke="#F5A623"/>
+  <text x="740" y="405" fill="#F5A623" font-size="12" text-anchor="middle" font-weight="700">Same</text>
+</svg>

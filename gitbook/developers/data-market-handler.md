@@ -14,6 +14,8 @@
 
 This guide is the developer counterpart to [Investor Chapter 6 — A Second Market: Datasets](../investors/06-data-market-mvp.md). The investor chapter explains why the Data Market matters; this page explains how to build a handler that participates in it.
 
+<figure><img src="../assets/graphics/data-market-event-flow.svg" alt="Data Market event flow across buyer, relays, and handler swimlanes"><figcaption>The on-the-wire event flow. Capability ad goes out first; buyer request lands; payment-required feedback emits a Lightning invoice; settlement flips the access contract and result events.</figcaption></figure>
+
 ## The two event families
 
 A Data Market handler speaks two overlapping vocabularies on Nostr.
@@ -50,6 +52,8 @@ Optional public-facing wrappers — NIP-99 classifieds, NIP-15 storefront, NIP-2
 
 ## Kernel authority objects
 
+<figure><img src="../assets/graphics/kernel-authority-objects.svg" alt="Five kernel authority objects: DataAsset, PermissionPolicy, AccessGrant, DeliveryBundle, RevocationReceipt"><figcaption>Five signed objects in the Economy Kernel. Every object is signed kernel state — these receipts are the diligence path.</figcaption></figure>
+
 A handler is not just a Nostr publisher — it is an authority over the data it sells. The Economy Kernel exposes the trust model through five core objects in [`crates/openagents-kernel-core/src/data.rs`](https://github.com/OpenAgentsInc/openagents/tree/main/crates/openagents-kernel-core/src) and `authority.rs`:
 
 | Object              | Role                                                                                            |
@@ -72,6 +76,8 @@ The MVP publishes to and reads from:
 You can extend this list per-handler in your config, but these two are the public defaults the autopilots ship with.
 
 ## Lifecycle: publish → request → invoice → pay → deliver → revoke
+
+<figure><img src="../assets/graphics/data-market-lifecycle.svg" alt="Six-state handler lifecycle from invoice_requested to revocation"><figcaption>Every transition mints or updates a kernel authority object. Stalls at state 3 (buyer never paid) are normal — the lifecycle aborts cleanly.</figcaption></figure>
 
 The handler runtime walks every order through six states (per [`docs/plans/data-market-mvp-implementation-spec.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/plans/data-market-mvp-implementation-spec.md)):
 

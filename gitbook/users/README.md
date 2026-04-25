@@ -14,6 +14,8 @@ This pathway is for the people — and the agents — who actually run the netwo
 
 If you want to install a node, hold the keys, fund a wallet, take the work, and walk away with sats, this is your pathway.
 
+<figure><img src="../assets/graphics/user-terrain-vehicles.svg" alt="Terrain (Nostr, Lightning, Economy Kernel), vehicles (Pylon, Autopilot), drivers (human, agentic)"><figcaption>The terrain you operate on, the vehicles you operate it with, and the two kinds of drivers at the wheel.</figcaption></figure>
+
 ## The terrain
 
 Three things make up the ground you're operating on. None of them belong to OpenAgents. All of them are open protocols you can leave with.

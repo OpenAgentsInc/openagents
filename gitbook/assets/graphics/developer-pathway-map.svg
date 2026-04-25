@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b0d10"/>
+      <stop offset="1" stop-color="#14181d"/>
+    </linearGradient>
+    <linearGradient id="node" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e2530"/>
+      <stop offset="1" stop-color="#151a22"/>
+    </linearGradient>
+    <linearGradient id="part" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1f28"/>
+      <stop offset="1" stop-color="#10141a"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#F5A623"/>
+    </marker>
+  </defs>
+
+  <rect width="960" height="540" fill="url(#bg)"/>
+
+  <text x="480" y="36" fill="#e6edf3" font-size="16" text-anchor="middle" letter-spacing="2">DEVELOPER PATHWAY MAP</text>
+  <text x="480" y="58" fill="#7d8493" font-size="11" text-anchor="middle">install → integrate → ship → earn</text>
+
+  <!-- Part 1: Quickstart -->
+  <g>
+    <rect x="40" y="100" width="200" height="380" rx="8" fill="url(#part)" stroke="#2a313d" stroke-width="1"/>
+    <text x="140" y="128" fill="#F5A623" font-size="11" text-anchor="middle" letter-spacing="2">PART 1</text>
+    <text x="140" y="148" fill="#e6edf3" font-size="14" text-anchor="middle" font-weight="700">QUICKSTART</text>
+
+    <rect x="60" y="180" width="160" height="56" rx="4" fill="url(#node)" stroke="#F5A623" stroke-width="1.2"/>
+    <text x="140" y="202" fill="#e6edf3" font-size="12" text-anchor="middle">Install Pylon</text>
+    <text x="140" y="220" fill="#7d8493" font-size="10" text-anchor="middle">npx · cargo · source</text>
+
+    <rect x="60" y="252" width="160" height="56" rx="4" fill="url(#node)" stroke="#3d4654" stroke-width="1"/>
+    <text x="140" y="274" fill="#e6edf3" font-size="12" text-anchor="middle">Local Nexus</text>
+    <text x="140" y="292" fill="#7d8493" font-size="10" text-anchor="middle">hosted or own</text>
+
+    <rect x="60" y="324" width="160" height="56" rx="4" fill="url(#node)" stroke="#F5A623" stroke-width="1.5"/>
+    <text x="140" y="346" fill="#F5A623" font-size="12" text-anchor="middle" font-weight="700">First 25 sats</text>
+    <text x="140" y="364" fill="#7d8493" font-size="10" text-anchor="middle">earning proof</text>
+
+    <text x="140" y="430" fill="#7d8493" font-size="10" text-anchor="middle">Pylon CLI</text>
+    <text x="140" y="446" fill="#7d8493" font-size="10" text-anchor="middle">works today</text>
+    <circle cx="140" cy="465" r="4" fill="#4ade80"/>
+  </g>
+
+  <!-- Part 2: Provider integrations -->
+  <g>
+    <rect x="270" y="100" width="200" height="380" rx="8" fill="url(#part)" stroke="#2a313d" stroke-width="1"/>
+    <text x="370" y="128" fill="#F5A623" font-size="11" text-anchor="middle" letter-spacing="2">PART 2</text>
+    <text x="370" y="148" fill="#e6edf3" font-size="14" text-anchor="middle" font-weight="700">INTEGRATIONS</text>
+
+    <rect x="290" y="180" width="160" height="56" rx="4" fill="url(#node)" stroke="#3d4654" stroke-width="1"/>
+    <text x="370" y="202" fill="#e6edf3" font-size="12" text-anchor="middle">Training lanes</text>
+    <text x="370" y="220" fill="#7d8493" font-size="10" text-anchor="middle">CS336 A1 · dispatch</text>
+
+    <rect x="290" y="252" width="160" height="56" rx="4" fill="url(#node)" stroke="#3d4654" stroke-width="1"/>
+    <text x="370" y="274" fill="#e6edf3" font-size="12" text-anchor="middle">Psionic runtime</text>
+    <text x="370" y="292" fill="#7d8493" font-size="10" text-anchor="middle">edge ML · adapters</text>
+
+    <rect x="290" y="324" width="160" height="56" rx="4" fill="url(#node)" stroke="#3d4654" stroke-width="1"/>
+    <text x="370" y="346" fill="#e6edf3" font-size="12" text-anchor="middle">Validators</text>
+    <text x="370" y="364" fill="#7d8493" font-size="10" text-anchor="middle">separate-Pylon model</text>
+  </g>
+
+  <!-- Part 3: Markets -->
+  <g>
+    <rect x="500" y="100" width="200" height="380" rx="8" fill="url(#part)" stroke="#2a313d" stroke-width="1"/>
+    <text x="600" y="128" fill="#F5A623" font-size="11" text-anchor="middle" letter-spacing="2">PART 3</text>
+    <text x="600" y="148" fill="#e6edf3" font-size="14" text-anchor="middle" font-weight="700">MARKETS</text>
+
+    <rect x="520" y="180" width="160" height="56" rx="4" fill="url(#node)" stroke="#F5A623" stroke-width="1.5"/>
+    <text x="600" y="202" fill="#F5A623" font-size="12" text-anchor="middle" font-weight="700">Data handler</text>
+    <text x="600" y="220" fill="#7d8493" font-size="10" text-anchor="middle">5960 · 6960 · 31990</text>
+
+    <rect x="520" y="252" width="160" height="56" rx="4" fill="url(#node)" stroke="#F5A623" stroke-width="1.5"/>
+    <text x="600" y="274" fill="#F5A623" font-size="12" text-anchor="middle" font-weight="700">Kernel integration</text>
+    <text x="600" y="292" fill="#7d8493" font-size="10" text-anchor="middle">authority · sv loop</text>
+
+    <rect x="520" y="324" width="160" height="56" rx="4" fill="url(#node)" stroke="#3d4654" stroke-width="1"/>
+    <text x="600" y="346" fill="#e6edf3" font-size="12" text-anchor="middle">Compute handler</text>
+    <text x="600" y="364" fill="#7d8493" font-size="10" text-anchor="middle">same NIP-90 trio</text>
+  </g>
+
+  <!-- Part 4: Earn -->
+  <g>
+    <rect x="730" y="100" width="200" height="380" rx="8" fill="url(#part)" stroke="#2a313d" stroke-width="1"/>
+    <text x="830" y="128" fill="#F5A623" font-size="11" text-anchor="middle" letter-spacing="2">PART 4</text>
+    <text x="830" y="148" fill="#e6edf3" font-size="14" text-anchor="middle" font-weight="700">EARN</text>
+
+    <rect x="750" y="180" width="160" height="56" rx="4" fill="url(#node)" stroke="#F5A623" stroke-width="1.5"/>
+    <text x="830" y="202" fill="#F5A623" font-size="12" text-anchor="middle" font-weight="700">Bounties</text>
+    <text x="830" y="220" fill="#7d8493" font-size="10" text-anchor="middle">OAPN #6 · live now</text>
+
+    <rect x="750" y="252" width="160" height="56" rx="4" fill="url(#node)" stroke="#3d4654" stroke-width="1"/>
+    <text x="830" y="274" fill="#e6edf3" font-size="12" text-anchor="middle">Forge + Probe</text>
+    <text x="830" y="292" fill="#7d8493" font-size="10" text-anchor="middle">software factory</text>
+
+    <rect x="750" y="324" width="160" height="56" rx="4" fill="url(#node)" stroke="#3d4654" stroke-width="1"/>
+    <text x="830" y="346" fill="#e6edf3" font-size="12" text-anchor="middle">Skill marketplace</text>
+    <text x="830" y="364" fill="#7d8493" font-size="10" text-anchor="middle">repo-owned skills</text>
+  </g>
+
+  <!-- Connecting arrows -->
+  <line x1="240" y1="290" x2="270" y2="290" stroke="#F5A623" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="470" y1="290" x2="500" y2="290" stroke="#F5A623" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="700" y1="290" x2="730" y2="290" stroke="#F5A623" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Footer -->
+  <text x="480" y="510" fill="#7d8493" font-size="10" text-anchor="middle">orange-bordered nodes are the chapters that ship today · grey-bordered ship for Bitcoin Vegas 2026</text>
+</svg>

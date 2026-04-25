@@ -12,6 +12,8 @@ description: Build on OpenAgents — run a Pylon, ship a Data Market handler, ea
 
 This pathway is for developers who want to build on OpenAgents — run a Pylon, integrate with the Economy Kernel, ship a Data Market handler, or pick up a paid developer bounty.
 
+<figure><img src="../assets/graphics/developer-pathway-map.svg" alt="Developer pathway map: Quickstart, Integrations, Markets, Earn"><figcaption>The four parts of the developer pathway. Orange-bordered nodes are the chapters that ship today.</figcaption></figure>
+
 {% hint style="warning" %}
 **This pathway is under construction.** The outline below is finalized and each section will be filled in ahead of Bitcoin Vegas 2026. The [Investor Path](../investors/README.md) is complete today and includes many of the same technical anchors. Follow along at [openagents.substack.com](https://openagents.substack.com) or [@OpenAgentsInc on YouTube](https://www.youtube.com/@OpenAgentsInc).
 {% endhint %}

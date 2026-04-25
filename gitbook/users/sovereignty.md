@@ -16,6 +16,8 @@ Every recommendation on this page is in service of that goal.
 
 ## Key custody — the layered model
 
+<figure><img src="../assets/graphics/key-custody-tiers.svg" alt="Three custody tiers ordered by blast radius"><figcaption>Spend custody effort proportional to the damage a leak would cause. Tier 1 deserves a metal seed plate; Tier 3 deserves a rotation schedule.</figcaption></figure>
+
 There are three keys (well, three roles for one key) that you control. Order them by blast radius.
 
 | Tier | Material                                  | Blast radius if lost                                                  |
@@ -59,6 +61,8 @@ When the desktop syncs credentials into runtime environments, the routing rule i
 If you want a key visible to Codex but not Spark, scope it `CODEX`. If you want it everywhere, scope `GLOBAL`. If you find yourself reaching for `GLOBAL` reflexively, stop and ask whether you actually need it.
 
 ## Self-hosted vs remote inference — a sovereignty axis
+
+<figure><img src="../assets/graphics/inference-posture-matrix.svg" alt="Custody matrix comparing self-hosted vs remote inference"><figcaption>Same sats earned either way. The difference is who else sees the work.</figcaption></figure>
 
 The choice of where the model runs is not just a cost question. It's a custody question.
 

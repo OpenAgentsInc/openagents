@@ -19,6 +19,8 @@ The economic primitives are the same in both — kind `5960` request, kind `6960
 
 ## Decision 2 — self-hosted or remote inference
 
+<figure><img src="../assets/graphics/inference-posture-matrix.svg" alt="Custody matrix comparing self-hosted vs remote inference"><figcaption>Same sats either way. Pick by who you want to see the prompt.</figcaption></figure>
+
 This is the sovereignty knob. It's covered in depth in [Sovereignty & OpSec](sovereignty.md); the short version:
 
 - **Self-hosted** — the model runs on your machine. `gpt-oss`, Apple FM adapters, the local pooled-inference mesh. You see the prompt, you see the output, no third party in the loop. Maximum custody.

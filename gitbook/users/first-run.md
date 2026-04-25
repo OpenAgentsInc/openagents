@@ -6,6 +6,8 @@ The first time Pylon (or Autopilot) launches, it does one thing that matters mor
 
 Treat that fact as load-bearing. Everything else on this page exists to keep you from losing it.
 
+<figure><img src="../assets/graphics/identity-mnemonic-tree.svg" alt="One mnemonic seeds both Nostr identity and Spark wallet"><figcaption>One mnemonic, two roles. Backing up the seed backs up your identity AND your wallet.</figcaption></figure>
+
 ## The one file that matters
 
 ```

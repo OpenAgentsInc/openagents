@@ -4,6 +4,8 @@
 
 The loop has known stall points. Each one has a diagnostic ladder. Walk the rungs in order — most issues clear on rung 1 or 2.
 
+<figure><img src="../assets/graphics/troubleshooting-ladder.svg" alt="Lifecycle states with common stall points mapped"><figcaption>The six lifecycle states and where the seven most common failures actually live. State 3 stalls are normal; the rest deserve a ladder walk.</figcaption></figure>
+
 ## "Pylon won't start" / "identity error"
 
 **Symptoms:** binary exits on launch, log mentions identity, mnemonic, or path resolution.
