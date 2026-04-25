@@ -171,8 +171,8 @@ Current production truth:
   `0.1.14` or newer. It resolves the latest trusted `pylon-v...` release asset
   and keeps the running dashboard updated unless `--no-updates` or a pinned
   `--version` is used.
-- The latest trusted standalone binary release remains `pylon-v0.1.13` until a
-  newer GitHub `pylon-v...` release asset is published by `AtlantisPleb`.
+- The latest trusted standalone binary release is `pylon-v0.1.14`, published
+  by `AtlantisPleb`.
 - The live paid work class is bounded hosted homework/training work, currently
   the CS336 A1 starter lane used to prove the earning loop.
 - Work is not yet a fully open demand marketplace. Hosted Nexus currently
@@ -195,9 +195,12 @@ Current production truth:
 - For Psionic-backed homework/training work, `0.1.12` fixed the Mac launch
   path. `0.1.13` keeps that worker-launch behavior and removes the last legacy
   runtime wording plus automatic runtime mutation from the public install path.
-  Pylon runs a current `target/release/psionic-train` when present and
-  otherwise falls back to `cargo run --release`, with failure receipts that
-  show signal/log-tail details instead of only `code -1`.
+  `0.1.14` keeps those guarantees and fixes the production long-homework-ID
+  crash that could make the TUI-managed worker exit with status 1 while stale
+  dashboard panels still looked alive. Pylon runs a current
+  `target/release/psionic-train` when present and otherwise falls back to
+  `cargo run --release`, with failure receipts that show signal/log-tail
+  details instead of only `code -1`.
 
 Useful inspection commands:
 
@@ -232,10 +235,16 @@ release asset and npm bootstrap path. `pylon-v0.1.11` made `pylon` open the
 minimal homework dashboard, had the TUI start and supervise the earning worker,
 and kept Gemma diagnostics/downloads opt-in during homework onboarding.
 `pylon-v0.1.12` remains the live hosted-Nexus homework dispatcher floor because
-it fixed the Psionic-backed Mac training-worker launch path. `pylon-v0.1.13`
-is the current recommended public build because it keeps that path while
-removing the last legacy runtime wording and automatic runtime mutation from the
-public install/runtime flow. The `0.1.13` release receipt is
+it fixed the Psionic-backed Mac training-worker launch path. `pylon-v0.1.14`
+is the current recommended public build because it keeps the `0.1.13`
+onboarding/runtime scrub and hashes long hosted homework run, window, and
+assignment IDs before using them as local filesystem path segments. That keeps
+production-shaped CS336 run IDs from crashing the supervised worker on macOS
+`NAME_MAX` limits, and the TUI now marks that class of worker exit as
+`Needs attention` instead of leaving the node in a misleading startup state.
+The `0.1.14` release receipt is
+[docs/reports/nexus/20260425-pylon-v0.1.14-release.json](docs/reports/nexus/20260425-pylon-v0.1.14-release.json).
+The `0.1.13` release receipt is
 [docs/reports/nexus/20260423-pylon-v0.1.13-release.json](docs/reports/nexus/20260423-pylon-v0.1.13-release.json).
 The `0.1.11` release receipt is
 [docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json](docs/reports/nexus/20260423-072712-pylon-v0.1.11-release.json).

@@ -4754,7 +4754,9 @@ fn training_run_root(config: &PylonConfig) -> PathBuf {
 }
 
 fn training_run_root_for_id(config: &PylonConfig, training_run_id: &str) -> PathBuf {
-    training_run_root(config).join("runs").join(training_run_id)
+    training_run_root(config)
+        .join("runs")
+        .join(training_safe_path_segment(training_run_id, "run"))
 }
 
 fn training_runtime_manifest_path_for_run(run_root: &Path) -> PathBuf {
@@ -19941,8 +19943,14 @@ fn training_supervisor_attempt_dir(
     request
         .run_root
         .join("supervisor")
-        .join(&request.training_run_id)
-        .join(&request.assignment_id)
+        .join(training_safe_path_segment(
+            request.training_run_id.as_str(),
+            "run",
+        ))
+        .join(training_safe_path_segment(
+            request.assignment_id.as_str(),
+            "assignment",
+        ))
         .join(format!("attempt-{}", restart_count + 1))
 }
 
@@ -28800,6 +28808,74 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             root.file_name().and_then(|value| value.to_str()) == Some(segment.as_str()),
             "validator challenge paths should use the stable hashed segment",
+        )
+    }
+
+    #[test]
+    fn training_supervisor_paths_hash_production_shaped_long_ids()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let mut config = default_config(temp_dir.path());
+        config.training.run_root = temp_dir.path().join("training");
+        let run_id = concat!(
+            "run.cs336.a1.user-sim-pylon-user-sim-20260422T042549Z-",
+            "20260422044002-a1_20260422044003_b2444974_0001.",
+            "20260422044003.a20744a7"
+        );
+        let window_id = concat!(
+            "window.cs336.a1.user-sim-pylon-user-sim-20260422T042549Z-",
+            "20260422044002-a1_20260422044003_b2444974_0001.",
+            "20260422044003.a20744a7.0001"
+        );
+        let assignment_id = format!("assign.{run_id}.{window_id}.worker.1.attempt7");
+
+        ensure(
+            run_id.len() > 96 && assignment_id.len() > 255,
+            "fixture should exceed the raw path segment limits that crashed the managed worker",
+        )?;
+
+        let run_root = training_run_root_for_id(&config, run_id);
+        let run_segment = run_root
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or("missing hashed run segment")?;
+        let run_digest = training_raw_sha256_hex(run_id.as_bytes());
+        ensure(
+            run_segment.len() <= 96
+                && run_segment != run_id
+                && run_segment.ends_with(&run_digest[..24]),
+            "long training run ids should map to stable bounded local run-root segments",
+        )?;
+
+        let request = PylonTrainingSupervisorStartRequest {
+            manifest_path: run_root.join("manifests").join("run_manifest.json"),
+            run_root: run_root.clone(),
+            training_run_id: run_id.to_string(),
+            window_id: window_id.to_string(),
+            assignment_id: assignment_id.clone(),
+            lease_id: format!("lease.{assignment_id}"),
+            membership_revision: "members.rev1".to_string(),
+            role: PylonTrainingRoleClaim::Worker,
+        };
+        let attempt_dir = super::training_supervisor_attempt_dir(&request, 0);
+        let relative = attempt_dir.strip_prefix(run_root.as_path())?;
+        let components = relative
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        ensure(
+            components.len() == 4
+                && components[0] == "supervisor"
+                && components[1].len() <= 96
+                && components[2].len() <= 96
+                && components[2] != assignment_id
+                && components[3] == "attempt-1",
+            "supervisor attempt paths should keep long run and assignment ids out of raw filesystem components",
+        )?;
+        std::fs::create_dir_all(attempt_dir.as_path())?;
+        ensure(
+            attempt_dir.is_dir(),
+            "bounded supervisor attempt directory should be creatable on macOS filesystems",
         )
     }
 

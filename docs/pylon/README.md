@@ -340,7 +340,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.1.13
+npx @openagentsinc/pylon --version 0.1.14
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
@@ -431,9 +431,9 @@ target, asks Nexus for available work, and receives CS336 Assignment 1 starter
 work when that is the currently hosted starter lane available to the node.
 
 The current recommended public paid-training Pylon release for this path is
-`pylon-v0.1.13`, exposed through `@openagentsinc/pylon` `0.1.13`. It keeps the
-`0.1.12` homework-earning TUI, the TUI-managed worker lifecycle, bootstrap
-behavior that launches the TUI after smoke checks, opt-in-only Gemma
+`pylon-v0.1.14`, exposed through `@openagentsinc/pylon` `0.1.14` or newer. It
+keeps the `0.1.12` homework-earning TUI, the TUI-managed worker lifecycle,
+bootstrap behavior that launches the TUI after smoke checks, opt-in-only Gemma
 diagnostics/downloads, the Mac-safe Psionic training-worker launch path, the
 public-safe signed-artifact path, accepted-work payout projection, validator
 intake enabled by default, worker-first/validator-second default role claims,
@@ -441,10 +441,13 @@ failed retained-runtime lease retirement, nonfatal scheduler-error handling,
 default local Spark payout destination creation in the long-lived serve path,
 retained snapshot reuse for validator replay retries, and the Autopilot proof
 projection fixes needed for a normal node that advertises both worker and
-validator roles. `0.1.13` also removes the last legacy runtime wording from the
-public onboarding/runtime path and stops automatic runtime import or uninstall
-attempts against external local runtimes. It still reports terminal worker and
-validator closeout state to Nexus before attempting slower artifact/TRN
+validator roles. `0.1.14` also keeps the `0.1.13` public onboarding/runtime
+scrub and hashes long hosted homework run, window, and assignment IDs before
+using them as local filesystem path segments. That prevents production-shaped
+CS336 IDs from crashing the TUI-supervised worker on macOS `NAME_MAX` limits,
+and the TUI marks worker exits as `Needs attention` instead of leaving stale
+startup text in the mission-control header. It still reports terminal worker
+and validator closeout state to Nexus before attempting slower artifact/TRN
 publication, with a bounded publication timeout so a slow signed-URL upload
 cannot wedge the earning loop before accepted-work payout. For Psionic-backed
 homework/training jobs, it still prefers a current
@@ -462,9 +465,13 @@ hosted CS336 earning because retained failed validator leases can block fresh
 paid worker intake. `pylon-v0.1.6` adds validator defaults but can still block
 terminal closeout behind artifact/TRN publication during the validator path.
 If `npx @openagentsinc/pylon` resolves an older version, update before testing
-paid training. If a platform does not yet have a matching `pylon-v0.1.13`
+paid training. If a platform does not yet have a matching `pylon-v0.1.14`
 release asset, use the npm bootstrap source fallback
 or a newer official release that includes these same paid-training guarantees.
+The `0.1.14` release receipt is
+`docs/reports/nexus/20260425-pylon-v0.1.14-release.json`. It proves the
+darwin-arm64 release asset, the long-homework-ID path hashing regression test,
+and the TUI worker-exit status fix.
 The `0.1.13` release receipt is
 `docs/reports/nexus/20260423-pylon-v0.1.13-release.json`. It proves the public
 darwin-arm64 release asset, the npm publish, the `npx @openagentsinc/pylon@0.1.13 --help`
