@@ -298,7 +298,7 @@ Bootstrap / explicit policy-apply envs:
 - `NEXUS_CONTROL_TREASURY_POLICY_ALLOW_DESTRUCTIVE_ENV_CHANGE`
 - `NEXUS_CONTROL_TREASURY_POLICY_CHANGE_REASON`
 
-Availability policy still owns the per-identity stipend cadence. The current
+Availability policy still owns the per-beneficiary stipend cadence. The current
 env mapping is:
 
 - `NEXUS_CONTROL_TREASURY_PAYOUT_SATS_PER_WINDOW`:
@@ -323,11 +323,19 @@ If the new accepted-work envs are unset, Nexus preserves legacy behavior by
 bootstrapping them from the historical shared values on first read of legacy
 policy state. After bootstrap, the persisted runtime policy is authoritative.
 
-`NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS` is still the per-identity
-availability cadence. `nexus-control` now phases each identity deterministically
-within that interval, so eligible Pylons still receive one stipend per interval
-but dispatches roll across the window instead of bunching on a single wall-clock
-boundary.
+`NEXUS_CONTROL_TREASURY_PAYOUT_INTERVAL_SECONDS` is still the per-beneficiary
+availability cadence. `nexus-control` now phases each beneficiary
+deterministically within that interval, so eligible Pylons still receive one
+stipend per interval but dispatches roll across the window instead of bunching
+on a single wall-clock boundary. The beneficiary order is:
+
+- verified host cluster first when `dedupe_hosts=true`
+- payout target second
+- pubkey identity third
+
+Availability stipends also require a registered payout target plus an admitted
+worker-capable training node. Raw provider presence alone is not enough to earn
+the availability lane anymore.
 
 `run_server()` now starts a dedicated treasury payout loop every 2 seconds. The
 provider heartbeat route only updates presence; it no longer dispatches wallet
@@ -386,11 +394,20 @@ window actually means:
 - `disabled` stops placeholder accrual entirely while leaving accepted-work
   payouts alone
 
-`NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true` adds a cheap same-machine
-guard for that placeholder lane. Nexus derives a best-effort host fingerprint
-from provider heartbeat telemetry and blocks extra placeholder payouts when
-multiple clients appear to be the same underlying machine. This dedupe does not
-change accepted-work payouts; it only stops presence/readiness inflation.
+In all non-disabled modes, "otherwise-eligible" now still means:
+
+- a registered payout target exists
+- the identity is admitted as a worker-capable training node
+- the admitted worker lane is online, eligible, and claimable under current
+  kernel readiness
+
+`NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true` makes host cluster the
+first availability beneficiary key. Nexus derives a best-effort host
+fingerprint from provider heartbeat telemetry and blocks extra placeholder
+payouts when multiple clients appear to be the same underlying machine. Even
+when host dedupe is disabled, availability stipends still dedupe by payout
+target before falling back to raw pubkey identity. This dedupe does not change
+accepted-work payouts; it only stops availability inflation.
 
 Fresh config defaults now use `disabled` plus host dedupe. Old persisted policy
 blobs that predate these fields also deserialize as `disabled`. Any production

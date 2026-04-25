@@ -78,7 +78,7 @@ const ENV_TREASURY_INTEGRATION_TOKEN: &str = "NEXUS_CONTROL_TREASURY_INTEGRATION
 const DEFAULT_TREASURY_STATE_PATH: &str = "var/nexus-control/treasury-state.json";
 const DEFAULT_TREASURY_ENABLED: bool = false;
 const DEFAULT_TREASURY_PAYOUT_SATS_PER_WINDOW: u64 = 0;
-const DEFAULT_TREASURY_PAYOUT_INTERVAL_SECONDS: u64 = 3_600;
+const DEFAULT_TREASURY_PAYOUT_INTERVAL_SECONDS: u64 = 600;
 const DEFAULT_TREASURY_REQUIRE_SELLABLE: bool = false;
 const DEFAULT_TREASURY_DAILY_BUDGET_CAP_SATS: u64 = 21_000;
 const DEFAULT_TREASURY_ACCEPTED_WORK_DEFAULT_PAYOUT_SATS: Option<u64> = None;
@@ -913,30 +913,31 @@ impl TreasuryRuntimePolicy {
         }
     }
 
-    fn placeholder_payout_verdict(
+    fn availability_stipend_base_skip_reason(
         &self,
         identity: &OnlinePylonIdentity,
-        seen_host_fingerprints: &mut BTreeSet<String>,
-    ) -> PlaceholderPayoutEligibilityVerdict {
+    ) -> Option<String> {
         match self.placeholder_payout_mode {
             TreasuryPlaceholderPayoutMode::Disabled => {
-                return PlaceholderPayoutEligibilityVerdict::Disabled;
+                return Some("placeholder_payouts_disabled".to_string());
             }
             TreasuryPlaceholderPayoutMode::InferenceReady if !identity.inference_ready => {
-                return PlaceholderPayoutEligibilityVerdict::RequiresInferenceReady;
+                return Some("placeholder_requires_inference_ready".to_string());
             }
             TreasuryPlaceholderPayoutMode::InferenceReady
             | TreasuryPlaceholderPayoutMode::PresenceOnly => {}
         }
 
-        if self.dedupe_placeholder_hosts
-            && let Some(host_fingerprint) = identity.host_fingerprint.clone()
-            && !seen_host_fingerprints.insert(host_fingerprint)
-        {
-            return PlaceholderPayoutEligibilityVerdict::DuplicateHost;
+        if !identity.availability_stipend_eligible {
+            return Some(
+                identity
+                    .availability_stipend_gate_reason
+                    .clone()
+                    .unwrap_or_else(|| "availability_stipend_not_eligible".to_string()),
+            );
         }
 
-        PlaceholderPayoutEligibilityVerdict::Allowed
+        None
     }
 
     fn placeholder_payout_classification(&self) -> TreasuryPayoutClassification {
@@ -1421,6 +1422,49 @@ pub struct OnlinePylonIdentity {
     pub client_version: Option<String>,
     pub inference_ready: bool,
     pub host_fingerprint: Option<String>,
+    #[serde(default)]
+    pub availability_stipend_eligible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub availability_stipend_gate_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AvailabilityBeneficiaryKind {
+    HostCluster,
+    PayoutTarget,
+    Identity,
+}
+
+impl AvailabilityBeneficiaryKind {
+    const fn duplicate_skip_reason(self) -> Option<&'static str> {
+        match self {
+            Self::HostCluster => Some("duplicate_host_placeholder_readiness"),
+            Self::PayoutTarget => Some("duplicate_payout_target_placeholder_readiness"),
+            Self::Identity => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AvailabilityBeneficiaryProjection {
+    kind: AvailabilityBeneficiaryKind,
+    key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AvailabilityIdentityDisposition {
+    identity: OnlinePylonIdentity,
+    payout_target: Option<RegisteredPayoutTarget>,
+    beneficiary: Option<AvailabilityBeneficiaryProjection>,
+    current_window_started_at_unix_ms: Option<u64>,
+    verdict_reason: Option<String>,
+}
+
+impl AvailabilityIdentityDisposition {
+    const fn allowed(&self) -> bool {
+        self.verdict_reason.is_none()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1514,25 +1558,6 @@ impl NewAccrualVersionGateVerdict {
             self,
             Self::MissingClientVersion | Self::InvalidClientVersion
         )
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PlaceholderPayoutEligibilityVerdict {
-    Allowed,
-    Disabled,
-    RequiresInferenceReady,
-    DuplicateHost,
-}
-
-impl PlaceholderPayoutEligibilityVerdict {
-    const fn skip_reason(self) -> Option<&'static str> {
-        match self {
-            Self::Allowed => None,
-            Self::Disabled => Some("placeholder_payouts_disabled"),
-            Self::RequiresInferenceReady => Some("placeholder_requires_inference_ready"),
-            Self::DuplicateHost => Some("duplicate_host_placeholder_readiness"),
-        }
     }
 }
 
@@ -2454,6 +2479,137 @@ impl TreasuryState {
         })
     }
 
+    fn availability_beneficiary_projection(
+        policy: &TreasuryRuntimePolicy,
+        identity: &OnlinePylonIdentity,
+        payout_target: &RegisteredPayoutTarget,
+    ) -> AvailabilityBeneficiaryProjection {
+        if policy.dedupe_placeholder_hosts {
+            if let Some(host_fingerprint) = identity.host_fingerprint.as_ref() {
+                return AvailabilityBeneficiaryProjection {
+                    kind: AvailabilityBeneficiaryKind::HostCluster,
+                    key: format!("host:{host_fingerprint}"),
+                };
+            }
+        }
+        if !payout_target.spark_address.trim().is_empty() {
+            return AvailabilityBeneficiaryProjection {
+                kind: AvailabilityBeneficiaryKind::PayoutTarget,
+                key: format!("payout_target:{}", payout_target.spark_address),
+            };
+        }
+        AvailabilityBeneficiaryProjection {
+            kind: AvailabilityBeneficiaryKind::Identity,
+            key: format!("identity:{}", identity.nostr_pubkey_hex),
+        }
+    }
+
+    fn availability_identity_dispositions(
+        &self,
+        policy: &TreasuryRuntimePolicy,
+        online_identities: &[OnlinePylonIdentity],
+        now_unix_ms: u64,
+    ) -> Vec<AvailabilityIdentityDisposition> {
+        let payout_interval_ms = policy.payout_interval_ms();
+        let mut dispositions = online_identities
+            .iter()
+            .cloned()
+            .map(|identity| AvailabilityIdentityDisposition {
+                identity,
+                payout_target: None,
+                beneficiary: None,
+                current_window_started_at_unix_ms: None,
+                verdict_reason: None,
+            })
+            .collect::<Vec<_>>();
+        let mut candidate_indexes_by_primary_key = BTreeMap::<String, Vec<usize>>::new();
+
+        for (index, disposition) in dispositions.iter_mut().enumerate() {
+            let identity = &disposition.identity;
+            if policy.require_sellable && !identity.sellable {
+                disposition.verdict_reason = Some("requires_sellable_supply".to_string());
+                continue;
+            }
+
+            let Some(target) = self
+                .payout_targets_by_identity
+                .get(identity.nostr_pubkey_hex.as_str())
+                .cloned()
+            else {
+                disposition.verdict_reason = Some("missing_payout_target".to_string());
+                continue;
+            };
+            if target.spark_address.trim().is_empty() {
+                disposition.verdict_reason = Some("missing_payout_target".to_string());
+                continue;
+            }
+            disposition.payout_target = Some(target.clone());
+
+            if let Some(reason) = policy.availability_stipend_base_skip_reason(identity) {
+                disposition.verdict_reason = Some(reason);
+                continue;
+            }
+
+            let beneficiary = Self::availability_beneficiary_projection(policy, identity, &target);
+            let current_window_started_at_unix_ms = payout_window_started_at_for_identity(
+                now_unix_ms,
+                payout_interval_ms,
+                beneficiary.key.as_str(),
+            );
+            disposition.current_window_started_at_unix_ms = Some(current_window_started_at_unix_ms);
+            disposition.beneficiary = Some(beneficiary.clone());
+
+            candidate_indexes_by_primary_key
+                .entry(beneficiary.key)
+                .or_default()
+                .push(index);
+        }
+
+        let mut primary_winner_indexes = Vec::new();
+        for candidate_indexes in candidate_indexes_by_primary_key.values() {
+            let winner_index = candidate_indexes
+                .iter()
+                .copied()
+                .min_by(|lhs, rhs| {
+                    dispositions[*lhs]
+                        .identity
+                        .nostr_pubkey_hex
+                        .cmp(&dispositions[*rhs].identity.nostr_pubkey_hex)
+                })
+                .expect("availability beneficiary candidate");
+            primary_winner_indexes.push(winner_index);
+
+            if let Some(reason) = dispositions[winner_index]
+                .beneficiary
+                .as_ref()
+                .and_then(|beneficiary| beneficiary.kind.duplicate_skip_reason())
+                .map(str::to_string)
+            {
+                for candidate_index in candidate_indexes {
+                    if *candidate_index != winner_index {
+                        dispositions[*candidate_index].verdict_reason = Some(reason.clone());
+                    }
+                }
+            }
+        }
+
+        let mut seen_payout_targets = BTreeMap::<String, usize>::new();
+        for winner_index in primary_winner_indexes {
+            let Some(target) = dispositions[winner_index].payout_target.as_ref() else {
+                continue;
+            };
+            if seen_payout_targets
+                .insert(target.spark_address.clone(), winner_index)
+                .is_some()
+            {
+                dispositions[winner_index].verdict_reason =
+                    Some("duplicate_payout_target_placeholder_readiness".to_string());
+            }
+        }
+
+        dispositions
+    }
+
     fn payout_loop_health(&self, config: &TreasuryConfig) -> String {
         if !self.treasury_enabled(config) {
             return "disabled".to_string();
@@ -2512,38 +2668,50 @@ impl TreasuryState {
             return;
         }
 
-        let payout_interval_ms = policy.payout_interval_ms();
         let mut latest_eligible_window_started_at_unix_ms: Option<u64> = None;
-        let mut seen_placeholder_host_fingerprints = BTreeSet::new();
-        for identity in online_identities {
-            if policy.require_sellable && !identity.sellable {
-                continue;
-            }
-            if !self
-                .payout_targets_by_identity
-                .contains_key(identity.nostr_pubkey_hex.as_str())
-            {
-                continue;
-            }
+        for disposition in self.availability_identity_dispositions(&policy, online_identities, now_unix_ms)
+        {
+            let identity = &disposition.identity;
             if identity.inference_ready {
                 self.inference_ready_online_payout_targets =
                     self.inference_ready_online_payout_targets.saturating_add(1);
             }
-            let placeholder_verdict = policy
-                .placeholder_payout_verdict(identity, &mut seen_placeholder_host_fingerprints);
-            if placeholder_verdict == PlaceholderPayoutEligibilityVerdict::DuplicateHost {
-                self.duplicate_host_placeholder_blocked_online_targets = self
-                    .duplicate_host_placeholder_blocked_online_targets
-                    .saturating_add(1);
+            match disposition.verdict_reason.as_deref() {
+                Some("duplicate_host_placeholder_readiness") => {
+                    self.duplicate_host_placeholder_blocked_online_targets = self
+                        .duplicate_host_placeholder_blocked_online_targets
+                        .saturating_add(1);
+                    continue;
+                }
+                Some(
+                    "below_min_new_accrual_version_floor"
+                    | "missing_client_version_for_new_accrual"
+                    | "invalid_client_version_for_new_accrual"
+                    | "invalid_min_new_accrual_version_policy",
+                ) => {
+                    self.min_new_accrual_version_blocked_online_targets = self
+                        .min_new_accrual_version_blocked_online_targets
+                        .saturating_add(1);
+                    if matches!(
+                        disposition.verdict_reason.as_deref(),
+                        Some(
+                            "missing_client_version_for_new_accrual"
+                                | "invalid_client_version_for_new_accrual"
+                        )
+                    ) {
+                        self.min_new_accrual_unknown_version_online_targets = self
+                            .min_new_accrual_unknown_version_online_targets
+                            .saturating_add(1);
+                    }
+                    continue;
+                }
+                Some(_) => continue,
+                None => {}
             }
-            if placeholder_verdict != PlaceholderPayoutEligibilityVerdict::Allowed {
+
+            let Some(window_started_at_unix_ms) = disposition.current_window_started_at_unix_ms else {
                 continue;
-            }
-            let window_started_at_unix_ms = payout_window_started_at_for_identity(
-                now_unix_ms,
-                payout_interval_ms,
-                identity.nostr_pubkey_hex.as_str(),
-            );
+            };
             let gate_verdict = policy.new_accrual_version_gate_verdict(
                 identity.client_version.as_deref(),
                 window_started_at_unix_ms,
@@ -4131,75 +4299,55 @@ impl TreasuryState {
         let (reconciliation_started_at_unix_ms, reconciliation_degraded_reason) =
             self.payout_reconciliation_started_at(config, now_unix_ms);
         let placeholder_classification = policy.placeholder_payout_classification();
-        let mut seen_placeholder_host_fingerprints = BTreeSet::new();
+        let dispositions =
+            self.availability_identity_dispositions(&policy, online_identities, now_unix_ms);
 
-        for identity in online_identities {
-            let placeholder_verdict = policy
-                .placeholder_payout_verdict(identity, &mut seen_placeholder_host_fingerprints);
-            let current_window_started_at_unix_ms = payout_window_started_at_for_identity(
-                now_unix_ms,
-                payout_interval_ms,
-                identity.nostr_pubkey_hex.as_str(),
-            );
+        for disposition in dispositions {
+            let identity = &disposition.identity;
+            let beneficiary_phase_key = disposition
+                .beneficiary
+                .as_ref()
+                .map(|beneficiary| beneficiary.key.as_str())
+                .unwrap_or(identity.nostr_pubkey_hex.as_str());
+            let current_window_started_at_unix_ms = disposition
+                .current_window_started_at_unix_ms
+                .unwrap_or_else(|| {
+                    payout_window_started_at_for_identity(
+                        now_unix_ms,
+                        payout_interval_ms,
+                        beneficiary_phase_key,
+                    )
+                });
             let mut window_started_at_unix_ms = payout_window_started_at_for_identity(
                 reconciliation_started_at_unix_ms,
                 payout_interval_ms,
-                identity.nostr_pubkey_hex.as_str(),
+                beneficiary_phase_key,
             );
             loop {
                 let window_ends_at_unix_ms =
                     window_started_at_unix_ms.saturating_add(payout_interval_ms);
-                let payout_key = payout_window_key(
-                    window_started_at_unix_ms,
-                    identity.nostr_pubkey_hex.as_str(),
-                );
+                let payout_key_scope = if disposition.allowed() {
+                    format!("availability-beneficiary:{beneficiary_phase_key}")
+                } else {
+                    format!("availability-identity:{}", identity.nostr_pubkey_hex)
+                };
+                let payout_key =
+                    payout_window_key(window_started_at_unix_ms, payout_key_scope.as_str());
+                let payout_target = disposition
+                    .payout_target
+                    .as_ref()
+                    .map(|target| target.spark_address.clone())
+                    .unwrap_or_default();
 
                 if !self.payout_records_by_key.contains_key(&payout_key) {
-                    let Some(target) = self
-                        .payout_targets_by_identity
-                        .get(identity.nostr_pubkey_hex.as_str())
-                        .cloned()
-                    else {
+                    if let Some(reason) = disposition.verdict_reason.clone() {
                         let record = TreasuryPayoutRecord {
                             payout_key: payout_key.clone(),
                             nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                            payout_target: String::new(),
+                            payout_target,
                             amount_sats: policy.payout_sats_per_window,
                             status: "skipped".to_string(),
-                            reason: Some("missing_payout_target".to_string()),
-                            payment_id: None,
-                            window_started_at_unix_ms,
-                            window_ends_at_unix_ms,
-                            created_at_unix_ms: now_unix_ms,
-                            updated_at_unix_ms: now_unix_ms,
-                            sellable_at_window_open: identity.sellable,
-                            dispatch_receipt_recorded: false,
-                            confirm_receipt_recorded: false,
-                            fail_receipt_recorded: false,
-                            skip_receipt_recorded: true,
-                            counted_in_paid_total: false,
-                            classification: placeholder_classification.clone(),
-                        };
-                        self.payout_records_by_key
-                            .insert(payout_key, record.clone());
-                        receipt_events.push(skipped_payout_receipt(&record));
-                        changed = true;
-                        if window_started_at_unix_ms >= current_window_started_at_unix_ms {
-                            break;
-                        }
-                        window_started_at_unix_ms =
-                            window_started_at_unix_ms.saturating_add(payout_interval_ms);
-                        continue;
-                    };
-
-                    if policy.require_sellable && !identity.sellable {
-                        let record = TreasuryPayoutRecord {
-                            payout_key: payout_key.clone(),
-                            nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                            payout_target: target.spark_address.clone(),
-                            amount_sats: policy.payout_sats_per_window,
-                            status: "skipped".to_string(),
-                            reason: Some("requires_sellable_supply".to_string()),
+                            reason: Some(reason),
                             payment_id: None,
                             window_started_at_unix_ms,
                             window_ends_at_unix_ms,
@@ -4225,48 +4373,17 @@ impl TreasuryState {
                         continue;
                     }
 
-                    if let Some(reason) = placeholder_verdict.skip_reason() {
-                        let record = TreasuryPayoutRecord {
-                            payout_key: payout_key.clone(),
-                            nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                            payout_target: target.spark_address.clone(),
-                            amount_sats: policy.payout_sats_per_window,
-                            status: "skipped".to_string(),
-                            reason: Some(reason.to_string()),
-                            payment_id: None,
+                    if let Some(reason) = policy
+                        .new_accrual_version_gate_verdict(
+                            identity.client_version.as_deref(),
                             window_started_at_unix_ms,
-                            window_ends_at_unix_ms,
-                            created_at_unix_ms: now_unix_ms,
-                            updated_at_unix_ms: now_unix_ms,
-                            sellable_at_window_open: identity.sellable,
-                            dispatch_receipt_recorded: false,
-                            confirm_receipt_recorded: false,
-                            fail_receipt_recorded: false,
-                            skip_receipt_recorded: true,
-                            counted_in_paid_total: false,
-                            classification: placeholder_classification.clone(),
-                        };
-                        self.payout_records_by_key
-                            .insert(payout_key, record.clone());
-                        receipt_events.push(skipped_payout_receipt(&record));
-                        changed = true;
-                        if window_started_at_unix_ms >= current_window_started_at_unix_ms {
-                            break;
-                        }
-                        window_started_at_unix_ms =
-                            window_started_at_unix_ms.saturating_add(payout_interval_ms);
-                        continue;
-                    }
-
-                    let gate_verdict = policy.new_accrual_version_gate_verdict(
-                        identity.client_version.as_deref(),
-                        window_started_at_unix_ms,
-                    );
-                    if let Some(reason) = gate_verdict.skip_reason() {
+                        )
+                        .skip_reason()
+                    {
                         let record = TreasuryPayoutRecord {
                             payout_key: payout_key.clone(),
                             nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                            payout_target: target.spark_address.clone(),
+                            payout_target: payout_target.clone(),
                             amount_sats: policy.payout_sats_per_window,
                             status: "skipped".to_string(),
                             reason: Some(reason.to_string()),
@@ -4306,7 +4423,7 @@ impl TreasuryState {
                         let record = TreasuryPayoutRecord {
                             payout_key: payout_key.clone(),
                             nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                            payout_target: target.spark_address.clone(),
+                            payout_target: payout_target.clone(),
                             amount_sats: policy.payout_sats_per_window,
                             status: "skipped".to_string(),
                             reason: Some("daily_budget_cap_reached".to_string()),
@@ -4342,7 +4459,7 @@ impl TreasuryState {
                         TreasuryPayoutRecord {
                             payout_key: payout_key.clone(),
                             nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                            payout_target: target.spark_address.clone(),
+                            payout_target: payout_target.clone(),
                             amount_sats: policy.payout_sats_per_window,
                             status: "dispatching".to_string(),
                             reason: None,
@@ -4362,7 +4479,7 @@ impl TreasuryState {
                     );
                     dispatch_plans.push(TreasuryDispatchPlan {
                         payout_key,
-                        payment_request: target.spark_address,
+                        payment_request: payout_target,
                         amount_sats: policy.payout_sats_per_window,
                         classification: placeholder_classification.clone(),
                     });
@@ -7886,6 +8003,26 @@ mod tests {
         }
     }
 
+    fn test_online_identity(nostr_pubkey_hex: &str) -> OnlinePylonIdentity {
+        OnlinePylonIdentity {
+            nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+            sellable: true,
+            client_version: None,
+            inference_ready: true,
+            host_fingerprint: None,
+            availability_stipend_eligible: true,
+            availability_stipend_gate_reason: None,
+        }
+    }
+
+    fn availability_beneficiary_scope_key(key: &str) -> String {
+        format!("availability-beneficiary:{key}")
+    }
+
+    fn availability_identity_scope_key(nostr_pubkey_hex: &str) -> String {
+        format!("availability-identity:{nostr_pubkey_hex}")
+    }
+
     fn unique_treasury_state_path(label: &str) -> PathBuf {
         PathBuf::from(format!(
             "/tmp/test-nexus-treasury-{label}-{}.json",
@@ -8424,13 +8561,7 @@ mod tests {
         let now_unix_ms = super::now_unix_ms();
         let prepared = state.prepare_due_payouts(
             &drift_config,
-            &[OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
-                client_version: None,
-                inference_ready: true,
-                host_fingerprint: None,
-            }],
+            &[test_online_identity("pubkey-a")],
             now_unix_ms,
         );
 
@@ -8456,13 +8587,7 @@ mod tests {
             },
         );
 
-        let online = vec![OnlinePylonIdentity {
-            nostr_pubkey_hex: "pubkey-a".to_string(),
-            sellable: true,
-            client_version: None,
-            inference_ready: true,
-            host_fingerprint: None,
-        }];
+        let online = vec![test_online_identity("pubkey-a")];
         let now_unix_ms = super::now_unix_ms();
         let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
         assert_eq!(prepared.dispatch_plans.len(), 1);
@@ -8824,8 +8949,11 @@ mod tests {
 
         let now_unix_ms = 1_800_000;
         let payout_interval_ms = config.payout_interval_ms();
-        let current_window_started_at_unix_ms =
-            payout_window_started_at_for_identity(now_unix_ms, payout_interval_ms, "pubkey-a");
+        let current_window_started_at_unix_ms = payout_window_started_at_for_identity(
+            now_unix_ms,
+            payout_interval_ms,
+            "payout_target:spark:alice",
+        );
         config.min_new_accrual_started_at_unix_ms = Some(current_window_started_at_unix_ms);
         state.last_payout_reconciliation_at_unix_ms =
             Some(current_window_started_at_unix_ms.saturating_sub(payout_interval_ms));
@@ -8833,11 +8961,8 @@ mod tests {
         let prepared = state.prepare_due_payouts(
             &config,
             &[OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
                 client_version: Some("0.0.1-rc12".to_string()),
-                inference_ready: true,
-                host_fingerprint: None,
+                ..test_online_identity("pubkey-a")
             }],
             now_unix_ms,
         );
@@ -8846,14 +8971,24 @@ mod tests {
         assert_eq!(
             prepared.dispatch_plans[0].payout_key,
             payout_window_key(
-                current_window_started_at_unix_ms.saturating_sub(payout_interval_ms),
-                "pubkey-a"
+                payout_window_started_at_for_identity(
+                    current_window_started_at_unix_ms.saturating_sub(payout_interval_ms),
+                    payout_interval_ms,
+                    "payout_target:spark:alice",
+                ),
+                availability_beneficiary_scope_key("payout_target:spark:alice").as_str()
             )
         );
 
         let blocked_record = state
             .payout_records_by_key
-            .get(payout_window_key(current_window_started_at_unix_ms, "pubkey-a").as_str())
+            .get(
+                payout_window_key(
+                    current_window_started_at_unix_ms,
+                    availability_beneficiary_scope_key("payout_target:spark:alice").as_str(),
+                )
+                .as_str(),
+            )
             .expect("post-cutoff payout record");
         assert_eq!(blocked_record.status, "skipped");
         assert_eq!(
@@ -8883,17 +9018,11 @@ mod tests {
         config.min_new_accrual_started_at_unix_ms = Some(payout_window_started_at_for_identity(
             now_unix_ms,
             config.payout_interval_ms(),
-            "pubkey-a",
+            "payout_target:spark:alice",
         ));
         state.observe_payout_eligibility(
             &config,
-            &[OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
-                client_version: None,
-                inference_ready: true,
-                host_fingerprint: None,
-            }],
+            &[test_online_identity("pubkey-a")],
             now_unix_ms,
         );
 
@@ -8928,11 +9057,9 @@ mod tests {
         let prepared = state.prepare_due_payouts(
             &config,
             &[OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
                 client_version: Some("pylon-v0.1.1-rc1".to_string()),
                 inference_ready: false,
-                host_fingerprint: None,
+                ..test_online_identity("pubkey-a")
             }],
             now_unix_ms,
         );
@@ -8944,7 +9071,7 @@ mod tests {
                 config.payout_interval_ms(),
                 "pubkey-a",
             ),
-            "pubkey-a",
+            availability_identity_scope_key("pubkey-a").as_str(),
         );
         let record = state
             .payout_records_by_key
@@ -8978,12 +9105,10 @@ mod tests {
         );
 
         let now_unix_ms = super::now_unix_ms();
+        state.wallet_balance_sats = 1_000_000;
         let online = vec![OnlinePylonIdentity {
-            nostr_pubkey_hex: "pubkey-a".to_string(),
-            sellable: true,
             client_version: Some("pylon-v0.1.1-rc1".to_string()),
-            inference_ready: true,
-            host_fingerprint: None,
+            ..test_online_identity("pubkey-a")
         }];
 
         state.observe_payout_eligibility(&config, &online, now_unix_ms);
@@ -9161,18 +9286,14 @@ mod tests {
         let now_unix_ms = 1_800_000;
         let online = vec![
             OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
                 client_version: Some("pylon-v0.1.1-rc1".to_string()),
-                inference_ready: true,
                 host_fingerprint: Some("sha256:host-alpha".to_string()),
+                ..test_online_identity("pubkey-a")
             },
             OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-b".to_string(),
-                sellable: true,
                 client_version: Some("pylon-v0.1.1-rc1".to_string()),
-                inference_ready: true,
                 host_fingerprint: Some("sha256:host-alpha".to_string()),
+                ..test_online_identity("pubkey-b")
             },
         ];
         state.observe_payout_eligibility(&config, &online, now_unix_ms);
@@ -9187,9 +9308,9 @@ mod tests {
             payout_window_started_at_for_identity(
                 now_unix_ms,
                 config.payout_interval_ms(),
-                "pubkey-b",
+                "host:sha256:host-alpha",
             ),
-            "pubkey-b",
+            availability_identity_scope_key("pubkey-b").as_str(),
         );
         let duplicate_record = state
             .payout_records_by_key
@@ -9206,18 +9327,163 @@ mod tests {
     }
 
     #[test]
-    fn payout_windows_are_staggered_per_identity() {
+    fn placeholder_payouts_dedupe_shared_payout_targets_across_hosts() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        for nostr_pubkey_hex in ["pubkey-a", "pubkey-b"] {
+            state.payout_targets_by_identity.insert(
+                nostr_pubkey_hex.to_string(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                    source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    spark_address: "spark:shared".to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+        }
+
+        let now_unix_ms = 1_800_000;
+        let online = vec![
+            OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.13".to_string()),
+                host_fingerprint: Some("sha256:host-alpha".to_string()),
+                ..test_online_identity("pubkey-a")
+            },
+            OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.13".to_string()),
+                host_fingerprint: Some("sha256:host-beta".to_string()),
+                ..test_online_identity("pubkey-b")
+            },
+        ];
+
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+
+        let duplicate_key = payout_window_key(
+            payout_window_started_at_for_identity(
+                now_unix_ms,
+                config.payout_interval_ms(),
+                "host:sha256:host-beta",
+            ),
+            availability_identity_scope_key("pubkey-b").as_str(),
+        );
+        let duplicate_record = state
+            .payout_records_by_key
+            .get(duplicate_key.as_str())
+            .expect("duplicate payout-target skip");
+        assert_eq!(
+            duplicate_record.reason.as_deref(),
+            Some("duplicate_payout_target_placeholder_readiness")
+        );
+    }
+
+    #[test]
+    fn placeholder_payouts_allow_same_host_when_host_dedupe_disabled() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.dedupe_placeholder_hosts = false;
+        for (nostr_pubkey_hex, spark_address) in
+            [("pubkey-a", "spark:alice"), ("pubkey-b", "spark:bob")]
+        {
+            state.payout_targets_by_identity.insert(
+                nostr_pubkey_hex.to_string(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+                    source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    spark_address: spark_address.to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+        }
+
+        let now_unix_ms = 1_800_000;
+        let online = vec![
+            OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.13".to_string()),
+                host_fingerprint: Some("sha256:host-alpha".to_string()),
+                ..test_online_identity("pubkey-a")
+            },
+            OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.13".to_string()),
+                host_fingerprint: Some("sha256:host-alpha".to_string()),
+                ..test_online_identity("pubkey-b")
+            },
+        ];
+
+        state.observe_payout_eligibility(&config, &online, now_unix_ms);
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(stats.eligible_online_payout_targets, 2);
+        assert_eq!(stats.duplicate_host_placeholder_blocked_online_targets, 0);
+
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
+        assert_eq!(prepared.dispatch_plans.len(), 2);
+        assert!(state.payout_records_by_key.values().all(|record| {
+            record.reason.as_deref() != Some("duplicate_host_placeholder_readiness")
+        }));
+    }
+
+    #[test]
+    fn availability_stipend_gate_reason_blocks_ineligible_identity() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        state.payout_targets_by_identity.insert(
+            "pubkey-a".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                source_session_id: "session-a".to_string(),
+                spark_address: "spark:alice".to_string(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 10,
+                last_verified_at_unix_ms: 10,
+            },
+        );
+
+        let now_unix_ms = 1_800_000;
+        let online = vec![OnlinePylonIdentity {
+            availability_stipend_eligible: false,
+            availability_stipend_gate_reason: Some("missing_worker_role".to_string()),
+            ..test_online_identity("pubkey-a")
+        }];
+        state.observe_payout_eligibility(&config, &online, now_unix_ms);
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
+
+        assert!(prepared.dispatch_plans.is_empty());
+        assert_eq!(state.public_stats(&config, now_unix_ms).eligible_online_payout_targets, 0);
+
+        let payout_key = payout_window_key(
+            payout_window_started_at_for_identity(
+                now_unix_ms,
+                config.payout_interval_ms(),
+                "pubkey-a",
+            ),
+            availability_identity_scope_key("pubkey-a").as_str(),
+        );
+        let record = state
+            .payout_records_by_key
+            .get(payout_key.as_str())
+            .expect("availability gate skip");
+        assert_eq!(record.reason.as_deref(), Some("missing_worker_role"));
+    }
+
+    #[test]
+    fn payout_windows_are_staggered_per_beneficiary() {
         let interval_ms = test_treasury_config().payout_interval_ms();
-        let pubkey_a = "pubkey-a";
-        let pubkey_b = "pubkey-b";
-        let phase_a = payout_phase_offset_ms(pubkey_a, interval_ms);
-        let phase_b = payout_phase_offset_ms(pubkey_b, interval_ms);
+        let beneficiary_a = "payout_target:spark:alice";
+        let beneficiary_b = "payout_target:spark:bob";
+        let phase_a = payout_phase_offset_ms(beneficiary_a, interval_ms);
+        let phase_b = payout_phase_offset_ms(beneficiary_b, interval_ms);
 
         assert_ne!(phase_a, phase_b);
 
         let now_unix_ms = 1_800_000;
-        let window_a = payout_window_started_at_for_identity(now_unix_ms, interval_ms, pubkey_a);
-        let window_b = payout_window_started_at_for_identity(now_unix_ms, interval_ms, pubkey_b);
+        let window_a =
+            payout_window_started_at_for_identity(now_unix_ms, interval_ms, beneficiary_a);
+        let window_b =
+            payout_window_started_at_for_identity(now_unix_ms, interval_ms, beneficiary_b);
 
         assert_ne!(window_a, window_b);
         assert_eq!(window_a % interval_ms, phase_a);
@@ -9225,7 +9491,7 @@ mod tests {
     }
 
     #[test]
-    fn payout_preparation_uses_identity_phased_windows() {
+    fn payout_preparation_uses_beneficiary_phased_windows() {
         let mut state = TreasuryState::default();
         let config = test_treasury_config();
         for (nostr_pubkey_hex, spark_address) in
@@ -9245,20 +9511,8 @@ mod tests {
         }
 
         let online = vec![
-            OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
-                client_version: None,
-                inference_ready: true,
-                host_fingerprint: None,
-            },
-            OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-b".to_string(),
-                sellable: true,
-                client_version: None,
-                inference_ready: true,
-                host_fingerprint: None,
-            },
+            test_online_identity("pubkey-a"),
+            test_online_identity("pubkey-b"),
         ];
         let now_unix_ms = 1_800_000;
         let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
@@ -9273,24 +9527,38 @@ mod tests {
         let expected_window_a = payout_window_started_at_for_identity(
             now_unix_ms,
             config.payout_interval_ms(),
-            "pubkey-a",
+            "payout_target:spark:alice",
         );
         let expected_window_b = payout_window_started_at_for_identity(
             now_unix_ms,
             config.payout_interval_ms(),
-            "pubkey-b",
+            "payout_target:spark:bob",
         );
         assert!(
             prepared
                 .dispatch_plans
                 .iter()
-                .any(|plan| plan.payout_key == format!("{expected_window_a}:pubkey-a"))
+                .any(|plan| {
+                    plan.payout_key
+                        == payout_window_key(
+                            expected_window_a,
+                            availability_beneficiary_scope_key("payout_target:spark:alice")
+                                .as_str(),
+                        )
+                })
         );
         assert!(
             prepared
                 .dispatch_plans
                 .iter()
-                .any(|plan| plan.payout_key == format!("{expected_window_b}:pubkey-b"))
+                .any(|plan| {
+                    plan.payout_key
+                        == payout_window_key(
+                            expected_window_b,
+                            availability_beneficiary_scope_key("payout_target:spark:bob")
+                                .as_str(),
+                        )
+                })
         );
     }
 
@@ -9316,13 +9584,7 @@ mod tests {
 
         let prepared = state.prepare_due_payouts(
             &config,
-            &[OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
-                client_version: None,
-                inference_ready: true,
-                host_fingerprint: None,
-            }],
+            &[test_online_identity("pubkey-a")],
             now_unix_ms,
         );
 
@@ -9353,13 +9615,7 @@ mod tests {
 
         let prepared = state.prepare_due_payouts(
             &config,
-            &[OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
-                client_version: None,
-                inference_ready: true,
-                host_fingerprint: None,
-            }],
+            &[test_online_identity("pubkey-a")],
             now_unix_ms,
         );
 
@@ -10971,11 +11227,8 @@ mod tests {
         state.observe_payout_eligibility(
             &config,
             &[OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
-                client_version: None,
                 inference_ready: false,
-                host_fingerprint: None,
+                ..test_online_identity("pubkey-a")
             }],
             eligible_at_unix_ms,
         );
@@ -11279,13 +11532,7 @@ mod tests {
 
         let prepared = state.prepare_due_payouts(
             &config,
-            &[OnlinePylonIdentity {
-                nostr_pubkey_hex: "pubkey-a".to_string(),
-                sellable: true,
-                client_version: None,
-                inference_ready: true,
-                host_fingerprint: None,
-            }],
+            &[test_online_identity("pubkey-a")],
             now_unix_ms,
         );
 
