@@ -27,11 +27,12 @@
 ## 👤 For Users
 
 * [User Path — Overview](users/README.md)
-* [Download Onyx](users/download.md)
+* [Download](users/download.md)
 * [First Run](users/first-run.md)
-* [Going Online as a Provider](users/go-online.md)
+* [Sovereignty & OpSec](users/sovereignty.md)
+* [Go Online](users/go-online.md)
 * [Your Wallet](users/wallet.md)
-* [Withdrawing Sats](users/withdraw.md)
+* [Withdraw](users/withdraw.md)
 * [Troubleshooting](users/troubleshooting.md)
 
 ## 📖 Reference
