@@ -122,6 +122,19 @@ fn panel(title: &str, body: Text<'static>) -> Paragraph<'static> {
         .wrap(Wrap { trim: false })
 }
 
+fn shell_title() -> Line<'static> {
+    Line::from(vec![
+        Span::styled(" Pylon ", shell_accent()),
+        Span::styled(
+            format!(" v{} ", env!("CARGO_PKG_VERSION")),
+            shell_border().add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" earning node ", shell_border()),
+        Span::raw("  "),
+        Span::styled("homework dashboard", shell_accent()),
+    ])
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct TuiLaunchConfig {
     config_path: PathBuf,
@@ -2646,12 +2659,7 @@ impl AppShell {
         let shell = Block::default()
             .borders(Borders::ALL)
             .padding(Padding::horizontal(1))
-            .title(Line::from(vec![
-                Span::styled(" Pylon ", shell_accent()),
-                Span::styled(" earning node ", shell_border()),
-                Span::raw("  "),
-                Span::styled("homework dashboard", shell_accent()),
-            ]))
+            .title(shell_title())
             .style(shell_border());
         let area = frame.area();
         let inner = shell.inner(area);
@@ -5699,9 +5707,10 @@ mod tests {
         parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
         parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
         parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
-        recent_provider_activity, render_rank_progress_spans, should_publish_provider_presence,
-        stabilize_operator_panel_stats, stacker_rank_progress, summarize_chat_metrics,
-        transcript_viewport_height, transcript_wrap_width, wrapped_row_count,
+        recent_provider_activity, render_rank_progress_spans, shell_title,
+        should_publish_provider_presence, stabilize_operator_panel_stats,
+        stacker_rank_progress, summarize_chat_metrics, transcript_viewport_height,
+        transcript_wrap_width, wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use openagents_provider_substrate::{ProviderDesiredMode, ProviderPersistedSnapshot};
@@ -5732,6 +5741,15 @@ mod tests {
     #[test]
     fn admin_listener_reachable_rejects_invalid_addr() {
         assert!(!admin_listener_reachable("not-a-socket-address"));
+    }
+
+    #[test]
+    fn shell_title_includes_current_package_version() {
+        let title = shell_title().to_string();
+
+        assert!(title.contains("Pylon"));
+        assert!(title.contains(env!("CARGO_PKG_VERSION")));
+        assert!(title.contains("earning node"));
     }
 
     #[test]
