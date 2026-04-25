@@ -645,6 +645,10 @@ pub struct PublicStatsSnapshot {
     #[serde(default)]
     pub nexus_accepted_work_payout_sats_paid_24h: u64,
     #[serde(default)]
+    pub nexus_availability_stipend_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub nexus_availability_stipend_payout_sats_paid_24h: u64,
+    #[serde(default)]
     pub nexus_placeholder_payout_sats_paid_total: u64,
     #[serde(default)]
     pub nexus_placeholder_payout_sats_paid_24h: u64,
@@ -669,11 +673,27 @@ pub struct PublicStatsSnapshot {
     #[serde(default)]
     pub nexus_payouts_skipped_24h: u64,
     #[serde(default)]
+    pub nexus_availability_online_identities_now: u64,
+    #[serde(default)]
+    pub nexus_availability_online_host_clusters_now: u64,
+    #[serde(default)]
+    pub nexus_availability_stipend_eligible_beneficiaries_now: u64,
+    #[serde(default)]
     pub nexus_placeholder_payout_eligible_online_targets: u64,
     #[serde(default)]
     pub nexus_inference_ready_online_payout_targets: u64,
     #[serde(default)]
     pub nexus_duplicate_host_placeholder_blocked_online_targets: u64,
+    #[serde(default)]
+    pub nexus_duplicate_host_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub nexus_duplicate_payout_target_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub nexus_missing_payout_target_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub nexus_version_floor_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub nexus_readiness_blocked_beneficiaries_now: u64,
     #[serde(default)]
     pub training_nodes_admitted: u64,
     #[serde(default)]
@@ -830,6 +850,8 @@ pub struct PublicRuntimeSnapshot {
     pub nexus_payout_sats_paid_24h: u64,
     pub nexus_accepted_work_payout_sats_paid_total: u64,
     pub nexus_accepted_work_payout_sats_paid_24h: u64,
+    pub nexus_availability_stipend_payout_sats_paid_total: u64,
+    pub nexus_availability_stipend_payout_sats_paid_24h: u64,
     pub nexus_placeholder_payout_sats_paid_total: u64,
     pub nexus_placeholder_payout_sats_paid_24h: u64,
     pub nexus_beta_bonus_payout_sats_paid_total: u64,
@@ -842,9 +864,17 @@ pub struct PublicRuntimeSnapshot {
     pub nexus_payouts_confirmed_24h: u64,
     pub nexus_payouts_failed_24h: u64,
     pub nexus_payouts_skipped_24h: u64,
+    pub nexus_availability_online_identities_now: u64,
+    pub nexus_availability_online_host_clusters_now: u64,
+    pub nexus_availability_stipend_eligible_beneficiaries_now: u64,
     pub nexus_placeholder_payout_eligible_online_targets: u64,
     pub nexus_inference_ready_online_payout_targets: u64,
     pub nexus_duplicate_host_placeholder_blocked_online_targets: u64,
+    pub nexus_duplicate_host_blocked_beneficiaries_now: u64,
+    pub nexus_duplicate_payout_target_blocked_beneficiaries_now: u64,
+    pub nexus_missing_payout_target_blocked_beneficiaries_now: u64,
+    pub nexus_version_floor_blocked_beneficiaries_now: u64,
+    pub nexus_readiness_blocked_beneficiaries_now: u64,
     pub training_nodes_admitted: u64,
     pub training_admitted_contributors: u64,
     pub training_assigned_contributors: u64,
@@ -1124,6 +1154,10 @@ impl ReceiptLedger {
                 .nexus_accepted_work_payout_sats_paid_total,
             nexus_accepted_work_payout_sats_paid_24h: runtime
                 .nexus_accepted_work_payout_sats_paid_24h,
+            nexus_availability_stipend_payout_sats_paid_total: runtime
+                .nexus_availability_stipend_payout_sats_paid_total,
+            nexus_availability_stipend_payout_sats_paid_24h: runtime
+                .nexus_availability_stipend_payout_sats_paid_24h,
             nexus_placeholder_payout_sats_paid_total: runtime
                 .nexus_placeholder_payout_sats_paid_total,
             nexus_placeholder_payout_sats_paid_24h: runtime.nexus_placeholder_payout_sats_paid_24h,
@@ -1142,12 +1176,28 @@ impl ReceiptLedger {
             nexus_payouts_confirmed_24h: runtime.nexus_payouts_confirmed_24h,
             nexus_payouts_failed_24h: runtime.nexus_payouts_failed_24h,
             nexus_payouts_skipped_24h: runtime.nexus_payouts_skipped_24h,
+            nexus_availability_online_identities_now: runtime
+                .nexus_availability_online_identities_now,
+            nexus_availability_online_host_clusters_now: runtime
+                .nexus_availability_online_host_clusters_now,
+            nexus_availability_stipend_eligible_beneficiaries_now: runtime
+                .nexus_availability_stipend_eligible_beneficiaries_now,
             nexus_placeholder_payout_eligible_online_targets: runtime
                 .nexus_placeholder_payout_eligible_online_targets,
             nexus_inference_ready_online_payout_targets: runtime
                 .nexus_inference_ready_online_payout_targets,
             nexus_duplicate_host_placeholder_blocked_online_targets: runtime
                 .nexus_duplicate_host_placeholder_blocked_online_targets,
+            nexus_duplicate_host_blocked_beneficiaries_now: runtime
+                .nexus_duplicate_host_blocked_beneficiaries_now,
+            nexus_duplicate_payout_target_blocked_beneficiaries_now: runtime
+                .nexus_duplicate_payout_target_blocked_beneficiaries_now,
+            nexus_missing_payout_target_blocked_beneficiaries_now: runtime
+                .nexus_missing_payout_target_blocked_beneficiaries_now,
+            nexus_version_floor_blocked_beneficiaries_now: runtime
+                .nexus_version_floor_blocked_beneficiaries_now,
+            nexus_readiness_blocked_beneficiaries_now: runtime
+                .nexus_readiness_blocked_beneficiaries_now,
             training_nodes_admitted: runtime.training_nodes_admitted,
             training_admitted_contributors: runtime.training_admitted_contributors,
             training_assigned_contributors: runtime.training_assigned_contributors,
@@ -1482,6 +1532,8 @@ mod tests {
                 nexus_payout_sats_paid_24h: 0,
                 nexus_accepted_work_payout_sats_paid_total: 0,
                 nexus_accepted_work_payout_sats_paid_24h: 0,
+                nexus_availability_stipend_payout_sats_paid_total: 0,
+                nexus_availability_stipend_payout_sats_paid_24h: 0,
                 nexus_placeholder_payout_sats_paid_total: 0,
                 nexus_placeholder_payout_sats_paid_24h: 0,
                 nexus_beta_bonus_payout_sats_paid_total: 0,
@@ -1494,9 +1546,17 @@ mod tests {
                 nexus_payouts_confirmed_24h: 0,
                 nexus_payouts_failed_24h: 0,
                 nexus_payouts_skipped_24h: 0,
+                nexus_availability_online_identities_now: 0,
+                nexus_availability_online_host_clusters_now: 0,
+                nexus_availability_stipend_eligible_beneficiaries_now: 0,
                 nexus_placeholder_payout_eligible_online_targets: 0,
                 nexus_inference_ready_online_payout_targets: 0,
                 nexus_duplicate_host_placeholder_blocked_online_targets: 0,
+                nexus_duplicate_host_blocked_beneficiaries_now: 0,
+                nexus_duplicate_payout_target_blocked_beneficiaries_now: 0,
+                nexus_missing_payout_target_blocked_beneficiaries_now: 0,
+                nexus_version_floor_blocked_beneficiaries_now: 0,
+                nexus_readiness_blocked_beneficiaries_now: 0,
                 training_nodes_admitted: 0,
                 training_admitted_contributors: 0,
                 training_assigned_contributors: 0,

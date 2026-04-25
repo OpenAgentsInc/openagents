@@ -116,6 +116,7 @@ const TREASURY_POLICY_CHANGE_LIMIT: usize = 64;
 const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
 const TREASURY_STATUS_PAYOUT_TARGET_ROW_LIMIT: usize = 64;
 const TREASURY_STATUS_PAYOUT_LEDGER_ROW_LIMIT: usize = 64;
+const TREASURY_STATUS_AVAILABILITY_DEBUG_ROW_LIMIT: usize = 128;
 const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
 const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
@@ -475,9 +476,9 @@ impl TreasuryConfig {
         payout_class: TreasuryPayoutClass,
     ) -> usize {
         let configured = match payout_class {
-            TreasuryPayoutClass::PlaceholderLiveness => {
-                plan_count.min(self.availability_max_concurrent_sends).max(1)
-            }
+            TreasuryPayoutClass::PlaceholderLiveness => plan_count
+                .min(self.availability_max_concurrent_sends)
+                .max(1),
             TreasuryPayoutClass::AcceptedWork | TreasuryPayoutClass::BetaBonus => {
                 self.max_concurrent_send_operations(plan_count)
             }
@@ -700,10 +701,17 @@ pub struct TreasuryContinuityAlert {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 struct TreasuryContinuitySignalSnapshot {
+    availability_online_identities_now: u64,
+    availability_online_host_clusters_now: u64,
+    availability_stipend_eligible_beneficiaries_now: u64,
     eligible_online_payout_targets: u64,
     sellable_pylons_online_now: u64,
     inference_ready_online_payout_targets: u64,
     duplicate_host_placeholder_blocked_online_targets: u64,
+    duplicate_payout_target_placeholder_blocked_online_targets: u64,
+    missing_payout_target_blocked_online_targets: u64,
+    version_floor_blocked_beneficiaries_now: u64,
+    readiness_blocked_online_targets: u64,
     latest_eligible_window_started_at_unix_ms: Option<u64>,
     last_dispatch_at_unix_ms: Option<u64>,
     last_confirmed_at_unix_ms: Option<u64>,
@@ -1059,6 +1067,12 @@ pub struct TreasuryStatusResponse {
     #[serde(default)]
     pub tracked_payment_backlog_count: u64,
     #[serde(default)]
+    pub availability_online_identities_now: u64,
+    #[serde(default)]
+    pub availability_online_host_clusters_now: u64,
+    #[serde(default)]
+    pub availability_stipend_eligible_beneficiaries_now: u64,
+    #[serde(default)]
     pub eligible_online_payout_targets: u64,
     #[serde(default)]
     pub sellable_pylons_online_now: u64,
@@ -1066,6 +1080,16 @@ pub struct TreasuryStatusResponse {
     pub inference_ready_online_payout_targets: u64,
     #[serde(default)]
     pub duplicate_host_placeholder_blocked_online_targets: u64,
+    #[serde(default)]
+    pub duplicate_host_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub duplicate_payout_target_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub missing_payout_target_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub version_floor_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub readiness_blocked_beneficiaries_now: u64,
     #[serde(default)]
     pub min_new_accrual_version_blocked_online_targets: u64,
     #[serde(default)]
@@ -1102,6 +1126,10 @@ pub struct TreasuryStatusResponse {
     #[serde(default)]
     pub accepted_work_payout_sats_paid_24h: u64,
     #[serde(default)]
+    pub availability_stipend_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub availability_stipend_payout_sats_paid_24h: u64,
+    #[serde(default)]
     pub placeholder_payout_sats_paid_total: u64,
     #[serde(default)]
     pub placeholder_payout_sats_paid_24h: u64,
@@ -1133,6 +1161,8 @@ pub struct TreasuryStatusResponse {
     pub payout_target_identities: Vec<TreasuryPayoutTargetIdentityStatus>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_training_payouts: Vec<TreasuryTrainingPayoutLedgerEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub availability_beneficiary_debug_rows: Vec<TreasuryAvailabilityBeneficiaryDebugRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -1262,6 +1292,10 @@ pub struct TreasuryPublicSnapshot {
     #[serde(default)]
     pub accepted_work_payout_sats_paid_24h: u64,
     #[serde(default)]
+    pub availability_stipend_payout_sats_paid_total: u64,
+    #[serde(default)]
+    pub availability_stipend_payout_sats_paid_24h: u64,
+    #[serde(default)]
     pub placeholder_payout_sats_paid_total: u64,
     #[serde(default)]
     pub placeholder_payout_sats_paid_24h: u64,
@@ -1289,12 +1323,28 @@ pub struct TreasuryPublicSnapshot {
     pub pending_confirmation_count: u64,
     #[serde(default)]
     pub tracked_payment_backlog_count: u64,
+    #[serde(default)]
+    pub availability_online_identities_now: u64,
+    #[serde(default)]
+    pub availability_online_host_clusters_now: u64,
+    #[serde(default)]
+    pub availability_stipend_eligible_beneficiaries_now: u64,
     pub eligible_online_payout_targets: u64,
     pub sellable_pylons_online_now: u64,
     #[serde(default)]
     pub inference_ready_online_payout_targets: u64,
     #[serde(default)]
     pub duplicate_host_placeholder_blocked_online_targets: u64,
+    #[serde(default)]
+    pub duplicate_host_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub duplicate_payout_target_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub missing_payout_target_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub version_floor_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub readiness_blocked_beneficiaries_now: u64,
     #[serde(default)]
     pub min_new_accrual_version_blocked_online_targets: u64,
     #[serde(default)]
@@ -1380,10 +1430,18 @@ pub struct TreasuryPublicStats {
     pub backlog_retryable: u64,
     pub pending_confirmation_count: u64,
     pub tracked_payment_backlog_count: u64,
+    pub availability_online_identities_now: u64,
+    pub availability_online_host_clusters_now: u64,
+    pub availability_stipend_eligible_beneficiaries_now: u64,
     pub eligible_online_payout_targets: u64,
     pub sellable_pylons_online_now: u64,
     pub inference_ready_online_payout_targets: u64,
     pub duplicate_host_placeholder_blocked_online_targets: u64,
+    pub duplicate_host_blocked_beneficiaries_now: u64,
+    pub duplicate_payout_target_blocked_beneficiaries_now: u64,
+    pub missing_payout_target_blocked_beneficiaries_now: u64,
+    pub version_floor_blocked_beneficiaries_now: u64,
+    pub readiness_blocked_beneficiaries_now: u64,
     pub min_new_accrual_version_blocked_online_targets: u64,
     pub min_new_accrual_unknown_version_online_targets: u64,
     pub latest_eligible_window_started_at_unix_ms: Option<u64>,
@@ -1398,6 +1456,8 @@ pub struct TreasuryPublicStats {
     pub payout_sats_paid_24h: u64,
     pub accepted_work_payout_sats_paid_total: u64,
     pub accepted_work_payout_sats_paid_24h: u64,
+    pub availability_stipend_payout_sats_paid_total: u64,
+    pub availability_stipend_payout_sats_paid_24h: u64,
     pub placeholder_payout_sats_paid_total: u64,
     pub placeholder_payout_sats_paid_24h: u64,
     pub beta_bonus_payout_sats_paid_total: u64,
@@ -1428,6 +1488,33 @@ pub struct OnlinePylonIdentity {
     pub availability_stipend_gate_reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryAvailabilityBeneficiaryDebugRow {
+    pub nostr_pubkey_hex: String,
+    pub sellable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_version: Option<String>,
+    pub inference_ready: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beneficiary_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beneficiary_key: Option<String>,
+    pub availability_stipend_eligible_now: bool,
+    pub verdict_reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_window_started_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_payout_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_payout_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_payout_reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AvailabilityBeneficiaryKind {
@@ -1437,6 +1524,14 @@ pub enum AvailabilityBeneficiaryKind {
 }
 
 impl AvailabilityBeneficiaryKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::HostCluster => "host_cluster",
+            Self::PayoutTarget => "payout_target",
+            Self::Identity => "identity",
+        }
+    }
+
     const fn duplicate_skip_reason(self) -> Option<&'static str> {
         match self {
             Self::HostCluster => Some("duplicate_host_placeholder_readiness"),
@@ -1553,10 +1648,10 @@ impl NewAccrualVersionGateVerdict {
         }
     }
 
-    const fn counts_as_unknown_version(self) -> bool {
+    fn skip_reason_is_unknown_version(reason: &str) -> bool {
         matches!(
-            self,
-            Self::MissingClientVersion | Self::InvalidClientVersion
+            reason,
+            "missing_client_version_for_new_accrual" | "invalid_client_version_for_new_accrual"
         )
     }
 }
@@ -1565,6 +1660,7 @@ impl NewAccrualVersionGateVerdict {
 #[serde(rename_all = "snake_case")]
 pub enum TreasuryPayoutClass {
     #[default]
+    #[serde(rename = "availability_stipend", alias = "placeholder_liveness")]
     PlaceholderLiveness,
     AcceptedWork,
     BetaBonus,
@@ -1573,7 +1669,7 @@ pub enum TreasuryPayoutClass {
 impl TreasuryPayoutClass {
     const fn label(self) -> &'static str {
         match self {
-            Self::PlaceholderLiveness => "placeholder_liveness",
+            Self::PlaceholderLiveness => "availability_stipend",
             Self::AcceptedWork => "accepted_work",
             Self::BetaBonus => "beta_bonus",
         }
@@ -1806,6 +1902,12 @@ pub struct TreasuryState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payout_loop_last_completed_at_unix_ms: Option<u64>,
     #[serde(default)]
+    pub availability_online_identities_now: u64,
+    #[serde(default)]
+    pub availability_online_host_clusters_now: u64,
+    #[serde(default)]
+    pub availability_stipend_eligible_beneficiaries_now: u64,
+    #[serde(default)]
     pub eligible_online_payout_targets: u64,
     #[serde(default)]
     pub sellable_pylons_online_now: u64,
@@ -1813,6 +1915,14 @@ pub struct TreasuryState {
     pub inference_ready_online_payout_targets: u64,
     #[serde(default)]
     pub duplicate_host_placeholder_blocked_online_targets: u64,
+    #[serde(default)]
+    pub duplicate_payout_target_placeholder_blocked_online_targets: u64,
+    #[serde(default)]
+    pub missing_payout_target_blocked_online_targets: u64,
+    #[serde(default)]
+    pub version_floor_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub readiness_blocked_online_targets: u64,
     #[serde(default)]
     pub min_new_accrual_version_blocked_online_targets: u64,
     #[serde(default)]
@@ -1845,6 +1955,25 @@ pub struct TreasuryState {
     state_path: Option<PathBuf>,
     #[serde(skip)]
     last_persistence_error: Option<String>,
+    #[serde(skip)]
+    availability_beneficiary_debug_rows: Vec<TreasuryAvailabilityBeneficiaryDebugRow>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct AvailabilityObservabilitySnapshot {
+    availability_online_identities_now: u64,
+    availability_online_host_clusters_now: u64,
+    availability_stipend_eligible_beneficiaries_now: u64,
+    eligible_online_payout_targets: u64,
+    inference_ready_online_payout_targets: u64,
+    duplicate_host_placeholder_blocked_online_targets: u64,
+    duplicate_payout_target_placeholder_blocked_online_targets: u64,
+    missing_payout_target_blocked_online_targets: u64,
+    version_floor_blocked_beneficiaries_now: u64,
+    min_new_accrual_unknown_version_online_targets: u64,
+    readiness_blocked_online_targets: u64,
+    latest_eligible_window_started_at_unix_ms: Option<u64>,
+    availability_beneficiary_debug_rows: Vec<TreasuryAvailabilityBeneficiaryDebugRow>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2144,12 +2273,36 @@ fn failed_payout_reason_is_retryable(reason: &str) -> bool {
 }
 
 fn payout_basis_is_placeholder_liveness(basis: &str) -> bool {
-    matches!(basis.trim(), "inference_ready" | "presence_only" | "disabled")
+    matches!(
+        basis.trim(),
+        "inference_ready" | "presence_only" | "disabled"
+    )
+}
+
+fn availability_reason_is_duplicate_host(reason: &str) -> bool {
+    reason == "duplicate_host_placeholder_readiness"
+}
+
+fn availability_reason_is_duplicate_payout_target(reason: &str) -> bool {
+    reason == "duplicate_payout_target_placeholder_readiness"
+}
+
+fn availability_reason_is_missing_payout_target(reason: &str) -> bool {
+    reason == "missing_payout_target"
+}
+
+fn availability_reason_is_version_floor(reason: &str) -> bool {
+    matches!(
+        reason,
+        "below_min_new_accrual_version_floor"
+            | "missing_client_version_for_new_accrual"
+            | "invalid_client_version_for_new_accrual"
+            | "invalid_min_new_accrual_version_policy"
+    )
 }
 
 fn placeholder_liveness_record_can_compact(record: &TreasuryPayoutRecord) -> bool {
-    if record.classification.effective_payout_class() != TreasuryPayoutClass::PlaceholderLiveness
-    {
+    if record.classification.effective_payout_class() != TreasuryPayoutClass::PlaceholderLiveness {
         return false;
     }
 
@@ -2229,7 +2382,9 @@ impl TreasuryState {
             && self.weak_device_accepted_work_payout_sats_paid_total == 0
             && self.strong_lane_accepted_work_payout_sats_paid_total == 0
             && self.placeholder_payout_sats_paid_total == self.payout_sats_paid_total;
-        let target_total = self.payout_sats_paid_total.max(computed.payout_sats_paid_total);
+        let target_total = self
+            .payout_sats_paid_total
+            .max(computed.payout_sats_paid_total);
         let mut changed = false;
         if self.payout_sats_paid_total != target_total {
             self.payout_sats_paid_total = target_total;
@@ -2610,6 +2765,209 @@ impl TreasuryState {
         dispositions
     }
 
+    fn availability_current_payout_key(
+        disposition: &AvailabilityIdentityDisposition,
+    ) -> Option<String> {
+        let current_window_started_at_unix_ms = disposition.current_window_started_at_unix_ms?;
+        let payout_key_scope = if disposition.allowed() {
+            disposition
+                .beneficiary
+                .as_ref()
+                .map(|beneficiary| format!("availability-beneficiary:{}", beneficiary.key))
+                .unwrap_or_else(|| {
+                    format!(
+                        "availability-identity:{}",
+                        disposition.identity.nostr_pubkey_hex
+                    )
+                })
+        } else {
+            format!(
+                "availability-identity:{}",
+                disposition.identity.nostr_pubkey_hex
+            )
+        };
+        Some(payout_window_key(
+            current_window_started_at_unix_ms,
+            payout_key_scope.as_str(),
+        ))
+    }
+
+    fn availability_observability_snapshot(
+        &self,
+        policy: &TreasuryRuntimePolicy,
+        online_identities: &[OnlinePylonIdentity],
+        now_unix_ms: u64,
+    ) -> AvailabilityObservabilitySnapshot {
+        let dispositions =
+            self.availability_identity_dispositions(policy, online_identities, now_unix_ms);
+        let mut host_clusters = BTreeSet::new();
+        let mut snapshot = AvailabilityObservabilitySnapshot {
+            availability_online_identities_now: online_identities.len() as u64,
+            ..AvailabilityObservabilitySnapshot::default()
+        };
+
+        for identity in online_identities {
+            host_clusters.insert(
+                identity
+                    .host_fingerprint
+                    .as_ref()
+                    .map(|fingerprint| format!("host:{fingerprint}"))
+                    .unwrap_or_else(|| format!("identity:{}", identity.nostr_pubkey_hex)),
+            );
+        }
+        snapshot.availability_online_host_clusters_now = host_clusters.len() as u64;
+
+        let mut rows = dispositions
+            .into_iter()
+            .map(|disposition| {
+                if disposition.identity.inference_ready {
+                    snapshot.inference_ready_online_payout_targets = snapshot
+                        .inference_ready_online_payout_targets
+                        .saturating_add(1);
+                }
+
+                let version_gate_reason = disposition.current_window_started_at_unix_ms.and_then(
+                    |window_started_at_unix_ms| {
+                        policy
+                            .new_accrual_version_gate_verdict(
+                                disposition.identity.client_version.as_deref(),
+                                window_started_at_unix_ms,
+                            )
+                            .skip_reason()
+                            .map(str::to_string)
+                    },
+                );
+                let final_verdict_reason = disposition
+                    .verdict_reason
+                    .clone()
+                    .or(version_gate_reason.clone())
+                    .unwrap_or_else(|| "eligible".to_string());
+                let availability_stipend_eligible_now = final_verdict_reason == "eligible";
+
+                if availability_stipend_eligible_now {
+                    snapshot.availability_stipend_eligible_beneficiaries_now = snapshot
+                        .availability_stipend_eligible_beneficiaries_now
+                        .saturating_add(1);
+                    snapshot.eligible_online_payout_targets =
+                        snapshot.eligible_online_payout_targets.saturating_add(1);
+                    if let Some(current_window_started_at_unix_ms) =
+                        disposition.current_window_started_at_unix_ms
+                    {
+                        snapshot.latest_eligible_window_started_at_unix_ms =
+                            Some(match snapshot.latest_eligible_window_started_at_unix_ms {
+                                Some(existing) => existing.max(current_window_started_at_unix_ms),
+                                None => current_window_started_at_unix_ms,
+                            });
+                    }
+                } else if availability_reason_is_duplicate_host(final_verdict_reason.as_str()) {
+                    snapshot.duplicate_host_placeholder_blocked_online_targets = snapshot
+                        .duplicate_host_placeholder_blocked_online_targets
+                        .saturating_add(1);
+                } else if availability_reason_is_duplicate_payout_target(
+                    final_verdict_reason.as_str(),
+                ) {
+                    snapshot.duplicate_payout_target_placeholder_blocked_online_targets = snapshot
+                        .duplicate_payout_target_placeholder_blocked_online_targets
+                        .saturating_add(1);
+                } else if availability_reason_is_missing_payout_target(
+                    final_verdict_reason.as_str(),
+                ) {
+                    snapshot.missing_payout_target_blocked_online_targets = snapshot
+                        .missing_payout_target_blocked_online_targets
+                        .saturating_add(1);
+                } else if availability_reason_is_version_floor(final_verdict_reason.as_str()) {
+                    snapshot.version_floor_blocked_beneficiaries_now = snapshot
+                        .version_floor_blocked_beneficiaries_now
+                        .saturating_add(1);
+                    if NewAccrualVersionGateVerdict::skip_reason_is_unknown_version(
+                        final_verdict_reason.as_str(),
+                    ) {
+                        snapshot.min_new_accrual_unknown_version_online_targets = snapshot
+                            .min_new_accrual_unknown_version_online_targets
+                            .saturating_add(1);
+                    }
+                } else {
+                    snapshot.readiness_blocked_online_targets =
+                        snapshot.readiness_blocked_online_targets.saturating_add(1);
+                }
+
+                let current_payout_key = Self::availability_current_payout_key(&disposition);
+                let current_payout_record = current_payout_key
+                    .as_ref()
+                    .and_then(|key| self.payout_records_by_key.get(key));
+                TreasuryAvailabilityBeneficiaryDebugRow {
+                    nostr_pubkey_hex: disposition.identity.nostr_pubkey_hex.clone(),
+                    sellable: disposition.identity.sellable,
+                    client_version: disposition.identity.client_version.clone(),
+                    inference_ready: disposition.identity.inference_ready,
+                    host_fingerprint: disposition.identity.host_fingerprint.clone(),
+                    payout_target: disposition
+                        .payout_target
+                        .as_ref()
+                        .map(|target| target.spark_address.clone()),
+                    beneficiary_kind: disposition
+                        .beneficiary
+                        .as_ref()
+                        .map(|beneficiary| beneficiary.kind.label().to_string()),
+                    beneficiary_key: disposition
+                        .beneficiary
+                        .as_ref()
+                        .map(|beneficiary| beneficiary.key.clone()),
+                    availability_stipend_eligible_now,
+                    verdict_reason: final_verdict_reason,
+                    current_window_started_at_unix_ms: disposition
+                        .current_window_started_at_unix_ms,
+                    current_payout_key,
+                    current_payout_status: current_payout_record
+                        .map(|record| record.status.clone()),
+                    current_payout_reason: current_payout_record
+                        .and_then(|record| record.reason.clone()),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        rows.sort_by(|left, right| {
+            left.availability_stipend_eligible_now
+                .cmp(&right.availability_stipend_eligible_now)
+                .then_with(|| left.verdict_reason.cmp(&right.verdict_reason))
+                .then_with(|| left.nostr_pubkey_hex.cmp(&right.nostr_pubkey_hex))
+        });
+        rows.truncate(TREASURY_STATUS_AVAILABILITY_DEBUG_ROW_LIMIT);
+        snapshot.availability_beneficiary_debug_rows = rows;
+        snapshot
+    }
+
+    fn apply_availability_observability_snapshot(
+        &mut self,
+        observability: AvailabilityObservabilitySnapshot,
+    ) {
+        self.availability_online_identities_now = observability.availability_online_identities_now;
+        self.availability_online_host_clusters_now =
+            observability.availability_online_host_clusters_now;
+        self.availability_stipend_eligible_beneficiaries_now =
+            observability.availability_stipend_eligible_beneficiaries_now;
+        self.eligible_online_payout_targets = observability.eligible_online_payout_targets;
+        self.inference_ready_online_payout_targets =
+            observability.inference_ready_online_payout_targets;
+        self.duplicate_host_placeholder_blocked_online_targets =
+            observability.duplicate_host_placeholder_blocked_online_targets;
+        self.duplicate_payout_target_placeholder_blocked_online_targets =
+            observability.duplicate_payout_target_placeholder_blocked_online_targets;
+        self.missing_payout_target_blocked_online_targets =
+            observability.missing_payout_target_blocked_online_targets;
+        self.version_floor_blocked_beneficiaries_now =
+            observability.version_floor_blocked_beneficiaries_now;
+        self.readiness_blocked_online_targets = observability.readiness_blocked_online_targets;
+        self.min_new_accrual_version_blocked_online_targets =
+            observability.version_floor_blocked_beneficiaries_now;
+        self.min_new_accrual_unknown_version_online_targets =
+            observability.min_new_accrual_unknown_version_online_targets;
+        self.latest_eligible_window_started_at_unix_ms =
+            observability.latest_eligible_window_started_at_unix_ms;
+        self.availability_beneficiary_debug_rows =
+            observability.availability_beneficiary_debug_rows;
+    }
+
     fn payout_loop_health(&self, config: &TreasuryConfig) -> String {
         if !self.treasury_enabled(config) {
             return "disabled".to_string();
@@ -2659,90 +3017,26 @@ impl TreasuryState {
             .iter()
             .filter(|identity| identity.sellable)
             .count() as u64;
+        self.availability_online_identities_now = online_identities.len() as u64;
+        self.availability_online_host_clusters_now = 0;
+        self.availability_stipend_eligible_beneficiaries_now = 0;
         self.eligible_online_payout_targets = 0;
         self.inference_ready_online_payout_targets = 0;
         self.duplicate_host_placeholder_blocked_online_targets = 0;
+        self.duplicate_payout_target_placeholder_blocked_online_targets = 0;
+        self.missing_payout_target_blocked_online_targets = 0;
+        self.version_floor_blocked_beneficiaries_now = 0;
+        self.readiness_blocked_online_targets = 0;
         self.min_new_accrual_version_blocked_online_targets = 0;
         self.min_new_accrual_unknown_version_online_targets = 0;
+        self.availability_beneficiary_debug_rows.clear();
+        self.latest_eligible_window_started_at_unix_ms = None;
         if !policy.treasury_enabled || policy.payout_interval_seconds == 0 {
             return;
         }
-
-        let mut latest_eligible_window_started_at_unix_ms: Option<u64> = None;
-        for disposition in self.availability_identity_dispositions(&policy, online_identities, now_unix_ms)
-        {
-            let identity = &disposition.identity;
-            if identity.inference_ready {
-                self.inference_ready_online_payout_targets =
-                    self.inference_ready_online_payout_targets.saturating_add(1);
-            }
-            match disposition.verdict_reason.as_deref() {
-                Some("duplicate_host_placeholder_readiness") => {
-                    self.duplicate_host_placeholder_blocked_online_targets = self
-                        .duplicate_host_placeholder_blocked_online_targets
-                        .saturating_add(1);
-                    continue;
-                }
-                Some(
-                    "below_min_new_accrual_version_floor"
-                    | "missing_client_version_for_new_accrual"
-                    | "invalid_client_version_for_new_accrual"
-                    | "invalid_min_new_accrual_version_policy",
-                ) => {
-                    self.min_new_accrual_version_blocked_online_targets = self
-                        .min_new_accrual_version_blocked_online_targets
-                        .saturating_add(1);
-                    if matches!(
-                        disposition.verdict_reason.as_deref(),
-                        Some(
-                            "missing_client_version_for_new_accrual"
-                                | "invalid_client_version_for_new_accrual"
-                        )
-                    ) {
-                        self.min_new_accrual_unknown_version_online_targets = self
-                            .min_new_accrual_unknown_version_online_targets
-                            .saturating_add(1);
-                    }
-                    continue;
-                }
-                Some(_) => continue,
-                None => {}
-            }
-
-            let Some(window_started_at_unix_ms) = disposition.current_window_started_at_unix_ms else {
-                continue;
-            };
-            let gate_verdict = policy.new_accrual_version_gate_verdict(
-                identity.client_version.as_deref(),
-                window_started_at_unix_ms,
-            );
-            if gate_verdict != NewAccrualVersionGateVerdict::Allowed {
-                self.min_new_accrual_version_blocked_online_targets = self
-                    .min_new_accrual_version_blocked_online_targets
-                    .saturating_add(1);
-                if gate_verdict.counts_as_unknown_version() {
-                    self.min_new_accrual_unknown_version_online_targets = self
-                        .min_new_accrual_unknown_version_online_targets
-                        .saturating_add(1);
-                }
-                continue;
-            }
-            self.eligible_online_payout_targets =
-                self.eligible_online_payout_targets.saturating_add(1);
-            latest_eligible_window_started_at_unix_ms =
-                Some(match latest_eligible_window_started_at_unix_ms {
-                    Some(existing) => existing.max(window_started_at_unix_ms),
-                    None => window_started_at_unix_ms,
-                });
-        }
-
-        if let Some(window_started_at_unix_ms) = latest_eligible_window_started_at_unix_ms {
-            self.latest_eligible_window_started_at_unix_ms = Some(
-                self.latest_eligible_window_started_at_unix_ms
-                    .unwrap_or(window_started_at_unix_ms)
-                    .max(window_started_at_unix_ms),
-            );
-        }
+        let observability =
+            self.availability_observability_snapshot(&policy, online_identities, now_unix_ms);
+        self.apply_availability_observability_snapshot(observability);
     }
 
     fn reason_metrics_24h(
@@ -2921,11 +3215,21 @@ impl TreasuryState {
         }
 
         TreasuryContinuitySignalSnapshot {
+            availability_online_identities_now: self.availability_online_identities_now,
+            availability_online_host_clusters_now: self.availability_online_host_clusters_now,
+            availability_stipend_eligible_beneficiaries_now: self
+                .availability_stipend_eligible_beneficiaries_now,
             eligible_online_payout_targets: self.eligible_online_payout_targets,
             sellable_pylons_online_now: self.sellable_pylons_online_now,
             inference_ready_online_payout_targets: self.inference_ready_online_payout_targets,
             duplicate_host_placeholder_blocked_online_targets: self
                 .duplicate_host_placeholder_blocked_online_targets,
+            duplicate_payout_target_placeholder_blocked_online_targets: self
+                .duplicate_payout_target_placeholder_blocked_online_targets,
+            missing_payout_target_blocked_online_targets: self
+                .missing_payout_target_blocked_online_targets,
+            version_floor_blocked_beneficiaries_now: self.version_floor_blocked_beneficiaries_now,
+            readiness_blocked_online_targets: self.readiness_blocked_online_targets,
             latest_eligible_window_started_at_unix_ms,
             last_dispatch_at_unix_ms: self.last_dispatch_at_unix_ms,
             last_confirmed_at_unix_ms: self.last_confirmed_payout_at_unix_ms,
@@ -3041,8 +3345,7 @@ impl TreasuryState {
                 continue;
             }
             if record.status != "confirmed" {
-                tracked_payment_backlog_count =
-                    tracked_payment_backlog_count.saturating_add(1);
+                tracked_payment_backlog_count = tracked_payment_backlog_count.saturating_add(1);
             }
             if record.status == "dispatched" {
                 pending_confirmation_count = pending_confirmation_count.saturating_add(1);
@@ -3262,6 +3565,12 @@ impl TreasuryState {
                 .saturating_add(
                     unconfirmed_visible_24h_totals.accepted_work_payout_sats_paid_total,
                 ),
+            availability_stipend_payout_sats_paid_total: cumulative_totals
+                .placeholder_payout_sats_paid_total
+                .saturating_add(unconfirmed_visible_totals.placeholder_payout_sats_paid_total),
+            availability_stipend_payout_sats_paid_24h: confirmed_24h_totals
+                .placeholder_payout_sats_paid_total
+                .saturating_add(unconfirmed_visible_24h_totals.placeholder_payout_sats_paid_total),
             placeholder_payout_sats_paid_total: cumulative_totals
                 .placeholder_payout_sats_paid_total
                 .saturating_add(unconfirmed_visible_totals.placeholder_payout_sats_paid_total),
@@ -3302,11 +3611,24 @@ impl TreasuryState {
             backlog_retryable,
             pending_confirmation_count,
             tracked_payment_backlog_count,
+            availability_online_identities_now: continuity.availability_online_identities_now,
+            availability_online_host_clusters_now: continuity.availability_online_host_clusters_now,
+            availability_stipend_eligible_beneficiaries_now: continuity
+                .availability_stipend_eligible_beneficiaries_now,
             eligible_online_payout_targets: continuity.eligible_online_payout_targets,
             sellable_pylons_online_now: continuity.sellable_pylons_online_now,
             inference_ready_online_payout_targets: continuity.inference_ready_online_payout_targets,
             duplicate_host_placeholder_blocked_online_targets: continuity
                 .duplicate_host_placeholder_blocked_online_targets,
+            duplicate_host_blocked_beneficiaries_now: continuity
+                .duplicate_host_placeholder_blocked_online_targets,
+            duplicate_payout_target_blocked_beneficiaries_now: continuity
+                .duplicate_payout_target_placeholder_blocked_online_targets,
+            missing_payout_target_blocked_beneficiaries_now: continuity
+                .missing_payout_target_blocked_online_targets,
+            version_floor_blocked_beneficiaries_now: continuity
+                .version_floor_blocked_beneficiaries_now,
+            readiness_blocked_beneficiaries_now: continuity.readiness_blocked_online_targets,
             min_new_accrual_version_blocked_online_targets: self
                 .min_new_accrual_version_blocked_online_targets,
             min_new_accrual_unknown_version_online_targets: self
@@ -3443,11 +3765,24 @@ impl TreasuryState {
             backlog_retryable: snapshot.backlog_retryable,
             pending_confirmation_count: snapshot.pending_confirmation_count,
             tracked_payment_backlog_count: snapshot.tracked_payment_backlog_count,
+            availability_online_identities_now: snapshot.availability_online_identities_now,
+            availability_online_host_clusters_now: snapshot.availability_online_host_clusters_now,
+            availability_stipend_eligible_beneficiaries_now: snapshot
+                .availability_stipend_eligible_beneficiaries_now,
             eligible_online_payout_targets: snapshot.eligible_online_payout_targets,
             sellable_pylons_online_now: snapshot.sellable_pylons_online_now,
             inference_ready_online_payout_targets: snapshot.inference_ready_online_payout_targets,
             duplicate_host_placeholder_blocked_online_targets: snapshot
                 .duplicate_host_placeholder_blocked_online_targets,
+            duplicate_host_blocked_beneficiaries_now: snapshot
+                .duplicate_host_blocked_beneficiaries_now,
+            duplicate_payout_target_blocked_beneficiaries_now: snapshot
+                .duplicate_payout_target_blocked_beneficiaries_now,
+            missing_payout_target_blocked_beneficiaries_now: snapshot
+                .missing_payout_target_blocked_beneficiaries_now,
+            version_floor_blocked_beneficiaries_now: snapshot
+                .version_floor_blocked_beneficiaries_now,
+            readiness_blocked_beneficiaries_now: snapshot.readiness_blocked_beneficiaries_now,
             min_new_accrual_version_blocked_online_targets: snapshot
                 .min_new_accrual_version_blocked_online_targets,
             min_new_accrual_unknown_version_online_targets: snapshot
@@ -3468,6 +3803,10 @@ impl TreasuryState {
             payout_sats_paid_24h: snapshot.payout_sats_paid_24h,
             accepted_work_payout_sats_paid_total: snapshot.accepted_work_payout_sats_paid_total,
             accepted_work_payout_sats_paid_24h: snapshot.accepted_work_payout_sats_paid_24h,
+            availability_stipend_payout_sats_paid_total: snapshot
+                .availability_stipend_payout_sats_paid_total,
+            availability_stipend_payout_sats_paid_24h: snapshot
+                .availability_stipend_payout_sats_paid_24h,
             placeholder_payout_sats_paid_total: snapshot.placeholder_payout_sats_paid_total,
             placeholder_payout_sats_paid_24h: snapshot.placeholder_payout_sats_paid_24h,
             beta_bonus_payout_sats_paid_total: snapshot.beta_bonus_payout_sats_paid_total,
@@ -3695,8 +4034,7 @@ impl TreasuryState {
             wallet_balance_sats: stats.wallet_balance_sats,
             wallet_balance_updated_at_unix_ms: stats.wallet_balance_updated_at_unix_ms,
             last_wallet_sync_at_unix_ms: stats.last_wallet_sync_at_unix_ms,
-            last_wallet_refresh_attempt_at_unix_ms: stats
-                .last_wallet_refresh_attempt_at_unix_ms,
+            last_wallet_refresh_attempt_at_unix_ms: stats.last_wallet_refresh_attempt_at_unix_ms,
             wallet_runtime_status: stats.wallet_runtime_status,
             wallet_last_error: stats.wallet_last_error,
             wallet_hydration_mode: stats.wallet_hydration_mode,
@@ -3728,11 +4066,23 @@ impl TreasuryState {
             backlog_retryable: stats.backlog_retryable,
             pending_confirmation_count: stats.pending_confirmation_count,
             tracked_payment_backlog_count: stats.tracked_payment_backlog_count,
+            availability_online_identities_now: stats.availability_online_identities_now,
+            availability_online_host_clusters_now: stats.availability_online_host_clusters_now,
+            availability_stipend_eligible_beneficiaries_now: stats
+                .availability_stipend_eligible_beneficiaries_now,
             eligible_online_payout_targets: stats.eligible_online_payout_targets,
             sellable_pylons_online_now: stats.sellable_pylons_online_now,
             inference_ready_online_payout_targets: stats.inference_ready_online_payout_targets,
             duplicate_host_placeholder_blocked_online_targets: stats
                 .duplicate_host_placeholder_blocked_online_targets,
+            duplicate_host_blocked_beneficiaries_now: stats
+                .duplicate_host_blocked_beneficiaries_now,
+            duplicate_payout_target_blocked_beneficiaries_now: stats
+                .duplicate_payout_target_blocked_beneficiaries_now,
+            missing_payout_target_blocked_beneficiaries_now: stats
+                .missing_payout_target_blocked_beneficiaries_now,
+            version_floor_blocked_beneficiaries_now: stats.version_floor_blocked_beneficiaries_now,
+            readiness_blocked_beneficiaries_now: stats.readiness_blocked_beneficiaries_now,
             min_new_accrual_version_blocked_online_targets: stats
                 .min_new_accrual_version_blocked_online_targets,
             min_new_accrual_unknown_version_online_targets: stats
@@ -3761,6 +4111,10 @@ impl TreasuryState {
             payout_sats_paid_24h: stats.payout_sats_paid_24h,
             accepted_work_payout_sats_paid_total: stats.accepted_work_payout_sats_paid_total,
             accepted_work_payout_sats_paid_24h: stats.accepted_work_payout_sats_paid_24h,
+            availability_stipend_payout_sats_paid_total: stats
+                .availability_stipend_payout_sats_paid_total,
+            availability_stipend_payout_sats_paid_24h: stats
+                .availability_stipend_payout_sats_paid_24h,
             placeholder_payout_sats_paid_total: stats.placeholder_payout_sats_paid_total,
             placeholder_payout_sats_paid_24h: stats.placeholder_payout_sats_paid_24h,
             beta_bonus_payout_sats_paid_total: stats.beta_bonus_payout_sats_paid_total,
@@ -3783,6 +4137,7 @@ impl TreasuryState {
             training_payout_ledger_summary,
             payout_target_identities,
             recent_training_payouts,
+            availability_beneficiary_debug_rows: self.availability_beneficiary_debug_rows.clone(),
         }
     }
 
@@ -4240,6 +4595,7 @@ impl TreasuryState {
         changed |= stale_changed;
         let policy = self.active_policy(config);
         if !policy.treasury_enabled || policy.payout_interval_seconds == 0 {
+            self.observe_payout_eligibility(config, online_identities, now_unix_ms);
             self.refresh_public_snapshot_in_memory(config, now_unix_ms);
             return TreasuryPayoutPreparation {
                 dispatch_plans: Vec::new(),
@@ -4259,6 +4615,7 @@ impl TreasuryState {
         );
         changed |= queued_claim_changed;
         if online_identities.is_empty() {
+            self.observe_payout_eligibility(config, online_identities, now_unix_ms);
             if changed {
                 self.refresh_public_snapshot(config, now_unix_ms);
             } else {
@@ -4271,6 +4628,7 @@ impl TreasuryState {
             };
         }
         if policy.payout_sats_per_window == 0 {
+            self.observe_payout_eligibility(config, online_identities, now_unix_ms);
             if changed {
                 self.refresh_public_snapshot(config, now_unix_ms);
             } else {
@@ -4283,6 +4641,7 @@ impl TreasuryState {
             };
         }
         if policy.placeholder_payout_mode == TreasuryPlaceholderPayoutMode::Disabled {
+            self.observe_payout_eligibility(config, online_identities, now_unix_ms);
             if changed {
                 self.refresh_public_snapshot(config, now_unix_ms);
             } else {
@@ -4413,7 +4772,8 @@ impl TreasuryState {
                     }
 
                     let payout_class = placeholder_classification.effective_payout_class();
-                    let daily_budget_cap_sats = policy.daily_budget_cap_sats_for_class(payout_class);
+                    let daily_budget_cap_sats =
+                        policy.daily_budget_cap_sats_for_class(payout_class);
                     if daily_budget_cap_sats > 0
                         && committed_daily_budget_totals
                             .total_for_class(payout_class)
@@ -4493,6 +4853,10 @@ impl TreasuryState {
                     window_started_at_unix_ms.saturating_add(payout_interval_ms);
             }
         }
+
+        let observability =
+            self.availability_observability_snapshot(&policy, online_identities, now_unix_ms);
+        self.apply_availability_observability_snapshot(observability);
 
         if changed {
             self.refresh_public_snapshot(config, now_unix_ms);
@@ -5378,10 +5742,8 @@ async fn dispatch_live_payout_batch(
         return Vec::new();
     }
 
-    let max_concurrent_sends = config.max_concurrent_send_operations_for_class(
-        batch.len(),
-        payout_class,
-    );
+    let max_concurrent_sends =
+        config.max_concurrent_send_operations_for_class(batch.len(), payout_class);
     stream::iter(batch)
         .map(|(index, plan)| {
             let wallet = wallet.clone();
@@ -6346,8 +6708,7 @@ fn treasury_policy_changed_fields(
     if before.accepted_work_default_payout_sats() != after.accepted_work_default_payout_sats() {
         changed_fields.push("accepted_work_default_payout_sats".to_string());
     }
-    if before.accepted_work_daily_budget_cap_sats() != after.accepted_work_daily_budget_cap_sats()
-    {
+    if before.accepted_work_daily_budget_cap_sats() != after.accepted_work_daily_budget_cap_sats() {
         changed_fields.push("accepted_work_daily_budget_cap_sats".to_string());
     }
     if before.placeholder_payout_mode != after.placeholder_payout_mode {
@@ -6550,6 +6911,14 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
             response.accepted_work_payout_sats_paid_24h
         ),
         format!(
+            "availability_stipend_payout_sats_paid_total: {}",
+            response.availability_stipend_payout_sats_paid_total
+        ),
+        format!(
+            "availability_stipend_payout_sats_paid_24h: {}",
+            response.availability_stipend_payout_sats_paid_24h
+        ),
+        format!(
             "placeholder_payout_sats_paid_total: {}",
             response.placeholder_payout_sats_paid_total
         ),
@@ -6586,6 +6955,18 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
             response.registered_payout_identities
         ),
         format!(
+            "availability_online_identities_now: {}",
+            response.availability_online_identities_now
+        ),
+        format!(
+            "availability_online_host_clusters_now: {}",
+            response.availability_online_host_clusters_now
+        ),
+        format!(
+            "availability_stipend_eligible_beneficiaries_now: {}",
+            response.availability_stipend_eligible_beneficiaries_now
+        ),
+        format!(
             "min_new_accrual_version_blocked_online_targets: {}",
             response.min_new_accrual_version_blocked_online_targets
         ),
@@ -6600,6 +6981,26 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         format!(
             "duplicate_host_placeholder_blocked_online_targets: {}",
             response.duplicate_host_placeholder_blocked_online_targets
+        ),
+        format!(
+            "duplicate_host_blocked_beneficiaries_now: {}",
+            response.duplicate_host_blocked_beneficiaries_now
+        ),
+        format!(
+            "duplicate_payout_target_blocked_beneficiaries_now: {}",
+            response.duplicate_payout_target_blocked_beneficiaries_now
+        ),
+        format!(
+            "missing_payout_target_blocked_beneficiaries_now: {}",
+            response.missing_payout_target_blocked_beneficiaries_now
+        ),
+        format!(
+            "version_floor_blocked_beneficiaries_now: {}",
+            response.version_floor_blocked_beneficiaries_now
+        ),
+        format!(
+            "readiness_blocked_beneficiaries_now: {}",
+            response.readiness_blocked_beneficiaries_now
         ),
         format!(
             "training_payout_reconciliation_status: {}",
@@ -6640,6 +7041,10 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         format!(
             "recent_training_payout_rows: {}",
             response.recent_training_payouts.len()
+        ),
+        format!(
+            "availability_beneficiary_debug_rows: {}",
+            response.availability_beneficiary_debug_rows.len()
         ),
     ];
     if let Some(status) = response.wallet_runtime_status.as_deref() {
@@ -6789,6 +7194,13 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
         lines.push(format!(
             "active_continuity_alerts: {}",
             serde_json::to_string(&response.active_continuity_alerts)
+                .unwrap_or_else(|_| "[]".to_string())
+        ));
+    }
+    if !response.availability_beneficiary_debug_rows.is_empty() {
+        lines.push(format!(
+            "availability_beneficiary_debug_rows_json: {}",
+            serde_json::to_string(&response.availability_beneficiary_debug_rows)
                 .unwrap_or_else(|_| "[]".to_string())
         ));
     }
@@ -7584,11 +7996,7 @@ async fn wallet_snapshot_from_wallet_with_plan(
     wallet: &SparkWallet,
     plan: &TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletSnapshot> {
-    wallet_snapshot_from_wallet_with_plan_result(
-        wallet,
-        plan,
-        20_000,
-    )
+    wallet_snapshot_from_wallet_with_plan_result(wallet, plan, 20_000)
         .await
         .map(|result| result.snapshot)
 }
@@ -7881,7 +8289,8 @@ fn dispatch_with_test_hooks(
         TreasuryPayoutClass::BetaBonus,
     ] {
         let _parallelism = config.max_concurrent_send_operations_for_class(
-            plans.iter()
+            plans
+                .iter()
                 .filter(|plan| plan.classification.payout_class == payout_class)
                 .count(),
             payout_class,
@@ -9020,11 +9429,7 @@ mod tests {
             config.payout_interval_ms(),
             "payout_target:spark:alice",
         ));
-        state.observe_payout_eligibility(
-            &config,
-            &[test_online_identity("pubkey-a")],
-            now_unix_ms,
-        );
+        state.observe_payout_eligibility(&config, &[test_online_identity("pubkey-a")], now_unix_ms);
 
         let stats = state.public_stats(&config, now_unix_ms);
         assert!(stats.min_new_accrual_version_gate_active);
@@ -9033,8 +9438,176 @@ mod tests {
             Some("pylon-v0.1.1-rc1")
         );
         assert_eq!(stats.eligible_online_payout_targets, 0);
+        assert_eq!(stats.availability_online_identities_now, 1);
+        assert_eq!(stats.availability_stipend_eligible_beneficiaries_now, 0);
+        assert_eq!(stats.version_floor_blocked_beneficiaries_now, 1);
         assert_eq!(stats.min_new_accrual_version_blocked_online_targets, 1);
         assert_eq!(stats.min_new_accrual_unknown_version_online_targets, 1);
+    }
+
+    #[test]
+    fn availability_stipend_payout_class_serializes_canonically_and_reads_legacy_payloads() {
+        let classification = TreasuryPayoutClassification {
+            payout_class: TreasuryPayoutClass::PlaceholderLiveness,
+            ..TreasuryPayoutClassification::default()
+        };
+        let payload = serde_json::to_value(&classification).expect("serialize classification");
+        assert_eq!(
+            payload
+                .get("payout_class")
+                .and_then(serde_json::Value::as_str),
+            Some("availability_stipend")
+        );
+
+        let legacy_payload = serde_json::json!({
+            "payout_class": "placeholder_liveness"
+        });
+        let legacy: TreasuryPayoutClassification =
+            serde_json::from_value(legacy_payload).expect("deserialize legacy classification");
+        assert_eq!(
+            legacy.payout_class,
+            TreasuryPayoutClass::PlaceholderLiveness
+        );
+    }
+
+    #[test]
+    fn treasury_status_surfaces_availability_beneficiary_observability() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.min_new_accrual_pylon_version = Some("pylon-v0.1.10".to_string());
+
+        for (pubkey, spark_address) in [
+            ("pubkey-a", "spark:shared"),
+            ("pubkey-b", "spark:b"),
+            ("pubkey-c", "spark:shared"),
+            ("pubkey-e", "spark:e"),
+            ("pubkey-f", "spark:f"),
+        ] {
+            state.payout_targets_by_identity.insert(
+                pubkey.to_string(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: pubkey.to_string(),
+                    source_session_id: format!("session-{pubkey}"),
+                    spark_address: spark_address.to_string(),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+        }
+
+        let now_unix_ms = 1_800_000;
+        config.min_new_accrual_started_at_unix_ms = Some(payout_window_started_at_for_identity(
+            now_unix_ms,
+            config.payout_interval_ms(),
+            "payout_target:spark:shared",
+        ));
+
+        let online = vec![
+            OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.10".to_string()),
+                host_fingerprint: Some("host-1".to_string()),
+                ..test_online_identity("pubkey-a")
+            },
+            OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.10".to_string()),
+                host_fingerprint: Some("host-1".to_string()),
+                ..test_online_identity("pubkey-b")
+            },
+            OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.10".to_string()),
+                host_fingerprint: Some("host-2".to_string()),
+                ..test_online_identity("pubkey-c")
+            },
+            OnlinePylonIdentity {
+                host_fingerprint: Some("host-3".to_string()),
+                ..test_online_identity("pubkey-d")
+            },
+            OnlinePylonIdentity {
+                client_version: Some("pylon-v0.1.10".to_string()),
+                host_fingerprint: Some("host-4".to_string()),
+                availability_stipend_eligible: false,
+                availability_stipend_gate_reason: Some("missing_worker_role".to_string()),
+                ..test_online_identity("pubkey-e")
+            },
+            OnlinePylonIdentity {
+                client_version: None,
+                host_fingerprint: Some("host-5".to_string()),
+                ..test_online_identity("pubkey-f")
+            },
+        ];
+
+        state.observe_payout_eligibility(&config, &online, now_unix_ms);
+        let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
+        assert_eq!(prepared.dispatch_plans.len(), 1);
+
+        let status = state.status_response(&config, now_unix_ms);
+        assert_eq!(status.availability_online_identities_now, 6);
+        assert_eq!(status.availability_online_host_clusters_now, 5);
+        assert_eq!(status.availability_stipend_eligible_beneficiaries_now, 1);
+        assert_eq!(status.eligible_online_payout_targets, 1);
+        assert_eq!(status.duplicate_host_blocked_beneficiaries_now, 1);
+        assert_eq!(status.duplicate_payout_target_blocked_beneficiaries_now, 1);
+        assert_eq!(status.missing_payout_target_blocked_beneficiaries_now, 1);
+        assert_eq!(status.version_floor_blocked_beneficiaries_now, 1);
+        assert_eq!(status.readiness_blocked_beneficiaries_now, 1);
+        assert_eq!(status.min_new_accrual_unknown_version_online_targets, 1);
+        assert_eq!(status.availability_beneficiary_debug_rows.len(), 6);
+        assert_eq!(status.availability_stipend_payout_sats_paid_total, 0);
+        assert_eq!(status.availability_stipend_payout_sats_paid_24h, 0);
+
+        let row_a = status
+            .availability_beneficiary_debug_rows
+            .iter()
+            .find(|row| row.nostr_pubkey_hex == "pubkey-a")
+            .expect("eligible row");
+        assert!(row_a.availability_stipend_eligible_now);
+        assert_eq!(row_a.verdict_reason, "eligible");
+        assert_eq!(row_a.current_payout_status.as_deref(), Some("dispatching"));
+
+        let row_b = status
+            .availability_beneficiary_debug_rows
+            .iter()
+            .find(|row| row.nostr_pubkey_hex == "pubkey-b")
+            .expect("duplicate host row");
+        assert_eq!(row_b.verdict_reason, "duplicate_host_placeholder_readiness");
+        assert_eq!(row_b.current_payout_status.as_deref(), Some("skipped"));
+
+        let row_c = status
+            .availability_beneficiary_debug_rows
+            .iter()
+            .find(|row| row.nostr_pubkey_hex == "pubkey-c")
+            .expect("duplicate payout target row");
+        assert_eq!(
+            row_c.verdict_reason,
+            "duplicate_payout_target_placeholder_readiness"
+        );
+        assert_eq!(row_c.current_payout_status.as_deref(), Some("skipped"));
+
+        let row_d = status
+            .availability_beneficiary_debug_rows
+            .iter()
+            .find(|row| row.nostr_pubkey_hex == "pubkey-d")
+            .expect("missing payout target row");
+        assert_eq!(row_d.verdict_reason, "missing_payout_target");
+        assert!(row_d.payout_target.is_none());
+
+        let row_e = status
+            .availability_beneficiary_debug_rows
+            .iter()
+            .find(|row| row.nostr_pubkey_hex == "pubkey-e")
+            .expect("readiness row");
+        assert_eq!(row_e.verdict_reason, "missing_worker_role");
+
+        let row_f = status
+            .availability_beneficiary_debug_rows
+            .iter()
+            .find(|row| row.nostr_pubkey_hex == "pubkey-f")
+            .expect("version floor row");
+        assert_eq!(
+            row_f.verdict_reason,
+            "missing_client_version_for_new_accrual"
+        );
     }
 
     #[test]
@@ -9452,7 +10025,12 @@ mod tests {
         let prepared = state.prepare_due_payouts(&config, &online, now_unix_ms);
 
         assert!(prepared.dispatch_plans.is_empty());
-        assert_eq!(state.public_stats(&config, now_unix_ms).eligible_online_payout_targets, 0);
+        assert_eq!(
+            state
+                .public_stats(&config, now_unix_ms)
+                .eligible_online_payout_targets,
+            0
+        );
 
         let payout_key = payout_window_key(
             payout_window_started_at_for_identity(
@@ -9534,32 +10112,20 @@ mod tests {
             config.payout_interval_ms(),
             "payout_target:spark:bob",
         );
-        assert!(
-            prepared
-                .dispatch_plans
-                .iter()
-                .any(|plan| {
-                    plan.payout_key
-                        == payout_window_key(
-                            expected_window_a,
-                            availability_beneficiary_scope_key("payout_target:spark:alice")
-                                .as_str(),
-                        )
-                })
-        );
-        assert!(
-            prepared
-                .dispatch_plans
-                .iter()
-                .any(|plan| {
-                    plan.payout_key
-                        == payout_window_key(
-                            expected_window_b,
-                            availability_beneficiary_scope_key("payout_target:spark:bob")
-                                .as_str(),
-                        )
-                })
-        );
+        assert!(prepared.dispatch_plans.iter().any(|plan| {
+            plan.payout_key
+                == payout_window_key(
+                    expected_window_a,
+                    availability_beneficiary_scope_key("payout_target:spark:alice").as_str(),
+                )
+        }));
+        assert!(prepared.dispatch_plans.iter().any(|plan| {
+            plan.payout_key
+                == payout_window_key(
+                    expected_window_b,
+                    availability_beneficiary_scope_key("payout_target:spark:bob").as_str(),
+                )
+        }));
     }
 
     #[test]
@@ -9582,11 +10148,8 @@ mod tests {
         let now_unix_ms = 1_800_000;
         state.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms - (interval_ms * 3));
 
-        let prepared = state.prepare_due_payouts(
-            &config,
-            &[test_online_identity("pubkey-a")],
-            now_unix_ms,
-        );
+        let prepared =
+            state.prepare_due_payouts(&config, &[test_online_identity("pubkey-a")], now_unix_ms);
 
         assert_eq!(prepared.dispatch_plans.len(), 4);
         assert!(prepared.reconciliation_degraded_reason.is_none());
@@ -9613,11 +10176,8 @@ mod tests {
         let now_unix_ms = 1_800_000;
         state.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms - (interval_ms * 10));
 
-        let prepared = state.prepare_due_payouts(
-            &config,
-            &[test_online_identity("pubkey-a")],
-            now_unix_ms,
-        );
+        let prepared =
+            state.prepare_due_payouts(&config, &[test_online_identity("pubkey-a")], now_unix_ms);
 
         assert_eq!(prepared.dispatch_plans.len(), 3);
         assert_eq!(
@@ -11530,11 +12090,8 @@ mod tests {
             },
         );
 
-        let prepared = state.prepare_due_payouts(
-            &config,
-            &[test_online_identity("pubkey-a")],
-            now_unix_ms,
-        );
+        let prepared =
+            state.prepare_due_payouts(&config, &[test_online_identity("pubkey-a")], now_unix_ms);
 
         assert_eq!(prepared.dispatch_plans.len(), 1);
         assert_eq!(prepared.receipt_events.len(), 1);
@@ -11743,10 +12300,7 @@ mod tests {
         assert_eq!(config.max_concurrent_send_operations(16), 16);
         assert_eq!(config.max_concurrent_send_operations(128), 16);
         assert_eq!(
-            config.max_concurrent_send_operations_for_class(
-                16,
-                TreasuryPayoutClass::AcceptedWork
-            ),
+            config.max_concurrent_send_operations_for_class(16, TreasuryPayoutClass::AcceptedWork),
             super::TREASURY_MAX_CONCURRENT_ACCEPTED_WORK_SENDS
         );
         assert_eq!(
