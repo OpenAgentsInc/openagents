@@ -15,6 +15,7 @@ npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
 npx @openagentsinc/pylon --version 0.1.13
 npx @openagentsinc/pylon --no-launch
+npx @openagentsinc/pylon --no-updates
 npx @openagentsinc/pylon --download-curated-cache --model gemma-4-e2b --run-diagnostics
 npx @openagentsinc/pylon --verbose
 ```
@@ -25,6 +26,7 @@ The launcher:
   `bun install -g` installs with the same `pylon` command
 - checks GitHub for the latest tagged `pylon-v...` release on each default run,
   or resolves a specific tagged `Pylon` version when `--version` is provided
+- only installs releases initiated by `AtlantisPleb` in GitHub Releases
 - resolves the correct `pylon-v<version>-<os>-<arch>.tar.gz` asset for the
   current machine
 - falls back to the exact tagged source checkout and builds `pylon` plus
@@ -57,12 +59,17 @@ The launcher:
 - starts the installed `pylon-tui` by default after the smoke path; that TUI
   starts and supervises the earning worker
   unless `--no-launch` is set
-- for hosted homework/training work, use `0.1.13` or newer. That release keeps
-  the `0.1.12` Mac training-worker launch fix, removes the last legacy runtime
-  wording from the public bootstrap/runtime path, keeps runtime management
-  explicit instead of mutating the host automatically, prefers a current
-  `target/release/psionic-train` binary, and falls back to
-  `cargo run --release` instead of debug `cargo run`
+- while the TUI is running on the default release track, checks GitHub Releases
+  every 30 seconds and restarts the TUI from a newer trusted cached release
+  without replacing the global npm/bun command
+- use `--no-updates` to keep the current installed release running without
+  background GitHub release checks; `--version` remains a pinned release run
+- for hosted homework/training work, use launcher `0.1.14` or newer so the
+  cached standalone binary auto-updates while the dashboard is open. The latest
+  trusted standalone binary still carries the `0.1.13` and `0.1.12` runtime
+  fixes: no legacy runtime wording, explicit runtime management, current
+  `target/release/psionic-train` preference, and `cargo run --release`
+  fallback instead of debug `cargo run`
 - does not try to install or register a local runtime automatically; the
   bootstrap stays honest about the separate local Gemma runtime
   prerequisite instead of mutating the host behind the user's back

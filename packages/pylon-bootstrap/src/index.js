@@ -20,6 +20,8 @@ export const DEFAULT_MODEL_ID = "gemma-4-e4b";
 export const DEFAULT_DIAGNOSTIC_REPEATS = 3;
 export const DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS = 96;
 export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
+export const DEFAULT_UPDATE_CHECK_INTERVAL_MS = 30_000;
+export const DEFAULT_TRUSTED_RELEASE_AUTHOR = "AtlantisPleb";
 const PYLON_RELEASE_TAG_PREFIX = "pylon-v";
 const RELEASE_ASSET_INSTALL_METHOD = "release_asset";
 const SOURCE_BUILD_INSTALL_METHOD = "source_build";
@@ -114,6 +116,36 @@ function comparePylonReleaseTags(leftTagName, rightTagName) {
   }
 
   return left.normalized.localeCompare(right.normalized);
+}
+
+function trustedReleaseAuthor(release, trustedAuthor = DEFAULT_TRUSTED_RELEASE_AUTHOR) {
+  if (!trustedAuthor) {
+    return true;
+  }
+  return release?.author?.login === trustedAuthor;
+}
+
+export function assertTrustedReleaseAuthor(
+  release,
+  trustedAuthor = DEFAULT_TRUSTED_RELEASE_AUTHOR,
+) {
+  if (trustedReleaseAuthor(release, trustedAuthor)) {
+    return release;
+  }
+  const tagName = release?.tag_name ?? "unknown";
+  const author = release?.author?.login ?? "unknown";
+  throw new Error(
+    `Refusing ${tagName}: GitHub release author ${author} is not trusted. Expected ${trustedAuthor}.`,
+  );
+}
+
+function isNewerPylonVersion(candidateVersion, currentVersion) {
+  return (
+    comparePylonReleaseTags(
+      `${PYLON_RELEASE_TAG_PREFIX}${normalizeVersion(candidateVersion)}`,
+      `${PYLON_RELEASE_TAG_PREFIX}${normalizeVersion(currentVersion)}`,
+    ) > 0
+  );
 }
 
 function createBootstrapError(message, context = {}) {
@@ -619,14 +651,19 @@ export function selectLatestPylonRelease(releases, target = null) {
   }
 
   const candidates = releases
-    .filter((candidate) => !candidate?.draft && isPylonReleaseTag(candidate?.tag_name))
+    .filter(
+      (candidate) =>
+        !candidate?.draft &&
+        isPylonReleaseTag(candidate?.tag_name) &&
+        trustedReleaseAuthor(candidate),
+    )
     .sort((left, right) => comparePylonReleaseTags(right.tag_name, left.tag_name));
   const release =
     candidates.find((candidate) => releaseHasTargetAssets(candidate, target)) ??
     candidates[0];
   if (!release) {
     throw new Error(
-      `GitHub release lookup did not find any published ${PYLON_RELEASE_TAG_PREFIX} releases.`,
+      `GitHub release lookup did not find any published ${PYLON_RELEASE_TAG_PREFIX} releases initiated by ${DEFAULT_TRUSTED_RELEASE_AUTHOR}.`,
     );
   }
 
@@ -658,7 +695,10 @@ export async function fetchReleaseMetadata({
       ? "GitHub tagged release lookup"
       : "GitHub release list lookup",
   });
-  return normalizedVersion ? payload : selectLatestPylonRelease(payload, target);
+  const release = normalizedVersion
+    ? payload
+    : selectLatestPylonRelease(payload, target);
+  return assertTrustedReleaseAuthor(release);
 }
 
 export function selectReleaseAssets(release, target) {
@@ -1367,6 +1407,45 @@ export async function runProcess(
   });
 }
 
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function waitForChildExit(child) {
+  return new Promise((resolve, reject) => {
+    child.once?.("error", reject);
+    child.once?.("close", (code, signal) => {
+      resolve({ code, signal });
+    });
+  });
+}
+
+async function stopChild(child, timeoutMs = 5_000) {
+  if (!child || child.killed || child.exitCode != null) {
+    return;
+  }
+
+  const exited = waitForChildExit(child).catch(() => null);
+  child.kill?.("SIGTERM");
+  const result = await Promise.race([
+    exited,
+    delay(timeoutMs).then(() => "timeout"),
+  ]);
+  if (result === "timeout" && child.exitCode == null) {
+    child.kill?.("SIGKILL");
+    await exited;
+  }
+}
+
+function spawnPylonTui(pylonTuiPath, options, spawnProcessImpl) {
+  return spawnProcessImpl(pylonTuiPath, [], {
+    env: buildPylonEnv(options),
+    stdio: "inherit",
+  });
+}
+
 async function extractArchive(archivePath, destinationDir, runProcessImpl) {
   await fs.mkdir(destinationDir, { recursive: true });
   await runProcessImpl("tar", ["-xzf", archivePath, "-C", destinationDir]);
@@ -1936,6 +2015,93 @@ export async function launchInstalledPylon(
 }
 
 export const launchInstalledPylonTui = launchInstalledPylon;
+
+export async function launchInstalledPylonWithUpdates(
+  options,
+  {
+    ensureReleaseInstallImpl = ensureReleaseInstall,
+    spawnProcessImpl = spawn,
+    updateCheckIntervalMs = DEFAULT_UPDATE_CHECK_INTERVAL_MS,
+    onStatus = null,
+    ...dependencies
+  } = {},
+) {
+  if (options.noUpdates || options.pinnedVersion) {
+    return launchInstalledPylon(options, { ...dependencies, onStatus });
+  }
+
+  let current = {
+    ...options,
+    version: normalizeVersion(options.version),
+  };
+  let lastUpdateError = null;
+
+  while (true) {
+    const pylonTuiPath = path.resolve(current.pylonTuiPath);
+    emitStatus(
+      onStatus,
+      "Starting Pylon terminal UI",
+      `${path.basename(pylonTuiPath)} manages the earning worker`,
+    );
+    const child = spawnPylonTui(pylonTuiPath, current, spawnProcessImpl);
+    const childExit = waitForChildExit(child);
+    let restartForUpdate = false;
+
+    while (!restartForUpdate) {
+      const result = await Promise.race([
+        childExit.then((exit) => ({ type: "exit", exit })),
+        delay(updateCheckIntervalMs).then(() => ({ type: "tick" })),
+      ]);
+
+      if (result.type === "exit") {
+        const { code, signal } = result.exit;
+        if (code === 0 || signal === "SIGTERM" || signal === "SIGINT") {
+          return result.exit;
+        }
+        throw new Error(
+          `${path.basename(pylonTuiPath)} exited with code ${
+            code ?? "null"
+          }${signal ? ` signal ${signal}` : ""}`,
+        );
+      }
+
+      try {
+        const install = await ensureReleaseInstallImpl(
+          {
+            ...options,
+            version: null,
+          },
+          {
+            ...dependencies,
+            onStatus: null,
+          },
+        );
+        lastUpdateError = null;
+        if (!isNewerPylonVersion(install.version, current.version)) {
+          continue;
+        }
+        emitStatus(
+          onStatus,
+          "Installed newer Pylon release",
+          `${install.tagName}; restarting dashboard`,
+        );
+        await stopChild(child);
+        current = {
+          ...options,
+          ...install,
+          version: install.version,
+        };
+        restartForUpdate = true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message !== lastUpdateError) {
+          emitStatus(onStatus, "Pylon update check failed", message);
+          lastUpdateError = message;
+        }
+      }
+    }
+  }
+}
 
 export function resolveBootstrapOutcome(summary) {
   const runtimeState =

@@ -77,6 +77,7 @@ test("parseArgs defaults to launching pylon-tui", () => {
 
   expect(options.help).toBe(false);
   expect(options.noLaunch).toBe(false);
+  expect(options.noUpdates).toBe(false);
   expect(options.skipModelDownload).toBe(true);
   expect(options.skipDiagnostics).toBe(true);
   expect(options.verbose).toBe(false);
@@ -96,6 +97,12 @@ test("parseArgs supports explicit Gemma diagnostics opt-in", () => {
   const options = parseArgs(["--run-diagnostics"]);
 
   expect(options.skipDiagnostics).toBe(false);
+});
+
+test("parseArgs supports disabling release polling", () => {
+  const options = parseArgs(["--no-updates"]);
+
+  expect(options.noUpdates).toBe(true);
 });
 
 test("main launches pylon-tui by default after bootstrap", async () => {
@@ -149,6 +156,7 @@ test("main launches pylon-tui by default after bootstrap", async () => {
   expect(calls[2].options).toEqual(
     expect.objectContaining({
       version: "1.2.3",
+      pinnedVersion: false,
       pylonTuiPath: "/tmp/pylon-tui",
     }),
   );
@@ -210,6 +218,30 @@ test("main skips pylon-tui launch when --no-launch is set", async () => {
 
   expect(calls).toEqual([]);
   expect(logs.some((line) => line.includes("Skipped Pylon terminal UI launch"))).toBe(true);
+});
+
+test("main marks explicit versions as pinned for the launcher", async () => {
+  const calls = [];
+
+  await withCapturedConsole(async () =>
+    main(["--version", "1.2.3"], {
+      telemetryClient: createTelemetryRecorder().client,
+      ensureReleaseInstallImpl: async () => BASE_INSTALL,
+      bootstrapInstalledPylonImpl: async () => BASE_SUMMARY,
+      launchInstalledPylonImpl: async (options) => {
+        calls.push(options);
+        return { stdout: "", stderr: "" };
+      },
+    }),
+  );
+
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toEqual(
+    expect.objectContaining({
+      version: "1.2.3",
+      pinnedVersion: true,
+    }),
+  );
 });
 
 test("main records a failed installer finish event when bootstrap aborts", async () => {

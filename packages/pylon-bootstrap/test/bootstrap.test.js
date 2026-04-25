@@ -1,15 +1,18 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import {
+  assertTrustedReleaseAuthor,
   bootstrapInstalledPylon,
   buildAssetNames,
   createTelemetryClient,
   ensureReleaseInstall,
   launchInstalledPylon,
+  launchInstalledPylonWithUpdates,
   parseSha256File,
   renderBootstrapSummary,
   resolvePlatformTarget,
@@ -18,6 +21,29 @@ import {
   selectLatestPylonRelease,
   selectReleaseAssets,
 } from "../src/index.js";
+
+const TRUSTED_RELEASE_AUTHOR = { login: "AtlantisPleb" };
+
+function trustedRelease(release) {
+  return {
+    author: TRUSTED_RELEASE_AUTHOR,
+    ...release,
+  };
+}
+
+function latestReleaseFetch(release) {
+  const payload = trustedRelease(release);
+  return async (url) => {
+    const parsed = new URL(url);
+    if (
+      parsed.pathname === "/repos/OpenAgentsInc/openagents/releases" &&
+      parsed.searchParams.get("per_page") === "100"
+    ) {
+      return Response.json([payload]);
+    }
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+}
 
 describe("@openagentsinc/pylon bootstrap", () => {
   test("resolvePlatformTarget maps supported hosts", () => {
@@ -40,6 +66,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
     const selection = selectReleaseAssets(
       {
         tag_name: "pylon-v1.2.3",
+        author: TRUSTED_RELEASE_AUTHOR,
         assets: [
           {
             name: names.archiveName,
@@ -119,14 +146,14 @@ describe("@openagentsinc/pylon bootstrap", () => {
         tag_name: "autopilot-v0.1.1",
         draft: false,
       },
-      {
+      trustedRelease({
         tag_name: "pylon-v0.0.1-rc3",
         draft: false,
-      },
-      {
+      }),
+      trustedRelease({
         tag_name: "pylon-v0.0.1-rc2",
         draft: false,
-      },
+      }),
     ]);
 
     expect(release.tag_name).toBe("pylon-v0.0.1-rc3");
@@ -134,18 +161,18 @@ describe("@openagentsinc/pylon bootstrap", () => {
 
   test("selectLatestPylonRelease prefers the highest semver tag over API order", () => {
     const release = selectLatestPylonRelease([
-      {
+      trustedRelease({
         tag_name: "pylon-v0.0.1-rc9",
         draft: false,
-      },
-      {
+      }),
+      trustedRelease({
         tag_name: "pylon-v0.0.1-rc8",
         draft: false,
-      },
-      {
+      }),
+      trustedRelease({
         tag_name: "pylon-v0.0.1-rc10",
         draft: false,
-      },
+      }),
     ]);
 
     expect(release.tag_name).toBe("pylon-v0.0.1-rc10");
@@ -155,12 +182,12 @@ describe("@openagentsinc/pylon bootstrap", () => {
     const target = resolvePlatformTarget("darwin", "arm64");
     const release = selectLatestPylonRelease(
       [
-        {
+        trustedRelease({
           tag_name: "pylon-v0.1.0",
           draft: false,
           assets: [],
-        },
-        {
+        }),
+        trustedRelease({
           tag_name: "pylon-v0.0.1-rc9",
           draft: false,
           assets: [
@@ -171,8 +198,8 @@ describe("@openagentsinc/pylon bootstrap", () => {
               name: "pylon-v0.0.1-rc9-darwin-arm64.tar.gz.sha256",
             },
           ],
-        },
-        {
+        }),
+        trustedRelease({
           tag_name: "pylon-v0.0.1-rc10",
           draft: false,
           assets: [
@@ -183,7 +210,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
               name: "pylon-v0.0.1-rc10-darwin-arm64.tar.gz.sha256",
             },
           ],
-        },
+        }),
       ],
       target,
     );
@@ -191,20 +218,16 @@ describe("@openagentsinc/pylon bootstrap", () => {
     expect(release.tag_name).toBe("pylon-v0.0.1-rc10");
   });
 
-  describe("ensureReleaseInstall", () => {
-    function latestReleaseFetch(release) {
-      return async (url) => {
-        const parsed = new URL(url);
-        if (
-          parsed.pathname === "/repos/OpenAgentsInc/openagents/releases" &&
-          parsed.searchParams.get("per_page") === "100"
-        ) {
-          return Response.json([release]);
-        }
-        throw new Error(`Unexpected fetch URL: ${url}`);
-      };
-    }
+  test("assertTrustedReleaseAuthor rejects releases not initiated by AtlantisPleb", () => {
+    expect(() =>
+      assertTrustedReleaseAuthor({
+        tag_name: "pylon-v9.9.9",
+        author: { login: "someone-else" },
+      }),
+    ).toThrow("Expected AtlantisPleb");
+  });
 
+  describe("ensureReleaseInstall", () => {
     let server;
     let serverUrl;
 
@@ -269,6 +292,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
                 },
                 {
                   tag_name: "pylon-v1.2.3",
+                  author: TRUSTED_RELEASE_AUTHOR,
                   draft: false,
                   assets: [
                     {
@@ -287,6 +311,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
               taggedReleaseHits += 1;
               return Response.json({
                 tag_name: "pylon-v1.2.3",
+                author: TRUSTED_RELEASE_AUTHOR,
                 assets: [
                   {
                     name: archiveName,
@@ -440,6 +465,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
             return Response.json([
               {
                 tag_name: `pylon-v${latestVersion}`,
+                author: TRUSTED_RELEASE_AUTHOR,
                 draft: false,
                 assets: [
                   {
@@ -562,6 +588,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
                 stdout: JSON.stringify([
                   {
                     tag_name: "pylon-v9.9.9",
+                    author: TRUSTED_RELEASE_AUTHOR,
                     draft: false,
                     assets: [
                       {
@@ -1210,6 +1237,95 @@ describe("@openagentsinc/pylon bootstrap", () => {
         stdio: "inherit",
       },
     });
+  });
+
+  test("launchInstalledPylonWithUpdates installs a newer trusted release and restarts the dashboard", async () => {
+    class FakeChild extends EventEmitter {
+      constructor(command) {
+        super();
+        this.command = command;
+        this.exitCode = null;
+        this.killed = false;
+      }
+
+      kill(signal) {
+        this.killed = true;
+        queueMicrotask(() => {
+          this.emit("close", null, signal);
+        });
+      }
+    }
+
+    const statuses = [];
+    const spawned = [];
+    const updateInstall = {
+      version: "1.2.4",
+      tagName: "pylon-v1.2.4",
+      target: { os: "darwin", arch: "arm64" },
+      pylonPath: "/tmp/pylon-new",
+      pylonTuiPath: "/tmp/pylon-tui-new",
+      cached: false,
+    };
+
+    await launchInstalledPylonWithUpdates(
+      {
+        version: "1.2.3",
+        tagName: "pylon-v1.2.3",
+        pylonPath: "/tmp/pylon",
+        pylonTuiPath: "/tmp/pylon-tui",
+      },
+      {
+        updateCheckIntervalMs: 1,
+        ensureReleaseInstallImpl: async () => updateInstall,
+        spawnProcessImpl: (command) => {
+          const child = new FakeChild(command);
+          spawned.push(child);
+          if (spawned.length === 2) {
+            queueMicrotask(() => {
+              child.exitCode = 0;
+              child.emit("close", 0, null);
+            });
+          }
+          return child;
+        },
+        onStatus: (event) => statuses.push(event),
+      },
+    );
+
+    expect(spawned.map((child) => child.command)).toEqual([
+      "/tmp/pylon-tui",
+      "/tmp/pylon-tui-new",
+    ]);
+    expect(statuses).toContainEqual({
+      message: "Installed newer Pylon release",
+      detail: "pylon-v1.2.4; restarting dashboard",
+    });
+    expect(spawned[0].killed).toBe(true);
+  });
+
+  test("launchInstalledPylonWithUpdates respects pinned releases", async () => {
+    const calls = [];
+
+    await launchInstalledPylonWithUpdates(
+      {
+        version: "1.2.3",
+        pinnedVersion: true,
+        pylonPath: "/tmp/pylon",
+        pylonTuiPath: "/tmp/pylon-tui",
+      },
+      {
+        ensureReleaseInstallImpl: async () => {
+          throw new Error("pinned launch should not poll releases");
+        },
+        runProcessImpl: async (command, args, options) => {
+          calls.push({ command, args, options });
+          return { stdout: "", stderr: "" };
+        },
+      },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].command).toBe("/tmp/pylon-tui");
   });
 
   test("bootstrapInstalledPylon skips gemma diagnose when the release does not support it", async () => {
