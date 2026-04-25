@@ -1258,6 +1258,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
 
     const statuses = [];
     const spawned = [];
+    const telemetryEvents = [];
     const updateInstall = {
       version: "1.2.4",
       tagName: "pylon-v1.2.4",
@@ -1265,6 +1266,7 @@ describe("@openagentsinc/pylon bootstrap", () => {
       pylonPath: "/tmp/pylon-new",
       pylonTuiPath: "/tmp/pylon-tui-new",
       cached: false,
+      installMethod: "release_asset",
     };
 
     await launchInstalledPylonWithUpdates(
@@ -1277,6 +1279,13 @@ describe("@openagentsinc/pylon bootstrap", () => {
       {
         updateCheckIntervalMs: 1,
         ensureReleaseInstallImpl: async () => updateInstall,
+        telemetryClient: {
+          emit(eventName, properties) {
+            telemetryEvents.push({ eventName, properties });
+            return Promise.resolve(true);
+          },
+          flush: async () => {},
+        },
         spawnProcessImpl: (command) => {
           const child = new FakeChild(command);
           spawned.push(child);
@@ -1301,10 +1310,20 @@ describe("@openagentsinc/pylon bootstrap", () => {
       detail: "pylon-v1.2.4; restarting dashboard",
     });
     expect(spawned[0].killed).toBe(true);
+    expect(telemetryEvents.map((event) => event.eventName)).toEqual([
+      "installer_update_check_started",
+      "installer_update_available",
+      "installer_update_downloaded",
+      "installer_update_verified",
+      "installer_update_applied",
+      "installer_update_restart_attempted",
+      "installer_update_restart_succeeded",
+    ]);
   });
 
   test("launchInstalledPylonWithUpdates respects pinned releases", async () => {
     const calls = [];
+    const telemetryEvents = [];
 
     await launchInstalledPylonWithUpdates(
       {
@@ -1314,6 +1333,13 @@ describe("@openagentsinc/pylon bootstrap", () => {
         pylonTuiPath: "/tmp/pylon-tui",
       },
       {
+        telemetryClient: {
+          emit(eventName, properties) {
+            telemetryEvents.push({ eventName, properties });
+            return Promise.resolve(true);
+          },
+          flush: async () => {},
+        },
         ensureReleaseInstallImpl: async () => {
           throw new Error("pinned launch should not poll releases");
         },
@@ -1326,6 +1352,45 @@ describe("@openagentsinc/pylon bootstrap", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe("/tmp/pylon-tui");
+    expect(telemetryEvents.map((event) => event.eventName)).toEqual([
+      "installer_update_pinned_run",
+    ]);
+  });
+
+  test("launchInstalledPylonWithUpdates records no-updates mode without polling releases", async () => {
+    const calls = [];
+    const telemetryEvents = [];
+
+    await launchInstalledPylonWithUpdates(
+      {
+        version: "1.2.3",
+        noUpdates: true,
+        pylonPath: "/tmp/pylon",
+        pylonTuiPath: "/tmp/pylon-tui",
+      },
+      {
+        telemetryClient: {
+          emit(eventName, properties) {
+            telemetryEvents.push({ eventName, properties });
+            return Promise.resolve(true);
+          },
+          flush: async () => {},
+        },
+        ensureReleaseInstallImpl: async () => {
+          throw new Error("no-updates launch should not poll releases");
+        },
+        runProcessImpl: async (command, args, options) => {
+          calls.push({ command, args, options });
+          return { stdout: "", stderr: "" };
+        },
+      },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].command).toBe("/tmp/pylon-tui");
+    expect(telemetryEvents.map((event) => event.eventName)).toEqual([
+      "installer_update_disabled",
+    ]);
   });
 
   test("bootstrapInstalledPylon skips gemma diagnose when the release does not support it", async () => {
