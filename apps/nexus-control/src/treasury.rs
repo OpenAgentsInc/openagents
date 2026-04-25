@@ -9262,6 +9262,52 @@ mod tests {
     }
 
     #[test]
+    fn treasury_wallet_refresh_state_treats_confirmations_stalled_as_due() {
+        let mut config = test_treasury_config();
+        config.enabled = true;
+        let mut service_config = crate::ServiceConfig::from_env().expect("service config");
+        service_config.treasury = config.clone();
+        let state = crate::build_app_state(service_config);
+        let now_unix_ms = 1_000_000;
+        {
+            let mut store = state.store.write().expect("write store");
+            store.treasury.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+            let payout_key = "accepted-work:confirmations-stalled".to_string();
+            store.treasury.payout_records_by_key.insert(
+                payout_key.clone(),
+                TreasuryPayoutRecord {
+                    payout_key,
+                    nostr_pubkey_hex: "pubkey-confirmations-stalled".to_string(),
+                    payout_target: "spark:confirmations-stalled".to_string(),
+                    amount_sats: 25,
+                    status: "dispatched".to_string(),
+                    reason: None,
+                    payment_id: Some("payment-confirmations-stalled".to_string()),
+                    window_started_at_unix_ms: now_unix_ms.saturating_sub(400_000),
+                    window_ends_at_unix_ms: now_unix_ms.saturating_sub(399_000),
+                    created_at_unix_ms: now_unix_ms.saturating_sub(400_000),
+                    updated_at_unix_ms: now_unix_ms.saturating_sub(400_000),
+                    sellable_at_window_open: true,
+                    dispatch_receipt_recorded: true,
+                    confirm_receipt_recorded: false,
+                    fail_receipt_recorded: false,
+                    skip_receipt_recorded: false,
+                    counted_in_paid_total: false,
+                    classification: TreasuryPayoutClassification {
+                        payout_class: TreasuryPayoutClass::AcceptedWork,
+                        payout_basis: Some("homework_acceptance".to_string()),
+                        ..TreasuryPayoutClassification::default()
+                    },
+                },
+            );
+        }
+
+        let refresh_state = crate::treasury_wallet_refresh_state(&state, now_unix_ms, false)
+            .expect("wallet refresh state");
+        assert_eq!(refresh_state, crate::TreasuryWalletRefreshState::Due);
+    }
+
+    #[test]
     fn repeated_wallet_refresh_error_updates_backoff_without_rewriting_state() {
         let path = unique_treasury_state_path("wallet-refresh-error-noop");
         let mut state = TreasuryState::default();

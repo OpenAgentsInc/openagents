@@ -21808,7 +21808,11 @@ fn treasury_wallet_refresh_state(
     if !allow_disabled_treasury && !store.treasury.treasury_enabled(&state.config.treasury) {
         return Ok(TreasuryWalletRefreshState::Fresh);
     }
+    let requires_reconciliation = store.treasury.due_wallet_refresh_requires_reconciliation();
     if store.treasury.last_wallet_sync_at_unix_ms.is_none() {
+        if requires_reconciliation {
+            return Ok(TreasuryWalletRefreshState::Unsynced);
+        }
         if !store
             .treasury
             .wallet_refresh_due(&state.config.treasury, now_unix_ms)
@@ -21817,9 +21821,10 @@ fn treasury_wallet_refresh_state(
         }
         return Ok(TreasuryWalletRefreshState::Unsynced);
     }
-    if store
-        .treasury
-        .wallet_refresh_due(&state.config.treasury, now_unix_ms)
+    if requires_reconciliation
+        || store
+            .treasury
+            .wallet_refresh_due(&state.config.treasury, now_unix_ms)
     {
         return Ok(TreasuryWalletRefreshState::Due);
     }
