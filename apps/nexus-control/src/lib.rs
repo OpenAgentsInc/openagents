@@ -31939,6 +31939,7 @@ mod tests {
         let mut config = test_config()?;
         config.treasury.enabled = true;
         config.treasury.payout_sats_per_window = 120;
+        config.treasury.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::PresenceOnly;
         let payout_interval_ms = config.treasury.payout_interval_ms();
         let state = build_app_state(config.clone());
         let now_unix_ms = super::now_unix_ms();

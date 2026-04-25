@@ -415,23 +415,23 @@ homework-only:
 - `NEXUS_CONTROL_TREASURY_ACCEPTED_WORK_DAILY_BUDGET_CAP_SATS=1000000`
 - `NEXUS_CONTROL_TREASURY_MAX_CONCURRENT_SENDS=4`
 - `NEXUS_CONTROL_TREASURY_AVAILABILITY_MAX_CONCURRENT_SENDS=4`
-- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=disabled`
+- `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE=presence_only`
 - `NEXUS_CONTROL_TREASURY_DEDUPE_PLACEHOLDER_HOSTS=true`
 
-That policy disables periodic placeholder stipends entirely. The availability
-settings remain present but disabled for new stipends, while accepted-work
-defaults stay explicit for homework closeouts. Nexus must not create new
-presence-only, inference-ready, or disabled-placeholder payout windows. The
-global `4`-send cap plus the internal accepted-work cap keeps real homework
-payout waves small and predictable while still allowing more than one worker to
-settle in the same cycle.
+That policy keeps the placeholder lane paying live presence and keeps accepted
+work closeouts on the same treasury. The availability settings remain present
+for new stipends, while accepted-work defaults stay explicit for homework
+closeouts. The global `4`-send cap plus the internal accepted-work cap keeps
+real homework payout waves small and predictable while still allowing more than
+one worker to settle in the same cycle.
 
 `NEXUS_CONTROL_TREASURY_PLACEHOLDER_PAYOUT_MODE` controls what a placeholder
 window actually means:
 
 - `presence_only` pays any otherwise-eligible online client
 - `inference_ready` only pays clients that are actually advertising a ready
-  local Gemma lane or an open backend-ready inventory row
+  local Gemma lane or an open backend-ready inventory row. Use this only if you
+  intentionally want to tighten the live payout lane.
 - `disabled` stops placeholder accrual entirely while leaving accepted-work
   payouts alone
 
@@ -458,10 +458,10 @@ when host dedupe is disabled, availability stipends still dedupe by payout
 target before falling back to raw pubkey identity. This dedupe does not change
 accepted-work payouts; it only stops availability inflation.
 
-Fresh config defaults now use `disabled` plus host dedupe. Old persisted policy
-blobs that predate these fields also deserialize as `disabled`. Any production
-Nexus that still shows `presence_only` or `inference_ready` must be corrected
-with an explicit policy apply before treating deploy payout smoke as meaningful.
+Fresh config defaults now use `presence_only` plus host dedupe. Old persisted
+policy blobs that predate these fields also deserialize as `disabled`. Any
+production Nexus that still shows `inference_ready` should be corrected with an
+explicit policy apply before treating deploy payout smoke as meaningful.
 
 When the fleet is ready to stop awarding fresh windows to the old
 `0.0.1-rc*` line, Nexus now supports a separate new-accrual version floor:
