@@ -931,6 +931,14 @@ Continuity alerts:
   beneficiary until the older one settles or fails. Other beneficiaries remain
   eligible. This prevents one slow-settling payout target from accumulating a
   large pile of real sends while the rest of the fleet is waiting.
+- Spark leaf-selection failures now count as a first-class treasury
+  spendability block. If a payout send fails with
+  `wallet_send_retryable:leaf_selection:...`, Nexus marks the wallet runtime as
+  unhealthy for dispatch, forces the wallet refresh loop immediately instead of
+  waiting for the normal refresh interval, and suppresses all new payout
+  dispatch until a successful wallet snapshot clears the block. This prevents
+  the service from continuing to mint real payout attempts while Spark has a
+  positive nominal balance but no currently selectable spendable leaves.
 - very old legacy identity-scoped stipend rows are now quarantined into a
   separate operator-attention bucket once they outlive the normal
   reconciliation horizon. Nexus keeps those historical real-send rows visible

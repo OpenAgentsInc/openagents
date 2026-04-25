@@ -2346,6 +2346,10 @@ fn failed_payout_reason_is_retryable(reason: &str) -> bool {
         || reason.starts_with("wallet_send_retryable:")
 }
 
+fn wallet_send_failure_is_leaf_selection(reason: &str) -> bool {
+    reason.starts_with("wallet_send_retryable:leaf_selection:")
+}
+
 fn payout_basis_is_placeholder_liveness(basis: &str) -> bool {
     matches!(
         basis.trim(),
@@ -2408,7 +2412,8 @@ impl TreasuryState {
         now_unix_ms: u64,
         policy: &TreasuryRuntimePolicy,
     ) -> bool {
-        if record.classification.effective_payout_class() != TreasuryPayoutClass::PlaceholderLiveness
+        if record.classification.effective_payout_class()
+            != TreasuryPayoutClass::PlaceholderLiveness
         {
             return false;
         }
@@ -2806,6 +2811,9 @@ impl TreasuryState {
     }
 
     pub fn wallet_refresh_due(&self, config: &TreasuryConfig, now_unix_ms: u64) -> bool {
+        if self.wallet_refresh_requires_leaf_selection_recovery() {
+            return true;
+        }
         self.last_wallet_sync_at_unix_ms
             .max(self.last_wallet_refresh_attempt_at_unix_ms)
             .is_none_or(|last_refresh| {
@@ -2822,7 +2830,28 @@ impl TreasuryState {
         }) || self.payout_records_by_key.values().any(|record| {
             record.status == "queued"
                 && record.reason.as_deref() == Some("wallet_balance_insufficient")
+        }) || self.payout_records_by_key.values().any(|record| {
+            record.status == "failed"
+                && record.payment_id.is_none()
+                && record
+                    .reason
+                    .as_deref()
+                    .is_some_and(wallet_send_failure_is_leaf_selection)
         })
+    }
+
+    fn wallet_refresh_requires_leaf_selection_recovery(&self) -> bool {
+        self.wallet_last_error
+            .as_deref()
+            .is_some_and(wallet_send_failure_is_leaf_selection)
+            && self.due_wallet_refresh_requires_reconciliation()
+    }
+
+    fn wallet_dispatch_suppression_reason(&self) -> Option<String> {
+        if self.wallet_refresh_requires_leaf_selection_recovery() {
+            return Some("wallet_spendability_blocked:leaf_selection".to_string());
+        }
+        None
     }
 
     fn availability_beneficiary_projection(
@@ -2999,7 +3028,10 @@ impl TreasuryState {
         let payout_key_scope = Self::availability_disposition_payout_key_scope(disposition);
         let current_payout_key =
             payout_window_key(current_window_started_at_unix_ms, payout_key_scope.as_str());
-        if self.payout_records_by_key.contains_key(current_payout_key.as_str()) {
+        if self
+            .payout_records_by_key
+            .contains_key(current_payout_key.as_str())
+        {
             return Some(current_payout_key);
         }
         self.availability_oldest_unsettled_stipend_payout_key(disposition)
@@ -3564,7 +3596,11 @@ impl TreasuryState {
         (backlog_total, backlog_retryable)
     }
 
-    fn confirmation_visibility_counts(&self, config: &TreasuryConfig, now_unix_ms: u64) -> (u64, u64, u64) {
+    fn confirmation_visibility_counts(
+        &self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> (u64, u64, u64) {
         let mut pending_confirmation_count = 0u64;
         let mut tracked_payment_backlog_count = 0u64;
         let mut legacy_availability_confirmation_attention_count = 0u64;
@@ -3844,8 +3880,10 @@ impl TreasuryState {
                 .placeholder_payout_sats_paid_total,
             availability_stipend_payout_sats_in_flight_24h: in_flight_24h_totals
                 .placeholder_payout_sats_paid_total,
-            placeholder_payout_sats_paid_total: cumulative_totals.placeholder_payout_sats_paid_total,
-            placeholder_payout_sats_paid_24h: confirmed_24h_totals.placeholder_payout_sats_paid_total,
+            placeholder_payout_sats_paid_total: cumulative_totals
+                .placeholder_payout_sats_paid_total,
+            placeholder_payout_sats_paid_24h: confirmed_24h_totals
+                .placeholder_payout_sats_paid_total,
             placeholder_payout_sats_in_flight_total: in_flight_totals
                 .placeholder_payout_sats_paid_total,
             placeholder_payout_sats_in_flight_24h: in_flight_24h_totals
@@ -4098,8 +4136,7 @@ impl TreasuryState {
             placeholder_payout_sats_paid_24h: snapshot.placeholder_payout_sats_paid_24h,
             placeholder_payout_sats_in_flight_total: snapshot
                 .placeholder_payout_sats_in_flight_total,
-            placeholder_payout_sats_in_flight_24h: snapshot
-                .placeholder_payout_sats_in_flight_24h,
+            placeholder_payout_sats_in_flight_24h: snapshot.placeholder_payout_sats_in_flight_24h,
             beta_bonus_payout_sats_paid_total: snapshot.beta_bonus_payout_sats_paid_total,
             beta_bonus_payout_sats_paid_24h: snapshot.beta_bonus_payout_sats_paid_24h,
             beta_bonus_payout_sats_in_flight_total: snapshot.beta_bonus_payout_sats_in_flight_total,
@@ -4412,8 +4449,7 @@ impl TreasuryState {
             accepted_work_payout_sats_paid_24h: stats.accepted_work_payout_sats_paid_24h,
             accepted_work_payout_sats_in_flight_total: stats
                 .accepted_work_payout_sats_in_flight_total,
-            accepted_work_payout_sats_in_flight_24h: stats
-                .accepted_work_payout_sats_in_flight_24h,
+            accepted_work_payout_sats_in_flight_24h: stats.accepted_work_payout_sats_in_flight_24h,
             availability_stipend_payout_sats_paid_total: stats
                 .availability_stipend_payout_sats_paid_total,
             availability_stipend_payout_sats_paid_24h: stats
@@ -4424,8 +4460,7 @@ impl TreasuryState {
                 .availability_stipend_payout_sats_in_flight_24h,
             placeholder_payout_sats_paid_total: stats.placeholder_payout_sats_paid_total,
             placeholder_payout_sats_paid_24h: stats.placeholder_payout_sats_paid_24h,
-            placeholder_payout_sats_in_flight_total: stats
-                .placeholder_payout_sats_in_flight_total,
+            placeholder_payout_sats_in_flight_total: stats.placeholder_payout_sats_in_flight_total,
             placeholder_payout_sats_in_flight_24h: stats.placeholder_payout_sats_in_flight_24h,
             beta_bonus_payout_sats_paid_total: stats.beta_bonus_payout_sats_paid_total,
             beta_bonus_payout_sats_paid_24h: stats.beta_bonus_payout_sats_paid_24h,
@@ -4922,6 +4957,21 @@ impl TreasuryState {
             };
         }
 
+        let wallet_dispatch_suppression_reason = self.wallet_dispatch_suppression_reason();
+        if wallet_dispatch_suppression_reason.is_some() {
+            self.observe_payout_eligibility(config, online_identities, now_unix_ms);
+            if changed {
+                self.refresh_public_snapshot(config, now_unix_ms);
+            } else {
+                self.refresh_public_snapshot_in_memory(config, now_unix_ms);
+            }
+            return TreasuryPayoutPreparation {
+                dispatch_plans: Vec::new(),
+                receipt_events,
+                reconciliation_degraded_reason: wallet_dispatch_suppression_reason,
+            };
+        }
+
         let mut reserved_wallet_sats = self.reserved_wallet_outstanding_sats();
         let mut committed_daily_budget_totals =
             self.committed_daily_budget_sats_last_24h(now_unix_ms);
@@ -5249,6 +5299,9 @@ impl TreasuryState {
                         record.fail_receipt_recorded = true;
                         receipt_events.push(failed_payout_receipt(record));
                     }
+                }
+                if wallet_send_failure_is_leaf_selection(reason.as_str()) {
+                    self.record_wallet_refresh_error(reason, now_unix_ms);
                 }
             }
         }
@@ -11374,6 +11427,169 @@ mod tests {
     }
 
     #[test]
+    fn wallet_refresh_reconciles_leaf_selection_failed_payouts_immediately() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.wallet_status_refresh_seconds = 300;
+        let now_unix_ms = 1_000_000;
+        let payout_key = "accepted-work:leaf-selection".to_string();
+
+        state.payout_records_by_key.insert(
+            payout_key,
+            TreasuryPayoutRecord {
+                payout_key: "accepted-work:leaf-selection".to_string(),
+                nostr_pubkey_hex: "pubkey-leaf-selection".to_string(),
+                payout_target: "spark:leaf-selection".to_string(),
+                amount_sats: 25,
+                status: "failed".to_string(),
+                reason: Some(
+                    "wallet_send_retryable:leaf_selection:TreeServiceError(InsufficientFunds)"
+                        .to_string(),
+                ),
+                payment_id: None,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms.saturating_add(1),
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("homework_acceptance".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+        state.record_wallet_refresh_error(
+            "wallet_send_retryable:leaf_selection:TreeServiceError(InsufficientFunds)",
+            now_unix_ms,
+        );
+
+        assert!(state.due_wallet_refresh_requires_reconciliation());
+        assert!(state.wallet_refresh_due(&config, now_unix_ms));
+        assert!(state.wallet_refresh_due(&config, now_unix_ms + 1));
+    }
+
+    #[test]
+    fn prepare_due_payouts_suppresses_dispatch_while_leaf_selection_recovery_is_active() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.enabled = true;
+        config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::PresenceOnly;
+        let now_unix_ms = 1_000_000;
+        let payout_key = "accepted-work:queued-leaf-selection".to_string();
+
+        state.payout_records_by_key.insert(
+            payout_key.clone(),
+            TreasuryPayoutRecord {
+                payout_key: payout_key.clone(),
+                nostr_pubkey_hex: "pubkey-queued".to_string(),
+                payout_target: "spark:queued".to_string(),
+                amount_sats: 25,
+                status: "failed".to_string(),
+                reason: Some(
+                    "wallet_send_retryable:leaf_selection:TreeServiceError(InsufficientFunds)"
+                        .to_string(),
+                ),
+                payment_id: None,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms.saturating_add(1),
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("homework_acceptance".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+        state.wallet_runtime_status = Some("error".to_string());
+        state.wallet_last_error = Some(
+            "wallet_send_retryable:leaf_selection:TreeServiceError(InsufficientFunds)".to_string(),
+        );
+
+        let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms);
+
+        assert!(prepared.dispatch_plans.is_empty());
+        assert_eq!(
+            prepared.reconciliation_degraded_reason.as_deref(),
+            Some("wallet_spendability_blocked:leaf_selection")
+        );
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get(payout_key.as_str())
+                .expect("queued payout remains")
+                .status,
+            "failed"
+        );
+    }
+
+    #[test]
+    fn apply_dispatch_outcome_records_leaf_selection_as_wallet_refresh_error() {
+        let mut state = TreasuryState::default();
+        let now_unix_ms = 1_000_000;
+        let payout_key = "accepted-work:dispatch-fail".to_string();
+
+        state.payout_records_by_key.insert(
+            payout_key.clone(),
+            TreasuryPayoutRecord {
+                payout_key: payout_key.clone(),
+                nostr_pubkey_hex: "pubkey-dispatch-fail".to_string(),
+                payout_target: "spark:dispatch-fail".to_string(),
+                amount_sats: 25,
+                status: "dispatching".to_string(),
+                reason: None,
+                payment_id: None,
+                window_started_at_unix_ms: now_unix_ms,
+                window_ends_at_unix_ms: now_unix_ms.saturating_add(1),
+                created_at_unix_ms: now_unix_ms,
+                updated_at_unix_ms: now_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    payout_basis: Some("homework_acceptance".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        state.apply_dispatch_outcome(
+            TreasuryDispatchOutcome::Failed {
+                payout_key,
+                reason: "wallet_send_retryable:leaf_selection:TreeServiceError(InsufficientFunds)"
+                    .to_string(),
+            },
+            now_unix_ms,
+        );
+
+        assert_eq!(state.wallet_runtime_status.as_deref(), Some("error"));
+        assert_eq!(
+            state.wallet_last_error.as_deref(),
+            Some("wallet_send_retryable:leaf_selection:TreeServiceError(InsufficientFunds)")
+        );
+        assert_eq!(
+            state.last_wallet_refresh_attempt_at_unix_ms,
+            Some(now_unix_ms)
+        );
+    }
+
+    #[test]
     fn repeated_wallet_refresh_error_updates_backoff_without_rewriting_state() {
         let path = unique_treasury_state_path("wallet-refresh-error-noop");
         let mut state = TreasuryState::default();
@@ -12166,7 +12382,8 @@ mod tests {
         let now_unix_ms = 2_000_000u64;
         let payout_interval_ms = config.payout_interval_ms();
 
-        state.last_payout_reconciliation_at_unix_ms = Some(now_unix_ms.saturating_sub(payout_interval_ms));
+        state.last_payout_reconciliation_at_unix_ms =
+            Some(now_unix_ms.saturating_sub(payout_interval_ms));
         state.payout_targets_by_identity.insert(
             "pubkey-a".to_string(),
             super::RegisteredPayoutTarget {
@@ -12272,7 +12489,10 @@ mod tests {
         assert_eq!(status.pending_confirmation_count, 0);
         assert_eq!(status.tracked_payment_backlog_count, 0);
         assert_eq!(status.legacy_availability_confirmation_attention_count, 1);
-        assert_eq!(status.legacy_availability_confirmation_attention_rows.len(), 1);
+        assert_eq!(
+            status.legacy_availability_confirmation_attention_rows.len(),
+            1
+        );
         assert_eq!(
             status.legacy_availability_confirmation_attention_rows[0].payout_key,
             "1770000:pubkey-a"
@@ -12302,8 +12522,11 @@ mod tests {
         }
 
         let beneficiary_key_a = "host:sha256:host-a";
-        let current_window_a =
-            payout_window_started_at_for_identity(now_unix_ms, payout_interval_ms, beneficiary_key_a);
+        let current_window_a = payout_window_started_at_for_identity(
+            now_unix_ms,
+            payout_interval_ms,
+            beneficiary_key_a,
+        );
         let older_window_a = current_window_a.saturating_sub(payout_interval_ms);
         state.payout_records_by_key.insert(
             payout_window_key(
@@ -12396,8 +12619,11 @@ mod tests {
         );
 
         let beneficiary_key_a = "host:sha256:host-a";
-        let current_window_a =
-            payout_window_started_at_for_identity(now_unix_ms, payout_interval_ms, beneficiary_key_a);
+        let current_window_a = payout_window_started_at_for_identity(
+            now_unix_ms,
+            payout_interval_ms,
+            beneficiary_key_a,
+        );
         let older_window_a = current_window_a.saturating_sub(payout_interval_ms);
         state.payout_records_by_key.insert(
             payout_window_key(
