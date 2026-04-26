@@ -76,6 +76,13 @@ from the newly installed cache path. `pylon --no-updates` disables that
 background polling, and `pylon --version <x.y.z>` remains a pinned run that
 does not auto-upgrade.
 
+Directly extracted release assets are outside that auto-update contract. A
+standalone `./pylon` or `./pylon-tui` launched from an archive reports its
+compiled version until the operator manually replaces the archive or moves back
+to the npm/bun-managed launcher. Do not close a stale-version incident by
+editing stats display logic to hide those rows; `pylon_client_version_counts`
+must continue to expose the live heartbeat versions that Nexus actually sees.
+
 ## Version Floor Rules
 
 For the current hosted training earning path, the minimum public Pylon release
@@ -159,6 +166,13 @@ The stats-page source of truth for online client versions is
 across every live provider-presence row inside the configured stale window and
 counts online sessions by the `client_version` value that Pylon sends in the
 heartbeat body.
+
+If `pylon_client_version_counts` still includes `pylon/0.1.14` after
+`pylon-v0.1.15` is published, the correct interpretation is: an old process is
+still heartbeating, a launcher run is pinned via `--version` or `--no-updates`,
+or the operator is running a directly extracted release asset. The stats page
+should explain that distinction; Nexus should not rewrite the reported client
+version to the latest release.
 
 The installed-release telemetry on `openagents.com/stats` is a separate source:
 it comes from first-party npm/bootstrap `installer_finished` events and proves

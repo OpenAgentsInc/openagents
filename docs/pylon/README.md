@@ -355,6 +355,10 @@ when the smoke path finishes. In current releases, the TUI is the user-facing
 earning surface and starts/supervises the worker process automatically. Use
 `--no-launch` when you want the same install and bootstrap flow without opening
 the earning dashboard.
+Auto-update belongs to this npm/bun bootstrap lane. The launcher keeps polling
+trusted GitHub releases while the dashboard is open and restarts from a newer
+cached archive when one is available. `--no-updates` and `--version` deliberately
+pin the running cached release.
 If the resolved release does not ship a prebuilt archive for the local
 platform, the launcher now falls back to the exact tagged source checkout,
 prompts before installing Rust if `cargo` and `rustc` are missing, and builds
@@ -391,7 +395,13 @@ replaces the current platform assets when the tag already exists, so
 `darwin-arm64` and `linux-x86_64` can land on the same `pylon-v...` tag
 without manual asset shuffling.
 
-Use a direct release asset install only when the operator explicitly does not want the npm bootstrap layer:
+Use a direct release asset install only when the operator explicitly does not want the npm bootstrap layer.
+Direct release assets are manual-upgrade binaries today. They do not contain a
+native GitHub release poller and they do not honor the npm launcher's
+`--no-updates` flag because the launcher is not in that process tree. If public
+stats still show an older `pylon/<version>` after a newer release exists, treat
+that row as a truthful old runtime heartbeat until the operator restarts through
+the npm/bun launcher or manually replaces the direct archive:
 
 ```bash
 ./pylon
