@@ -383,8 +383,10 @@ perform_post_restart_smoke_check() {
 
   while (( $(date +%s) < deadline_unix_s )); do
     local service_state service_start_unix_s recent_completed status_json
-    local inference_ready_targets wallet_runtime_status last_dispatch_at_unix_ms service_uptime_seconds
-    local placeholder_payout_mode accepted_work_pending_payout_count payouts_dispatched_24h
+    local inference_ready_targets eligible_online_targets wallet_runtime_status degraded_reason
+    local last_dispatch_at_unix_ms service_uptime_seconds
+    local placeholder_payout_mode accepted_work_pending_payout_count
+    local payouts_dispatched_24h payouts_confirmed_24h pending_confirmation_count
 
     service_state="$(
       gcloud compute ssh "$NEXUS_VM" \
@@ -412,17 +414,25 @@ perform_post_restart_smoke_check() {
 
     status_json="$(remote_treasury_status_json)"
     inference_ready_targets="unknown"
+    eligible_online_targets="unknown"
     wallet_runtime_status="unknown"
+    degraded_reason="unknown"
     placeholder_payout_mode="unknown"
     accepted_work_pending_payout_count="0"
     payouts_dispatched_24h="0"
+    payouts_confirmed_24h="0"
+    pending_confirmation_count="0"
     last_dispatch_at_unix_ms="0"
     if [[ -n "$status_json" ]]; then
       inference_ready_targets="$(jq -r '.inference_ready_online_payout_targets // .eligible_online_payout_targets // 0' <<<"$status_json")"
+      eligible_online_targets="$(jq -r '.eligible_online_payout_targets // 0' <<<"$status_json")"
       wallet_runtime_status="$(jq -r '.wallet_runtime_status // empty' <<<"$status_json")"
+      degraded_reason="$(jq -r '.degraded_reason // empty' <<<"$status_json")"
       placeholder_payout_mode="$(jq -r '.placeholder_payout_mode // empty' <<<"$status_json")"
       accepted_work_pending_payout_count="$(jq -r '.training_payout_ledger_summary.accepted_work_pending_payout_count // 0' <<<"$status_json")"
       payouts_dispatched_24h="$(jq -r '.payouts_dispatched_24h // 0' <<<"$status_json")"
+      payouts_confirmed_24h="$(jq -r '.payouts_confirmed_24h // 0' <<<"$status_json")"
+      pending_confirmation_count="$(jq -r '.pending_confirmation_count // 0' <<<"$status_json")"
       last_dispatch_at_unix_ms="$(jq -r '.last_dispatch_at_unix_ms // 0' <<<"$status_json")"
       if [[ "$placeholder_payout_mode" == "disabled" ]] \
         && [[ "$accepted_work_pending_payout_count" =~ ^[0-9]+$ ]] \
@@ -438,6 +448,16 @@ perform_post_restart_smoke_check() {
         log "Post-deploy smoke passed image=${deployed_image} fresh_dispatch_at_unix_ms=${last_dispatch_at_unix_ms} recent_completed_log_lines=${recent_completed}"
         return 0
       fi
+      if [[ "$wallet_runtime_status" == "connected" ]] \
+        && [[ -z "$degraded_reason" ]] \
+        && [[ "$eligible_online_targets" =~ ^[0-9]+$ ]] \
+        && [[ "$pending_confirmation_count" =~ ^[0-9]+$ ]] \
+        && [[ "$payouts_dispatched_24h" =~ ^[0-9]+$ ]] \
+        && [[ "$payouts_confirmed_24h" =~ ^[0-9]+$ ]] \
+        && (( eligible_online_targets == 0 || pending_confirmation_count > 0 || payouts_dispatched_24h > 0 || payouts_confirmed_24h > 0 )); then
+        log "Post-deploy smoke passed image=${deployed_image} healthy_treasury_activity eligible=${eligible_online_targets} pending_confirmations=${pending_confirmation_count} payouts_dispatched_24h=${payouts_dispatched_24h} payouts_confirmed_24h=${payouts_confirmed_24h}"
+        return 0
+      fi
       if [[ "$inference_ready_targets" =~ ^[0-9]+$ ]] && (( inference_ready_targets == 0 )) \
         && [[ "$wallet_runtime_status" == "connected" ]]; then
         log "Post-deploy smoke passed image=${deployed_image} with zero inference-ready payout targets"
@@ -446,12 +466,12 @@ perform_post_restart_smoke_check() {
     fi
 
     if [[ "$service_uptime_seconds" =~ ^[0-9]+$ ]] && (( service_uptime_seconds < warmup_grace_seconds )); then
-      log "Warming up post-deploy smoke image=${deployed_image} service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed_log_lines=${recent_completed} inference_ready=${inference_ready_targets} wallet_runtime_status=${wallet_runtime_status} placeholder_payout_mode=${placeholder_payout_mode} accepted_work_pending=${accepted_work_pending_payout_count} payouts_dispatched_24h=${payouts_dispatched_24h} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
+      log "Warming up post-deploy smoke image=${deployed_image} service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed_log_lines=${recent_completed} inference_ready=${inference_ready_targets} eligible=${eligible_online_targets} wallet_runtime_status=${wallet_runtime_status} degraded_reason=${degraded_reason:-none} placeholder_payout_mode=${placeholder_payout_mode} accepted_work_pending=${accepted_work_pending_payout_count} pending_confirmations=${pending_confirmation_count} payouts_dispatched_24h=${payouts_dispatched_24h} payouts_confirmed_24h=${payouts_confirmed_24h} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
       sleep "$poll_seconds"
       continue
     fi
 
-    log "Waiting for post-deploy payout smoke image=${deployed_image} phase=stalled_candidate service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed_log_lines=${recent_completed} inference_ready=${inference_ready_targets} wallet_runtime_status=${wallet_runtime_status} placeholder_payout_mode=${placeholder_payout_mode} accepted_work_pending=${accepted_work_pending_payout_count} payouts_dispatched_24h=${payouts_dispatched_24h} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
+    log "Waiting for post-deploy payout smoke image=${deployed_image} phase=stalled_candidate service_state=${service_state} service_uptime_seconds=${service_uptime_seconds} warmup_grace_seconds=${warmup_grace_seconds} recent_completed_log_lines=${recent_completed} inference_ready=${inference_ready_targets} eligible=${eligible_online_targets} wallet_runtime_status=${wallet_runtime_status} degraded_reason=${degraded_reason:-none} placeholder_payout_mode=${placeholder_payout_mode} accepted_work_pending=${accepted_work_pending_payout_count} pending_confirmations=${pending_confirmation_count} payouts_dispatched_24h=${payouts_dispatched_24h} payouts_confirmed_24h=${payouts_confirmed_24h} last_dispatch_at_unix_ms=${last_dispatch_at_unix_ms}"
     sleep "$poll_seconds"
   done
 
