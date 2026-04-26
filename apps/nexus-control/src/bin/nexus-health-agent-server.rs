@@ -34,15 +34,21 @@ async fn healthz() -> Json<Value> {
 
 async fn run_health_agent() -> impl IntoResponse {
     match run_once().await {
-        Ok(report) => (StatusCode::OK, Json(report)).into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "ok": false,
-                "error": error.to_string()
-            })),
-        )
-            .into_response(),
+        Ok(report) => {
+            log_report(&report);
+            (StatusCode::OK, Json(report)).into_response()
+        }
+        Err(error) => {
+            log_error(&error);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "ok": false,
+                    "error": error.to_string()
+                })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -91,6 +97,39 @@ fn parse_port(raw: Option<&str>) -> Result<u16> {
         .with_context(|| format!("invalid {ENV_PORT}: {raw}"))
 }
 
+fn log_report(report: &Value) {
+    let event = json!({
+        "event": "nexus_health_agent_server_run",
+        "status": report.get("status"),
+        "summary": report.get("summary"),
+        "scheduler_status": report.pointer("/scheduler/status"),
+        "max_expected_detection_seconds": report.pointer("/scheduler/max_expected_detection_seconds"),
+        "external_reachable": report.pointer("/external_reachability/reachable"),
+        "external_failure_kind": report.pointer("/external_reachability/failure_kind"),
+        "external_status_code": report.pointer("/external_reachability/status_code"),
+        "snapshot_status": report.pointer("/snapshot/status"),
+        "snapshot_degraded": report.pointer("/snapshot/degraded"),
+    });
+
+    match serde_json::to_string(&event) {
+        Ok(serialized) => println!("{serialized}"),
+        Err(error) => eprintln!("nexus_health_agent_server_log_error: {error}"),
+    }
+}
+
+fn log_error(error: &anyhow::Error) {
+    let event = json!({
+        "event": "nexus_health_agent_server_error",
+        "ok": false,
+        "error": error.to_string(),
+    });
+
+    match serde_json::to_string(&event) {
+        Ok(serialized) => eprintln!("{serialized}"),
+        Err(serialize_error) => eprintln!("nexus_health_agent_server_log_error: {serialize_error}"),
+    }
+}
+
 fn ensure_rustls_crypto_provider() -> Result<()> {
     if rustls::crypto::CryptoProvider::get_default().is_some() {
         return Ok(());
@@ -103,7 +142,9 @@ fn ensure_rustls_crypto_provider() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_PORT, parse_port};
+    use serde_json::json;
+
+    use super::{DEFAULT_PORT, log_report, parse_port};
 
     #[test]
     fn default_port_is_8080_when_blank() {
@@ -114,5 +155,14 @@ mod tests {
     #[test]
     fn parses_explicit_port() {
         assert_eq!(parse_port(Some("9090")).expect("port"), 9090);
+    }
+
+    #[test]
+    fn report_logging_accepts_sparse_reports() {
+        log_report(&json!({
+            "status": "completed",
+            "scheduler": {"status": "hosted"},
+            "external_reachability": {"reachable": true}
+        }));
     }
 }
