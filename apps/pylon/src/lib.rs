@@ -14665,6 +14665,19 @@ fn training_publication_report_has_updates(report: &TrainingTrnPublicationReport
         .any(|entry| entry.publication_state != "existing" || entry.pending_retry)
 }
 
+fn training_terminal_contribution_artifact_upload_blocked(
+    state: &PylonTrainingRuntimeState,
+    active: &PylonTrainingActiveRuntimeState,
+) -> bool {
+    state
+        .closeout_progress
+        .get(active.assignment_id.as_str())
+        .and_then(|entry| entry.last_error.as_deref())
+        .is_some_and(|error| {
+            error.contains("terminal contribution artifact upload blocked window seal")
+        })
+}
+
 fn derive_training_terminal_window_state(
     active: &PylonTrainingActiveRuntimeState,
     run_status: Option<&PylonTrainingRunStatusPacket>,
@@ -17340,6 +17353,47 @@ async fn observe_training_terminal_closeout_state(
     Ok(changed)
 }
 
+async fn ensure_training_terminal_contribution_artifacts_uploaded(
+    config: &PylonConfig,
+    active: &PylonTrainingActiveRuntimeState,
+    context: &TrainingManifestInspectionContext,
+) -> Result<PylonTrainingArtifactBundleTransferReport> {
+    let artifact_client = PylonTrainingArtifactStoreClient::new_public_safe(config).await?;
+    let report = artifact_client
+        .upload_bundle(
+            &context.manifest,
+            PylonTrainingArtifactBundleKind::Contribution {
+                assignment_id: active.assignment_id.clone(),
+            },
+        )
+        .await?;
+    ensure!(
+        report.last_error.is_none(),
+        "terminal contribution artifact upload did not complete: {}",
+        report.last_error.unwrap_or_else(|| "unknown".to_string())
+    );
+    ensure!(
+        report.objects.len() >= 2
+            && report
+                .objects
+                .iter()
+                .all(|object| object.uploaded && object.digest_verified),
+        "terminal contribution artifact upload did not verify every required object"
+    );
+    ensure!(
+        report.state == artifact_bundle_state_label(PylonTrainingArtifactBundleState::Uploaded)
+            || report.state
+                == artifact_bundle_state_label(PylonTrainingArtifactBundleState::Verified)
+            || report.state
+                == artifact_bundle_state_label(PylonTrainingArtifactBundleState::Published)
+            || report.state
+                == artifact_bundle_state_label(PylonTrainingArtifactBundleState::Accepted),
+        "terminal contribution artifact upload ended in non-terminal state {}",
+        report.state
+    );
+    Ok(report)
+}
+
 async fn report_training_terminal_runtime_to_authority(
     config: &PylonConfig,
     identity: &NostrIdentity,
@@ -17650,6 +17704,31 @@ async fn report_training_terminal_runtime_to_authority(
         let retained = retained_contribution
             .as_ref()
             .expect("retained contribution checked above");
+        match ensure_training_terminal_contribution_artifacts_uploaded(config, active, context)
+            .await
+        {
+            Ok(_) => {}
+            Err(error) => {
+                let last_error = format!(
+                    "training terminal contribution artifact upload blocked window seal: {error:#}"
+                );
+                changed |= record_training_closeout_progress_stage(
+                    state,
+                    active.assignment_id.as_str(),
+                    active.training_run_id.as_str(),
+                    active.window_id.as_str(),
+                    active.role,
+                    PylonTrainingCloseoutStage::CheckpointPublished,
+                    None,
+                    retained.checkpoint_ref.clone(),
+                    None,
+                    None,
+                    None,
+                    Some(last_error),
+                );
+                return Ok(changed);
+            }
+        }
         changed |= record_training_closeout_progress_stage(
             state,
             active.assignment_id.as_str(),
@@ -17803,6 +17882,10 @@ async fn sync_training_terminal_runtime_once(
         manifest_path.as_path(),
     )?
     .unwrap_or(context);
+
+    if training_terminal_contribution_artifact_upload_blocked(&state_after_authority, &active) {
+        return Ok(changed);
+    }
 
     if training_context_has_pending_publication(&state_after_authority, &context_after_authority)? {
         match tokio::time::timeout(
@@ -37411,6 +37494,201 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             counts_after_second == counts,
             "terminal sync should not re-seal a window after recording the first successful seal receipt",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn training_terminal_sync_blocks_seal_until_contribution_artifacts_upload()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _env_lock = training_env_lock();
+        let relay = TestPublishRelay::spawn();
+        let gcs_base_url =
+            start_mock_http_server(move |method, _path, _body| match method.as_str() {
+                "PUT" => (200, "application/json", json!({"ok":true}).to_string()),
+                "GET" => (
+                    404,
+                    "application/json",
+                    json!({"error":"missing"}).to_string(),
+                ),
+                _ => (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed"}).to_string(),
+                ),
+            })
+            .await?;
+
+        let request_counts = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, usize>::new(),
+        ));
+        let request_counts_for_server = Arc::clone(&request_counts);
+        let nexus_base_url = start_mock_http_server(move |_method, path, _body| {
+            *request_counts_for_server
+                .lock()
+                .expect("artifact-blocked seal request counts")
+                .entry(path.clone())
+                .or_default() += 1;
+            match path.as_str() {
+                "/api/training/windows/progress" => (
+                    200,
+                    "application/json",
+                    json!({
+                        "ack": {
+                            "idempotency_key": "window-progress-success",
+                            "recorded_at_ms": 1_762_491_330_100_i64,
+                            "authority_state": "window_progress_recorded"
+                        },
+                        "window_state": "sealing"
+                    })
+                    .to_string(),
+                ),
+                "/api/training/checkpoints/publish" => (
+                    200,
+                    "application/json",
+                    json!({
+                        "ack": {
+                            "idempotency_key": "checkpoint-publication-success",
+                            "recorded_at_ms": 1_762_491_330_200_i64,
+                            "authority_state": "checkpoint_published"
+                        },
+                        "checkpoint_state": "published",
+                        "artifact_locator": "gs://bucket/networks/trainnet.alpha/runs/run.alpha/checkpoints/step-42/checkpoint_manifest.json"
+                    })
+                    .to_string(),
+                ),
+                "/api/training/windows/window.0001/seal" => (
+                    500,
+                    "application/json",
+                    json!({"error":"seal_called_before_artifact_upload"}).to_string(),
+                ),
+                _ => (
+                    404,
+                    "application/json",
+                    json!({"error":"not_found","reason":path}).to_string(),
+                ),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        config.training.relay_urls = vec![relay.url.clone()];
+        config.training.nexus_authority_base_url = nexus_base_url;
+        config.relay_auth_enabled = false;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let mut manifest = write_training_manifest_and_retained_contribution_artifacts(
+            local_run_root.as_path(),
+            "gs://bucket",
+        )?;
+        rewrite_training_checkpoint_manifest_to_bridge_shape(local_run_root.as_path(), 42)?;
+        manifest.trn.relay_urls = vec![relay.url.clone()];
+        manifest.manifest_digest = manifest.canonical_digest()?;
+        let manifest_path = local_run_root.join("manifests").join("run_manifest.json");
+        std::fs::write(manifest_path.as_path(), manifest.canonical_json_bytes()?)?;
+        let invocation_manifest_path = local_run_root
+            .join("manifests")
+            .join("invocation_manifest.json");
+        std::fs::write(
+            invocation_manifest_path.as_path(),
+            "{\"schema_version\":\"psionic.train.invocation_manifest.v1\"}\n",
+        )?;
+        write_training_terminal_status_packets(
+            local_run_root.as_path(),
+            "succeeded",
+            0,
+            None,
+            Some("completed"),
+            "completed window",
+        )?;
+
+        let mut state = load_or_create_training_runtime_state(&config)?;
+        let mut active_runtime = training_active_runtime_fixture();
+        active_runtime.manifest_path = invocation_manifest_path.display().to_string();
+        active_runtime.run_root = local_run_root.display().to_string();
+        active_runtime.process_state = PylonTrainingSupervisorProcessState::Stopped;
+        active_runtime.desired_state = PylonTrainingSupervisorDesiredState::Running;
+        active_runtime.last_exit_code = Some(0);
+        active_runtime.failure_receipt_path = None;
+        active_runtime.last_failure_reason = None;
+        state.active_runtime = Some(active_runtime);
+        state.lease_cache.insert(
+            "lease.node01.window0001".to_string(),
+            PylonTrainingLeaseCacheEntry {
+                lease_id: "lease.node01.window0001".to_string(),
+                assignment_id: "assign.node01.window0001".to_string(),
+                training_run_id: "run.alpha".to_string(),
+                window_id: "window.0001".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                role: PylonTrainingRoleClaim::Worker,
+                state: "active".to_string(),
+                manifest_digest: Some(manifest.manifest_digest.clone()),
+                checkpoint_ref: Some("checkpoint://run.alpha/0001".to_string()),
+                expires_at_ms: Some(1_762_491_360_000),
+                network_id: Some("trainnet.alpha".to_string()),
+                challenge_id: None,
+                peer_node_pubkey: None,
+                peer_checkpoint_handoff_receipt_path: None,
+                validator_target_contribution_receipt_path: None,
+                validator_target_contribution_artifact_manifest_path: None,
+                validator_target_work_class: None,
+                grouped_stage_input_transport_path: None,
+                runtime_manifest_path: Some(invocation_manifest_path.display().to_string()),
+                runtime_manifest_digest: Some(manifest.manifest_digest.clone()),
+                runtime_lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+                runtime_operation: Some("start".to_string()),
+                runtime_work_class: Some("small_model_local_training".to_string()),
+                updated_at_ms: now_epoch_ms(),
+            },
+        );
+        save_training_runtime_state(&config, &state)?;
+
+        let fake_adc_path = temp_dir.path().join("fake-adc.json");
+        std::fs::write(fake_adc_path.as_path(), "{}")?;
+        let _env = TrainingEnvGuard::set(&[
+            (ENV_TRAINING_GCS_ENDPOINT, gcs_base_url),
+            (ENV_TRAINING_GCS_BEARER_TOKEN, "token.alpha".to_string()),
+            (
+                ENV_GOOGLE_APPLICATION_CREDENTIALS,
+                fake_adc_path.display().to_string(),
+            ),
+        ]);
+
+        ensure(
+            sync_training_terminal_runtime_once(config_path.as_path(), &config, &identity).await?,
+            "terminal sync should make progress through checkpoint publication before upload blocks seal",
+        )?;
+
+        let synced_state = load_or_create_training_runtime_state(&config)?;
+        ensure(
+            synced_state.active_runtime.is_some()
+                && !synced_state
+                    .authority_receipt_records
+                    .contains_key("window_seal::window.0001")
+                && synced_state
+                    .closeout_progress
+                    .get("assign.node01.window0001")
+                    .is_some_and(|entry| {
+                        entry.stage == super::PylonTrainingCloseoutStage::CheckpointPublished
+                            && entry.last_error.as_deref().is_some_and(|error| {
+                                error.contains("contribution artifact upload blocked window seal")
+                            })
+                    }),
+            "terminal sync must keep the worker active and avoid sealing until contribution artifacts upload",
+        )?;
+        let counts = request_counts
+            .lock()
+            .expect("artifact-blocked seal request counts")
+            .clone();
+        ensure(
+            counts.get("/api/training/windows/progress") == Some(&1)
+                && counts.get("/api/training/checkpoints/publish") == Some(&1)
+                && !counts.contains_key("/api/training/windows/window.0001/seal"),
+            "terminal sync should not call the seal endpoint before contribution artifacts are uploaded",
         )
     }
 

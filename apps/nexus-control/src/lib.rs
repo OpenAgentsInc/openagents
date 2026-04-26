@@ -9378,7 +9378,7 @@ struct HomeworkLaunchPrepared {
 }
 
 const HOMEWORK_LAUNCH_INLINE_WAIT_TIMEOUT: Duration = Duration::from_secs(5);
-const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.12";
+const MINIMUM_PUBLIC_PYLON_EARNING_VERSION: &str = "0.1.15";
 
 fn current_homework_launch_pylon_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0))
@@ -13033,7 +13033,7 @@ async fn claim_training_run_lease(
         }
         Err(error) => return Err(error),
     };
-    invalidate_public_stats_cache(&state, now_unix_ms());
+    let _ = force_refresh_public_stats_cache(&state, now_unix_ms());
     Ok(Json(response))
 }
 
@@ -44818,10 +44818,11 @@ mod tests {
         config.training_artifact_signed_url = Some(training_artifact_signed_url);
         config.treasury.enabled = true;
         config.treasury.payout_sats_per_window = 120;
+        config.treasury.accepted_work_default_payout_sats = 120;
         let state = build_app_state(config);
         let app = build_api_router_with_state(state.clone());
-        let public_release_id = "openagents.pylon@0.1.99";
-        let public_build_version = "0.1.99";
+        let public_release_id = current_homework_launch_release_id_for_test();
+        let public_build_version = current_homework_launch_build_version_for_test();
         let recorded_at_ms = now_unix_ms();
 
         seed_homework_launch_node(
@@ -44830,8 +44831,8 @@ mod tests {
             "node-starter-alpha",
             "sha256:build-starter-alpha",
             super::EPISODE_224_CS336_A1_DEMO_NETWORK_ID,
-            public_release_id,
-            public_build_version,
+            public_release_id.as_str(),
+            public_build_version.as_str(),
             vec![TrainingNodeRoleClaim::Worker],
             Some("lnbc1nodestarteralpha"),
         );
@@ -45519,7 +45520,7 @@ mod tests {
                 .node
                 .build_version
                 .as_deref()
-                == Some("0.1.12"))
+                == Some(super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION))
         );
         assert!(launch.training_run_id.starts_with("run.cs336.a1.auto_10m_"));
 
