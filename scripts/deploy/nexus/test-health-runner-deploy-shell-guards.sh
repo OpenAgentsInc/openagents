@@ -72,8 +72,8 @@ DEPLOY_OUTPUT="$(
 )"
 assert_contains 'gcloud run jobs deploy' "$DEPLOY_OUTPUT"
 assert_contains '--service-account' "$DEPLOY_OUTPUT"
-assert_contains '--command /usr/local/bin/nexus-health-agent' "$DEPLOY_OUTPUT"
-assert_contains '--args --dry-run\,--json' "$DEPLOY_OUTPUT"
+assert_contains '--command=/usr/local/bin/nexus-health-agent' "$DEPLOY_OUTPUT"
+assert_contains '--args=--dry-run\,--json' "$DEPLOY_OUTPUT"
 assert_not_contains 'NEXUS_HEALTH_AGENT_FORGE_BEARER_TOKEN=' "$DEPLOY_OUTPUT"
 
 SMOKE_OUTPUT="$(
