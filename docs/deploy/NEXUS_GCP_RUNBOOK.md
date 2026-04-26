@@ -314,12 +314,13 @@ The hosted health-runner lane for this command is documented in:
 - `docs/deploy/NEXUS_HEALTH_RUNNER_GCP_RUNBOOK.md`
 
 That lane runs `/usr/local/bin/nexus-health-agent` from the Nexus image as a
-Cloud Run Job with an attached service account and Secret Manager injection.
-Use it when the proof must not depend on an operator laptop's local `gcloud`
-OAuth session. The default job remains monitor-only; leased recovery job args
-can now record bounded actions such as `treasury_refresh`, while service
-restarts and VM mutations stay routed through Forge/Probe executors rather than
-local shell commands.
+Cloud Run Job for one-shot proof/actions and as
+`/usr/local/bin/nexus-health-agent-server` in a warm Cloud Run Service for the
+recurring monitor. Use it when the proof must not depend on an operator
+laptop's local `gcloud` OAuth session. The default job remains monitor-only;
+leased recovery job args can now record bounded actions such as
+`treasury_refresh`, while service restarts and VM mutations stay routed through
+Forge/Probe executors rather than local shell commands.
 
 ### 3.2) Issue #4413 live proof checklist
 
@@ -497,24 +498,34 @@ but the public host returns `530` / `1033` or goes dark, it restarts
 scripts/deploy/nexus/16-install-public-watchdog.sh
 ```
 
-The hosted `nexus-health-agent` Cloud Run Job is separate from the VM-local
-systemd watchdogs. Use the health-runner job for independent GCP-origin probes,
-Forge health events, and future lease-gated recovery orchestration:
+The hosted `nexus-health-agent` Cloud Run runtime is separate from the VM-local
+systemd watchdogs. Use the health-runner Job for one-shot smoke or
+lease-gated actions, and the warm health-runner Service for recurring
+GCP-origin public-edge probes and Forge health events:
 
 ```bash
 scripts/deploy/nexus/17-provision-health-runner-identity.sh
 scripts/deploy/nexus/18-deploy-health-runner-job.sh
 scripts/deploy/nexus/19-smoke-health-runner-job.sh
+scripts/deploy/nexus/21-deploy-health-runner-service.sh
 scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
 ```
 
-Cloud Scheduler is minute-granularity, so the launch-period 30-second probe
-mode is implemented by running two `nexus-health-agent` cycles inside each
-scheduled Cloud Run Job execution:
+Cloud Scheduler is minute-granularity. The recurring monitor should target the
+warm Cloud Run Service `/run` endpoint with OIDC so the loop does not backlog
+behind Cloud Run Job provisioning latency:
 
 ```bash
-NEXUS_HEALTH_RUNNER_JOB_ARGS='--json,--cycles,2,--cycle-interval-seconds,30' \
-scripts/deploy/nexus/18-deploy-health-runner-job.sh
+scripts/deploy/nexus/21-deploy-health-runner-service.sh
+
+SERVICE_URL="$(gcloud run services describe nexus-health-runner-service \
+  --project openagentsgemini \
+  --region us-central1 \
+  --format 'value(status.url)')"
+
+NEXUS_HEALTH_RUNNER_SCHEDULER_AUTH_MODE=oidc \
+NEXUS_HEALTH_RUNNER_SCHEDULER_URI="${SERVICE_URL}/run" \
+NEXUS_HEALTH_RUNNER_SCHEDULER_OIDC_AUDIENCE="${SERVICE_URL}" \
 scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
 ```
 
