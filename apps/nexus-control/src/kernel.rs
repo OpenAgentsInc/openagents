@@ -3405,38 +3405,8 @@ impl KernelState {
         {
             return Err("training_node_not_found".to_string());
         }
-        let request_hash = request_hash(&req)?;
         let lease_state = training_node_lease_state_for(req.desired_state, req.process_state);
         let window_state = training_node_window_state_for(req.process_state, req.last_exit_code);
-        let receipt = build_receipt(
-            context,
-            req.idempotency_key.as_str(),
-            KernelReceiptSpec {
-                action: "kernel.compute.training_node.heartbeat.record".to_string(),
-                created_at_ms: req.recorded_at_ms,
-                trace: normalized_trace(TraceContext::default(), context, None, None),
-                policy: normalized_policy(PolicyContext::default(), context),
-                inputs_payload: serde_json::to_value(&req).map_err(|error| {
-                    format!("kernel_training_node_heartbeat_encode_failed: {error}")
-                })?,
-                outputs_payload: json!({
-                    "node_pubkey_hex": node_pubkey_hex.clone(),
-                    "build_digest": build_digest.clone(),
-                    "lease_state": lease_state.clone(),
-                    "window_state": window_state.clone(),
-                    "next_heartbeat_due_at_ms": heartbeat_at_ms.saturating_add(TRAINING_NODE_HEARTBEAT_INTERVAL_MS),
-                }),
-                evidence: Vec::new(),
-                hints: ReceiptHints::default(),
-            },
-        )?;
-        let put_result = self.receipt_store.put_receipt(
-            "kernel.compute.training_node.heartbeat.record",
-            context.caller_id.as_str(),
-            req.idempotency_key.as_str(),
-            request_hash.as_str(),
-            receipt,
-        );
         let response = RecordTrainingNodeHeartbeatResponse {
             ack: TrainingCoordinatorAck {
                 idempotency_key: req.idempotency_key.clone(),
@@ -3449,15 +3419,6 @@ impl KernelState {
             lease_state: Some(lease_state.clone()),
             window_state: Some(window_state.clone()),
         };
-        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
-        if put_result.replayed {
-            return Ok(MutationResult {
-                response,
-                receipt_event: None,
-                snapshot_event: None,
-            });
-        }
-
         let record = self
             .admitted_training_nodes
             .get_mut(registry_key.as_str())
@@ -3477,13 +3438,14 @@ impl KernelState {
             record.node.last_successful_run_id = Some(req.training_run_id);
             record.node.last_successful_window_id = Some(req.window_id);
         }
-        record.receipt_id = put_result.receipt.receipt_id.clone();
-        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
-        let snapshot_event = self.refresh_snapshot_for(req.recorded_at_ms)?;
+        // Heartbeats are high-frequency liveness signals. Admissions, window
+        // transitions, closeouts, and payouts remain durable kernel receipts;
+        // rewriting the full kernel snapshot for every 5s heartbeat makes
+        // `/healthz` and public worker heartbeats contend with large disk I/O.
         Ok(MutationResult {
             response,
-            receipt_event: Some(receipt_event),
-            snapshot_event: Some(snapshot_event),
+            receipt_event: None,
+            snapshot_event: None,
         })
     }
 
