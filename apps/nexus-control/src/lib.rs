@@ -161,12 +161,13 @@ use crate::treasury::{
     OnlinePylonIdentity, ProviderPayoutTargetChallengeRequest,
     ProviderPayoutTargetChallengeResponse, ProviderPayoutTargetRegistrationRequest,
     ProviderPayoutTargetRegistrationResponse, TreasuryCanonicalPublicSnapshot, TreasuryConfig,
-    TreasuryDispatchBatchResult, TreasuryFundingTargetRequest, TreasuryFundingTargetResponse,
-    TreasuryIntegrationExportResponse, TreasuryIntegrationImportResponse, TreasuryPayoutClass,
-    TreasuryPayoutClassification, TreasuryPayoutPreparation, TreasuryPlaceholderPayoutMode,
-    TreasuryPublicStats, TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState,
-    TreasuryStatusResponse, TreasuryTrainingPayoutLedgerSummary, create_live_funding_target,
-    dispatch_live_payouts, load_live_wallet_refresh_result_with_plan, parse_pylon_client_version,
+    TreasuryDispatchBatchResult, TreasuryDispatchOutcome, TreasuryDispatchPlan,
+    TreasuryFundingTargetRequest, TreasuryFundingTargetResponse, TreasuryIntegrationExportResponse,
+    TreasuryIntegrationImportResponse, TreasuryPayoutClass, TreasuryPayoutClassification,
+    TreasuryPayoutPreparation, TreasuryPlaceholderPayoutMode, TreasuryPublicStats,
+    TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse,
+    TreasuryTrainingPayoutLedgerSummary, create_live_funding_target, dispatch_live_payouts,
+    load_live_wallet_refresh_result_with_plan, parse_pylon_client_version,
 };
 
 pub use crate::treasury::{
@@ -22502,6 +22503,78 @@ fn find_session_by_id<'a>(
         .find(|session| session.session_id == session_id)
 }
 
+fn build_isolated_treasury_runtime() -> Result<tokio::runtime::Runtime, String> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .thread_name("nexus-treasury-isolated")
+        .build()
+        .map_err(|error| format!("treasury_isolated_runtime_build_failed:{error}"))
+}
+
+async fn dispatch_live_payouts_isolated(
+    config: &TreasuryConfig,
+    plans: &[TreasuryDispatchPlan],
+) -> TreasuryDispatchBatchResult {
+    let config = config.clone();
+    let plans = plans.to_vec();
+    let fallback_plans = plans.clone();
+    match tokio::task::spawn_blocking(move || {
+        let runtime = build_isolated_treasury_runtime()?;
+        Ok::<TreasuryDispatchBatchResult, String>(
+            runtime.block_on(dispatch_live_payouts(&config, plans.as_slice())),
+        )
+    })
+    .await
+    {
+        Ok(Ok(batch)) => batch,
+        Ok(Err(error)) => treasury_dispatch_isolation_failure_batch(fallback_plans, error),
+        Err(error) => treasury_dispatch_isolation_failure_batch(
+            fallback_plans,
+            format!("treasury_isolated_dispatch_join_failed:{error}"),
+        ),
+    }
+}
+
+fn treasury_dispatch_isolation_failure_batch(
+    plans: Vec<TreasuryDispatchPlan>,
+    reason: String,
+) -> TreasuryDispatchBatchResult {
+    tracing::error!(
+        reason = reason.as_str(),
+        payout_count = plans.len(),
+        "treasury isolated dispatch runtime failed"
+    );
+    TreasuryDispatchBatchResult {
+        outcomes: plans
+            .into_iter()
+            .map(|plan| TreasuryDispatchOutcome::Failed {
+                payout_key: plan.payout_key,
+                reason: format!("wallet_send_retryable:isolated_runtime:{reason}"),
+            })
+            .collect(),
+        wallet_snapshot: None,
+        wallet_error: Some(reason),
+    }
+}
+
+async fn refresh_treasury_wallet_state_isolated(
+    state: AppState,
+    create_if_missing: bool,
+) -> Result<(), String> {
+    match tokio::task::spawn_blocking(move || {
+        let runtime = build_isolated_treasury_runtime()?;
+        runtime.block_on(refresh_treasury_wallet_state(&state, create_if_missing));
+        Ok::<(), String>(())
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(error) => Err(format!(
+            "treasury_isolated_wallet_refresh_join_failed:{error}"
+        )),
+    }
+}
+
 async fn refresh_treasury_wallet_state(state: &AppState, create_if_missing: bool) {
     let now = now_unix_ms();
     let refresh_plan = match state.store.read() {
@@ -22900,7 +22973,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
     };
 
     if !preparation.dispatch_plans.is_empty() {
-        let batch = dispatch_live_payouts(
+        let batch = dispatch_live_payouts_isolated(
             &state.config.treasury,
             preparation.dispatch_plans.as_slice(),
         )
@@ -22968,19 +23041,33 @@ async fn run_treasury_wallet_refresh_cycle(state: &AppState, create_if_missing: 
     let wallet_refresh_timeout_ms = state.config.treasury.wallet_refresh_timeout_ms();
     let refresh_result = tokio::time::timeout(
         Duration::from_millis(wallet_refresh_timeout_ms),
-        refresh_treasury_wallet_state(state, create_if_missing),
+        refresh_treasury_wallet_state_isolated(state.clone(), create_if_missing),
     )
     .await;
-    if refresh_result.is_err() {
-        let timeout_reason = format!("wallet_refresh_timeout:{wallet_refresh_timeout_ms}");
-        tracing::error!("treasury wallet refresh timed out: {timeout_reason}");
-        if let Ok(mut store) = state.store.write() {
-            store
-                .treasury
-                .record_wallet_refresh_error(timeout_reason, now_unix_ms());
-            store
-                .treasury
-                .refresh_public_snapshot_in_memory(&state.config.treasury, now_unix_ms());
+    match refresh_result {
+        Ok(Ok(())) => {}
+        Ok(Err(reason)) => {
+            tracing::error!("treasury wallet refresh isolated runtime failed: {reason}");
+            if let Ok(mut store) = state.store.write() {
+                store
+                    .treasury
+                    .record_wallet_refresh_error(reason, now_unix_ms());
+                store
+                    .treasury
+                    .refresh_public_snapshot_in_memory(&state.config.treasury, now_unix_ms());
+            }
+        }
+        Err(_) => {
+            let timeout_reason = format!("wallet_refresh_timeout:{wallet_refresh_timeout_ms}");
+            tracing::error!("treasury wallet refresh timed out: {timeout_reason}");
+            if let Ok(mut store) = state.store.write() {
+                store
+                    .treasury
+                    .record_wallet_refresh_error(timeout_reason, now_unix_ms());
+                store
+                    .treasury
+                    .refresh_public_snapshot_in_memory(&state.config.treasury, now_unix_ms());
+            }
         }
     }
     let _ = force_refresh_public_stats_cache(state, now_unix_ms());
@@ -23016,20 +23103,33 @@ async fn force_treasury_wallet_refresh(
     let wallet_refresh_timeout_ms = state.config.treasury.wallet_refresh_timeout_ms();
     let refresh_result = tokio::time::timeout(
         Duration::from_millis(wallet_refresh_timeout_ms),
-        refresh_treasury_wallet_state(state, create_if_missing),
+        refresh_treasury_wallet_state_isolated(state.clone(), create_if_missing),
     )
     .await;
-    if refresh_result.is_err() {
-        let timeout_reason = format!("wallet_refresh_timeout:{wallet_refresh_timeout_ms}");
-        tracing::error!("treasury wallet refresh timed out: {timeout_reason}");
-        if let Ok(mut store) = state.store.write() {
-            let now = now_unix_ms();
-            store
-                .treasury
-                .record_wallet_refresh_error(timeout_reason, now);
-            store
-                .treasury
-                .refresh_public_snapshot_in_memory(&state.config.treasury, now);
+    match refresh_result {
+        Ok(Ok(())) => {}
+        Ok(Err(reason)) => {
+            tracing::error!("treasury wallet refresh isolated runtime failed: {reason}");
+            if let Ok(mut store) = state.store.write() {
+                let now = now_unix_ms();
+                store.treasury.record_wallet_refresh_error(reason, now);
+                store
+                    .treasury
+                    .refresh_public_snapshot_in_memory(&state.config.treasury, now);
+            }
+        }
+        Err(_) => {
+            let timeout_reason = format!("wallet_refresh_timeout:{wallet_refresh_timeout_ms}");
+            tracing::error!("treasury wallet refresh timed out: {timeout_reason}");
+            if let Ok(mut store) = state.store.write() {
+                let now = now_unix_ms();
+                store
+                    .treasury
+                    .record_wallet_refresh_error(timeout_reason, now);
+                store
+                    .treasury
+                    .refresh_public_snapshot_in_memory(&state.config.treasury, now);
+            }
         }
     }
     let now = now_unix_ms();
