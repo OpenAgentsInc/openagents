@@ -138,13 +138,14 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::economy::{
-    AuthorityReceiptContext, PublicPylonClientVersionCount, PublicRecentPylon,
-    PublicRecentPylonDiagnostic, PublicRuntimeSnapshot, PublicStatsSnapshot,
-    PublicTrainingLaunchAlert, PublicTrainingLaunchHealthSnapshot, PublicTrainingLaunchState,
-    PublicTrainingQueuePressure, PublicTrainingRunCaveat, PublicTrainingRunContributionRow,
-    PublicTrainingRunDetailSnapshot, PublicTrainingRunNodeRow, PublicTrainingRunState,
-    PublicTrainingRunTreasuryStatus, PublicTrainingStatsSnapshot, PublicTrainingWindowState,
-    PublicTrainingWorkClassState, ReceiptLedger,
+    AuthorityReceiptContext, PublicHomeworkWorkerPresenceOnlyBlockerCount,
+    PublicPylonClientVersionCount, PublicRecentPylon, PublicRecentPylonDiagnostic,
+    PublicRuntimeSnapshot, PublicStatsSnapshot, PublicTrainingLaunchAlert,
+    PublicTrainingLaunchHealthSnapshot, PublicTrainingLaunchState, PublicTrainingQueuePressure,
+    PublicTrainingRunCaveat, PublicTrainingRunContributionRow, PublicTrainingRunDetailSnapshot,
+    PublicTrainingRunNodeRow, PublicTrainingRunState, PublicTrainingRunTreasuryStatus,
+    PublicTrainingStatsSnapshot, PublicTrainingWindowState, PublicTrainingWorkClassState,
+    ReceiptLedger,
 };
 use crate::kernel::{
     AdmittedTrainingNodeView, ComputeAcceptedOutcomePublicationSource,
@@ -8698,6 +8699,161 @@ impl ProviderPresenceState {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct HomeworkWorkerEligibilityMetrics {
+    eligible_pylons_online_now: u64,
+    eligible_pylon_version_counts: Vec<PublicPylonClientVersionCount>,
+    presence_only_blocker_counts: Vec<PublicHomeworkWorkerPresenceOnlyBlockerCount>,
+}
+
+fn homework_worker_node_blocker_reason(
+    node: &AdmittedTrainingNodeView,
+    minimum_version: Option<&Version>,
+) -> Option<String> {
+    if !node.online {
+        return Some("homework_worker_offline".to_string());
+    }
+    if !node.role_claims.contains(&TrainingNodeRoleClaim::Worker) {
+        return Some("homework_worker_role_not_admitted".to_string());
+    }
+    if !training_authority_view_claimability_ready(node, TrainingNodeRoleClaim::Worker) {
+        return Some(
+            training_authority_view_claimability_reason(node, TrainingNodeRoleClaim::Worker)
+                .unwrap_or("homework_worker_claimability_blocked")
+                .to_string(),
+        );
+    }
+    if node.settlement_destination.is_none() {
+        return Some("homework_worker_missing_settlement_destination".to_string());
+    }
+    if let Some(minimum_version) = minimum_version {
+        if homework_launch_node_version(node).is_none_or(|version| version < *minimum_version) {
+            return Some("homework_worker_version_too_low".to_string());
+        }
+    }
+    None
+}
+
+fn provider_presence_record_supports_training_worker(record: &ProviderPresenceRecord) -> bool {
+    record
+        .training_capability_envelope_v2
+        .as_ref()
+        .is_some_and(|envelope| envelope.contributor_supported)
+}
+
+fn homework_worker_eligibility_metrics(
+    config: &ServiceConfig,
+    store: &ControlStore,
+    now_unix_ms: u64,
+) -> HomeworkWorkerEligibilityMetrics {
+    let minimum_version = Version::parse(MINIMUM_PUBLIC_PYLON_EARNING_VERSION).ok();
+    let worker_nodes = store.kernel.list_admitted_training_nodes(
+        &TrainingNodeQuery {
+            network_id: Some(EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string()),
+            requested_network_id: Some(EPISODE_224_CS336_A1_DEMO_NETWORK_ID.to_string()),
+            role: Some(TrainingNodeRoleClaim::Worker),
+            online_only: false,
+            eligible_only: false,
+        },
+        now_unix_ms as i64,
+    );
+    let worker_nodes = training_authority_freshest_node_views_by_pubkey(
+        training_authority_refresh_node_views(&store.kernel, worker_nodes, now_unix_ms as i64)
+            .unwrap_or_default(),
+    );
+
+    let mut worker_nodes_by_pubkey = HashMap::<String, AdmittedTrainingNodeView>::new();
+    let mut eligible_worker_pubkeys = BTreeSet::<String>::new();
+    let mut eligible_version_counts = BTreeMap::<String, BTreeSet<String>>::new();
+    for node in worker_nodes {
+        let blocker = homework_worker_node_blocker_reason(&node, minimum_version.as_ref());
+        if blocker.is_none() {
+            eligible_worker_pubkeys.insert(node.node_pubkey_hex.clone());
+            let version = node
+                .build_version
+                .clone()
+                .or_else(|| Some(node.release_id.clone()))
+                .unwrap_or_else(|| "unknown".to_string());
+            eligible_version_counts
+                .entry(version)
+                .or_default()
+                .insert(node.node_pubkey_hex.clone());
+        }
+        worker_nodes_by_pubkey.insert(node.node_pubkey_hex.clone(), node);
+    }
+
+    let stale_cutoff = now_unix_ms.saturating_sub(config.provider_presence_stale_after_ms);
+    let mut blocker_sessions = BTreeMap::<(Option<String>, String), u64>::new();
+    let mut blocker_pylons = BTreeMap::<(Option<String>, String), BTreeSet<String>>::new();
+    for record in store.provider_presence.rows_by_key.values() {
+        if !(record.online && record.last_seen_at_unix_ms >= stale_cutoff) {
+            continue;
+        }
+        if eligible_worker_pubkeys.contains(record.nostr_pubkey_hex.as_str()) {
+            continue;
+        }
+        let reason = worker_nodes_by_pubkey
+            .get(record.nostr_pubkey_hex.as_str())
+            .and_then(|node| homework_worker_node_blocker_reason(node, minimum_version.as_ref()))
+            .unwrap_or_else(|| {
+                if provider_presence_record_supports_training_worker(record) {
+                    "homework_worker_admission_missing".to_string()
+                } else {
+                    "homework_worker_training_capability_missing".to_string()
+                }
+            });
+        let key = (record.client_version.clone(), reason);
+        *blocker_sessions.entry(key.clone()).or_default() += 1;
+        blocker_pylons
+            .entry(key)
+            .or_default()
+            .insert(record.nostr_pubkey_hex.clone());
+    }
+
+    let mut eligible_pylon_version_counts = eligible_version_counts
+        .into_iter()
+        .map(|(client_version, pylons)| PublicPylonClientVersionCount {
+            client_version,
+            online_sessions: pylons.len() as u64,
+            online_pylons: pylons.len() as u64,
+        })
+        .collect::<Vec<_>>();
+    eligible_pylon_version_counts.sort_by(|left, right| {
+        right
+            .online_pylons
+            .cmp(&left.online_pylons)
+            .then_with(|| left.client_version.cmp(&right.client_version))
+    });
+
+    let mut presence_only_blocker_counts = blocker_sessions
+        .into_iter()
+        .map(|((client_version, reason), online_sessions)| {
+            let online_pylons = blocker_pylons
+                .get(&(client_version.clone(), reason.clone()))
+                .map_or(0, |pylons| pylons.len() as u64);
+            PublicHomeworkWorkerPresenceOnlyBlockerCount {
+                client_version,
+                reason,
+                online_sessions,
+                online_pylons,
+            }
+        })
+        .collect::<Vec<_>>();
+    presence_only_blocker_counts.sort_by(|left, right| {
+        right
+            .online_sessions
+            .cmp(&left.online_sessions)
+            .then_with(|| left.reason.cmp(&right.reason))
+            .then_with(|| left.client_version.cmp(&right.client_version))
+    });
+
+    HomeworkWorkerEligibilityMetrics {
+        eligible_pylons_online_now: eligible_worker_pubkeys.len() as u64,
+        eligible_pylon_version_counts,
+        presence_only_blocker_counts,
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ApiError {
     status: StatusCode,
@@ -9224,12 +9380,11 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
-    let mut stats = cached_public_stats_snapshot(&state).ok_or_else(|| ApiError {
+    let stats = refresh_public_stats_cache(&state, now).ok_or_else(|| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "public_stats_cache_poisoned".to_string(),
     })?;
-    apply_public_stats_cache_context(&mut stats, now, "cached");
 
     Ok(Json(stats))
 }
@@ -23191,6 +23346,7 @@ fn runtime_snapshot(
     let provider_presence_metrics = store
         .provider_presence
         .metrics(now_unix_ms, config.provider_presence_stale_after_ms);
+    let homework_worker_metrics = homework_worker_eligibility_metrics(config, store, now_unix_ms);
     let (starter_offers_waiting_ack, starter_offers_running) = store
         .starter_demand
         .offers_by_session
@@ -23312,6 +23468,8 @@ fn runtime_snapshot(
             .weak_device_accepted_contributors,
         training_nodes_online: training_metrics.admitted_nodes_online,
         training_admitted_nodes_online: training_metrics.admitted_nodes_online,
+        homework_worker_eligible_pylons_online_now: homework_worker_metrics
+            .eligible_pylons_online_now,
         training_runs_active: training_metrics.active_runs,
         training_windows_active: training_metrics.active_windows,
         training_windows_pending_validation: training_metrics.pending_validation_windows,
@@ -23405,6 +23563,10 @@ fn runtime_snapshot(
         risk_coverage_concentration_hhi: risk_metrics.risk_coverage_concentration_hhi,
         recent_pylons: provider_presence_metrics.recent_pylons,
         pylon_client_version_counts: provider_presence_metrics.pylon_client_version_counts,
+        homework_worker_eligible_pylon_version_counts: homework_worker_metrics
+            .eligible_pylon_version_counts,
+        homework_worker_presence_only_blocker_counts: homework_worker_metrics
+            .presence_only_blocker_counts,
         recent_pylon_diagnostics: provider_presence_metrics.recent_pylon_diagnostics,
     }
 }
@@ -31871,6 +32033,25 @@ mod tests {
         assert_eq!(
             stats.pylon_presence_stale_after_ms,
             DEFAULT_PROVIDER_PRESENCE_STALE_AFTER_MS
+        );
+        assert_eq!(stats.homework_worker_eligible_pylons_online_now, 0);
+        assert!(
+            stats
+                .homework_worker_presence_only_blocker_counts
+                .iter()
+                .any(|row| row.reason == "homework_worker_admission_missing"
+                    && row.client_version.as_deref() == Some("pylon/0.1.0")
+                    && row.online_sessions == 2
+                    && row.online_pylons == 1)
+        );
+        assert!(
+            stats
+                .homework_worker_presence_only_blocker_counts
+                .iter()
+                .any(|row| row.reason == "homework_worker_admission_missing"
+                    && row.client_version.as_deref() == Some("pylon/0.1.10")
+                    && row.online_sessions == 1
+                    && row.online_pylons == 1)
         );
         assert_eq!(stats.recent_pylons.len(), 3);
         assert!(
@@ -45500,6 +45681,21 @@ mod tests {
             vec![TrainingNodeRoleClaim::Worker],
             Some("lnbc1nodeautoold"),
         );
+
+        {
+            let store = state.store.read().expect("read store");
+            let metrics =
+                super::homework_worker_eligibility_metrics(&state.config, &store, recorded_at_ms);
+            assert_eq!(metrics.eligible_pylons_online_now, 2);
+            assert!(
+                metrics
+                    .eligible_pylon_version_counts
+                    .iter()
+                    .any(
+                        |row| row.client_version == current_build_version && row.online_pylons == 2
+                    )
+            );
+        }
 
         let dispatch = run_cs336_homework_auto_dispatch_cycle(&state)
             .await

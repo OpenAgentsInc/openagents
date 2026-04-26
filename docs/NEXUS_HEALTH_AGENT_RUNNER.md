@@ -262,6 +262,9 @@ Expected tests cover:
 - public endpoint failure handling.
 - hosted scheduler and external vantage metadata.
 - Cloudflare 1033-style public-edge failure classification.
+- Pylon homework-worker eligibility telemetry: online presence, admitted
+  homework workers, and presence-only blocker reasons must be visible in the
+  health verification evidence.
 - no sensitive-shaped keys or strings in emitted reports.
 - lease requirement for mutating action plans.
 - approval-id requirement for unsafe action plans.

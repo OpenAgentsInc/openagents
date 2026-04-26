@@ -492,7 +492,15 @@ VM-local `/healthz`, the public `https://nexus.openagents.com/api/stats` path,
 and both `nexus-relay` and `nexus-cloudflared` systemd services. If local
 origin health fails it restarts `nexus-relay`; if the local origin is healthy
 but the public host returns `530` / `1033` or goes dark, it restarts
-`nexus-cloudflared`. Refresh only that watchdog with:
+`nexus-cloudflared`. The watchdog probes the public edge even during startup
+grace; Cloudflare `530` / `1033` is never treated as healthy just because a
+systemd service recently restarted. It writes structured receipts under
+`/var/lib/nexus-relay/watchdog/public/events.jsonl` and
+`/var/lib/nexus-relay/watchdog/public/last-event.json`. When hourly restart
+limits are exhausted, the receipt action becomes `vm_reset_required`; the
+hosted health runner or human operator must then reset the VM after confirming
+the local origin/tunnel restart ladder has failed. Refresh only that watchdog
+with:
 
 ```bash
 scripts/deploy/nexus/16-install-public-watchdog.sh
@@ -685,6 +693,32 @@ Activate the uploaded release through `/opt/nexus-relay/current`:
 ```bash
 scripts/deploy/nexus/14-activate-binary-release.sh
 ```
+
+The upload and activation scripts now guard every IAP `gcloud compute ssh` and
+`scp` step with explicit timeouts. Defaults can be overridden with:
+
+```bash
+export NEXUS_BINARY_RELEASE_STEP_TIMEOUT_SECONDS=900
+export NEXUS_BINARY_RELEASE_UPLOAD_TIMEOUT_SECONDS=900
+export NEXUS_BINARY_RELEASE_ACTIVATION_TIMEOUT_SECONDS=600
+```
+
+Before uploading, after uploading, before activation, and after activation the
+scripts probe `NEXUS_PUBLIC_HEALTH_URL` (default
+`https://nexus.openagents.com/healthz`). If the public edge is already
+Cloudflare `530` / `1033`, HTTP `000`, or any non-200 health result, do not
+continue release work. Restore public health first.
+
+If an upload hangs or times out, the script cleans partial
+`/tmp/nexus-release-<git_sha>.tar.gz` and remote installer files before
+failing. The safe retry sequence is:
+
+1. Verify or restore public health with `curl -fsS https://nexus.openagents.com/healthz`.
+2. Verify IAP SSH with a short command such as `gcloud compute ssh "$NEXUS_VM" --tunnel-through-iap --command true`.
+3. Remove partial release archives on the VM if needed: `rm -f /tmp/nexus-release-<git_sha>.tar.gz /tmp/nexus-upload-binary-release.sh`.
+4. Retry `scripts/deploy/nexus/13-upload-binary-release.sh`.
+5. Run `scripts/deploy/nexus/14-activate-binary-release.sh`.
+6. Run `scripts/deploy/nexus/04-verify-gates.sh` and inspect hosted health-runner logs.
 
 Verify the exact activated release:
 

@@ -147,6 +147,8 @@ pub struct NexusHealthTrainingSnapshot {
     pub launch_health_overall_status: Option<String>,
     pub nodes_online: u64,
     pub admitted_nodes_online: u64,
+    #[serde(default)]
+    pub homework_worker_eligible_pylons_online_now: u64,
     pub runs_active: u64,
     pub windows_active: u64,
     pub windows_pending_validation: u64,
@@ -171,6 +173,10 @@ pub struct NexusHealthFleetSnapshot {
     pub missing_payout_target_blocked_beneficiaries_now: u64,
     pub version_floor_blocked_beneficiaries_now: u64,
     pub readiness_blocked_beneficiaries_now: u64,
+    #[serde(default)]
+    pub homework_worker_eligible_pylons_online_now: u64,
+    #[serde(default)]
+    pub homework_worker_presence_only_blocker_counts: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -468,6 +474,7 @@ fn fake_nexus_health_snapshot(base_url: &str) -> Result<NexusHealthSnapshot> {
             "pylon_reported_hosts_online_now": 5,
             "training_nodes_online": 4,
             "training_admitted_nodes_online": 4,
+            "homework_worker_eligible_pylons_online_now": 3,
             "training_runs_active": 2,
             "training_windows_active": 1,
             "training_windows_pending_validation": 1,
@@ -754,6 +761,11 @@ fn training_snapshot(
         nodes_online: first_u64(&[stats], &["training_nodes_online"]).unwrap_or(0),
         admitted_nodes_online: first_u64(&[stats], &["training_admitted_nodes_online"])
             .unwrap_or(0),
+        homework_worker_eligible_pylons_online_now: first_u64(
+            &[stats],
+            &["homework_worker_eligible_pylons_online_now"],
+        )
+        .unwrap_or(0),
         runs_active: first_u64(&[stats], &["training_runs_active"]).unwrap_or(0),
         windows_active: first_u64(&[stats], &["training_windows_active"]).unwrap_or(0),
         windows_pending_validation: first_u64(&[stats], &["training_windows_pending_validation"])
@@ -779,6 +791,11 @@ fn training_snapshot(
 }
 
 fn fleet_snapshot(stats: Option<&Value>, treasury: Option<&Value>) -> NexusHealthFleetSnapshot {
+    let homework_worker_presence_only_blocker_counts = stats
+        .and_then(|value| value.get("homework_worker_presence_only_blocker_counts"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     NexusHealthFleetSnapshot {
         pylons_online_now: first_u64(&[stats], &["pylons_online_now"]).unwrap_or(0),
         pylon_sessions_online_now: first_u64(&[stats], &["pylon_sessions_online_now"]).unwrap_or(0),
@@ -845,6 +862,12 @@ fn fleet_snapshot(stats: Option<&Value>, treasury: Option<&Value>) -> NexusHealt
             &["readiness_blocked_beneficiaries_now"],
         )
         .unwrap_or(0),
+        homework_worker_eligible_pylons_online_now: first_u64(
+            &[stats],
+            &["homework_worker_eligible_pylons_online_now"],
+        )
+        .unwrap_or(0),
+        homework_worker_presence_only_blocker_counts,
     }
 }
 

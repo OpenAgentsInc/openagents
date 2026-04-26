@@ -25,6 +25,8 @@ fi
 TMP_REMOTE_SCRIPT="$(mktemp "${TMPDIR:-/tmp}/openagents-nexus-activate.XXXXXX")"
 trap 'rm -f "$TMP_REMOTE_SCRIPT"' EXIT
 
+verify_nexus_public_edge_healthy "pre-binary-activation"
+
 cat >"$TMP_REMOTE_SCRIPT" <<'REMOTE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -112,14 +114,16 @@ REMOTE
 
 chmod 755 "$TMP_REMOTE_SCRIPT"
 
-gcloud compute scp --tunnel-through-iap \
-  --project "$GCP_PROJECT" \
-  --zone "$GCP_ZONE" \
-  "$TMP_REMOTE_SCRIPT" "${NEXUS_VM}:/tmp/nexus-activate-binary-release.sh" >/dev/null
+run_with_timeout "$NEXUS_BINARY_RELEASE_STEP_TIMEOUT_SECONDS" "upload-target-activation-script" \
+  gcloud compute scp --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    "$TMP_REMOTE_SCRIPT" "${NEXUS_VM}:/tmp/nexus-activate-binary-release.sh" >/dev/null
 
 ACTIVATION_STARTED_MS="$(timestamp_unix_ms)"
 ACTIVATION_RESULT="$(
-  gcloud compute ssh "$NEXUS_VM" \
+  run_with_timeout "$NEXUS_BINARY_RELEASE_ACTIVATION_TIMEOUT_SECONDS" "activate-target-release" \
+    gcloud compute ssh "$NEXUS_VM" \
     --tunnel-through-iap \
     --project "$GCP_PROJECT" \
     --zone "$GCP_ZONE" \
@@ -127,6 +131,7 @@ ACTIVATION_RESULT="$(
     | tail -n 1
 )"
 ACTIVATION_FINISHED_MS="$(timestamp_unix_ms)"
+verify_nexus_public_edge_healthy "post-binary-activation"
 
 mkdir -p "$REPORT_DIR"
 OVERALL_FINISHED_MS="$(timestamp_unix_ms)"

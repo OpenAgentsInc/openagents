@@ -369,7 +369,9 @@ fn required_checks_for_snapshot(
                 "pylons_online_now": snapshot.fleet.pylons_online_now,
                 "pylon_sessions_online_now": snapshot.fleet.pylon_sessions_online_now,
                 "eligible_online_payout_targets": snapshot.fleet.eligible_online_payout_targets,
+                "homework_worker_eligible_pylons_online_now": snapshot.fleet.homework_worker_eligible_pylons_online_now,
                 "version_floor_blocked_beneficiaries_now": snapshot.fleet.version_floor_blocked_beneficiaries_now,
+                "homework_worker_presence_only_blocker_counts": snapshot.fleet.homework_worker_presence_only_blocker_counts,
             }),
         ),
         training_dispatch_required_check(snapshot),
@@ -385,6 +387,7 @@ fn advisory_checks_for_snapshot(
         recent_payout_movement_check(snapshot),
         training_launch_health_check(snapshot),
         training_dispatch_smoke_check(snapshot),
+        homework_worker_eligibility_check(snapshot),
         pylon_version_blocker_check(snapshot),
         changed_crate_test_selection_check(command),
         deploy_dry_run_check(command),
@@ -724,6 +727,46 @@ fn pylon_version_blocker_check(snapshot: &NexusHealthSnapshot) -> NexusHealthVer
                 "{blocked} Pylon beneficiary blocker(s) are visible for version floor or readiness"
             ),
             "Confirm the release floor is intentional and keep user install instructions aligned with the latest auto-updating Pylon release.",
+            evidence,
+            Vec::new(),
+        )
+    }
+}
+
+fn homework_worker_eligibility_check(
+    snapshot: &NexusHealthSnapshot,
+) -> NexusHealthVerificationCheck {
+    let evidence = json!({
+        "pylons_online_now": snapshot.fleet.pylons_online_now,
+        "pylon_sessions_online_now": snapshot.fleet.pylon_sessions_online_now,
+        "homework_worker_eligible_pylons_online_now": snapshot.fleet.homework_worker_eligible_pylons_online_now,
+        "training_nodes_online": snapshot.training.nodes_online,
+        "training_admitted_nodes_online": snapshot.training.admitted_nodes_online,
+        "homework_worker_presence_only_blocker_counts": snapshot.fleet.homework_worker_presence_only_blocker_counts,
+    });
+    if snapshot.fleet.pylons_online_now == 0 {
+        skipped_advisory_check(
+            "nexus.pylon.homework_worker_eligibility",
+            "pylon",
+            "No online Pylons are present, so homework-worker eligibility is not expected",
+            "Bring an updated Pylon online before using this advisory as dispatch proof.",
+            evidence,
+            Vec::new(),
+        )
+    } else if snapshot.fleet.homework_worker_eligible_pylons_online_now > 0 {
+        passed_advisory_check(
+            "nexus.pylon.homework_worker_eligibility",
+            "pylon",
+            "At least one online Pylon is eligible for homework-worker assignment",
+            evidence,
+            Vec::new(),
+        )
+    } else {
+        advisory_attention_check(
+            "nexus.pylon.homework_worker_eligibility",
+            "pylon",
+            "Online Pylons are present, but none are eligible homework workers",
+            "Inspect the blocker counts to distinguish presence-only payout eligibility from homework worker admission.",
             evidence,
             Vec::new(),
         )

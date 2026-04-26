@@ -73,6 +73,12 @@ export NEXUS_BUILD_SCCACHE_KEY_PREFIX="${NEXUS_BUILD_SCCACHE_KEY_PREFIX:-nexus-r
 export NEXUS_PUBLIC_HOST="${NEXUS_PUBLIC_HOST:-nexus.openagents.com}"
 export NEXUS_PUBLIC_URL="${NEXUS_PUBLIC_URL:-https://${NEXUS_PUBLIC_HOST}/}"
 export NEXUS_PUBLIC_WS_URL="${NEXUS_PUBLIC_WS_URL:-wss://${NEXUS_PUBLIC_HOST}/}"
+export NEXUS_PUBLIC_HEALTH_URL="${NEXUS_PUBLIC_HEALTH_URL:-${NEXUS_PUBLIC_URL%/}/healthz}"
+export NEXUS_BINARY_RELEASE_STEP_TIMEOUT_SECONDS="${NEXUS_BINARY_RELEASE_STEP_TIMEOUT_SECONDS:-900}"
+export NEXUS_BINARY_RELEASE_UPLOAD_TIMEOUT_SECONDS="${NEXUS_BINARY_RELEASE_UPLOAD_TIMEOUT_SECONDS:-900}"
+export NEXUS_BINARY_RELEASE_ACTIVATION_TIMEOUT_SECONDS="${NEXUS_BINARY_RELEASE_ACTIVATION_TIMEOUT_SECONDS:-600}"
+export NEXUS_BINARY_RELEASE_CLEANUP_TIMEOUT_SECONDS="${NEXUS_BINARY_RELEASE_CLEANUP_TIMEOUT_SECONDS:-90}"
+export NEXUS_BINARY_RELEASE_PUBLIC_PROBE_TIMEOUT_SECONDS="${NEXUS_BINARY_RELEASE_PUBLIC_PROBE_TIMEOUT_SECONDS:-20}"
 
 export NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_NAME="${NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_NAME:-nexus-health-runner}"
 export NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_EMAIL="${NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_EMAIL:-${NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_NAME}@${GCP_PROJECT}.iam.gserviceaccount.com}"
@@ -173,6 +179,66 @@ require_cmd() {
   if ! command -v "$cmd" >/dev/null 2>&1; then
     die "Missing required command: ${cmd}"
   fi
+}
+
+run_with_timeout() {
+  local timeout_seconds="$1"
+  local label="$2"
+  shift 2
+  python3 - "$timeout_seconds" "$label" "$@" <<'PY'
+import subprocess
+import sys
+
+timeout_seconds = float(sys.argv[1])
+label = sys.argv[2]
+command = sys.argv[3:]
+if not command:
+    print(f"timeout wrapper received no command for {label}", file=sys.stderr)
+    sys.exit(2)
+
+try:
+    completed = subprocess.run(command, timeout=timeout_seconds)
+except subprocess.TimeoutExpired:
+    print(
+        f"[nexus-deploy] ERROR: timed out label={label} timeout_seconds={timeout_seconds:g}",
+        file=sys.stderr,
+    )
+    sys.exit(124)
+sys.exit(completed.returncode)
+PY
+}
+
+verify_nexus_public_edge_healthy() {
+  local phase="$1"
+  if [[ "${VERIFY_PUBLIC_CHECKS_ENABLED}" != "true" ]]; then
+    log "Skipping public edge check phase=${phase}; VERIFY_PUBLIC_CHECKS_ENABLED=${VERIFY_PUBLIC_CHECKS_ENABLED}"
+    return 0
+  fi
+
+  require_cmd curl
+
+  local body_path http_code body
+  body_path="$(mktemp)"
+  http_code="$(
+    curl -sS \
+      --max-time "${NEXUS_BINARY_RELEASE_PUBLIC_PROBE_TIMEOUT_SECONDS}" \
+      -o "$body_path" \
+      -w '%{http_code}' \
+      "$NEXUS_PUBLIC_HEALTH_URL" || true
+  )"
+  body="$(cat "$body_path" 2>/dev/null || true)"
+  rm -f "$body_path"
+
+  if [[ "$http_code" == "200" ]]; then
+    log "Public edge healthy phase=${phase} url=${NEXUS_PUBLIC_HEALTH_URL} http_code=${http_code}"
+    return 0
+  fi
+
+  if [[ "$http_code" == "530" || "$body" == *"error code: 1033"* || "$body" == *"Error 1033"* || "$http_code" == "000" ]]; then
+    die "Public edge unhealthy phase=${phase} url=${NEXUS_PUBLIC_HEALTH_URL} http_code=${http_code}; restore Nexus/cloudflared before continuing"
+  fi
+
+  die "Public edge check failed phase=${phase} url=${NEXUS_PUBLIC_HEALTH_URL} http_code=${http_code}"
 }
 
 timestamp_unix_ms() {
