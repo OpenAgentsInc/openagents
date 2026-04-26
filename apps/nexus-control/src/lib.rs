@@ -36561,6 +36561,8 @@ mod tests {
         let admitted =
             response_json::<RecordTrainingNodeAdmissionResponse>(admitted_response).await?;
         assert!(admitted.admitted);
+        let persisted_before_heartbeat =
+            std::fs::read_to_string(kernel_state_path.as_path()).expect("read kernel state");
 
         let heartbeat_response = app
             .clone()
@@ -36578,6 +36580,11 @@ mod tests {
         let heartbeat =
             response_json::<RecordTrainingNodeHeartbeatResponse>(heartbeat_response).await?;
         assert_eq!(heartbeat.lease_state.as_deref(), Some("active"));
+        assert_eq!(
+            std::fs::read_to_string(kernel_state_path.as_path()).expect("read kernel state"),
+            persisted_before_heartbeat,
+            "training heartbeats are liveness signals and must not rewrite the full kernel state"
+        );
 
         let quarantined_response = app
             .clone()
