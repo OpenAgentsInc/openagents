@@ -701,12 +701,16 @@ The upload and activation scripts now guard every IAP `gcloud compute ssh` and
 export NEXUS_BINARY_RELEASE_STEP_TIMEOUT_SECONDS=900
 export NEXUS_BINARY_RELEASE_UPLOAD_TIMEOUT_SECONDS=900
 export NEXUS_BINARY_RELEASE_ACTIVATION_TIMEOUT_SECONDS=600
+export NEXUS_BINARY_RELEASE_PUBLIC_PROBE_ATTEMPTS=5
+export NEXUS_BINARY_RELEASE_PUBLIC_PROBE_RETRY_DELAY_SECONDS=5
 ```
 
 Before uploading, after uploading, before activation, and after activation the
 scripts probe `NEXUS_PUBLIC_HEALTH_URL` (default
-`https://nexus.openagents.com/healthz`). If the public edge is already
-Cloudflare `530` / `1033`, HTTP `000`, or any non-200 health result, do not
+`https://nexus.openagents.com/healthz`). The probe is bounded and retried so a
+normal Nexus restart warmup does not fail the release after a single slow
+`/healthz` response. If the public edge remains Cloudflare `530` / `1033`,
+HTTP `000`, or any non-200 health result after the retry budget, do not
 continue release work. Restore public health first.
 
 If an upload hangs or times out, the script cleans partial

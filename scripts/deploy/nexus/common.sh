@@ -79,6 +79,8 @@ export NEXUS_BINARY_RELEASE_UPLOAD_TIMEOUT_SECONDS="${NEXUS_BINARY_RELEASE_UPLOA
 export NEXUS_BINARY_RELEASE_ACTIVATION_TIMEOUT_SECONDS="${NEXUS_BINARY_RELEASE_ACTIVATION_TIMEOUT_SECONDS:-600}"
 export NEXUS_BINARY_RELEASE_CLEANUP_TIMEOUT_SECONDS="${NEXUS_BINARY_RELEASE_CLEANUP_TIMEOUT_SECONDS:-90}"
 export NEXUS_BINARY_RELEASE_PUBLIC_PROBE_TIMEOUT_SECONDS="${NEXUS_BINARY_RELEASE_PUBLIC_PROBE_TIMEOUT_SECONDS:-20}"
+export NEXUS_BINARY_RELEASE_PUBLIC_PROBE_ATTEMPTS="${NEXUS_BINARY_RELEASE_PUBLIC_PROBE_ATTEMPTS:-5}"
+export NEXUS_BINARY_RELEASE_PUBLIC_PROBE_RETRY_DELAY_SECONDS="${NEXUS_BINARY_RELEASE_PUBLIC_PROBE_RETRY_DELAY_SECONDS:-5}"
 
 export NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_NAME="${NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_NAME:-nexus-health-runner}"
 export NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_EMAIL="${NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_EMAIL:-${NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_NAME}@${GCP_PROJECT}.iam.gserviceaccount.com}"
@@ -217,28 +219,42 @@ verify_nexus_public_edge_healthy() {
 
   require_cmd curl
 
-  local body_path http_code body
-  body_path="$(mktemp)"
-  http_code="$(
-    curl -sS \
-      --max-time "${NEXUS_BINARY_RELEASE_PUBLIC_PROBE_TIMEOUT_SECONDS}" \
-      -o "$body_path" \
-      -w '%{http_code}' \
-      "$NEXUS_PUBLIC_HEALTH_URL" || true
-  )"
-  body="$(cat "$body_path" 2>/dev/null || true)"
-  rm -f "$body_path"
+  local attempts delay attempt body_path http_code body last_http_code last_body
+  attempts="${NEXUS_BINARY_RELEASE_PUBLIC_PROBE_ATTEMPTS}"
+  delay="${NEXUS_BINARY_RELEASE_PUBLIC_PROBE_RETRY_DELAY_SECONDS}"
+  last_http_code="000"
+  last_body=""
 
-  if [[ "$http_code" == "200" ]]; then
-    log "Public edge healthy phase=${phase} url=${NEXUS_PUBLIC_HEALTH_URL} http_code=${http_code}"
-    return 0
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    body_path="$(mktemp)"
+    http_code="$(
+      curl -sS \
+        --max-time "${NEXUS_BINARY_RELEASE_PUBLIC_PROBE_TIMEOUT_SECONDS}" \
+        -o "$body_path" \
+        -w '%{http_code}' \
+        "$NEXUS_PUBLIC_HEALTH_URL" || true
+    )"
+    body="$(cat "$body_path" 2>/dev/null || true)"
+    rm -f "$body_path"
+    last_http_code="$http_code"
+    last_body="$body"
+
+    if [[ "$http_code" == "200" ]]; then
+      log "Public edge healthy phase=${phase} url=${NEXUS_PUBLIC_HEALTH_URL} http_code=${http_code} attempt=${attempt}/${attempts}"
+      return 0
+    fi
+
+    if (( attempt < attempts )); then
+      log "Public edge probe retrying phase=${phase} url=${NEXUS_PUBLIC_HEALTH_URL} http_code=${http_code} attempt=${attempt}/${attempts}"
+      sleep "$delay"
+    fi
+  done
+
+  if [[ "$last_http_code" == "530" || "$last_body" == *"error code: 1033"* || "$last_body" == *"Error 1033"* || "$last_http_code" == "000" ]]; then
+    die "Public edge unhealthy phase=${phase} url=${NEXUS_PUBLIC_HEALTH_URL} http_code=${last_http_code} attempts=${attempts}; restore Nexus/cloudflared before continuing"
   fi
 
-  if [[ "$http_code" == "530" || "$body" == *"error code: 1033"* || "$body" == *"Error 1033"* || "$http_code" == "000" ]]; then
-    die "Public edge unhealthy phase=${phase} url=${NEXUS_PUBLIC_HEALTH_URL} http_code=${http_code}; restore Nexus/cloudflared before continuing"
-  fi
-
-  die "Public edge check failed phase=${phase} url=${NEXUS_PUBLIC_HEALTH_URL} http_code=${http_code}"
+  die "Public edge check failed phase=${phase} url=${NEXUS_PUBLIC_HEALTH_URL} http_code=${last_http_code} attempts=${attempts}"
 }
 
 timestamp_unix_ms() {
