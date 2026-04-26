@@ -19,7 +19,8 @@ This directory is organized around a small number of canonical entry points.
 - `NEXUS_HEALTH_VERIFICATION_PACK.md`: machine-readable Nexus verification
   pack for Forge Evidence and Probe-generated health fixes.
 - `deploy/NEXUS_HEALTH_RUNNER_GCP_RUNBOOK.md`: hosted GCP service-account,
-  Secret Manager, Cloud Run Job, and smoke lane for the health runner.
+  Secret Manager, Cloud Run Job, Cloud Scheduler, and smoke lane for the
+  health runner.
 - `kernel/markets/data-market.md`: canonical current Data Market implementation status.
 - `headless-data-market.md`: no-window and `autopilotctl` Data Market runbook.
 - `autopilot-earn/README.md`: consolidated Autopilot Earn docs.

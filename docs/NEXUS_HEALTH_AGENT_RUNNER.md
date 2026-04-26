@@ -28,6 +28,11 @@ The command emits one JSON report. The report includes:
   approval requirements.
 - `action_results`: bounded execution result plus post-action verification
   status.
+- `scheduler`: hosted scheduler/cycle metadata, including the expected
+  detection window and stale-after threshold for Forge/openagents.com
+  projections.
+- `external_reachability`: the public-edge probe result from the worker's
+  vantage, including route failures and Cloudflare error codes.
 - `forge_writes`: dry-run, fake, or live write results.
 - `redaction`: booleans proving secret-shaped keys and strings are absent from
   the emitted report.
@@ -77,13 +82,16 @@ That lane runs the binary as a Cloud Run Job with an attached service account
 and Secret Manager injection. A first production read probe can run with
 `--dry-run,--json` and no Forge secrets attached. Live Forge writes need the
 Forge bearer and actor-context secrets. Live `treasury_refresh` additionally
-needs the scoped Nexus admin bearer secret.
+needs the scoped Nexus admin bearer secret. Hosted continuous monitoring is
+installed by `scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh`, which
+uses Cloud Scheduler to invoke the Cloud Run Job from GCP rather than from an
+operator laptop.
 
 ## Environment
 
 - `NEXUS_HEALTH_AGENT_NEXUS_BASE_URL`: defaults to
   `https://nexus.openagents.com`.
-- `NEXUS_HEALTH_AGENT_TIMEOUT_MS`: defaults to `8000`.
+- `NEXUS_HEALTH_AGENT_TIMEOUT_MS`: defaults to `15000`.
 - `NEXUS_HEALTH_AGENT_FORGE_BASE_URL`: required outside dry-run/fake-Forge
   mode.
 - `NEXUS_HEALTH_AGENT_FORGE_BEARER_TOKEN`: required outside dry-run/fake-Forge
@@ -98,6 +106,17 @@ needs the scoped Nexus admin bearer secret.
 - `NEXUS_HEALTH_AGENT_ACTION_REASON`: optional human-readable action reason.
 - `NEXUS_HEALTH_AGENT_NEXUS_ADMIN_BEARER_TOKEN`: required only for live
   `treasury_refresh`.
+- `NEXUS_HEALTH_AGENT_SCHEDULER_NAME`: defaults to `manual`; hosted jobs set
+  this to the Cloud Scheduler job name.
+- `NEXUS_HEALTH_AGENT_SCHEDULER_INTERVAL_SECONDS`: defaults to `60`.
+- `NEXUS_HEALTH_AGENT_CYCLES`: defaults to `1`; launch periods can use `2`
+  with a 30-second cycle interval when Cloud Scheduler is firing once per
+  minute.
+- `NEXUS_HEALTH_AGENT_CYCLE_INTERVAL_SECONDS`: defaults to `0`; set to `30`
+  for two probes inside each scheduled minute.
+- `NEXUS_HEALTH_AGENT_EXTERNAL_VANTAGE_ID`: defaults to `local`; hosted jobs
+  use a GCP/Cloud Run vantage id so public-edge failures are distinguishable
+  from VM-local checks.
 
 CLI flags with the same meaning override the non-secret defaults:
 
@@ -111,6 +130,11 @@ CLI flags with the same meaning override the non-secret defaults:
 --forge-lease-id <id>
 --approval-id <id>
 --action-reason <text>
+--scheduler-name <name>
+--scheduler-interval-seconds <seconds>
+--cycles <count>
+--cycle-interval-seconds <seconds>
+--external-vantage-id <id>
 --fake-nexus
 --fake-forge
 --dry-run
@@ -129,10 +153,28 @@ Monitor work uses `nexus.health.monitor`. Recovery work uses the closest
 health kind for the requested action, such as `nexus.health.recover` or
 `nexus.treasury.verify`. The event payload contains redacted evidence
 references, classifier facts, the normalized action plan, and action results.
+It also contains the scheduler metadata and external reachability report so the
+admin UI and agent API can show whether the hosted loop is fresh and whether
+the failure was observed from the public edge.
 If Nexus public endpoints fail, the worker still produces a Forge event plan or
 write result instead of crashing; the event class/resource is derived from the
 failed predicate or requested action resource, such as `nexus-cloudflared`,
 `nexus-treasury-wallet`, or `nexus-training-dispatcher`.
+
+## Hosted Scheduler
+
+GCP Cloud Scheduler is minute-granularity. During launch periods, use the Cloud
+Run Job's internal cycle loop for 30-second public-edge probes:
+
+```bash
+NEXUS_HEALTH_RUNNER_JOB_ARGS='--json,--cycles,2,--cycle-interval-seconds,30' \
+scripts/deploy/nexus/18-deploy-health-runner-job.sh
+scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
+```
+
+When stable, set `NEXUS_HEALTH_RUNNER_JOB_ARGS='--json'` and keep the default
+one-minute scheduler. Both modes record `scheduler.max_expected_detection_seconds`
+and `external_reachability.vantage_id` in every health event.
 
 ## Recovery Boundary
 
@@ -182,6 +224,8 @@ Expected tests cover:
 - fake Nexus plus dry-run report generation.
 - fake Forge integration for work-order and event append calls.
 - public endpoint failure handling.
+- hosted scheduler and external vantage metadata.
+- Cloudflare 1033-style public-edge failure classification.
 - no sensitive-shaped keys or strings in emitted reports.
 - lease requirement for mutating action plans.
 - approval-id requirement for unsafe action plans.
@@ -200,7 +244,8 @@ scripts/deploy/nexus/test-health-runner-deploy-shell-guards.sh
 ```
 
 Expected deploy guards cover Cloud Run Job service-account attachment, Secret
-Manager binding, dry-run GCP command plans, and startup log secret-scan wiring.
+Manager binding, Cloud Scheduler dry-run plans, dry-run GCP command plans, and
+startup log secret-scan wiring.
 
 For a hosted treasury-refresh recovery proof:
 

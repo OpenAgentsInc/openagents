@@ -189,7 +189,7 @@ fi
 
 wait_for_service_account
 
-for role in roles/logging.logWriter roles/monitoring.metricWriter; do
+for role in roles/logging.logWriter roles/monitoring.metricWriter roles/run.developer; do
   run_or_show_quiet_with_retry gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
     --member "serviceAccount:${NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_EMAIL}" \
     --role "$role"

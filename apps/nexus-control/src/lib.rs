@@ -182,9 +182,11 @@ pub use health::{
 };
 pub use health_agent::{
     ForgeHealthEventRequest, ForgeHealthWorkOrderRequest, ForgeWriteResult, HealthAgentActionPlan,
-    HealthAgentActionResult, HealthAgentRedactionReport, HealthEvidenceArtifact,
-    NexusHealthAgentCommand, NexusHealthAgentReport, nexus_health_agent_usage,
-    parse_nexus_health_agent_command, run_nexus_health_agent, validate_health_agent_action_plan,
+    HealthAgentActionResult, HealthAgentExternalEndpointSummary,
+    HealthAgentExternalReachabilityReport, HealthAgentRedactionReport, HealthAgentSchedulerStatus,
+    HealthEvidenceArtifact, NexusHealthAgentCommand, NexusHealthAgentReport,
+    nexus_health_agent_usage, parse_nexus_health_agent_command, run_nexus_health_agent,
+    validate_health_agent_action_plan,
 };
 pub use health_verification::{
     NexusHealthVerificationCheck, NexusHealthVerificationEvidence,
