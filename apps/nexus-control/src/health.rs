@@ -8,6 +8,11 @@ use serde_json::{Value, json};
 
 const DEFAULT_NEXUS_BASE_URL: &str = "https://nexus.openagents.com";
 const DEFAULT_TIMEOUT_MS: u64 = 8_000;
+const MAX_PUBLIC_STATS_AGE_MS: u64 = 120_000;
+const MIN_TREASURY_RUNWAY_WINDOWS: u64 = 20;
+const MAX_PAYOUT_DISPATCH_LAG_MULTIPLIER: u64 = 3;
+const MIN_PAYOUT_DISPATCH_LAG_MS: u64 = 120_000;
+const MAX_PAYOUT_CONFIRM_LAG_MS: u64 = 30 * 60 * 1_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HealthSnapshotCommand {
@@ -23,6 +28,9 @@ pub struct NexusHealthSnapshot {
     pub generated_at_unix_ms: u64,
     pub base_url: String,
     pub observation_status: String,
+    pub classification: NexusHealthClassification,
+    #[serde(default)]
+    pub verification_gates: BTreeMap<String, NexusHealthVerificationGate>,
     pub endpoints: BTreeMap<String, NexusHealthEndpointSnapshot>,
     pub treasury: NexusHealthTreasurySnapshot,
     pub training: NexusHealthTrainingSnapshot,
@@ -31,6 +39,37 @@ pub struct NexusHealthSnapshot {
     pub infra: NexusHealthInfraSnapshot,
     #[serde(default)]
     pub issues: Vec<NexusHealthIssue>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NexusHealthClassification {
+    pub state: String,
+    pub summary: String,
+    pub highest_severity: String,
+    #[serde(default)]
+    pub failed_predicates: Vec<NexusHealthPredicate>,
+    #[serde(default)]
+    pub passed_predicates: Vec<NexusHealthPredicate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NexusHealthPredicate {
+    pub predicate_id: String,
+    pub severity: String,
+    pub status: String,
+    pub detail: String,
+    pub remediation_hint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NexusHealthVerificationGate {
+    pub gate_id: String,
+    pub status: String,
+    pub passed: bool,
+    #[serde(default)]
+    pub checked_predicates: Vec<String>,
+    #[serde(default)]
+    pub failed_predicates: Vec<NexusHealthPredicate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -152,9 +191,19 @@ pub struct NexusHealthInfraSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nexus_vm_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nexus_vm_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nexus_relay_service: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nexus_relay_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cloudflared_service: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloudflared_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relay_restart_count_15m: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oom_kill_count_24h: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
@@ -372,22 +421,13 @@ fn snapshot_from_fetches(
             detail: "Nexus public stats are stale or missing as-of time".to_string(),
         });
     }
-    let observation_status = if issues
-        .iter()
-        .any(|issue| issue.severity == "critical" || issue.severity == "error")
-    {
-        "degraded"
-    } else if issues.is_empty() {
-        "observed"
-    } else {
-        "watch"
-    }
-    .to_string();
-    NexusHealthSnapshot {
+    let mut snapshot = NexusHealthSnapshot {
         schema_version: 1,
         generated_at_unix_ms,
         base_url: base_url.to_string(),
-        observation_status,
+        observation_status: "unclassified".to_string(),
+        classification: NexusHealthClassification::default(),
+        verification_gates: BTreeMap::new(),
         endpoints,
         treasury: treasury_snapshot,
         training: training_snapshot,
@@ -395,7 +435,13 @@ fn snapshot_from_fetches(
         website: website_snapshot,
         infra: infra_snapshot,
         issues,
-    }
+    };
+    let classification = classify_nexus_health(&snapshot);
+    let verification_gates = verification_gates_for_classification(&classification);
+    snapshot.observation_status = classification.state.clone();
+    snapshot.classification = classification;
+    snapshot.verification_gates = verification_gates;
+    snapshot
 }
 
 fn fake_nexus_health_snapshot(base_url: &str) -> Result<NexusHealthSnapshot> {
@@ -810,7 +856,7 @@ fn website_snapshot(
         source: "nexus_api_stats".to_string(),
         stats_as_of_unix_ms,
         stats_age_ms,
-        stats_fresh: stats_age_ms.is_some_and(|age| age <= 120_000),
+        stats_fresh: stats_age_ms.is_some_and(|age| age <= MAX_PUBLIC_STATS_AGE_MS),
     }
 }
 
@@ -821,6 +867,15 @@ fn infra_snapshot() -> NexusHealthInfraSnapshot {
     let nexus_vm_name = std::env::var("NEXUS_HEALTH_GCP_VM_NAME")
         .ok()
         .or_else(|| Some("nexus-mainnet-1".to_string()));
+    let nexus_vm_status = std::env::var("NEXUS_HEALTH_GCP_VM_STATUS").ok();
+    let nexus_relay_status = std::env::var("NEXUS_HEALTH_NEXUS_RELAY_STATUS").ok();
+    let cloudflared_status = std::env::var("NEXUS_HEALTH_CLOUDFLARED_STATUS").ok();
+    let relay_restart_count_15m = std::env::var("NEXUS_HEALTH_RELAY_RESTART_COUNT_15M")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok());
+    let oom_kill_count_24h = std::env::var("NEXUS_HEALTH_OOM_KILL_COUNT_24H")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok());
     NexusHealthInfraSnapshot {
         source: if google_project_id.is_some() {
             "env".to_string()
@@ -829,13 +884,627 @@ fn infra_snapshot() -> NexusHealthInfraSnapshot {
         },
         google_project_id,
         nexus_vm_name,
+        nexus_vm_status,
         nexus_relay_service: Some("nexus-relay".to_string()),
+        nexus_relay_status,
         cloudflared_service: Some("nexus-cloudflared".to_string()),
+        cloudflared_status,
+        relay_restart_count_15m,
+        oom_kill_count_24h,
         note: Some(
             "GCP runtime state is not queried by this observation-only snapshot command"
                 .to_string(),
         ),
     }
+}
+
+pub fn classify_nexus_health(snapshot: &NexusHealthSnapshot) -> NexusHealthClassification {
+    let (failed_predicates, passed_predicates) = health_predicates(snapshot);
+    let highest_severity = highest_severity(&failed_predicates);
+    let state = health_state(snapshot, &failed_predicates);
+    let summary = if failed_predicates.is_empty() {
+        match state.as_str() {
+            "verified_closed" => "all health predicates passed and the incident is verified closed",
+            "recovering" => "all blocking predicates passed while recovery is active",
+            _ => "all health predicates passed",
+        }
+        .to_string()
+    } else {
+        let first = failed_predicates
+            .first()
+            .map(|predicate| predicate.detail.as_str())
+            .unwrap_or("health predicate failed");
+        format!(
+            "{} failed health predicate(s); highest severity: {}; first: {}",
+            failed_predicates.len(),
+            highest_severity,
+            first
+        )
+    };
+    NexusHealthClassification {
+        state,
+        summary,
+        highest_severity,
+        failed_predicates,
+        passed_predicates,
+    }
+}
+
+fn health_predicates(
+    snapshot: &NexusHealthSnapshot,
+) -> (Vec<NexusHealthPredicate>, Vec<NexusHealthPredicate>) {
+    let mut failed = Vec::new();
+    let mut passed = Vec::new();
+    let endpoint_failures: Vec<_> = snapshot
+        .endpoints
+        .values()
+        .filter(|endpoint| !endpoint.ok)
+        .collect();
+    if endpoint_failures.is_empty() {
+        passed.push(passed_predicate(
+            "public_endpoint_reachable",
+            "all required public Nexus endpoints responded successfully",
+        ));
+    } else {
+        for endpoint in endpoint_failures {
+            failed.push(failed_predicate(
+                "public_endpoint_reachable",
+                "critical",
+                format!(
+                    "{} failed at {} with status {:?}: {}",
+                    endpoint.route_id,
+                    endpoint.path,
+                    endpoint.status_code,
+                    endpoint.error.as_deref().unwrap_or("endpoint probe failed")
+                ),
+                "Restore public Nexus reachability before doing secondary issue work.",
+            ));
+            if let Some(code) = endpoint.cloudflare_error_code {
+                failed.push(failed_predicate(
+                    "cloudflare_edge_failure",
+                    "critical",
+                    format!(
+                        "{} returned Cloudflare error {} through the public edge",
+                        endpoint.route_id, code
+                    ),
+                    "Check VM-local /healthz, nexus-relay, nexus-cloudflared, and the Cloudflare tunnel path in that order.",
+                ));
+            }
+        }
+    }
+
+    if snapshot.treasury.treasury_enabled {
+        passed.push(passed_predicate(
+            "treasury_enabled",
+            "treasury payout execution is enabled",
+        ));
+    } else {
+        failed.push(failed_predicate(
+            "treasury_enabled",
+            "critical",
+            "treasury payout execution is disabled",
+            "Re-enable treasury only after confirming the wallet and payout policy state are safe.",
+        ));
+    }
+
+    if let Some(reason) = snapshot.treasury.degraded_reason.as_ref() {
+        failed.push(failed_predicate(
+            "treasury_not_degraded",
+            "critical",
+            format!("treasury is degraded: {reason}"),
+            "Inspect /v1/treasury/status and resolve the degraded_reason before claiming payout health.",
+        ));
+    } else {
+        passed.push(passed_predicate(
+            "treasury_not_degraded",
+            "treasury status does not report a degraded reason",
+        ));
+    }
+
+    if snapshot.treasury.wallet_connected {
+        passed.push(passed_predicate(
+            "wallet_connected",
+            "treasury wallet runtime is connected",
+        ));
+    } else {
+        failed.push(failed_predicate(
+            "wallet_connected",
+            "critical",
+            "treasury wallet runtime is not connected",
+            "Restore wallet runtime connectivity before dispatching or verifying payouts.",
+        ));
+    }
+
+    if let Some(runway) = snapshot.treasury.balance_runway_windows {
+        if runway < MIN_TREASURY_RUNWAY_WINDOWS {
+            failed.push(failed_predicate(
+                "treasury_balance_runway",
+                "warning",
+                format!(
+                    "treasury balance runway is {runway} payout windows; floor is {MIN_TREASURY_RUNWAY_WINDOWS}"
+                ),
+                "Fund the treasury before the payout loop runs out of safe runway.",
+            ));
+        } else {
+            passed.push(passed_predicate(
+                "treasury_balance_runway",
+                format!("treasury balance runway is {runway} payout windows"),
+            ));
+        }
+    }
+
+    if unhealthy_status(snapshot.treasury.payout_loop_health.as_str()) {
+        failed.push(failed_predicate(
+            "payout_loop_healthy",
+            "error",
+            format!(
+                "payout loop health is {}",
+                snapshot.treasury.payout_loop_health
+            ),
+            "Inspect payout loop runtime status and treasury continuity alerts.",
+        ));
+    } else {
+        passed.push(passed_predicate(
+            "payout_loop_healthy",
+            format!(
+                "payout loop health is {}",
+                snapshot.treasury.payout_loop_health
+            ),
+        ));
+    }
+
+    let dispatch_floor_ms = snapshot
+        .treasury
+        .payout_interval_seconds
+        .saturating_mul(1_000)
+        .saturating_mul(MAX_PAYOUT_DISPATCH_LAG_MULTIPLIER)
+        .max(MIN_PAYOUT_DISPATCH_LAG_MS);
+    if snapshot.fleet.eligible_online_payout_targets > 0
+        && snapshot.treasury.treasury_enabled
+        && snapshot.treasury.wallet_connected
+    {
+        match snapshot.treasury.dispatch_lag_ms {
+            Some(lag) if lag > dispatch_floor_ms => failed.push(failed_predicate(
+                "payout_dispatch_fresh",
+                "error",
+                format!(
+                    "eligible payout targets are online but last dispatch is stale: {lag}ms > {dispatch_floor_ms}ms"
+                ),
+                "Inspect the payout dispatcher, queue locks, and treasury reservation state.",
+            )),
+            Some(lag) => passed.push(passed_predicate(
+                "payout_dispatch_fresh",
+                format!("last payout dispatch lag is {lag}ms"),
+            )),
+            None if snapshot.treasury.payouts_dispatched_24h == 0 => failed.push(
+                failed_predicate(
+                    "payout_dispatch_fresh",
+                    "error",
+                    format!(
+                        "{} eligible payout target(s) are online but no dispatch timestamp is available",
+                        snapshot.fleet.eligible_online_payout_targets
+                    ),
+                    "Confirm the payout loop is running and can create a dispatch receipt.",
+                ),
+            ),
+            None => passed.push(passed_predicate(
+                "payout_dispatch_fresh",
+                "dispatch timestamp is unavailable but payouts have dispatched in the last 24h",
+            )),
+        }
+    } else {
+        passed.push(passed_predicate(
+            "payout_dispatch_fresh",
+            "no eligible online payout targets require an immediate dispatch freshness check",
+        ));
+    }
+
+    let payout_in_flight = snapshot
+        .treasury
+        .payout_sats_in_flight_total
+        .saturating_add(snapshot.treasury.pending_confirmation_count);
+    if payout_in_flight > 0 {
+        match snapshot.treasury.confirm_lag_ms {
+            Some(lag) if lag > MAX_PAYOUT_CONFIRM_LAG_MS => failed.push(failed_predicate(
+                "payout_confirmation_fresh",
+                "error",
+                format!(
+                    "payout confirmations are stale: {lag}ms > {MAX_PAYOUT_CONFIRM_LAG_MS}ms"
+                ),
+                "Inspect recent payout records, wallet sends, and confirmation reconciliation.",
+            )),
+            Some(lag) => passed.push(passed_predicate(
+                "payout_confirmation_fresh",
+                format!("last payout confirmation lag is {lag}ms"),
+            )),
+            None => failed.push(failed_predicate(
+                "payout_confirmation_fresh",
+                "error",
+                "payouts are in flight but no confirmation timestamp is available",
+                "Inspect confirmation reconciliation and the wallet history before claiming settlement health.",
+            )),
+        }
+    } else {
+        passed.push(passed_predicate(
+            "payout_confirmation_fresh",
+            "no in-flight payout requires a confirmation freshness check",
+        ));
+    }
+
+    if snapshot.training.accepted_work_attention_payout_count > 0 {
+        failed.push(failed_predicate(
+            "accepted_work_payout_queue_healthy",
+            "error",
+            format!(
+                "{} accepted-work payout(s) require attention",
+                snapshot.training.accepted_work_attention_payout_count
+            ),
+            "Inspect the training payout ledger and reconcile or retry attention records.",
+        ));
+    } else {
+        passed.push(passed_predicate(
+            "accepted_work_payout_queue_healthy",
+            "accepted-work payout queue has no attention records",
+        ));
+    }
+
+    if snapshot
+        .training
+        .launch_health_overall_status
+        .as_deref()
+        .is_some_and(unhealthy_status)
+    {
+        failed.push(failed_predicate(
+            "training_launch_healthy",
+            "error",
+            format!(
+                "training launch health is {}",
+                snapshot
+                    .training
+                    .launch_health_overall_status
+                    .as_deref()
+                    .unwrap_or("unknown")
+            ),
+            "Inspect public training launch health alerts before dispatching more work.",
+        ));
+    } else {
+        passed.push(passed_predicate(
+            "training_launch_healthy",
+            format!(
+                "training launch health is {}",
+                snapshot
+                    .training
+                    .launch_health_overall_status
+                    .as_deref()
+                    .unwrap_or("not_reported")
+            ),
+        ));
+    }
+
+    if snapshot.training.nodes_online > 0
+        && snapshot.training.runs_active == 0
+        && snapshot.training.windows_active == 0
+        && snapshot.training.active_run_id.is_none()
+    {
+        failed.push(failed_predicate(
+            "training_dispatch_active",
+            "warning",
+            format!(
+                "{} training node(s) are online but no training run or window is active",
+                snapshot.training.nodes_online
+            ),
+            "If work is expected, run or inspect the hosted training dispatcher.",
+        ));
+    } else {
+        passed.push(passed_predicate(
+            "training_dispatch_active",
+            "training dispatch is active or no online training nodes currently require work",
+        ));
+    }
+
+    if snapshot.website.stats_fresh {
+        passed.push(passed_predicate(
+            "website_stats_fresh",
+            "public stats age is within the freshness window",
+        ));
+    } else {
+        failed.push(failed_predicate(
+            "website_stats_fresh",
+            "warning",
+            "public stats are stale or missing as_of_unix_ms",
+            "Refresh Nexus stats publication and openagents.com projections before trusting website telemetry.",
+        ));
+    }
+
+    if let Some(status) = snapshot.infra.nexus_vm_status.as_deref() {
+        if stopped_status(status) {
+            failed.push(failed_predicate(
+                "gcp_vm_available",
+                "critical",
+                format!("Nexus VM status is {status}"),
+                "Start or repair the Nexus VM before attempting service-level recovery.",
+            ));
+        } else {
+            passed.push(passed_predicate(
+                "gcp_vm_available",
+                format!("Nexus VM status is {status}"),
+            ));
+        }
+    } else {
+        passed.push(passed_predicate(
+            "gcp_vm_available",
+            "GCP VM status was not checked by this observation-only command",
+        ));
+    }
+
+    if let Some(status) = snapshot.infra.nexus_relay_status.as_deref() {
+        if stopped_status(status) {
+            failed.push(failed_predicate(
+                "nexus_relay_service_healthy",
+                "critical",
+                format!("nexus-relay service status is {status}"),
+                "Restart or repair nexus-relay under the controlled recovery path.",
+            ));
+        } else {
+            passed.push(passed_predicate(
+                "nexus_relay_service_healthy",
+                format!("nexus-relay service status is {status}"),
+            ));
+        }
+    } else {
+        passed.push(passed_predicate(
+            "nexus_relay_service_healthy",
+            "nexus-relay service status was not checked by this observation-only command",
+        ));
+    }
+
+    if let Some(status) = snapshot.infra.cloudflared_status.as_deref() {
+        if stopped_status(status) {
+            failed.push(failed_predicate(
+                "cloudflared_service_healthy",
+                "critical",
+                format!("nexus-cloudflared service status is {status}"),
+                "Repair the Cloudflare tunnel service before treating public edge health as recovered.",
+            ));
+        } else {
+            passed.push(passed_predicate(
+                "cloudflared_service_healthy",
+                format!("nexus-cloudflared service status is {status}"),
+            ));
+        }
+    } else {
+        passed.push(passed_predicate(
+            "cloudflared_service_healthy",
+            "nexus-cloudflared service status was not checked by this observation-only command",
+        ));
+    }
+
+    if snapshot.infra.relay_restart_count_15m.unwrap_or(0) > 3 {
+        failed.push(failed_predicate(
+            "nexus_relay_restart_loop_absent",
+            "critical",
+            format!(
+                "nexus-relay restarted {} time(s) in 15m",
+                snapshot.infra.relay_restart_count_15m.unwrap_or(0)
+            ),
+            "Inspect relay logs and stop the restart loop before closing the incident.",
+        ));
+    } else {
+        passed.push(passed_predicate(
+            "nexus_relay_restart_loop_absent",
+            "nexus-relay restart-loop signal is absent or below the configured threshold",
+        ));
+    }
+
+    if snapshot.infra.oom_kill_count_24h.unwrap_or(0) > 0 {
+        failed.push(failed_predicate(
+            "nexus_oom_absent",
+            "critical",
+            format!(
+                "{} OOM kill(s) were observed in 24h",
+                snapshot.infra.oom_kill_count_24h.unwrap_or(0)
+            ),
+            "Increase memory headroom or fix the leaking workload before treating Nexus as stable.",
+        ));
+    } else {
+        passed.push(passed_predicate(
+            "nexus_oom_absent",
+            "Nexus OOM signal is absent",
+        ));
+    }
+
+    (failed, passed)
+}
+
+fn verification_gates_for_classification(
+    classification: &NexusHealthClassification,
+) -> BTreeMap<String, NexusHealthVerificationGate> {
+    let gates = [
+        (
+            "payout_capability",
+            vec![
+                "treasury_enabled",
+                "treasury_not_degraded",
+                "wallet_connected",
+                "treasury_balance_runway",
+                "payout_loop_healthy",
+                "payout_dispatch_fresh",
+                "payout_confirmation_fresh",
+                "accepted_work_payout_queue_healthy",
+            ],
+        ),
+        (
+            "training_dispatch",
+            vec!["training_launch_healthy", "training_dispatch_active"],
+        ),
+        ("website_stats_freshness", vec!["website_stats_fresh"]),
+        (
+            "infra_availability",
+            vec![
+                "public_endpoint_reachable",
+                "cloudflare_edge_failure",
+                "gcp_vm_available",
+                "nexus_relay_service_healthy",
+                "cloudflared_service_healthy",
+                "nexus_relay_restart_loop_absent",
+                "nexus_oom_absent",
+            ],
+        ),
+    ];
+    gates
+        .into_iter()
+        .map(|(gate_id, predicate_ids)| {
+            let failed_predicates: Vec<NexusHealthPredicate> = classification
+                .failed_predicates
+                .iter()
+                .filter(|predicate| predicate_ids.contains(&predicate.predicate_id.as_str()))
+                .cloned()
+                .collect();
+            let passed = failed_predicates.is_empty();
+            (
+                gate_id.to_string(),
+                NexusHealthVerificationGate {
+                    gate_id: gate_id.to_string(),
+                    status: if passed { "passed" } else { "failed" }.to_string(),
+                    passed,
+                    checked_predicates: predicate_ids.into_iter().map(str::to_string).collect(),
+                    failed_predicates,
+                },
+            )
+        })
+        .collect()
+}
+
+fn health_state(snapshot: &NexusHealthSnapshot, failed: &[NexusHealthPredicate]) -> String {
+    if failed.is_empty()
+        && snapshot
+            .issues
+            .iter()
+            .any(|issue| issue.code == "incident_verified_closed")
+    {
+        return "verified_closed".to_string();
+    }
+    if snapshot
+        .issues
+        .iter()
+        .any(|issue| issue.code == "recovery_active")
+    {
+        return "recovering".to_string();
+    }
+    if failed.is_empty() {
+        return "healthy".to_string();
+    }
+    if failed.iter().any(|predicate| {
+        matches!(
+            predicate.predicate_id.as_str(),
+            "public_endpoint_reachable" | "cloudflare_edge_failure"
+        )
+    }) {
+        return "incident".to_string();
+    }
+    if failed.iter().any(|predicate| {
+        matches!(
+            predicate.predicate_id.as_str(),
+            "treasury_enabled"
+                | "treasury_not_degraded"
+                | "wallet_connected"
+                | "gcp_vm_available"
+                | "nexus_relay_service_healthy"
+                | "cloudflared_service_healthy"
+                | "nexus_relay_restart_loop_absent"
+                | "nexus_oom_absent"
+        ) && predicate.severity == "critical"
+    }) {
+        return "needs_operator".to_string();
+    }
+    if failed
+        .iter()
+        .any(|predicate| matches!(predicate.severity.as_str(), "critical" | "error"))
+    {
+        "degraded".to_string()
+    } else {
+        "watch".to_string()
+    }
+}
+
+fn highest_severity(predicates: &[NexusHealthPredicate]) -> String {
+    predicates
+        .iter()
+        .map(|predicate| predicate.severity.as_str())
+        .max_by_key(|severity| severity_rank(severity))
+        .unwrap_or("none")
+        .to_string()
+}
+
+fn severity_rank(severity: &str) -> u8 {
+    match severity {
+        "critical" => 4,
+        "error" => 3,
+        "warning" => 2,
+        "info" => 1,
+        _ => 0,
+    }
+}
+
+fn failed_predicate(
+    predicate_id: &str,
+    severity: &str,
+    detail: impl Into<String>,
+    remediation_hint: &str,
+) -> NexusHealthPredicate {
+    NexusHealthPredicate {
+        predicate_id: predicate_id.to_string(),
+        severity: severity.to_string(),
+        status: "failed".to_string(),
+        detail: detail.into(),
+        remediation_hint: remediation_hint.to_string(),
+    }
+}
+
+fn passed_predicate(predicate_id: &str, detail: impl Into<String>) -> NexusHealthPredicate {
+    NexusHealthPredicate {
+        predicate_id: predicate_id.to_string(),
+        severity: "info".to_string(),
+        status: "passed".to_string(),
+        detail: detail.into(),
+        remediation_hint: "none".to_string(),
+    }
+}
+
+fn unhealthy_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "bad"
+            | "critical"
+            | "degraded"
+            | "failed"
+            | "failure"
+            | "unhealthy"
+            | "error"
+            | "errored"
+            | "stalled"
+            | "stale"
+            | "panic"
+            | "crashed"
+            | "restart_loop"
+    )
+}
+
+fn stopped_status(status: &str) -> bool {
+    matches!(
+        status.to_ascii_lowercase().as_str(),
+        "down"
+            | "stopped"
+            | "stopping"
+            | "terminated"
+            | "failed"
+            | "failure"
+            | "inactive"
+            | "dead"
+            | "crashed"
+            | "restart_loop"
+            | "oom"
+    )
 }
 
 fn first_u64(candidates: &[Option<&Value>], keys: &[&str]) -> Option<u64> {
@@ -982,7 +1651,10 @@ mod tests {
     fn fake_snapshot_contains_required_sections() {
         let snapshot = fake_nexus_health_snapshot(DEFAULT_NEXUS_BASE_URL).expect("fake snapshot");
         assert_eq!(snapshot.schema_version, 1);
-        assert_eq!(snapshot.observation_status, "observed");
+        assert_eq!(snapshot.observation_status, "healthy");
+        assert_eq!(snapshot.classification.state, "healthy");
+        assert!(snapshot.classification.failed_predicates.is_empty());
+        assert!(snapshot.verification_gates.values().all(|gate| gate.passed));
         assert!(snapshot.endpoints.contains_key("healthz"));
         assert!(snapshot.endpoints.contains_key("stats"));
         assert!(snapshot.endpoints.contains_key("treasury"));
@@ -1032,13 +1704,204 @@ mod tests {
                 json!({"wallet_runtime_status": "connected", "treasury_enabled": true}),
             ),
         );
-        assert_eq!(snapshot.observation_status, "degraded");
+        assert_eq!(snapshot.observation_status, "incident");
         assert!(
             snapshot
                 .issues
                 .iter()
                 .any(|issue| issue.code == "endpoint_stats_failed")
         );
+        assert_failed(&snapshot, "public_endpoint_reachable");
+        assert_failed(&snapshot, "cloudflare_edge_failure");
+    }
+
+    #[test]
+    fn classifier_covers_known_incident_classes() {
+        let cases: Vec<(
+            &'static str,
+            Box<dyn Fn(&mut NexusHealthSnapshot)>,
+            &'static str,
+            &'static str,
+        )> = vec![
+            (
+                "cloudflare_1033",
+                Box::new(|snapshot| {
+                    let endpoint = snapshot.endpoints.get_mut("stats").expect("stats endpoint");
+                    endpoint.ok = false;
+                    endpoint.status_code = Some(530);
+                    endpoint.cloudflare_error_code = Some(1033);
+                    endpoint.error = Some("http_status_530_cloudflare_1033".to_string());
+                }),
+                "incident",
+                "cloudflare_edge_failure",
+            ),
+            (
+                "treasury_degraded",
+                Box::new(|snapshot| {
+                    snapshot.treasury.degraded_reason = Some("wallet sync stalled".to_string());
+                }),
+                "needs_operator",
+                "treasury_not_degraded",
+            ),
+            (
+                "treasury_disabled",
+                Box::new(|snapshot| {
+                    snapshot.treasury.treasury_enabled = false;
+                }),
+                "needs_operator",
+                "treasury_enabled",
+            ),
+            (
+                "wallet_disconnected",
+                Box::new(|snapshot| {
+                    snapshot.treasury.wallet_connected = false;
+                }),
+                "needs_operator",
+                "wallet_connected",
+            ),
+            (
+                "low_runway",
+                Box::new(|snapshot| {
+                    snapshot.treasury.balance_runway_windows = Some(3);
+                }),
+                "watch",
+                "treasury_balance_runway",
+            ),
+            (
+                "payout_dispatch_stall",
+                Box::new(|snapshot| {
+                    snapshot.fleet.eligible_online_payout_targets = 3;
+                    snapshot.treasury.dispatch_lag_ms = Some(10 * 60 * 1_000);
+                }),
+                "degraded",
+                "payout_dispatch_fresh",
+            ),
+            (
+                "payout_confirmation_stall",
+                Box::new(|snapshot| {
+                    snapshot.treasury.payout_sats_in_flight_total = 25;
+                    snapshot.treasury.pending_confirmation_count = 1;
+                    snapshot.treasury.confirm_lag_ms = Some(45 * 60 * 1_000);
+                }),
+                "degraded",
+                "payout_confirmation_fresh",
+            ),
+            (
+                "training_launch_failure",
+                Box::new(|snapshot| {
+                    snapshot.training.launch_health_overall_status = Some("degraded".to_string());
+                }),
+                "degraded",
+                "training_launch_healthy",
+            ),
+            (
+                "website_stats_stale",
+                Box::new(|snapshot| {
+                    snapshot.website.stats_fresh = false;
+                    snapshot.website.stats_age_ms = Some(MAX_PUBLIC_STATS_AGE_MS + 1);
+                }),
+                "watch",
+                "website_stats_fresh",
+            ),
+            (
+                "vm_down",
+                Box::new(|snapshot| {
+                    snapshot.infra.nexus_vm_status = Some("TERMINATED".to_string());
+                }),
+                "needs_operator",
+                "gcp_vm_available",
+            ),
+            (
+                "relay_restart_loop",
+                Box::new(|snapshot| {
+                    snapshot.infra.relay_restart_count_15m = Some(4);
+                }),
+                "needs_operator",
+                "nexus_relay_restart_loop_absent",
+            ),
+            (
+                "oom_seen",
+                Box::new(|snapshot| {
+                    snapshot.infra.oom_kill_count_24h = Some(1);
+                }),
+                "needs_operator",
+                "nexus_oom_absent",
+            ),
+        ];
+
+        for (name, mutate, expected_state, expected_predicate) in cases {
+            let mut snapshot =
+                fake_nexus_health_snapshot(DEFAULT_NEXUS_BASE_URL).expect("fake snapshot");
+            mutate(&mut snapshot);
+            let snapshot = refresh_classification(snapshot);
+            assert_eq!(snapshot.classification.state, expected_state, "case {name}");
+            assert_failed(&snapshot, expected_predicate);
+        }
+    }
+
+    #[test]
+    fn payout_idle_state_does_not_count_as_stalled() {
+        let mut snapshot =
+            fake_nexus_health_snapshot(DEFAULT_NEXUS_BASE_URL).expect("fake snapshot");
+        snapshot.fleet.eligible_online_payout_targets = 0;
+        snapshot.treasury.payout_sats_in_flight_total = 0;
+        snapshot.treasury.pending_confirmation_count = 0;
+        snapshot.treasury.dispatch_lag_ms = None;
+        snapshot.treasury.confirm_lag_ms = None;
+        snapshot.treasury.payouts_dispatched_24h = 0;
+        let snapshot = refresh_classification(snapshot);
+        assert_eq!(snapshot.classification.state, "healthy");
+        assert_not_failed(&snapshot, "payout_dispatch_fresh");
+        assert_not_failed(&snapshot, "payout_confirmation_fresh");
+    }
+
+    #[test]
+    fn green_healthz_alone_is_not_enough_for_healthy() {
+        let generated_at_unix_ms = 1_777_200_000_000;
+        let snapshot = snapshot_from_fetches(
+            DEFAULT_NEXUS_BASE_URL,
+            generated_at_unix_ms,
+            fake_fetch(
+                "healthz",
+                DEFAULT_NEXUS_BASE_URL,
+                "/healthz",
+                json!({"ok": true}),
+            ),
+            failed_fetch("stats", "/api/stats"),
+            failed_fetch("treasury", "/v1/treasury/status"),
+        );
+        assert_eq!(snapshot.classification.state, "incident");
+        assert_failed(&snapshot, "public_endpoint_reachable");
+        assert!(
+            !snapshot
+                .verification_gates
+                .get("infra_availability")
+                .expect("infra gate")
+                .passed
+        );
+    }
+
+    #[test]
+    fn failed_predicate_json_shape_is_stable() {
+        let mut snapshot =
+            fake_nexus_health_snapshot(DEFAULT_NEXUS_BASE_URL).expect("fake snapshot");
+        snapshot.fleet.eligible_online_payout_targets = 3;
+        snapshot.treasury.dispatch_lag_ms = Some(10 * 60 * 1_000);
+        let snapshot = refresh_classification(snapshot);
+        let encoded = serde_json::to_value(snapshot).expect("serialize snapshot");
+        let predicate = &encoded["classification"]["failed_predicates"][0];
+        for key in [
+            "predicate_id",
+            "severity",
+            "status",
+            "detail",
+            "remediation_hint",
+        ] {
+            assert!(predicate.get(key).is_some(), "missing predicate key {key}");
+        }
+        let gate_predicate =
+            &encoded["verification_gates"]["payout_capability"]["failed_predicates"][0];
+        assert_eq!(gate_predicate["predicate_id"], "payout_dispatch_fresh");
     }
 
     #[test]
@@ -1058,6 +1921,8 @@ mod tests {
             "generated_at_unix_ms",
             "base_url",
             "observation_status",
+            "classification",
+            "verification_gates",
             "endpoints",
             "treasury",
             "training",
@@ -1068,5 +1933,58 @@ mod tests {
         ] {
             assert!(encoded.get(key).is_some(), "missing key {key}");
         }
+    }
+
+    fn failed_fetch(route_id: &str, path: &str) -> EndpointFetch {
+        EndpointFetch {
+            endpoint: NexusHealthEndpointSnapshot {
+                route_id: route_id.to_string(),
+                path: path.to_string(),
+                url: format!("{}{}", DEFAULT_NEXUS_BASE_URL, path),
+                ok: false,
+                status_code: Some(503),
+                latency_ms: Some(10),
+                cloudflare_error_code: None,
+                error: Some("http_status_503".to_string()),
+            },
+            body: None,
+        }
+    }
+
+    fn refresh_classification(mut snapshot: NexusHealthSnapshot) -> NexusHealthSnapshot {
+        let classification = classify_nexus_health(&snapshot);
+        let verification_gates = verification_gates_for_classification(&classification);
+        snapshot.observation_status = classification.state.clone();
+        snapshot.classification = classification;
+        snapshot.verification_gates = verification_gates;
+        snapshot
+    }
+
+    fn assert_failed(snapshot: &NexusHealthSnapshot, predicate_id: &str) {
+        assert!(
+            snapshot
+                .classification
+                .failed_predicates
+                .iter()
+                .any(|predicate| predicate.predicate_id == predicate_id),
+            "expected failed predicate {predicate_id}; got {:?}",
+            snapshot
+                .classification
+                .failed_predicates
+                .iter()
+                .map(|predicate| predicate.predicate_id.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    fn assert_not_failed(snapshot: &NexusHealthSnapshot, predicate_id: &str) {
+        assert!(
+            !snapshot
+                .classification
+                .failed_predicates
+                .iter()
+                .any(|predicate| predicate.predicate_id == predicate_id),
+            "did not expect failed predicate {predicate_id}"
+        );
     }
 }

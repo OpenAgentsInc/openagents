@@ -256,6 +256,8 @@ The command probes:
 
 It emits one redacted JSON object on stdout with stable top-level sections:
 
+- `classification`
+- `verification_gates`
 - `endpoints`
 - `treasury`
 - `training`
@@ -263,6 +265,37 @@ It emits one redacted JSON object on stdout with stable top-level sections:
 - `website`
 - `infra`
 - `issues`
+
+The classifier is deterministic and does not call Probe, an LLM, GCP, or any
+recovery action. It maps the normalized snapshot into these states:
+
+- `healthy`: all required predicates passed.
+- `watch`: only warning-level predicates failed, such as low balance runway or
+  stale public stats.
+- `degraded`: an error-level predicate failed, such as payout dispatch,
+  confirmation, training launch, or payout queue health.
+- `incident`: public Nexus reachability failed, including Cloudflare `530` or
+  `1033`.
+- `needs_operator`: treasury, wallet, VM, relay, tunnel, restart-loop, or OOM
+  predicates require operator action.
+- `recovering`: a recovery marker is present while blocking predicates are no
+  longer failing.
+- `verified_closed`: all predicates passed and the incident has a verified
+  closure marker.
+
+`classification.failed_predicates` includes `predicate_id`, `severity`,
+`status`, `detail`, and `remediation_hint` for every failed predicate. The
+current verification gates are:
+
+- `payout_capability`
+- `training_dispatch`
+- `website_stats_freshness`
+- `infra_availability`
+
+Each gate returns `passed`, `status`, `checked_predicates`, and the failed
+predicate objects that made the gate fail. Future Forge, openagents.com, and
+Autopilot health surfaces should consume these gates instead of reclassifying
+raw stats independently.
 
 Use the deterministic fake mode for local tests, docs, and CI-like smoke
 checks:
