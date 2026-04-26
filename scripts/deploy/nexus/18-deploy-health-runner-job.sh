@@ -81,7 +81,7 @@ if dry_run; then
   show_cmd gcloud run jobs describe "$NEXUS_HEALTH_RUNNER_JOB" \
     --project "$GCP_PROJECT" \
     --region "$NEXUS_HEALTH_RUNNER_REGION" \
-    --format "value(template.template.serviceAccount)"
+    --format "value(spec.template.spec.template.spec.serviceAccountName)"
   exit 0
 fi
 
@@ -104,7 +104,7 @@ fi
 DEPLOYED_SERVICE_ACCOUNT="$(gcloud run jobs describe "$NEXUS_HEALTH_RUNNER_JOB" \
   --project "$GCP_PROJECT" \
   --region "$NEXUS_HEALTH_RUNNER_REGION" \
-  --format "value(template.template.serviceAccount)")"
+  --format "value(spec.template.spec.template.spec.serviceAccountName)")"
 
 case "$DEPLOYED_SERVICE_ACCOUNT" in
   "$NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_EMAIL"|*"serviceAccounts/${NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_EMAIL}")

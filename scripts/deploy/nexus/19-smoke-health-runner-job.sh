@@ -25,11 +25,11 @@ if dry_run; then
     --region "$NEXUS_HEALTH_RUNNER_REGION" \
     --wait \
     --format json
-  show_cmd gcloud logging read "resource.type=\"cloud_run_job\" AND labels.\"run.googleapis.com/job_name\"=\"${NEXUS_HEALTH_RUNNER_JOB}\"" \
+  show_cmd gcloud logging read "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${NEXUS_HEALTH_RUNNER_JOB}\" AND resource.labels.location=\"${NEXUS_HEALTH_RUNNER_REGION}\"" \
     --project "$GCP_PROJECT" \
     --freshness "1h" \
     --limit 100 \
-    --format "value(textPayload)"
+    --format json
   printf '[nexus-health-runner-dry-run] log secret scan result: passed; output values are [redacted]\n'
   exit 0
 fi
@@ -51,14 +51,22 @@ gcloud run jobs execute "$NEXUS_HEALTH_RUNNER_JOB" \
 EXECUTION_NAME="$(jq -r '.metadata.name // .name // empty' "$EXECUTION_JSON_PATH" | sed 's#.*/##')"
 [[ -n "$EXECUTION_NAME" ]] || die "Cloud Run Job execution did not return an execution name"
 
-LOG_FILTER="resource.type=\"cloud_run_job\" AND labels.\"run.googleapis.com/job_name\"=\"${NEXUS_HEALTH_RUNNER_JOB}\""
+LOG_FILTER="resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${NEXUS_HEALTH_RUNNER_JOB}\" AND resource.labels.location=\"${NEXUS_HEALTH_RUNNER_REGION}\""
 LOG_FILTER="${LOG_FILTER} AND labels.\"run.googleapis.com/execution_name\"=\"${EXECUTION_NAME}\""
 
-gcloud logging read "$LOG_FILTER" \
-  --project "$GCP_PROJECT" \
-  --freshness "1h" \
-  --limit 100 \
-  --format "value(textPayload)" >"$LOG_PATH" || true
+for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  gcloud logging read "$LOG_FILTER" \
+    --project "$GCP_PROJECT" \
+    --freshness "1h" \
+    --limit 100 \
+    --format json >"$LOG_PATH" || true
+  if jq -e 'length > 0' "$LOG_PATH" >/dev/null 2>&1; then
+    break
+  fi
+  if (( attempt < 12 )); then
+    sleep 5
+  fi
+done
 
 if [[ "$NEXUS_HEALTH_RUNNER_LOG_SECRET_SCAN_ENABLED" == "true" ]]; then
   if grep -Eiq 'xox[baprs]-|gh[pousr]_|sk-[A-Za-z0-9]|-----BEGIN [A-Z ]*PRIVATE KEY|payment_preimage|wallet_mnemonic|private_key|NEXUS_CONTROL_ADMIN_BEARER_TOKEN=' "$LOG_PATH"; then
@@ -66,8 +74,8 @@ if [[ "$NEXUS_HEALTH_RUNNER_LOG_SECRET_SCAN_ENABLED" == "true" ]]; then
   fi
 fi
 
-if [[ ! -s "$LOG_PATH" ]]; then
-  log "Health runner job executed, but no text logs were returned for execution ${EXECUTION_NAME}"
+if ! jq -e 'length > 0' "$LOG_PATH" >/dev/null 2>&1; then
+  log "Health runner job executed, but no logs were returned for execution ${EXECUTION_NAME}"
 else
   log "Health runner job executed and startup log secret scan passed for execution ${EXECUTION_NAME}"
 fi
