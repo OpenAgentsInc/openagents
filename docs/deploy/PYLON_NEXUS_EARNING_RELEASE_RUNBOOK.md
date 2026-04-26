@@ -79,7 +79,7 @@ does not auto-upgrade.
 ## Version Floor Rules
 
 For the current hosted training earning path, the minimum public Pylon release
-is `pylon-v0.1.12` / `@openagentsinc/pylon` `0.1.12`.
+is `pylon-v0.1.15` / `@openagentsinc/pylon` `0.1.15`.
 
 Older versions are useful historical proof points but not sufficient for final
 closeout:
@@ -109,17 +109,26 @@ closeout:
   Rust binary release: it adds the 30-second trusted GitHub release
   auto-updater and the `--no-updates` escape hatch. It still runs the latest
   trusted `pylon-v...` standalone binary asset available for the machine.
+- `0.1.15` fixes issue #4449 for terminal homework closeout: Pylon uploads and
+  verifies the worker contribution artifact bundle before sealing the window,
+  so validators do not replay a sealed contribution whose signed artifact fetch
+  still returns 404.
 
 Nexus must enforce the same floor for new hosted starter runs:
 
 ```text
-min_pylon_version=0.1.12
+min_pylon_version=0.1.15
 ```
 
 If the code changes the earning-loop behavior again, update this floor, the
 Pylon docs, the Nexus treasury docs, the audit, and the issue comments together.
 
-The published `0.1.12` release-smoke receipt is
+The published `0.1.15` release receipt is
+`docs/reports/nexus/20260426-pylon-v0.1.15-release.json`. It proves the release
+asset, npm bootstrap smoke, issue #4449 artifact-before-seal regression, and
+production earning drill.
+
+The prior `0.1.12` release-smoke receipt is
 `docs/reports/nexus/20260423-issue-4414-pylon-v0.1.12-release.json`. It proves
 the release assets, npm bootstrap, and issue #4414 training launch regression.
 
@@ -226,14 +235,14 @@ mkdir -p "${PROOF_ROOT}/logs"
 
 HOME="${PWD}/${PROOF_ROOT}/home" \
 OPENAGENTS_DISABLE_TELEMETRY=1 \
-npx --yes @openagentsinc/pylon@0.1.12 --version 0.1.12 \
+npx --yes @openagentsinc/pylon@0.1.15 --version 0.1.15 \
   --pylon-home "${PWD}/${PROOF_ROOT}/home/.openagents/pylon" \
   --install-root "${PWD}/${PROOF_ROOT}/install" \
   --skip-diagnostics \
   --no-launch \
   --json | tee "${PROOF_ROOT}/bootstrap.json"
 
-PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.12-darwin-arm64"
+PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.15-darwin-arm64"
 PYLON_HOME="${PWD}/${PROOF_ROOT}/home/.openagents/pylon"
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PYLON_HOME}" \

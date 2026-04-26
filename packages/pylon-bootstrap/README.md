@@ -13,7 +13,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.1.14
+npx @openagentsinc/pylon --version 0.1.15
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --no-updates
 npx @openagentsinc/pylon --download-curated-cache --model gemma-4-e2b --run-diagnostics
@@ -65,12 +65,12 @@ The launcher:
   without replacing the global npm/bun command
 - use `--no-updates` to keep the current installed release running without
   background GitHub release checks; `--version` remains a pinned release run
-- for hosted homework/training work, use launcher `0.1.14` or newer so the
+- for hosted homework/training work, use launcher `0.1.15` or newer so the
   cached standalone binary auto-updates while the dashboard is open. The
-  `pylon-v0.1.14` standalone binary also hashes long hosted homework IDs before
-  using them as local filesystem path components, preventing production-shaped
-  run and assignment IDs from crashing the supervised worker on macOS path
-  limits.
+  `pylon-v0.1.15` standalone binary keeps the long hosted homework ID hashing
+  from `0.1.14` and also refuses to seal terminal training windows until the
+  worker contribution artifact bundle has uploaded and verified for validator
+  replay.
 - does not try to install or register a local runtime automatically; the
   bootstrap stays honest about the separate local Gemma runtime
   prerequisite instead of mutating the host behind the user's back
