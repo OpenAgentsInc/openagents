@@ -3543,6 +3543,9 @@ impl TreasuryState {
             .filter(|record| statuses.contains(&record.status.as_str()))
             .filter(|record| record.classification.continuity_alert_relevant(policy))
             .filter(|record| {
+                !self.presence_stipend_backlog_superseded_by_newer_progress(record, statuses)
+            })
+            .filter(|record| {
                 !self.legacy_availability_confirmation_attention_record(
                     record,
                     config,
@@ -3552,6 +3555,27 @@ impl TreasuryState {
             })
             .map(|record| record.updated_at_unix_ms)
             .min()
+    }
+
+    fn presence_stipend_backlog_superseded_by_newer_progress(
+        &self,
+        record: &TreasuryPayoutRecord,
+        statuses: &[&str],
+    ) -> bool {
+        if record.classification.effective_payout_class()
+            != TreasuryPayoutClass::PlaceholderLiveness
+        {
+            return false;
+        }
+
+        let newer_progress_at_unix_ms = if statuses.contains(&"dispatched") {
+            self.last_confirmed_payout_at_unix_ms
+        } else {
+            self.last_dispatch_at_unix_ms
+        };
+
+        newer_progress_at_unix_ms
+            .is_some_and(|progress_at| progress_at >= record.updated_at_unix_ms)
     }
 
     fn impossible_zero_balance_with_receive_history(&self) -> bool {
@@ -12288,6 +12312,106 @@ mod tests {
     }
 
     #[test]
+    fn newer_stipend_confirmation_progress_clears_stale_presence_stall() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 2_000_000u64;
+        let stale_updated_at =
+            now_unix_ms.saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000);
+
+        state.payout_records_by_key.insert(
+            "1770000:availability-beneficiary:host:sha256:stale".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "1770000:availability-beneficiary:host:sha256:stale".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 25,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("stale-presence-payment".to_string()),
+                window_started_at_unix_ms: stale_updated_at.saturating_sub(60_000),
+                window_ends_at_unix_ms: stale_updated_at,
+                created_at_unix_ms: stale_updated_at,
+                updated_at_unix_ms: stale_updated_at,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_basis: Some("presence_only".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let stale_stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(
+            stale_stats.degraded_reason.as_deref(),
+            Some("continuity_alert:confirmations_stalled")
+        );
+
+        state.last_confirmed_payout_at_unix_ms = Some(now_unix_ms.saturating_sub(1_000));
+        let recovered_stats = state.public_stats(&config, now_unix_ms);
+        assert_ne!(
+            recovered_stats.degraded_reason.as_deref(),
+            Some("continuity_alert:confirmations_stalled")
+        );
+        assert!(
+            recovered_stats
+                .active_continuity_alerts
+                .iter()
+                .all(|alert| alert.alert_id != "confirmations_stalled"),
+            "presence-only stale confirmations should not keep Nexus degraded after newer confirmations"
+        );
+    }
+
+    #[test]
+    fn newer_stipend_progress_does_not_clear_stale_accepted_work_stall() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 2_000_000u64;
+        let stale_updated_at =
+            now_unix_ms.saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000);
+
+        state.last_confirmed_payout_at_unix_ms = Some(now_unix_ms.saturating_sub(1_000));
+        state.payout_records_by_key.insert(
+            "accepted-work-stale".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "accepted-work-stale".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 25,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("accepted-work-payment".to_string()),
+                window_started_at_unix_ms: stale_updated_at.saturating_sub(60_000),
+                window_ends_at_unix_ms: stale_updated_at,
+                created_at_unix_ms: stale_updated_at,
+                updated_at_unix_ms: stale_updated_at,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("outcome-a".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(
+            stats.degraded_reason.as_deref(),
+            Some("continuity_alert:confirmations_stalled")
+        );
+    }
+
+    #[test]
     fn budget_cap_alert_ignores_stale_historical_skips() {
         let mut state = TreasuryState::default();
         let config = test_treasury_config();
@@ -12405,7 +12529,10 @@ mod tests {
                 classification: TreasuryPayoutClassification::default(),
             },
         );
-        assert_eq!(state.availability_dispatch_suppression_reason(&config, now_unix_ms), None);
+        assert_eq!(
+            state.availability_dispatch_suppression_reason(&config, now_unix_ms),
+            None
+        );
 
         let prepared =
             state.prepare_due_payouts(&config, &[test_online_identity("pubkey-a")], now_unix_ms);
