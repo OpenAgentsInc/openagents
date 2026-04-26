@@ -13,6 +13,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_lib::control::{ControlManifest, control_manifest_path};
+use autopilot_lib::health::{NexusHealthRequest, clean_text};
 use serde_json::{Value, json};
 
 fn main() {
@@ -27,6 +28,13 @@ fn run() -> Result<(), String> {
     let command = cli.command.iter().map(String::as_str).collect::<Vec<_>>();
     if matches!(command.as_slice(), [] | ["help"] | ["--help"] | ["-h"]) {
         print_usage();
+        return Ok(());
+    }
+    if let ["health", "nexus", "status", rest @ ..] = command.as_slice() {
+        let request = NexusHealthCliArgs::parse(rest)?;
+        let value = autopilot_lib::health::nexus_health_status_blocking(request.into_request())?
+            .as_json_value()?;
+        print_value(&value, cli.json);
         return Ok(());
     }
     let target = ControlTarget::resolve(&cli)?;
@@ -150,6 +158,14 @@ impl Cli {
             }
             index += 1;
         }
+        command.retain(|value| {
+            if value == "--json" {
+                json = true;
+                false
+            } else {
+                true
+            }
+        });
         Ok(Self {
             manifest,
             base_url,
@@ -157,6 +173,59 @@ impl Cli {
             json,
             command,
         })
+    }
+}
+
+#[derive(Debug, Default)]
+struct NexusHealthCliArgs {
+    base_url: Option<String>,
+    timeout_ms: Option<u64>,
+    fake: bool,
+}
+
+impl NexusHealthCliArgs {
+    fn parse(args: &[&str]) -> Result<Self, String> {
+        let mut parsed = Self::default();
+        let mut index = 0;
+        while index < args.len() {
+            match args[index] {
+                "--base-url" => {
+                    index += 1;
+                    parsed.base_url = Some(required(args, index, "--base-url")?.to_string());
+                }
+                "--timeout-ms" => {
+                    index += 1;
+                    parsed.timeout_ms = Some(parse_u64(required(args, index, "--timeout-ms")?)?);
+                }
+                "--fake" => {
+                    parsed.fake = true;
+                }
+                other => return Err(format!("unsupported health nexus status flag: {other}")),
+            }
+            index += 1;
+        }
+        Ok(parsed)
+    }
+
+    fn into_request(self) -> NexusHealthRequest {
+        NexusHealthRequest {
+            base_url: self.base_url,
+            timeout_ms: self.timeout_ms,
+            fake: self.fake,
+        }
+    }
+}
+
+trait JsonValueExt {
+    fn as_json_value(self) -> Result<Value, String>;
+}
+
+impl<T> JsonValueExt for T
+where
+    T: serde::Serialize,
+{
+    fn as_json_value(self) -> Result<Value, String> {
+        serde_json::to_value(self).map_err(|error| format!("failed to encode JSON: {error}"))
     }
 }
 
@@ -1151,6 +1220,8 @@ fn print_value(value: &Value, json_output: bool) {
         .or_else(|| value.get("pylon_status"))
     {
         print_pylon_status(status);
+    } else if value.get("subsystems").is_some() && value.get("eventTimeline").is_some() {
+        print_nexus_health_status(value);
     } else if value.get("processState").is_some() || value.get("providerState").is_some() {
         print_pylon_status(value);
     } else if value.get("assignmentLabel").is_some() && value.get("stages").is_some() {
@@ -1162,6 +1233,25 @@ fn print_value(value: &Value, json_output: bool) {
             "{}",
             serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
         );
+    }
+}
+
+fn print_nexus_health_status(value: &Value) {
+    println!(
+        "nexus health={} severity={} cause={}",
+        str_field(value, "state"),
+        str_field(value, "severity"),
+        clean_text(str_field(value, "exactCause"))
+    );
+    if let Some(subsystems) = value.get("subsystems").and_then(Value::as_array) {
+        for subsystem in subsystems {
+            println!(
+                "- {}: {} - {}",
+                str_field(subsystem, "label"),
+                str_field(subsystem, "state"),
+                clean_text(str_field(subsystem, "summary"))
+            );
+        }
     }
 }
 
@@ -1377,7 +1467,46 @@ fn epoch_seconds() -> u64 {
 
 fn print_usage() {
     println!(
-        "Usage: autopilotctl-tauri [--manifest <path>|--base-url <url> --auth-token <token>] [--json] <command>\n\nCommands:\n  status\n  pylon status|start|stop|restart|logs|mode <online|offline|pause|resume>\n  proof status [namespace]\n  proof run <lane> [--namespace <ns>] [--workers <n>] [--validators <n>] [--timeout-seconds <n>]\n  proof matrix [--namespace-prefix <ns>] [--timeout-ms <n>] [--poll-ms <n>]\n  proof doctor|stop|reset|artifacts <namespace>\n  homework status\n  homework handshake [--namespace <ns>] [--timeout-ms <n>] [--poll-ms <n>] [--keep-pylon-running]\n  homework matrix [--namespace-prefix <ns>] [--timeout-ms <n>] [--poll-ms <n>]\n  wait proof-completed --namespace <ns> [--timeout-ms <n>] [--poll-ms <n>]\n  wait pylon-running [--timeout-ms <n>] [--poll-ms <n>]\n  smoke [--namespace <ns>] [--timeout-ms <n>]\n\nDefault manifest: {}",
+        "Usage: autopilotctl-tauri [--manifest <path>|--base-url <url> --auth-token <token>] [--json] <command>\n\nCommands:\n  status\n  health nexus status [--base-url <url>] [--timeout-ms <n>] [--fake]\n  pylon status|start|stop|restart|logs|mode <online|offline|pause|resume>\n  proof status [namespace]\n  proof run <lane> [--namespace <ns>] [--workers <n>] [--validators <n>] [--timeout-seconds <n>]\n  proof matrix [--namespace-prefix <ns>] [--timeout-ms <n>] [--poll-ms <n>]\n  proof doctor|stop|reset|artifacts <namespace>\n  homework status\n  homework handshake [--namespace <ns>] [--timeout-ms <n>] [--poll-ms <n>] [--keep-pylon-running]\n  homework matrix [--namespace-prefix <ns>] [--timeout-ms <n>] [--poll-ms <n>]\n  wait proof-completed --namespace <ns> [--timeout-ms <n>] [--poll-ms <n>]\n  wait pylon-running [--timeout-ms <n>] [--poll-ms <n>]\n  smoke [--namespace <ns>] [--timeout-ms <n>]\n\nDefault manifest: {}",
         control_manifest_path().display()
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cli, NexusHealthCliArgs};
+
+    #[test]
+    fn trailing_json_flag_is_global() {
+        let cli = Cli::parse(vec![
+            "health".to_string(),
+            "nexus".to_string(),
+            "status".to_string(),
+            "--json".to_string(),
+        ])
+        .unwrap_or_else(|error| panic!("cli should parse: {error}"));
+
+        assert!(cli.json);
+        assert_eq!(cli.command, vec!["health", "nexus", "status"]);
+    }
+
+    #[test]
+    fn health_status_args_parse_operator_options() {
+        let args = [
+            "--base-url",
+            "https://nexus.openagents.com",
+            "--timeout-ms",
+            "1000",
+            "--fake",
+        ];
+        let parsed = NexusHealthCliArgs::parse(&args)
+            .unwrap_or_else(|error| panic!("health args should parse: {error}"));
+
+        assert_eq!(
+            parsed.base_url.as_deref(),
+            Some("https://nexus.openagents.com")
+        );
+        assert_eq!(parsed.timeout_ms, Some(1_000));
+        assert!(parsed.fake);
+    }
 }

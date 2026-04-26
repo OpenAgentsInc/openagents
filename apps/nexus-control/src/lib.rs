@@ -177,7 +177,7 @@ pub use crate::treasury::{
     TreasuryCommand, parse_treasury_command, run_treasury_command, treasury_usage,
 };
 pub use health::{
-    HealthSnapshotCommand, NexusHealthSnapshot, health_snapshot_usage,
+    HealthSnapshotCommand, NexusHealthPredicate, NexusHealthSnapshot, health_snapshot_usage,
     parse_health_snapshot_command, run_health_snapshot_command,
 };
 pub use health_agent::{

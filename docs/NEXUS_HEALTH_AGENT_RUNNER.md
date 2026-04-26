@@ -78,6 +78,19 @@ The hosted GCP deployment lane is documented in:
 
 - `docs/deploy/NEXUS_HEALTH_RUNNER_GCP_RUNBOOK.md`
 
+Autopilot now also exposes the same classifier-derived status locally:
+
+- Native view: open the Tauri Autopilot shell and choose `View > Health`.
+- CLI: `cargo run -p autopilot --bin autopilotctl-tauri -- --json health nexus status`.
+- CLI fallback/proof without a running Tauri control plane:
+  `cargo run -p autopilot --bin autopilotctl-tauri -- health nexus status --fake --json`.
+
+That Autopilot projection is intentionally operator-facing and redacted. It
+shows subsystem state, active training run, queued follow-ups, stop/cancel
+state, latest action, failed predicates, verification gates, and a timeline. It
+must not expose raw bearer tokens, wallet secrets, stack traces, `sync stale`,
+or vague user-facing status labels without the exact failed predicate.
+
 That lane runs the binary as both a Cloud Run Job and a warm Cloud Run Service
 with an attached service account and Secret Manager injection. The Job remains
 the manual smoke and leased-action path. The Service is the recurring monitor

@@ -1,4 +1,5 @@
 pub mod control;
+pub mod health;
 mod pylon;
 
 #[derive(serde::Serialize)]
@@ -297,6 +298,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             autopilot_status,
             autopilot_workbench_snapshot,
+            health::nexus_health_status,
             pylon::pylon_detect,
             pylon::pylon_get_status,
             pylon::pylon_homework_get,
