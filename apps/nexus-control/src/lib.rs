@@ -11,6 +11,7 @@
 )]
 
 mod economy;
+mod health;
 mod kernel;
 mod training_trn_mapping;
 mod treasury;
@@ -172,6 +173,10 @@ use crate::treasury::{
 
 pub use crate::treasury::{
     TreasuryCommand, parse_treasury_command, run_treasury_command, treasury_usage,
+};
+pub use health::{
+    HealthSnapshotCommand, NexusHealthSnapshot, health_snapshot_usage,
+    parse_health_snapshot_command, run_health_snapshot_command,
 };
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_CONTROL_LISTEN_ADDR";

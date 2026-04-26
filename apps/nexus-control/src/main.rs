@@ -11,18 +11,18 @@ fn main() -> Result<()> {
 async fn async_main(worker_threads: usize) -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     ensure_rustls_crypto_provider()?;
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_target(false)
-        .compact()
-        .init();
-    tracing::info!(
-        tokio_worker_threads = worker_threads,
-        "starting nexus-control runtime"
-    );
+
+    if matches!(args.get(1).map(String::as_str), Some("health")) {
+        let command = nexus_control::parse_health_snapshot_command(&args).map_err(|error| {
+            anyhow::anyhow!(
+                "failed to parse health command: {error}\nusage: nexus-control {}",
+                nexus_control::health_snapshot_usage()
+            )
+        })?;
+        let output = nexus_control::run_health_snapshot_command(&command).await?;
+        println!("{output}");
+        return Ok(());
+    }
 
     if matches!(args.get(1).map(String::as_str), Some("treasury")) {
         let config = nexus_control::ServiceConfig::from_env()
@@ -37,6 +37,19 @@ async fn async_main(worker_threads: usize) -> Result<()> {
         println!("{output}");
         return Ok(());
     }
+
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_target(false)
+        .compact()
+        .init();
+    tracing::info!(
+        tokio_worker_threads = worker_threads,
+        "starting nexus-control runtime"
+    );
 
     let config = nexus_control::ServiceConfig::from_env()
         .map_err(|error| anyhow::anyhow!("failed to load nexus-control config: {error}"))?;

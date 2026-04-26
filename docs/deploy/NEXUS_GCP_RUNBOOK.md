@@ -239,6 +239,43 @@ tunnel path first. If the guest network stack itself is broken and the VM
 cannot reach metadata or the public internet, reset the VM immediately instead
 of waiting for the condition to clear on its own.
 
+### 3.1.1) Redacted health snapshot command
+
+`nexus-control` now has an observation-only health snapshot command for
+operators and future health agents:
+
+```bash
+cargo run -p nexus-control -- health snapshot --pretty
+```
+
+The command probes:
+
+- `https://nexus.openagents.com/healthz`
+- `https://nexus.openagents.com/api/stats`
+- `https://nexus.openagents.com/v1/treasury/status`
+
+It emits one redacted JSON object on stdout with stable top-level sections:
+
+- `endpoints`
+- `treasury`
+- `training`
+- `fleet`
+- `website`
+- `infra`
+- `issues`
+
+Use the deterministic fake mode for local tests, docs, and CI-like smoke
+checks:
+
+```bash
+cargo run -p nexus-control -- health snapshot --fake --pretty
+```
+
+Use `--base-url <url>` for a local or staging Nexus and `--timeout-ms <ms>` to
+bound public probes. This command only observes and normalizes state. It does
+not restart services, refresh wallets, create invoices, dispatch work, or run
+recovery actions.
+
 ### 3.2) Issue #4413 live proof checklist
 
 This checklist captures the operational mistakes and recovery path from the
