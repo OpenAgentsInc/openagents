@@ -177,14 +177,14 @@ if dry_run; then
   show_cmd gcloud iam service-accounts create "$NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_NAME" \
     --project "$GCP_PROJECT" \
     --display-name "OpenAgents Nexus health runner" \
-    --description "Runs monitor-only OpenAgents Nexus health probes from hosted GCP identity"
+    --description "Runs OpenAgents Nexus health probes and leased recovery reports from hosted GCP identity"
 elif ! gcloud iam service-accounts describe "$NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_EMAIL" \
   --project "$GCP_PROJECT" >/dev/null 2>&1; then
   log "Creating service account: ${NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_EMAIL}"
   gcloud iam service-accounts create "$NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_NAME" \
     --project "$GCP_PROJECT" \
     --display-name "OpenAgents Nexus health runner" \
-    --description "Runs monitor-only OpenAgents Nexus health probes from hosted GCP identity" >/dev/null
+    --description "Runs OpenAgents Nexus health probes and leased recovery reports from hosted GCP identity" >/dev/null
 fi
 
 wait_for_service_account

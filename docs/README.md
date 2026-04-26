@@ -13,8 +13,9 @@ This directory is organized around a small number of canonical entry points.
   the current Pylon paid-training loop, proof, and operator/admin usage.
 - `2026-04-22-pylon-homework-dispatch-operator-runbook.md`: operator runbook
   for npm Pylon, admin-paced homework dispatch, and accepted-work payout proof.
-- `NEXUS_HEALTH_AGENT_RUNNER.md`: cloud-worker entrypoint for monitor-only
-  Nexus health snapshots, redacted evidence, and Forge health events.
+- `NEXUS_HEALTH_AGENT_RUNNER.md`: cloud-worker entrypoint for Nexus health
+  snapshots, redacted evidence, Forge health events, and leased recovery
+  actions.
 - `NEXUS_HEALTH_VERIFICATION_PACK.md`: machine-readable Nexus verification
   pack for Forge Evidence and Probe-generated health fixes.
 - `deploy/NEXUS_HEALTH_RUNNER_GCP_RUNBOOK.md`: hosted GCP service-account,
