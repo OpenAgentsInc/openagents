@@ -98,23 +98,53 @@ fn parse_port(raw: Option<&str>) -> Result<u16> {
 }
 
 fn log_report(report: &Value) {
-    let event = json!({
-        "event": "nexus_health_agent_server_run",
-        "status": report.get("status"),
-        "summary": report.get("summary"),
-        "scheduler_status": report.pointer("/scheduler/status"),
-        "max_expected_detection_seconds": report.pointer("/scheduler/max_expected_detection_seconds"),
-        "external_reachable": report.pointer("/external_reachability/reachable"),
-        "external_failure_kind": report.pointer("/external_reachability/failure_kind"),
-        "external_status_code": report.pointer("/external_reachability/status_code"),
-        "snapshot_status": report.pointer("/snapshot/status"),
-        "snapshot_degraded": report.pointer("/snapshot/degraded"),
-    });
+    let event = report_log_event(report);
 
     match serde_json::to_string(&event) {
         Ok(serialized) => println!("{serialized}"),
         Err(error) => eprintln!("nexus_health_agent_server_log_error: {error}"),
     }
+}
+
+fn report_log_event(report: &Value) -> Value {
+    let first_failed_endpoint = report
+        .pointer("/external_reachability/endpoints")
+        .and_then(Value::as_array)
+        .and_then(|endpoints| {
+            endpoints.iter().find(|endpoint| {
+                endpoint
+                    .get("ok")
+                    .and_then(Value::as_bool)
+                    .is_some_and(|ok| !ok)
+            })
+        })
+        .cloned();
+
+    json!({
+        "event": "nexus_health_agent_server_run",
+        "status": report.get("status"),
+        "summary": report.pointer("/snapshot/classification/summary").or_else(|| report.pointer("/forge_event_request/summary")),
+        "health_state": report.pointer("/forge_event_request/health_state"),
+        "severity": report.pointer("/forge_event_request/severity"),
+        "scheduler_status": report.pointer("/scheduler/status"),
+        "scheduler_name": report.pointer("/scheduler/scheduler_name"),
+        "scheduler_projection_freshness_status": report.pointer("/scheduler/projection_freshness_status"),
+        "max_expected_detection_seconds": report.pointer("/scheduler/max_expected_detection_seconds"),
+        "external_status": report.pointer("/external_reachability/status"),
+        "external_source": report.pointer("/external_reachability/source"),
+        "external_vantage_id": report.pointer("/external_reachability/vantage_id"),
+        "external_route_count": report.pointer("/external_reachability/route_count"),
+        "external_failed_route_count": report.pointer("/external_reachability/failed_route_count"),
+        "external_cloudflare_edge_error_count": report.pointer("/external_reachability/cloudflare_edge_error_count"),
+        "external_cloudflare_error_codes": report.pointer("/external_reachability/cloudflare_error_codes"),
+        "external_first_failed_endpoint": first_failed_endpoint,
+        "snapshot_status": report.get("snapshot_status"),
+        "snapshot_observation_status": report.pointer("/snapshot/observation_status"),
+        "snapshot_highest_severity": report.pointer("/snapshot/classification/highest_severity"),
+        "treasury_degraded_reason": report.pointer("/snapshot/treasury/degraded_reason"),
+        "treasury_wallet_runtime_status": report.pointer("/snapshot/treasury/wallet_runtime_status"),
+        "payout_loop_health": report.pointer("/snapshot/treasury/payout_loop_health"),
+    })
 }
 
 fn log_error(error: &anyhow::Error) {
@@ -144,7 +174,7 @@ fn ensure_rustls_crypto_provider() -> Result<()> {
 mod tests {
     use serde_json::json;
 
-    use super::{DEFAULT_PORT, log_report, parse_port};
+    use super::{DEFAULT_PORT, log_report, parse_port, report_log_event};
 
     #[test]
     fn default_port_is_8080_when_blank() {
@@ -162,7 +192,48 @@ mod tests {
         log_report(&json!({
             "status": "completed",
             "scheduler": {"status": "hosted"},
-            "external_reachability": {"reachable": true}
+            "external_reachability": {"status": "reachable"}
         }));
+    }
+
+    #[test]
+    fn report_log_event_extracts_current_health_agent_schema() {
+        let event = report_log_event(&json!({
+            "status": "completed",
+            "snapshot_status": "captured",
+            "snapshot": {
+                "observation_status": "healthy",
+                "classification": {
+                    "summary": "Nexus public edge reachable",
+                    "highest_severity": "info"
+                },
+                "treasury": {
+                    "wallet_runtime_status": "connected",
+                    "payout_loop_health": "healthy"
+                }
+            },
+            "scheduler": {
+                "status": "hosted",
+                "scheduler_name": "nexus-health-runner-every-minute",
+                "projection_freshness_status": "reported_by_forge_health_event_projection",
+                "max_expected_detection_seconds": 60
+            },
+            "external_reachability": {
+                "status": "reachable",
+                "source": "external_public_probe",
+                "vantage_id": "gcp-us-central1-cloud-run",
+                "route_count": 3,
+                "failed_route_count": 0,
+                "cloudflare_edge_error_count": 0,
+                "cloudflare_error_codes": []
+            }
+        }));
+
+        assert_eq!(event["summary"], "Nexus public edge reachable");
+        assert_eq!(event["snapshot_status"], "captured");
+        assert_eq!(event["external_status"], "reachable");
+        assert_eq!(event["external_vantage_id"], "gcp-us-central1-cloud-run");
+        assert_eq!(event["scheduler_status"], "hosted");
+        assert_eq!(event["max_expected_detection_seconds"], 60);
     }
 }
