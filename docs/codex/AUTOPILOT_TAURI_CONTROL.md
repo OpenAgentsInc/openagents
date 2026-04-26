@@ -99,8 +99,25 @@ Status:
 cargo run -p autopilot --bin autopilotctl-tauri -- --json status
 cargo run -p autopilot --bin autopilotctl-tauri -- --json pylon status
 cargo run -p autopilot --bin autopilotctl-tauri -- --json homework status
+cargo run -p autopilot --bin autopilotctl-tauri -- --json health nexus status
 cargo run -p autopilot --bin autopilotctl-tauri -- --json proof status
 ```
+
+Nexus health:
+
+```bash
+cargo run -p autopilot --bin autopilotctl-tauri -- --json health nexus status
+cargo run -p autopilot --bin autopilotctl-tauri -- health nexus status --json
+cargo run -p autopilot --bin autopilotctl-tauri -- health nexus status --fake --json
+```
+
+The health command and the native Health view use the shared
+`nexus-control` health snapshot and project it into an Autopilot-safe operator
+shape: service, treasury, payout, training, website, fleet, infra, active
+training run, queued follow-ups, stop/cancel state, latest action, failed
+predicates, verification gates, and an event timeline. This surface must stay
+redacted and cause-oriented. It should not show raw stack traces, `sync stale`,
+or vague `needs attention` labels without the exact failed predicate.
 
 Pylon process and provider mode:
 

@@ -308,6 +308,91 @@ export interface HomeworkSnapshotProjection {
   stages: HomeworkStageProjection[];
 }
 
+export interface AutopilotHealthMetric {
+  label: string;
+  value: string;
+}
+
+export interface AutopilotHealthSubsystem {
+  id: string;
+  label: string;
+  state: string;
+  summary: string;
+  detail: string;
+  metrics: AutopilotHealthMetric[];
+}
+
+export interface AutopilotHealthActiveRun {
+  runId: string | null;
+  windowId: string | null;
+  status: string;
+  detail: string;
+}
+
+export interface AutopilotHealthFollowup {
+  id: string;
+  severity: string;
+  owner: string;
+  action: string;
+  detail: string;
+}
+
+export interface AutopilotHealthStopState {
+  canCancel: boolean;
+  state: string;
+  reason: string;
+}
+
+export interface AutopilotHealthAction {
+  id: string;
+  state: string;
+  summary: string;
+  actor: string;
+  observedAtUnixMs: number;
+}
+
+export interface AutopilotHealthEvent {
+  id: string;
+  atUnixMs: number;
+  state: string;
+  title: string;
+  detail: string;
+  evidence: string;
+}
+
+export interface AutopilotHealthPredicate {
+  predicateId: string;
+  severity: string;
+  status: string;
+  detail: string;
+  remediationHint: string;
+}
+
+export interface AutopilotHealthGate {
+  gateId: string;
+  status: string;
+  passed: boolean;
+}
+
+export interface AutopilotNexusHealthProjection {
+  schemaVersion: number;
+  generatedAtUnixMs: number;
+  source: string;
+  baseUrl: string;
+  state: string;
+  severity: string;
+  summary: string;
+  exactCause: string;
+  subsystems: AutopilotHealthSubsystem[];
+  activeRun: AutopilotHealthActiveRun;
+  queuedFollowups: AutopilotHealthFollowup[];
+  stopState: AutopilotHealthStopState;
+  latestAction: AutopilotHealthAction | null;
+  eventTimeline: AutopilotHealthEvent[];
+  failedPredicates: AutopilotHealthPredicate[];
+  verificationGates: AutopilotHealthGate[];
+}
+
 export interface ProofRunOptions {
   lane: ProofLane;
   namespace?: string;
@@ -322,6 +407,10 @@ export function autopilotStatus() {
 
 export function autopilotWorkbenchSnapshot() {
   return invoke<AutopilotWorkbenchSnapshot>("autopilot_workbench_snapshot");
+}
+
+export function nexusHealthStatus() {
+  return invoke<AutopilotNexusHealthProjection>("nexus_health_status");
 }
 
 export function pylonDetect() {

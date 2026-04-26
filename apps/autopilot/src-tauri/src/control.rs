@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tauri::Manager;
 
+use crate::health;
 use crate::pylon::{
     self, ProofRunOptions, PylonBinaryStatus, PylonManager, PylonStatusProjection, redact_sensitive,
 };
@@ -190,6 +191,10 @@ fn route_request(request: HttpRequest, app: tauri::AppHandle) -> Result<Value, S
             serde_json::to_value(pylon::pylon_homework_get(app.state()))
                 .map_err(|error| format!("failed to encode homework status: {error}"))
         }
+        ("GET", "/v1/health/nexus/status") => serde_json::to_value(
+            health::nexus_health_status_blocking(health::NexusHealthRequest::default())?,
+        )
+        .map_err(|error| format!("failed to encode Nexus health status: {error}")),
         ("POST", "/v1/pylon/start") => {
             serde_json::to_value(pylon::pylon_start(app.clone(), app.state(), None))
                 .map_err(|error| format!("failed to encode pylon start response: {error}"))?

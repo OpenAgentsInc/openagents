@@ -1,6 +1,12 @@
 import type { ProviderMode, ProofLane } from "@/lib/autopilot-runtime";
 
-export type ActiveView = "workbench" | "homework" | "command" | "pylon" | "proof";
+export type ActiveView =
+  | "workbench"
+  | "homework"
+  | "health"
+  | "command"
+  | "pylon"
+  | "proof";
 export type Theme = "light" | "dark";
 export type ActionKind = "view" | "safe" | "mutating" | "destructive";
 export type ActionScope = "global" | "active-view" | "selection";
@@ -39,6 +45,7 @@ export type BuildAutopilotActionsOptions = {
   showControlStatus: () => Promise<void> | void;
   refreshWorkbench: () => Promise<void> | void;
   refreshHomework: () => Promise<void> | void;
+  refreshHealth: () => Promise<void> | void;
   refreshPylon: () => Promise<void> | void;
   openPylonLogs: () => Promise<void> | void;
   startPylon: () => Promise<void> | void;
@@ -65,6 +72,7 @@ export const topLevelMenus = [
 export const viewLabels: Record<ActiveView, string> = {
   workbench: "Workbench",
   homework: "Homework",
+  health: "Health",
   command: "Command Console",
   pylon: "Earn Runtime",
   proof: "Diagnostics",
@@ -88,6 +96,7 @@ export function buildAutopilotActions({
   showControlStatus,
   refreshWorkbench,
   refreshHomework,
+  refreshHealth,
   refreshPylon,
   openPylonLogs,
   startPylon,
@@ -194,6 +203,21 @@ export function buildAutopilotActions({
       evidence: ["homework state", "pylon state", "training status", "accepted-work payout"],
       active: activeView === "homework",
       run: () => setActiveView("homework"),
+    },
+    {
+      id: "view.health",
+      label: "Health",
+      menuPath: ["View", "Health"],
+      paletteKeywords: ["health", "nexus", "treasury", "payout", "training", "ops"],
+      aliases: ["health", "nexus health", "ops health"],
+      shortcut: "health",
+      scope: "global",
+      kind: "view",
+      authority: "local-tauri",
+      effect: "Shows the operator health projection for Nexus.",
+      evidence: ["Nexus health state", "event timeline", "queued follow-ups"],
+      active: activeView === "health",
+      run: () => setActiveView("health"),
     },
     {
       id: "view.command",
@@ -333,6 +357,21 @@ export function buildAutopilotActions({
       evidence: ["homework mission state", "training status", "payout state"],
       active: activeView === "homework",
       run: () => setActiveView("homework"),
+    },
+    {
+      id: "health.nexus.refresh",
+      label: "Refresh Nexus Health",
+      menuPath: ["Diagnostics", "Refresh Nexus Health"],
+      paletteKeywords: ["health", "nexus", "refresh", "treasury", "payout", "fleet"],
+      aliases: ["refresh health", "nexus health", "health"],
+      shortcut: "health",
+      scope: "global",
+      kind: "safe",
+      authority: "local-tauri",
+      effect: "Refreshes the redacted Nexus health projection.",
+      evidence: ["Nexus health state", "failed predicates", "event timeline"],
+      disabledReason: busyReason,
+      run: refreshHealth,
     },
     {
       id: "homework.refresh",

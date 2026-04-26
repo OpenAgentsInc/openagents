@@ -817,6 +817,146 @@ body,
   text-transform: uppercase;
 }
 
+.health-screen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) minmax(11rem, 0.55fr);
+  gap: 0.5rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.health-hero {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 0;
+  background: var(--panel-black);
+  box-shadow: none;
+}
+
+.health-hero__content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  min-width: 0;
+  background:
+    linear-gradient(90deg, rgb(213 179 95 / 0.09), transparent 52%),
+    var(--panel-black-raised);
+  padding: 0.75rem;
+}
+
+.health-hero__copy {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.health-hero__copy h1 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: clamp(1.35rem, 3vw, 2.6rem);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+  text-transform: uppercase;
+}
+
+.health-hero__copy p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.health-hero__actions {
+  justify-self: end;
+}
+
+.health-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(19rem, 0.42fr);
+  gap: 0.5rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.health-main,
+.health-side {
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+  min-height: 0;
+  overflow: auto;
+}
+
+.health-subsystem-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.health-subsystem {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  background: var(--panel-black-raised);
+  padding: 0.625rem;
+}
+
+.health-subsystem[data-state="ok"] {
+  border-left: 2px solid #7adf8a;
+}
+
+.health-subsystem[data-state="active"] {
+  border-left: 2px solid #d5b35f;
+}
+
+.health-subsystem[data-state="warn"],
+.health-subsystem[data-state="bad"] {
+  border-left: 2px solid #ef7676;
+}
+
+.health-subsystem__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.health-subsystem__head strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.75rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.health-subsystem p,
+.health-subsystem span {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-subsystem .register-grid > div {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.health-events-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
 @media (max-width: 720px) {
   .system-menu-strip {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -850,11 +990,14 @@ body,
   }
 
   .homework-stage-grid,
-  .homework-grid {
+  .homework-grid,
+  .health-layout,
+  .health-subsystem-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .mission-control-hero,
+  .health-hero__content,
   .mission-control-register .register-grid {
     grid-template-columns: minmax(0, 1fr);
   }

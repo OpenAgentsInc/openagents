@@ -55,6 +55,7 @@ import {
   viewLabels,
 } from "@/lib/autopilot-actions";
 import {
+  type AutopilotNexusHealthProjection,
   autopilotWorkbenchSnapshot,
   autopilotStatus,
   type AutopilotWorkbenchSnapshot,
@@ -67,6 +68,7 @@ import {
   type ProofRunProjection,
   type PylonBinaryStatus,
   type PylonStatusProjection,
+  nexusHealthStatus,
   pylonHomeworkGet,
   proofDoctor,
   proofGet,
@@ -106,6 +108,8 @@ function App() {
     React.useState<AutopilotWorkbenchSnapshot | null>(null);
   const [homeworkSnapshot, setHomeworkSnapshot] =
     React.useState<HomeworkSnapshotProjection | null>(null);
+  const [nexusHealth, setNexusHealth] =
+    React.useState<AutopilotNexusHealthProjection | null>(null);
   const [pylonBinary, setPylonBinary] =
     React.useState<PylonBinaryStatus | null>(null);
   const [pylonStatus, setPylonStatus] =
@@ -157,6 +161,19 @@ function App() {
       if (snapshot.proof) {
         setProofStatus(snapshot.proof);
       }
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatError(error));
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+
+  const refreshHealth = React.useCallback(async () => {
+    setBusy("health.nexus");
+    try {
+      const snapshot = await nexusHealthStatus();
+      setNexusHealth(snapshot);
       setActionError(null);
     } catch (error) {
       setActionError(formatError(error));
@@ -387,6 +404,7 @@ function App() {
         showControlStatus,
         refreshWorkbench,
         refreshHomework,
+        refreshHealth,
         refreshPylon,
         openPylonLogs,
         startPylon: () =>
@@ -428,6 +446,7 @@ function App() {
       openPylonLogs,
       pylonInstalled,
       refreshHomework,
+      refreshHealth,
       refreshWorkbench,
       refreshPylon,
       runProofCommand,
@@ -519,6 +538,10 @@ function App() {
   }, [refreshHomework]);
 
   React.useEffect(() => {
+    void refreshHealth();
+  }, [refreshHealth]);
+
+  React.useEffect(() => {
     const unlisten: Array<() => void> = [];
     let mounted = true;
 
@@ -599,6 +622,10 @@ function App() {
     artifacts: requireAction(actionById, "proof.artifacts.open"),
   };
 
+  const healthActions = {
+    refresh: requireAction(actionById, "health.nexus.refresh"),
+  };
+
   return (
     <main className="shell">
       <section className="operator-stage">
@@ -635,6 +662,12 @@ function App() {
             {activeView === "homework" ? (
               <StateBadge value={homeworkSnapshot?.status ?? "not loaded"} />
             ) : null}
+            {activeView === "health" ? (
+              <>
+                <StateBadge value={nexusHealth?.state ?? "not loaded"} />
+                <StateBadge value={nexusHealth?.severity ?? "unknown"} />
+              </>
+            ) : null}
           </div>
           <div className="system-status-copy">
             {busy ? `busy ${busy}` : "ready"}
@@ -664,6 +697,13 @@ function App() {
               onGoOnline={goOnline}
               onAction={executeAction}
               snapshot={homeworkSnapshot}
+            />
+          ) : activeView === "health" ? (
+            <NexusHealthPanel
+              actions={healthActions}
+              busy={busy}
+              onAction={executeAction}
+              snapshot={nexusHealth}
             />
           ) : activeView === "command" ? (
             <CommandEntry
@@ -1205,6 +1245,207 @@ function HomeworkListPanel({
   );
 }
 
+function NexusHealthPanel({
+  actions,
+  busy,
+  onAction,
+  snapshot,
+}: {
+  actions: {
+    refresh: AutopilotAction;
+  };
+  busy: string | null;
+  onAction: ActionRunner;
+  snapshot: AutopilotNexusHealthProjection | null;
+}) {
+  if (!snapshot) {
+    return (
+      <Card className="operator-card">
+        <CardHeader className="operator-card__header">
+          <CardTitle>Nexus Health</CardTitle>
+          <ActionButton action={actions.refresh} onAction={onAction} />
+        </CardHeader>
+        <CardContent className="operator-card__content">
+          <div className="workbench-empty">Loading Nexus health projection.</div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const headlineRows: RegisterRow[] = [
+    ["state", snapshot.state],
+    ["severity", snapshot.severity],
+    ["source", snapshot.source],
+    ["base", snapshot.baseUrl],
+    ["updated", formatTimestamp(String(snapshot.generatedAtUnixMs))],
+    ["exact cause", snapshot.exactCause],
+  ];
+  const activeRunRows: RegisterRow[] = [
+    ["run", snapshot.activeRun.runId ?? "none"],
+    ["window", snapshot.activeRun.windowId ?? "none"],
+    ["status", snapshot.activeRun.status],
+    ["detail", snapshot.activeRun.detail],
+  ];
+  const stopRows: RegisterRow[] = [
+    ["state", snapshot.stopState.state],
+    ["can cancel", String(snapshot.stopState.canCancel)],
+    ["reason", snapshot.stopState.reason],
+  ];
+  const gateRows: RegisterRow[] = snapshot.verificationGates.map((gate) => [
+    gate.gateId,
+    `${gate.status}${gate.passed ? "" : " failed"}`,
+  ]);
+
+  return (
+    <section className="health-screen" aria-label="Autopilot Nexus health">
+      <Card className="health-hero">
+        <CardContent className="health-hero__content">
+          <div className="health-hero__copy">
+            <span className="mission-control-kicker">Autopilot Health</span>
+            <h1>Nexus {snapshot.state}</h1>
+            <p>{snapshot.summary}</p>
+            <div className="status-strip">
+              <StateBadge value={snapshot.state} />
+              <StateBadge value={snapshot.severity} />
+              <StateBadge value={`${snapshot.failedPredicates.length} failed predicates`} />
+            </div>
+          </div>
+          <div className="health-hero__actions">
+            <ActionButton
+              action={actions.refresh}
+              disabled={busy === "health.nexus"}
+              onAction={onAction}
+              variant="default"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="health-layout">
+        <div className="health-main">
+          <Card className="workbench-panel">
+            <CardHeader className="workbench-panel__header">
+              <CardTitle>Current State</CardTitle>
+              <Pulse aria-hidden="true" />
+            </CardHeader>
+            <CardContent className="workbench-panel__content">
+              <RegisterGrid rows={headlineRows} />
+            </CardContent>
+          </Card>
+
+          <div className="health-subsystem-grid">
+            {snapshot.subsystems.map((subsystem) => (
+              <article
+                className="health-subsystem"
+                data-state={stateTone(subsystem.state)}
+                key={subsystem.id}
+              >
+                <div className="health-subsystem__head">
+                  <strong>{subsystem.label}</strong>
+                  <StateBadge value={subsystem.state} />
+                </div>
+                <p>{subsystem.summary}</p>
+                <span>{subsystem.detail}</span>
+                <RegisterGrid
+                  rows={subsystem.metrics.map((metric) => [
+                    metric.label,
+                    metric.value,
+                  ])}
+                />
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <aside className="health-side">
+          <Card className="workbench-panel">
+            <CardHeader className="workbench-panel__header">
+              <CardTitle>Active Training Run</CardTitle>
+            </CardHeader>
+            <CardContent className="workbench-panel__content">
+              <RegisterGrid rows={activeRunRows} />
+            </CardContent>
+          </Card>
+
+          <Card className="workbench-panel">
+            <CardHeader className="workbench-panel__header">
+              <CardTitle>Queued Follow-Ups</CardTitle>
+            </CardHeader>
+            <CardContent className="workbench-panel__content">
+              {snapshot.queuedFollowups.length === 0 ? (
+                <div className="workbench-note">No follow-up actions are queued.</div>
+              ) : (
+                <div className="workbench-list">
+                  {snapshot.queuedFollowups.map((item) => (
+                    <article className="workbench-list-item" key={item.id}>
+                      <div className="workbench-list-item__head">
+                        <strong>{item.id}</strong>
+                        <StateBadge value={item.severity} />
+                      </div>
+                      <p>{item.detail}</p>
+                      <span>{item.owner}: {item.action}</span>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="workbench-panel">
+            <CardHeader className="workbench-panel__header">
+              <CardTitle>Stop / Cancel State</CardTitle>
+            </CardHeader>
+            <CardContent className="workbench-panel__content">
+              <RegisterGrid rows={stopRows} />
+            </CardContent>
+          </Card>
+
+          <Card className="workbench-panel">
+            <CardHeader className="workbench-panel__header">
+              <CardTitle>Verification Gates</CardTitle>
+            </CardHeader>
+            <CardContent className="workbench-panel__content">
+              <RegisterGrid rows={gateRows.length > 0 ? gateRows : [["gates", "none"]]} />
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
+
+      <Card className="workbench-panel health-events-panel">
+        <CardHeader className="workbench-panel__header">
+          <CardTitle>Health Event Timeline</CardTitle>
+        </CardHeader>
+        <CardContent className="workbench-panel__content">
+          <div className="timeline" aria-label="Nexus health event timeline">
+            {snapshot.eventTimeline.map((event) => (
+              <article
+                className="timeline-event"
+                data-state={stateTone(event.state)}
+                key={event.id}
+              >
+                <div className="timeline-event__time">
+                  {formatTimestamp(String(event.atUnixMs))}
+                </div>
+                <div className="timeline-event__body">
+                  <div className="timeline-event__heading">
+                    <strong>{event.title}</strong>
+                    <StateBadge value={event.state} />
+                  </div>
+                  <p>{event.detail}</p>
+                  <div className="timeline-event__meta">
+                    <span>{event.id}</span>
+                    <span>{event.evidence}</span>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
 function runtimeAsAssignment(
   runtime: HomeworkRuntimeProjection,
 ): HomeworkAssignmentProjection {
@@ -1578,10 +1819,12 @@ function ProofRunCard({
 
 function ActionButton({
   action,
+  disabled,
   onAction,
   variant,
 }: {
   action: AutopilotAction;
+  disabled?: boolean;
   onAction: ActionRunner;
   variant?: "default" | "outline";
 }) {
@@ -1590,7 +1833,7 @@ function ActionButton({
 
   return (
     <Button
-      disabled={Boolean(action.disabledReason)}
+      disabled={disabled ?? Boolean(action.disabledReason)}
       size="sm"
       title={action.disabledReason ?? action.effect}
       type="button"
@@ -1784,7 +2027,7 @@ function orderCommandMenus(activeView: ActiveView) {
       ? "Earn"
       : activeView === "homework"
         ? "Earn"
-      : activeView === "proof"
+      : activeView === "proof" || activeView === "health"
         ? "Diagnostics"
         : "View";
 
