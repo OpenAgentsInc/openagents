@@ -78,14 +78,18 @@ The hosted GCP deployment lane is documented in:
 
 - `docs/deploy/NEXUS_HEALTH_RUNNER_GCP_RUNBOOK.md`
 
-That lane runs the binary as a Cloud Run Job with an attached service account
-and Secret Manager injection. A first production read probe can run with
-`--dry-run,--json` and no Forge secrets attached. Live Forge writes need the
-Forge bearer and actor-context secrets. Live `treasury_refresh` additionally
-needs the scoped Nexus admin bearer secret. Hosted continuous monitoring is
-installed by `scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh`, which
-uses Cloud Scheduler to invoke the Cloud Run Job from GCP rather than from an
-operator laptop.
+That lane runs the binary as both a Cloud Run Job and a warm Cloud Run Service
+with an attached service account and Secret Manager injection. The Job remains
+the manual smoke and leased-action path. The Service is the recurring monitor
+path because it keeps one warm instance and avoids Cloud Run Job provisioning
+latency/backlog. A first production read probe can run with `--dry-run,--json`
+and no Forge secrets attached. Live Forge writes need the Forge bearer and
+actor-context secrets. Live `treasury_refresh` additionally needs the scoped
+Nexus admin bearer secret. Hosted continuous monitoring is installed by
+`scripts/deploy/nexus/21-deploy-health-runner-service.sh` plus
+`scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh`, which uses Cloud
+Scheduler with OIDC to invoke the Service `/run` endpoint from GCP rather than
+from an operator laptop.
 
 ## Environment
 
@@ -117,6 +121,8 @@ operator laptop.
 - `NEXUS_HEALTH_AGENT_EXTERNAL_VANTAGE_ID`: defaults to `local`; hosted jobs
   use a GCP/Cloud Run vantage id so public-edge failures are distinguishable
   from VM-local checks.
+- `NEXUS_HEALTH_AGENT_SERVER_ARGS`: Cloud Run Service wrapper args, defaulting
+  to `--dry-run,--json`; the server forces a single monitor cycle per request.
 
 CLI flags with the same meaning override the non-secret defaults:
 
@@ -163,18 +169,35 @@ failed predicate or requested action resource, such as `nexus-cloudflared`,
 
 ## Hosted Scheduler
 
-GCP Cloud Scheduler is minute-granularity. During launch periods, use the Cloud
-Run Job's internal cycle loop for 30-second public-edge probes:
+GCP Cloud Scheduler is minute-granularity. The recurring path should target the
+warm Cloud Run Service, not the Cloud Run Job, because Cloud Run Job startup can
+take longer than the desired detection window under load. Deploy the service and
+then point Scheduler at the service URL:
 
 ```bash
-NEXUS_HEALTH_RUNNER_JOB_ARGS='--json,--cycles,2,--cycle-interval-seconds,30' \
-scripts/deploy/nexus/18-deploy-health-runner-job.sh
+scripts/deploy/nexus/21-deploy-health-runner-service.sh
+
+SERVICE_URL="$(gcloud run services describe nexus-health-runner-service \
+  --project openagentsgemini \
+  --region us-central1 \
+  --format 'value(status.url)')"
+
+NEXUS_HEALTH_RUNNER_SCHEDULER_AUTH_MODE=oidc \
+NEXUS_HEALTH_RUNNER_SCHEDULER_URI="${SERVICE_URL}/run" \
+NEXUS_HEALTH_RUNNER_SCHEDULER_OIDC_AUDIENCE="${SERVICE_URL}" \
 scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
 ```
 
-When stable, set `NEXUS_HEALTH_RUNNER_JOB_ARGS='--json'` and keep the default
-one-minute scheduler. Both modes record `scheduler.max_expected_detection_seconds`
-and `external_reachability.vantage_id` in every health event.
+The Job path is still useful for a manual smoke or leased one-shot action:
+
+```bash
+NEXUS_HEALTH_RUNNER_JOB_ARGS='--dry-run,--json' \
+scripts/deploy/nexus/18-deploy-health-runner-job.sh
+scripts/deploy/nexus/19-smoke-health-runner-job.sh
+```
+
+Both paths record `scheduler.max_expected_detection_seconds` and
+`external_reachability.vantage_id` in every health event.
 
 ## Recovery Boundary
 
@@ -243,9 +266,9 @@ Hosted deploy-lane verification:
 scripts/deploy/nexus/test-health-runner-deploy-shell-guards.sh
 ```
 
-Expected deploy guards cover Cloud Run Job service-account attachment, Secret
-Manager binding, Cloud Scheduler dry-run plans, dry-run GCP command plans, and
-startup log secret-scan wiring.
+Expected deploy guards cover Cloud Run Job/Service service-account attachment,
+Secret Manager binding, OAuth Job scheduler plans, OIDC Service scheduler
+plans, dry-run GCP command plans, and startup log secret-scan wiring.
 
 For a hosted treasury-refresh recovery proof:
 

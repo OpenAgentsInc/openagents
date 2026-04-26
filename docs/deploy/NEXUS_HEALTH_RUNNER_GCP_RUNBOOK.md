@@ -4,16 +4,19 @@ Date context: April 26, 2026.
 
 This runbook defines the first hosted GCP lane for `nexus-health-agent`. The
 goal is to remove production dependence on an operator laptop's short-lived
-`gcloud` OAuth session. The runtime identity is a Cloud Run Job service
-account, and hosted secrets come from GCP Secret Manager.
+`gcloud` OAuth session. The runtime identity is a Cloud Run service account,
+and hosted secrets come from GCP Secret Manager.
 
 ## Runtime Model
 
 - Build artifact: the existing `nexus-relay` container image now includes
-  `/usr/local/bin/nexus-health-agent`.
-- Hosted runtime: Cloud Run Job named `nexus-health-runner`.
+  `/usr/local/bin/nexus-health-agent` and
+  `/usr/local/bin/nexus-health-agent-server`.
+- Manual runtime: Cloud Run Job named `nexus-health-runner`.
+- Recurring runtime: warm Cloud Run Service named
+  `nexus-health-runner-service` with one minimum instance by default.
 - Hosted schedule: Cloud Scheduler job `nexus-health-runner-every-minute` by
-  default, invoking the Cloud Run Job run endpoint with OAuth.
+  default, invoking the Cloud Run Service `/run` endpoint with OIDC.
 - Runtime identity: service account
   `nexus-health-runner@openagentsgemini.iam.gserviceaccount.com` by default.
 - Public read target: `https://nexus.openagents.com`.
@@ -21,8 +24,8 @@ account, and hosted secrets come from GCP Secret Manager.
   for live health-event writes.
 - Recovery actions: default `monitor`; leased actions can be selected through
   `NEXUS_HEALTH_RUNNER_JOB_ARGS`.
-- External reachability: the Cloud Run Job records
-  `external_reachability.vantage_id=gcp-<region>-cloud-run-job`, making public
+- External reachability: the Cloud Run runtime records
+  `external_reachability.vantage_id=gcp-<region>-cloud-run`, making public
   edge failures distinguishable from VM-local watchdog health.
 - Secret source: GCP Secret Manager. Do not put human refresh tokens, bearer
   tokens, or wallet material in Laravel env, Cloud Run literal env, docs,
@@ -37,10 +40,12 @@ scripts/deploy/nexus/18-deploy-health-runner-job.sh
 scripts/deploy/nexus/19-smoke-health-runner-job.sh
 ```
 
-That proves the hosted service account can execute the monitor probe from GCP
-without using a local operator OAuth token at runtime. The live Forge-writing
-mode should attach Forge secrets and omit `--dry-run` only after the Forge
-service URL and scoped service credentials are provisioned.
+That proves the hosted service account can execute a one-shot monitor probe from
+GCP without using a local operator OAuth token at runtime. The durable recurring
+proof must use the warm Service path below; Cloud Run Jobs are too slow and can
+backlog for a strict 60-second public-edge detection loop. The live
+Forge-writing mode should attach Forge secrets and omit `--dry-run` only after
+the Forge service URL and scoped service credentials are provisioned.
 
 ## Scripts
 
@@ -70,7 +75,13 @@ scripts/deploy/nexus/18-deploy-health-runner-job.sh
 scripts/deploy/nexus/19-smoke-health-runner-job.sh
 ```
 
-5. Install or update the recurring hosted scheduler.
+5. Deploy the warm Cloud Run Service used by recurring monitoring.
+
+```bash
+scripts/deploy/nexus/21-deploy-health-runner-service.sh
+```
+
+6. Install or update the recurring hosted scheduler.
 
 ```bash
 scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
@@ -92,6 +103,10 @@ NEXUS_HEALTH_RUNNER_DRY_RUN=true \
 scripts/deploy/nexus/19-smoke-health-runner-job.sh
 
 NEXUS_HEALTH_RUNNER_DRY_RUN=true \
+NEXUS_HEALTH_RUNNER_ATTACH_FORGE_SECRETS=false \
+scripts/deploy/nexus/21-deploy-health-runner-service.sh
+
+NEXUS_HEALTH_RUNNER_DRY_RUN=true \
 scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
 ```
 
@@ -106,15 +121,17 @@ Important variables:
 - `NEXUS_HEALTH_RUNNER_SERVICE_ACCOUNT_EMAIL`: derived from the project and
   service-account name by default.
 - `NEXUS_HEALTH_RUNNER_JOB`: defaults to `nexus-health-runner`.
+- `NEXUS_HEALTH_RUNNER_SERVICE`: defaults to
+  `nexus-health-runner-service`.
 - `NEXUS_HEALTH_RUNNER_IMAGE`: defaults to the current Nexus image.
 - `NEXUS_HEALTH_RUNNER_NEXUS_BASE_URL`: defaults to the public Nexus URL.
 - `NEXUS_HEALTH_RUNNER_FORGE_BASE_URL`: required for live Forge writes.
 - `NEXUS_HEALTH_RUNNER_JOB_ARGS`: defaults to `--json`; use
   `--dry-run,--json` for a public-read-only proof job.
-- `NEXUS_HEALTH_RUNNER_JOB_ARGS='--json,--cycles,2,--cycle-interval-seconds,30'`:
-  launch-period mode for two public-edge probes per scheduled minute.
+- `NEXUS_HEALTH_RUNNER_SERVER_ARGS`: defaults to `--dry-run,--json`; these are
+  the args used by the warm Service wrapper for each `/run` request.
 - `NEXUS_HEALTH_RUNNER_EXTERNAL_VANTAGE_ID`: defaults to
-  `gcp-<region>-cloud-run-job`.
+  `gcp-<region>-cloud-run`.
 - `NEXUS_HEALTH_RUNNER_SCHEDULER_NAME`: defaults to
   `nexus-health-runner-every-minute`.
 - `NEXUS_HEALTH_RUNNER_SCHEDULER_INTERVAL_SECONDS`: defaults to `60` and is
@@ -122,9 +139,18 @@ Important variables:
 - `NEXUS_HEALTH_RUNNER_SCHEDULER_CRON`: defaults to `* * * * *`; Cloud
   Scheduler itself is minute-granularity.
 - `NEXUS_HEALTH_RUNNER_SCHEDULER_URI`: defaults to the Cloud Run Jobs
-  `:run` endpoint for the configured job and region.
+  `:run` endpoint for the configured job and region. For the recurring Service
+  path, set it to `${SERVICE_URL}/run`.
+- `NEXUS_HEALTH_RUNNER_SCHEDULER_AUTH_MODE`: defaults to `oauth` for the
+  manual Job endpoint. Set `oidc` for the Service path.
 - `NEXUS_HEALTH_RUNNER_SCHEDULER_OAUTH_SERVICE_ACCOUNT_EMAIL`: defaults to the
   health-runner service account.
+- `NEXUS_HEALTH_RUNNER_SCHEDULER_OIDC_SERVICE_ACCOUNT_EMAIL`: defaults to the
+  health-runner service account.
+- `NEXUS_HEALTH_RUNNER_SCHEDULER_OIDC_AUDIENCE`: set to the Cloud Run Service
+  base URL when `NEXUS_HEALTH_RUNNER_SCHEDULER_AUTH_MODE=oidc`.
+- `NEXUS_HEALTH_RUNNER_SERVICE_MIN_INSTANCES`: defaults to `1`.
+- `NEXUS_HEALTH_RUNNER_SERVICE_MAX_INSTANCES`: defaults to `1`.
 - `NEXUS_HEALTH_RUNNER_ATTACH_FORGE_SECRETS`: defaults to `true`; set to
   `false` for the first read-only smoke job.
 - `NEXUS_HEALTH_RUNNER_ATTACH_NEXUS_ADMIN_SECRET`: defaults to `false`; set to
@@ -141,12 +167,14 @@ Important variables:
 
 Reader/monitor role, enabled now:
 
-- Cloud Run Job attached service account:
+- Cloud Run Job/Service attached service account:
   `nexus-health-runner@<project>.iam.gserviceaccount.com`.
 - Project role `roles/logging.logWriter`.
 - Project role `roles/monitoring.metricWriter`.
-- Project role `roles/run.developer`, used by Cloud Scheduler's OAuth identity
-  to invoke the Cloud Run Job run endpoint.
+- Project role `roles/run.developer`, used for the manual Cloud Run Job
+  endpoint.
+- Cloud Run Service-level `roles/run.invoker`, granted to the scheduler
+  service account by `21-deploy-health-runner-service.sh`.
 - Secret-level `roles/secretmanager.secretAccessor` only on the named health
   runner secrets.
 
@@ -188,12 +216,16 @@ Expected proof:
   with secret values redacted.
 - IAM verification commands exist for project roles and secret access.
 - deploy dry-run prints a Cloud Run Job using `--service-account`, not a key.
+- service dry-run prints a Cloud Run Service using
+  `/usr/local/bin/nexus-health-agent-server`, not a key.
 - deploy dry-run can optionally attach the scoped Nexus admin secret for a
   leased treasury-refresh action without printing the secret value.
 - smoke dry-run prints the job execution and log read commands.
 - scheduler dry-run prints Cloud Scheduler create/update commands targeting the
-  Cloud Run Job `:run` endpoint with OAuth.
-- Dockerfile includes `/usr/local/bin/nexus-health-agent`.
+  Cloud Run Job `:run` endpoint with OAuth, and can target the Service `/run`
+  endpoint with OIDC.
+- Dockerfile includes `/usr/local/bin/nexus-health-agent` and
+  `/usr/local/bin/nexus-health-agent-server`.
 
 For a hosted read-only proof:
 
@@ -218,17 +250,24 @@ scripts/deploy/nexus/19-smoke-health-runner-job.sh
 
 For hosted continuous monitoring:
 
-1. Deploy the job with either the stable one-probe mode or the launch
-   two-cycle mode:
+1. Deploy the warm Service:
 
 ```bash
-NEXUS_HEALTH_RUNNER_JOB_ARGS='--json,--cycles,2,--cycle-interval-seconds,30' \
-scripts/deploy/nexus/18-deploy-health-runner-job.sh
+NEXUS_HEALTH_RUNNER_ATTACH_FORGE_SECRETS=false \
+scripts/deploy/nexus/21-deploy-health-runner-service.sh
 ```
 
-2. Install the scheduler:
+2. Resolve the Service URL and install the OIDC scheduler:
 
 ```bash
+SERVICE_URL="$(gcloud run services describe nexus-health-runner-service \
+  --project openagentsgemini \
+  --region us-central1 \
+  --format 'value(status.url)')"
+
+NEXUS_HEALTH_RUNNER_SCHEDULER_AUTH_MODE=oidc \
+NEXUS_HEALTH_RUNNER_SCHEDULER_URI="${SERVICE_URL}/run" \
+NEXUS_HEALTH_RUNNER_SCHEDULER_OIDC_AUDIENCE="${SERVICE_URL}" \
 scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
 ```
 

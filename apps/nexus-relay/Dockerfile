@@ -102,6 +102,7 @@ RUN apt-get update \
 COPY --from=builder /work/target/${BUILD_PROFILE}/nexus-relay /usr/local/bin/nexus-relay
 COPY --from=builder /work/target/${BUILD_PROFILE}/nexus-control /usr/local/bin/nexus-control
 COPY --from=builder /work/target/${BUILD_PROFILE}/nexus-health-agent /usr/local/bin/nexus-health-agent
+COPY --from=builder /work/target/${BUILD_PROFILE}/nexus-health-agent-server /usr/local/bin/nexus-health-agent-server
 
 USER nexus
 
