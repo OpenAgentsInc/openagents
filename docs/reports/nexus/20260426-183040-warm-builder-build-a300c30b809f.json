@@ -1,0 +1,39 @@
+{
+  "built_at": "20260426-183507",
+  "builder_hostname": "nexus-builder-1",
+  "builder_user": "nexus-builder",
+  "git_sha": "a300c30b809fac9b8384cc3e29f1120e76998a66",
+  "git_short_sha": "a300c30b809f",
+  "git_ref": "main",
+  "build_profile": "fast-release",
+  "clear_caches": false,
+  "source_archive_sha256": "f045d81ba37c60bd543d37a61b069271982f89a036518116048aaedb7ecf2fb7",
+  "source_archive_size_bytes": 1296377,
+  "source_root": "/mnt/disks/nexus-builder-cache/sources/a300c30b809fac9b8384cc3e29f1120e76998a66",
+  "artifact_root": "/mnt/disks/nexus-builder-cache/artifacts/a300c30b809fac9b8384cc3e29f1120e76998a66",
+  "binary_path": "/mnt/disks/nexus-builder-cache/artifacts/a300c30b809fac9b8384cc3e29f1120e76998a66/nexus-relay",
+  "binary_sha256": "247e40f66bf244a8d2aebe83581bc3f23fd8c99ccb94c972dea0da54fc3ef9a4",
+  "binary_size_bytes": 471229952,
+  "timing": {
+    "build_started_unix_ms": 1777228370487,
+    "build_finished_unix_ms": 1777228507606,
+    "total_duration_ms": 137119,
+    "fetch_started_unix_ms": 1777228370503,
+    "fetch_finished_unix_ms": 1777228371193,
+    "fetch_duration_ms": 690,
+    "compile_started_unix_ms": 1777228371194,
+    "compile_finished_unix_ms": 1777228505819,
+    "compile_duration_ms": 134625
+  },
+  "cache_layout": {
+    "cargo_home": "/mnt/disks/nexus-builder-cache/cargo-home",
+    "rustup_home": "/mnt/disks/nexus-builder-cache/rustup-home",
+    "cargo_target_dir": "/mnt/disks/nexus-builder-cache/target",
+    "sccache_dir": "/mnt/disks/nexus-builder-cache/sccache"
+  },
+  "tool_versions": {
+    "rustc": "rustc 1.88.0 (6b00bc388 2025-06-23)",
+    "cargo": "cargo 1.88.0 (873a06493 2025-05-10)",
+    "sccache": "sccache 0.8.2"
+  }
+}
