@@ -13,6 +13,7 @@
 mod economy;
 mod health;
 mod health_agent;
+mod health_verification;
 mod kernel;
 mod training_trn_mapping;
 mod treasury;
@@ -184,6 +185,13 @@ pub use health_agent::{
     HealthAgentRedactionReport, HealthEvidenceArtifact, NexusHealthAgentCommand,
     NexusHealthAgentReport, nexus_health_agent_usage, parse_nexus_health_agent_command,
     run_nexus_health_agent, validate_health_agent_action_plan,
+};
+pub use health_verification::{
+    NexusHealthVerificationCheck, NexusHealthVerificationEvidence,
+    NexusHealthVerificationPackCommand, NexusHealthVerificationPackReport,
+    NexusHealthVerificationRedactionReport, nexus_health_verification_pack_usage,
+    parse_nexus_health_verification_pack_command, run_nexus_health_verification_pack,
+    run_nexus_health_verification_pack_command,
 };
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_CONTROL_LISTEN_ADDR";
