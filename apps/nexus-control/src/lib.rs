@@ -12,6 +12,7 @@
 
 mod economy;
 mod health;
+mod health_agent;
 mod kernel;
 mod training_trn_mapping;
 mod treasury;
@@ -177,6 +178,12 @@ pub use crate::treasury::{
 pub use health::{
     HealthSnapshotCommand, NexusHealthSnapshot, health_snapshot_usage,
     parse_health_snapshot_command, run_health_snapshot_command,
+};
+pub use health_agent::{
+    ForgeHealthEventRequest, ForgeHealthWorkOrderRequest, ForgeWriteResult, HealthAgentActionPlan,
+    HealthAgentRedactionReport, HealthEvidenceArtifact, NexusHealthAgentCommand,
+    NexusHealthAgentReport, nexus_health_agent_usage, parse_nexus_health_agent_command,
+    run_nexus_health_agent, validate_health_agent_action_plan,
 };
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_CONTROL_LISTEN_ADDR";
