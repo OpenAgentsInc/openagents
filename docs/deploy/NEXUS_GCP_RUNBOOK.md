@@ -309,6 +309,15 @@ bound public probes. This command only observes and normalizes state. It does
 not restart services, refresh wallets, create invoices, dispatch work, or run
 recovery actions.
 
+The hosted health-runner lane for this command is documented in:
+
+- `docs/deploy/NEXUS_HEALTH_RUNNER_GCP_RUNBOOK.md`
+
+That lane runs `/usr/local/bin/nexus-health-agent` from the Nexus image as a
+Cloud Run Job with an attached service account and Secret Manager injection.
+Use it when the proof must not depend on an operator laptop's local `gcloud`
+OAuth session.
+
 ### 3.2) Issue #4413 live proof checklist
 
 This checklist captures the operational mistakes and recovery path from the
@@ -483,6 +492,16 @@ but the public host returns `530` / `1033` or goes dark, it restarts
 
 ```bash
 scripts/deploy/nexus/16-install-public-watchdog.sh
+```
+
+The hosted `nexus-health-agent` Cloud Run Job is separate from the VM-local
+systemd watchdogs. Use the health-runner job for independent GCP-origin probes,
+Forge health events, and future lease-gated recovery orchestration:
+
+```bash
+scripts/deploy/nexus/17-provision-health-runner-identity.sh
+scripts/deploy/nexus/18-deploy-health-runner-job.sh
+scripts/deploy/nexus/19-smoke-health-runner-job.sh
 ```
 
 The same deploy script now installs the default hosted homework auto-dispatcher

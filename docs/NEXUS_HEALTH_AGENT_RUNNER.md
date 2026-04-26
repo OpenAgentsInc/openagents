@@ -64,6 +64,15 @@ cargo run -p nexus-control --bin nexus-health-agent -- --pretty
 
 Do not put those secret values in tracked files, issue comments, or logs.
 
+The hosted GCP deployment lane is documented in:
+
+- `docs/deploy/NEXUS_HEALTH_RUNNER_GCP_RUNBOOK.md`
+
+That lane runs the binary as a Cloud Run Job with an attached service account
+and Secret Manager injection. The current monitor-only runner needs Forge
+secrets only for live Forge writes; a first production read probe can run with
+`--dry-run,--json` and no Forge secrets attached.
+
 ## Environment
 
 - `NEXUS_HEALTH_AGENT_NEXUS_BASE_URL`: defaults to
@@ -133,3 +142,12 @@ Expected tests cover:
 - public endpoint failure handling.
 - no sensitive-shaped keys or strings in emitted reports.
 - lease requirement for future mutating action plans.
+
+Hosted deploy-lane verification:
+
+```shell
+scripts/deploy/nexus/test-health-runner-deploy-shell-guards.sh
+```
+
+Expected deploy guards cover Cloud Run Job service-account attachment, Secret
+Manager binding, dry-run GCP command plans, and startup log secret-scan wiring.
