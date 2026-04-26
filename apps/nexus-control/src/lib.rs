@@ -9380,11 +9380,12 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
-    let stats = refresh_public_stats_cache(&state, now).ok_or_else(|| ApiError {
+    let mut stats = cached_public_stats_snapshot(&state).ok_or_else(|| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "public_stats_cache_poisoned".to_string(),
     })?;
+    apply_public_stats_cache_context(&mut stats, now, "cached");
 
     Ok(Json(stats))
 }
