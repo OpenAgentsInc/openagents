@@ -120,6 +120,7 @@ const TREASURY_STATUS_AVAILABILITY_DEBUG_ROW_LIMIT: usize = 128;
 const TREASURY_STATUS_LEGACY_AVAILABILITY_ATTENTION_LIMIT: usize = 32;
 const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
 const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
+const TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS: u64 = 15 * 60_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
 const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
 const TREASURY_MAX_CONCURRENT_ACCEPTED_WORK_SENDS: usize = 4;
@@ -3362,7 +3363,7 @@ impl TreasuryState {
             );
         let oldest_confirmation_pending_at_unix_ms = self
             .oldest_continuity_relevant_pending_payout_updated_at_unix_ms(
-                &["queued", "dispatching", "dispatched"],
+                &["dispatched"],
                 config,
                 now_unix_ms,
                 &policy,
@@ -3384,7 +3385,7 @@ impl TreasuryState {
 
             if oldest_confirmation_pending_at_unix_ms.is_some_and(|pending_since_unix_ms| {
                 now_unix_ms.saturating_sub(pending_since_unix_ms)
-                    >= TREASURY_CONTINUITY_ALERT_THRESHOLD_MS
+                    >= TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS
             }) {
                 active_alerts.push(TreasuryContinuityAlert {
                     alert_id: "confirmations_stalled".to_string(),
@@ -12088,13 +12089,13 @@ mod tests {
         let alert_at_unix_ms =
             eligible_at_unix_ms + super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000;
         let raised = state.sync_continuity_alerts(&config, alert_at_unix_ms);
-        assert_eq!(raised.len(), 2);
+        assert_eq!(raised.len(), 1);
         assert!(
             raised
                 .iter()
                 .any(|event| event.receipt_type == "treasury.alert.raised")
         );
-        assert_eq!(state.active_continuity_alerts.len(), 2);
+        assert_eq!(state.active_continuity_alerts.len(), 1);
 
         if let Some(record) = state.payout_records_by_key.get_mut("pending-a") {
             record.status = "confirmed".to_string();
@@ -12103,7 +12104,7 @@ mod tests {
         state.last_dispatch_at_unix_ms = Some(alert_at_unix_ms);
         state.last_confirmed_payout_at_unix_ms = Some(alert_at_unix_ms);
         let cleared = state.sync_continuity_alerts(&config, alert_at_unix_ms + 1);
-        assert_eq!(cleared.len(), 2);
+        assert_eq!(cleared.len(), 1);
         assert!(
             cleared
                 .iter()
@@ -12150,7 +12151,7 @@ mod tests {
         let alert_at_unix_ms =
             eligible_at_unix_ms + super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000;
         let raised = state.sync_continuity_alerts(&config, alert_at_unix_ms);
-        assert_eq!(raised.len(), 2);
+        assert_eq!(raised.len(), 1);
 
         let before = std::fs::read_to_string(path.as_path()).expect("read persisted state");
         let refreshed = state.sync_continuity_alerts(&config, alert_at_unix_ms.saturating_add(1));
@@ -12176,7 +12177,8 @@ mod tests {
             now_unix_ms.saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000),
         );
         state.last_confirmed_payout_at_unix_ms = Some(
-            now_unix_ms.saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000),
+            now_unix_ms
+                .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 60_000),
         );
         state.payout_records_by_key.insert(
             "dispatch-backlog".to_string(),
@@ -12196,6 +12198,31 @@ mod tests {
                     .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
                 sellable_at_window_open: true,
                 dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+        state.payout_records_by_key.insert(
+            "confirmation-backlog".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "confirmation-backlog".to_string(),
+                nostr_pubkey_hex: "pubkey-b".to_string(),
+                payout_target: "spark:bob".to_string(),
+                amount_sats: 2,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("payment-b".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(100_000),
+                created_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
+                updated_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
                 confirm_receipt_recorded: false,
                 fail_receipt_recorded: false,
                 skip_receipt_recorded: false,
@@ -12245,9 +12272,9 @@ mod tests {
                 window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
                 window_ends_at_unix_ms: now_unix_ms.saturating_sub(60_000),
                 created_at_unix_ms: now_unix_ms
-                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
                 updated_at_unix_ms: now_unix_ms
-                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
                 sellable_at_window_open: true,
                 dispatch_receipt_recorded: true,
                 confirm_receipt_recorded: false,
@@ -12261,6 +12288,56 @@ mod tests {
         let receipts = state.sync_continuity_alerts(&config, now_unix_ms);
         assert!(receipts.is_empty());
         assert!(state.active_continuity_alerts.is_empty());
+    }
+
+    #[test]
+    fn recent_dispatched_payments_do_not_degrade_before_confirmation_stall_threshold() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 2_000_000u64;
+        let normal_slow_confirmation_age_ms =
+            super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000;
+        state.payout_records_by_key.insert(
+            "normal-slow-dispatched".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "normal-slow-dispatched".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 25,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("normal-slow-payment".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                created_at_unix_ms: now_unix_ms.saturating_sub(normal_slow_confirmation_age_ms),
+                updated_at_unix_ms: now_unix_ms.saturating_sub(normal_slow_confirmation_age_ms),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("outcome-a".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let stats = state.public_stats(&config, now_unix_ms);
+
+        assert_ne!(
+            stats.degraded_reason.as_deref(),
+            Some("continuity_alert:confirmations_stalled")
+        );
+        assert!(
+            stats
+                .active_continuity_alerts
+                .iter()
+                .all(|alert| alert.alert_id != "confirmations_stalled"),
+            "freshly dispatched payments should not degrade Nexus while Spark confirmations are still within the normal window"
+        );
     }
 
     #[test]
@@ -12283,9 +12360,9 @@ mod tests {
                 window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
                 window_ends_at_unix_ms: now_unix_ms.saturating_sub(60_000),
                 created_at_unix_ms: now_unix_ms
-                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
                 updated_at_unix_ms: now_unix_ms
-                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 10_000),
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
                 sellable_at_window_open: true,
                 dispatch_receipt_recorded: true,
                 confirm_receipt_recorded: false,
@@ -12316,8 +12393,8 @@ mod tests {
         let mut state = TreasuryState::default();
         let config = test_treasury_config();
         let now_unix_ms = 2_000_000u64;
-        let stale_updated_at =
-            now_unix_ms.saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000);
+        let stale_updated_at = now_unix_ms
+            .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 60_000);
 
         state.payout_records_by_key.insert(
             "1770000:availability-beneficiary:host:sha256:stale".to_string(),
@@ -12372,8 +12449,8 @@ mod tests {
         let mut state = TreasuryState::default();
         let config = test_treasury_config();
         let now_unix_ms = 2_000_000u64;
-        let stale_updated_at =
-            now_unix_ms.saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000);
+        let stale_updated_at = now_unix_ms
+            .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 60_000);
 
         state.last_confirmed_payout_at_unix_ms = Some(now_unix_ms.saturating_sub(1_000));
         state.payout_records_by_key.insert(
@@ -12517,9 +12594,9 @@ mod tests {
                 window_started_at_unix_ms: now_unix_ms.saturating_sub(payout_interval_ms * 2),
                 window_ends_at_unix_ms: now_unix_ms.saturating_sub(payout_interval_ms),
                 created_at_unix_ms: now_unix_ms
-                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000),
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 60_000),
                 updated_at_unix_ms: now_unix_ms
-                    .saturating_sub(super::TREASURY_CONTINUITY_ALERT_THRESHOLD_MS + 60_000),
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 60_000),
                 sellable_at_window_open: true,
                 dispatch_receipt_recorded: true,
                 confirm_receipt_recorded: false,
