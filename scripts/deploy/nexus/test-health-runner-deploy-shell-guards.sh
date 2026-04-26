@@ -44,6 +44,7 @@ assert_contains '--set-secrets' "$DEPLOY_TEXT"
 assert_contains '/usr/local/bin/nexus-health-agent' "$DEPLOY_TEXT"
 assert_contains 'NEXUS_HEALTH_AGENT_FORGE_BEARER_TOKEN' "$DEPLOY_TEXT"
 assert_contains 'NEXUS_HEALTH_AGENT_FORGE_ACTOR_JWT' "$DEPLOY_TEXT"
+assert_contains 'NEXUS_HEALTH_AGENT_NEXUS_ADMIN_BEARER_TOKEN' "$DEPLOY_TEXT"
 assert_contains 'gcloud run jobs execute' "$SMOKE_TEXT"
 assert_contains 'log secret scan result' "$SMOKE_TEXT"
 assert_contains 'resource.labels.job_name' "$SMOKE_TEXT"
@@ -76,6 +77,16 @@ assert_contains '--service-account' "$DEPLOY_OUTPUT"
 assert_contains '--command=/usr/local/bin/nexus-health-agent' "$DEPLOY_OUTPUT"
 assert_contains '--args=--dry-run\,--json' "$DEPLOY_OUTPUT"
 assert_not_contains 'NEXUS_HEALTH_AGENT_FORGE_BEARER_TOKEN=' "$DEPLOY_OUTPUT"
+
+ADMIN_DEPLOY_OUTPUT="$(
+  NEXUS_HEALTH_RUNNER_DRY_RUN=true \
+  NEXUS_HEALTH_RUNNER_ATTACH_FORGE_SECRETS=false \
+  NEXUS_HEALTH_RUNNER_ATTACH_NEXUS_ADMIN_SECRET=true \
+  NEXUS_HEALTH_RUNNER_JOB_ARGS='--action-kind,treasury_refresh,--forge-lease-id,forge-lease-dry-run,--dry-run,--json' \
+  bash "$DEPLOY_SCRIPT" 2>&1
+)"
+assert_contains 'NEXUS_HEALTH_AGENT_NEXUS_ADMIN_BEARER_TOKEN=' "$ADMIN_DEPLOY_OUTPUT"
+assert_contains '--action-kind\,treasury_refresh' "$ADMIN_DEPLOY_OUTPUT"
 
 SMOKE_OUTPUT="$(
   NEXUS_HEALTH_RUNNER_DRY_RUN=true \

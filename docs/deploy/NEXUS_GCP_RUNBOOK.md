@@ -316,7 +316,10 @@ The hosted health-runner lane for this command is documented in:
 That lane runs `/usr/local/bin/nexus-health-agent` from the Nexus image as a
 Cloud Run Job with an attached service account and Secret Manager injection.
 Use it when the proof must not depend on an operator laptop's local `gcloud`
-OAuth session.
+OAuth session. The default job remains monitor-only; leased recovery job args
+can now record bounded actions such as `treasury_refresh`, while service
+restarts and VM mutations stay routed through Forge/Probe executors rather than
+local shell commands.
 
 ### 3.2) Issue #4413 live proof checklist
 

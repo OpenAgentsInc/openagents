@@ -68,11 +68,23 @@ CMD=(
   --set-env-vars "$(csv_join "${ENV_VARS[@]}")"
   --quiet
 )
+SECRET_VARS=()
 
 if [[ "$NEXUS_HEALTH_RUNNER_ATTACH_FORGE_SECRETS" == "true" ]]; then
-  CMD+=(
-    --set-secrets "NEXUS_HEALTH_AGENT_FORGE_BEARER_TOKEN=${NEXUS_HEALTH_RUNNER_SECRET_FORGE_BEARER_TOKEN}:latest,NEXUS_HEALTH_AGENT_FORGE_ACTOR_JWT=${NEXUS_HEALTH_RUNNER_SECRET_FORGE_ACTOR_JWT}:latest"
+  SECRET_VARS+=(
+    "NEXUS_HEALTH_AGENT_FORGE_BEARER_TOKEN=${NEXUS_HEALTH_RUNNER_SECRET_FORGE_BEARER_TOKEN}:latest"
+    "NEXUS_HEALTH_AGENT_FORGE_ACTOR_JWT=${NEXUS_HEALTH_RUNNER_SECRET_FORGE_ACTOR_JWT}:latest"
   )
+fi
+
+if [[ "$NEXUS_HEALTH_RUNNER_ATTACH_NEXUS_ADMIN_SECRET" == "true" ]]; then
+  SECRET_VARS+=(
+    "NEXUS_HEALTH_AGENT_NEXUS_ADMIN_BEARER_TOKEN=${NEXUS_HEALTH_RUNNER_SECRET_NEXUS_ADMIN_BEARER_TOKEN}:latest"
+  )
+fi
+
+if (( ${#SECRET_VARS[@]} > 0 )); then
+  CMD+=(--set-secrets "$(csv_join "${SECRET_VARS[@]}")")
 fi
 
 if dry_run; then
@@ -96,6 +108,11 @@ if [[ "$NEXUS_HEALTH_RUNNER_ATTACH_FORGE_SECRETS" == "true" ]]; then
   gcloud secrets describe "$NEXUS_HEALTH_RUNNER_SECRET_FORGE_BEARER_TOKEN" \
     --project "$GCP_PROJECT" >/dev/null
   gcloud secrets describe "$NEXUS_HEALTH_RUNNER_SECRET_FORGE_ACTOR_JWT" \
+    --project "$GCP_PROJECT" >/dev/null
+fi
+
+if [[ "$NEXUS_HEALTH_RUNNER_ATTACH_NEXUS_ADMIN_SECRET" == "true" ]]; then
+  gcloud secrets describe "$NEXUS_HEALTH_RUNNER_SECRET_NEXUS_ADMIN_BEARER_TOKEN" \
     --project "$GCP_PROJECT" >/dev/null
 fi
 

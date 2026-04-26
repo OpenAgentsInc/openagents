@@ -17,6 +17,8 @@ account, and hosted secrets come from GCP Secret Manager.
 - Public read target: `https://nexus.openagents.com`.
 - Forge write target: configured through `NEXUS_HEALTH_RUNNER_FORGE_BASE_URL`
   for live health-event writes.
+- Recovery actions: default `monitor`; leased actions can be selected through
+  `NEXUS_HEALTH_RUNNER_JOB_ARGS`.
 - Secret source: GCP Secret Manager. Do not put human refresh tokens, bearer
   tokens, or wallet material in Laravel env, Cloud Run literal env, docs,
   issue comments, or logs.
@@ -97,13 +99,15 @@ Important variables:
   `--dry-run,--json` for a public-read-only proof job.
 - `NEXUS_HEALTH_RUNNER_ATTACH_FORGE_SECRETS`: defaults to `true`; set to
   `false` for the first read-only smoke job.
+- `NEXUS_HEALTH_RUNNER_ATTACH_NEXUS_ADMIN_SECRET`: defaults to `false`; set to
+  `true` only for leased `treasury_refresh` jobs that need the scoped Nexus
+  admin bearer token.
 - `NEXUS_HEALTH_RUNNER_SECRET_FORGE_BEARER_TOKEN`: Secret Manager name for the
   Forge service bearer token.
 - `NEXUS_HEALTH_RUNNER_SECRET_FORGE_ACTOR_JWT`: Secret Manager name for the
   Forge actor JWT.
-- `NEXUS_HEALTH_RUNNER_SECRET_NEXUS_ADMIN_BEARER_TOKEN`: reserved Secret
-  Manager name for future approved Nexus admin/recovery calls. The current
-  monitor-only runner does not inject this into the job environment.
+- `NEXUS_HEALTH_RUNNER_SECRET_NEXUS_ADMIN_BEARER_TOKEN`: Secret Manager name
+  for the scoped Nexus admin bearer token used by live `treasury_refresh`.
 
 ## IAM
 
@@ -124,13 +128,14 @@ Recoverer role, not granted by this runbook:
 - Service restart, Cloudflare tunnel repair, and VM mutation rights should not
   be added to the monitor service account by default.
 
-Treasury role, not granted by this runbook:
+Treasury role:
 
 - Treasury wallet material does not belong in this Cloud Run Job.
-- Any future treasury recovery action should use the private `treasury` service
-  and Forge lease approval, not a broad Nexus monitor identity.
-- If a future monitor needs an admin token to read protected treasury status,
-  inject only the scoped token from Secret Manager and keep it out of logs.
+- `treasury_refresh` may attach only the scoped Nexus admin bearer secret and
+  only with a Forge controller lease id in the job args.
+- Larger financial controls, payout policy changes, and funding-invoice
+  creation remain approval-gated and should route through Forge/Probe or the
+  private `treasury` service, not this monitor identity.
 
 Forbidden patterns:
 
@@ -153,6 +158,8 @@ Expected proof:
   with secret values redacted.
 - IAM verification commands exist for project roles and secret access.
 - deploy dry-run prints a Cloud Run Job using `--service-account`, not a key.
+- deploy dry-run can optionally attach the scoped Nexus admin secret for a
+  leased treasury-refresh action without printing the secret value.
 - smoke dry-run prints the job execution and log read commands.
 - Dockerfile includes `/usr/local/bin/nexus-health-agent`.
 
@@ -185,6 +192,25 @@ For a live Forge-writing proof:
 4. Deploy without `--dry-run` in `NEXUS_HEALTH_RUNNER_JOB_ARGS`.
 5. Execute and confirm Forge received a redacted `nexus.health.monitor`
    work-order/event.
+
+For a leased treasury-refresh proof:
+
+1. Ensure Forge has granted/recorded the controller lease id for
+   `nexus-treasury-wallet`.
+2. Attach the scoped Nexus admin secret and deploy the action:
+
+```bash
+NEXUS_HEALTH_RUNNER_ATTACH_NEXUS_ADMIN_SECRET=true \
+NEXUS_HEALTH_RUNNER_JOB_ARGS='--action-kind,treasury_refresh,--forge-lease-id,<forge_lease_id>,--json' \
+scripts/deploy/nexus/18-deploy-health-runner-job.sh
+```
+
+3. Execute with `19-smoke-health-runner-job.sh`.
+4. Confirm the emitted report has `mode=forge_leased_recovery`,
+   `work_order_kind=nexus.treasury.verify`, a
+   `nexus.health.recovery_action` evidence artifact, and a post-action
+   verification status. Do not call the incident closed unless verification
+   passed.
 
 Do not close health-runner deployment work as complete if the only proof is a
 local laptop command. The durable proof is a Cloud Run execution using the

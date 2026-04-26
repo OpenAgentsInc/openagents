@@ -1,10 +1,11 @@
 # Nexus Health Agent Runner
 
 `nexus-health-agent` is the cloud-worker entrypoint for the Autopilot/Forge
-health loop. It is intentionally monitor-only in this phase: it observes Nexus,
-classifies the result, emits redacted evidence, and writes Forge health
-work-orders/events. It does not restart services, mutate GCP state, move funds,
-or run recovery actions without a future Forge controller lease path.
+health loop. The default path is monitor-only: it observes Nexus, classifies
+the result, emits redacted evidence, and writes Forge health work-orders/events.
+It can now also record and execute bounded recovery actions when the action is
+explicitly requested, the required Forge lease is present, and post-action
+verification runs before the report claims recovery success.
 
 ## Entry Point
 
@@ -23,6 +24,10 @@ The command emits one JSON report. The report includes:
   `POST /v1/health/work-orders` body.
 - `forge_event_request`: the planned or submitted Forge
   `POST /v1/health/events` body.
+- `action_plan`: normalized action kind, safety class, resource, lease, and
+  approval requirements.
+- `action_results`: bounded execution result plus post-action verification
+  status.
 - `forge_writes`: dry-run, fake, or live write results.
 - `redaction`: booleans proving secret-shaped keys and strings are absent from
   the emitted report.
@@ -69,9 +74,10 @@ The hosted GCP deployment lane is documented in:
 - `docs/deploy/NEXUS_HEALTH_RUNNER_GCP_RUNBOOK.md`
 
 That lane runs the binary as a Cloud Run Job with an attached service account
-and Secret Manager injection. The current monitor-only runner needs Forge
-secrets only for live Forge writes; a first production read probe can run with
-`--dry-run,--json` and no Forge secrets attached.
+and Secret Manager injection. A first production read probe can run with
+`--dry-run,--json` and no Forge secrets attached. Live Forge writes need the
+Forge bearer and actor-context secrets. Live `treasury_refresh` additionally
+needs the scoped Nexus admin bearer secret.
 
 ## Environment
 
@@ -86,6 +92,12 @@ secrets only for live Forge writes; a first production read probe can run with
   mode.
 - `NEXUS_HEALTH_AGENT_PROJECT_ID`: defaults to `openagents`.
 - `NEXUS_HEALTH_AGENT_ACTOR_ID`: defaults to `nexus-health-agent`.
+- `NEXUS_HEALTH_AGENT_ACTION_KIND`: defaults to `monitor`.
+- `NEXUS_HEALTH_AGENT_FORGE_LEASE_ID`: required for mutating actions.
+- `NEXUS_HEALTH_AGENT_APPROVAL_ID`: required for unsafe approval-gated actions.
+- `NEXUS_HEALTH_AGENT_ACTION_REASON`: optional human-readable action reason.
+- `NEXUS_HEALTH_AGENT_NEXUS_ADMIN_BEARER_TOKEN`: required only for live
+  `treasury_refresh`.
 
 CLI flags with the same meaning override the non-secret defaults:
 
@@ -95,6 +107,10 @@ CLI flags with the same meaning override the non-secret defaults:
 --timeout-ms <ms>
 --project-id <id>
 --actor-id <id>
+--action-kind <kind>
+--forge-lease-id <id>
+--approval-id <id>
+--action-reason <text>
 --fake-nexus
 --fake-forge
 --dry-run
@@ -109,20 +125,38 @@ The worker writes the APIs introduced for the health-agent program:
 - `POST /v1/health/work-orders`
 - `POST /v1/health/events`
 
-The current work-order kind is always `nexus.health.monitor`. The event payload
-contains redacted evidence references and classifier facts. If Nexus public
-endpoints fail, the worker still produces a Forge event plan or write result
-instead of crashing; the event class/resource is derived from the failed
-predicate, such as `nexus-cloudflared`, `nexus-treasury-wallet`, or
-`nexus-training-dispatcher`.
+Monitor work uses `nexus.health.monitor`. Recovery work uses the closest
+health kind for the requested action, such as `nexus.health.recover` or
+`nexus.treasury.verify`. The event payload contains redacted evidence
+references, classifier facts, the normalized action plan, and action results.
+If Nexus public endpoints fail, the worker still produces a Forge event plan or
+write result instead of crashing; the event class/resource is derived from the
+failed predicate or requested action resource, such as `nexus-cloudflared`,
+`nexus-treasury-wallet`, or `nexus-training-dispatcher`.
 
 ## Recovery Boundary
 
-Mutating actions are deliberately gated by `HealthAgentActionPlan` validation.
-Any action other than `monitor` must provide a non-empty Forge lease id. This
-issue does not grant recovery authority; later issues should wire the actual
-lease acquisition and approved recovery actions through Forge before enabling
-service restarts, GCP mutations, or payout-affecting changes.
+Action kinds:
+
+- `monitor`: default observe-only path.
+- `reprobe`, `vm_local_compare`, `collect_diagnostics`: read-only actions.
+- `treasury_refresh`, `restart_nexus_cloudflared`, `restart_nexus_relay`:
+  mutating recovery actions that require a Forge controller lease.
+- `vm_reset`, `startup_script_recovery`, `deploy_image`,
+  `payout_policy_change`, `funding_invoice_create`: unsafe actions that require
+  both a Forge controller lease and an approval id.
+
+`treasury_refresh` can call `POST /v1/admin/treasury/refresh` when a scoped
+Nexus admin bearer token is injected. Service restarts and VM/deploy mutations
+are intentionally routed through a Forge-leased Probe/GCP executor; this worker
+records the controlled action and verification contract instead of running
+local laptop shell commands.
+
+Report status is deliberately conservative. A dry run is
+`recovery_dry_run_planned`; a queued Probe/GCP action is
+`recovery_action_queued`; an approval-gated action without execution is
+`recovery_approval_required`; a recovery is not reported as `completed` unless
+the action result and post-action verification pass.
 
 ## Verification
 
@@ -133,6 +167,12 @@ cargo test -p nexus-control health_agent -- --nocapture
 cargo test -p nexus-control health_verification -- --nocapture
 cargo run -p nexus-control --bin nexus-control -- health verify --fake --pretty
 cargo run -p nexus-control --bin nexus-health-agent -- --dry-run --fake-nexus --pretty
+cargo run -p nexus-control --bin nexus-health-agent -- \
+  --action-kind treasury_refresh \
+  --forge-lease-id forge-lease-dry-run \
+  --dry-run \
+  --fake-nexus \
+  --pretty
 cargo check -p nexus-control --bins
 git diff --check
 ```
@@ -143,7 +183,10 @@ Expected tests cover:
 - fake Forge integration for work-order and event append calls.
 - public endpoint failure handling.
 - no sensitive-shaped keys or strings in emitted reports.
-- lease requirement for future mutating action plans.
+- lease requirement for mutating action plans.
+- approval-id requirement for unsafe action plans.
+- recovery dry-run action evidence and post-action verification contract.
+- fake Forge event/write assertions for leased recovery actions.
 
 For Probe or Forge evidence on Nexus fixes, attach the
 `nexus-control health verify` JSON from `docs/NEXUS_HEALTH_VERIFICATION_PACK.md`.
@@ -158,3 +201,20 @@ scripts/deploy/nexus/test-health-runner-deploy-shell-guards.sh
 
 Expected deploy guards cover Cloud Run Job service-account attachment, Secret
 Manager binding, dry-run GCP command plans, and startup log secret-scan wiring.
+
+For a hosted treasury-refresh recovery proof:
+
+1. Ensure the health-runner service account has Secret Manager access to the
+   scoped Nexus admin bearer secret.
+2. Deploy with the admin secret attached and a leased recovery action:
+
+```bash
+NEXUS_HEALTH_RUNNER_ATTACH_NEXUS_ADMIN_SECRET=true \
+NEXUS_HEALTH_RUNNER_JOB_ARGS='--action-kind,treasury_refresh,--forge-lease-id,<forge_lease_id>,--json' \
+scripts/deploy/nexus/18-deploy-health-runner-job.sh
+```
+
+3. Execute the job and confirm the report contains a
+   `nexus.health.recovery_action` evidence artifact and a post-action
+   verification status. Do not treat the incident as closed unless that
+   verification status passed.
