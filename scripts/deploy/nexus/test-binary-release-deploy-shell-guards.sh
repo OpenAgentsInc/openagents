@@ -36,6 +36,8 @@ assert_contains 'verify_nexus_public_edge_healthy()' "$COMMON_TEXT"
 assert_contains 'error code: 1033' "$COMMON_TEXT"
 assert_contains 'NEXUS_BINARY_RELEASE_UPLOAD_TIMEOUT_SECONDS' "$COMMON_TEXT"
 assert_contains 'NEXUS_BINARY_RELEASE_ACTIVATION_TIMEOUT_SECONDS' "$COMMON_TEXT"
+assert_contains 'NEXUS_BINARY_RELEASE_PUBLIC_PROBE_ATTEMPTS' "$COMMON_TEXT"
+assert_contains 'Public edge probe retrying' "$COMMON_TEXT"
 
 assert_contains 'verify_nexus_public_edge_healthy "pre-binary-upload"' "$UPLOAD_TEXT"
 assert_contains 'verify_nexus_public_edge_healthy "pre-target-upload"' "$UPLOAD_TEXT"
