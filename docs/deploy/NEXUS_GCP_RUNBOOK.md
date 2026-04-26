@@ -630,6 +630,9 @@ presence-only blocker counts lag by up to the public stats refresh interval,
 but it must not force `/api/stats` to rebuild the full training snapshot on
 every heartbeat. If `/api/stats` tail latency regresses while the fleet is
 online, check for accidental full-cache invalidation before raising thresholds.
+The public `/api/stats` handler serves the cached snapshot only; expensive
+refreshes must happen from mutation paths, payout/dispatch loops, or explicit
+operator refreshes rather than inside the user-facing request path.
 
 The deploy receipt also captures the current `/api/training/rollout` policy
 snapshot so operators can see the active rollout revision, pause state, cohort
