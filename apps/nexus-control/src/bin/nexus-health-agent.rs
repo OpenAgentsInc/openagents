@@ -17,14 +17,26 @@ async fn async_main() -> Result<()> {
             nexus_control::nexus_health_agent_usage()
         )
     })?;
-    let report = nexus_control::run_nexus_health_agent(&command).await?;
-    let output = if command.pretty {
-        serde_json::to_string_pretty(&report)
-    } else {
-        serde_json::to_string(&report)
+
+    for cycle_index in 1..=command.cycle_count {
+        let mut cycle_command = command.clone();
+        cycle_command.cycle_index = cycle_index;
+        let report = nexus_control::run_nexus_health_agent(&cycle_command).await?;
+        let output = if cycle_command.pretty {
+            serde_json::to_string_pretty(&report)
+        } else {
+            serde_json::to_string(&report)
+        }
+        .context("serialize nexus health-agent report")?;
+        println!("{output}");
+
+        if cycle_index < command.cycle_count && command.cycle_interval_seconds > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(
+                command.cycle_interval_seconds,
+            ))
+            .await;
+        }
     }
-    .context("serialize nexus health-agent report")?;
-    println!("{output}");
     Ok(())
 }
 

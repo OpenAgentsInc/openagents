@@ -505,6 +505,17 @@ Forge health events, and future lease-gated recovery orchestration:
 scripts/deploy/nexus/17-provision-health-runner-identity.sh
 scripts/deploy/nexus/18-deploy-health-runner-job.sh
 scripts/deploy/nexus/19-smoke-health-runner-job.sh
+scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
+```
+
+Cloud Scheduler is minute-granularity, so the launch-period 30-second probe
+mode is implemented by running two `nexus-health-agent` cycles inside each
+scheduled Cloud Run Job execution:
+
+```bash
+NEXUS_HEALTH_RUNNER_JOB_ARGS='--json,--cycles,2,--cycle-interval-seconds,30' \
+scripts/deploy/nexus/18-deploy-health-runner-job.sh
+scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
 ```
 
 The same deploy script now installs the default hosted homework auto-dispatcher

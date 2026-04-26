@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 const DEFAULT_NEXUS_BASE_URL: &str = "https://nexus.openagents.com";
-const DEFAULT_TIMEOUT_MS: u64 = 8_000;
+const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 const MAX_PUBLIC_STATS_AGE_MS: u64 = 120_000;
 const MIN_TREASURY_RUNWAY_WINDOWS: u64 = 20;
 const MAX_PAYOUT_DISPATCH_LAG_MULTIPLIER: u64 = 3;
@@ -292,9 +292,11 @@ async fn fetch_nexus_health_snapshot(
         .build()
         .context("build health snapshot HTTP client")?;
     let generated_at_unix_ms = now_unix_ms();
-    let healthz = fetch_endpoint(&client, &base_url, "healthz", "/healthz").await;
-    let stats = fetch_endpoint(&client, &base_url, "stats", "/api/stats").await;
-    let treasury = fetch_endpoint(&client, &base_url, "treasury", "/v1/treasury/status").await;
+    let (healthz, stats, treasury) = tokio::join!(
+        fetch_endpoint(&client, &base_url, "healthz", "/healthz"),
+        fetch_endpoint(&client, &base_url, "stats", "/api/stats"),
+        fetch_endpoint(&client, &base_url, "treasury", "/v1/treasury/status")
+    );
     Ok(snapshot_from_fetches(
         base_url.as_str(),
         generated_at_unix_ms,
@@ -1579,10 +1581,11 @@ fn now_unix_ms() -> u64 {
 }
 
 fn cloudflare_error_code(status_code: u16, body: &str) -> Option<u16> {
-    if status_code == 530 || body.contains("Error 530") {
-        Some(530)
-    } else if body.contains("error code: 1033") || body.contains("Error 1033") {
+    let normalized_body = body.to_ascii_lowercase();
+    if normalized_body.contains("error code: 1033") || normalized_body.contains("error 1033") {
         Some(1033)
+    } else if status_code == 530 || normalized_body.contains("error 530") {
+        Some(530)
     } else {
         None
     }

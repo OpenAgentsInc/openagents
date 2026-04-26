@@ -10,9 +10,14 @@ use crate::health::NexusHealthPredicate;
 use crate::{HealthSnapshotCommand, NexusHealthSnapshot};
 
 const DEFAULT_NEXUS_BASE_URL: &str = "https://nexus.openagents.com";
-const DEFAULT_TIMEOUT_MS: u64 = 8_000;
+const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 const DEFAULT_PROJECT_ID: &str = "openagents";
 const DEFAULT_ACTOR_ID: &str = "nexus-health-agent";
+const DEFAULT_SCHEDULER_NAME: &str = "manual";
+const DEFAULT_SCHEDULER_INTERVAL_SECONDS: u64 = 60;
+const DEFAULT_CYCLE_COUNT: u32 = 1;
+const DEFAULT_CYCLE_INTERVAL_SECONDS: u64 = 0;
+const DEFAULT_EXTERNAL_VANTAGE_ID: &str = "local";
 
 const ENV_NEXUS_BASE_URL: &str = "NEXUS_HEALTH_AGENT_NEXUS_BASE_URL";
 const ENV_TIMEOUT_MS: &str = "NEXUS_HEALTH_AGENT_TIMEOUT_MS";
@@ -26,6 +31,11 @@ const ENV_FORGE_LEASE_ID: &str = "NEXUS_HEALTH_AGENT_FORGE_LEASE_ID";
 const ENV_APPROVAL_ID: &str = "NEXUS_HEALTH_AGENT_APPROVAL_ID";
 const ENV_ACTION_REASON: &str = "NEXUS_HEALTH_AGENT_ACTION_REASON";
 const ENV_NEXUS_ADMIN_BEARER_TOKEN: &str = "NEXUS_HEALTH_AGENT_NEXUS_ADMIN_BEARER_TOKEN";
+const ENV_SCHEDULER_NAME: &str = "NEXUS_HEALTH_AGENT_SCHEDULER_NAME";
+const ENV_SCHEDULER_INTERVAL_SECONDS: &str = "NEXUS_HEALTH_AGENT_SCHEDULER_INTERVAL_SECONDS";
+const ENV_CYCLE_COUNT: &str = "NEXUS_HEALTH_AGENT_CYCLES";
+const ENV_CYCLE_INTERVAL_SECONDS: &str = "NEXUS_HEALTH_AGENT_CYCLE_INTERVAL_SECONDS";
+const ENV_EXTERNAL_VANTAGE_ID: &str = "NEXUS_HEALTH_AGENT_EXTERNAL_VANTAGE_ID";
 
 const ACTION_MONITOR: &str = "monitor";
 const ACTION_REPROBE: &str = "reprobe";
@@ -70,6 +80,12 @@ pub struct NexusHealthAgentCommand {
     pub approval_id: Option<String>,
     pub action_reason: Option<String>,
     pub nexus_admin_bearer_token: Option<String>,
+    pub scheduler_name: String,
+    pub scheduler_interval_seconds: u64,
+    pub cycle_count: u32,
+    pub cycle_index: u32,
+    pub cycle_interval_seconds: u64,
+    pub external_vantage_id: String,
     pub fake_nexus: bool,
     pub fake_forge: bool,
     pub dry_run: bool,
@@ -96,6 +112,8 @@ pub struct NexusHealthAgentReport {
     pub evidence_artifacts: Vec<HealthEvidenceArtifact>,
     pub action_plan: HealthAgentActionPlan,
     pub action_results: Vec<HealthAgentActionResult>,
+    pub scheduler: HealthAgentSchedulerStatus,
+    pub external_reachability: HealthAgentExternalReachabilityReport,
     pub forge_work_order_request: ForgeHealthWorkOrderRequest,
     pub forge_event_request: ForgeHealthEventRequest,
     pub forge_writes: Vec<ForgeWriteResult>,
@@ -204,8 +222,53 @@ pub struct HealthAgentActionResult {
     pub details: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HealthAgentSchedulerStatus {
+    pub scheduler_name: String,
+    pub status: String,
+    pub expected_interval_seconds: u64,
+    pub max_expected_detection_seconds: u64,
+    pub cycle_index: u32,
+    pub cycle_count: u32,
+    pub cycle_interval_seconds: u64,
+    pub projection_freshness_status: String,
+    pub stale_after_seconds: u64,
+    pub generated_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HealthAgentExternalReachabilityReport {
+    pub probe_id: String,
+    pub source: String,
+    pub vantage_id: String,
+    pub base_url: String,
+    pub status: String,
+    pub route_count: u64,
+    pub failed_route_count: u64,
+    pub cloudflare_edge_error_count: u64,
+    #[serde(default)]
+    pub cloudflare_error_codes: Vec<u16>,
+    #[serde(default)]
+    pub endpoints: Vec<HealthAgentExternalEndpointSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HealthAgentExternalEndpointSummary {
+    pub route_id: String,
+    pub path: String,
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_code: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloudflare_error_code: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 pub fn nexus_health_agent_usage() -> &'static str {
-    "nexus-health-agent [--nexus-base-url <url>] [--forge-base-url <url>] [--timeout-ms <ms>] [--project-id <id>] [--actor-id <id>] [--action-kind <kind>] [--forge-lease-id <id>] [--approval-id <id>] [--action-reason <text>] [--fake-nexus] [--fake-forge] [--dry-run] [--pretty|--json]"
+    "nexus-health-agent [--nexus-base-url <url>] [--forge-base-url <url>] [--timeout-ms <ms>] [--project-id <id>] [--actor-id <id>] [--action-kind <kind>] [--forge-lease-id <id>] [--approval-id <id>] [--action-reason <text>] [--scheduler-name <name>] [--scheduler-interval-seconds <seconds>] [--cycles <count>] [--cycle-interval-seconds <seconds>] [--external-vantage-id <id>] [--fake-nexus] [--fake-forge] [--dry-run] [--pretty|--json]"
 }
 
 pub fn parse_nexus_health_agent_command(args: &[String]) -> Result<NexusHealthAgentCommand> {
@@ -254,6 +317,35 @@ pub fn parse_nexus_health_agent_command(args: &[String]) -> Result<NexusHealthAg
                 command.action_reason =
                     Some(required_arg(args, index, "--action-reason")?.to_string());
             }
+            "--scheduler-name" => {
+                index += 1;
+                command.scheduler_name = required_arg(args, index, "--scheduler-name")?.to_string();
+            }
+            "--scheduler-interval-seconds" => {
+                index += 1;
+                command.scheduler_interval_seconds = parse_positive_u64(
+                    required_arg(args, index, "--scheduler-interval-seconds")?,
+                    "--scheduler-interval-seconds",
+                )?;
+            }
+            "--cycles" => {
+                index += 1;
+                command.cycle_count =
+                    parse_positive_u32(required_arg(args, index, "--cycles")?, "--cycles")?;
+                command.cycle_index = 1;
+            }
+            "--cycle-interval-seconds" => {
+                index += 1;
+                command.cycle_interval_seconds = parse_u64(
+                    required_arg(args, index, "--cycle-interval-seconds")?,
+                    "--cycle-interval-seconds",
+                )?;
+            }
+            "--external-vantage-id" => {
+                index += 1;
+                command.external_vantage_id =
+                    required_arg(args, index, "--external-vantage-id")?.to_string();
+            }
             "--fake-nexus" => command.fake_nexus = true,
             "--fake-forge" => command.fake_forge = true,
             "--dry-run" => command.dry_run = true,
@@ -274,6 +366,8 @@ pub async fn run_nexus_health_agent(
     command.validate()?;
     let generated_at_unix_ms = now_unix_ms();
     let snapshot_outcome = capture_snapshot(command).await;
+    let scheduler = scheduler_status(command, generated_at_unix_ms);
+    let external_reachability = external_reachability_report(command, &snapshot_outcome);
     let mut evidence_artifacts = vec![health_snapshot_evidence(&snapshot_outcome)];
     let health_context = HealthEventContext::from_snapshot_outcome(&snapshot_outcome);
     let action_plan = build_action_plan(command, &health_context)?;
@@ -311,6 +405,8 @@ pub async fn run_nexus_health_agent(
             "required_checks": [
                 "nexus.health.snapshot_present",
                 "nexus.health.event_appended",
+                "nexus.health.external_reachability_recorded",
+                "nexus.health.scheduler_metadata_recorded",
                 "nexus.health.recovery_not_attempted_without_lease",
                 "nexus.health.post_action_verification_passed"
             ],
@@ -322,7 +418,10 @@ pub async fn run_nexus_health_agent(
             "action_kind": action_plan.action_kind,
             "requires_forge_lease": action_plan.requires_forge_lease,
             "requires_approval": action_plan.requires_approval,
-            "post_action_verification_required": action_plan.post_action_verification_required
+            "post_action_verification_required": action_plan.post_action_verification_required,
+            "scheduler_name": scheduler.scheduler_name,
+            "external_vantage_id": external_reachability.vantage_id,
+            "max_expected_detection_seconds": scheduler.max_expected_detection_seconds
         }),
     };
     redact_value_in_place(&mut work_order_request.requested_outputs);
@@ -355,6 +454,8 @@ pub async fn run_nexus_health_agent(
                 "summary": artifact.summary,
             })).collect::<Vec<_>>(),
             "snapshot_status": snapshot_outcome.status(),
+            "scheduler": scheduler,
+            "external_reachability": external_reachability,
             "classification": snapshot_outcome.classification_value(),
             "verification_gates": snapshot_outcome.verification_gates_value(),
             "failed_predicates": snapshot_outcome.failed_predicates_value(),
@@ -440,6 +541,8 @@ pub async fn run_nexus_health_agent(
         evidence_artifacts,
         action_plan,
         action_results,
+        scheduler,
+        external_reachability,
         forge_work_order_request: work_order_request,
         forge_event_request: event_request,
         forge_writes,
@@ -595,6 +698,23 @@ impl NexusHealthAgentCommand {
             approval_id: env_string(ENV_APPROVAL_ID),
             action_reason: env_string(ENV_ACTION_REASON),
             nexus_admin_bearer_token: env_string(ENV_NEXUS_ADMIN_BEARER_TOKEN),
+            scheduler_name: env_string(ENV_SCHEDULER_NAME)
+                .unwrap_or_else(|| DEFAULT_SCHEDULER_NAME.to_string()),
+            scheduler_interval_seconds: env_string(ENV_SCHEDULER_INTERVAL_SECONDS)
+                .map(|value| parse_positive_u64(&value, ENV_SCHEDULER_INTERVAL_SECONDS))
+                .transpose()?
+                .unwrap_or(DEFAULT_SCHEDULER_INTERVAL_SECONDS),
+            cycle_count: env_string(ENV_CYCLE_COUNT)
+                .map(|value| parse_positive_u32(&value, ENV_CYCLE_COUNT))
+                .transpose()?
+                .unwrap_or(DEFAULT_CYCLE_COUNT),
+            cycle_index: 1,
+            cycle_interval_seconds: env_string(ENV_CYCLE_INTERVAL_SECONDS)
+                .map(|value| parse_u64(&value, ENV_CYCLE_INTERVAL_SECONDS))
+                .transpose()?
+                .unwrap_or(DEFAULT_CYCLE_INTERVAL_SECONDS),
+            external_vantage_id: env_string(ENV_EXTERNAL_VANTAGE_ID)
+                .unwrap_or_else(|| DEFAULT_EXTERNAL_VANTAGE_ID.to_string()),
             fake_nexus: false,
             fake_forge: false,
             dry_run: false,
@@ -616,6 +736,21 @@ impl NexusHealthAgentCommand {
         }
         if self.actor_id.trim().is_empty() {
             bail!("actor id must not be empty");
+        }
+        if self.scheduler_name.trim().is_empty() {
+            bail!("scheduler name must not be empty");
+        }
+        if self.scheduler_interval_seconds == 0 {
+            bail!("scheduler interval must be greater than zero");
+        }
+        if self.cycle_count == 0 {
+            bail!("cycle count must be greater than zero");
+        }
+        if self.cycle_index == 0 || self.cycle_index > self.cycle_count {
+            bail!("cycle index must be between 1 and cycle count");
+        }
+        if self.external_vantage_id.trim().is_empty() {
+            bail!("external vantage id must not be empty");
         }
         let canonical = canonical_action_kind(self.action_kind.as_str())?;
         if canonical != self.action_kind {
@@ -1152,6 +1287,107 @@ fn event_type_for_action(
     }
 }
 
+fn scheduler_status(
+    command: &NexusHealthAgentCommand,
+    generated_at_unix_ms: u64,
+) -> HealthAgentSchedulerStatus {
+    let hosted = command.scheduler_name != DEFAULT_SCHEDULER_NAME;
+    HealthAgentSchedulerStatus {
+        scheduler_name: command.scheduler_name.clone(),
+        status: if hosted { "hosted" } else { "manual" }.to_string(),
+        expected_interval_seconds: command.scheduler_interval_seconds,
+        max_expected_detection_seconds: command.scheduler_interval_seconds,
+        cycle_index: command.cycle_index,
+        cycle_count: command.cycle_count,
+        cycle_interval_seconds: command.cycle_interval_seconds,
+        projection_freshness_status: "reported_by_forge_health_event_projection".to_string(),
+        stale_after_seconds: command
+            .scheduler_interval_seconds
+            .saturating_mul(2)
+            .max(120),
+        generated_at_unix_ms,
+    }
+}
+
+fn external_reachability_report(
+    command: &NexusHealthAgentCommand,
+    outcome: &SnapshotOutcome,
+) -> HealthAgentExternalReachabilityReport {
+    match outcome {
+        SnapshotOutcome::Captured(snapshot) => {
+            let mut endpoints: Vec<_> = snapshot
+                .endpoints
+                .values()
+                .map(|endpoint| HealthAgentExternalEndpointSummary {
+                    route_id: endpoint.route_id.clone(),
+                    path: endpoint.path.clone(),
+                    ok: endpoint.ok,
+                    status_code: endpoint.status_code,
+                    cloudflare_error_code: endpoint.cloudflare_error_code,
+                    latency_ms: endpoint.latency_ms,
+                    error: endpoint
+                        .error
+                        .as_ref()
+                        .map(|error| redact_sensitive_text(error)),
+                })
+                .collect();
+            endpoints.sort_by(|left, right| left.route_id.cmp(&right.route_id));
+
+            let failed_route_count = endpoints.iter().filter(|endpoint| !endpoint.ok).count();
+            let mut cloudflare_error_codes: Vec<u16> = endpoints
+                .iter()
+                .filter_map(|endpoint| endpoint.cloudflare_error_code)
+                .collect();
+            cloudflare_error_codes.sort_unstable();
+            cloudflare_error_codes.dedup();
+
+            let status = if !cloudflare_error_codes.is_empty() {
+                "edge_failure"
+            } else if failed_route_count > 0 {
+                "public_failure"
+            } else {
+                "reachable"
+            };
+
+            HealthAgentExternalReachabilityReport {
+                probe_id: "nexus-public-edge".to_string(),
+                source: "external_public_probe".to_string(),
+                vantage_id: command.external_vantage_id.clone(),
+                base_url: command.nexus_base_url.clone(),
+                status: status.to_string(),
+                route_count: endpoints.len().try_into().unwrap_or(u64::MAX),
+                failed_route_count: failed_route_count.try_into().unwrap_or(u64::MAX),
+                cloudflare_edge_error_count: cloudflare_error_codes
+                    .len()
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+                cloudflare_error_codes,
+                endpoints,
+            }
+        }
+        SnapshotOutcome::Failed(error) => HealthAgentExternalReachabilityReport {
+            probe_id: "nexus-public-edge".to_string(),
+            source: "external_public_probe".to_string(),
+            vantage_id: command.external_vantage_id.clone(),
+            base_url: command.nexus_base_url.clone(),
+            status: "snapshot_failed".to_string(),
+            route_count: 0,
+            failed_route_count: 0,
+            cloudflare_edge_error_count: 0,
+            cloudflare_error_codes: Vec::new(),
+            endpoints: vec![HealthAgentExternalEndpointSummary {
+                route_id: "snapshot".to_string(),
+                path: "/".to_string(),
+                ok: false,
+                status_code: None,
+                cloudflare_error_code: None,
+                latency_ms: None,
+                error: Some(redact_sensitive_text(error)),
+            }],
+        },
+    }
+}
+
 async fn write_forge_health_event(
     command: &NexusHealthAgentCommand,
     work_order_request: &ForgeHealthWorkOrderRequest,
@@ -1539,6 +1775,21 @@ fn parse_positive_u64(raw: &str, name: &str) -> Result<u64> {
     Ok(parsed)
 }
 
+fn parse_u64(raw: &str, name: &str) -> Result<u64> {
+    raw.parse::<u64>()
+        .with_context(|| format!("invalid {name} value `{raw}`"))
+}
+
+fn parse_positive_u32(raw: &str, name: &str) -> Result<u32> {
+    let parsed = raw
+        .parse::<u32>()
+        .with_context(|| format!("invalid {name} value `{raw}`"))?;
+    if parsed == 0 {
+        bail!("{name} must be greater than zero");
+    }
+    Ok(parsed)
+}
+
 fn now_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1553,7 +1804,8 @@ mod tests {
     use std::sync::Arc;
 
     use axum::extract::State;
-    use axum::routing::post;
+    use axum::http::StatusCode;
+    use axum::routing::{get, post};
     use axum::{Json, Router};
     use serde_json::json;
     use tokio::net::TcpListener;
@@ -1574,6 +1826,31 @@ mod tests {
         assert!(command.fake_nexus);
         assert!(command.pretty);
         assert_eq!(command.nexus_base_url, DEFAULT_NEXUS_BASE_URL);
+    }
+
+    #[test]
+    fn parses_scheduler_and_external_vantage_options() {
+        let args = vec![
+            "nexus-health-agent".to_string(),
+            "--dry-run".to_string(),
+            "--fake-nexus".to_string(),
+            "--scheduler-name".to_string(),
+            "nexus-health-runner-every-minute".to_string(),
+            "--scheduler-interval-seconds".to_string(),
+            "60".to_string(),
+            "--cycles".to_string(),
+            "2".to_string(),
+            "--cycle-interval-seconds".to_string(),
+            "30".to_string(),
+            "--external-vantage-id".to_string(),
+            "gcp-us-central1-cloud-run-job".to_string(),
+        ];
+        let command = parse_nexus_health_agent_command(&args).expect("parse command");
+        assert_eq!(command.scheduler_name, "nexus-health-runner-every-minute");
+        assert_eq!(command.scheduler_interval_seconds, 60);
+        assert_eq!(command.cycle_count, 2);
+        assert_eq!(command.cycle_interval_seconds, 30);
+        assert_eq!(command.external_vantage_id, "gcp-us-central1-cloud-run-job");
     }
 
     #[test]
@@ -1602,6 +1879,12 @@ mod tests {
             approval_id: None,
             action_reason: None,
             nexus_admin_bearer_token: None,
+            scheduler_name: DEFAULT_SCHEDULER_NAME.to_string(),
+            scheduler_interval_seconds: DEFAULT_SCHEDULER_INTERVAL_SECONDS,
+            cycle_count: DEFAULT_CYCLE_COUNT,
+            cycle_index: 1,
+            cycle_interval_seconds: DEFAULT_CYCLE_INTERVAL_SECONDS,
+            external_vantage_id: DEFAULT_EXTERNAL_VANTAGE_ID.to_string(),
             fake_nexus: true,
             fake_forge: true,
             dry_run: true,
@@ -1646,6 +1929,12 @@ mod tests {
             approval_id: None,
             action_reason: None,
             nexus_admin_bearer_token: None,
+            scheduler_name: DEFAULT_SCHEDULER_NAME.to_string(),
+            scheduler_interval_seconds: DEFAULT_SCHEDULER_INTERVAL_SECONDS,
+            cycle_count: DEFAULT_CYCLE_COUNT,
+            cycle_index: 1,
+            cycle_interval_seconds: DEFAULT_CYCLE_INTERVAL_SECONDS,
+            external_vantage_id: DEFAULT_EXTERNAL_VANTAGE_ID.to_string(),
             fake_nexus: true,
             fake_forge: false,
             dry_run: false,
@@ -1686,6 +1975,12 @@ mod tests {
             approval_id: None,
             action_reason: None,
             nexus_admin_bearer_token: None,
+            scheduler_name: DEFAULT_SCHEDULER_NAME.to_string(),
+            scheduler_interval_seconds: DEFAULT_SCHEDULER_INTERVAL_SECONDS,
+            cycle_count: DEFAULT_CYCLE_COUNT,
+            cycle_index: 1,
+            cycle_interval_seconds: DEFAULT_CYCLE_INTERVAL_SECONDS,
+            external_vantage_id: DEFAULT_EXTERNAL_VANTAGE_ID.to_string(),
             fake_nexus: false,
             fake_forge: true,
             dry_run: true,
@@ -1701,6 +1996,64 @@ mod tests {
         assert_eq!(
             report.forge_event_request.event_type,
             "nexus.health.issue_detected"
+        );
+    }
+
+    #[tokio::test]
+    async fn external_reachability_reports_cloudflare_edge_failures() {
+        let app = Router::new()
+            .route("/healthz", get(cloudflare_1033))
+            .route("/api/stats", get(cloudflare_1033))
+            .route("/v1/treasury/status", get(cloudflare_1033));
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve fake edge");
+        });
+
+        let command = NexusHealthAgentCommand {
+            nexus_base_url: format!("http://{addr}"),
+            timeout_ms: DEFAULT_TIMEOUT_MS,
+            forge_base_url: None,
+            forge_bearer_token: None,
+            forge_actor_jwt: None,
+            project_id: "project-1".to_string(),
+            actor_id: "nexus-health-runner".to_string(),
+            action_kind: ACTION_MONITOR.to_string(),
+            forge_lease_id: None,
+            approval_id: None,
+            action_reason: None,
+            nexus_admin_bearer_token: None,
+            scheduler_name: "nexus-health-runner-every-minute".to_string(),
+            scheduler_interval_seconds: 60,
+            cycle_count: 2,
+            cycle_index: 2,
+            cycle_interval_seconds: 30,
+            external_vantage_id: "gcp-us-central1-cloud-run-job".to_string(),
+            fake_nexus: false,
+            fake_forge: true,
+            dry_run: true,
+            pretty: false,
+        };
+
+        let report = run_nexus_health_agent(&command)
+            .await
+            .expect("edge failures should produce report");
+        assert_eq!(report.external_reachability.status, "edge_failure");
+        assert_eq!(
+            report.external_reachability.cloudflare_error_codes,
+            vec![1033]
+        );
+        assert_eq!(report.external_reachability.failed_route_count, 3);
+        assert_eq!(report.scheduler.status, "hosted");
+        assert_eq!(report.scheduler.cycle_index, 2);
+        assert_eq!(
+            report.forge_event_request.payload["external_reachability"]["status"],
+            "edge_failure"
+        );
+        assert_eq!(
+            report.forge_work_order_request.verification_policy["max_expected_detection_seconds"],
+            60
         );
     }
 
@@ -1791,6 +2144,12 @@ mod tests {
             approval_id: None,
             action_reason: Some("operator requested payout verification".to_string()),
             nexus_admin_bearer_token: None,
+            scheduler_name: DEFAULT_SCHEDULER_NAME.to_string(),
+            scheduler_interval_seconds: DEFAULT_SCHEDULER_INTERVAL_SECONDS,
+            cycle_count: DEFAULT_CYCLE_COUNT,
+            cycle_index: 1,
+            cycle_interval_seconds: DEFAULT_CYCLE_INTERVAL_SECONDS,
+            external_vantage_id: DEFAULT_EXTERNAL_VANTAGE_ID.to_string(),
             fake_nexus: true,
             fake_forge: true,
             dry_run: true,
@@ -1845,6 +2204,12 @@ mod tests {
             approval_id: None,
             action_reason: Some("cloudflare 1033 detected".to_string()),
             nexus_admin_bearer_token: None,
+            scheduler_name: DEFAULT_SCHEDULER_NAME.to_string(),
+            scheduler_interval_seconds: DEFAULT_SCHEDULER_INTERVAL_SECONDS,
+            cycle_count: DEFAULT_CYCLE_COUNT,
+            cycle_index: 1,
+            cycle_interval_seconds: DEFAULT_CYCLE_INTERVAL_SECONDS,
+            external_vantage_id: DEFAULT_EXTERNAL_VANTAGE_ID.to_string(),
             fake_nexus: true,
             fake_forge: false,
             dry_run: false,
@@ -1923,6 +2288,13 @@ mod tests {
                 requests,
             }
         }
+    }
+
+    async fn cloudflare_1033() -> (StatusCode, &'static str) {
+        (
+            StatusCode::from_u16(530).expect("530 status"),
+            "Cloudflare tunnel unavailable. Error code: 1033",
+        )
     }
 
     async fn fake_work_order(

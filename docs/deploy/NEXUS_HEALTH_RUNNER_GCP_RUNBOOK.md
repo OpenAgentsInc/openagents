@@ -12,6 +12,8 @@ account, and hosted secrets come from GCP Secret Manager.
 - Build artifact: the existing `nexus-relay` container image now includes
   `/usr/local/bin/nexus-health-agent`.
 - Hosted runtime: Cloud Run Job named `nexus-health-runner`.
+- Hosted schedule: Cloud Scheduler job `nexus-health-runner-every-minute` by
+  default, invoking the Cloud Run Job run endpoint with OAuth.
 - Runtime identity: service account
   `nexus-health-runner@openagentsgemini.iam.gserviceaccount.com` by default.
 - Public read target: `https://nexus.openagents.com`.
@@ -19,6 +21,9 @@ account, and hosted secrets come from GCP Secret Manager.
   for live health-event writes.
 - Recovery actions: default `monitor`; leased actions can be selected through
   `NEXUS_HEALTH_RUNNER_JOB_ARGS`.
+- External reachability: the Cloud Run Job records
+  `external_reachability.vantage_id=gcp-<region>-cloud-run-job`, making public
+  edge failures distinguishable from VM-local watchdog health.
 - Secret source: GCP Secret Manager. Do not put human refresh tokens, bearer
   tokens, or wallet material in Laravel env, Cloud Run literal env, docs,
   issue comments, or logs.
@@ -65,6 +70,12 @@ scripts/deploy/nexus/18-deploy-health-runner-job.sh
 scripts/deploy/nexus/19-smoke-health-runner-job.sh
 ```
 
+5. Install or update the recurring hosted scheduler.
+
+```bash
+scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
+```
+
 Every script supports a no-mutation plan mode:
 
 ```bash
@@ -79,6 +90,9 @@ scripts/deploy/nexus/18-deploy-health-runner-job.sh
 
 NEXUS_HEALTH_RUNNER_DRY_RUN=true \
 scripts/deploy/nexus/19-smoke-health-runner-job.sh
+
+NEXUS_HEALTH_RUNNER_DRY_RUN=true \
+scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
 ```
 
 ## Config
@@ -97,6 +111,20 @@ Important variables:
 - `NEXUS_HEALTH_RUNNER_FORGE_BASE_URL`: required for live Forge writes.
 - `NEXUS_HEALTH_RUNNER_JOB_ARGS`: defaults to `--json`; use
   `--dry-run,--json` for a public-read-only proof job.
+- `NEXUS_HEALTH_RUNNER_JOB_ARGS='--json,--cycles,2,--cycle-interval-seconds,30'`:
+  launch-period mode for two public-edge probes per scheduled minute.
+- `NEXUS_HEALTH_RUNNER_EXTERNAL_VANTAGE_ID`: defaults to
+  `gcp-<region>-cloud-run-job`.
+- `NEXUS_HEALTH_RUNNER_SCHEDULER_NAME`: defaults to
+  `nexus-health-runner-every-minute`.
+- `NEXUS_HEALTH_RUNNER_SCHEDULER_INTERVAL_SECONDS`: defaults to `60` and is
+  emitted into every report.
+- `NEXUS_HEALTH_RUNNER_SCHEDULER_CRON`: defaults to `* * * * *`; Cloud
+  Scheduler itself is minute-granularity.
+- `NEXUS_HEALTH_RUNNER_SCHEDULER_URI`: defaults to the Cloud Run Jobs
+  `:run` endpoint for the configured job and region.
+- `NEXUS_HEALTH_RUNNER_SCHEDULER_OAUTH_SERVICE_ACCOUNT_EMAIL`: defaults to the
+  health-runner service account.
 - `NEXUS_HEALTH_RUNNER_ATTACH_FORGE_SECRETS`: defaults to `true`; set to
   `false` for the first read-only smoke job.
 - `NEXUS_HEALTH_RUNNER_ATTACH_NEXUS_ADMIN_SECRET`: defaults to `false`; set to
@@ -117,6 +145,8 @@ Reader/monitor role, enabled now:
   `nexus-health-runner@<project>.iam.gserviceaccount.com`.
 - Project role `roles/logging.logWriter`.
 - Project role `roles/monitoring.metricWriter`.
+- Project role `roles/run.developer`, used by Cloud Scheduler's OAuth identity
+  to invoke the Cloud Run Job run endpoint.
 - Secret-level `roles/secretmanager.secretAccessor` only on the named health
   runner secrets.
 
@@ -161,6 +191,8 @@ Expected proof:
 - deploy dry-run can optionally attach the scoped Nexus admin secret for a
   leased treasury-refresh action without printing the secret value.
 - smoke dry-run prints the job execution and log read commands.
+- scheduler dry-run prints Cloud Scheduler create/update commands targeting the
+  Cloud Run Job `:run` endpoint with OAuth.
 - Dockerfile includes `/usr/local/bin/nexus-health-agent`.
 
 For a hosted read-only proof:
@@ -183,6 +215,26 @@ scripts/deploy/nexus/19-smoke-health-runner-job.sh
 
 5. Confirm the execution completed and the smoke script reports that startup
    log secret scan passed.
+
+For hosted continuous monitoring:
+
+1. Deploy the job with either the stable one-probe mode or the launch
+   two-cycle mode:
+
+```bash
+NEXUS_HEALTH_RUNNER_JOB_ARGS='--json,--cycles,2,--cycle-interval-seconds,30' \
+scripts/deploy/nexus/18-deploy-health-runner-job.sh
+```
+
+2. Install the scheduler:
+
+```bash
+scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
+```
+
+3. Confirm Cloud Logging shows repeated executions and that each health event
+   includes `scheduler.status=hosted`, `max_expected_detection_seconds<=60`,
+   and `external_reachability.source=external_public_probe`.
 
 For a live Forge-writing proof:
 
