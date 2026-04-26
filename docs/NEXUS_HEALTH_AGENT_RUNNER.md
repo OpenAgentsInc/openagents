@@ -130,6 +130,8 @@ Focused verification for this runner:
 
 ```shell
 cargo test -p nexus-control health_agent -- --nocapture
+cargo test -p nexus-control health_verification -- --nocapture
+cargo run -p nexus-control --bin nexus-control -- health verify --fake --pretty
 cargo run -p nexus-control --bin nexus-health-agent -- --dry-run --fake-nexus --pretty
 cargo check -p nexus-control --bins
 git diff --check
@@ -142,6 +144,11 @@ Expected tests cover:
 - public endpoint failure handling.
 - no sensitive-shaped keys or strings in emitted reports.
 - lease requirement for future mutating action plans.
+
+For Probe or Forge evidence on Nexus fixes, attach the
+`nexus-control health verify` JSON from `docs/NEXUS_HEALTH_VERIFICATION_PACK.md`.
+It packages required health gates, advisory payout/training/deploy checks, and
+redacted inline evidence without granting mutation authority.
 
 Hosted deploy-lane verification:
 

@@ -15,6 +15,8 @@ This directory is organized around a small number of canonical entry points.
   for npm Pylon, admin-paced homework dispatch, and accepted-work payout proof.
 - `NEXUS_HEALTH_AGENT_RUNNER.md`: cloud-worker entrypoint for monitor-only
   Nexus health snapshots, redacted evidence, and Forge health events.
+- `NEXUS_HEALTH_VERIFICATION_PACK.md`: machine-readable Nexus verification
+  pack for Forge Evidence and Probe-generated health fixes.
 - `deploy/NEXUS_HEALTH_RUNNER_GCP_RUNBOOK.md`: hosted GCP service-account,
   Secret Manager, Cloud Run Job, and smoke lane for the health runner.
 - `kernel/markets/data-market.md`: canonical current Data Market implementation status.

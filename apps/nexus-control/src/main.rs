@@ -13,6 +13,22 @@ async fn async_main(worker_threads: usize) -> Result<()> {
     ensure_rustls_crypto_provider()?;
 
     if matches!(args.get(1).map(String::as_str), Some("health")) {
+        if matches!(
+            args.get(2).map(String::as_str),
+            Some("verify" | "verification-pack")
+        ) {
+            let command = nexus_control::parse_nexus_health_verification_pack_command(&args)
+                .map_err(|error| {
+                    anyhow::anyhow!(
+                        "failed to parse health verification command: {error}\nusage: nexus-control {}",
+                        nexus_control::nexus_health_verification_pack_usage()
+                    )
+                })?;
+            let output =
+                nexus_control::run_nexus_health_verification_pack_command(&command).await?;
+            println!("{output}");
+            return Ok(());
+        }
         let command = nexus_control::parse_health_snapshot_command(&args).map_err(|error| {
             anyhow::anyhow!(
                 "failed to parse health command: {error}\nusage: nexus-control {}",

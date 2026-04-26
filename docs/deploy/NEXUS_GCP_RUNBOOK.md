@@ -245,7 +245,7 @@ of waiting for the condition to clear on its own.
 operators and future health agents:
 
 ```bash
-cargo run -p nexus-control -- health snapshot --pretty
+cargo run -p nexus-control --bin nexus-control -- health snapshot --pretty
 ```
 
 The command probes:
@@ -301,7 +301,7 @@ Use the deterministic fake mode for local tests, docs, and CI-like smoke
 checks:
 
 ```bash
-cargo run -p nexus-control -- health snapshot --fake --pretty
+cargo run -p nexus-control --bin nexus-control -- health snapshot --fake --pretty
 ```
 
 Use `--base-url <url>` for a local or staging Nexus and `--timeout-ms <ms>` to
