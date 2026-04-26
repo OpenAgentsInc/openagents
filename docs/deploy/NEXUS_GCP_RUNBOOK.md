@@ -624,6 +624,13 @@ scripts/deploy/nexus/04-verify-gates.sh
 The provider-presence probe now uses `dry_run=true` so deploy verification hits
 the real heartbeat handler without polluting live public pylon counts.
 
+Provider presence heartbeats intentionally throttle public stats cache
+invalidation. A live Pylon heartbeat can make homework-worker eligibility and
+presence-only blocker counts lag by up to the public stats refresh interval,
+but it must not force `/api/stats` to rebuild the full training snapshot on
+every heartbeat. If `/api/stats` tail latency regresses while the fleet is
+online, check for accidental full-cache invalidation before raising thresholds.
+
 The deploy receipt also captures the current `/api/training/rollout` policy
 snapshot so operators can see the active rollout revision, pause state, cohort
 count, and blocked build or release breakers in the same artifact as the

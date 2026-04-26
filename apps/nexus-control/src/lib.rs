@@ -12414,7 +12414,7 @@ async fn record_provider_presence_heartbeat(
         .provider_presence
         .record_heartbeat(normalized_request, now);
     drop(store);
-    invalidate_public_stats_cache(&state, now);
+    throttle_public_stats_cache_invalidation(&state, now);
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
         session_id: record.session_id,
@@ -12445,7 +12445,7 @@ async fn record_provider_presence_offline(
         .provider_presence
         .record_offline(nostr_pubkey_hex, session_id, now);
     drop(store);
-    invalidate_public_stats_cache(&state, now);
+    throttle_public_stats_cache_invalidation(&state, now);
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
         session_id: record.session_id,
@@ -26251,6 +26251,17 @@ fn invalidate_public_stats_cache(state: &AppState, now_unix_ms: u64) {
         now_unix_ms.saturating_sub(PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS + 1);
 }
 
+fn throttle_public_stats_cache_invalidation(state: &AppState, now_unix_ms: u64) {
+    let Ok(mut cache) = state.public_stats_cache.try_write() else {
+        return;
+    };
+    let age_ms = now_unix_ms.saturating_sub(cache.as_of_unix_ms);
+    if age_ms >= PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS {
+        cache.as_of_unix_ms =
+            now_unix_ms.saturating_sub(PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS + 1);
+    }
+}
+
 fn replace_training_run_detail_cache(state: &AppState, snapshot: PublicTrainingRunDetailSnapshot) {
     if snapshot.training_run_id.is_empty() {
         return;
@@ -31961,7 +31972,8 @@ mod tests {
 
     #[tokio::test]
     async fn provider_presence_routes_publish_public_stats() -> Result<()> {
-        let app = build_router(test_config()?);
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
 
         let mut alpha =
             provider_presence_request("aabbccdd00112233", "session-a-1", "alpha", 1, "online");
@@ -31995,6 +32007,7 @@ mod tests {
                 .await?;
             assert_eq!(response.status(), StatusCode::OK);
         }
+        super::force_refresh_public_stats_cache(&state, now_unix_ms());
 
         let stats_response = app
             .clone()
@@ -32097,6 +32110,7 @@ mod tests {
             )
             .await?;
         assert_eq!(offline_response.status(), StatusCode::OK);
+        super::force_refresh_public_stats_cache(&state, now_unix_ms());
 
         let stats_response = app
             .clone()
