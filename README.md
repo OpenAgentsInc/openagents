@@ -157,6 +157,12 @@ standalone binary, then restarts the local dashboard from the updated cache.
 Use `pylon --no-updates` only when you intentionally need to keep the currently
 installed cached binary running.
 
+Auto-update is a launcher feature, not a native feature of direct release
+assets. Keep the npm or bun-installed `pylon` command on `PATH` if you want
+automatic updates. If you extract a GitHub `pylon-v...` archive and run the
+standalone `./pylon` binary directly, that process reports its compiled version
+until you manually replace it with a newer archive.
+
 Keep that process running. Pylon creates local node identity and wallet state,
 marks the node online, advertises eligible capabilities to Nexus, asks for
 available work, executes assigned jobs locally, and watches for accepted-work
@@ -173,6 +179,11 @@ Current production truth:
   `--version` is used.
 - The latest trusted standalone binary release is `pylon-v0.1.15`, published
   by `AtlantisPleb`.
+- Public `/api/stats` online client versions are live provider heartbeat
+  versions, not installer intent. A lingering `pylon/0.1.14` row after
+  `pylon-v0.1.15` is published means an old process is still running, a pinned
+  or `--no-updates` launcher is active, or a direct-release binary was started
+  manually. It is not fixed by the stats page hiding the old row.
 - The live paid work class is bounded hosted homework/training work, currently
   the CS336 A1 starter lane used to prove the earning loop.
 - Work is not yet a fully open demand marketplace. Hosted Nexus currently

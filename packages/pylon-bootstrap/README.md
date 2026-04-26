@@ -65,6 +65,11 @@ The launcher:
   without replacing the global npm/bun command
 - use `--no-updates` to keep the current installed release running without
   background GitHub release checks; `--version` remains a pinned release run
+- owns the current auto-update contract. Directly extracted GitHub release
+  assets do not contain a native updater today; if an operator runs
+  `./pylon` from an unpacked archive, that process stays on its compiled
+  version until the operator manually replaces the archive or switches back to
+  the npm/bun launcher.
 - for hosted homework/training work, use launcher `0.1.15` or newer so the
   cached standalone binary auto-updates while the dashboard is open. The
   `pylon-v0.1.15` standalone binary keeps the long hosted homework ID hashing
