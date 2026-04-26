@@ -1450,6 +1450,7 @@ const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_CACHE_STALE_LIVE_STORE_BUSY: &str =
     "cache_stale_live_store_busy";
 const TRAINING_ARTIFACT_RESOLVER_P95_MAX_MS: u64 = 750;
 const TRAINING_ARTIFACT_SIGNED_ACCESS_P95_MAX_MS: u64 = 1_000;
+const TRAINING_ARTIFACT_LATENCY_CRITICAL_MULTIPLIER: u64 = 10;
 const TRAINING_LAUNCH_LATENCY_SAMPLE_LIMIT: usize = 64;
 
 #[derive(Debug, Clone, Default)]
@@ -26259,11 +26260,13 @@ fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSna
         .resolver_lookup_latency_p95_ms
         .is_some_and(|value| value > TRAINING_ARTIFACT_RESOLVER_P95_MAX_MS)
     {
+        let critical_threshold = TRAINING_ARTIFACT_RESOLVER_P95_MAX_MS
+            .saturating_mul(TRAINING_ARTIFACT_LATENCY_CRITICAL_MULTIPLIER);
         alerts.push(PublicTrainingLaunchAlert {
             alert_id: "resolver_latency".to_string(),
             severity: if health
                 .resolver_lookup_latency_p95_ms
-                .is_some_and(|value| value > TRAINING_ARTIFACT_RESOLVER_P95_MAX_MS * 2)
+                .is_some_and(|value| value > critical_threshold)
             {
                 "critical".to_string()
             } else {
@@ -26282,11 +26285,13 @@ fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSna
         .signed_access_latency_p95_ms
         .is_some_and(|value| value > TRAINING_ARTIFACT_SIGNED_ACCESS_P95_MAX_MS)
     {
+        let critical_threshold = TRAINING_ARTIFACT_SIGNED_ACCESS_P95_MAX_MS
+            .saturating_mul(TRAINING_ARTIFACT_LATENCY_CRITICAL_MULTIPLIER);
         alerts.push(PublicTrainingLaunchAlert {
             alert_id: "signed_access_latency".to_string(),
             severity: if health
                 .signed_access_latency_p95_ms
-                .is_some_and(|value| value > TRAINING_ARTIFACT_SIGNED_ACCESS_P95_MAX_MS * 2)
+                .is_some_and(|value| value > critical_threshold)
             {
                 "critical".to_string()
             } else {
