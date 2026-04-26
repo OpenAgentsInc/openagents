@@ -9201,33 +9201,12 @@ async fn public_stats(
     State(state): State<AppState>,
 ) -> Result<Json<PublicStatsSnapshot>, ApiError> {
     let now = now_unix_ms();
-    let cached_stats = match try_cached_public_stats_snapshot(&state) {
-        Ok(snapshot) => snapshot,
-        Err(error) => return Err(error),
-    };
-
-    if let Some(mut stats) = cached_stats.clone() {
-        let age_ms = now.saturating_sub(stats.as_of_unix_ms);
-        if age_ms < PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS {
-            apply_public_stats_cache_context(&mut stats, now, "cached");
-            return Ok(Json(stats));
-        }
-    }
-
-    let store = match try_read_store(&state, "public_stats_live_store_busy") {
-        Ok(store) => store,
-        Err(error) => {
-            if let Some(mut stats) = cached_stats {
-                apply_public_stats_cache_context(&mut stats, now, "cached");
-                return Ok(Json(stats));
-            }
-            return Err(error);
-        }
-    };
-    let launch_metrics = training_launch_live_metrics_snapshot(&state);
-    let mut stats = build_public_stats_snapshot(&state.config, &store, &launch_metrics, now);
-    apply_public_stats_cache_context(&mut stats, now, "live");
-    replace_public_stats_cache(&state, stats.clone());
+    let mut stats = cached_public_stats_snapshot(&state).ok_or_else(|| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "public_stats_cache_poisoned".to_string(),
+    })?;
+    apply_public_stats_cache_context(&mut stats, now, "cached");
 
     Ok(Json(stats))
 }
@@ -31691,7 +31670,8 @@ mod tests {
 
     #[tokio::test]
     async fn public_stats_reflects_backend_session_and_sync_receipts() -> Result<()> {
-        let app = build_router(test_config()?);
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
 
         let empty_stats = app
             .clone()
@@ -31742,6 +31722,7 @@ mod tests {
             )
             .await?;
         assert_eq!(token_response.status(), StatusCode::OK);
+        super::force_refresh_public_stats_cache(&state, now_unix_ms());
 
         let stats_response = app
             .clone()
@@ -32660,6 +32641,7 @@ mod tests {
         assert_eq!(funding.bolt11_invoice.as_deref(), Some("lnbc210fund"));
 
         let stats_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -33074,6 +33056,7 @@ mod tests {
         })));
 
         let stats_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -33174,6 +33157,7 @@ mod tests {
 
         let started_at = Instant::now();
         let stats_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -33229,6 +33213,7 @@ mod tests {
 
         let started_at = Instant::now();
         let stats_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -33290,7 +33275,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn public_stats_refreshes_stale_cache_when_store_is_readable() -> Result<()> {
+    async fn public_stats_returns_stale_cache_until_background_refresh() -> Result<()> {
         let state = build_app_state(test_config()?);
         let app = build_router_with_state(state.clone());
         let now = now_unix_ms();
@@ -33310,6 +33295,7 @@ mod tests {
         }
 
         let stats_response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -33320,14 +33306,27 @@ mod tests {
         assert_eq!(stats_response.status(), StatusCode::OK);
 
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
-        assert_eq!(stats.nexus_wallet_balance_sats, 999);
+        assert_eq!(stats.nexus_wallet_balance_sats, 777);
         assert_eq!(
             stats
                 .training_public_state
                 .launch_health
                 .public_snapshot_source,
-            "live"
+            "cached"
         );
+
+        super::force_refresh_public_stats_cache(&state, now_unix_ms());
+        let refreshed_response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(refreshed_response.status(), StatusCode::OK);
+        let refreshed: PublicStatsSnapshot = response_json(refreshed_response).await?;
+        assert_eq!(refreshed.nexus_wallet_balance_sats, 999);
 
         Ok(())
     }
@@ -33367,34 +33366,6 @@ mod tests {
                 .public_snapshot_source,
             "cached"
         );
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn public_stats_fails_fast_when_stats_cache_is_busy() -> Result<()> {
-        let state = build_app_state(test_config()?);
-        let app = build_router_with_state(state.clone());
-        let _cache_guard = state
-            .public_stats_cache
-            .write()
-            .expect("hold stats cache write lock");
-
-        let stats_response = tokio::time::timeout(
-            Duration::from_millis(100),
-            app.oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri("/api/stats")
-                    .body(Body::empty())?,
-            ),
-        )
-        .await
-        .expect("/api/stats should fail fast while cache is busy")?;
-
-        assert_eq!(stats_response.status(), StatusCode::SERVICE_UNAVAILABLE);
-        let error: ErrorResponse = response_json(stats_response).await?;
-        assert_eq!(error.reason, "public_stats_cache_busy");
 
         Ok(())
     }
@@ -52025,7 +51996,7 @@ mod tests {
         let mut config = test_config()?;
         config.training_artifact_signed_url = Some(training_artifact_signed_url);
         let state = build_app_state(config);
-        let app = build_router_with_state(state);
+        let app = build_router_with_state(state.clone());
         let session = create_session_token(&app).await?;
         let artifact_id = "oa.train_artifact.v1~kind~local_update~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123";
 
@@ -52065,6 +52036,7 @@ mod tests {
             )
             .await?;
         assert_eq!(signed_access_response.status(), StatusCode::OK);
+        super::force_refresh_public_stats_cache(&state, now_unix_ms());
 
         let stats_response = app
             .clone()
@@ -52078,7 +52050,7 @@ mod tests {
         assert_eq!(stats_response.status(), StatusCode::OK);
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         let health = stats.training_public_state.launch_health;
-        assert_eq!(health.public_snapshot_source, "live");
+        assert_eq!(health.public_snapshot_source, "cached");
         assert!(health.resolver_lookup_latency_p95_ms.is_some());
         assert!(health.signed_access_latency_p95_ms.is_some());
         assert!(health.resolver_lookup_sample_count >= 1);
