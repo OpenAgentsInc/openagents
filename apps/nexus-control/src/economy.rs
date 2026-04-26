@@ -97,6 +97,15 @@ pub struct PublicPylonClientVersionCount {
     pub online_pylons: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicHomeworkWorkerPresenceOnlyBlockerCount {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_version: Option<String>,
+    pub reason: String,
+    pub online_sessions: u64,
+    pub online_pylons: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PublicRecentPylonDiagnostic {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -713,6 +722,8 @@ pub struct PublicStatsSnapshot {
     #[serde(default)]
     pub training_admitted_nodes_online: u64,
     #[serde(default)]
+    pub homework_worker_eligible_pylons_online_now: u64,
+    #[serde(default)]
     pub training_runs_active: u64,
     #[serde(default)]
     pub training_windows_active: u64,
@@ -805,6 +816,11 @@ pub struct PublicStatsSnapshot {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pylon_client_version_counts: Vec<PublicPylonClientVersionCount>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub homework_worker_eligible_pylon_version_counts: Vec<PublicPylonClientVersionCount>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub homework_worker_presence_only_blocker_counts:
+        Vec<PublicHomeworkWorkerPresenceOnlyBlockerCount>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_pylon_diagnostics: Vec<PublicRecentPylonDiagnostic>,
     pub recent_receipts: Vec<PublicRecentReceipt>,
 }
@@ -884,6 +900,7 @@ pub struct PublicRuntimeSnapshot {
     pub training_weak_device_accepted_contributors: u64,
     pub training_nodes_online: u64,
     pub training_admitted_nodes_online: u64,
+    pub homework_worker_eligible_pylons_online_now: u64,
     pub training_runs_active: u64,
     pub training_windows_active: u64,
     pub training_windows_pending_validation: u64,
@@ -961,6 +978,9 @@ pub struct PublicRuntimeSnapshot {
     pub risk_coverage_concentration_hhi: f64,
     pub recent_pylons: Vec<PublicRecentPylon>,
     pub pylon_client_version_counts: Vec<PublicPylonClientVersionCount>,
+    pub homework_worker_eligible_pylon_version_counts: Vec<PublicPylonClientVersionCount>,
+    pub homework_worker_presence_only_blocker_counts:
+        Vec<PublicHomeworkWorkerPresenceOnlyBlockerCount>,
     pub recent_pylon_diagnostics: Vec<PublicRecentPylonDiagnostic>,
 }
 
@@ -1108,6 +1128,12 @@ impl ReceiptLedger {
                 .likely_same_host_pylon_sessions_online_now,
             likely_same_host_pylons_online_now: runtime.likely_same_host_pylons_online_now,
             pylon_client_version_counts: runtime.pylon_client_version_counts.clone(),
+            homework_worker_eligible_pylon_version_counts: runtime
+                .homework_worker_eligible_pylon_version_counts
+                .clone(),
+            homework_worker_presence_only_blocker_counts: runtime
+                .homework_worker_presence_only_blocker_counts
+                .clone(),
             pylon_presence_stale_after_ms: runtime.pylon_presence_stale_after_ms,
             sessions_active: runtime.sessions_active,
             sessions_issued_24h,
@@ -1209,6 +1235,8 @@ impl ReceiptLedger {
                 .training_weak_device_accepted_contributors,
             training_nodes_online: runtime.training_nodes_online,
             training_admitted_nodes_online: runtime.training_admitted_nodes_online,
+            homework_worker_eligible_pylons_online_now: runtime
+                .homework_worker_eligible_pylons_online_now,
             training_runs_active: runtime.training_runs_active,
             training_windows_active: runtime.training_windows_active,
             training_windows_pending_validation: runtime.training_windows_pending_validation,
@@ -1504,6 +1532,8 @@ mod tests {
                 likely_same_host_pylon_sessions_online_now: 0,
                 likely_same_host_pylons_online_now: 0,
                 pylon_client_version_counts: Vec::new(),
+                homework_worker_eligible_pylon_version_counts: Vec::new(),
+                homework_worker_presence_only_blocker_counts: Vec::new(),
                 pylon_presence_stale_after_ms: 0,
                 sessions_active: 1,
                 sync_tokens_active: 1,
@@ -1566,6 +1596,7 @@ mod tests {
                 training_weak_device_accepted_contributors: 0,
                 training_nodes_online: 0,
                 training_admitted_nodes_online: 0,
+                homework_worker_eligible_pylons_online_now: 0,
                 training_runs_active: 0,
                 training_windows_active: 0,
                 training_windows_pending_validation: 0,

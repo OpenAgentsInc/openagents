@@ -33,10 +33,25 @@ TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/openagents-nexus-release-upload.XXXXXX")"
 TMP_REMOTE_SCRIPT="$(mktemp "${TMPDIR:-/tmp}/openagents-nexus-upload.XXXXXX")"
 trap 'rm -rf "$TMP_DIR" "$TMP_REMOTE_SCRIPT"' EXIT
 
+cleanup_remote_release_archive() {
+  run_with_timeout \
+    "$NEXUS_BINARY_RELEASE_CLEANUP_TIMEOUT_SECONDS" \
+    "cleanup-target-partial-release-archive" \
+    gcloud compute ssh "$NEXUS_VM" \
+      --tunnel-through-iap \
+      --project "$GCP_PROJECT" \
+      --zone "$GCP_ZONE" \
+      --command "rm -f '/tmp/${ARCHIVE_NAME}' '/tmp/nexus-upload-binary-release.sh'" >/dev/null || \
+    log "Warning: could not clean remote partial release archive ${ARCHIVE_NAME}"
+}
+
+verify_nexus_public_edge_healthy "pre-binary-upload"
+
 log "Archiving builder artifact ${NEXUS_RELEASE_GIT_SHA} on ${NEXUS_BUILDER_VM}"
 ARCHIVE_STARTED_MS="$(timestamp_unix_ms)"
 BUILDER_ARCHIVE_SIZE_BYTES="$(
-  gcloud compute ssh "$NEXUS_BUILDER_VM" \
+  run_with_timeout "$NEXUS_BINARY_RELEASE_STEP_TIMEOUT_SECONDS" "builder-archive-release" \
+    gcloud compute ssh "$NEXUS_BUILDER_VM" \
     --tunnel-through-iap \
     --project "$GCP_PROJECT" \
     --zone "$GCP_ZONE" \
@@ -47,19 +62,21 @@ ARCHIVE_FINISHED_MS="$(timestamp_unix_ms)"
 LOCAL_ARCHIVE_PATH="${TMP_DIR}/${ARCHIVE_NAME}"
 log "Downloading builder archive ${ARCHIVE_NAME} from ${NEXUS_BUILDER_VM}"
 DOWNLOAD_STARTED_MS="$(timestamp_unix_ms)"
-gcloud compute scp --tunnel-through-iap \
-  --project "$GCP_PROJECT" \
-  --zone "$GCP_ZONE" \
-  "${NEXUS_BUILDER_VM}:${BUILDER_ARCHIVE_PATH}" \
-  "$LOCAL_ARCHIVE_PATH" >/dev/null
+run_with_timeout "$NEXUS_BINARY_RELEASE_STEP_TIMEOUT_SECONDS" "download-builder-release-archive" \
+  gcloud compute scp --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    "${NEXUS_BUILDER_VM}:${BUILDER_ARCHIVE_PATH}" \
+    "$LOCAL_ARCHIVE_PATH" >/dev/null
 DOWNLOAD_FINISHED_MS="$(timestamp_unix_ms)"
 [[ -f "$LOCAL_ARCHIVE_PATH" ]] || die "Builder archive was not downloaded: ${LOCAL_ARCHIVE_PATH}"
 
-gcloud compute ssh "$NEXUS_BUILDER_VM" \
-  --tunnel-through-iap \
-  --project "$GCP_PROJECT" \
-  --zone "$GCP_ZONE" \
-  --command "rm -f '${BUILDER_ARCHIVE_PATH}'" >/dev/null
+run_with_timeout "$NEXUS_BINARY_RELEASE_CLEANUP_TIMEOUT_SECONDS" "cleanup-builder-release-archive" \
+  gcloud compute ssh "$NEXUS_BUILDER_VM" \
+    --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    --command "rm -f '${BUILDER_ARCHIVE_PATH}'" >/dev/null
 
 LOCAL_RELEASE_DIR="${TMP_DIR}/${NEXUS_RELEASE_GIT_SHA}"
 mkdir -p "$LOCAL_RELEASE_DIR"
@@ -72,13 +89,20 @@ BINARY_SHA256="$(if [[ -f "${LOCAL_RELEASE_DIR}/nexus-relay.sha256" ]]; then tr 
 BUILD_METADATA_JSON="$(cat "${LOCAL_RELEASE_DIR}/build-metadata.json")"
 
 log "Uploading release archive ${ARCHIVE_NAME} to ${NEXUS_VM}"
+cleanup_remote_release_archive
+verify_nexus_public_edge_healthy "pre-target-upload"
 UPLOAD_STARTED_MS="$(timestamp_unix_ms)"
-gcloud compute scp --tunnel-through-iap \
-  --project "$GCP_PROJECT" \
-  --zone "$GCP_ZONE" \
-  "$LOCAL_ARCHIVE_PATH" \
-  "${NEXUS_VM}:/tmp/${ARCHIVE_NAME}" >/dev/null
+if ! run_with_timeout "$NEXUS_BINARY_RELEASE_UPLOAD_TIMEOUT_SECONDS" "upload-target-release-archive" \
+  gcloud compute scp --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    "$LOCAL_ARCHIVE_PATH" \
+    "${NEXUS_VM}:/tmp/${ARCHIVE_NAME}" >/dev/null; then
+  cleanup_remote_release_archive
+  die "Release archive upload failed or timed out before remote install; activation was not attempted"
+fi
 UPLOAD_FINISHED_MS="$(timestamp_unix_ms)"
+verify_nexus_public_edge_healthy "post-target-upload"
 
 cat >"$TMP_REMOTE_SCRIPT" <<'REMOTE'
 #!/usr/bin/env bash
@@ -146,20 +170,23 @@ REMOTE
 
 chmod 755 "$TMP_REMOTE_SCRIPT"
 
-gcloud compute scp --tunnel-through-iap \
-  --project "$GCP_PROJECT" \
-  --zone "$GCP_ZONE" \
-  "$TMP_REMOTE_SCRIPT" "${NEXUS_VM}:/tmp/nexus-upload-binary-release.sh" >/dev/null
+run_with_timeout "$NEXUS_BINARY_RELEASE_STEP_TIMEOUT_SECONDS" "upload-target-install-script" \
+  gcloud compute scp --tunnel-through-iap \
+    --project "$GCP_PROJECT" \
+    --zone "$GCP_ZONE" \
+    "$TMP_REMOTE_SCRIPT" "${NEXUS_VM}:/tmp/nexus-upload-binary-release.sh" >/dev/null
 
 REMOTE_INSTALL_STARTED_MS="$(timestamp_unix_ms)"
 UPLOAD_RESULT="$(
-  gcloud compute ssh "$NEXUS_VM" \
+  run_with_timeout "$NEXUS_BINARY_RELEASE_STEP_TIMEOUT_SECONDS" "install-target-release-archive" \
+    gcloud compute ssh "$NEXUS_VM" \
     --tunnel-through-iap \
     --project "$GCP_PROJECT" \
     --zone "$GCP_ZONE" \
     --command "chmod 755 /tmp/nexus-upload-binary-release.sh && /tmp/nexus-upload-binary-release.sh '${NEXUS_RELEASE_GIT_SHA}' '${NEXUS_RELEASE_ROOT}' '${NEXUS_SERVICE_USER}' '${NEXUS_SERVICE_GROUP}' '${NEXUS_SERVICE_UID}' '${NEXUS_RUNTIME_ENV_PATH}' '${NEXUS_UPSTREAM_CONFIG_PATH}'"
 )"
 REMOTE_INSTALL_FINISHED_MS="$(timestamp_unix_ms)"
+verify_nexus_public_edge_healthy "post-binary-upload"
 
 mkdir -p "$REPORT_DIR"
 OVERALL_FINISHED_MS="$(timestamp_unix_ms)"

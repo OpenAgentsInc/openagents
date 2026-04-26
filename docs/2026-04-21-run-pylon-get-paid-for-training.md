@@ -158,6 +158,32 @@ the call.
 The endpoint does not pay anyone at launch time. It only creates work. Treasury
 pays after a contribution closes out as accepted work.
 
+## Presence Payouts vs Homework Worker Eligibility
+
+Nexus now exposes the distinction directly. A Pylon can be online for presence
+or availability payouts without being eligible for homework assignment. The
+homework path requires a fresh admitted training node, worker role claim,
+current-enough Pylon build, worker claimability, and a settlement destination.
+
+Check `/api/stats` for:
+
+```text
+pylon_client_version_counts
+homework_worker_eligible_pylons_online_now
+homework_worker_eligible_pylon_version_counts
+homework_worker_presence_only_blocker_counts
+```
+
+`pylon_client_version_counts` is the online presence fleet. The homework-worker
+fields are the dispatchable subset. If the dispatchable subset is smaller, the
+blocker counts explain why, for example
+`homework_worker_admission_missing`,
+`homework_worker_training_capability_missing`,
+`homework_worker_missing_settlement_destination`, or
+`homework_worker_version_too_low`. The health verification pack includes these
+same fields so operators do not have to infer worker readiness from presence
+counts.
+
 ## The Production Proof
 
 The release receipt for the current recommended user-path floor is checked in at:
