@@ -46,6 +46,7 @@ assert_contains 'NEXUS_HEALTH_AGENT_FORGE_BEARER_TOKEN' "$DEPLOY_TEXT"
 assert_contains 'NEXUS_HEALTH_AGENT_FORGE_ACTOR_JWT' "$DEPLOY_TEXT"
 assert_contains 'gcloud run jobs execute' "$SMOKE_TEXT"
 assert_contains 'log secret scan result' "$SMOKE_TEXT"
+assert_contains 'resource.labels.job_name' "$SMOKE_TEXT"
 assert_contains 'nexus-health-agent' "$DOCKERFILE_TEXT"
 
 for target_text in "$IDENTITY_TEXT" "$DEPLOY_TEXT" "$SMOKE_TEXT"; do
