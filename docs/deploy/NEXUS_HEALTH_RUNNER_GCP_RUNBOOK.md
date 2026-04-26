@@ -275,6 +275,25 @@ scripts/deploy/nexus/20-deploy-health-runner-scheduler.sh
    includes `scheduler.status=hosted`, `max_expected_detection_seconds<=60`,
    and `external_reachability.source=external_public_probe`.
 
+   The warm Service also writes a compact `jsonPayload` event named
+   `nexus_health_agent_server_run` for operator dashboards and log alerts. The
+   fields to alert or graph are:
+
+   - `scheduler_status`, `scheduler_name`, and
+     `max_expected_detection_seconds`
+   - `external_status`, `external_vantage_id`, `external_route_count`,
+     `external_failed_route_count`, `external_cloudflare_edge_error_count`,
+     and `external_cloudflare_error_codes`
+   - `snapshot_status`, `snapshot_observation_status`,
+     `snapshot_highest_severity`, `summary`, `health_state`, and `severity`
+   - `treasury_wallet_runtime_status`, `treasury_degraded_reason`, and
+     `payout_loop_health`
+
+   A public-edge outage should show `external_status=public_failure` or
+   `external_status=edge_failure` from the hosted GCP vantage. A subsystem
+   problem behind a reachable edge should show `external_status=reachable` plus
+   a degraded or incident `health_state`.
+
 For a live Forge-writing proof:
 
 1. Add current scoped Forge secret versions in Secret Manager.
