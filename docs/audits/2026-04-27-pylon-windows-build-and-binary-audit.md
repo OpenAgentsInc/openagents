@@ -2,6 +2,7 @@
 
 Date: 2026-04-27
 Repos reviewed: `openagents.com`, `openagents`, `psionic`
+Tracking issue: https://github.com/OpenAgentsInc/openagents/issues/4468
 
 ## Scope
 
