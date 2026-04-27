@@ -208,16 +208,8 @@ struct OperatorPanelStats {
     last_job_result: Option<String>,
     last_provider_event_at_ms: Option<u64>,
     recent_activity: Vec<String>,
-    payment_history: Vec<PaymentHistoryEntry>,
     online_uptime_seconds: Option<u64>,
     payment_history: Vec<PaymentHistoryEntry>,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct PaymentHistoryEntry {
-    settled_at_ms: u64,
-    amount_sats: u64,
-    job_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2963,38 +2955,6 @@ impl AppShell {
         panel("Payment History", Text::from(self.payment_feed_lines()))
     }
 
-    fn payment_feed_lines(&self) -> Vec<Line<'static>> {
-        let history = &self.operator_stats.payment_history;
-        if history.is_empty() {
-            return vec![Line::from(Span::styled(
-                "No payouts received yet.",
-                muted_text(),
-            ))];
-        }
-        let now_ms = current_epoch_ms_u64();
-        history
-            .iter()
-            .map(|entry| {
-                let short_id = entry.job_id.chars().take(8).collect::<String>();
-                Line::from(vec![
-                    Span::styled(
-                        format!("+{}", format_sats(entry.amount_sats)),
-                        success_accent(),
-                    ),
-                    Span::raw("  "),
-                    Span::styled(
-                        format!(
-                            "{}  job:{}",
-                            format_elapsed_since_ms(entry.settled_at_ms, now_ms),
-                            short_id
-                        ),
-                        muted_text(),
-                    ),
-                ])
-            })
-            .collect()
-    }
-
     fn wallet_overview_panel(&self) -> Paragraph<'static> {
         panel("Wallet", Text::from(self.wallet_overview_lines()))
     }
@@ -5133,7 +5093,6 @@ fn compute_operator_panel_stats_at(
         last_job_result,
         last_provider_event_at_ms,
         recent_activity,
-        payment_history,
         online_uptime_seconds: snapshot.map(|value| value.runtime.online_uptime_seconds),
         payment_history,
     }
@@ -6201,9 +6160,8 @@ mod tests {
             last_job_result: Some("settled".to_string()),
             last_provider_event_at_ms: Some(1_762_700_500_000),
             recent_activity: vec![String::from("settled 21 sats 6m ago")],
-            payment_history: Vec::new(),
             online_uptime_seconds: Some(60),
-            payment_history: vec![],
+            payment_history: Vec::new(),
         };
 
         let sidebar = app
