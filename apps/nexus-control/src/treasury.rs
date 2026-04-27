@@ -4752,20 +4752,30 @@ impl TreasuryState {
         if !policy.treasury_enabled {
             return false;
         }
-        if self.payout_records_by_key.values().any(|record| {
-            record.status == "queued"
-                || retryable_failed_accepted_work_payout_is_due(record, now_unix_ms)
-        }) {
+        let last_cycle_at = self
+            .payout_loop_last_completed_at_unix_ms
+            .or(self.payout_loop_last_started_at_unix_ms)
+            .or(self.last_payout_reconciliation_at_unix_ms);
+        if self
+            .payout_records_by_key
+            .values()
+            .any(|record| record.status == "queued")
+        {
             return true;
+        }
+        let retryable_failed_work_due = self
+            .payout_records_by_key
+            .values()
+            .any(|record| retryable_failed_accepted_work_payout_is_due(record, now_unix_ms));
+        if retryable_failed_work_due {
+            return last_cycle_at
+                .map(|last_cycle_at| now_unix_ms.saturating_sub(last_cycle_at) >= idle_interval_ms)
+                .unwrap_or(true);
         }
         if policy.payout_interval_seconds == 0 {
             return false;
         }
         let interval_ms = policy.payout_interval_ms().max(idle_interval_ms);
-        let last_cycle_at = self
-            .payout_loop_last_completed_at_unix_ms
-            .or(self.payout_loop_last_started_at_unix_ms)
-            .or(self.last_payout_reconciliation_at_unix_ms);
         last_cycle_at
             .map(|last_cycle_at| now_unix_ms.saturating_sub(last_cycle_at) >= interval_ms)
             .unwrap_or(true)
@@ -12718,6 +12728,25 @@ mod tests {
         assert!(state.dispatch_cycle_due(
             &config,
             completed_at_unix_ms.saturating_add(1),
+            idle_interval_ms,
+        ));
+
+        let record = state
+            .payout_records_by_key
+            .get_mut("accepted-work:one")
+            .expect("queued payout record");
+        record.status = "failed".to_string();
+        record.reason = Some("wallet_send_retryable:leaf_selection:test".to_string());
+        record.updated_at_unix_ms = completed_at_unix_ms
+            .saturating_sub(super::TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS);
+        assert!(!state.dispatch_cycle_due(
+            &config,
+            completed_at_unix_ms.saturating_add(1),
+            idle_interval_ms,
+        ));
+        assert!(state.dispatch_cycle_due(
+            &config,
+            completed_at_unix_ms.saturating_add(idle_interval_ms),
             idle_interval_ms,
         ));
     }
