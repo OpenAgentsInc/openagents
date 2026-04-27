@@ -44,6 +44,7 @@ assert_contains 'verify_nexus_public_edge_healthy "pre-target-upload"' "$UPLOAD_
 assert_contains 'verify_nexus_public_edge_healthy "post-target-upload"' "$UPLOAD_TEXT"
 assert_contains 'verify_nexus_public_edge_healthy "post-binary-upload"' "$UPLOAD_TEXT"
 assert_contains 'cleanup_remote_release_archive' "$UPLOAD_TEXT"
+assert_contains 'if ! run_with_timeout "$NEXUS_BINARY_RELEASE_UPLOAD_TIMEOUT_SECONDS" "upload-target-release-archive"' "$UPLOAD_TEXT"
 assert_contains 'upload failed or timed out before remote install; activation was not attempted' "$UPLOAD_TEXT"
 assert_contains 'run_with_timeout "$NEXUS_BINARY_RELEASE_UPLOAD_TIMEOUT_SECONDS" "upload-target-release-archive"' "$UPLOAD_TEXT"
 assert_not_contains 'systemctl restart nexus-relay' "$UPLOAD_TEXT"
