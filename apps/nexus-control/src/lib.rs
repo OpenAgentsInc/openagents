@@ -9064,6 +9064,7 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
     spawn_treasury_dispatch_loop(state.clone());
     spawn_treasury_wallet_refresh_loop(state.clone());
     spawn_cs336_homework_auto_dispatch_loop(state.clone());
+    spawn_public_stats_refresh_loop(state.clone());
     build_api_router_with_state(state)
 }
 
@@ -9530,6 +9531,7 @@ pub async fn run_server(config: ServiceConfig) -> Result<(), anyhow::Error> {
     spawn_treasury_dispatch_loop(state.clone());
     spawn_treasury_wallet_refresh_loop(state.clone());
     spawn_cs336_homework_auto_dispatch_loop(state.clone());
+    spawn_public_stats_refresh_loop(state.clone());
     axum::serve(listener, build_router_with_state(state)).await?;
     Ok(())
 }
@@ -13462,7 +13464,7 @@ async fn claim_training_run_lease(
         }
         Err(error) => return Err(error),
     };
-    let _ = force_refresh_public_stats_cache(&state, now_unix_ms());
+    throttle_public_stats_cache_invalidation(&state, now_unix_ms());
     Ok(Json(response))
 }
 
@@ -23206,6 +23208,19 @@ fn spawn_cs336_homework_auto_dispatch_loop(state: AppState) {
                     "CS336 homework auto dispatch cycle failed"
                 );
             }
+        }
+    });
+}
+
+fn spawn_public_stats_refresh_loop(state: AppState) {
+    spawn_control_background_loop("nexus-public-stats-refresh", async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(
+            PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS,
+        ));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let _ = try_force_refresh_public_stats_cache(&state, now_unix_ms());
         }
     });
 }
