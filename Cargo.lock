@@ -5889,6 +5889,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.24.0",
+ "tower 0.5.3",
  "tracing",
  "tracing-subscriber",
 ]
