@@ -16,6 +16,27 @@ treasury pays -> Pylon wallet balance increases and treasury records a settled
 accepted-work payout
 ```
 
+## A1 Minimal Record Boundary
+
+This runbook proves bounded homework earning and payout continuity. It is not
+the runbook for the A1 minimal distributed LM participant-record attempt.
+
+For `a1_minimal_distributed_lm_001`, use:
+
+- `docs/2026-04-27-a1-minimal-distributed-lm-record-operator-runbook.md`
+
+The record attempt must use the run-specific claim gate:
+
+```bash
+VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED=true \
+VERIFY_A1_MINIMAL_RUN_ID=a1_minimal_distributed_lm_001 \
+scripts/deploy/nexus/04-verify-gates.sh
+```
+
+Do not turn a successful homework dispatch proof into public "largest by
+number of participants" language. That claim requires accepted real compute
+work under one A1 minimal run id and the Nexus claim gate for that run.
+
 ## Preconditions
 
 Use this runbook only after the relevant local proof path or focused regression

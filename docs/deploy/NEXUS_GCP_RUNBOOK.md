@@ -651,6 +651,33 @@ snapshot so operators can see the active rollout revision, pause state, cohort
 count, and blocked build or release breakers in the same artifact as the
 latency gates.
 
+For the A1 minimal distributed LM participant-record run, use the dedicated
+operator runbook:
+
+- `docs/2026-04-27-a1-minimal-distributed-lm-record-operator-runbook.md`
+
+The run-specific deploy gate is:
+
+```bash
+VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED=true \
+VERIFY_A1_MINIMAL_RUN_ID=a1_minimal_distributed_lm_001 \
+scripts/deploy/nexus/04-verify-gates.sh
+```
+
+Before public "largest by number of participants" copy, require:
+
+```bash
+VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED=true \
+VERIFY_A1_MINIMAL_REQUIRE_LAUNCH_HEALTH_GOOD=true \
+VERIFY_A1_MINIMAL_REQUIRE_PARTICIPANT_GATE=true \
+VERIFY_A1_MINIMAL_RUN_ID=a1_minimal_distributed_lm_001 \
+scripts/deploy/nexus/04-verify-gates.sh
+```
+
+Before public "largest by number of model-progress participants" copy, also
+set `VERIFY_A1_MINIMAL_REQUIRE_MODEL_PROGRESS_GATE=true`. These gates are
+disabled for ordinary deploys and are intended for the record attempt only.
+
 Before crowd expansion, treat
 `docs/plans/transcript-222-training-launch-slos.md` as the normative threshold
 sheet for those gates and

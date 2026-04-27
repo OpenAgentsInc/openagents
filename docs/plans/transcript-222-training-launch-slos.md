@@ -45,13 +45,16 @@ These are the current source-of-truth surfaces for launch SLOs:
 4. `/api/training/rollout`
    - authoritative rollout revision, pause state, gates, cohorts, and blocked
      release/build breakers
-5. `/api/kernel/compute/training/artifacts/:artifact_id/resolver`
-   and `/api/kernel/compute/training/artifacts/:artifact_id/signed-access`
+5. `/v1/kernel/compute/training/artifacts/:artifact_id`
+   and `/v1/kernel/compute/training/artifacts/:artifact_id/signed-access`
    - authoritative artifact resolver and signed-URL issuance surfaces
 6. `/v1/treasury/status`
    - authoritative payout cadence, pending/failed/skipped state, and training
      payout reconciliation status
-7. Existing retained runtime receipts and failure uploads from the zero-touch
+7. `/api/training/runs/:training_run_id/claim-gates`
+   - authoritative participant-count claim gate for
+     `a1_minimal_distributed_lm_001`
+8. Existing retained runtime receipts and failure uploads from the zero-touch
    assignment/materialization path
    - authoritative source for assignment materialization and artifact-fetch
      failures until the dedicated dashboard issue lands
@@ -126,8 +129,8 @@ Definition:
 
 Authoritative source:
 
-- `/api/kernel/compute/training/artifacts/:artifact_id/resolver`
-- `/api/kernel/compute/training/artifacts/:artifact_id/signed-access`
+- `/v1/kernel/compute/training/artifacts/:artifact_id`
+- `/v1/kernel/compute/training/artifacts/:artifact_id/signed-access`
 - retained runtime receipt uploads and assignment-failure reports
 
 Launch target:
@@ -247,9 +250,9 @@ Launch target:
 - authoritative Nexus public-stats freshness <= `15000 ms`
 - public mirrored snapshot freshness <= `120000 ms`
 - no unresolved drift is permitted for:
-  - assigned contributors
-  - accepted contributors
-  - model-progress contributors
+  - assigned participants
+  - participants
+  - model-progress participants
   - payout-class totals
   - active run/window identity
 
@@ -280,6 +283,77 @@ Launch target:
 - canary and beta cohort definitions must resolve to real admitted nodes before
   expansion proceeds
 
+### 9. A1 Minimal Participant-Record Gates
+
+Definition:
+
+- the A1 minimal distributed LM record attempt is a single run,
+  `a1_minimal_distributed_lm_001`, with public claims gated by Nexus truth
+
+Authoritative source:
+
+- `/api/training/runs/a1_minimal_distributed_lm_001/claim-gates`
+- `/api/training/summary`
+- `/api/stats`
+- `scripts/deploy/nexus/04-verify-gates.sh` with
+  `VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED=true`
+
+Launch target:
+
+- `training_accepted_contributors >= 201` before saying "largest by number of
+  participants"
+- `training_model_progress_contributors >= 201` before saying "largest by
+  number of model-progress participants"
+- at least two updated admitted workers for the run before any multi-Pylon
+  claim language
+- `training_public_state.launch_health.overall_status == "good"` before broad
+  fanout
+- `unqualified_largest_claim_allowed == false` at all times
+
+Current implementation note:
+
+- the deploy verifier has optional A1 record gates. They are disabled for
+  ordinary Nexus deploys and enabled for this run with:
+
+```bash
+VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED=true \
+VERIFY_A1_MINIMAL_RUN_ID=a1_minimal_distributed_lm_001 \
+scripts/deploy/nexus/04-verify-gates.sh
+```
+
+Public Launch A requires:
+
+```bash
+VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED=true \
+VERIFY_A1_MINIMAL_REQUIRE_LAUNCH_HEALTH_GOOD=true \
+VERIFY_A1_MINIMAL_REQUIRE_PARTICIPANT_GATE=true \
+VERIFY_A1_MINIMAL_RUN_ID=a1_minimal_distributed_lm_001 \
+scripts/deploy/nexus/04-verify-gates.sh
+```
+
+Public Launch B requires:
+
+```bash
+VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED=true \
+VERIFY_A1_MINIMAL_REQUIRE_LAUNCH_HEALTH_GOOD=true \
+VERIFY_A1_MINIMAL_REQUIRE_PARTICIPANT_GATE=true \
+VERIFY_A1_MINIMAL_REQUIRE_MODEL_PROGRESS_GATE=true \
+VERIFY_A1_MINIMAL_RUN_ID=a1_minimal_distributed_lm_001 \
+scripts/deploy/nexus/04-verify-gates.sh
+```
+
+Breach policy:
+
+- broad fanout is blocked if assignment, artifact materialization, validation,
+  payout, or public-stats freshness gates fail
+- public claim copy is blocked if the claim-gate endpoint is missing, stale, or
+  reports missing fields
+- public claim copy is blocked if the count is inferred from online Pylons,
+  seen-in-24h Pylons, sellable Pylons, presence sessions, downloads, Discord
+  membership, or generic payout totals
+- unqualified "largest distributed language-model training run" copy is always
+  blocked
+
 ## Go/No-Go Policy
 
 Before `#4318` small-cohort canary crowd rehearsal:
@@ -297,6 +371,31 @@ Before `#4319` widened crowd rehearsal:
   cohort
 - public-state drift remains resolved across the authoritative and mirrored
   stats paths
+
+Before broad fanout for `a1_minimal_distributed_lm_001`:
+
+- `docs/2026-04-27-a1-minimal-distributed-lm-record-operator-runbook.md` has
+  been followed
+- the A1 record deploy verifier gates pass
+- `VERIFY_A1_MINIMAL_REQUIRE_LAUNCH_HEALTH_GOOD=true` passes before broad
+  fanout
+- at least two updated admitted workers are visible for the run
+- no `training_public_state.launch_health` alert is active
+- no live-fanout blocker remains open for assignment, artifact materialization,
+  validation, payout, or public stats freshness
+
+Before public participant-count claim copy:
+
+- the participant claim gate passes with `training_accepted_contributors >= 201`
+- the deploy receipt includes the claim-gate JSON
+- the public copy uses "by number of participants"
+
+Before public model-progress participant claim copy:
+
+- the model-progress participant claim gate passes with
+  `training_model_progress_contributors >= 201`
+- promoted checkpoint and validation-loss evidence are retained
+- the public copy uses "by number of model-progress participants"
 
 ## Relationship to the Next Issue
 
