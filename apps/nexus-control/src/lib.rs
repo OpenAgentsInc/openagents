@@ -12807,20 +12807,33 @@ async fn record_provider_presence_heartbeat(
             stale_after_ms: state.config.provider_presence_stale_after_ms,
         }));
     }
-    let mut store = state.store.write().map_err(|_| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "session_store_poisoned".to_string(),
-    })?;
-    let record = store
-        .provider_presence
-        .record_heartbeat(normalized_request, now);
-    drop(store);
-    throttle_public_stats_cache_invalidation(&state, now);
+    let (session_id, nostr_pubkey_hex, recorded) = match state.store.try_write() {
+        Ok(mut store) => {
+            let record = store
+                .provider_presence
+                .record_heartbeat(normalized_request, now);
+            (record.session_id, record.nostr_pubkey_hex, true)
+        }
+        Err(TryLockError::WouldBlock) => (
+            normalized_request.session_id.clone(),
+            normalized_request.nostr_pubkey_hex.clone(),
+            false,
+        ),
+        Err(TryLockError::Poisoned(_)) => {
+            return Err(ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error: "internal_error",
+                reason: "session_store_poisoned".to_string(),
+            });
+        }
+    };
+    if recorded {
+        throttle_public_stats_cache_invalidation(&state, now);
+    }
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
-        session_id: record.session_id,
-        nostr_pubkey_hex: record.nostr_pubkey_hex,
+        session_id,
+        nostr_pubkey_hex,
         status: "online".to_string(),
         recorded_at_unix_ms: now,
         heartbeat_interval_ms: DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS,
@@ -33470,6 +33483,36 @@ mod tests {
         assert_eq!(stats.likely_same_host_pylon_sessions_online_now, 0);
         assert!(stats.recent_pylons.is_empty());
         assert!(stats.recent_pylon_diagnostics.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn provider_presence_heartbeat_acknowledges_when_store_writer_is_busy() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+        let _store_writer = state.store.write().expect("hold store writer");
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/provider-presence/heartbeat")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&provider_presence_request(
+                        "aabbccdd00112233",
+                        "session-a-1",
+                        "alpha",
+                        1,
+                        "online",
+                    ))?))?,
+            )
+            .await?;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let heartbeat: ProviderPresenceResponse = response_json(response).await?;
+        assert_eq!(heartbeat.status, "online");
+        assert_eq!(heartbeat.session_id, "session-a-1");
+        assert_eq!(heartbeat.nostr_pubkey_hex, "aabbccdd00112233");
         Ok(())
     }
 
