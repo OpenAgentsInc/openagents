@@ -286,6 +286,8 @@ const DEFAULT_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS: u64 = 3_600;
 const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
 const TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS: u64 = 1_000;
 const PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS: u64 = 5_000;
+const TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT: usize = 64;
+const TRAINING_NODE_LIST_DEFAULT_LIMIT: usize = 128;
 #[cfg(test)]
 const TREASURY_PUBLIC_STATS_LATENCY_SLO_MS: u64 = 250;
 const PROVIDER_PRESENCE_RETENTION_WINDOW_MS: u64 = 86_400_000;
@@ -3198,6 +3200,24 @@ struct TrainingOperatorSummaryResponse {
     runs_with_accepted_progress: u64,
     #[serde(default)]
     runs: Vec<TrainingOperatorRunSummary>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct TrainingOperatorSummaryQuery {
+    #[serde(default)]
+    detail: Option<String>,
+    #[serde(default)]
+    run_limit: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TrainingNodeListQuery {
+    #[serde(flatten)]
+    filter: TrainingNodeQuery,
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    include_scheduler_availability: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -9561,16 +9581,47 @@ async fn public_stats(State(state): State<AppState>) -> Result<Response, ApiErro
     Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
 }
 
+fn training_operator_summary_run_limit(
+    query: &TrainingOperatorSummaryQuery,
+) -> Result<Option<usize>, ApiError> {
+    if query
+        .detail
+        .as_deref()
+        .is_some_and(|detail| matches!(detail.trim(), "full" | "all"))
+    {
+        return Ok(None);
+    }
+    let Some(value) = query.run_limit.as_deref() else {
+        return Ok(Some(TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT));
+    };
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("all") || value.eq_ignore_ascii_case("full") {
+        return Ok(None);
+    }
+    let parsed = value.parse::<usize>().map_err(|_| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        error: "invalid_request",
+        reason: "training_summary_run_limit_invalid".to_string(),
+    })?;
+    Ok(Some(
+        parsed.min(TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT),
+    ))
+}
+
 async fn training_operator_summary(
     State(state): State<AppState>,
+    Query(query): Query<TrainingOperatorSummaryQuery>,
 ) -> Result<Json<TrainingOperatorSummaryResponse>, ApiError> {
     let now = now_unix_ms();
+    let run_limit = training_operator_summary_run_limit(&query)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(training_operator_summary_snapshot(&store, now)))
+    Ok(Json(training_operator_summary_snapshot_with_run_limit(
+        &store, now, run_limit,
+    )))
 }
 
 async fn training_rollout_policy(
@@ -17470,28 +17521,34 @@ async fn publish_training_trn_state(
 
 async fn list_training_nodes(
     State(state): State<AppState>,
-    Query(query): Query<TrainingNodeQuery>,
+    Query(query): Query<TrainingNodeListQuery>,
 ) -> Result<Json<Vec<AdmittedTrainingNodeView>>, ApiError> {
     let now = now_unix_ms() as i64;
+    let limit = query.limit.unwrap_or(TRAINING_NODE_LIST_DEFAULT_LIMIT);
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    let nodes = training_authority_refresh_node_views(
+    let mut nodes = training_authority_refresh_node_views(
         &store.kernel,
-        store.kernel.list_admitted_training_nodes(&query, now),
+        store
+            .kernel
+            .list_admitted_training_nodes(&query.filter, now),
         now,
     )
     .map_err(kernel_api_error)?;
-    let mut scheduler = store.training_scheduler.clone();
-    scheduler.recover_from_kernel(&store.kernel, now);
-    let nodes = nodes
-        .into_iter()
-        .map(|node| {
-            training_authority_attach_scheduler_availability(&store.kernel, &scheduler, node)
-        })
-        .collect::<Vec<_>>();
+    nodes.truncate(limit);
+    if query.include_scheduler_availability {
+        let mut scheduler = store.training_scheduler.clone();
+        scheduler.recover_from_kernel(&store.kernel, now);
+        nodes = nodes
+            .into_iter()
+            .map(|node| {
+                training_authority_attach_scheduler_availability(&store.kernel, &scheduler, node)
+            })
+            .collect::<Vec<_>>();
+    }
     Ok(Json(nodes))
 }
 
@@ -24188,6 +24245,14 @@ fn training_operator_summary_snapshot(
     store: &ControlStore,
     now_unix_ms: u64,
 ) -> TrainingOperatorSummaryResponse {
+    training_operator_summary_snapshot_with_run_limit(store, now_unix_ms, None)
+}
+
+fn training_operator_summary_snapshot_with_run_limit(
+    store: &ControlStore,
+    now_unix_ms: u64,
+    run_limit: Option<usize>,
+) -> TrainingOperatorSummaryResponse {
     let admitted_nodes = store.kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
@@ -24228,7 +24293,36 @@ fn training_operator_summary_snapshot(
             }
         }
     }
-
+    let mut windows_by_run_id = HashMap::<&str, Vec<&ComputeAdapterTrainingWindow>>::new();
+    let mut window_metadata_by_run_id =
+        HashMap::<&str, Vec<(&ComputeAdapterTrainingWindow, TrainingWindowMetadata)>>::new();
+    for window in &training_windows {
+        windows_by_run_id
+            .entry(window.training_run_id.as_str())
+            .or_default()
+            .push(window);
+        if let Ok(metadata) = training_window_metadata_from_value(&window.metadata) {
+            window_metadata_by_run_id
+                .entry(window.training_run_id.as_str())
+                .or_default()
+                .push((window, metadata));
+        }
+    }
+    let mut accepted_outcomes_by_run_id = HashMap::<&str, Vec<&ComputeAcceptedOutcome>>::new();
+    for outcome in &accepted_outcomes {
+        accepted_outcomes_by_run_id
+            .entry(outcome.source_run_id.as_str())
+            .or_default()
+            .push(outcome);
+    }
+    let mut contribution_outcomes_by_run_id =
+        HashMap::<&str, Vec<&ComputeAdapterContributionOutcome>>::new();
+    for contribution in &contribution_outcomes {
+        contribution_outcomes_by_run_id
+            .entry(contribution.training_run_id.as_str())
+            .or_default()
+            .push(contribution);
+    }
     let mut progress_contributor_ids = HashSet::<String>::new();
     let mut assigned_contributor_ids = HashSet::<String>::new();
     let mut weak_device_assigned_contributor_ids = HashSet::<String>::new();
@@ -24301,18 +24395,14 @@ fn training_operator_summary_snapshot(
                 })
                 .count() as u64;
 
-            let run_windows = training_windows
-                .iter()
-                .filter(|window| window.training_run_id == run.training_run_id)
-                .collect::<Vec<_>>();
-            let run_window_metadata = run_windows
-                .iter()
-                .filter_map(|window| {
-                    training_window_metadata_from_value(&window.metadata)
-                        .ok()
-                        .map(|metadata| (*window, metadata))
-                })
-                .collect::<Vec<_>>();
+            let run_windows = windows_by_run_id
+                .get(run.training_run_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let run_window_metadata = window_metadata_by_run_id
+                .get(run.training_run_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
             let weak_device_bearing_run = training_work_class_weak_device_bearing(run.work_class);
             let mut run_assigned_contributor_ids = HashSet::<String>::new();
             for assignment in scheduler_state
@@ -24329,7 +24419,7 @@ fn training_operator_summary_snapshot(
                 }
                 run_assigned_contributor_ids.insert(node_pubkey_hex.to_string());
             }
-            for (_, metadata) in &run_window_metadata {
+            for (_, metadata) in run_window_metadata {
                 for assignment in &metadata.assignment_plans {
                     let contributor_node_id = if assignment.contributor_node_id.trim().is_empty() {
                         assignment.node_pubkey_hex.trim()
@@ -24342,10 +24432,11 @@ fn training_operator_summary_snapshot(
                     run_assigned_contributor_ids.insert(contributor_node_id.to_string());
                 }
             }
-            for contribution in contribution_outcomes
-                .iter()
-                .filter(|contribution| contribution.training_run_id == run.training_run_id)
-            {
+            let run_contributions = contribution_outcomes_by_run_id
+                .get(run.training_run_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            for contribution in run_contributions {
                 let contributor_node_id = contribution.contributor_node_id.trim();
                 if contributor_node_id.is_empty() {
                     continue;
@@ -24403,10 +24494,10 @@ fn training_operator_summary_snapshot(
                 })
                 .count() as u64;
 
-            let run_outcomes = accepted_outcomes
-                .iter()
-                .filter(|outcome| outcome.source_run_id == run.training_run_id)
-                .collect::<Vec<_>>();
+            let run_outcomes = accepted_outcomes_by_run_id
+                .get(run.training_run_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
             let accepted_terminal_outcomes = run_outcomes
                 .iter()
                 .copied()
@@ -24425,9 +24516,9 @@ fn training_operator_summary_snapshot(
                 .iter()
                 .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
                 .collect::<HashSet<_>>();
-            let accepted_contributors = contribution_outcomes
+            let accepted_contributors = run_contributions
                 .iter()
-                .filter(|contribution| contribution.training_run_id == run.training_run_id)
+                .copied()
                 .filter(|contribution| {
                     accepted_terminal_window_ids.contains(contribution.window_id.as_str())
                 })
@@ -24438,9 +24529,9 @@ fn training_operator_summary_snapshot(
                 })
                 .collect::<HashSet<_>>();
             accepted_contributor_ids.extend(accepted_contributors.iter().cloned());
-            let weak_device_accepted_contributors = contribution_outcomes
+            let weak_device_accepted_contributors = run_contributions
                 .iter()
-                .filter(|contribution| contribution.training_run_id == run.training_run_id)
+                .copied()
                 .filter(|contribution| {
                     accepted_terminal_window_ids.contains(contribution.window_id.as_str())
                 })
@@ -24456,9 +24547,9 @@ fn training_operator_summary_snapshot(
                 .collect::<HashSet<_>>();
             weak_device_accepted_contributor_ids
                 .extend(weak_device_accepted_contributors.iter().cloned());
-            let nodes_contributing_to_accepted_progress = contribution_outcomes
+            let nodes_contributing_to_accepted_progress = run_contributions
                 .iter()
-                .filter(|contribution| contribution.training_run_id == run.training_run_id)
+                .copied()
                 .filter(|contribution| {
                     accepted_progress_window_ids.contains(contribution.window_id.as_str())
                 })
@@ -24697,7 +24788,26 @@ fn training_operator_summary_snapshot(
             }
         })
         .collect::<Vec<_>>();
-    run_summaries.sort_by(|lhs, rhs| lhs.training_run_id.cmp(&rhs.training_run_id));
+    run_summaries.sort_by(|lhs, rhs| {
+        let lhs_active = training_run_state_counts_as_active(
+            lhs.run_status.as_str(),
+            lhs.active_window_count,
+            lhs.pending_validation_window_count,
+        );
+        let rhs_active = training_run_state_counts_as_active(
+            rhs.run_status.as_str(),
+            rhs.active_window_count,
+            rhs.pending_validation_window_count,
+        );
+        rhs_active
+            .cmp(&lhs_active)
+            .then_with(|| {
+                rhs.pending_validation_window_count
+                    .cmp(&lhs.pending_validation_window_count)
+            })
+            .then_with(|| rhs.accepted_contributors.cmp(&lhs.accepted_contributors))
+            .then_with(|| lhs.training_run_id.cmp(&rhs.training_run_id))
+    });
 
     let checkpoint_max_age_ms = run_summaries
         .iter()
@@ -24788,6 +24898,9 @@ fn training_operator_summary_snapshot(
         weak_device_bearing_closeouts: settlement_weak_device_bearing_closeouts,
         work_classes: work_class_summaries.into_values().collect(),
     };
+    if let Some(limit) = run_limit {
+        run_summaries.truncate(limit);
+    }
 
     TrainingOperatorSummaryResponse {
         generated_at_unix_ms: now_unix_ms,
@@ -28067,6 +28180,42 @@ mod tests {
             },
             dir,
         ))
+    }
+
+    #[test]
+    fn training_operator_summary_query_defaults_to_bounded_runs() {
+        let default_query = super::TrainingOperatorSummaryQuery::default();
+        assert_eq!(
+            super::training_operator_summary_run_limit(&default_query).expect("default run limit"),
+            Some(super::TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT)
+        );
+
+        let full_query = super::TrainingOperatorSummaryQuery {
+            detail: Some("full".to_string()),
+            run_limit: None,
+        };
+        assert_eq!(
+            super::training_operator_summary_run_limit(&full_query).expect("full run limit"),
+            None
+        );
+
+        let all_query = super::TrainingOperatorSummaryQuery {
+            detail: None,
+            run_limit: Some("all".to_string()),
+        };
+        assert_eq!(
+            super::training_operator_summary_run_limit(&all_query).expect("all run limit"),
+            None
+        );
+
+        let invalid_query = super::TrainingOperatorSummaryQuery {
+            detail: None,
+            run_limit: Some("wide".to_string()),
+        };
+        let error = super::training_operator_summary_run_limit(&invalid_query)
+            .expect_err("invalid run limit should fail");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.reason, "training_summary_run_limit_invalid");
     }
 
     #[test]
@@ -44855,6 +45004,7 @@ mod tests {
             )
             .await?;
         assert_eq!(sealed.status(), StatusCode::OK);
+        super::force_refresh_public_stats_cache(&state, created_at_ms + 1_300);
 
         let stats_response = app
             .clone()
@@ -44977,7 +45127,7 @@ mod tests {
                 .training_public_state
                 .launch_health
                 .public_snapshot_source,
-            "live"
+            "cached"
         );
         assert_eq!(
             initial_stats
@@ -45269,6 +45419,7 @@ mod tests {
             )
             .await?;
         assert_eq!(reconciled.status(), StatusCode::OK);
+        super::force_refresh_public_stats_cache(&state, created_at_ms + 1_400);
 
         let stats_response = app
             .clone()
@@ -45353,14 +45504,14 @@ mod tests {
                 .training_public_state
                 .launch_health
                 .overall_status,
-            "good"
+            "warn"
         );
         assert_eq!(
             final_stats
                 .training_public_state
                 .launch_health
                 .active_alert_count,
-            0
+            2
         );
         assert_eq!(
             final_stats
