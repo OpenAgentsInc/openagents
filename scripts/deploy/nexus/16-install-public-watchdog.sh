@@ -34,6 +34,7 @@ NEXUS_PUBLIC_WATCHDOG_RELAY_SERVICE_NAME=${NEXUS_PUBLIC_WATCHDOG_RELAY_SERVICE_N
 NEXUS_PUBLIC_WATCHDOG_TUNNEL_SERVICE_NAME=${NEXUS_PUBLIC_WATCHDOG_TUNNEL_SERVICE_NAME}
 NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_ENABLED=${NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_ENABLED}
 NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_AFTER_FAILURES=${NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_AFTER_FAILURES}
+NEXUS_PUBLIC_WATCHDOG_EDGE_RECHECK_SECONDS=${NEXUS_PUBLIC_WATCHDOG_EDGE_RECHECK_SECONDS}
 ENV
 
 cat >"$TMP_CHECK_SCRIPT" <<'CHECK'
@@ -50,6 +51,7 @@ MAX_RESTARTS_PER_HOUR="${NEXUS_PUBLIC_WATCHDOG_MAX_RESTARTS_PER_HOUR:-12}"
 DRY_RUN="${NEXUS_PUBLIC_WATCHDOG_DRY_RUN:-false}"
 EDGE_REBOOT_ENABLED="${NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_ENABLED:-true}"
 EDGE_REBOOT_AFTER_FAILURES="${NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_AFTER_FAILURES:-2}"
+EDGE_RECHECK_SECONDS="${NEXUS_PUBLIC_WATCHDOG_EDGE_RECHECK_SECONDS:-15}"
 STATE_DIR="${NEXUS_PUBLIC_WATCHDOG_STATE_DIR:-/var/lib/nexus-relay/watchdog/public}"
 EVENT_LOG_PATH="${STATE_DIR}/events.jsonl"
 LAST_EVENT_PATH="${STATE_DIR}/last-event.json"
@@ -171,6 +173,44 @@ recover_public_edge_failure() {
   fi
 
   restart_service_with_limit "$TUNNEL_SERVICE_NAME" "$reason" "$local_code" "$public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
+
+  if (( EDGE_RECHECK_SECONDS <= 0 )); then
+    return
+  fi
+
+  if [[ "$DRY_RUN" != "true" ]]; then
+    sleep "$EDGE_RECHECK_SECONDS"
+  fi
+
+  local retry_public_health_probe
+  local retry_public_health_code
+  local retry_public_health_body
+  local retry_public_stats_probe
+  local retry_public_stats_code
+  local retry_public_stats_body
+  local retry_public_code
+  retry_public_health_probe="$(http_probe "$PUBLIC_HEALTH_URL")"
+  retry_public_health_code="$(printf '%s\n' "$retry_public_health_probe" | probe_http_code)"
+  retry_public_health_body="$(printf '%s\n' "$retry_public_health_probe" | probe_http_body)"
+  retry_public_stats_probe="$(http_probe "$PUBLIC_STATS_URL")"
+  retry_public_stats_code="$(printf '%s\n' "$retry_public_stats_probe" | probe_http_code)"
+  retry_public_stats_body="$(printf '%s\n' "$retry_public_stats_probe" | probe_http_body)"
+  retry_public_code="$(public_code_for_event "$retry_public_health_code" "$retry_public_stats_code")"
+
+  if public_edge_failure "$retry_public_health_code" "$retry_public_health_body" || public_edge_failure "$retry_public_stats_code" "$retry_public_stats_body"; then
+    edge_failure_count="$(record_edge_failure_count)"
+    if [[ "$EDGE_REBOOT_ENABLED" == "true" ]] && (( edge_failure_count >= EDGE_REBOOT_AFTER_FAILURES )); then
+      reboot_vm_for_public_edge_failure "${reason}_after_tunnel_restart" "$local_code" "$retry_public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
+      exit 1
+    fi
+    emit_event "recovering" "${reason}_after_tunnel_restart" "await_next_probe" "$local_code" "$retry_public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
+    log "public_edge_still_down_after_tunnel_restart reason=${reason} public_health=${retry_public_health_code} public_stats=${retry_public_stats_code} consecutive_edge_failures=${edge_failure_count}"
+    return
+  fi
+
+  reset_edge_failure_count
+  emit_event "recovering" "${reason}_tunnel_restart_cleared" "none" "$local_code" "$retry_public_code" "$relay_uptime" "$tunnel_uptime" "0"
+  log "public_edge_recovered_after_tunnel_restart reason=${reason} public_health=${retry_public_health_code} public_stats=${retry_public_stats_code}"
 }
 
 service_uptime_seconds() {

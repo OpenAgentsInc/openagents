@@ -497,9 +497,13 @@ public `https://nexus.openagents.com/api/stats` path, and both `nexus-relay`
 and `nexus-cloudflared` systemd services. If local origin health fails it
 restarts `nexus-relay`; if the local origin is healthy but either public path
 returns `530` / `1033` or goes dark, it restarts `nexus-cloudflared`. The
-watchdog probes the public edge even during startup grace; Cloudflare `530` /
-`1033` is never treated as healthy just because a systemd service recently
-restarted.
+watchdog then waits `NEXUS_PUBLIC_WATCHDOG_EDGE_RECHECK_SECONDS` seconds
+(`15` by default) and probes the public edge again in the same service run. If
+the public edge still returns `530` / `1033`, the second failed probe advances
+the consecutive edge-failure counter and can trigger the VM reboot escalation
+without waiting for a later systemd timer tick. The watchdog probes the public
+edge even during startup grace; Cloudflare `530` / `1033` is never treated as
+healthy just because a systemd service recently restarted.
 
 It writes structured receipts under
 `/var/lib/nexus-relay/watchdog/public/events.jsonl` and
