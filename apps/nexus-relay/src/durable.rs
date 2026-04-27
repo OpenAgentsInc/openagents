@@ -1,15 +1,17 @@
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::RwLock;
 use std::sync::mpsc::{self, Sender as SyncSender};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use axum::body::{Body, to_bytes};
+use axum::body::{Body, Bytes, to_bytes};
 use axum::extract::FromRequestParts;
 use axum::extract::Request;
 use axum::extract::State;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{any, get};
 use axum::{Json, Router};
@@ -38,6 +40,9 @@ const DEFAULT_MAX_WEBSOCKETS: usize = 512;
 const DEFAULT_AUTHORITY_MAX_IN_FLIGHT: usize = 256;
 const DEFAULT_AUTHORITY_TOKIO_WORKER_THREADS: usize = 4;
 const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
+const HOT_AUTHORITY_CACHE_REFRESH_INTERVAL: Duration = Duration::from_secs(10);
+const HOT_AUTHORITY_CACHE_MAX_STALE: Duration = Duration::from_secs(300);
+const HOT_AUTHORITY_CACHE_PATHS: &[&str] = &["/stats", "/api/stats", "/api/training/rollout"];
 const NEXUS_PRODUCT_NAME: &str = "OpenAgents Nexus";
 const NEXUS_PRODUCT_DESCRIPTION: &str = "The OpenAgents relay and authority host for Autopilot.";
 const MANAGED_GROUPS_MODE_DEFERRED: &str = "deferred";
@@ -181,6 +186,15 @@ struct AppState {
     websocket_slots: Arc<Semaphore>,
     authority_slots: Arc<Semaphore>,
     authority_http_base_url: Url,
+    authority_hot_cache: Arc<RwLock<HashMap<String, CachedAuthorityResponse>>>,
+}
+
+#[derive(Clone)]
+struct CachedAuthorityResponse {
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Bytes,
+    cached_at: Instant,
 }
 
 pub async fn run_server(config: DurableRelayConfig) -> Result<(), anyhow::Error> {
@@ -260,8 +274,10 @@ fn build_router(config: DurableRelayConfig, authority_http_base_url: Url) -> Rou
         websocket_slots: Arc::new(Semaphore::new(config.max_websockets)),
         authority_slots: Arc::new(Semaphore::new(config.authority_max_in_flight)),
         authority_http_base_url,
+        authority_hot_cache: Arc::new(RwLock::new(HashMap::new())),
         config,
     };
+    spawn_authority_hot_cache_refresh_loop(state.clone());
     Router::new()
         .route("/", any(relay_root))
         .route("/ws", any(relay_websocket))
@@ -388,6 +404,14 @@ async fn proxy_upstream_request(
 }
 
 async fn proxy_authority_http_request(state: &AppState, request: Request) -> Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let cache_key = authority_hot_cache_key(&method, uri.path());
+    if let Some(cache_key) = cache_key.as_deref()
+        && let Some(response) = try_cached_authority_response(state, cache_key)
+    {
+        return response;
+    }
     let _permit = match state.authority_slots.clone().try_acquire_owned() {
         Ok(permit) => permit,
         Err(_) => {
@@ -398,8 +422,6 @@ async fn proxy_authority_http_request(state: &AppState, request: Request) -> Res
                 .into_response();
         }
     };
-    let method = request.method().clone();
-    let uri = request.uri().clone();
     let headers = request.headers().clone();
     let body_bytes = match to_bytes(request.into_body(), MAX_PROXY_REQUEST_BYTES).await {
         Ok(body) => body,
@@ -457,6 +479,15 @@ async fn proxy_authority_http_request(state: &AppState, request: Request) -> Res
                 .into_response();
         }
     };
+    if let Some(cache_key) = cache_key {
+        store_authority_hot_cache(
+            state,
+            cache_key,
+            status,
+            authority_headers.clone(),
+            body_bytes.clone(),
+        );
+    }
     let mut response = match Response::builder()
         .status(status)
         .body(Body::from(body_bytes))
@@ -472,6 +503,115 @@ async fn proxy_authority_http_request(state: &AppState, request: Request) -> Res
     };
     copy_proxy_response_headers(response.headers_mut(), &authority_headers);
     response
+}
+
+fn authority_hot_cache_key(method: &Method, path: &str) -> Option<String> {
+    if method != Method::GET {
+        return None;
+    }
+    HOT_AUTHORITY_CACHE_PATHS
+        .iter()
+        .any(|candidate| *candidate == path)
+        .then(|| path.to_string())
+}
+
+fn try_cached_authority_response(state: &AppState, cache_key: &str) -> Option<Response> {
+    let cached = state
+        .authority_hot_cache
+        .read()
+        .ok()?
+        .get(cache_key)
+        .cloned()?;
+    if cached.cached_at.elapsed() > HOT_AUTHORITY_CACHE_MAX_STALE {
+        return None;
+    }
+    let mut response = Response::builder()
+        .status(cached.status)
+        .body(Body::from(cached.body))
+        .ok()?;
+    copy_proxy_response_headers(response.headers_mut(), &cached.headers);
+    Some(response)
+}
+
+fn store_authority_hot_cache(
+    state: &AppState,
+    cache_key: String,
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Bytes,
+) {
+    if !status.is_success() {
+        return;
+    }
+    if let Ok(mut cache) = state.authority_hot_cache.write() {
+        cache.insert(
+            cache_key,
+            CachedAuthorityResponse {
+                status,
+                headers,
+                body,
+                cached_at: Instant::now(),
+            },
+        );
+    }
+}
+
+fn spawn_authority_hot_cache_refresh_loop(state: AppState) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(HOT_AUTHORITY_CACHE_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            for path in HOT_AUTHORITY_CACHE_PATHS {
+                refresh_authority_hot_cache_path(&state, path).await;
+            }
+        }
+    });
+}
+
+async fn refresh_authority_hot_cache_path(state: &AppState, path: &str) {
+    let target = match state.authority_http_base_url.join(path) {
+        Ok(target) => target,
+        Err(error) => {
+            tracing::warn!(
+                path,
+                error = %error,
+                "skipping hot Nexus authority cache refresh for invalid path"
+            );
+            return;
+        }
+    };
+    let authority = match state
+        .http_client
+        .get(target)
+        .header(header::USER_AGENT, "nexus-relay-hot-cache")
+        .send()
+        .await
+    {
+        Ok(authority) => authority,
+        Err(error) => {
+            tracing::debug!(
+                path,
+                error = %error,
+                "hot Nexus authority cache refresh failed"
+            );
+            return;
+        }
+    };
+    let status = authority.status();
+    let headers = authority.headers().clone();
+    let body = match authority.bytes().await {
+        Ok(body) => body,
+        Err(error) => {
+            tracing::debug!(
+                path,
+                error = %error,
+                "hot Nexus authority cache body read failed"
+            );
+            return;
+        }
+    };
+    store_authority_hot_cache(state, path.to_string(), status, headers, body);
 }
 
 async fn upgrade_websocket(state: AppState, request: Request) -> Response {
@@ -1117,6 +1257,31 @@ mod tests {
 
         server.abort();
         authority.abort();
+        relay.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn durable_shell_serves_cached_hot_authority_routes() -> Result<()> {
+        let tempdir = tempdir()?;
+        let config = durable_config(tempdir.path())?;
+        let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
+        let (addr, server, authority) = start_shell_server(config).await?;
+
+        let client = reqwest::Client::new();
+        let url = format!("http://{addr}/api/stats");
+        let warm = client.get(url.as_str()).send().await?;
+        assert_eq!(warm.status(), StatusCode::OK);
+        let warm_body: Value = warm.json().await?;
+        assert_eq!(warm_body["service"], "nexus-control");
+
+        authority.abort();
+        let cached = client.get(url.as_str()).send().await?;
+        assert_eq!(cached.status(), StatusCode::OK);
+        let cached_body: Value = cached.json().await?;
+        assert_eq!(cached_body["service"], "nexus-control");
+
+        server.abort();
         relay.shutdown().await?;
         Ok(())
     }
