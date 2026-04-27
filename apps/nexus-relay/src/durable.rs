@@ -4,20 +4,20 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::mpsc::{self, Sender as SyncSender};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::body::{Body, Bytes, to_bytes};
 use axum::extract::FromRequestParts;
 use axum::extract::Request;
 use axum::extract::State;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::http::{HeaderMap, Method, StatusCode, header};
+use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{any, get};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use reqwest::Url;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::connect_async;
@@ -43,6 +43,9 @@ const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 const HOT_AUTHORITY_CACHE_REFRESH_INTERVAL: Duration = Duration::from_secs(10);
 const HOT_AUTHORITY_CACHE_MAX_STALE: Duration = Duration::from_secs(300);
 const HOT_AUTHORITY_CACHE_PATHS: &[&str] = &["/stats", "/api/stats", "/api/training/rollout"];
+const PROVIDER_PRESENCE_HEARTBEAT_PATH: &str = "/api/provider-presence/heartbeat";
+const PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
+const PROVIDER_PRESENCE_STALE_AFTER_MS: u64 = 120_000;
 const NEXUS_PRODUCT_NAME: &str = "OpenAgents Nexus";
 const NEXUS_PRODUCT_DESCRIPTION: &str = "The OpenAgents relay and authority host for Autopilot.";
 const MANAGED_GROUPS_MODE_DEFERRED: &str = "deferred";
@@ -195,6 +198,23 @@ struct CachedAuthorityResponse {
     headers: HeaderMap,
     body: Bytes,
     cached_at: Instant,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProviderPresenceDryRunRequest {
+    nostr_pubkey_hex: String,
+    session_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ProviderPresenceDryRunResponse {
+    authority: String,
+    session_id: String,
+    nostr_pubkey_hex: String,
+    status: String,
+    recorded_at_unix_ms: u64,
+    heartbeat_interval_ms: u64,
+    stale_after_ms: u64,
 }
 
 pub async fn run_server(config: DurableRelayConfig) -> Result<(), anyhow::Error> {
@@ -406,6 +426,9 @@ async fn proxy_upstream_request(
 async fn proxy_authority_http_request(state: &AppState, request: Request) -> Response {
     let method = request.method().clone();
     let uri = request.uri().clone();
+    if provider_presence_dry_run_requested(&method, &uri) {
+        return provider_presence_dry_run_response(request).await;
+    }
     let cache_key = authority_hot_cache_key(&method, uri.path());
     if let Some(cache_key) = cache_key.as_deref()
         && let Some(response) = try_cached_authority_response(state, cache_key)
@@ -513,6 +536,63 @@ fn authority_hot_cache_key(method: &Method, path: &str) -> Option<String> {
         .iter()
         .any(|candidate| *candidate == path)
         .then(|| path.to_string())
+}
+
+fn provider_presence_dry_run_requested(method: &Method, uri: &Uri) -> bool {
+    method == Method::POST
+        && uri.path() == PROVIDER_PRESENCE_HEARTBEAT_PATH
+        && query_has_dry_run_true(uri.query())
+}
+
+fn query_has_dry_run_true(query: Option<&str>) -> bool {
+    query
+        .unwrap_or_default()
+        .split('&')
+        .filter_map(|part| part.split_once('='))
+        .any(|(name, value)| name == "dry_run" && matches!(value, "true" | "1"))
+}
+
+async fn provider_presence_dry_run_response(request: Request) -> Response {
+    let body_bytes = match to_bytes(request.into_body(), MAX_PROXY_REQUEST_BYTES).await {
+        Ok(body) => body,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("failed to read provider-presence dry-run request body: {error}"),
+            )
+                .into_response();
+        }
+    };
+    let request = match serde_json::from_slice::<ProviderPresenceDryRunRequest>(&body_bytes) {
+        Ok(request) => request,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("invalid provider-presence dry-run request body: {error}"),
+            )
+                .into_response();
+        }
+    };
+    let session_id = request.session_id.trim();
+    let nostr_pubkey_hex = request.nostr_pubkey_hex.trim();
+    if session_id.is_empty() || nostr_pubkey_hex.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            "provider-presence dry-run request requires session_id and nostr_pubkey_hex",
+        )
+            .into_response();
+    }
+
+    Json(ProviderPresenceDryRunResponse {
+        authority: "openagents-hosted-nexus".to_string(),
+        session_id: session_id.to_string(),
+        nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
+        status: "online".to_string(),
+        recorded_at_unix_ms: now_unix_ms(),
+        heartbeat_interval_ms: PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS,
+        stale_after_ms: PROVIDER_PRESENCE_STALE_AFTER_MS,
+    })
+    .into_response()
 }
 
 fn try_cached_authority_response(state: &AppState, cache_key: &str) -> Option<Response> {
@@ -804,6 +884,15 @@ fn parse_usize_env(name: &str, default: usize) -> Result<usize, String> {
         return Err(format!("invalid {name}: expected value greater than zero"));
     }
     Ok(parsed)
+}
+
+fn now_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 fn build_authority_config(
@@ -1280,6 +1369,45 @@ mod tests {
         assert_eq!(cached.status(), StatusCode::OK);
         let cached_body: Value = cached.json().await?;
         assert_eq!(cached_body["service"], "nexus-control");
+
+        server.abort();
+        relay.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn durable_shell_serves_provider_presence_dry_run_locally() -> Result<()> {
+        let tempdir = tempdir()?;
+        let config = durable_config(tempdir.path())?;
+        let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
+        let (addr, server, authority) = start_shell_server(config).await?;
+
+        authority.abort();
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!(
+                "http://{addr}/api/provider-presence/heartbeat?dry_run=true"
+            ))
+            .json(&serde_json::json!({
+                "nostr_pubkey_hex": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+                "session_id": "dry-run-session",
+                "hosting_telemetry": {}
+            }))
+            .send()
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: Value = response.json().await?;
+        assert_eq!(body["authority"], "openagents-hosted-nexus");
+        assert_eq!(body["session_id"], "dry-run-session");
+        assert_eq!(body["status"], "online");
+        assert_eq!(
+            body["heartbeat_interval_ms"],
+            super::PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS
+        );
+        assert_eq!(
+            body["stale_after_ms"],
+            super::PROVIDER_PRESENCE_STALE_AFTER_MS
+        );
 
         server.abort();
         relay.shutdown().await?;
