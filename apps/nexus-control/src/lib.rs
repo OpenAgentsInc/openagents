@@ -10840,7 +10840,7 @@ fn prepare_homework_launch(
         )
         .map_err(kernel_api_error)?,
     );
-    let matched_nodes = admitted_nodes
+    let mut matched_nodes = admitted_nodes
         .iter()
         .filter(|node| {
             homework_launch_node_target_matches(
@@ -10860,6 +10860,19 @@ fn prepare_homework_launch(
         })
         .cloned()
         .collect::<Vec<_>>();
+    matched_nodes.sort_by(|left, right| {
+        let left_explicit = left
+            .allowed_networks
+            .iter()
+            .any(|allowed| allowed == &network_id);
+        let right_explicit = right
+            .allowed_networks
+            .iter()
+            .any(|allowed| allowed == &network_id);
+        right_explicit
+            .cmp(&left_explicit)
+            .then_with(|| left.node_pubkey_hex.cmp(&right.node_pubkey_hex))
+    });
     if matched_nodes.is_empty() {
         let mut rejection_counts = BTreeMap::<String, usize>::new();
         let mut rejection_samples = Vec::new();
@@ -28427,10 +28440,15 @@ mod tests {
         settlement_destination: Option<&str>,
     ) {
         let mut store = state.store.write().expect("write store");
+        let allowed_networks = if network_id.trim().is_empty() {
+            Vec::new()
+        } else {
+            vec![network_id]
+        };
         let mut request = training_node_admission_request_with_environment_refs(
             node_pubkey_hex,
             build_digest,
-            vec![network_id],
+            allowed_networks,
             Vec::new(),
             Some(32),
             vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
@@ -28455,10 +28473,15 @@ mod tests {
             )
             .expect("record homework launch node admission");
 
+        let presence_run_id = if network_id.trim().is_empty() {
+            "presence.default".to_string()
+        } else {
+            format!("presence.{network_id}")
+        };
         let mut heartbeat = training_node_heartbeat_request_for_scope(
             node_pubkey_hex,
             build_digest,
-            format!("presence.{network_id}").as_str(),
+            presence_run_id.as_str(),
             "window.presence.0001",
         );
         heartbeat.recorded_at_ms = recorded_at_ms as i64 + 10;
@@ -46922,6 +46945,93 @@ mod tests {
             .cloned()
             .collect::<std::collections::BTreeSet<String>>();
         assert_eq!(unique_uploaded_paths.len(), 6, "{uploaded_paths:?}");
+
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_cs336_homework_dispatch_prefers_explicit_network_workers() -> Result<()> {
+        let (training_artifact_signed_url, _dir, _upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink("gs://dispatch-explicit-network-bucket").await?;
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let recorded_at_ms = now_unix_ms();
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let isolated_network_id = "trainnet.cs336.a1.issue4451fresh";
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(200),
+            "node-dispatch-broad",
+            "sha256:build-dispatch-broad",
+            "",
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodedispatchbroad"),
+        );
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-dispatch-explicit",
+            "sha256:build-dispatch-explicit",
+            isolated_network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodedispatchexplicit"),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/homework/cs336-a1/dispatch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &super::DispatchCs336A1HomeworkRunsRequest {
+                            run_count: 1,
+                            max_contributors_per_run: 1,
+                            amount_sats: 9,
+                            total_budget_sats: Some(9),
+                            run_slug_prefix: Some("explicit.network".to_string()),
+                            display_name_prefix: Some("Explicit Network CS336 A1".to_string()),
+                            network_id: Some(isolated_network_id.to_string()),
+                            min_pylon_version: Some(
+                                super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string(),
+                            ),
+                            require_updated_build: false,
+                            ..super::DispatchCs336A1HomeworkRunsRequest::default()
+                        },
+                    )?))?,
+            )
+            .await?;
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(bytes.as_ref())
+        );
+        let dispatch =
+            serde_json::from_slice::<super::DispatchCs336A1HomeworkRunsResponse>(bytes.as_ref())?;
+        assert_eq!(dispatch.launched_run_count, 1);
+        let launch = dispatch.launches.first().expect("dispatched launch");
+        assert_eq!(launch.network_id, isolated_network_id);
+        assert_eq!(launch.matched_pylons.len(), 2);
+        assert_eq!(launch.assigned_pylons.len(), 1);
+        assert_eq!(
+            launch.assigned_pylons[0].node.node_pubkey_hex,
+            "node-dispatch-explicit"
+        );
 
         upload_server.abort();
         Ok(())
