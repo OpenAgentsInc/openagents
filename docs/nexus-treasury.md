@@ -688,14 +688,17 @@ The production wrapper runs the `nexus-control` binary shipped inside the
 commands against the default relay entrypoint; that starts the relay server
 instead of executing the treasury command.
 
-The production wrapper also takes a VM-local recovery lock and runtime-masks
-`nexus-relay` while the report or cutover command is inspecting wallet storage.
-Do not run a second recovery wrapper in parallel. If the lock fails, wait for
-the first recovery command to finish or clean up its recovery containers before
+The production wrapper also takes a VM-local recovery lock, pauses the public
+and treasury watchdog timers/services, applies a runtime `Restart=no` systemd
+drop-in, runtime-masks `nexus-relay`, and removes any stale `nexus-relay`
+container while the report or cutover command is inspecting wallet storage. Do
+not run a second recovery wrapper in parallel. If the lock fails, wait for the
+first recovery command to finish or clean up its recovery containers before
 trying again. The wrapper performs registry login and image pull before
 stopping `nexus-relay`, then avoids command-substitution capture while cleanup
-is armed; recovery JSON is written through a normal temp file so a subshell
-cannot unmask or restart `nexus-relay` while an inspection is still running.
+is armed; recovery JSON is written through a normal temp file so a subshell,
+watchdog, or `Restart=always` path cannot unmask or restart `nexus-relay` while
+an inspection is still running.
 After shell edits to the wrapper, run
 `bash scripts/deploy/nexus/test-recover-treasury-wallet-shell-guards.sh`
 before touching production.
@@ -707,6 +710,11 @@ defaults it to `120000` ms, and clamps it to 30 minutes. The production wrapper
 passes `NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS=false` by default so the
 current and rebuilt storage inspections do not double upstream Spark sync load;
 enable it only for deliberate local or non-mutating probes. The wrapper also
+passes `NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS=false` by default. Balance
+comparison is enough for bounded wallet-store recovery, and Spark
+payment-history or unclaimed-deposit scans can hang during the same class of
+wallet-store incident. Set `NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS=true` only
+for deliberate forensics after Nexus is already stable. The wrapper also
 defaults `RUST_LOG` to `warn` so large payment-history syncs do not bury the
 report JSON in per-payment info logs. Recovery report generation defaults to
 three attempts and removes the partial work dir between failed attempts so

@@ -17,6 +17,7 @@ NEXUS_TREASURY_RECOVERY_ACTION="${NEXUS_TREASURY_RECOVERY_ACTION:-}"
 NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS="${NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS:-120000}"
 NEXUS_TREASURY_RECOVERY_COMMAND_TIMEOUT_SECONDS="${NEXUS_TREASURY_RECOVERY_COMMAND_TIMEOUT_SECONDS:-900}"
 NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS="${NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS:-false}"
+NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS="${NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS:-false}"
 NEXUS_TREASURY_RECOVERY_RUST_LOG="${NEXUS_TREASURY_RECOVERY_RUST_LOG:-warn}"
 NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS="${NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS:-3}"
 
@@ -60,35 +61,80 @@ gcloud compute ssh "$NEXUS_VM" \
     recovery_child_active() { \
       pgrep -f 'nexus-control treasury recovery-' >/dev/null 2>&1; \
     }; \
+    pause_recovery_watchdogs() { \
+      for unit in nexus-public-watchdog.timer nexus-public-watchdog.service nexus-treasury-watchdog.timer nexus-treasury-watchdog.service; do \
+        sudo systemctl stop \"\$unit\" >/dev/null 2>&1 || true; \
+        sudo systemctl mask --runtime \"\$unit\" >/dev/null 2>&1 || true; \
+      done; \
+    }; \
+    resume_recovery_watchdogs() { \
+      for unit in nexus-public-watchdog.timer nexus-public-watchdog.service nexus-treasury-watchdog.timer nexus-treasury-watchdog.service; do \
+        sudo systemctl unmask \"\$unit\" >/dev/null 2>&1 || true; \
+      done; \
+      sudo systemctl start nexus-treasury-watchdog.timer >/dev/null 2>&1 || true; \
+      sudo systemctl start nexus-public-watchdog.timer >/dev/null 2>&1 || true; \
+    }; \
+    install_recovery_restart_override() { \
+      sudo mkdir -p /run/systemd/system/nexus-relay.service.d; \
+      printf '[Service]\nRestart=no\n' | sudo tee /run/systemd/system/nexus-relay.service.d/openagents-treasury-recovery.conf >/dev/null; \
+      sudo systemctl daemon-reload; \
+    }; \
+    remove_recovery_restart_override() { \
+      sudo rm -f /run/systemd/system/nexus-relay.service.d/openagents-treasury-recovery.conf; \
+      sudo systemctl daemon-reload; \
+      sudo systemctl reset-failed nexus-relay >/dev/null 2>&1 || true; \
+    }; \
+    relay_fully_stopped() { \
+      local state; \
+      state=\$(systemctl is-active nexus-relay 2>/dev/null || true); \
+      case \"\$state\" in \
+        inactive|failed|unknown) ;; \
+        *) return 1 ;; \
+      esac; \
+      ! sudo docker ps --filter 'name=^/nexus-relay$' --format '{{.Names}}' | grep -qx 'nexus-relay'; \
+    }; \
+    wait_for_relay_fully_stopped() { \
+      local attempt=1; \
+      local max_attempts=30; \
+      local state; \
+      local containers; \
+      while (( attempt <= max_attempts )); do \
+        if relay_fully_stopped; then \
+          return 0; \
+        fi; \
+        state=\$(systemctl is-active nexus-relay 2>/dev/null || true); \
+        containers=\$(sudo docker ps --filter 'name=^/nexus-relay$' --format '{{.Names}}' | paste -sd ',' -); \
+        echo \"waiting for nexus-relay to stop before treasury recovery attempt=\${attempt} state=\${state:-unknown} containers=\${containers:-none}\" >&2; \
+        sleep 1; \
+        attempt=\$((attempt + 1)); \
+      done; \
+      return 1; \
+    }; \
     cleanup_relay_service() { \
       [[ \"\${BASH_SUBSHELL:-0}\" == \"0\" ]] || return 0; \
       rm -f \"\$REPORT_STDOUT_PATH\" >/dev/null 2>&1 || true; \
       if recovery_child_active; then \
-        echo 'treasury recovery child is still active; leaving nexus-relay masked/stopped for wallet isolation' >&2; \
+        echo 'treasury recovery child is still active; leaving nexus-relay and watchdogs masked/stopped for wallet isolation' >&2; \
         return 0; \
       fi; \
+      remove_recovery_restart_override; \
       sudo systemctl unmask nexus-relay >/dev/null 2>&1 || true; \
       sudo systemctl start nexus-relay >/dev/null 2>&1 || true; \
+      resume_recovery_watchdogs; \
     }; \
     trap 'cleanup_relay_service' EXIT; \
+    pause_recovery_watchdogs; \
+    install_recovery_restart_override; \
     sudo systemctl mask --runtime nexus-relay >/dev/null; \
     sudo systemctl stop nexus-relay; \
     sudo docker rm -f nexus-relay >/dev/null 2>&1 || true; \
-    RELAY_STOPPED=0; \
-    for attempt in 1 2 3 4 5 6 7 8 9 10; do \
-      if ! systemctl is-active nexus-relay >/dev/null; then \
-        RELAY_STOPPED=1; \
-        break; \
-      fi; \
-      sleep 1; \
-    done; \
-    [[ \"\$RELAY_STOPPED\" == \"1\" ]] || { echo 'nexus-relay did not stop before treasury recovery inspection' >&2; exit 1; }; \
+    wait_for_relay_fully_stopped || { echo 'nexus-relay did not fully stop before treasury recovery inspection' >&2; exit 1; }; \
     ensure_relay_stopped_for_recovery() { \
       sudo systemctl mask --runtime nexus-relay >/dev/null; \
       sudo systemctl stop nexus-relay >/dev/null 2>&1 || true; \
       sudo docker rm -f nexus-relay >/dev/null 2>&1 || true; \
-      if systemctl is-active nexus-relay >/dev/null; then \
-        echo 'nexus-relay restarted during treasury recovery inspection' >&2; \
+      if ! wait_for_relay_fully_stopped; then \
+        echo 'nexus-relay restarted or remained alive during treasury recovery inspection' >&2; \
         return 1; \
       fi; \
     }; \
@@ -99,6 +145,7 @@ gcloud compute ssh "$NEXUS_VM" \
         --env-file /etc/nexus-relay/nexus-relay.env \
         --env NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS='${NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS}' \
         --env NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_PARALLEL_INSPECTIONS='${NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS}' \
+        --env NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_SCAN_PAYMENTS='${NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS}' \
         --env RUST_LOG='${NEXUS_TREASURY_RECOVERY_RUST_LOG}' \
         -v '${NEXUS_DATA_DIR}:${NEXUS_DATA_DIR}' \
         '$DEPLOY_IMAGE' \
@@ -135,6 +182,7 @@ gcloud compute ssh "$NEXUS_VM" \
       ensure_relay_stopped_for_recovery; \
       run_nexus_control treasury recovery-cutover --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json; \
     fi; \
+    remove_recovery_restart_override; \
     sudo systemctl unmask nexus-relay >/dev/null; \
     sudo systemctl start nexus-relay; \
     trap - EXIT; \
