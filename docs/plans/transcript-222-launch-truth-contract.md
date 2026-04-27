@@ -532,6 +532,57 @@ compute work under one run id. It must never be inferred from online Pylons,
 seen-in-24h Pylons, sellable Pylons, generic payout totals, Discord members,
 downloads, presence sessions, or app sessions.
 
+### A1 Minimal Participant Claim Gate
+
+The machine-readable gate for the first participant-count record attempt is:
+
+- `GET /api/training/runs/<trainingRunId>/claim-gates`
+
+For `a1_minimal_distributed_lm_001`, this endpoint is the canonical
+pass/fail report for public "largest" claim language. It deliberately returns
+`unqualified_largest_claim_allowed: false` even when a qualified claim passes.
+
+The participant gate maps public language to internal truth as follows:
+
+- Public label: `Participants`
+- Internal source of truth: `training_accepted_contributors`
+- Minimum target: `201+`
+
+The gate for "largest by number of participants" passes only when all of the
+following are true:
+
+- one run id is being evaluated;
+- `training_accepted_contributors >= 201`;
+- at least `201` distinct Pylon/provider identities have accepted real
+  Psionic/Pylon compute receipts for that run;
+- Nexus closeout truth accepted the work;
+- public run/window/checkpoint lineage exists;
+- the A1 minimal distributed LM run definition is present.
+
+The model-progress participant gate maps public language to internal truth as
+follows:
+
+- Public label: `Model-progress participants`
+- Internal source of truth: `training_model_progress_contributors`
+- Minimum target: `201+`
+
+The gate for "largest by number of model-progress participants" passes only
+when the participant gate evidence is backed by accepted local-update or
+checkpoint-advance work that entered canonical aggregate/promotion lineage,
+with a promoted checkpoint ref, validation loss, and retained promotion
+receipt.
+
+The gate must not use these excluded counter sources as claim evidence:
+
+- `pylonsOnlineNow`
+- `pylonsSeen24h`
+- `sellablePylonsOnlineNow`
+- `pylonSessionsOnlineNow`
+- presence sessions
+- generic payout totals
+- downloads
+- Discord members
+
 The public stats contract now also exposes run/window lineage fields on the
 canonical `/api/stats` path under `training_public_state`:
 

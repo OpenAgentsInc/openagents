@@ -343,6 +343,8 @@ pub const A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_WEIGHT_BASIS_REF: &str =
     "accepted_tokens_processed_v1";
 pub const A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF: &str =
     "base://a1_minimal_distributed_lm/step-000000";
+const A1_MINIMAL_DISTRIBUTED_LM_PARTICIPANT_RECORD_TARGET: u64 = 201;
+const TRAINING_PARTICIPANT_CLAIM_GATE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone)]
 pub struct TrainingArtifactSignedUrlConfig {
@@ -3194,6 +3196,60 @@ struct TrainingOperatorSummaryResponse {
     runs_with_accepted_progress: u64,
     #[serde(default)]
     runs: Vec<TrainingOperatorRunSummary>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingParticipantClaimGateReport {
+    schema_version: u32,
+    generated_at_unix_ms: u64,
+    training_run_id: String,
+    run_definition_ref: Option<String>,
+    target_minimum_participants: u64,
+    status: String,
+    unqualified_largest_claim_allowed: bool,
+    participant_gate: TrainingParticipantClaimGate,
+    model_progress_participant_gate: TrainingParticipantClaimGate,
+    #[serde(default)]
+    allowed_public_claims: Vec<String>,
+    #[serde(default)]
+    forbidden_public_claims: Vec<String>,
+    #[serde(default)]
+    excluded_counter_sources: Vec<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingParticipantClaimGate {
+    gate_id: String,
+    public_label: String,
+    internal_source_of_truth: String,
+    status: String,
+    passed: bool,
+    allowed_public_wording: Option<String>,
+    #[serde(default)]
+    missing_fields: Vec<String>,
+    evidence: TrainingParticipantClaimGateEvidence,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct TrainingParticipantClaimGateEvidence {
+    training_run_id: String,
+    accepted_contributors: u64,
+    model_progress_contributors: u64,
+    real_compute_accepted_participants: u64,
+    real_compute_model_progress_participants: u64,
+    accepted_closeouts: u64,
+    payout_eligible_closeouts: u64,
+    public_window_count: u64,
+    windows_advanced_checkpoint_lineage: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_aggregate_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latest_promoted_checkpoint_ref: Option<String>,
+    validation_loss_present: bool,
+    promotion_receipt_present: bool,
+    run_definition_ref_matches_a1_minimal: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -9121,6 +9177,10 @@ fn build_api_router_with_state(state: AppState) -> Router {
             "/api/training/runs/{training_run_id}",
             get(get_training_run_detail),
         )
+        .route(
+            "/api/training/runs/{training_run_id}/claim-gates",
+            get(get_training_run_claim_gates),
+        )
         .route("/api/training/summary", get(training_operator_summary))
         .route("/api/admin/homework/launch", post(launch_homework_run))
         .route("/v1/admin/homework/launch", post(launch_homework_run))
@@ -9609,6 +9669,34 @@ async fn get_training_run_detail(
     );
     replace_training_run_detail_cache(&state, snapshot.clone());
     Ok(Json(snapshot))
+}
+
+async fn get_training_run_claim_gates(
+    State(state): State<AppState>,
+    Path(training_run_id): Path<String>,
+) -> Result<Json<TrainingParticipantClaimGateReport>, ApiError> {
+    let training_run_id =
+        normalize_required_field(training_run_id.as_str(), "training_run_id_missing")?;
+    let now = now_unix_ms();
+    let store = try_read_store(&state, "training_run_claim_gate_live_store_busy")?;
+    let summary = training_operator_summary_snapshot(&store, now);
+    let visualization = training_visualization_snapshot_with_summary(&store, now, summary.clone());
+    let report = training_participant_claim_gate_report(
+        &store,
+        &summary,
+        &visualization,
+        now,
+        training_run_id.as_str(),
+    )
+    .map_err(|reason| match reason.as_str() {
+        "training_run_not_found" => ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason,
+        },
+        _ => kernel_api_error(reason),
+    })?;
+    Ok(Json(report))
 }
 
 #[derive(Debug, Clone)]
@@ -26309,6 +26397,440 @@ fn training_visualization_snapshot_with_summary(
     }
 }
 
+fn training_claim_gate_string(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn training_claim_gate_run_definition_ref_from_value(value: &Value) -> Option<String> {
+    training_claim_gate_string(value.get("run_definition_ref"))
+        .or_else(|| {
+            value.get("run_definition").and_then(|run_definition| {
+                training_claim_gate_string(run_definition.get("run_definition_ref"))
+            })
+        })
+        .or_else(|| {
+            value.get("training_policy").and_then(|training_policy| {
+                training_claim_gate_string(training_policy.get("run_definition_ref"))
+            })
+        })
+}
+
+fn training_claim_gate_run_definition_ref(
+    store: &ControlStore,
+    training_run_id: &str,
+) -> Option<String> {
+    store
+        .kernel
+        .get_compute_training_run(training_run_id)
+        .and_then(|run| training_claim_gate_run_definition_ref_from_value(&run.metadata))
+        .or_else(|| {
+            store
+                .kernel
+                .list_compute_adapter_training_windows(Some(training_run_id), None)
+                .iter()
+                .find_map(|window| {
+                    training_claim_gate_run_definition_ref_from_value(&window.metadata)
+                })
+        })
+        .or_else(|| {
+            store
+                .kernel
+                .list_compute_accepted_outcomes(Some(ComputeAcceptedOutcomeKind::TrainingRun), None)
+                .iter()
+                .filter(|outcome| outcome.source_run_id == training_run_id)
+                .find_map(|outcome| {
+                    training_claim_gate_run_definition_ref_from_value(&outcome.metadata)
+                })
+        })
+}
+
+fn training_claim_gate_has_real_compute_receipt(
+    contribution: &ComputeAdapterContributionOutcome,
+) -> bool {
+    let required_fields = [
+        contribution.contribution_id.as_str(),
+        contribution.training_run_id.as_str(),
+        contribution.window_id.as_str(),
+        contribution.assignment_id.as_str(),
+        contribution.contributor_node_id.as_str(),
+        contribution.worker_id.as_str(),
+        contribution.submission_receipt_digest.as_str(),
+        contribution.manifest_digest.as_str(),
+        contribution.object_digest.as_str(),
+        contribution.artifact_receipt_digest.as_str(),
+        contribution.provenance_bundle_digest.as_str(),
+        contribution.security_receipt_digest.as_str(),
+        contribution.validator_receipt_digest.as_str(),
+    ];
+
+    required_fields.iter().all(|value| !value.trim().is_empty())
+        && contribution
+            .artifact_id
+            .starts_with("oa.train_artifact.v1~kind~")
+}
+
+fn training_claim_gate_latest_aggregate_ref(
+    visualization: &TrainingVisualizationResponse,
+    training_run_id: &str,
+) -> Option<String> {
+    visualization
+        .runs
+        .iter()
+        .find(|run| run.training_run_id == training_run_id)
+        .and_then(|run| run.latest_aggregate_ref.clone())
+        .or_else(|| {
+            visualization
+                .aggregates
+                .iter()
+                .filter(|aggregate| aggregate.training_run_id == training_run_id)
+                .max_by(|lhs, rhs| {
+                    lhs.recorded_at_ms
+                        .cmp(&rhs.recorded_at_ms)
+                        .then_with(|| lhs.aggregate_ref.cmp(&rhs.aggregate_ref))
+                })
+                .map(|aggregate| aggregate.aggregate_ref.clone())
+        })
+}
+
+fn training_claim_gate_latest_promoted_checkpoint_ref(
+    visualization: &TrainingVisualizationResponse,
+    training_run_id: &str,
+) -> Option<String> {
+    visualization
+        .runs
+        .iter()
+        .find(|run| run.training_run_id == training_run_id)
+        .and_then(|run| run.latest_promoted_checkpoint_ref.clone())
+        .or_else(|| {
+            visualization
+                .checkpoints
+                .iter()
+                .filter(|checkpoint| {
+                    checkpoint.training_run_id == training_run_id
+                        && checkpoint.checkpoint_role == "promoted"
+                })
+                .max_by(|lhs, rhs| {
+                    lhs.recorded_at_ms
+                        .cmp(&rhs.recorded_at_ms)
+                        .then_with(|| lhs.checkpoint_ref.cmp(&rhs.checkpoint_ref))
+                })
+                .map(|checkpoint| checkpoint.checkpoint_ref.clone())
+        })
+}
+
+fn training_claim_gate_latest_checkpoint_ref(
+    summary_run: &TrainingOperatorRunSummary,
+    visualization: &TrainingVisualizationResponse,
+    training_run_id: &str,
+) -> Option<String> {
+    visualization
+        .runs
+        .iter()
+        .find(|run| run.training_run_id == training_run_id)
+        .and_then(|run| run.latest_checkpoint_ref.clone())
+        .or_else(|| summary_run.latest_checkpoint_ref.clone())
+        .or_else(|| {
+            visualization
+                .checkpoints
+                .iter()
+                .filter(|checkpoint| checkpoint.training_run_id == training_run_id)
+                .max_by(|lhs, rhs| {
+                    lhs.recorded_at_ms
+                        .cmp(&rhs.recorded_at_ms)
+                        .then_with(|| lhs.checkpoint_ref.cmp(&rhs.checkpoint_ref))
+                })
+                .map(|checkpoint| checkpoint.checkpoint_ref.clone())
+        })
+}
+
+fn training_claim_gate_status(passed: bool) -> String {
+    if passed { "passed" } else { "blocked" }.to_string()
+}
+
+fn training_claim_gate_report_status(
+    participant_gate_passed: bool,
+    model_progress_gate_passed: bool,
+) -> String {
+    match (participant_gate_passed, model_progress_gate_passed) {
+        (true, true) => "passed".to_string(),
+        (true, false) => "participant_gate_passed".to_string(),
+        (false, _) => "blocked".to_string(),
+    }
+}
+
+fn training_participant_claim_gate_report(
+    store: &ControlStore,
+    summary: &TrainingOperatorSummaryResponse,
+    visualization: &TrainingVisualizationResponse,
+    now_unix_ms: u64,
+    training_run_id: &str,
+) -> Result<TrainingParticipantClaimGateReport, String> {
+    let training_run_id =
+        normalize_required_training_string(training_run_id, "training_run_id_missing")?;
+    let summary_run = summary
+        .runs
+        .iter()
+        .find(|run| run.training_run_id == training_run_id)
+        .ok_or_else(|| "training_run_not_found".to_string())?;
+
+    let windows = store
+        .kernel
+        .list_compute_adapter_training_windows(Some(training_run_id.as_str()), None);
+    let accepted_outcomes = store
+        .kernel
+        .list_compute_accepted_outcomes(Some(ComputeAcceptedOutcomeKind::TrainingRun), None)
+        .into_iter()
+        .filter(|outcome| outcome.source_run_id == training_run_id)
+        .collect::<Vec<_>>();
+    let accepted_outcomes_by_id = accepted_outcomes
+        .iter()
+        .map(|outcome| (outcome.outcome_id.as_str(), outcome))
+        .collect::<HashMap<_, _>>();
+    let accepted_terminal_outcomes = accepted_outcomes
+        .iter()
+        .filter(|outcome| training_outcome_counts_as_accepted_closeout(outcome))
+        .collect::<Vec<_>>();
+    let accepted_progress_outcomes = accepted_outcomes
+        .iter()
+        .filter(|outcome| training_outcome_counts_as_accepted_progress(outcome))
+        .collect::<Vec<_>>();
+    let accepted_terminal_window_ids = accepted_terminal_outcomes
+        .iter()
+        .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
+    let accepted_progress_window_ids = accepted_progress_outcomes
+        .iter()
+        .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
+    let lineage_window_ids = windows
+        .iter()
+        .filter(|window| {
+            training_window_advances_checkpoint_lineage(window, &accepted_outcomes_by_id)
+        })
+        .map(|window| window.window_id.clone())
+        .collect::<HashSet<_>>();
+
+    let contributions = store.kernel.list_compute_adapter_contribution_outcomes(
+        Some(training_run_id.as_str()),
+        None,
+        None,
+    );
+    let real_compute_accepted_participants = contributions
+        .iter()
+        .filter(|contribution| {
+            accepted_terminal_window_ids.contains(contribution.window_id.as_str())
+        })
+        .filter(|contribution| training_contribution_counts_for_settlement(contribution))
+        .filter(|contribution| training_claim_gate_has_real_compute_receipt(contribution))
+        .filter_map(|contribution| {
+            let contributor_node_id = contribution.contributor_node_id.trim();
+            (!contributor_node_id.is_empty()).then(|| contributor_node_id.to_string())
+        })
+        .collect::<HashSet<_>>();
+    let real_compute_model_progress_participants = contributions
+        .iter()
+        .filter(|contribution| {
+            accepted_progress_window_ids.contains(contribution.window_id.as_str())
+        })
+        .filter(|contribution| lineage_window_ids.contains(contribution.window_id.as_str()))
+        .filter(|contribution| training_contribution_counts_as_accepted_progress(contribution))
+        .filter(|contribution| training_claim_gate_has_real_compute_receipt(contribution))
+        .filter_map(|contribution| {
+            let contributor_node_id = contribution.contributor_node_id.trim();
+            (!contributor_node_id.is_empty()).then(|| contributor_node_id.to_string())
+        })
+        .collect::<HashSet<_>>();
+
+    let latest_checkpoint_ref = training_claim_gate_latest_checkpoint_ref(
+        summary_run,
+        visualization,
+        training_run_id.as_str(),
+    );
+    let latest_aggregate_ref =
+        training_claim_gate_latest_aggregate_ref(visualization, training_run_id.as_str());
+    let latest_promoted_checkpoint_ref =
+        training_claim_gate_latest_promoted_checkpoint_ref(visualization, training_run_id.as_str());
+    let validation_loss_present = accepted_progress_outcomes.iter().any(|outcome| {
+        outcome
+            .training_summary
+            .as_ref()
+            .and_then(|summary| summary.average_loss)
+            .is_some()
+    });
+    let promotion_receipt_present = contributions
+        .iter()
+        .filter(|contribution| {
+            accepted_progress_window_ids.contains(contribution.window_id.as_str())
+        })
+        .filter(|contribution| training_contribution_counts_as_accepted_progress(contribution))
+        .any(|contribution| {
+            contribution
+                .promotion_receipt_digest
+                .as_deref()
+                .is_some_and(|digest| !digest.trim().is_empty())
+        });
+    let run_definition_ref =
+        training_claim_gate_run_definition_ref(store, training_run_id.as_str());
+    let run_definition_ref_matches_a1_minimal =
+        run_definition_ref.as_deref() == Some(A1_MINIMAL_DISTRIBUTED_LM_RUN_DEFINITION_REF);
+    let public_window_count = visualization
+        .windows
+        .iter()
+        .filter(|window| window.training_run_id == training_run_id)
+        .count() as u64;
+    let evidence = TrainingParticipantClaimGateEvidence {
+        training_run_id: training_run_id.to_string(),
+        accepted_contributors: summary_run.accepted_contributors,
+        model_progress_contributors: summary_run.model_progress_contributors,
+        real_compute_accepted_participants: real_compute_accepted_participants.len() as u64,
+        real_compute_model_progress_participants: real_compute_model_progress_participants.len()
+            as u64,
+        accepted_closeouts: accepted_terminal_outcomes.len() as u64,
+        payout_eligible_closeouts: accepted_terminal_outcomes
+            .iter()
+            .filter(|outcome| training_outcome_payout_eligible(outcome))
+            .count() as u64,
+        public_window_count,
+        windows_advanced_checkpoint_lineage: lineage_window_ids.len() as u64,
+        latest_checkpoint_ref,
+        latest_aggregate_ref,
+        latest_promoted_checkpoint_ref,
+        validation_loss_present,
+        promotion_receipt_present,
+        run_definition_ref_matches_a1_minimal,
+    };
+
+    let mut participant_missing_fields = Vec::<String>::new();
+    if summary_run.accepted_contributors < A1_MINIMAL_DISTRIBUTED_LM_PARTICIPANT_RECORD_TARGET {
+        participant_missing_fields.push("training_accepted_contributors>=201".to_string());
+    }
+    if evidence.real_compute_accepted_participants
+        < A1_MINIMAL_DISTRIBUTED_LM_PARTICIPANT_RECORD_TARGET
+    {
+        participant_missing_fields
+            .push("accepted_real_psionic_pylon_compute_work>=201".to_string());
+    }
+    if evidence.accepted_closeouts == 0 {
+        participant_missing_fields.push("accepted_closeout_truth".to_string());
+    }
+    if evidence.public_window_count == 0 || evidence.latest_checkpoint_ref.is_none() {
+        participant_missing_fields.push("public_run_window_checkpoint_lineage".to_string());
+    }
+    if !run_definition_ref_matches_a1_minimal {
+        participant_missing_fields.push("run_definition_ref:a1_minimal_distributed_lm".to_string());
+    }
+    let participant_gate_passed = participant_missing_fields.is_empty();
+    let participant_allowed_wording = participant_gate_passed.then(|| {
+        format!(
+            "OpenAgents ran what we believe is the world's largest distributed language-model training run by number of participants: {} distinct Pylons contributed real compute through Psionic and completed accepted work for the same run, with run/window/checkpoint lineage published publicly.",
+            summary_run.accepted_contributors
+        )
+    });
+    let participant_gate = TrainingParticipantClaimGate {
+        gate_id: "largest_by_number_of_participants".to_string(),
+        public_label: "participants".to_string(),
+        internal_source_of_truth: "training_accepted_contributors".to_string(),
+        status: training_claim_gate_status(participant_gate_passed),
+        passed: participant_gate_passed,
+        allowed_public_wording: participant_allowed_wording.clone(),
+        missing_fields: participant_missing_fields,
+        evidence: evidence.clone(),
+    };
+
+    let mut model_progress_missing_fields = Vec::<String>::new();
+    if summary_run.model_progress_contributors < A1_MINIMAL_DISTRIBUTED_LM_PARTICIPANT_RECORD_TARGET
+    {
+        model_progress_missing_fields.push("training_model_progress_contributors>=201".to_string());
+    }
+    if evidence.real_compute_model_progress_participants
+        < A1_MINIMAL_DISTRIBUTED_LM_PARTICIPANT_RECORD_TARGET
+    {
+        model_progress_missing_fields
+            .push("accepted_model_progress_real_compute_work>=201".to_string());
+    }
+    if evidence.latest_promoted_checkpoint_ref.is_none() {
+        model_progress_missing_fields.push("promoted_checkpoint_ref".to_string());
+    }
+    if evidence.latest_aggregate_ref.is_none() || evidence.windows_advanced_checkpoint_lineage == 0
+    {
+        model_progress_missing_fields.push("accepted_aggregate_or_checkpoint_lineage".to_string());
+    }
+    if !evidence.validation_loss_present {
+        model_progress_missing_fields.push("validation_loss".to_string());
+    }
+    if !evidence.promotion_receipt_present {
+        model_progress_missing_fields.push("promotion_receipt".to_string());
+    }
+    if !run_definition_ref_matches_a1_minimal {
+        model_progress_missing_fields
+            .push("run_definition_ref:a1_minimal_distributed_lm".to_string());
+    }
+    let model_progress_gate_passed = model_progress_missing_fields.is_empty();
+    let model_progress_allowed_wording = model_progress_gate_passed.then(|| {
+        format!(
+            "OpenAgents ran what we believe is the world's largest distributed language-model training run by number of model-progress participants: {} distinct Pylons contributed accepted local-update work that advanced promoted checkpoint {} for run {}.",
+            summary_run.model_progress_contributors,
+            evidence
+                .latest_promoted_checkpoint_ref
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
+            training_run_id
+        )
+    });
+    let model_progress_participant_gate = TrainingParticipantClaimGate {
+        gate_id: "largest_by_number_of_model_progress_participants".to_string(),
+        public_label: "model-progress participants".to_string(),
+        internal_source_of_truth: "training_model_progress_contributors".to_string(),
+        status: training_claim_gate_status(model_progress_gate_passed),
+        passed: model_progress_gate_passed,
+        allowed_public_wording: model_progress_allowed_wording.clone(),
+        missing_fields: model_progress_missing_fields,
+        evidence: evidence.clone(),
+    };
+
+    let allowed_public_claims = [participant_allowed_wording, model_progress_allowed_wording]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+
+    Ok(TrainingParticipantClaimGateReport {
+        schema_version: TRAINING_PARTICIPANT_CLAIM_GATE_SCHEMA_VERSION,
+        generated_at_unix_ms: now_unix_ms,
+        training_run_id: training_run_id.to_string(),
+        run_definition_ref,
+        target_minimum_participants: A1_MINIMAL_DISTRIBUTED_LM_PARTICIPANT_RECORD_TARGET,
+        status: training_claim_gate_report_status(
+            participant_gate_passed,
+            model_progress_gate_passed,
+        ),
+        unqualified_largest_claim_allowed: false,
+        participant_gate,
+        model_progress_participant_gate,
+        allowed_public_claims,
+        forbidden_public_claims: vec![
+            "OpenAgents ran the world's largest distributed language-model training run."
+                .to_string(),
+            "world's largest distributed language model training run".to_string(),
+        ],
+        excluded_counter_sources: vec![
+            "pylonsOnlineNow".to_string(),
+            "pylonsSeen24h".to_string(),
+            "sellablePylonsOnlineNow".to_string(),
+            "pylonSessionsOnlineNow".to_string(),
+            "presence_sessions".to_string(),
+            "generic_payout_totals".to_string(),
+            "downloads".to_string(),
+            "Discord members".to_string(),
+        ],
+    })
+}
+
 fn build_homepage_snapshot(
     config: &ServiceConfig,
     store: &ControlStore,
@@ -27120,20 +27642,21 @@ mod tests {
         TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS, TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
         TRN_TRAINING_CLOSEOUT_KIND, TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND,
         TRN_TRAINING_WINDOW_KIND, TrainingFleetAbuseNodeSnapshot, TrainingFleetAbuseSnapshot,
-        TrainingOperatorSummaryResponse, TrainingRolloutAbuseControls, TrainingRolloutChannel,
-        TrainingRolloutCohort, TrainingRolloutGate, TrainingRolloutPolicyResponse,
-        TrainingRolloutPolicyUpdateRequest, TrainingRolloutTargetKind, TrainingSchedulerRolePlan,
-        TrainingSchedulerWindowState, TrainingTrnPublicationReport,
-        TrainingValidatorChallengeCoordinatorResponse, TrainingWindowAssignmentPlan,
-        TrainingWindowCloseoutStatus, TrainingWindowDefensibilityArtifactAudit,
-        TrainingWindowDefensibilityAudit, TrainingWindowDefensibilityPromotionAudit,
-        TrainingWindowDefensibilityValidatorAudit, TrainingWindowMetadata,
-        TrainingWindowValidationState, TrainingWindowValidationSummary,
+        TrainingOperatorSummaryResponse, TrainingParticipantClaimGateReport,
+        TrainingRolloutAbuseControls, TrainingRolloutChannel, TrainingRolloutCohort,
+        TrainingRolloutGate, TrainingRolloutPolicyResponse, TrainingRolloutPolicyUpdateRequest,
+        TrainingRolloutTargetKind, TrainingSchedulerRolePlan, TrainingSchedulerWindowState,
+        TrainingTrnPublicationReport, TrainingValidatorChallengeCoordinatorResponse,
+        TrainingWindowAssignmentPlan, TrainingWindowCloseoutStatus,
+        TrainingWindowDefensibilityArtifactAudit, TrainingWindowDefensibilityAudit,
+        TrainingWindowDefensibilityPromotionAudit, TrainingWindowDefensibilityValidatorAudit,
+        TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
         annotate_treasury_availability_stipend_eligibility, training_contributor_tier_projection,
         training_fleet_abuse_snapshot, training_scheduler_metadata_from_run,
         training_window_base_record, training_window_closeout_outcome,
         training_window_closeout_status, training_window_closeout_treasury_payout_requests,
-        training_window_metadata_from_value, training_window_metadata_value, validator_service,
+        training_window_metadata_from_value, training_window_metadata_value,
+        training_work_class_counts_as_model_progress_participant, validator_service,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -48547,6 +49070,548 @@ mod tests {
                 .iter()
                 .any(|checkpoint| checkpoint.checkpoint_role == "promoted"
                     && checkpoint.checkpoint_ref == promoted_checkpoint_ref)
+        );
+
+        Ok(())
+    }
+
+    fn seed_a1_minimal_claim_gate_window(
+        state: &AppState,
+        created_at_ms: u64,
+        training_run_id: &str,
+        network_id: &str,
+        contributor_count: usize,
+        work_class: ComputeTrainingWorkClass,
+        promoted: bool,
+        accept_closeout: bool,
+    ) -> Result<()> {
+        let window_id = if training_work_class_counts_as_model_progress_participant(work_class) {
+            "window.a1_minimal.claim.local.0001"
+        } else {
+            "window.a1_minimal.claim.support.0001"
+        };
+        let recorded_at_ms = created_at_ms as i64 + 3_000;
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            state,
+            created_at_ms,
+            training_run_id,
+            window_id,
+            network_id,
+            "node-a1-claim-seed",
+            "sha256:build-a1-claim-seed",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+            work_class,
+            ComputeTrainingReplicaType::SingleNode,
+            Some(80),
+        );
+
+        let run_definition = super::a1_minimal_distributed_lm_training_policy_metadata()
+            .map_err(anyhow::Error::msg)?
+            .get("run_definition")
+            .cloned()
+            .expect("A1 run definition metadata");
+        let aggregate = training_work_class_counts_as_model_progress_participant(work_class);
+        let promoted_checkpoint_ref = "checkpoint://a1_minimal_distributed_lm/claim-step-000001";
+        let source_policy_revision =
+            compute_adapter_policy_revision("policy-rev-a1-minimal-claim", recorded_at_ms - 400);
+        let source_checkpoint_pointer = ComputeAdapterCheckpointPointer {
+            scope_kind: "training_run".to_string(),
+            scope_id: training_run_id.to_string(),
+            checkpoint_family: super::A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY.to_string(),
+            checkpoint_ref: super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string(),
+            manifest_digest: "sha256:a1-minimal-claim-base-manifest".to_string(),
+            updated_at_ms: recorded_at_ms - 300,
+            pointer_digest: "sha256:a1-minimal-claim-base-pointer".to_string(),
+        };
+        let output_checkpoint_pointer =
+            (aggregate && promoted).then(|| ComputeAdapterCheckpointPointer {
+                scope_kind: "window".to_string(),
+                scope_id: window_id.to_string(),
+                checkpoint_family: super::A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY.to_string(),
+                checkpoint_ref: promoted_checkpoint_ref.to_string(),
+                manifest_digest: "sha256:a1-minimal-claim-promoted-manifest".to_string(),
+                updated_at_ms: recorded_at_ms,
+                pointer_digest: "sha256:a1-minimal-claim-promoted-pointer".to_string(),
+            });
+        let assignment_plans = (0..contributor_count)
+            .map(|ordinal| {
+                let assignment_id = format!("assignment.a1_minimal.claim.{ordinal:03}");
+                let node_pubkey_hex = format!("node-a1-claim-{ordinal:03}");
+                TrainingWindowAssignmentPlan {
+                    assignment_id,
+                    node_pubkey_hex: node_pubkey_hex.clone(),
+                    contributor_node_id: node_pubkey_hex.clone(),
+                    worker_id: format!("worker.{node_pubkey_hex}"),
+                    dataset_slice: training_window_dataset_slice(
+                        format!("slice://a1-minimal-claim-{ordinal:03}").as_str(),
+                        format!("sha256:slice-a1-minimal-claim-{ordinal:03}").as_str(),
+                    ),
+                    assignment_seed: format!("seed.a1.claim.{ordinal:03}"),
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut metadata = training_window_metadata_value(&TrainingWindowMetadata {
+            network_id: network_id.to_string(),
+            artifact_bucket_uri: "gs://bucket".to_string(),
+            environment_ref: PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF.to_string(),
+            backend_family: if aggregate { "cuda" } else { "metal" }.to_string(),
+            membership_revision: "members.a1.claim.rev1".to_string(),
+            assignment_plans: assignment_plans.clone(),
+            validation: None,
+            planned_at_ms: recorded_at_ms - 300,
+            activated_at_ms: Some(recorded_at_ms - 250),
+            sealed_at_ms: Some(recorded_at_ms - 100),
+            reconciled_at_ms: Some(recorded_at_ms),
+            defensibility: None,
+            seal_deadline_ms: recorded_at_ms + 300_000,
+        });
+        metadata["run_definition"] = run_definition.clone();
+
+        let contributor_count_u32 = u32::try_from(contributor_count).expect("contributor count");
+        let window = ComputeAdapterTrainingWindow {
+            window_id: window_id.to_string(),
+            training_run_id: training_run_id.to_string(),
+            stage_id: if aggregate {
+                "stage.a1_minimal.claim.local_update"
+            } else {
+                "stage.a1_minimal.claim.support"
+            }
+            .to_string(),
+            contributor_set_revision_id: "contributors.a1.claim.rev1".to_string(),
+            validator_policy_ref: "policy://validator/mvp/v1".to_string(),
+            work_class,
+            replica_type: ComputeTrainingReplicaType::SingleNode,
+            round_index: Some(1),
+            base_checkpoint_ref: super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string(),
+            planned_local_step_count: aggregate.then_some(16),
+            aggregation_rule: aggregate.then_some("weighted_avg".to_string()),
+            aggregation_weight_basis: aggregate.then_some("tokens".to_string()),
+            adapter_target_id: String::new(),
+            adapter_family: String::new(),
+            base_model_ref: "model://a1-minimal-distributed-lm".to_string(),
+            adapter_format: String::new(),
+            source_policy_revision,
+            source_checkpoint_pointer,
+            status: ComputeAdapterWindowStatus::Reconciled,
+            total_contributions: contributor_count_u32,
+            admitted_contributions: contributor_count_u32,
+            accepted_contributions: if accept_closeout {
+                contributor_count_u32
+            } else {
+                0
+            },
+            quarantined_contributions: 0,
+            rejected_contributions: 0,
+            replay_required_contributions: 0,
+            replay_checked_contributions: 0,
+            held_out_average_score_bps: aggregate.then_some(9_520),
+            benchmark_pass_rate_bps: aggregate.then_some(9_700),
+            runtime_smoke_passed: Some(true),
+            promotion_ready: aggregate && promoted,
+            gate_reason_codes: Vec::new(),
+            window_summary_digest: format!("sha256:summary-{window_id}"),
+            promotion_disposition: None,
+            hold_reason_codes: Vec::new(),
+            aggregated_delta_digest: aggregate
+                .then_some("sha256:a1-minimal-claim-aggregate".to_string()),
+            accepted_aggregate_id: aggregate
+                .then_some("aggregate.a1_minimal.claim.0001".to_string()),
+            output_policy_revision: None,
+            output_checkpoint_pointer,
+            promoted_checkpoint_ref: (aggregate && promoted)
+                .then_some(promoted_checkpoint_ref.to_string()),
+            accepted_outcome_id: None,
+            recorded_at_ms,
+            metadata,
+        };
+
+        let contribution_inputs = assignment_plans
+            .iter()
+            .enumerate()
+            .map(|(ordinal, assignment)| {
+                let contribution_id = if aggregate {
+                    format!("contrib.a1_minimal.claim.local.{ordinal:03}")
+                } else {
+                    format!("contrib.a1_minimal.claim.support.{ordinal:03}")
+                };
+                let mut input = training_window_contribution_input(
+                    contribution_id.as_str(),
+                    assignment.assignment_id.as_str(),
+                    format!("sha256:validator-a1-claim-{ordinal:03}").as_str(),
+                    Some(ComputeAdapterContributionDisposition::Accepted),
+                );
+                input.artifact_id = if aggregate {
+                    format!(
+                        "oa.train_artifact.v1~kind~local_update~network~{network_id}~run~{training_run_id}~window~{window_id}~assignment~{}",
+                        assignment.assignment_id
+                    )
+                } else {
+                    format!(
+                        "oa.train_artifact.v1~kind~support_bundle~network~{network_id}~run~{training_run_id}~window~{window_id}~assignment~{}",
+                        assignment.assignment_id
+                    )
+                };
+                if aggregate {
+                    input.local_step_count = Some(16);
+                    input.consumed_token_count = Some(65_536);
+                    input.aggregation_weight_basis = Some("tokens".to_string());
+                    input.aggregation_weight_value = Some(65_536);
+                    input.promotion_receipt_digest =
+                        promoted.then(|| format!("sha256:promotion-a1-claim-{ordinal:03}"));
+                    input.metadata = json!({
+                        "artifact_kind": "local_update",
+                        "contributor_capability_tier": "tier2_trainer",
+                        "contributor_weak_device_bearing": false,
+                    });
+                } else {
+                    input.local_step_count = None;
+                    input.consumed_token_count = None;
+                    input.consumed_example_count = None;
+                    input.aggregation_weight_basis = None;
+                    input.aggregation_weight_value = None;
+                    input.aggregation_weight_bps = None;
+                    input.aggregation_eligibility =
+                        Some(ComputeAdapterAggregationEligibility::Eligible);
+                    input.metadata = json!({
+                        "artifact_kind": "support_bundle",
+                        "contributor_capability_tier": "tier1_validation",
+                        "contributor_weak_device_bearing": true,
+                    });
+                }
+                input
+            })
+            .collect::<Vec<_>>();
+        let contribution_outcomes = if contribution_inputs.is_empty() {
+            Vec::new()
+        } else {
+            super::training_window_contribution_outcomes_from_inputs(
+                &window,
+                assignment_plans.as_slice(),
+                None,
+                contribution_inputs.as_slice(),
+                recorded_at_ms,
+                false,
+            )
+            .map_err(anyhow::Error::msg)?
+        };
+
+        let mut store = state.store.write().expect("write store");
+        let run = store
+            .kernel
+            .get_compute_training_run(training_run_id)
+            .expect("A1 minimal claim gate training run")
+            .clone();
+        store
+            .kernel
+            .record_compute_adapter_window(
+                &training_kernel_mutation_context("scheduler", recorded_at_ms as u64),
+                RecordComputeAdapterWindowRequest {
+                    idempotency_key: format!("idemp.a1_minimal.claim.window.{window_id}"),
+                    trace: TraceContext::default(),
+                    policy: kernel_policy(),
+                    window: window.clone(),
+                    contribution_outcomes: contribution_outcomes.clone(),
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("record A1 minimal claim gate window");
+        if accept_closeout {
+            let progress_class = training_work_progress_class(window.work_class);
+            let contributor_tiers =
+                training_contributor_tier_projection(contribution_outcomes.as_slice());
+            store
+                .kernel
+                .accept_compute_outcome(
+                    &training_kernel_mutation_context("scheduler", recorded_at_ms as u64 + 1),
+                    AcceptComputeOutcomeRequest {
+                        idempotency_key: format!("idemp.a1_minimal.claim.closeout.{window_id}"),
+                        trace: TraceContext::default(),
+                        policy: kernel_policy(),
+                        outcome: ComputeAcceptedOutcome {
+                            outcome_id: format!("accepted.training_window.{window_id}"),
+                            outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+                            source_run_id: training_run_id.to_string(),
+                            environment_binding: run.environment_binding.clone(),
+                            checkpoint_binding: Some(run.checkpoint_binding.clone()),
+                            validator_policy_ref: Some(run.validator_policy_ref.clone()),
+                            benchmark_package_refs: run.benchmark_package_refs.clone(),
+                            accepted_at_ms: recorded_at_ms + 1,
+                            evaluation_summary: None,
+                            training_summary: Some(ComputeTrainingSummary {
+                                completed_step_count: aggregate.then_some(16),
+                                processed_token_count: aggregate.then_some(65_536),
+                                average_loss: aggregate.then_some(3.14),
+                                best_eval_score_bps: window.held_out_average_score_bps,
+                                accepted_checkpoint_ref: if aggregate && promoted {
+                                    window.promoted_checkpoint_ref.clone()
+                                } else {
+                                    Some(super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string())
+                                },
+                                aggregate_metrics: Vec::new(),
+                                artifacts: Vec::new(),
+                            }),
+                            metadata: json!({
+                                "network_id": network_id,
+                                "window_id": window.window_id,
+                                "run_definition_ref": super::A1_MINIMAL_DISTRIBUTED_LM_RUN_DEFINITION_REF,
+                                "run_definition": run_definition,
+                                "closeout_status": "rewarded",
+                                "payout_eligible": true,
+                                "work_class": window.work_class.label(),
+                                "replica_type": window.replica_type.label(),
+                                "progress_class": progress_class.label(),
+                                "contributor_tiers": contributor_tiers,
+                                "aggregated_delta_digest": window.aggregated_delta_digest,
+                                "accepted_aggregate_id": window.accepted_aggregate_id,
+                                "output_checkpoint_ref": window
+                                    .output_checkpoint_pointer
+                                    .as_ref()
+                                    .map(|pointer| pointer.checkpoint_ref.clone()),
+                                "promoted_checkpoint_ref": window.promoted_checkpoint_ref,
+                                "payout_projection": super::training_window_closeout_payout_projection(
+                                    &window,
+                                    contribution_outcomes.as_slice(),
+                                ),
+                            }),
+                        },
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )
+                .expect("accept A1 minimal claim gate closeout");
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a1_minimal_claim_gate_passes_for_201_model_progress_participants() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let training_run_id = "a1_minimal_distributed_lm_001";
+        seed_a1_minimal_claim_gate_window(
+            &state,
+            1_762_491_644_000,
+            training_run_id,
+            "trainnet.a1_minimal.claim.progress",
+            201,
+            ComputeTrainingWorkClass::SmallModelLocalTraining,
+            true,
+            true,
+        )?;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}/claim-gates"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let report: TrainingParticipantClaimGateReport = response_json(response).await?;
+        assert!(report.participant_gate.passed);
+        assert!(report.model_progress_participant_gate.passed);
+        assert!(!report.unqualified_largest_claim_allowed);
+        assert_eq!(report.participant_gate.evidence.accepted_contributors, 201);
+        assert_eq!(
+            report
+                .participant_gate
+                .evidence
+                .real_compute_accepted_participants,
+            201
+        );
+        assert_eq!(
+            report
+                .model_progress_participant_gate
+                .evidence
+                .real_compute_model_progress_participants,
+            201
+        );
+        assert!(
+            report
+                .allowed_public_claims
+                .iter()
+                .any(|claim| claim.contains("by number of participants"))
+        );
+        assert!(
+            report
+                .allowed_public_claims
+                .iter()
+                .any(|claim| claim.contains("by number of model-progress participants"))
+        );
+        assert!(report.forbidden_public_claims.iter().any(|claim| {
+            claim.contains("world's largest distributed language-model training run")
+        }));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a1_minimal_claim_gate_counts_support_as_participants_not_model_progress() -> Result<()>
+    {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let training_run_id = "a1_minimal_distributed_lm_001";
+        seed_a1_minimal_claim_gate_window(
+            &state,
+            1_762_491_645_000,
+            training_run_id,
+            "trainnet.a1_minimal.claim.support",
+            201,
+            ComputeTrainingWorkClass::ValidationReplay,
+            false,
+            true,
+        )?;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}/claim-gates"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let report: TrainingParticipantClaimGateReport = response_json(response).await?;
+        assert!(report.participant_gate.passed);
+        assert!(!report.model_progress_participant_gate.passed);
+        assert_eq!(report.participant_gate.evidence.accepted_contributors, 201);
+        assert_eq!(
+            report.participant_gate.evidence.model_progress_contributors,
+            0
+        );
+        assert_eq!(
+            report
+                .participant_gate
+                .evidence
+                .real_compute_accepted_participants,
+            201
+        );
+        assert_eq!(
+            report
+                .model_progress_participant_gate
+                .evidence
+                .real_compute_model_progress_participants,
+            0
+        );
+        assert!(
+            report
+                .model_progress_participant_gate
+                .missing_fields
+                .contains(&"training_model_progress_contributors>=201".to_string())
+        );
+        assert!(
+            report
+                .model_progress_participant_gate
+                .missing_fields
+                .contains(&"promoted_checkpoint_ref".to_string())
+        );
+        assert_eq!(report.allowed_public_claims.len(), 1);
+        assert!(report.allowed_public_claims[0].contains("by number of participants"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a1_minimal_claim_gate_rejects_online_only_presence() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let training_run_id = "a1_minimal_distributed_lm_001";
+        let network_id = "trainnet.a1_minimal.claim.online_only";
+        seed_a1_minimal_claim_gate_window(
+            &state,
+            1_762_491_646_000,
+            training_run_id,
+            network_id,
+            0,
+            ComputeTrainingWorkClass::ValidationReplay,
+            false,
+            false,
+        )?;
+        {
+            let mut store = state.store.write().expect("write store");
+            for ordinal in 0..201 {
+                let node_pubkey_hex = format!("node-a1-online-only-{ordinal:03}");
+                let build_digest = format!("sha256:build-a1-online-only-{ordinal:03}");
+                let mut node = training_node_admission_request_with_environment_refs(
+                    node_pubkey_hex.as_str(),
+                    build_digest.as_str(),
+                    vec![network_id],
+                    Vec::new(),
+                    Some(16),
+                    vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF],
+                );
+                node.requested_at_ms = 1_762_491_646_700 + ordinal as i64;
+                store
+                    .kernel
+                    .record_training_node_admission(
+                        &training_kernel_mutation_context(
+                            node_pubkey_hex.as_str(),
+                            1_762_491_646_700 + ordinal as u64,
+                        ),
+                        node,
+                    )
+                    .expect("admit online-only node");
+                let mut heartbeat = training_node_heartbeat_request_for_scope(
+                    node_pubkey_hex.as_str(),
+                    build_digest.as_str(),
+                    training_run_id,
+                    "window.a1_minimal.claim.support.0001",
+                );
+                heartbeat.recorded_at_ms = 1_762_491_646_900 + ordinal as i64;
+                heartbeat.last_heartbeat_at_ms = Some(1_762_491_646_900 + ordinal as i64);
+                store
+                    .kernel
+                    .record_training_node_heartbeat(
+                        &training_kernel_mutation_context(
+                            node_pubkey_hex.as_str(),
+                            1_762_491_646_900 + ordinal as u64,
+                        ),
+                        heartbeat,
+                    )
+                    .expect("heartbeat online-only node");
+            }
+        }
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}/claim-gates"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let report: TrainingParticipantClaimGateReport = response_json(response).await?;
+        assert!(!report.participant_gate.passed);
+        assert_eq!(report.participant_gate.evidence.accepted_contributors, 0);
+        assert_eq!(
+            report
+                .participant_gate
+                .evidence
+                .real_compute_accepted_participants,
+            0
+        );
+        assert!(
+            report
+                .participant_gate
+                .missing_fields
+                .contains(&"training_accepted_contributors>=201".to_string())
+        );
+        assert!(
+            report
+                .participant_gate
+                .missing_fields
+                .contains(&"accepted_closeout_truth".to_string())
+        );
+        assert!(report.allowed_public_claims.is_empty());
+        assert!(
+            report
+                .excluded_counter_sources
+                .iter()
+                .any(|source| source == "pylonsOnlineNow")
         );
 
         Ok(())
