@@ -500,20 +500,30 @@ returns `530` / `1033` or goes dark, it restarts `nexus-cloudflared`. The
 watchdog then waits `NEXUS_PUBLIC_WATCHDOG_EDGE_RECHECK_SECONDS` seconds
 (`15` by default) and probes the public edge again in the same service run. If
 the public edge still returns `530` / `1033`, the second failed probe advances
-the consecutive edge-failure counter and can trigger the VM reboot escalation
-without waiting for a later systemd timer tick. The watchdog probes the public
-edge even during startup grace; Cloudflare `530` / `1033` is never treated as
-healthy just because a systemd service recently restarted.
+the consecutive edge-failure counter. By default the watchdog first activates
+`nexus-http-recovery-proxy`, rewrites `nexus-cloudflared` to
+`http://127.0.0.1:8081`, and restarts the tunnel. The recovery proxy serves
+`/healthz` directly, forwards normal HTTP API traffic to the local Nexus shell,
+serves stale cached `/api/stats` and `/api/training/summary` when the local
+shell is slow, and rejects public WebSocket upgrades so a relay reconnect storm
+does not take operator HTTP surfaces down. If
+`NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ENABLED=false`, the same repeated edge
+failure can trigger the VM reboot escalation without waiting for a later
+systemd timer tick. The watchdog probes the public edge even during startup
+grace; Cloudflare `530` / `1033` is never treated as healthy just because a
+systemd service recently restarted.
 
 It writes structured receipts under
 `/var/lib/nexus-relay/watchdog/public/events.jsonl` and
 `/var/lib/nexus-relay/watchdog/public/last-event.json`, plus the consecutive
 edge-failure counter at
 `/var/lib/nexus-relay/watchdog/public/edge-failure-count`. By default, after
-two consecutive public edge failures it emits action `vm_reset` and calls
-`systemctl reboot`. Set `NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_ENABLED=false` only
-for a bounded dry run where a human is actively watching. Refresh only that
-watchdog with:
+two consecutive public edge failures it emits action
+`activate_recovery_proxy:nexus-http-recovery-proxy`; with recovery proxy mode
+disabled it emits action `vm_reset` and calls `systemctl reboot`. Set
+`NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_ENABLED=false` only for a bounded dry run
+where a human is actively watching. Refresh only that watchdog and the recovery
+proxy unit with:
 
 ```bash
 scripts/deploy/nexus/16-install-public-watchdog.sh

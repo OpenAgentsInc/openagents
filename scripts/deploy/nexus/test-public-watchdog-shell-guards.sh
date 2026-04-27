@@ -29,8 +29,14 @@ assert_contains 'vm_reset_required' "$CHECK_SCRIPT_TEXT"
 assert_contains 'NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_ENABLED' "$SCRIPT_TEXT"
 assert_contains 'NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_AFTER_FAILURES' "$SCRIPT_TEXT"
 assert_contains 'NEXUS_PUBLIC_WATCHDOG_EDGE_RECHECK_SECONDS' "$SCRIPT_TEXT"
+assert_contains 'NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ENABLED' "$SCRIPT_TEXT"
+assert_contains 'NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_SERVICE_NAME' "$SCRIPT_TEXT"
+assert_contains 'NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ORIGIN_URL' "$SCRIPT_TEXT"
 assert_contains 'EDGE_FAILURE_COUNT_PATH="${STATE_DIR}/edge-failure-count"' "$CHECK_SCRIPT_TEXT"
 assert_contains 'recover_public_edge_failure()' "$CHECK_SCRIPT_TEXT"
+assert_contains 'activate_recovery_proxy_for_public_edge_failure()' "$CHECK_SCRIPT_TEXT"
+assert_contains 'recovery_proxy_public_origin_active()' "$CHECK_SCRIPT_TEXT"
+assert_contains 'effective_local_health_url="${RECOVERY_PROXY_ORIGIN_URL%/}/healthz"' "$CHECK_SCRIPT_TEXT"
 assert_contains 'public_edge_still_down_after_tunnel_restart' "$CHECK_SCRIPT_TEXT"
 assert_contains 'public_edge_recovered_after_tunnel_restart' "$CHECK_SCRIPT_TEXT"
 assert_contains 'systemctl reboot' "$CHECK_SCRIPT_TEXT"
@@ -120,8 +126,8 @@ startup_output="$(
 )"
 
 assert_contains 'dry_run restarting service=nexus-cloudflared reason=public_edge_530_during_startup_grace' "$startup_output"
-assert_contains 'dry_run vm_reset reason=public_edge_530_during_startup_grace_after_tunnel_restart' "$startup_output"
-assert_contains '"action":"vm_reset"' "$(cat "${STATE_DIR}/last-event.json")"
+assert_contains 'dry_run activate_recovery_proxy service=nexus-http-recovery-proxy origin_url=http://127.0.0.1:8081 reason=public_edge_530_during_startup_grace_after_tunnel_restart' "$startup_output"
+assert_contains '"action":"activate_recovery_proxy:nexus-http-recovery-proxy"' "$(cat "${STATE_DIR}/last-event.json")"
 assert_contains '"consecutive_edge_failures":"2"' "$(cat "${STATE_DIR}/last-event.json")"
 if grep -Fq '"status":"healthy"' "${STATE_DIR}/last-event.json"; then
   printf 'unexpected healthy startup-grace event during Cloudflare 1033\n' >&2
@@ -134,6 +140,7 @@ reboot_output="$(
   WATCHDOG_ACTION_LOG="$WATCHDOG_ACTION_LOG" \
   NEXUS_PUBLIC_WATCHDOG_STATE_DIR="$STATE_DIR" \
   NEXUS_PUBLIC_WATCHDOG_DRY_RUN=true \
+  NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ENABLED=false \
   NEXUS_PUBLIC_WATCHDOG_STARTUP_GRACE_SECONDS=180 \
   NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_AFTER_FAILURES=2 \
   "$CHECK_SCRIPT_PATH" || true
