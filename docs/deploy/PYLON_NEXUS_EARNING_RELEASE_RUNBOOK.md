@@ -70,11 +70,12 @@ Npm bootstrap-only changes can publish a new `@openagentsinc/pylon` package
 without cutting a new GitHub `pylon-vX.Y.Z` binary release when the Rust Pylon
 binary did not change. As of `@openagentsinc/pylon` `0.1.14`, the default
 launcher keeps the cached standalone binary current by checking GitHub Releases
-every 30 seconds while `pylon-tui` is open, accepting only `pylon-v...` releases
-whose GitHub release author is `AtlantisPleb`, then restarting the dashboard
-from the newly installed cache path. `pylon --no-updates` disables that
-background polling, and `pylon --version <x.y.z>` remains a pinned run that
-does not auto-upgrade.
+on a six-hour background cadence while `pylon-tui` is open, accepting only
+`pylon-v...` releases whose GitHub release author is `AtlantisPleb`, then
+restarting the dashboard from the newly installed cache path. `GITHUB_TOKEN` or
+`GH_TOKEN` authenticates those GitHub release lookups for shared-network
+operators. `pylon --no-updates` disables background polling, and
+`pylon --version <x.y.z>` remains a pinned run that does not auto-upgrade.
 
 Directly extracted release assets are outside that auto-update contract. A
 standalone `./pylon` or `./pylon-tui` launched from an archive reports its
@@ -86,7 +87,10 @@ must continue to expose the live heartbeat versions that Nexus actually sees.
 ## Version Floor Rules
 
 For the current hosted training earning path, the minimum public Pylon release
-is `pylon-v0.1.16` / `@openagentsinc/pylon` `0.1.16`.
+is `pylon-v0.1.16`. The current package-managed launcher should be
+`@openagentsinc/pylon` `0.1.17` or newer so CLI subcommands are forwarded to
+the installed binary and background GitHub update checks use the bounded
+cadence.
 
 Older versions are useful historical proof points but not sufficient for final
 closeout:
@@ -113,9 +117,10 @@ closeout:
   falls back to `cargo run --release` instead of debug Cargo, and records
   signal/log-tail diagnostics when the supervisor exits without a normal code.
 - `@openagentsinc/pylon` `0.1.14` is a package-managed launcher update, not a
-  Rust binary release: it adds the 30-second trusted GitHub release
-  auto-updater and the `--no-updates` escape hatch. It still runs the latest
-  trusted `pylon-v...` standalone binary asset available for the machine.
+  Rust binary release: it adds the trusted GitHub release auto-updater and the
+  `--no-updates` escape hatch. The current launcher uses a bounded background
+  cadence instead of 30-second polling and still runs the latest trusted
+  `pylon-v...` standalone binary asset available for the machine.
 - `0.1.15` fixes issue #4449 for terminal homework closeout: Pylon uploads and
   verifies the worker contribution artifact bundle before sealing the window,
   so validators do not replay a sealed contribution whose signed artifact fetch
@@ -124,6 +129,11 @@ closeout:
   admission: the Pylon archive includes the minimal `./psionic` runtime surface
   and `psionic/target/release/psionic-train`, so normal npm-installed Pylons
   can advertise homework training capability without a sibling checkout.
+- `@openagentsinc/pylon` `0.1.17` is a package-managed launcher update, not a
+  Rust binary release: it forwards subcommands such as `pylon status --json` to
+  the installed standalone binary, uses `GITHUB_TOKEN` or `GH_TOKEN` for
+  authenticated GitHub lookups, and reduces background release polling from the
+  old 30-second loop to a six-hour cadence.
 
 Nexus must enforce the same floor for new hosted starter runs:
 
@@ -140,6 +150,9 @@ packaged Psionic runtime release asset, npm bootstrap smoke, and the
 worker-admission packaging bridge for issue #4451. The prior `0.1.15` receipt
 is `docs/reports/nexus/20260426-pylon-v0.1.15-release.json`; it proves the
 issue #4449 artifact-before-seal regression and production earning drill.
+The package-only `0.1.17` launcher receipt is
+`docs/reports/nexus/20260427-pylon-bootstrap-v0.1.17-release.json`; it proves
+issue #4463 and #4464 without cutting a new standalone binary release.
 
 The prior `0.1.12` release-smoke receipt is
 `docs/reports/nexus/20260423-issue-4414-pylon-v0.1.12-release.json`. It proves

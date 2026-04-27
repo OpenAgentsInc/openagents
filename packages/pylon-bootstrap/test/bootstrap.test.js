@@ -10,7 +10,9 @@ import {
   bootstrapInstalledPylon,
   buildAssetNames,
   createTelemetryClient,
+  DEFAULT_UPDATE_CHECK_INTERVAL_MS,
   ensureReleaseInstall,
+  fetchReleaseMetadata,
   launchInstalledPylon,
   launchInstalledPylonWithUpdates,
   parseSha256File,
@@ -216,6 +218,54 @@ describe("@openagentsinc/pylon bootstrap", () => {
     );
 
     expect(release.tag_name).toBe("pylon-v0.0.1-rc10");
+  });
+
+  test("default background update polling avoids unauthenticated GitHub rate-limit churn", () => {
+    expect(DEFAULT_UPDATE_CHECK_INTERVAL_MS).toBeGreaterThanOrEqual(
+      6 * 60 * 60 * 1000,
+    );
+  });
+
+  test("fetchReleaseMetadata uses GH_TOKEN when GITHUB_TOKEN is unset", async () => {
+    const previousGithubToken = process.env.GITHUB_TOKEN;
+    const previousGhToken = process.env.GH_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    process.env.GH_TOKEN = "test-gh-token";
+
+    try {
+      let capturedHeaders = null;
+      await fetchReleaseMetadata({
+        target: resolvePlatformTarget("darwin", "arm64"),
+        fetchImpl: async (_url, init) => {
+          capturedHeaders = init.headers;
+          return Response.json([
+            trustedRelease({
+              tag_name: "pylon-v1.2.3",
+              draft: false,
+              assets: [],
+            }),
+          ]);
+        },
+        runProcessImpl: null,
+      });
+
+      expect(capturedHeaders).toEqual(
+        expect.objectContaining({
+          authorization: "Bearer test-gh-token",
+        }),
+      );
+    } finally {
+      if (previousGithubToken == null) {
+        delete process.env.GITHUB_TOKEN;
+      } else {
+        process.env.GITHUB_TOKEN = previousGithubToken;
+      }
+      if (previousGhToken == null) {
+        delete process.env.GH_TOKEN;
+      } else {
+        process.env.GH_TOKEN = previousGhToken;
+      }
+    }
   });
 
   test("assertTrustedReleaseAuthor rejects releases not initiated by AtlantisPleb", () => {

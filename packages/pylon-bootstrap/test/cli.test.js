@@ -81,6 +81,7 @@ test("parseArgs defaults to launching pylon-tui", () => {
   expect(options.skipModelDownload).toBe(true);
   expect(options.skipDiagnostics).toBe(true);
   expect(options.verbose).toBe(false);
+  expect(options.pylonArgs).toEqual([]);
 });
 
 test("parseArgs supports explicit cache download and verbose network flags", () => {
@@ -103,6 +104,25 @@ test("parseArgs supports disabling release polling", () => {
   const options = parseArgs(["--no-updates"]);
 
   expect(options.noUpdates).toBe(true);
+});
+
+test("parseArgs forwards Pylon CLI commands after launcher options", () => {
+  const options = parseArgs([
+    "--install-root",
+    "/tmp/pylon-cache",
+    "status",
+    "--json",
+  ]);
+
+  expect(options.installRoot).toBe("/tmp/pylon-cache");
+  expect(options.json).toBe(false);
+  expect(options.pylonArgs).toEqual(["status", "--json"]);
+});
+
+test("parseArgs forwards Pylon CLI commands after -- separator", () => {
+  const options = parseArgs(["--", "status", "--json"]);
+
+  expect(options.pylonArgs).toEqual(["status", "--json"]);
 });
 
 test("main launches pylon-tui by default after bootstrap", async () => {
@@ -160,6 +180,40 @@ test("main launches pylon-tui by default after bootstrap", async () => {
       pylonTuiPath: "/tmp/pylon-tui",
     }),
   );
+  expect(telemetry.events.map((event) => event.eventName)).toEqual([
+    "installer_started",
+    "installer_finished",
+  ]);
+});
+
+test("main runs forwarded Pylon CLI commands instead of pylon-tui", async () => {
+  const calls = [];
+  const telemetry = createTelemetryRecorder();
+
+  await withCapturedConsole(async () =>
+    main(["status", "--json"], {
+      telemetryClient: telemetry.client,
+      ensureReleaseInstallImpl: async () => BASE_INSTALL,
+      bootstrapInstalledPylonImpl: async () => BASE_SUMMARY,
+      launchInstalledPylonImpl: async () => {
+        throw new Error("pylon-tui launch should be skipped");
+      },
+      runInstalledPylonCliImpl: async (options, args) => {
+        calls.push({ options, args });
+        return { stdout: "", stderr: "" };
+      },
+    }),
+  );
+
+  expect(calls).toEqual([
+    {
+      options: expect.objectContaining({
+        version: "1.2.3",
+        pylonPath: "/tmp/pylon",
+      }),
+      args: ["status", "--json"],
+    },
+  ]);
   expect(telemetry.events.map((event) => event.eventName)).toEqual([
     "installer_started",
     "installer_finished",
