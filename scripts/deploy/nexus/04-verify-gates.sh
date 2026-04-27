@@ -33,6 +33,12 @@ VERIFY_PUBLIC_STATS_LATENCY_MAX_MS="${VERIFY_PUBLIC_STATS_LATENCY_MAX_MS:-2000}"
 VERIFY_PUBLIC_PROVIDER_PRESENCE_LATENCY_MAX_MS="${VERIFY_PUBLIC_PROVIDER_PRESENCE_LATENCY_MAX_MS:-2000}"
 VERIFY_PUBLIC_CHECKS_ENABLED="${VERIFY_PUBLIC_CHECKS_ENABLED:-true}"
 VERIFY_EXPECTED_RELEASE_GIT_SHA="${VERIFY_EXPECTED_RELEASE_GIT_SHA:-}"
+VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED="${VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED:-false}"
+VERIFY_A1_MINIMAL_RUN_ID="${VERIFY_A1_MINIMAL_RUN_ID:-a1_minimal_distributed_lm_001}"
+VERIFY_A1_MINIMAL_MIN_ADMITTED_WORKERS="${VERIFY_A1_MINIMAL_MIN_ADMITTED_WORKERS:-2}"
+VERIFY_A1_MINIMAL_REQUIRE_LAUNCH_HEALTH_GOOD="${VERIFY_A1_MINIMAL_REQUIRE_LAUNCH_HEALTH_GOOD:-false}"
+VERIFY_A1_MINIMAL_REQUIRE_PARTICIPANT_GATE="${VERIFY_A1_MINIMAL_REQUIRE_PARTICIPANT_GATE:-false}"
+VERIFY_A1_MINIMAL_REQUIRE_MODEL_PROGRESS_GATE="${VERIFY_A1_MINIMAL_REQUIRE_MODEL_PROGRESS_GATE:-false}"
 VERIFY_STARTED_UNIX_MS="$(timestamp_unix_ms)"
 
 mkdir -p "$REPORT_DIR"
@@ -372,6 +378,14 @@ else
   PUBLIC_PROVIDER_PRESENCE_RESULT='{"body":null,"latency_ms":0}'
 fi
 
+if [[ "$VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED" == "true" ]]; then
+  TRAINING_SUMMARY_RESULT="$(fetch_json_probe "http://127.0.0.1:8080/api/training/summary")"
+  A1_MINIMAL_CLAIM_GATES_RESULT="$(fetch_json_probe "http://127.0.0.1:8080/api/training/runs/${VERIFY_A1_MINIMAL_RUN_ID}/claim-gates")"
+else
+  TRAINING_SUMMARY_RESULT='{"body":null,"latency_ms":0}'
+  A1_MINIMAL_CLAIM_GATES_RESULT='{"body":null,"latency_ms":0}'
+fi
+
 if [[ "${NEXUS_CONTROL_TREASURY_ENABLED}" == "true" ]]; then
   TREASURY_RESULT="$(fetch_json_probe "http://127.0.0.1:8080/v1/treasury/status")"
   TREASURY_ENV_JSON="$(fetch_treasury_env_json)"
@@ -389,6 +403,26 @@ if [[ "$VERIFY_PUBLIC_CHECKS_ENABLED" == "true" ]]; then
 else
   VERIFY_PUBLIC_CHECKS_ENABLED_JSON="false"
 fi
+if [[ "$VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED" == "true" ]]; then
+  VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED_JSON="true"
+else
+  VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED_JSON="false"
+fi
+if [[ "$VERIFY_A1_MINIMAL_REQUIRE_PARTICIPANT_GATE" == "true" ]]; then
+  VERIFY_A1_MINIMAL_REQUIRE_PARTICIPANT_GATE_JSON="true"
+else
+  VERIFY_A1_MINIMAL_REQUIRE_PARTICIPANT_GATE_JSON="false"
+fi
+if [[ "$VERIFY_A1_MINIMAL_REQUIRE_LAUNCH_HEALTH_GOOD" == "true" ]]; then
+  VERIFY_A1_MINIMAL_REQUIRE_LAUNCH_HEALTH_GOOD_JSON="true"
+else
+  VERIFY_A1_MINIMAL_REQUIRE_LAUNCH_HEALTH_GOOD_JSON="false"
+fi
+if [[ "$VERIFY_A1_MINIMAL_REQUIRE_MODEL_PROGRESS_GATE" == "true" ]]; then
+  VERIFY_A1_MINIMAL_REQUIRE_MODEL_PROGRESS_GATE_JSON="true"
+else
+  VERIFY_A1_MINIMAL_REQUIRE_MODEL_PROGRESS_GATE_JSON="false"
+fi
 VERIFY_EXPECTED_RELEASE_GIT_SHA_JSON="null"
 if [[ -n "$VERIFY_EXPECTED_RELEASE_GIT_SHA" ]]; then
   VERIFY_EXPECTED_RELEASE_GIT_SHA_JSON="$(jq -Rn --arg value "$VERIFY_EXPECTED_RELEASE_GIT_SHA" '$value')"
@@ -405,6 +439,8 @@ jq -n \
   --argjson health_result "$HEALTH_RESULT" \
   --argjson stats_result "$STATS_RESULT" \
   --argjson training_rollout_result "$TRAINING_ROLLOUT_RESULT" \
+  --argjson training_summary_result "$TRAINING_SUMMARY_RESULT" \
+  --argjson a1_minimal_claim_gates_result "$A1_MINIMAL_CLAIM_GATES_RESULT" \
   --argjson health_series_result "$HEALTH_SERIES_RESULT" \
   --argjson stats_series_result "$STATS_SERIES_RESULT" \
   --argjson provider_presence_series_result "$PROVIDER_PRESENCE_SERIES_RESULT" \
@@ -429,6 +465,12 @@ jq -n \
   --argjson verify_public_provider_presence_latency_max_ms "$VERIFY_PUBLIC_PROVIDER_PRESENCE_LATENCY_MAX_MS" \
   --argjson verify_public_checks_enabled "$VERIFY_PUBLIC_CHECKS_ENABLED_JSON" \
   --argjson verify_expected_release_git_sha "$VERIFY_EXPECTED_RELEASE_GIT_SHA_JSON" \
+  --arg verify_a1_minimal_run_id "$VERIFY_A1_MINIMAL_RUN_ID" \
+  --argjson verify_a1_minimal_record_gates_enabled "$VERIFY_A1_MINIMAL_RECORD_GATES_ENABLED_JSON" \
+  --argjson verify_a1_minimal_min_admitted_workers "$VERIFY_A1_MINIMAL_MIN_ADMITTED_WORKERS" \
+  --argjson verify_a1_minimal_require_launch_health_good "$VERIFY_A1_MINIMAL_REQUIRE_LAUNCH_HEALTH_GOOD_JSON" \
+  --argjson verify_a1_minimal_require_participant_gate "$VERIFY_A1_MINIMAL_REQUIRE_PARTICIPANT_GATE_JSON" \
+  --argjson verify_a1_minimal_require_model_progress_gate "$VERIFY_A1_MINIMAL_REQUIRE_MODEL_PROGRESS_GATE_JSON" \
   --argjson verify_started_unix_ms "$VERIFY_STARTED_UNIX_MS" \
   --argjson verify_finished_unix_ms "$VERIFY_FINISHED_UNIX_MS" \
   '
@@ -509,6 +551,12 @@ jq -n \
       ($treasury_result.body.wallet_runtime_status // "") == "connected" and
       (accepted_work_pending_reconciliation | not)
     );
+  def a1_minimal_run_summary:
+    (($training_summary_result.body.runs // [])
+      | map(select(.training_run_id == $verify_a1_minimal_run_id))
+      | .[0]);
+  def a1_launch_health:
+    ($stats_result.body.training_public_state.launch_health // {});
   def gates:
     [
       gate(
@@ -760,6 +808,112 @@ jq -n \
         }
       )
     ] end)
+    +
+    (if $verify_a1_minimal_record_gates_enabled then [
+      gate(
+        "a1_minimal_claim_gate_endpoint";
+        (
+          ($a1_minimal_claim_gates_result.body.training_run_id // "") == $verify_a1_minimal_run_id and
+          (($a1_minimal_claim_gates_result.body.unqualified_largest_claim_allowed // true) == false)
+        );
+        (
+          if (($a1_minimal_claim_gates_result.body.training_run_id // "") != $verify_a1_minimal_run_id) then "claim_gate_run_id_mismatch"
+          elif (($a1_minimal_claim_gates_result.body.unqualified_largest_claim_allowed // true) != false) then "unqualified_largest_claim_not_forbidden"
+          else null end
+        );
+        {
+          training_run_id: ($a1_minimal_claim_gates_result.body.training_run_id // null),
+          target_run_id: $verify_a1_minimal_run_id,
+          status: ($a1_minimal_claim_gates_result.body.status // null),
+          latency_ms: $a1_minimal_claim_gates_result.latency_ms,
+          unqualified_largest_claim_allowed: ($a1_minimal_claim_gates_result.body.unqualified_largest_claim_allowed // null)
+        }
+      ),
+      gate(
+        "a1_minimal_updated_admitted_workers";
+        (
+          ((a1_minimal_run_summary.admitted_nodes // 0) >= $verify_a1_minimal_min_admitted_workers) and
+          ((a1_minimal_run_summary.admitted_nodes_online // 0) >= $verify_a1_minimal_min_admitted_workers)
+        );
+        (
+          if ((a1_minimal_run_summary.admitted_nodes // 0) < $verify_a1_minimal_min_admitted_workers) then "admitted_workers_below_minimum"
+          elif ((a1_minimal_run_summary.admitted_nodes_online // 0) < $verify_a1_minimal_min_admitted_workers) then "updated_admitted_workers_below_minimum"
+          else null end
+        );
+        {
+          training_run_id: $verify_a1_minimal_run_id,
+          min_admitted_workers: $verify_a1_minimal_min_admitted_workers,
+          admitted_nodes: (a1_minimal_run_summary.admitted_nodes // 0),
+          admitted_nodes_online: (a1_minimal_run_summary.admitted_nodes_online // 0)
+        }
+      ),
+      gate(
+        "a1_minimal_launch_health";
+        (
+          if $verify_a1_minimal_require_launch_health_good
+          then ((a1_launch_health.overall_status // "unknown") == "good")
+          else true
+          end
+        );
+        (
+          if (($verify_a1_minimal_require_launch_health_good | not) or ((a1_launch_health.overall_status // "unknown") == "good")) then null
+          else "training_launch_health_not_good" end
+        );
+        {
+          required: $verify_a1_minimal_require_launch_health_good,
+          overall_status: (a1_launch_health.overall_status // null),
+          active_alert_count: (a1_launch_health.active_alert_count // null),
+          critical_alert_count: (a1_launch_health.critical_alert_count // null),
+          alerts: (a1_launch_health.alerts // [])
+        }
+      ),
+      gate(
+        "a1_minimal_participant_claim_gate";
+        (
+          if $verify_a1_minimal_require_participant_gate
+          then (($a1_minimal_claim_gates_result.body.participant_gate.passed // false) == true)
+          else true
+          end
+        );
+        (
+          if $verify_a1_minimal_require_participant_gate and (($a1_minimal_claim_gates_result.body.participant_gate.passed // false) != true)
+          then "participant_claim_gate_not_passed"
+          else null
+          end
+        );
+        {
+          required: $verify_a1_minimal_require_participant_gate,
+          status: ($a1_minimal_claim_gates_result.body.participant_gate.status // null),
+          passed: ($a1_minimal_claim_gates_result.body.participant_gate.passed // false),
+          missing_fields: ($a1_minimal_claim_gates_result.body.participant_gate.missing_fields // []),
+          internal_source_of_truth: ($a1_minimal_claim_gates_result.body.participant_gate.internal_source_of_truth // null)
+        }
+      ),
+      gate(
+        "a1_minimal_model_progress_participant_claim_gate";
+        (
+          if $verify_a1_minimal_require_model_progress_gate
+          then (($a1_minimal_claim_gates_result.body.model_progress_participant_gate.passed // false) == true)
+          else true
+          end
+        );
+        (
+          if $verify_a1_minimal_require_model_progress_gate and (($a1_minimal_claim_gates_result.body.model_progress_participant_gate.passed // false) != true)
+          then "model_progress_participant_claim_gate_not_passed"
+          else null
+          end
+        );
+        {
+          required: $verify_a1_minimal_require_model_progress_gate,
+          status: ($a1_minimal_claim_gates_result.body.model_progress_participant_gate.status // null),
+          passed: ($a1_minimal_claim_gates_result.body.model_progress_participant_gate.passed // false),
+          missing_fields: ($a1_minimal_claim_gates_result.body.model_progress_participant_gate.missing_fields // []),
+          internal_source_of_truth: ($a1_minimal_claim_gates_result.body.model_progress_participant_gate.internal_source_of_truth // null)
+        }
+      )
+    ] else [
+      gate("a1_minimal_claim_gate_endpoint"; true; null; {skipped: true})
+    ] end)
   ;
   {
     generated_at: $generated_at,
@@ -772,9 +926,19 @@ jq -n \
     release_metadata: ($active_service_info.release_metadata // null),
     public_checks_enabled: $verify_public_checks_enabled,
     expected_release_git_sha: $verify_expected_release_git_sha,
+    a1_minimal_record_gates_enabled: $verify_a1_minimal_record_gates_enabled,
+    a1_minimal_record_gate_policy: {
+      training_run_id: $verify_a1_minimal_run_id,
+      min_admitted_workers: $verify_a1_minimal_min_admitted_workers,
+      require_launch_health_good: $verify_a1_minimal_require_launch_health_good,
+      require_participant_gate: $verify_a1_minimal_require_participant_gate,
+      require_model_progress_gate: $verify_a1_minimal_require_model_progress_gate
+    },
     health: $health_result.body,
     stats: $stats_result.body,
     training_rollout: $training_rollout_result.body,
+    training_summary: $training_summary_result.body,
+    a1_minimal_claim_gates: $a1_minimal_claim_gates_result.body,
     public_stats: $public_stats_result.body,
     public_provider_presence: $public_provider_presence_result.body,
     treasury: $treasury_result.body,
@@ -787,6 +951,8 @@ jq -n \
       healthz: $health_result.latency_ms,
       stats: $stats_result.latency_ms,
       training_rollout: $training_rollout_result.latency_ms,
+      training_summary: $training_summary_result.latency_ms,
+      a1_minimal_claim_gates: $a1_minimal_claim_gates_result.latency_ms,
       public_stats: $public_stats_result.latency_ms,
       public_provider_presence: $public_provider_presence_result.latency_ms,
       treasury_status: $treasury_result.latency_ms

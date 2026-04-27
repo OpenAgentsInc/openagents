@@ -564,6 +564,10 @@ The machine-readable gate for the first participant-count record attempt is:
 
 - `GET /api/training/runs/<trainingRunId>/claim-gates`
 
+The operator sequence and stop-ship checks for
+`a1_minimal_distributed_lm_001` are defined in
+`docs/2026-04-27-a1-minimal-distributed-lm-record-operator-runbook.md`.
+
 For `a1_minimal_distributed_lm_001`, this endpoint is the canonical
 pass/fail report for public "largest" claim language. It deliberately returns
 `unqualified_largest_claim_allowed: false` even when a qualified claim passes.
