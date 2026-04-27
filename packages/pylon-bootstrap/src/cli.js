@@ -6,11 +6,11 @@ import {
   DEFAULT_RELEASE_REPO,
   bootstrapInstalledPylon,
   ensureReleaseInstall,
-  launchInstalledPylon,
   launchInstalledPylonWithUpdates,
   resolveBootstrapOutcome,
   resolvePlatformTarget,
   renderBootstrapSummary,
+  runInstalledPylonCli,
 } from "./index.js";
 import {
   createTelemetryClient,
@@ -78,6 +78,8 @@ export function usage() {
   npx @openagentsinc/pylon [options]
   bunx @openagentsinc/pylon [options]
   pylon [options]
+  pylon [options] <pylon-command> [pylon-options]
+  pylon [options] -- <pylon-command> [pylon-options]
 
 Description:
   Download the latest tagged standalone Pylon release asset for this machine,
@@ -86,10 +88,14 @@ Description:
   and build it locally instead. Cache the binaries, run the first-run smoke
   path, and then start the Pylon terminal UI by default. The terminal UI manages
   the earning worker and keeps live status visible. The launcher checks GitHub
-  for newer tagged pylon-v... releases on each default run and every 30 seconds
+  for newer tagged pylon-v... releases on each default run and periodically
   while the dashboard is open. Only releases initiated by AtlantisPleb are
   accepted. New standalone binaries are cached under the local bootstrap root;
   the global npm or bun pylon command is not replaced.
+
+  When a Pylon command is provided, the launcher bootstraps the managed release
+  and forwards that command to the installed pylon binary instead of opening
+  pylon-tui. For example: pylon status --json.
 
 Options:
   --version <x.y.z>                    Resolve a specific Pylon release.
@@ -109,7 +115,7 @@ Options:
   --skip-model-download                Keep the curated GGUF cache skipped.
   --skip-diagnostics                   Keep optional pylon gemma diagnose skipped.
   --no-launch                          Do not start pylon-tui after bootstrap.
-  --no-updates                         Disable 30-second GitHub release polling
+  --no-updates                         Disable background GitHub release polling
                                        and dashboard restart while pylon runs.
   --verbose                            Print extra network and recovery detail.
   --debug-network                      Alias for --verbose.
@@ -140,10 +146,19 @@ export function parseArgs(argv) {
     verbose: false,
     json: false,
     help: false,
+    pylonArgs: [],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    if (arg === "--") {
+      options.pylonArgs = argv.slice(index + 1);
+      break;
+    }
+    if (!arg.startsWith("-")) {
+      options.pylonArgs = argv.slice(index);
+      break;
+    }
     switch (arg) {
       case "--version":
         options.version = argv[++index];
@@ -241,6 +256,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
     ensureReleaseInstallImpl = ensureReleaseInstall,
     bootstrapInstalledPylonImpl = bootstrapInstalledPylon,
     launchInstalledPylonImpl = launchInstalledPylonWithUpdates,
+    runInstalledPylonCliImpl = runInstalledPylonCli,
     createTelemetryClientImpl = createTelemetryClient,
   } = dependencies;
   const options = parseArgs(argv);
@@ -320,7 +336,21 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
         reporter?.warning(`Pylon ${outcome.verdict}`, outcome.detail);
       }
       console.log(renderBootstrapSummary(summary));
-      if (!options.noLaunch) {
+      if (options.pylonArgs.length > 0) {
+        await runInstalledPylonCliImpl(
+          {
+            ...options,
+            ...install,
+            version: install.version,
+          },
+          options.pylonArgs,
+          {
+            ...dependencies,
+            onStatus: reporter?.status,
+            telemetryClient,
+          },
+        );
+      } else if (!options.noLaunch) {
         await launchInstalledPylonImpl(
           {
             ...options,

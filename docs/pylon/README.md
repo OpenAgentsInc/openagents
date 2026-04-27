@@ -342,6 +342,7 @@ npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
 npx @openagentsinc/pylon --version 0.1.16
 npx @openagentsinc/pylon --no-launch
+npx @openagentsinc/pylon status --json
 npx @openagentsinc/pylon --download-curated-cache
 ```
 
@@ -356,9 +357,15 @@ earning surface and starts/supervises the worker process automatically. Use
 `--no-launch` when you want the same install and bootstrap flow without opening
 the earning dashboard.
 Auto-update belongs to this npm/bun bootstrap lane. The launcher keeps polling
-trusted GitHub releases while the dashboard is open and restarts from a newer
-cached archive when one is available. `--no-updates` and `--version` deliberately
-pin the running cached release.
+trusted GitHub releases on a six-hour background cadence while the dashboard is
+open and restarts from a newer cached archive when one is available.
+`GITHUB_TOKEN` or `GH_TOKEN` authenticates those release lookups when a shared
+network is close to the unauthenticated GitHub rate limit. `--no-updates` and
+`--version` deliberately pin the running cached release.
+CLI subcommands are also supported through the package-managed launcher. For
+example, `pylon status --json` bootstraps the managed release and then forwards
+`status --json` to the installed standalone `pylon` binary instead of opening
+the TUI.
 If the resolved release does not ship a prebuilt archive for the local
 platform, the launcher now falls back to the exact tagged source checkout,
 prompts before installing Rust if `cargo` and `rustc` are missing, and builds
@@ -449,9 +456,12 @@ running the default `pylon` loop admits its local capabilities and payout
 target, asks Nexus for available work, and receives CS336 Assignment 1 starter
 work when that is the currently hosted starter lane available to the node.
 
-The current recommended public paid-training Pylon release for this path is
-`pylon-v0.1.16`, exposed through `@openagentsinc/pylon` `0.1.16` or newer. It
-keeps the `0.1.12` homework-earning TUI, the TUI-managed worker lifecycle,
+The current recommended public paid-training Pylon binary for this path is
+`pylon-v0.1.16`, exposed through `@openagentsinc/pylon` `0.1.17` or newer. The
+`0.1.17` package is a launcher-only release that forwards subcommands such as
+`pylon status --json` and uses a bounded background update cadence; it still
+runs the latest trusted `pylon-v...` standalone binary for the machine. The
+`0.1.16` binary keeps the `0.1.12` homework-earning TUI, the TUI-managed worker lifecycle,
 bootstrap behavior that launches the TUI after smoke checks, opt-in-only Gemma
 diagnostics/downloads, the Mac-safe Psionic training-worker launch path, the
 public-safe signed-artifact path, accepted-work payout projection, validator
@@ -488,6 +498,9 @@ or a newer official release that includes these same paid-training guarantees.
 The `0.1.16` release receipt is
 `docs/reports/nexus/20260427-pylon-v0.1.16-release.json`. It proves the
 packaged Psionic runtime release asset and npm bootstrap smoke for issue #4451.
+The `0.1.17` package-only launcher receipt is
+`docs/reports/nexus/20260427-pylon-bootstrap-v0.1.17-release.json`. It proves
+the CLI forwarding and bounded update-polling tests plus npm publication.
 The prior `0.1.15` release receipt is
 `docs/reports/nexus/20260426-pylon-v0.1.15-release.json`. It proves the
 artifact-before-seal regression test, release asset, bootstrap smoke, and
