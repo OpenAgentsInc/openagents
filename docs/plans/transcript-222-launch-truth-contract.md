@@ -110,7 +110,7 @@ It is not allowed to stand in for:
 
 - distinct training contributors
 - distinct assigned nodes
-- distinct accepted contributors
+- distinct participants
 
 ### Sellable-online count
 
@@ -258,8 +258,45 @@ Accepted work must not be inferred from:
 An `accepted-progress contributor` is a node with at least one accepted work
 outcome in the counted run or window family.
 
-This is the minimum count family required before claiming "contributors to the
-run" in a strong sense.
+This is the internal/backend count family that backs the public
+`participants` label. Public launch copy should say `participants`, not
+`accepted-progress contributors`.
+
+### Participant
+
+A `participant` is a distinct Pylon/provider identity that completed real
+compute work for one defined language-model training run and whose work was
+accepted by Nexus closeout truth.
+
+For the first participant-count record, a participant may have completed
+model-progress work or verifier/support work, as long as the work was:
+
+- assigned under one run id;
+- executed through the Psionic/Pylon training path;
+- tied to explicit inputs, expected outputs, artifacts, receipts, and
+  closeout;
+- accepted by Nexus.
+
+A participant is not:
+
+- an online node;
+- a seen-in-24h node;
+- a sellable node;
+- a presence session;
+- a placeholder payout recipient;
+- a node that merely downloaded or opened Pylon.
+
+The phrase "by number of participants" is allowed only when "participant"
+means accepted real compute work under one run id. It must never be inferred
+from online Pylons, seen-in-24h Pylons, sellable Pylons, generic payout totals,
+Discord members, downloads, presence sessions, or app sessions.
+
+Internal mapping:
+
+- Public label: participants
+- Internal source of truth: `training_accepted_contributors`
+- Public label: model-progress participants
+- Internal source of truth: `training_model_progress_contributors`
 
 ### Supporting work
 
@@ -296,24 +333,24 @@ stats and public language.
 
 This claim is presence-only.
 
-### Largest-by-assigned contributors
+### Largest-by-assigned participants
 
-`Largest by assigned contributors` means largest by distinct assigned-node
+`Largest by assigned participants` means largest by distinct assigned-node
 count for a defined run or window family.
 
 This claim requires durable assignment accounting.
 
-### Largest-by-accepted contributors
+### Largest-by-participants
 
-`Largest by accepted contributors` means largest by distinct
-accepted-progress-contributor count for a defined run or window family.
+`Largest by participants` means largest by distinct participant count for a
+defined language-model training run.
 
 This claim requires accepted closeout truth, not presence.
 
-### Largest-by-model-progress contributors
+### Largest-by-model-progress participants
 
-`Largest by model-progress contributors` means largest by distinct
-contributors whose accepted work advanced canonical model state.
+`Largest by model-progress participants` means largest by distinct participants
+whose accepted work advanced canonical model state.
 
 This is the strongest participant-count claim in the Transcript 222 family.
 
@@ -333,7 +370,7 @@ Not allowed:
 - how many nodes are doing real work
 - how many nodes are doing training work
 - how many nodes are assigned
-- how many nodes are accepted contributors
+- how many nodes are participants
 
 ### `pylonsSeen24h`
 
@@ -429,15 +466,18 @@ hosted treasury system.
 - `This is the largest decentralized training run in the world` unless the
   statement is explicitly qualified by the counted family and that counted
   family is published.
+- `This is the world's largest distributed language-model training run by
+  number of participants` unless participants means distinct Pylons/providers
+  with accepted real Psionic/Pylon compute work under one run id.
 
 ### Required qualifier rule for "largest run" language
 
 Any "largest" claim must explicitly name one of these count families:
 
 - online contributors
-- assigned contributors
-- accepted contributors
-- model-progress contributors
+- assigned participants
+- participants
+- model-progress participants
 
 If the qualifier is absent, the claim is not allowed.
 
@@ -480,6 +520,17 @@ canonical `/api/stats` path:
 These fields are the current source of truth for participant-count claims. They
 must be used instead of inferring contribution from `pylonsOnlineNow`,
 `pylonsSeen24h`, `sellablePylonsOnlineNow`, or generic payout totals.
+
+Public labels must map to internal fields as follows:
+
+- `Participants` maps to `training_accepted_contributors`.
+- `Model-progress participants` maps to
+  `training_model_progress_contributors`.
+
+The public label `participants` is allowed only when it means accepted real
+compute work under one run id. It must never be inferred from online Pylons,
+seen-in-24h Pylons, sellable Pylons, generic payout totals, Discord members,
+downloads, presence sessions, or app sessions.
 
 The public stats contract now also exposes run/window lineage fields on the
 canonical `/api/stats` path under `training_public_state`:
