@@ -488,19 +488,24 @@ scripts/deploy/nexus/10-install-treasury-watchdog.sh
 ```
 
 The same deploy path now installs a public reachability watchdog. It checks the
-VM-local `/healthz`, the public `https://nexus.openagents.com/api/stats` path,
-and both `nexus-relay` and `nexus-cloudflared` systemd services. If local
-origin health fails it restarts `nexus-relay`; if the local origin is healthy
-but the public host returns `530` / `1033` or goes dark, it restarts
-`nexus-cloudflared`. The watchdog probes the public edge even during startup
-grace; Cloudflare `530` / `1033` is never treated as healthy just because a
-systemd service recently restarted. It writes structured receipts under
+VM-local `/healthz`, the public `https://nexus.openagents.com/healthz`, the
+public `https://nexus.openagents.com/api/stats` path, and both `nexus-relay`
+and `nexus-cloudflared` systemd services. If local origin health fails it
+restarts `nexus-relay`; if the local origin is healthy but either public path
+returns `530` / `1033` or goes dark, it restarts `nexus-cloudflared`. The
+watchdog probes the public edge even during startup grace; Cloudflare `530` /
+`1033` is never treated as healthy just because a systemd service recently
+restarted.
+
+It writes structured receipts under
 `/var/lib/nexus-relay/watchdog/public/events.jsonl` and
-`/var/lib/nexus-relay/watchdog/public/last-event.json`. When hourly restart
-limits are exhausted, the receipt action becomes `vm_reset_required`; the
-hosted health runner or human operator must then reset the VM after confirming
-the local origin/tunnel restart ladder has failed. Refresh only that watchdog
-with:
+`/var/lib/nexus-relay/watchdog/public/last-event.json`, plus the consecutive
+edge-failure counter at
+`/var/lib/nexus-relay/watchdog/public/edge-failure-count`. By default, after
+two consecutive public edge failures it emits action `vm_reset` and calls
+`systemctl reboot`. Set `NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_ENABLED=false` only
+for a bounded dry run where a human is actively watching. Refresh only that
+watchdog with:
 
 ```bash
 scripts/deploy/nexus/16-install-public-watchdog.sh
