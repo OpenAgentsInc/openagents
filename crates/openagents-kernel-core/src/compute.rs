@@ -224,6 +224,117 @@ impl ComputeTrainingWorkClass {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum A1MinimalDistributedLmWorkUnitKind {
+    TokenizationShardValidation,
+    ValidationReplay,
+    CheckpointVerification,
+    EvaluationBatch,
+    ArtifactRematerialization,
+    ProofGeneration,
+    CloseoutVerification,
+    LocalUpdate,
+    Aggregation,
+    CheckpointPromotion,
+}
+
+pub const A1_MINIMAL_DISTRIBUTED_LM_WORK_UNIT_KINDS: [A1MinimalDistributedLmWorkUnitKind; 10] = [
+    A1MinimalDistributedLmWorkUnitKind::TokenizationShardValidation,
+    A1MinimalDistributedLmWorkUnitKind::ValidationReplay,
+    A1MinimalDistributedLmWorkUnitKind::CheckpointVerification,
+    A1MinimalDistributedLmWorkUnitKind::EvaluationBatch,
+    A1MinimalDistributedLmWorkUnitKind::ArtifactRematerialization,
+    A1MinimalDistributedLmWorkUnitKind::ProofGeneration,
+    A1MinimalDistributedLmWorkUnitKind::CloseoutVerification,
+    A1MinimalDistributedLmWorkUnitKind::LocalUpdate,
+    A1MinimalDistributedLmWorkUnitKind::Aggregation,
+    A1MinimalDistributedLmWorkUnitKind::CheckpointPromotion,
+];
+
+impl A1MinimalDistributedLmWorkUnitKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::TokenizationShardValidation => "tokenization_shard_validation",
+            Self::ValidationReplay => "validation_replay",
+            Self::CheckpointVerification => "checkpoint_verification",
+            Self::EvaluationBatch => "evaluation_batch",
+            Self::ArtifactRematerialization => "artifact_rematerialization",
+            Self::ProofGeneration => "proof_generation",
+            Self::CloseoutVerification => "closeout_verification",
+            Self::LocalUpdate => "local_update",
+            Self::Aggregation => "aggregation",
+            Self::CheckpointPromotion => "checkpoint_promotion",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "tokenization_shard_validation" => Some(Self::TokenizationShardValidation),
+            "validation_replay" => Some(Self::ValidationReplay),
+            "checkpoint_verification" => Some(Self::CheckpointVerification),
+            "evaluation_batch" => Some(Self::EvaluationBatch),
+            "artifact_rematerialization" => Some(Self::ArtifactRematerialization),
+            "proof_generation" => Some(Self::ProofGeneration),
+            "closeout_verification" => Some(Self::CloseoutVerification),
+            "local_update" => Some(Self::LocalUpdate),
+            "aggregation" => Some(Self::Aggregation),
+            "checkpoint_promotion" => Some(Self::CheckpointPromotion),
+            _ => None,
+        }
+    }
+
+    pub const fn work_class(self) -> ComputeTrainingWorkClass {
+        match self {
+            Self::TokenizationShardValidation
+            | Self::ValidationReplay
+            | Self::CheckpointVerification
+            | Self::ArtifactRematerialization
+            | Self::ProofGeneration
+            | Self::CloseoutVerification => ComputeTrainingWorkClass::ValidationReplay,
+            Self::EvaluationBatch => ComputeTrainingWorkClass::Evaluation,
+            Self::LocalUpdate => ComputeTrainingWorkClass::SmallModelLocalTraining,
+            Self::Aggregation => ComputeTrainingWorkClass::Aggregation,
+            Self::CheckpointPromotion => ComputeTrainingWorkClass::CheckpointPromotion,
+        }
+    }
+
+    pub const fn replica_type(self) -> ComputeTrainingReplicaType {
+        ComputeTrainingReplicaType::SingleNode
+    }
+
+    pub const fn progress_class_label(self) -> &'static str {
+        match self {
+            Self::TokenizationShardValidation
+            | Self::ValidationReplay
+            | Self::CheckpointVerification
+            | Self::EvaluationBatch
+            | Self::ArtifactRematerialization
+            | Self::ProofGeneration
+            | Self::CloseoutVerification => "participation_only",
+            Self::LocalUpdate => "model_update",
+            Self::Aggregation | Self::CheckpointPromotion => "checkpoint_advance",
+        }
+    }
+
+    pub const fn participation_only(self) -> bool {
+        matches!(
+            self,
+            Self::TokenizationShardValidation
+                | Self::ValidationReplay
+                | Self::CheckpointVerification
+                | Self::EvaluationBatch
+                | Self::ArtifactRematerialization
+                | Self::ProofGeneration
+                | Self::CloseoutVerification
+        )
+    }
+
+    pub const fn model_progress_bearing(self) -> bool {
+        !self.participation_only()
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeTrainingReplicaType {
@@ -4449,6 +4560,7 @@ pub fn validate_launch_compute_product(
 #[cfg(test)]
 mod tests {
     use super::{
+        A1_MINIMAL_DISTRIBUTED_LM_WORK_UNIT_KINDS, A1MinimalDistributedLmWorkUnitKind,
         COMPUTE_APPLE_BENCHMARK_PACKAGE_METADATA_ABI_VERSION,
         COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION,
         COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION, COMPUTE_LAUNCH_TAXONOMY_VERSION,
@@ -5905,6 +6017,65 @@ mod tests {
             "full_island_local_update_training"
         );
         assert_eq!(ComputeTrainingReplicaType::Island.label(), "island");
+    }
+
+    #[test]
+    fn a1_minimal_distributed_lm_work_units_map_to_existing_work_classes() {
+        assert_eq!(
+            A1MinimalDistributedLmWorkUnitKind::parse("tokenization_shard_validation"),
+            Some(A1MinimalDistributedLmWorkUnitKind::TokenizationShardValidation)
+        );
+        assert_eq!(A1_MINIMAL_DISTRIBUTED_LM_WORK_UNIT_KINDS.len(), 10);
+        for work_unit in A1_MINIMAL_DISTRIBUTED_LM_WORK_UNIT_KINDS {
+            assert_eq!(
+                work_unit.replica_type(),
+                ComputeTrainingReplicaType::SingleNode
+            );
+            match work_unit {
+                A1MinimalDistributedLmWorkUnitKind::TokenizationShardValidation
+                | A1MinimalDistributedLmWorkUnitKind::ValidationReplay
+                | A1MinimalDistributedLmWorkUnitKind::CheckpointVerification
+                | A1MinimalDistributedLmWorkUnitKind::ArtifactRematerialization
+                | A1MinimalDistributedLmWorkUnitKind::ProofGeneration
+                | A1MinimalDistributedLmWorkUnitKind::CloseoutVerification => {
+                    assert_eq!(
+                        work_unit.work_class(),
+                        ComputeTrainingWorkClass::ValidationReplay
+                    );
+                    assert_eq!(work_unit.progress_class_label(), "participation_only");
+                    assert!(!work_unit.model_progress_bearing());
+                }
+                A1MinimalDistributedLmWorkUnitKind::EvaluationBatch => {
+                    assert_eq!(work_unit.work_class(), ComputeTrainingWorkClass::Evaluation);
+                    assert_eq!(work_unit.progress_class_label(), "participation_only");
+                    assert!(!work_unit.model_progress_bearing());
+                }
+                A1MinimalDistributedLmWorkUnitKind::LocalUpdate => {
+                    assert_eq!(
+                        work_unit.work_class(),
+                        ComputeTrainingWorkClass::SmallModelLocalTraining
+                    );
+                    assert_eq!(work_unit.progress_class_label(), "model_update");
+                    assert!(work_unit.model_progress_bearing());
+                }
+                A1MinimalDistributedLmWorkUnitKind::Aggregation => {
+                    assert_eq!(
+                        work_unit.work_class(),
+                        ComputeTrainingWorkClass::Aggregation
+                    );
+                    assert_eq!(work_unit.progress_class_label(), "checkpoint_advance");
+                    assert!(work_unit.model_progress_bearing());
+                }
+                A1MinimalDistributedLmWorkUnitKind::CheckpointPromotion => {
+                    assert_eq!(
+                        work_unit.work_class(),
+                        ComputeTrainingWorkClass::CheckpointPromotion
+                    );
+                    assert_eq!(work_unit.progress_class_label(), "checkpoint_advance");
+                    assert!(work_unit.model_progress_bearing());
+                }
+            }
+        }
     }
 
     #[test]

@@ -524,6 +524,32 @@ launch dependency. The authority schema should keep supporting it, but launch
 truth, product language, and public stats must not imply that grouped replicas
 are already required before the weak-device claim is honest.
 
+## A1 Minimal Distributed LM Work Classes
+
+`a1_minimal_distributed_lm_001` does not add new public work-class enum
+variants. It maps run-specific work units onto the existing authority classes:
+
+| A1 work unit | Work class | Progress class |
+| --- | --- | --- |
+| tokenization shard validation | `validation_replay` | `participation_only` |
+| validation replay | `validation_replay` | `participation_only` |
+| checkpoint verification | `validation_replay` | `participation_only` |
+| proof generation | `validation_replay` | `participation_only` |
+| closeout verification | `validation_replay` | `participation_only` |
+| artifact rematerialization | `validation_replay` | `participation_only` |
+| eval batch | `evaluation` | `participation_only` |
+| local update | `small_model_local_training` | `model_update` |
+| aggregation | `aggregation` | `checkpoint_advance` |
+| checkpoint promotion | `checkpoint_promotion` | `checkpoint_advance` |
+
+Weak devices can receive the participation-only support work when their Pylon
+capability envelope supports replay or evaluation. Trainer-tier devices can
+receive the tiny local-update lane through `small_model_local_training`.
+Authority-tier devices remain responsible for aggregation and checkpoint
+promotion. Accepted support work can count toward participants; only accepted
+model-update or checkpoint-advance work can count toward model-progress
+participants.
+
 ## Trust And Quorum Rules
 
 The current control plane now treats overlap and promotion authority as

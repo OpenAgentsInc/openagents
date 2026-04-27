@@ -126,6 +126,25 @@ For the current launch window, the default public weak-device proof is still
 `validation_replay`. That keeps the claim honest and matched to the retained
 evidence.
 
+## How does `a1_minimal_distributed_lm_001` map work classes?
+
+The A1 minimal distributed LM run uses existing work classes:
+
+- tokenization shard validation, validation replay, checkpoint verification,
+  proof generation, closeout verification, and artifact rematerialization use
+  `validation_replay`
+- eval batches use `evaluation`
+- tiny local-update training uses `small_model_local_training`
+- trusted aggregation uses `aggregation`
+- checkpoint promotion uses `checkpoint_promotion`
+
+`validation_replay` and `evaluation` are participation-only. They can count as
+participants after Nexus accepts the closeout, but they do not count as
+model-progress participants. `small_model_local_training` is the first A1 local
+update class and can count as model progress only when the accepted output
+enters canonical training state. `aggregation` and `checkpoint_promotion` are
+checkpoint-advance classes.
+
 ## Does every connected node do the same work?
 
 No.
