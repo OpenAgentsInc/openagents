@@ -25,10 +25,16 @@ Transcript 222 needs one stable object that binds:
 - training family
 - objective
 - sync profile
+- Psionic lane id and release id, when the policy is backed by a named
+  Psionic lane
 - checkpoint family
 - environment references
 - validator policy
 - dataset identity
+- fixed tokenizer, tokenized dataset, and validation-set digests for lanes
+  that freeze those inputs
+- model, optimizer, scheduler, aggregation, and base-checkpoint refs for lanes
+  that need exact replay or resume claims
 - dataset slice or page-proof family
 - benchmark package set
 - version semantics
@@ -91,10 +97,25 @@ These fields come from `ComputeTrainingRunDefinitionMetadata` stored under
 - `training_family`
 - `objective`
 - `sync_profile`
+- `lane_id`
+- `lane_release_id`
+- `environment_ref`
 - `dataset_identity`
+- `tokenizer_digest`
+- `tokenized_dataset_digest`
+- `validation_set_digest`
 - `dataset_slice_family`
 - `page_proof_family`
 - `benchmark_package_set_ref`
+- `benchmark_package_refs`
+- `model_config_digest`
+- `optimizer_config_digest`
+- `scheduler_config_digest`
+- `aggregation_rule_ref`
+- `aggregation_weight_basis_ref`
+- `checkpoint_family_ref`
+- `base_checkpoint_ref`
+- `validator_policy_ref`
 - `version_semantics`
 - `window_ref_family`
 - `manifest_ref_family`
@@ -103,6 +124,15 @@ These fields come from `ComputeTrainingRunDefinitionMetadata` stored under
 
 These are the fields that explain the intended training program rather than the
 runtime instance of one window.
+
+For `training_family = "a1_minimal_distributed_lm"`, Nexus now treats the
+fixed identity fields as required. The policy is invalid unless it includes the
+Psionic lane id, release id, environment ref, tokenizer digest, tokenized
+dataset digest, validation-set digest, model config digest, optimizer config
+digest, scheduler config digest, aggregation rule, aggregation weight basis,
+checkpoint family, base checkpoint, validator policy, and benchmark package
+refs. The checkpoint family, validator policy, environment ref, and benchmark
+package refs must match the owning `ComputeTrainingPolicy`.
 
 ### Training policy record
 
@@ -221,13 +251,27 @@ These are naming and linkage contracts, not runtime state.
   "training_family": "psion_actual_pretraining",
   "objective": "next_token_prediction",
   "sync_profile": "validation_replay",
+  "lane_id": "psion_actual_pretraining_v1",
+  "lane_release_id": "psionic-train.psion_actual_pretraining.release.v1",
+  "environment_ref": "psionic.environment.psion_actual_pretraining.cuda_h100.operator@v1",
   "checkpoint_family": "checkpoint.psion.actual",
+  "checkpoint_family_ref": "checkpoint.psion.actual",
+  "base_checkpoint_ref": "checkpoint://psion/base",
   "validator_policy_ref": "policy.validator.training",
   "validator_policy_version": "2026.03.14",
   "dataset_identity": "dataset.psion.public-corpus.v1",
+  "tokenizer_digest": "sha256:...",
+  "tokenized_dataset_digest": "sha256:...",
+  "validation_set_digest": "sha256:...",
   "dataset_slice_family": "slice.psion.public-corpus",
   "page_proof_family": "proof.psion.public-pages",
   "benchmark_package_set_ref": "benchmark-set.psion.reference",
+  "benchmark_package_refs": ["benchmark.psion.reference.validation_loss"],
+  "model_config_digest": "sha256:...",
+  "optimizer_config_digest": "sha256:...",
+  "scheduler_config_digest": "sha256:...",
+  "aggregation_rule_ref": "trusted_weighted_delta_average_v1",
+  "aggregation_weight_basis_ref": "accepted_tokens_processed_v1",
   "version_semantics": "date_versioned_policy_projection",
   "reference_families": {
     "window_ref_family": "window.psion.pretrain",
@@ -266,6 +310,59 @@ contract is now explicit:
   a second training vocabulary
 - closeouts should record the `run_definition_ref` used when the work was
   admitted and accepted
+
+Training-window metadata can now carry a `run_definition` block alongside
+`pylon_training_window`. That block snapshots the resolved
+`run_definition_ref`, `training_policy_ref`, policy version, training family,
+sync profile, lane id, checkpoint family, validator policy, tokenizer digest,
+tokenized dataset digest, validation-set digest, model/optimizer/scheduler
+config digests, aggregation rule, aggregation weight basis, and base checkpoint
+used when the window was planned. TRN window publication copies that block into
+event content and emits a `run_definition` tag when the ref is present.
+Closeout metadata copies the same block and top-level `run_definition_ref`
+from the window. Pylon run manifests can now carry an additive
+`run_definition_ref` field so manifest artifacts can point back to the same
+canonical policy projection.
+
+## A1 Minimal Distributed LM
+
+The first concrete consumer is `a1_minimal_distributed_lm_001`.
+
+Canonical OpenAgents policy refs:
+
+- training policy: `policy.training.a1_minimal_distributed_lm.001`
+- run definition: `rundef.a1_minimal_distributed_lm.001.v1`
+- validator policy: `policy.validator.a1_minimal_distributed_lm.v1`
+- environment:
+  `psionic.environment.a1_minimal_distributed_lm.tiny_lm.operator@v1`
+- checkpoint family: `psion.a1_minimal_distributed_lm.checkpoints.v1`
+- benchmark package:
+  `benchmark://a1-minimal-distributed-lm/validation-loss-v1`
+
+Frozen Psionic refs:
+
+- lane id: `a1_minimal_distributed_lm_001`
+- release id: `psionic-train.a1_minimal_distributed_lm.release.v1`
+- tokenizer digest:
+  `sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63`
+- tokenized dataset digest:
+  `sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905`
+- validation-set digest:
+  `sha256:6c1c6ca83a2d8eca6cb133f3ec719e822f134452723e72e5201407b28cd3d228`
+- model config digest:
+  `sha256:2cbe248294de6fa34c32ce3eb0195a661004062e9d8f450317118e854f89db8a`
+- optimizer config digest:
+  `sha256:ced6a7d4aacda7721920575e37f7a235d6650c20cbfd26666c43018354b6cca7`
+- scheduler config digest:
+  `sha256:aac8693277a49447d56b889cebe327c175690abc2240aa09b8b379d87d6f28af`
+- aggregation rule: `trusted_weighted_delta_average_v1`
+- aggregation weight basis: `accepted_tokens_processed_v1`
+- base checkpoint: `base://a1_minimal_distributed_lm/step-000000`
+
+This is a tiny fixed LM run contract for local-update and verifier/support
+work. It does not claim OpenWebText leaderboard parity, model-size leadership,
+token-budget leadership, broad pretraining, or permissionless model-progress
+training.
 
 That gives Transcript 222 a single answer to "what run did this node actually
 work on?" even before all downstream issue work lands.

@@ -567,13 +567,43 @@ pub struct ComputeTrainingRunDefinitionMetadata {
     pub training_family: String,
     pub objective: String,
     pub sync_profile: String,
+    #[serde(default)]
+    pub lane_id: Option<String>,
+    #[serde(default)]
+    pub lane_release_id: Option<String>,
+    #[serde(default)]
+    pub environment_ref: Option<String>,
     pub dataset_identity: String,
+    #[serde(default)]
+    pub tokenizer_digest: Option<String>,
+    #[serde(default)]
+    pub tokenized_dataset_digest: Option<String>,
+    #[serde(default)]
+    pub validation_set_digest: Option<String>,
     #[serde(default)]
     pub dataset_slice_family: Option<String>,
     #[serde(default)]
     pub page_proof_family: Option<String>,
     #[serde(default)]
     pub benchmark_package_set_ref: Option<String>,
+    #[serde(default)]
+    pub benchmark_package_refs: Vec<String>,
+    #[serde(default)]
+    pub model_config_digest: Option<String>,
+    #[serde(default)]
+    pub optimizer_config_digest: Option<String>,
+    #[serde(default)]
+    pub scheduler_config_digest: Option<String>,
+    #[serde(default)]
+    pub aggregation_rule_ref: Option<String>,
+    #[serde(default)]
+    pub aggregation_weight_basis_ref: Option<String>,
+    #[serde(default)]
+    pub checkpoint_family_ref: Option<String>,
+    #[serde(default)]
+    pub base_checkpoint_ref: Option<String>,
+    #[serde(default)]
+    pub validator_policy_ref: Option<String>,
     pub version_semantics: String,
     #[serde(default)]
     pub window_ref_family: Option<String>,
@@ -652,17 +682,45 @@ pub struct ComputeTrainingRunDefinition {
     pub training_family: String,
     pub objective: String,
     pub sync_profile: String,
+    #[serde(default)]
+    pub lane_id: Option<String>,
+    #[serde(default)]
+    pub lane_release_id: Option<String>,
+    #[serde(default)]
+    pub environment_ref: Option<String>,
     pub checkpoint_family: String,
+    #[serde(default)]
+    pub checkpoint_family_ref: Option<String>,
+    #[serde(default)]
+    pub base_checkpoint_ref: Option<String>,
     pub validator_policy_ref: String,
     #[serde(default)]
     pub validator_policy_version: Option<String>,
     pub dataset_identity: String,
+    #[serde(default)]
+    pub tokenizer_digest: Option<String>,
+    #[serde(default)]
+    pub tokenized_dataset_digest: Option<String>,
+    #[serde(default)]
+    pub validation_set_digest: Option<String>,
     #[serde(default)]
     pub dataset_slice_family: Option<String>,
     #[serde(default)]
     pub page_proof_family: Option<String>,
     #[serde(default)]
     pub benchmark_package_set_ref: Option<String>,
+    #[serde(default)]
+    pub benchmark_package_refs: Vec<String>,
+    #[serde(default)]
+    pub model_config_digest: Option<String>,
+    #[serde(default)]
+    pub optimizer_config_digest: Option<String>,
+    #[serde(default)]
+    pub scheduler_config_digest: Option<String>,
+    #[serde(default)]
+    pub aggregation_rule_ref: Option<String>,
+    #[serde(default)]
+    pub aggregation_weight_basis_ref: Option<String>,
     pub version_semantics: String,
     #[serde(default)]
     pub environments: Vec<ComputeTrainingRunDefinitionEnvironment>,
@@ -2431,6 +2489,48 @@ fn trimmed_string_set(values: &[String]) -> BTreeSet<&str> {
         .collect()
 }
 
+fn trimmed_optional_string(value: &Option<String>) -> Option<&str> {
+    value
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn optional_training_run_definition_value_invalid(value: &Option<String>) -> bool {
+    value
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+}
+
+fn require_training_run_definition_optional_value<'a>(
+    value: &'a Option<String>,
+    reason: &'static str,
+) -> Result<&'a str, String> {
+    trimmed_optional_string(value).ok_or_else(|| reason.to_string())
+}
+
+fn require_training_run_definition_sha256_value(
+    value: &Option<String>,
+    missing_reason: &'static str,
+    invalid_reason: &'static str,
+) -> Result<(), String> {
+    let value = require_training_run_definition_optional_value(value, missing_reason)?;
+    if !value.starts_with("sha256:") || value.len() <= "sha256:".len() {
+        return Err(invalid_reason.to_string());
+    }
+    Ok(())
+}
+
+fn compute_training_run_definition_is_a1_minimal(
+    metadata: &ComputeTrainingRunDefinitionMetadata,
+) -> bool {
+    metadata.training_family == "a1_minimal_distributed_lm"
+        || metadata
+            .run_definition_ref
+            .contains("a1_minimal_distributed_lm")
+        || trimmed_optional_string(&metadata.lane_id) == Some("a1_minimal_distributed_lm_001")
+}
+
 fn looks_like_apple_adapter_ref(value: &str) -> bool {
     let trimmed = value.trim();
     !trimmed.is_empty() && trimmed.contains("apple_adapter")
@@ -2578,6 +2678,7 @@ pub fn compute_training_run_definition_metadata(
 }
 
 fn validate_compute_training_run_definition_metadata(
+    policy: &ComputeTrainingPolicy,
     metadata: &ComputeTrainingRunDefinitionMetadata,
 ) -> Result<(), String> {
     if metadata.abi_version != COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION {
@@ -2598,8 +2699,152 @@ fn validate_compute_training_run_definition_metadata(
     if metadata.dataset_identity.trim().is_empty() {
         return Err("compute_training_run_definition_dataset_identity_missing".to_string());
     }
+    if optional_training_run_definition_value_invalid(&metadata.lane_id) {
+        return Err("compute_training_run_definition_lane_id_invalid".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.lane_release_id) {
+        return Err("compute_training_run_definition_lane_release_id_invalid".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.environment_ref) {
+        return Err("compute_training_run_definition_environment_ref_invalid".to_string());
+    }
+    if let Some(environment_ref) = trimmed_optional_string(&metadata.environment_ref)
+        && !policy
+            .environment_refs
+            .iter()
+            .any(|value| value.trim() == environment_ref)
+    {
+        return Err("compute_training_run_definition_environment_ref_mismatch".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.tokenizer_digest) {
+        return Err("compute_training_run_definition_tokenizer_digest_invalid".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.tokenized_dataset_digest) {
+        return Err("compute_training_run_definition_tokenized_dataset_digest_invalid".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.validation_set_digest) {
+        return Err("compute_training_run_definition_validation_set_digest_invalid".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.model_config_digest) {
+        return Err("compute_training_run_definition_model_config_digest_invalid".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.optimizer_config_digest) {
+        return Err("compute_training_run_definition_optimizer_config_digest_invalid".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.scheduler_config_digest) {
+        return Err("compute_training_run_definition_scheduler_config_digest_invalid".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.aggregation_rule_ref) {
+        return Err("compute_training_run_definition_aggregation_rule_ref_invalid".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.aggregation_weight_basis_ref) {
+        return Err(
+            "compute_training_run_definition_aggregation_weight_basis_ref_invalid".to_string(),
+        );
+    }
+    if optional_training_run_definition_value_invalid(&metadata.checkpoint_family_ref) {
+        return Err("compute_training_run_definition_checkpoint_family_ref_invalid".to_string());
+    }
+    if let Some(checkpoint_family_ref) = trimmed_optional_string(&metadata.checkpoint_family_ref)
+        && checkpoint_family_ref != policy.checkpoint_family.trim()
+    {
+        return Err("compute_training_run_definition_checkpoint_family_ref_mismatch".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.base_checkpoint_ref) {
+        return Err("compute_training_run_definition_base_checkpoint_ref_invalid".to_string());
+    }
+    if optional_training_run_definition_value_invalid(&metadata.validator_policy_ref) {
+        return Err("compute_training_run_definition_validator_policy_ref_invalid".to_string());
+    }
+    if let Some(validator_policy_ref) = trimmed_optional_string(&metadata.validator_policy_ref)
+        && validator_policy_ref != policy.validator_policy_ref.trim()
+    {
+        return Err("compute_training_run_definition_validator_policy_ref_mismatch".to_string());
+    }
+    if metadata
+        .benchmark_package_refs
+        .iter()
+        .any(|value| value.trim().is_empty())
+    {
+        return Err("compute_training_run_definition_benchmark_package_ref_invalid".to_string());
+    }
+    if !metadata.benchmark_package_refs.is_empty()
+        && trimmed_string_set(metadata.benchmark_package_refs.as_slice())
+            != trimmed_string_set(policy.benchmark_package_refs.as_slice())
+    {
+        return Err("compute_training_run_definition_benchmark_package_refs_mismatch".to_string());
+    }
     if metadata.version_semantics.trim().is_empty() {
         return Err("compute_training_run_definition_version_semantics_missing".to_string());
+    }
+    if compute_training_run_definition_is_a1_minimal(metadata) {
+        require_training_run_definition_optional_value(
+            &metadata.lane_id,
+            "compute_training_run_definition_lane_id_missing",
+        )?;
+        require_training_run_definition_optional_value(
+            &metadata.lane_release_id,
+            "compute_training_run_definition_lane_release_id_missing",
+        )?;
+        require_training_run_definition_optional_value(
+            &metadata.environment_ref,
+            "compute_training_run_definition_environment_ref_missing",
+        )?;
+        require_training_run_definition_sha256_value(
+            &metadata.tokenizer_digest,
+            "compute_training_run_definition_tokenizer_digest_missing",
+            "compute_training_run_definition_tokenizer_digest_invalid",
+        )?;
+        require_training_run_definition_sha256_value(
+            &metadata.tokenized_dataset_digest,
+            "compute_training_run_definition_tokenized_dataset_digest_missing",
+            "compute_training_run_definition_tokenized_dataset_digest_invalid",
+        )?;
+        require_training_run_definition_sha256_value(
+            &metadata.validation_set_digest,
+            "compute_training_run_definition_validation_set_digest_missing",
+            "compute_training_run_definition_validation_set_digest_invalid",
+        )?;
+        require_training_run_definition_sha256_value(
+            &metadata.model_config_digest,
+            "compute_training_run_definition_model_config_digest_missing",
+            "compute_training_run_definition_model_config_digest_invalid",
+        )?;
+        require_training_run_definition_sha256_value(
+            &metadata.optimizer_config_digest,
+            "compute_training_run_definition_optimizer_config_digest_missing",
+            "compute_training_run_definition_optimizer_config_digest_invalid",
+        )?;
+        require_training_run_definition_sha256_value(
+            &metadata.scheduler_config_digest,
+            "compute_training_run_definition_scheduler_config_digest_missing",
+            "compute_training_run_definition_scheduler_config_digest_invalid",
+        )?;
+        require_training_run_definition_optional_value(
+            &metadata.aggregation_rule_ref,
+            "compute_training_run_definition_aggregation_rule_ref_missing",
+        )?;
+        require_training_run_definition_optional_value(
+            &metadata.aggregation_weight_basis_ref,
+            "compute_training_run_definition_aggregation_weight_basis_ref_missing",
+        )?;
+        require_training_run_definition_optional_value(
+            &metadata.checkpoint_family_ref,
+            "compute_training_run_definition_checkpoint_family_ref_missing",
+        )?;
+        require_training_run_definition_optional_value(
+            &metadata.base_checkpoint_ref,
+            "compute_training_run_definition_base_checkpoint_ref_missing",
+        )?;
+        require_training_run_definition_optional_value(
+            &metadata.validator_policy_ref,
+            "compute_training_run_definition_validator_policy_ref_missing",
+        )?;
+        if metadata.benchmark_package_refs.is_empty() {
+            return Err(
+                "compute_training_run_definition_benchmark_package_refs_missing".to_string(),
+            );
+        }
     }
     Ok(())
 }
@@ -2790,7 +3035,7 @@ pub fn validate_compute_training_policy(policy: &ComputeTrainingPolicy) -> Resul
         validate_compute_apple_training_policy_metadata(policy, &metadata)?;
     }
     if let Some(metadata) = compute_training_run_definition_metadata(policy)? {
-        validate_compute_training_run_definition_metadata(&metadata)?;
+        validate_compute_training_run_definition_metadata(policy, &metadata)?;
     }
     Ok(())
 }
@@ -4207,7 +4452,8 @@ mod tests {
         COMPUTE_APPLE_BENCHMARK_PACKAGE_METADATA_ABI_VERSION,
         COMPUTE_APPLE_TRAINING_POLICY_METADATA_ABI_VERSION,
         COMPUTE_APPLE_TRAINING_RUN_METADATA_ABI_VERSION, COMPUTE_LAUNCH_TAXONOMY_VERSION,
-        ComputeAcceptedOutcome, ComputeAcceptedOutcomeKind, ComputeAdapterAggregationEligibility,
+        COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION, ComputeAcceptedOutcome,
+        ComputeAcceptedOutcomeKind, ComputeAdapterAggregationEligibility,
         ComputeAdapterCheckpointPointer, ComputeAdapterContributionDisposition,
         ComputeAdapterContributionOutcome, ComputeAdapterDatasetSlice,
         ComputeAdapterPolicyRevision, ComputeAdapterTrainingWindow, ComputeAdapterWindowStatus,
@@ -4225,10 +4471,11 @@ mod tests {
         ComputeSettlementMode, ComputeSyntheticDataJob, ComputeSyntheticDataJobStatus,
         ComputeSyntheticDataSample, ComputeSyntheticDataSampleStatus, ComputeTopologyKind,
         ComputeTrainingPolicy, ComputeTrainingReplicaType, ComputeTrainingRun,
-        ComputeTrainingRunStatus, ComputeTrainingSummary, ComputeTrainingWorkClass,
-        ComputeValidatorPolicy, ComputeValidatorRequirements, DeliveryProof, DeliveryProofStatus,
-        DeliverySandboxEvidence, DeliveryTopologyEvidence, DeliveryVerificationEvidence,
-        GptOssRuntimeCapability, PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID,
+        ComputeTrainingRunDefinitionMetadata, ComputeTrainingRunStatus, ComputeTrainingSummary,
+        ComputeTrainingWorkClass, ComputeValidatorPolicy, ComputeValidatorRequirements,
+        DeliveryProof, DeliveryProofStatus, DeliverySandboxEvidence, DeliveryTopologyEvidence,
+        DeliveryVerificationEvidence, GptOssRuntimeCapability,
+        PSIONIC_CLUSTER_ADAPTER_TRAINING_CONTRIBUTOR_PRODUCT_ID,
         PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REMOTE_WHOLE_REQUEST_PRODUCT_ID,
         PSIONIC_CLUSTER_GPT_OSS_INFERENCE_REPLICATED_PRODUCT_ID,
         PSIONIC_CLUSTER_POOLED_INFERENCE_DENSE_SPLIT_PRODUCT_ID,
@@ -4520,6 +4767,90 @@ mod tests {
             ],
             metadata: json!({"curriculum_policy_ref": "policy://curriculum/math/basic"}),
         }
+    }
+
+    fn a1_minimal_distributed_lm_training_policy() -> ComputeTrainingPolicy {
+        let mut policy = training_policy();
+        policy.training_policy_ref = "policy.training.a1_minimal_distributed_lm.001".to_string();
+        policy.environment_refs =
+            vec!["psionic.environment.a1_minimal_distributed_lm.tiny_lm.operator@v1".to_string()];
+        policy.checkpoint_family = "psion.a1_minimal_distributed_lm.checkpoints.v1".to_string();
+        policy.validator_policy_ref = "policy.validator.a1_minimal_distributed_lm.v1".to_string();
+        policy.benchmark_package_refs =
+            vec!["benchmark://a1-minimal-distributed-lm/validation-loss-v1".to_string()];
+        policy.stage_policy_refs =
+            vec!["policy://training/a1-minimal-distributed-lm/local-update".to_string()];
+        policy.metadata = json!({
+            "run_definition": serde_json::to_value(ComputeTrainingRunDefinitionMetadata {
+                abi_version: COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION.to_string(),
+                run_definition_ref: "rundef.a1_minimal_distributed_lm.001.v1".to_string(),
+                training_family: "a1_minimal_distributed_lm".to_string(),
+                objective: "tiny_transformer_next_token_prediction".to_string(),
+                sync_profile: "local_update_trusted_aggregation".to_string(),
+                lane_id: Some("a1_minimal_distributed_lm_001".to_string()),
+                lane_release_id: Some(
+                    "psionic-train.a1_minimal_distributed_lm.release.v1".to_string(),
+                ),
+                environment_ref: Some(
+                    "psionic.environment.a1_minimal_distributed_lm.tiny_lm.operator@v1"
+                        .to_string(),
+                ),
+                dataset_identity: "dataset://a1-minimal-distributed-lm/tiny-tokenized-v1"
+                    .to_string(),
+                tokenizer_digest: Some(
+                    "sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63"
+                        .to_string(),
+                ),
+                tokenized_dataset_digest: Some(
+                    "sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905"
+                        .to_string(),
+                ),
+                validation_set_digest: Some(
+                    "sha256:6c1c6ca83a2d8eca6cb133f3ec719e822f134452723e72e5201407b28cd3d228"
+                        .to_string(),
+                ),
+                dataset_slice_family: Some(
+                    "dataset_slice_family.a1_minimal_distributed_lm.tokenized_v1".to_string(),
+                ),
+                page_proof_family: Some(
+                    "proof.a1_minimal_distributed_lm.tokenized_shard_v1".to_string(),
+                ),
+                benchmark_package_set_ref: Some(
+                    "benchmark-set.a1-minimal-distributed-lm.validation-loss-v1".to_string(),
+                ),
+                benchmark_package_refs: vec![
+                    "benchmark://a1-minimal-distributed-lm/validation-loss-v1".to_string(),
+                ],
+                model_config_digest: Some(
+                    "sha256:2cbe248294de6fa34c32ce3eb0195a661004062e9d8f450317118e854f89db8a"
+                        .to_string(),
+                ),
+                optimizer_config_digest: Some(
+                    "sha256:ced6a7d4aacda7721920575e37f7a235d6650c20cbfd26666c43018354b6cca7"
+                        .to_string(),
+                ),
+                scheduler_config_digest: Some(
+                    "sha256:aac8693277a49447d56b889cebe327c175690abc2240aa09b8b379d87d6f28af"
+                        .to_string(),
+                ),
+                aggregation_rule_ref: Some("trusted_weighted_delta_average_v1".to_string()),
+                aggregation_weight_basis_ref: Some("accepted_tokens_processed_v1".to_string()),
+                checkpoint_family_ref: Some(
+                    "psion.a1_minimal_distributed_lm.checkpoints.v1".to_string(),
+                ),
+                base_checkpoint_ref: Some("base://a1_minimal_distributed_lm/step-000000".to_string()),
+                validator_policy_ref: Some(
+                    "policy.validator.a1_minimal_distributed_lm.v1".to_string(),
+                ),
+                version_semantics: "training_policy_version".to_string(),
+                window_ref_family: Some("window.family.a1_minimal_distributed_lm".to_string()),
+                manifest_ref_family: Some("manifest.family.a1_minimal_distributed_lm".to_string()),
+                trn_ref_family: Some("trn.family.a1_minimal_distributed_lm".to_string()),
+                closeout_ref_family: Some("closeout.family.a1_minimal_distributed_lm".to_string()),
+            })
+            .expect("metadata")
+        });
+        policy
     }
 
     fn apple_training_policy() -> ComputeTrainingPolicy {
@@ -5099,6 +5430,48 @@ mod tests {
             .expect("benchmark package should validate");
         validate_compute_training_policy(&training_policy())
             .expect("training policy should validate");
+    }
+
+    #[test]
+    fn validates_a1_minimal_distributed_lm_run_definition_identity() {
+        validate_compute_training_policy(&a1_minimal_distributed_lm_training_policy())
+            .expect("A1 minimal distributed LM policy should validate");
+    }
+
+    #[test]
+    fn rejects_a1_minimal_distributed_lm_run_definition_without_tokenizer_digest() {
+        let mut policy = a1_minimal_distributed_lm_training_policy();
+        policy.metadata["run_definition"]["tokenizer_digest"] = Value::Null;
+        let err = validate_compute_training_policy(&policy)
+            .expect_err("A1 minimal distributed LM should require tokenizer identity");
+        assert_eq!(
+            err,
+            "compute_training_run_definition_tokenizer_digest_missing"
+        );
+    }
+
+    #[test]
+    fn rejects_a1_minimal_distributed_lm_run_definition_without_dataset_digest() {
+        let mut policy = a1_minimal_distributed_lm_training_policy();
+        policy.metadata["run_definition"]["tokenized_dataset_digest"] = Value::Null;
+        let err = validate_compute_training_policy(&policy)
+            .expect_err("A1 minimal distributed LM should require tokenized dataset identity");
+        assert_eq!(
+            err,
+            "compute_training_run_definition_tokenized_dataset_digest_missing"
+        );
+    }
+
+    #[test]
+    fn rejects_a1_minimal_distributed_lm_run_definition_without_checkpoint_identity() {
+        let mut policy = a1_minimal_distributed_lm_training_policy();
+        policy.metadata["run_definition"]["checkpoint_family_ref"] = Value::Null;
+        let err = validate_compute_training_policy(&policy)
+            .expect_err("A1 minimal distributed LM should require checkpoint identity");
+        assert_eq!(
+            err,
+            "compute_training_run_definition_checkpoint_family_ref_missing"
+        );
     }
 
     #[test]

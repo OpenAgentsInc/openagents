@@ -40,6 +40,8 @@ pub const PYLON_TRAINING_APPLE_ENVIRONMENT_REF: &str =
     "psionic.environment.psion_apple_windowed_training.metal_mlx.operator@v1";
 pub const PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF: &str =
     "psionic.environment.psion_cs336_a1_demo.host_cpu.operator@v1";
+pub const PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF: &str =
+    "psionic.environment.a1_minimal_distributed_lm.tiny_lm.operator@v1";
 
 pub const PYLON_TRAINING_HEARTBEAT_INTERVAL_MS: u64 = 15_000;
 pub const PYLON_TRAINING_HEARTBEAT_EXPIRY_MS: u64 = 60_000;
@@ -201,6 +203,8 @@ pub struct PylonTrainingRunManifestV1 {
     pub coordinator_pubkey: String,
     pub authority_base_url: String,
     pub training_policy_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_definition_ref: Option<String>,
     pub validator_policy_ref: String,
     pub environment_ref: String,
     pub environment_version: String,
@@ -233,6 +237,7 @@ pub struct PylonTrainingRunManifestCommon {
     pub coordinator_pubkey: String,
     pub authority_base_url: String,
     pub training_policy_ref: String,
+    pub run_definition_ref: Option<String>,
     pub validator_policy_ref: String,
     pub environment_ref: String,
     pub environment_version: String,
@@ -1824,6 +1829,7 @@ impl PylonTrainingRunManifestV1 {
                 coordinator_pubkey: common.coordinator_pubkey,
                 authority_base_url: common.authority_base_url,
                 training_policy_ref: common.training_policy_ref,
+                run_definition_ref: common.run_definition_ref,
                 validator_policy_ref: common.validator_policy_ref,
                 environment_ref: common.environment_ref,
                 environment_version: common.environment_version,
@@ -1871,6 +1877,9 @@ impl PylonTrainingRunManifestV1 {
             return Err("pylon_training_authority_base_url_invalid".to_string());
         }
         require_non_empty(self.training_policy_ref.as_str(), "training_policy_ref")?;
+        if let Some(run_definition_ref) = self.run_definition_ref.as_deref() {
+            require_non_empty(run_definition_ref, "run_definition_ref")?;
+        }
         require_non_empty(self.validator_policy_ref.as_str(), "validator_policy_ref")?;
         require_non_empty(self.environment_ref.as_str(), "environment_ref")?;
         require_non_empty(self.environment_version.as_str(), "environment_version")?;
@@ -2565,6 +2574,7 @@ mod tests {
             coordinator_pubkey: "0456efgh".to_string(),
             authority_base_url: "https://nexus.example".to_string(),
             training_policy_ref: "policy://training/adapter/v1".to_string(),
+            run_definition_ref: Some("rundef.adapter.v1".to_string()),
             validator_policy_ref: "policy://validator/mvp/v1".to_string(),
             environment_ref: "env.openagents.cuda.train".to_string(),
             environment_version: "2026.04.09".to_string(),
