@@ -284,6 +284,10 @@ const DEFAULT_TRAINING_GCS_ENDPOINT: &str = "https://storage.googleapis.com";
 const DEFAULT_TRAINING_GCS_SIGNED_URL_TTL_SECONDS: u64 = 900;
 const DEFAULT_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS: u64 = 3_600;
 const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
+#[cfg(not(test))]
+const TREASURY_DISPATCH_IDLE_INTERVAL_MS: u64 = 300_000;
+#[cfg(test)]
+const TREASURY_DISPATCH_IDLE_INTERVAL_MS: u64 = 120_000;
 const TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS: u64 = 1_000;
 const PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS: u64 = 60_000;
 const TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT: usize = 64;
@@ -23527,6 +23531,22 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
     }
 
     let cycle_started_at_unix_ms = now_unix_ms();
+    let dispatch_due = state
+        .store
+        .try_read()
+        .map(|store| {
+            store.treasury.dispatch_cycle_due(
+                &state.config.treasury,
+                cycle_started_at_unix_ms,
+                TREASURY_DISPATCH_IDLE_INTERVAL_MS,
+            )
+        })
+        .unwrap_or(false);
+    if !dispatch_due {
+        finish_treasury_dispatch_cycle();
+        return;
+    }
+
     let preparation = (|| -> Result<TreasuryPayoutPreparation, String> {
         let mut store = state
             .store
