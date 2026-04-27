@@ -23147,7 +23147,7 @@ fn finish_cs336_homework_auto_dispatch_cycle() {
 }
 
 fn spawn_treasury_dispatch_loop(state: AppState) {
-    tokio::spawn(async move {
+    spawn_control_background_loop("nexus-treasury-dispatch", async move {
         let mut interval =
             tokio::time::interval(Duration::from_millis(TREASURY_DISPATCH_LOOP_INTERVAL_MS));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -23159,7 +23159,7 @@ fn spawn_treasury_dispatch_loop(state: AppState) {
 }
 
 fn spawn_treasury_wallet_refresh_loop(state: AppState) {
-    tokio::spawn(async move {
+    spawn_control_background_loop("nexus-treasury-wallet-refresh", async move {
         let mut interval = tokio::time::interval(Duration::from_millis(
             TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS,
         ));
@@ -23175,7 +23175,7 @@ fn spawn_cs336_homework_auto_dispatch_loop(state: AppState) {
     if !state.config.cs336_homework_auto_dispatch_enabled {
         return;
     }
-    tokio::spawn(async move {
+    spawn_control_background_loop("nexus-cs336-homework-dispatch", async move {
         let interval_seconds = state.config.cs336_homework_auto_dispatch_interval_seconds;
         tracing::info!(
             interval_seconds,
@@ -23200,6 +23200,38 @@ fn spawn_cs336_homework_auto_dispatch_loop(state: AppState) {
             }
         }
     });
+}
+
+fn spawn_control_background_loop<F>(loop_name: &'static str, future: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    let result = std::thread::Builder::new()
+        .name(loop_name.to_string())
+        .spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    tracing::error!(
+                        loop_name,
+                        error = %error,
+                        "failed to start Nexus control background runtime"
+                    );
+                    return;
+                }
+            };
+            runtime.block_on(future);
+        });
+    if let Err(error) = result {
+        tracing::error!(
+            loop_name,
+            error = %error,
+            "failed to spawn Nexus control background thread"
+        );
+    }
 }
 
 fn cs336_homework_auto_dispatch_request(
