@@ -979,12 +979,15 @@ scripts/deploy/nexus/09-recover-treasury-wallet.sh
 What the wrapper does:
 
 - takes a VM-local recovery lock so only one recovery wrapper can run at a time
-- runtime-masks and stops `nexus-relay`, then removes any stale `nexus-relay`
-  container before inspecting wallet storage
+- pauses the public and treasury watchdog timers/services, applies a runtime
+  `Restart=no` systemd drop-in for `nexus-relay`, runtime-masks and stops
+  `nexus-relay`, then removes any stale `nexus-relay` container before
+  inspecting wallet storage
 - performs registry login and image pull before stopping `nexus-relay`
 - avoids command-substitution capture while cleanup is armed; recovery JSON is
-  written through a normal temp file so a subshell cannot unmask or restart
-  `nexus-relay` while the recovery inspection is still running
+  written through a normal temp file so a subshell, watchdog, or
+  `Restart=always` path cannot unmask or restart `nexus-relay` while the
+  recovery inspection is still running
 - has a local shell-shape regression check:
   `bash scripts/deploy/nexus/test-recover-treasury-wallet-shell-guards.sh`
 - runs `nexus-control treasury recovery-cutover --report-path ... --json`
@@ -997,6 +1000,10 @@ What the wrapper does:
 - passes `NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS=false` by default so
   the current and rebuilt storage inspections run serially and avoid doubling
   Spark upstream sync pressure during production recovery
+- passes `NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS=false` by default so recovery
+  does not depend on Spark payment-history or unclaimed-deposit scans during a
+  wallet-store incident; enable scans only for deliberate forensics after
+  Nexus is already stable
 - defaults `RUST_LOG` to `warn` for quieter recovery report output
 - retries recovery report generation up to `NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS`
   times and removes the partial work dir between failed attempts

@@ -7,7 +7,7 @@ TARGET_SCRIPT="${SCRIPT_DIR}/09-recover-treasury-wallet.sh"
 assert_contains() {
   local needle="$1"
   local haystack="$2"
-  if ! grep -Fq "$needle" <<<"$haystack"; then
+  if ! grep -Fq -- "$needle" <<<"$haystack"; then
     printf 'missing expected content: %s\n' "$needle" >&2
     exit 1
   fi
@@ -16,7 +16,7 @@ assert_contains() {
 assert_not_contains() {
   local needle="$1"
   local haystack="$2"
-  if grep -Fq "$needle" <<<"$haystack"; then
+  if grep -Fq -- "$needle" <<<"$haystack"; then
     printf 'forbidden content found: %s\n' "$needle" >&2
     exit 1
   fi
@@ -51,8 +51,21 @@ SCRIPT_TEXT="$(cat "$TARGET_SCRIPT")"
 assert_contains 'REPORT_STDOUT_PATH=' "$SCRIPT_TEXT"
 assert_contains '[[ \"\${BASH_SUBSHELL:-0}\" == \"0\" ]] || return 0' "$SCRIPT_TEXT"
 assert_contains "pgrep -f 'nexus-control treasury recovery-'" "$SCRIPT_TEXT"
+assert_contains 'pause_recovery_watchdogs' "$SCRIPT_TEXT"
+assert_contains 'resume_recovery_watchdogs' "$SCRIPT_TEXT"
+assert_contains 'nexus-public-watchdog.timer nexus-public-watchdog.service nexus-treasury-watchdog.timer nexus-treasury-watchdog.service' "$SCRIPT_TEXT"
+assert_contains 'install_recovery_restart_override' "$SCRIPT_TEXT"
+assert_contains 'remove_recovery_restart_override' "$SCRIPT_TEXT"
+assert_contains "printf '[Service]\\nRestart=no\\n' | sudo tee /run/systemd/system/nexus-relay.service.d/openagents-treasury-recovery.conf" "$SCRIPT_TEXT"
+assert_contains 'sudo systemctl daemon-reload' "$SCRIPT_TEXT"
+assert_contains 'relay_fully_stopped' "$SCRIPT_TEXT"
+assert_contains 'wait_for_relay_fully_stopped' "$SCRIPT_TEXT"
+assert_contains 'state=\$(systemctl is-active nexus-relay 2>/dev/null || true)' "$SCRIPT_TEXT"
+assert_contains "sudo docker ps --filter 'name=^/nexus-relay$' --format '{{.Names}}'" "$SCRIPT_TEXT"
+assert_contains "waiting for nexus-relay to stop before treasury recovery" "$SCRIPT_TEXT"
 assert_contains 'ensure_relay_stopped_for_recovery' "$SCRIPT_TEXT"
 assert_contains "timeout --foreground '\${NEXUS_TREASURY_RECOVERY_COMMAND_TIMEOUT_SECONDS}' sudo docker run" "$SCRIPT_TEXT"
+assert_contains "--env NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_SCAN_PAYMENTS='\${NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS}'" "$SCRIPT_TEXT"
 assert_contains 'run_nexus_control treasury recovery-report' "$SCRIPT_TEXT"
 assert_contains '>\"\$REPORT_STDOUT_PATH\"' "$SCRIPT_TEXT"
 assert_contains 'cat \"\$REPORT_STDOUT_PATH\"' "$SCRIPT_TEXT"
@@ -64,6 +77,9 @@ assert_not_contains '<<<\"\$REPORT_JSON\"' "$SCRIPT_TEXT"
 
 assert_before 'sudo docker pull' "trap 'cleanup_relay_service' EXIT"
 assert_before "trap 'cleanup_relay_service' EXIT" 'sudo systemctl mask --runtime nexus-relay'
+assert_before 'pause_recovery_watchdogs' 'install_recovery_restart_override'
+assert_before 'install_recovery_restart_override' 'sudo systemctl mask --runtime nexus-relay'
+assert_before 'sudo docker rm -f nexus-relay' 'wait_for_relay_fully_stopped ||'
 assert_before 'sudo systemctl mask --runtime nexus-relay' 'run_nexus_control treasury recovery-report'
 assert_before 'ensure_relay_stopped_for_recovery; \' 'run_nexus_control treasury recovery-report'
 

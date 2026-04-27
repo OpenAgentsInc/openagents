@@ -178,6 +178,15 @@ Default to:
 - Treasury recovery inspections run serially by default. Do not enable
   parallel recovery inspections on production unless the local proof path and
   upstream Spark health justify the additional remote sync load.
+- Treasury recovery must also pause the public and treasury watchdog timers and
+  apply a runtime `Restart=no` systemd drop-in for `nexus-relay` while wallet
+  storage is being inspected. Do not remove those guards; otherwise watchdogs
+  or `Restart=always` can restart the relay and create two Spark wallet
+  runtimes against the same storage.
+- Treasury recovery skips Spark payment-history and unclaimed-deposit scans by
+  default (`NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS=false`) because those scans
+  can hang during wallet-store incidents. Use balance comparison for bounded
+  recovery; enable payment scans only for deliberate non-incident forensics.
 - Do not run two treasury recovery wrappers in parallel. The wrapper takes a
   VM-local lock and runtime-masks `nexus-relay` during wallet inspection; if
   you find overlapping recovery containers, stop the stale recovery containers
