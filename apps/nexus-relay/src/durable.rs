@@ -168,13 +168,16 @@ struct AppState {
 
 pub async fn run_server(config: DurableRelayConfig) -> Result<(), anyhow::Error> {
     config.ensure_data_dir()?;
-    let _upstream = UpstreamRelayHandle::spawn(config.clone()).await?;
     let authority_config = build_authority_config(&config)?;
 
     let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
     let local_addr = listener.local_addr()?;
+    let upstream = UpstreamRelayHandle::spawn(config.clone()).await?;
     tracing::info!("nexus-relay durable shell listening on {}", local_addr);
-    axum::serve(listener, build_router(config, authority_config)).await?;
+    let serve_result = axum::serve(listener, build_router(config, authority_config)).await;
+    let shutdown_result = upstream.shutdown().await;
+    serve_result.map_err(anyhow::Error::from)?;
+    shutdown_result?;
     Ok(())
 }
 
@@ -686,6 +689,27 @@ mod tests {
 
         server.abort();
         relay.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn run_server_does_not_start_upstream_when_public_port_is_occupied() -> Result<()> {
+        let tempdir = tempdir()?;
+        let config = durable_config(tempdir.path())?;
+        let _occupied_public_listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+
+        let result = timeout(Duration::from_secs(2), super::run_server(config.clone()))
+            .await
+            .map_err(|_| anyhow::anyhow!("run_server should fail promptly on bind conflict"))?;
+        let error = result.expect_err("public bind conflict should fail startup");
+        assert!(
+            error.to_string().contains("Address already in use")
+                || error.to_string().contains("os error 48")
+                || error.to_string().contains("os error 98"),
+            "unexpected bind error: {error}"
+        );
+
+        let _upstream_listener = tokio::net::TcpListener::bind(config.upstream_listen_addr).await?;
         Ok(())
     }
 
