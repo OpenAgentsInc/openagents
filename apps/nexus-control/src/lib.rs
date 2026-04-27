@@ -27137,6 +27137,7 @@ mod tests {
         SubmitOutputRequest, SubmitOutputResponse,
     };
     use openagents_kernel_core::compute::{
+        A1_MINIMAL_DISTRIBUTED_LM_WORK_UNIT_KINDS, A1MinimalDistributedLmWorkUnitKind,
         ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION,
         COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION, CapacityInstrument,
         CapacityInstrumentClosureReason, CapacityInstrumentKind, CapacityInstrumentStatus,
@@ -27277,6 +27278,7 @@ mod tests {
         homework_launch_effective_payout_amount_sats, now_unix_ms, random_token,
         run_cs336_homework_auto_dispatch_cycle, run_treasury_dispatch_cycle,
         run_treasury_wallet_refresh_cycle, training_kernel_mutation_context,
+        training_scheduler_minimum_tier_for_work_class, training_work_progress_class,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -28249,6 +28251,49 @@ mod tests {
             ),
             Some("cpu")
         );
+    }
+
+    #[test]
+    fn a1_minimal_work_units_map_to_public_progress_and_scheduler_tiers() {
+        for work_unit in A1_MINIMAL_DISTRIBUTED_LM_WORK_UNIT_KINDS {
+            let work_class = work_unit.work_class();
+            assert_eq!(
+                training_work_progress_class(work_class).label(),
+                work_unit.progress_class_label()
+            );
+            let minimum_tier = training_scheduler_minimum_tier_for_work_class(
+                TrainingNodeRoleClaim::Worker,
+                work_class,
+            );
+            match work_unit {
+                A1MinimalDistributedLmWorkUnitKind::TokenizationShardValidation
+                | A1MinimalDistributedLmWorkUnitKind::ValidationReplay
+                | A1MinimalDistributedLmWorkUnitKind::CheckpointVerification
+                | A1MinimalDistributedLmWorkUnitKind::EvaluationBatch
+                | A1MinimalDistributedLmWorkUnitKind::ArtifactRematerialization
+                | A1MinimalDistributedLmWorkUnitKind::ProofGeneration
+                | A1MinimalDistributedLmWorkUnitKind::CloseoutVerification => {
+                    assert_eq!(
+                        minimum_tier,
+                        ProviderTrainingCapabilityTier::Tier1Validation
+                    );
+                    assert_eq!(work_unit.progress_class_label(), "participation_only");
+                }
+                A1MinimalDistributedLmWorkUnitKind::LocalUpdate => {
+                    assert_eq!(minimum_tier, ProviderTrainingCapabilityTier::Tier2Trainer);
+                    assert_eq!(
+                        work_class,
+                        ComputeTrainingWorkClass::SmallModelLocalTraining
+                    );
+                    assert_eq!(work_unit.progress_class_label(), "model_update");
+                }
+                A1MinimalDistributedLmWorkUnitKind::Aggregation
+                | A1MinimalDistributedLmWorkUnitKind::CheckpointPromotion => {
+                    assert_eq!(minimum_tier, ProviderTrainingCapabilityTier::Tier4Authority);
+                    assert_eq!(work_unit.progress_class_label(), "checkpoint_advance");
+                }
+            }
+        }
     }
 
     fn training_capability_envelope_v2(
@@ -47676,6 +47721,8 @@ mod tests {
                 )
                 .expect("accept validation closeout");
         }
+
+        super::force_refresh_public_stats_cache(&state, created_at_ms + 20_200);
 
         let stats_response = app
             .clone()

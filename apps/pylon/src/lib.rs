@@ -26421,12 +26421,13 @@ mod tests {
         apply_training_reputation_gate_to_availability, build_psionic_train_invocation_manifest,
         build_pylon_training_admin_router, build_snapshot_from_availability, bytes_to_gib_ceil,
         default_config, derive_adapter_training_contributor_availability,
-        derive_training_capability_tier_profile, detect_availability,
-        download_gemma_model_from_base_url, download_gemma_model_from_base_url_with_transport,
-        drain_training_supervisor, drive_training_supervisor_once, ensure_identity,
-        ensure_no_conflicting_training_assignment, ensure_training_contribution_bridge_bundles,
-        garbage_collect_training_download_cache, gemma_diagnostic_latest_report_path,
-        gemma_download_spec, gemma_local_installations, inspect_psionic_train_runtime_surface_at,
+        derive_training_capability_envelope_v2, derive_training_capability_tier_profile,
+        detect_availability, download_gemma_model_from_base_url,
+        download_gemma_model_from_base_url_with_transport, drain_training_supervisor,
+        drive_training_supervisor_once, ensure_identity, ensure_no_conflicting_training_assignment,
+        ensure_training_contribution_bridge_bundles, garbage_collect_training_download_cache,
+        gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
+        inspect_psionic_train_runtime_surface_at,
         inspect_psionic_train_runtime_surface_from_candidates,
         inspect_training_retained_contribution_artifacts, inventory_rows, load_backend_report,
         load_earnings_report, load_inventory_report, load_jobs_report,
@@ -26469,6 +26470,7 @@ mod tests {
     use nostr::{NostrIdentity, TrnEvent};
     use openagents_kernel_core::{
         compute::{
+            A1_MINIMAL_DISTRIBUTED_LM_WORK_UNIT_KINDS, A1MinimalDistributedLmWorkUnitKind,
             ComputeAcceptedOutcome, ComputeAdapterAggregationEligibility,
             ComputeAdapterCheckpointPointer, ComputeAdapterContributionDisposition,
             ComputeAdapterContributionOutcome, ComputeAdapterContributionValidationReasonCode,
@@ -26503,9 +26505,9 @@ mod tests {
         ProviderReceiptSummary, ProviderRecentJob, ProviderSandboxAvailability,
         ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxProfileSpec,
         ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind, ProviderStatusResponse,
-        ProviderTrainingCapabilityTier, ProviderTrainingLeaseReliabilityClass,
-        ProviderTrainingReplayCapability, ProviderTrainingThroughputBand,
-        provider_runtime_state_label,
+        ProviderTrainingCapabilityTier, ProviderTrainingCapabilityTierProfile,
+        ProviderTrainingLeaseReliabilityClass, ProviderTrainingReplayCapability,
+        ProviderTrainingThroughputBand, provider_runtime_state_label,
     };
     use psionic_train::{
         PSION_ACTUAL_PRETRAINING_LANE_ID, PsionicTrainInvocationManifest, PsionicTrainOperation,
@@ -27282,6 +27284,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             node_pubkey: "11".repeat(32),
             coordinator_pubkey: "22".repeat(32),
             authority_base_url: "https://nexus.openagents.com".to_string(),
+            run_definition_ref: None,
             training_policy_ref: "policy.training.alpha".to_string(),
             validator_policy_ref: PYLON_TRAINING_VALIDATOR_POLICY_REF.to_string(),
             environment_ref: PYLON_TRAINING_ENVIRONMENT_REF.to_string(),
@@ -28141,6 +28144,95 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && profile.throughput_band == ProviderTrainingThroughputBand::Medium,
             "validator-only CPU reference nodes should still publish a validation tier while surfacing the bounded demo lane's honest CPU throughput band",
         )
+    }
+
+    #[test]
+    fn a1_minimal_work_units_are_represented_in_capability_envelopes()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let contributor = ProviderAdapterTrainingContributorAvailability {
+            contributor_supported: true,
+            coordinator_match_supported: true,
+            authority_receipt_supported: true,
+            minimum_memory_gb: Some(16),
+            available_memory_gb: Some(32),
+            ..Default::default()
+        };
+        let weak_profile = ProviderTrainingCapabilityTierProfile {
+            tier: ProviderTrainingCapabilityTier::Tier1Validation,
+            backend_families: vec!["cpu".to_string()],
+            available_memory_gb: Some(16),
+            replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+            ..Default::default()
+        };
+        let trainer_profile = ProviderTrainingCapabilityTierProfile {
+            tier: ProviderTrainingCapabilityTier::Tier2Trainer,
+            backend_families: vec!["cpu".to_string()],
+            memory_floor_gb: Some(16),
+            available_memory_gb: Some(32),
+            replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+            ..Default::default()
+        };
+        let authority_profile = ProviderTrainingCapabilityTierProfile {
+            tier: ProviderTrainingCapabilityTier::Tier4Authority,
+            backend_families: vec!["cpu".to_string()],
+            memory_floor_gb: Some(16),
+            available_memory_gb: Some(64),
+            replay_capability: ProviderTrainingReplayCapability::ShortWindow,
+            ..Default::default()
+        };
+        let weak_envelope =
+            derive_training_capability_envelope_v2(&weak_profile, &contributor, true);
+        let trainer_envelope =
+            derive_training_capability_envelope_v2(&trainer_profile, &contributor, true);
+        let authority_envelope =
+            derive_training_capability_envelope_v2(&authority_profile, &contributor, true);
+
+        for work_unit in A1_MINIMAL_DISTRIBUTED_LM_WORK_UNIT_KINDS {
+            match work_unit {
+                A1MinimalDistributedLmWorkUnitKind::TokenizationShardValidation
+                | A1MinimalDistributedLmWorkUnitKind::ValidationReplay
+                | A1MinimalDistributedLmWorkUnitKind::CheckpointVerification
+                | A1MinimalDistributedLmWorkUnitKind::EvaluationBatch
+                | A1MinimalDistributedLmWorkUnitKind::ArtifactRematerialization
+                | A1MinimalDistributedLmWorkUnitKind::ProofGeneration
+                | A1MinimalDistributedLmWorkUnitKind::CloseoutVerification => {
+                    ensure(
+                        weak_envelope.supports_work_class(work_unit.work_class()),
+                        format!("weak Pylons should support {}", work_unit.label()).as_str(),
+                    )?;
+                    ensure(
+                        work_unit.progress_class_label() == "participation_only",
+                        "support work should stay participation-only",
+                    )?;
+                }
+                A1MinimalDistributedLmWorkUnitKind::LocalUpdate => {
+                    ensure(
+                        !weak_envelope.supports_work_class(work_unit.work_class()),
+                        "weak Pylons should not claim A1 local-update training",
+                    )?;
+                    ensure(
+                        trainer_envelope.supports_work_class(work_unit.work_class()),
+                        "trainer Pylons should support A1 tiny local updates",
+                    )?;
+                    ensure(
+                        work_unit.work_class() == ComputeTrainingWorkClass::SmallModelLocalTraining,
+                        "A1 local updates should use the small-model training class",
+                    )?;
+                }
+                A1MinimalDistributedLmWorkUnitKind::Aggregation
+                | A1MinimalDistributedLmWorkUnitKind::CheckpointPromotion => {
+                    ensure(
+                        authority_envelope.supports_work_class(work_unit.work_class()),
+                        "authority Pylons should support A1 checkpoint-advance work",
+                    )?;
+                    ensure(
+                        work_unit.progress_class_label() == "checkpoint_advance",
+                        "aggregate and promotion work should remain checkpoint-advance",
+                    )?;
+                }
+            }
+        }
+        Ok(())
     }
 
     #[test]

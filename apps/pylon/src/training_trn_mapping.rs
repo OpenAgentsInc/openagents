@@ -531,6 +531,7 @@ mod tests {
             coordinator_pubkey: "22".repeat(32),
             authority_base_url: "https://nexus.openagents.com".to_string(),
             training_policy_ref: "policy.training.alpha".to_string(),
+            run_definition_ref: None,
             validator_policy_ref: "policy.validator.alpha".to_string(),
             environment_ref: environment_ref.to_string(),
             environment_version: "v1".to_string(),

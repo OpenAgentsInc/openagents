@@ -364,6 +364,16 @@ work. It does not claim OpenWebText leaderboard parity, model-size leadership,
 token-budget leadership, broad pretraining, or permissionless model-progress
 training.
 
+The first A1 work-class mapping intentionally reuses existing OpenAgents
+classes. Verifier/support work such as tokenization shard validation, validation
+replay, checkpoint verification, proof generation, closeout verification, and
+artifact rematerialization maps to `validation_replay`. Eval batches map to
+`evaluation`. Tiny local updates map to `small_model_local_training`.
+Aggregation maps to `aggregation`, and promotion maps to
+`checkpoint_promotion`. The public progress classes remain
+`participation_only` for support/eval work, `model_update` for local updates,
+and `checkpoint_advance` for aggregation/promotion.
+
 That gives Transcript 222 a single answer to "what run did this node actually
 work on?" even before all downstream issue work lands.
 
