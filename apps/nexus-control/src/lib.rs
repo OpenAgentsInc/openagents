@@ -36586,6 +36586,39 @@ mod tests {
             "training heartbeats are liveness signals and must not rewrite the full kernel state"
         );
 
+        let persisted_before_readmission =
+            std::fs::read_to_string(kernel_state_path.as_path()).expect("read kernel state");
+        let readmission_at_ms = admitted.ack.recorded_at_ms.saturating_add(10_000);
+        let mut readmission = training_node_admission_request(
+            "node-alpha",
+            "sha256:build-alpha",
+            vec!["trainnet.alpha"],
+            Vec::new(),
+            Some(512),
+        );
+        readmission.idempotency_key =
+            "idemp.training.admission.node-alpha.sha256:build-alpha.refresh".to_string();
+        readmission.requested_at_ms = readmission_at_ms;
+        let readmission_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/nodes/admission")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&readmission)?))?,
+            )
+            .await?;
+        assert_eq!(readmission_response.status(), StatusCode::OK);
+        let readmission =
+            response_json::<RecordTrainingNodeAdmissionResponse>(readmission_response).await?;
+        assert!(readmission.admitted);
+        assert_eq!(
+            std::fs::read_to_string(kernel_state_path.as_path()).expect("read kernel state"),
+            persisted_before_readmission,
+            "repeat admissions for an already-known node are liveness refreshes and must not rewrite the full kernel state"
+        );
+
         let quarantined_response = app
             .clone()
             .oneshot(
@@ -36670,6 +36703,7 @@ mod tests {
         assert_eq!(node.build_digest, "sha256:build-alpha");
         assert_eq!(node.available_memory_gb, Some(512));
         assert_eq!(node.available_disk_gb, Some(700));
+        assert_eq!(node.updated_at_ms, readmission_at_ms);
         assert_eq!(node.last_training_run_id.as_deref(), Some("run.alpha"));
         assert_eq!(
             node.capability_tier.tier,
