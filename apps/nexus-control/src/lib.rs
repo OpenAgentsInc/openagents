@@ -87,12 +87,12 @@ use openagents_kernel_core::data::{
 use openagents_kernel_core::data_contracts;
 use openagents_kernel_core::ids::sha256_prefixed_bytes;
 use openagents_kernel_core::pylon_training::{
-    PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
-    PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PYLON_TRAINING_LEASE_DURATION_MS,
-    PYLON_TRAINING_NEXUS_SIGNED_URL_CREDENTIAL_SOURCE, PYLON_TRAINING_SEAL_GRACE_PERIOD_MS,
-    PYLON_TRAINING_WINDOW_MAX_DURATION_MS, PylonTrainingAggregateResolution,
-    PylonTrainingArtifactGcsLayoutPolicy, PylonTrainingArtifactKind,
-    PylonTrainingArtifactResolverResponse, PylonTrainingArtifactScope,
+    PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF, PYLON_TRAINING_APPLE_ENVIRONMENT_REF,
+    PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF, PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+    PYLON_TRAINING_LEASE_DURATION_MS, PYLON_TRAINING_NEXUS_SIGNED_URL_CREDENTIAL_SOURCE,
+    PYLON_TRAINING_SEAL_GRACE_PERIOD_MS, PYLON_TRAINING_WINDOW_MAX_DURATION_MS,
+    PylonTrainingAggregateResolution, PylonTrainingArtifactGcsLayoutPolicy,
+    PylonTrainingArtifactKind, PylonTrainingArtifactResolverResponse, PylonTrainingArtifactScope,
     PylonTrainingArtifactSignedAccessMode, PylonTrainingArtifactSignedAccessRequest,
     PylonTrainingArtifactSignedAccessResponse, PylonTrainingArtifacts,
     PylonTrainingCheckpointBinding, PylonTrainingCollectiveKind,
@@ -120,8 +120,8 @@ use openagents_provider_substrate::{
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
 use psionic_train_contract::{
-    PSION_ACTUAL_PRETRAINING_LANE_ID, PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
-    PSION_CS336_A1_DEMO_LANE_ID, PsionicTrainLaneContract,
+    PSION_A1_MINIMAL_DISTRIBUTED_LM_LANE_ID, PSION_ACTUAL_PRETRAINING_LANE_ID,
+    PSION_APPLE_WINDOWED_TRAINING_LANE_ID, PSION_CS336_A1_DEMO_LANE_ID, PsionicTrainLaneContract,
 };
 use reqwest::Url;
 use ring::rand::SystemRandom;
@@ -305,6 +305,44 @@ const EPISODE_224_CS336_A1_DEMO_PAGE_PROOF_FAMILY: &str =
 const EPISODE_224_CS336_A1_DEMO_RUN_DEFINITION_REF: &str = "rundef.cs336.assignment1.demo.v1";
 const EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF: &str = "checkpoint://decoder/base";
 const EPISODE_224_CS336_A1_DEMO_WORKER_TARGET_COUNT: u32 = 2;
+pub const A1_MINIMAL_DISTRIBUTED_LM_OWNER_ID: &str = "openagents";
+pub const A1_MINIMAL_DISTRIBUTED_LM_POLICY_VERSION: &str = "2026.04.27";
+pub const A1_MINIMAL_DISTRIBUTED_LM_TRAINING_POLICY_REF: &str =
+    "policy.training.a1_minimal_distributed_lm.001";
+pub const A1_MINIMAL_DISTRIBUTED_LM_VALIDATOR_POLICY_REF: &str =
+    "policy.validator.a1_minimal_distributed_lm.v1";
+pub const A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY: &str =
+    "psion.a1_minimal_distributed_lm.checkpoints.v1";
+pub const A1_MINIMAL_DISTRIBUTED_LM_RUN_DEFINITION_REF: &str =
+    "rundef.a1_minimal_distributed_lm.001.v1";
+pub const A1_MINIMAL_DISTRIBUTED_LM_DATASET_REF: &str =
+    "dataset://a1-minimal-distributed-lm/tiny-tokenized-v1";
+pub const A1_MINIMAL_DISTRIBUTED_LM_DATASET_SLICE_FAMILY: &str =
+    "dataset_slice_family.a1_minimal_distributed_lm.tokenized_v1";
+pub const A1_MINIMAL_DISTRIBUTED_LM_PAGE_PROOF_FAMILY: &str =
+    "proof.a1_minimal_distributed_lm.tokenized_shard_v1";
+pub const A1_MINIMAL_DISTRIBUTED_LM_BENCHMARK_PACKAGE_SET_REF: &str =
+    "benchmark-set.a1-minimal-distributed-lm.validation-loss-v1";
+pub const A1_MINIMAL_DISTRIBUTED_LM_BENCHMARK_PACKAGE_REF: &str =
+    "benchmark://a1-minimal-distributed-lm/validation-loss-v1";
+pub const A1_MINIMAL_DISTRIBUTED_LM_TOKENIZER_DIGEST: &str =
+    "sha256:e32b619b67029aba5de26391f9a5f4a32801220ca690ae2c89d565e61069cf63";
+pub const A1_MINIMAL_DISTRIBUTED_LM_TOKENIZED_DATASET_DIGEST: &str =
+    "sha256:f0b92dc6301fc72e05a4ead6d85a4b5706e51267c116ecd72025a90c43a37905";
+pub const A1_MINIMAL_DISTRIBUTED_LM_VALIDATION_SET_DIGEST: &str =
+    "sha256:6c1c6ca83a2d8eca6cb133f3ec719e822f134452723e72e5201407b28cd3d228";
+pub const A1_MINIMAL_DISTRIBUTED_LM_MODEL_CONFIG_DIGEST: &str =
+    "sha256:2cbe248294de6fa34c32ce3eb0195a661004062e9d8f450317118e854f89db8a";
+pub const A1_MINIMAL_DISTRIBUTED_LM_OPTIMIZER_CONFIG_DIGEST: &str =
+    "sha256:ced6a7d4aacda7721920575e37f7a235d6650c20cbfd26666c43018354b6cca7";
+pub const A1_MINIMAL_DISTRIBUTED_LM_SCHEDULER_CONFIG_DIGEST: &str =
+    "sha256:aac8693277a49447d56b889cebe327c175690abc2240aa09b8b379d87d6f28af";
+pub const A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_RULE_REF: &str =
+    "trusted_weighted_delta_average_v1";
+pub const A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_WEIGHT_BASIS_REF: &str =
+    "accepted_tokens_processed_v1";
+pub const A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF: &str =
+    "base://a1_minimal_distributed_lm/step-000000";
 
 #[derive(Debug, Clone)]
 pub struct TrainingArtifactSignedUrlConfig {
@@ -5266,6 +5304,9 @@ fn training_psionic_backend_family_for_environment_ref(
     let lane_id = match environment_ref {
         PYLON_TRAINING_CUDA_ENVIRONMENT_REF => PSION_ACTUAL_PRETRAINING_LANE_ID,
         PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF => PSION_CS336_A1_DEMO_LANE_ID,
+        PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF => {
+            PSION_A1_MINIMAL_DISTRIBUTED_LM_LANE_ID
+        }
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF => PSION_APPLE_WINDOWED_TRAINING_LANE_ID,
         _ => return None,
     };
@@ -7337,9 +7378,17 @@ fn training_window_closeout_metadata(
     let progress_class = training_work_progress_class(window.work_class);
     let payout_projection = training_window_closeout_payout_projection(window, contributions);
     let contributor_tiers = training_contributor_tier_projection(contributions);
+    let run_definition = window.metadata.get("run_definition").cloned();
+    let run_definition_ref = run_definition
+        .as_ref()
+        .and_then(|value| value.get("run_definition_ref"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
     serde_json::json!({
         "network_id": network_id,
         "window_id": window.window_id,
+        "run_definition_ref": run_definition_ref,
+        "run_definition": run_definition,
         "closeout_scope": "sealed_window",
         "closeout_status": closeout_status.label(),
         "payout_eligible": closeout_status.payout_eligible(),
@@ -7644,12 +7693,35 @@ fn training_window_base_record(
     scheduled_run: &ScheduledTrainingRun,
     planned_request: &PlanTrainingWindowRequest,
     metadata: TrainingWindowMetadata,
+    run_definition: Option<&ComputeTrainingRunDefinition>,
     status: ComputeAdapterWindowStatus,
     recorded_at_ms: i64,
 ) -> Result<ComputeAdapterTrainingWindow, String> {
     let window_id = scheduled_run.current_window_id.clone();
     let contributor_set_revision_id =
         pylon_training_membership_revision_label(scheduled_run.membership_revision);
+    let mut metadata_value = training_window_metadata_value(&metadata);
+    if let Some(run_definition) = run_definition {
+        metadata_value["run_definition"] = json!({
+            "run_definition_ref": run_definition.run_definition_ref.clone(),
+            "training_policy_ref": run_definition.training_policy_ref.clone(),
+            "training_policy_version": run_definition.training_policy_version.clone(),
+            "training_family": run_definition.training_family.clone(),
+            "sync_profile": run_definition.sync_profile.clone(),
+            "lane_id": run_definition.lane_id.clone(),
+            "checkpoint_family": run_definition.checkpoint_family.clone(),
+            "base_checkpoint_ref": run_definition.base_checkpoint_ref.clone(),
+            "validator_policy_ref": run_definition.validator_policy_ref.clone(),
+            "tokenizer_digest": run_definition.tokenizer_digest.clone(),
+            "tokenized_dataset_digest": run_definition.tokenized_dataset_digest.clone(),
+            "validation_set_digest": run_definition.validation_set_digest.clone(),
+            "model_config_digest": run_definition.model_config_digest.clone(),
+            "optimizer_config_digest": run_definition.optimizer_config_digest.clone(),
+            "scheduler_config_digest": run_definition.scheduler_config_digest.clone(),
+            "aggregation_rule_ref": run_definition.aggregation_rule_ref.clone(),
+            "aggregation_weight_basis_ref": run_definition.aggregation_weight_basis_ref.clone(),
+        });
+    }
     let mut window = ComputeAdapterTrainingWindow {
         window_id,
         training_run_id: training_run.training_run_id.clone(),
@@ -7692,7 +7764,7 @@ fn training_window_base_record(
         promoted_checkpoint_ref: None,
         accepted_outcome_id: None,
         recorded_at_ms,
-        metadata: training_window_metadata_value(&metadata),
+        metadata: metadata_value,
     };
     window.window_summary_digest = training_window_summary_digest(&window, &[], &metadata)?;
     Ok(window)
@@ -10312,6 +10384,7 @@ fn persist_active_homework_window(
         run_kind,
         recorded_at_ms,
     )?;
+    let run_definition = training_scheduler_run_definition(&store.kernel, &training_run).ok();
     let assignment_plans = training_window_assignment_plans(
         &scheduled_run,
         planned_request.dataset_slices.as_slice(),
@@ -10350,6 +10423,7 @@ fn persist_active_homework_window(
         &scheduled_run,
         &planned_request,
         metadata,
+        run_definition.as_ref(),
         ComputeAdapterWindowStatus::Active,
         recorded_at_ms,
     )?;
@@ -11425,6 +11499,8 @@ fn cs336_a1_demo_artifact_bucket_uri(config: &ServiceConfig) -> String {
 }
 
 fn cs336_a1_demo_training_policy_metadata() -> Result<Value, String> {
+    let lane_contract = PsionicTrainLaneContract::for_lane(PSION_CS336_A1_DEMO_LANE_ID)
+        .map_err(|error| format!("cs336_a1_demo_lane_contract_unavailable:{error}"))?;
     let metadata = ComputeTrainingRunDefinitionMetadata {
         abi_version:
             openagents_kernel_core::compute::COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION
@@ -11433,10 +11509,27 @@ fn cs336_a1_demo_training_policy_metadata() -> Result<Value, String> {
         training_family: "psion_reference_demo".to_string(),
         objective: "stanford_cs336_assignment1_demo".to_string(),
         sync_profile: "single_host_reference".to_string(),
+        lane_id: Some(PSION_CS336_A1_DEMO_LANE_ID.to_string()),
+        lane_release_id: Some(lane_contract.release_id),
+        environment_ref: Some(PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF.to_string()),
         dataset_identity: EPISODE_224_CS336_A1_DEMO_DATASET_REF.to_string(),
+        tokenizer_digest: None,
+        tokenized_dataset_digest: None,
+        validation_set_digest: None,
         dataset_slice_family: Some(EPISODE_224_CS336_A1_DEMO_DATASET_SLICE_FAMILY.to_string()),
         page_proof_family: Some(EPISODE_224_CS336_A1_DEMO_PAGE_PROOF_FAMILY.to_string()),
         benchmark_package_set_ref: None,
+        benchmark_package_refs: Vec::new(),
+        model_config_digest: None,
+        optimizer_config_digest: None,
+        scheduler_config_digest: None,
+        aggregation_rule_ref: None,
+        aggregation_weight_basis_ref: None,
+        checkpoint_family_ref: Some(EPISODE_224_CS336_A1_DEMO_CHECKPOINT_FAMILY.to_string()),
+        base_checkpoint_ref: Some(
+            EPISODE_224_CS336_A1_DEMO_DEFAULT_BASE_CHECKPOINT_REF.to_string(),
+        ),
+        validator_policy_ref: Some(EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string()),
         version_semantics: "training_policy_version".to_string(),
         window_ref_family: Some("window.family.diloco_round".to_string()),
         manifest_ref_family: Some("manifest.family.psionic_train".to_string()),
@@ -11446,6 +11539,59 @@ fn cs336_a1_demo_training_policy_metadata() -> Result<Value, String> {
     serde_json::to_value(metadata)
         .map(|value| json!({"run_definition": value}))
         .map_err(|error| format!("cs336_a1_demo_training_policy_metadata_invalid:{error}"))
+}
+
+pub fn a1_minimal_distributed_lm_training_policy_metadata() -> Result<Value, String> {
+    let lane_contract = PsionicTrainLaneContract::for_lane(PSION_A1_MINIMAL_DISTRIBUTED_LM_LANE_ID)
+        .map_err(|error| format!("a1_minimal_distributed_lm_lane_contract_unavailable:{error}"))?;
+    let metadata = ComputeTrainingRunDefinitionMetadata {
+        abi_version:
+            openagents_kernel_core::compute::COMPUTE_TRAINING_RUN_DEFINITION_METADATA_ABI_VERSION
+                .to_string(),
+        run_definition_ref: A1_MINIMAL_DISTRIBUTED_LM_RUN_DEFINITION_REF.to_string(),
+        training_family: "a1_minimal_distributed_lm".to_string(),
+        objective: "tiny_transformer_next_token_prediction".to_string(),
+        sync_profile: "local_update_trusted_aggregation".to_string(),
+        lane_id: Some(PSION_A1_MINIMAL_DISTRIBUTED_LM_LANE_ID.to_string()),
+        lane_release_id: Some(lane_contract.release_id),
+        environment_ref: Some(PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF.to_string()),
+        dataset_identity: A1_MINIMAL_DISTRIBUTED_LM_DATASET_REF.to_string(),
+        tokenizer_digest: Some(A1_MINIMAL_DISTRIBUTED_LM_TOKENIZER_DIGEST.to_string()),
+        tokenized_dataset_digest: Some(
+            A1_MINIMAL_DISTRIBUTED_LM_TOKENIZED_DATASET_DIGEST.to_string(),
+        ),
+        validation_set_digest: Some(A1_MINIMAL_DISTRIBUTED_LM_VALIDATION_SET_DIGEST.to_string()),
+        dataset_slice_family: Some(A1_MINIMAL_DISTRIBUTED_LM_DATASET_SLICE_FAMILY.to_string()),
+        page_proof_family: Some(A1_MINIMAL_DISTRIBUTED_LM_PAGE_PROOF_FAMILY.to_string()),
+        benchmark_package_set_ref: Some(
+            A1_MINIMAL_DISTRIBUTED_LM_BENCHMARK_PACKAGE_SET_REF.to_string(),
+        ),
+        benchmark_package_refs: vec![A1_MINIMAL_DISTRIBUTED_LM_BENCHMARK_PACKAGE_REF.to_string()],
+        model_config_digest: Some(A1_MINIMAL_DISTRIBUTED_LM_MODEL_CONFIG_DIGEST.to_string()),
+        optimizer_config_digest: Some(
+            A1_MINIMAL_DISTRIBUTED_LM_OPTIMIZER_CONFIG_DIGEST.to_string(),
+        ),
+        scheduler_config_digest: Some(
+            A1_MINIMAL_DISTRIBUTED_LM_SCHEDULER_CONFIG_DIGEST.to_string(),
+        ),
+        aggregation_rule_ref: Some(A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_RULE_REF.to_string()),
+        aggregation_weight_basis_ref: Some(
+            A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_WEIGHT_BASIS_REF.to_string(),
+        ),
+        checkpoint_family_ref: Some(A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY.to_string()),
+        base_checkpoint_ref: Some(A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string()),
+        validator_policy_ref: Some(A1_MINIMAL_DISTRIBUTED_LM_VALIDATOR_POLICY_REF.to_string()),
+        version_semantics: "training_policy_version".to_string(),
+        window_ref_family: Some("window.family.a1_minimal_distributed_lm".to_string()),
+        manifest_ref_family: Some("manifest.family.a1_minimal_distributed_lm".to_string()),
+        trn_ref_family: Some("trn.family.a1_minimal_distributed_lm".to_string()),
+        closeout_ref_family: Some("closeout.family.a1_minimal_distributed_lm".to_string()),
+    };
+    serde_json::to_value(metadata)
+        .map(|value| json!({"run_definition": value}))
+        .map_err(|error| {
+            format!("a1_minimal_distributed_lm_training_policy_metadata_invalid:{error}")
+        })
 }
 
 #[derive(Debug, Clone)]
@@ -11577,6 +11723,7 @@ fn build_cs336_a1_demo_bootstrap_artifacts(
             coordinator_pubkey: coordinator_pubkey.clone(),
             authority_base_url: cs336_a1_demo_authority_base_url(config),
             training_policy_ref: EPISODE_224_CS336_A1_DEMO_TRAINING_POLICY_REF.to_string(),
+            run_definition_ref: Some(EPISODE_224_CS336_A1_DEMO_RUN_DEFINITION_REF.to_string()),
             validator_policy_ref: EPISODE_224_CS336_A1_DEMO_VALIDATOR_POLICY_REF.to_string(),
             environment_ref: lane_contract.environment_ref.clone(),
             environment_version: EPISODE_224_CS336_A1_DEMO_POLICY_VERSION.to_string(),
@@ -13406,6 +13553,8 @@ async fn plan_training_window(
             })?;
         let scheduler_metadata =
             training_scheduler_metadata_from_run(&training_run).map_err(kernel_api_error)?;
+        let run_definition = training_scheduler_run_definition(&store.kernel, &training_run)
+            .map_err(kernel_api_error)?;
         if request.source_checkpoint_pointer.checkpoint_family
             != training_run.checkpoint_binding.checkpoint_family
         {
@@ -13487,6 +13636,7 @@ async fn plan_training_window(
             &scheduler_run,
             &request,
             metadata,
+            Some(&run_definition),
             ComputeAdapterWindowStatus::Planned,
             request.recorded_at_ms,
         )
@@ -26931,23 +27081,24 @@ mod tests {
     use super::{
         ClaimTrainingValidatorChallengeRequest, ErrorResponse,
         FinalizeTrainingValidatorChallengeRequest, PublishTrainingTrnStateRequest,
-        RetryTrainingValidatorChallengeRequest, ScheduledTrainingRun,
+        RetryTrainingValidatorChallengeRequest, ScheduledTrainingAssignment, ScheduledTrainingRun,
         TRAINING_ROLLOUT_ABUSE_DEFAULT_LOOKBACK_MS, TRN_TRAINING_ARTIFACT_LOCATOR_KIND,
         TRN_TRAINING_CLOSEOUT_KIND, TRN_TRAINING_NETWORK_CONTRACT_KIND, TRN_TRAINING_RECEIPT_KIND,
         TRN_TRAINING_WINDOW_KIND, TrainingFleetAbuseNodeSnapshot, TrainingFleetAbuseSnapshot,
         TrainingOperatorSummaryResponse, TrainingRolloutAbuseControls, TrainingRolloutChannel,
         TrainingRolloutCohort, TrainingRolloutGate, TrainingRolloutPolicyResponse,
-        TrainingRolloutPolicyUpdateRequest, TrainingRolloutTargetKind,
+        TrainingRolloutPolicyUpdateRequest, TrainingRolloutTargetKind, TrainingSchedulerRolePlan,
         TrainingSchedulerWindowState, TrainingTrnPublicationReport,
-        TrainingValidatorChallengeCoordinatorResponse, TrainingWindowCloseoutStatus,
-        TrainingWindowDefensibilityArtifactAudit, TrainingWindowDefensibilityAudit,
-        TrainingWindowDefensibilityPromotionAudit, TrainingWindowDefensibilityValidatorAudit,
-        TrainingWindowMetadata, TrainingWindowValidationState, TrainingWindowValidationSummary,
+        TrainingValidatorChallengeCoordinatorResponse, TrainingWindowAssignmentPlan,
+        TrainingWindowCloseoutStatus, TrainingWindowDefensibilityArtifactAudit,
+        TrainingWindowDefensibilityAudit, TrainingWindowDefensibilityPromotionAudit,
+        TrainingWindowDefensibilityValidatorAudit, TrainingWindowMetadata,
+        TrainingWindowValidationState, TrainingWindowValidationSummary,
         annotate_treasury_availability_stipend_eligibility, training_contributor_tier_projection,
         training_fleet_abuse_snapshot, training_scheduler_metadata_from_run,
-        training_window_closeout_outcome, training_window_closeout_status,
-        training_window_closeout_treasury_payout_requests, training_window_metadata_from_value,
-        training_window_metadata_value, validator_service,
+        training_window_base_record, training_window_closeout_outcome,
+        training_window_closeout_status, training_window_closeout_treasury_payout_requests,
+        training_window_metadata_from_value, training_window_metadata_value, validator_service,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -27030,6 +27181,7 @@ mod tests {
         RoutePlan, RoutePlanStatus, SettlementIntent, SettlementIntentStatus,
     };
     use openagents_kernel_core::pylon_training::{
+        PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF,
         PYLON_TRAINING_APPLE_ENVIRONMENT_REF, PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF,
         PYLON_TRAINING_CUDA_ENVIRONMENT_REF, PylonTrainingAggregateResolution,
         PylonTrainingArtifactClass, PylonTrainingArtifactGcsLayoutPolicy,
@@ -27208,6 +27360,7 @@ mod tests {
                 funding_target_timeout_ms: 10_000,
                 wallet_recovery_inspection_timeout_ms: 120_000,
                 wallet_recovery_parallel_inspections: false,
+                wallet_recovery_scan_payments: false,
                 simulated_wallet_enabled: false,
                 simulated_wallet_balance_sats: 1_000_000,
                 max_concurrent_sends: 16,
@@ -29928,10 +30081,25 @@ mod tests {
                 training_family: training_family.to_string(),
                 objective: objective.to_string(),
                 sync_profile: sync_profile.to_string(),
+                lane_id: None,
+                lane_release_id: None,
+                environment_ref: None,
                 dataset_identity: dataset_identity.to_string(),
+                tokenizer_digest: None,
+                tokenized_dataset_digest: None,
+                validation_set_digest: None,
                 dataset_slice_family: Some(dataset_slice_family.to_string()),
                 page_proof_family: Some(page_proof_family.to_string()),
                 benchmark_package_set_ref: benchmark_package_set_ref.map(str::to_string),
+                benchmark_package_refs: Vec::new(),
+                model_config_digest: None,
+                optimizer_config_digest: None,
+                scheduler_config_digest: None,
+                aggregation_rule_ref: None,
+                aggregation_weight_basis_ref: None,
+                checkpoint_family_ref: None,
+                base_checkpoint_ref: None,
+                validator_policy_ref: None,
                 version_semantics: version_semantics.to_string(),
                 window_ref_family: Some("window.family.diloco_round".to_string()),
                 manifest_ref_family: Some("manifest.family.psionic_train".to_string()),
@@ -52122,6 +52290,402 @@ mod tests {
         assert_eq!(
             definition.reference_families.trn_ref_family.as_deref(),
             Some("trn.family.diloco")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_compute_training_run_definition_route_projects_a1_minimal_fixed_refs()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let created_at_ms = now_unix_ms() as i64;
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut environment_request = compute_environment_package_request(
+                PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF,
+                super::A1_MINIMAL_DISTRIBUTED_LM_POLICY_VERSION,
+                "idemp.compute.route.a1_minimal.environment",
+                created_at_ms + 100,
+            );
+            environment_request.package.family = "training".to_string();
+            environment_request.package.display_name = "A1 Minimal Distributed LM".to_string();
+            environment_request.package.dataset_bindings = vec![ComputeEnvironmentDatasetBinding {
+                dataset_ref: super::A1_MINIMAL_DISTRIBUTED_LM_DATASET_REF.to_string(),
+                split_ref: Some("training".to_string()),
+                mount_path: Some("/datasets/a1-minimal-distributed-lm".to_string()),
+                integrity_ref: Some(
+                    super::A1_MINIMAL_DISTRIBUTED_LM_TOKENIZED_DATASET_DIGEST.to_string(),
+                ),
+                access_policy_ref: Some(
+                    "policy.dataset.a1_minimal_distributed_lm.fixture".to_string(),
+                ),
+                required: true,
+                metadata: json!({
+                    "tokenizer_digest": super::A1_MINIMAL_DISTRIBUTED_LM_TOKENIZER_DIGEST,
+                    "validation_set_digest": super::A1_MINIMAL_DISTRIBUTED_LM_VALIDATION_SET_DIGEST,
+                }),
+            }];
+            environment_request.package.policy_refs = vec![
+                super::A1_MINIMAL_DISTRIBUTED_LM_TRAINING_POLICY_REF.to_string(),
+                super::A1_MINIMAL_DISTRIBUTED_LM_VALIDATOR_POLICY_REF.to_string(),
+            ];
+            store
+                .kernel
+                .register_compute_environment_package(
+                    &training_kernel_mutation_context(
+                        "route-test-a1-minimal",
+                        (created_at_ms + 100) as u64,
+                    ),
+                    environment_request,
+                )
+                .expect("register A1 minimal environment package");
+
+            let mut checkpoint_request = compute_checkpoint_family_policy_request(
+                "idemp.compute.route.a1_minimal.checkpoint",
+                created_at_ms + 200,
+            );
+            checkpoint_request.policy_record.checkpoint_family =
+                super::A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY.to_string();
+            checkpoint_request.policy_record.version =
+                super::A1_MINIMAL_DISTRIBUTED_LM_POLICY_VERSION.to_string();
+            checkpoint_request.policy_record.allowed_environment_refs =
+                vec![PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF.to_string()];
+            checkpoint_request.policy_record.validator_policy_ref =
+                Some(super::A1_MINIMAL_DISTRIBUTED_LM_VALIDATOR_POLICY_REF.to_string());
+            store
+                .kernel
+                .register_compute_checkpoint_family_policy(
+                    &training_kernel_mutation_context(
+                        "route-test-a1-minimal",
+                        (created_at_ms + 200) as u64,
+                    ),
+                    checkpoint_request,
+                )
+                .expect("register A1 minimal checkpoint policy");
+
+            let mut validator_request = compute_validator_policy_request(
+                "idemp.compute.route.a1_minimal.validator",
+                created_at_ms + 300,
+            );
+            validator_request.policy_record.policy_ref =
+                super::A1_MINIMAL_DISTRIBUTED_LM_VALIDATOR_POLICY_REF.to_string();
+            validator_request.policy_record.version =
+                super::A1_MINIMAL_DISTRIBUTED_LM_POLICY_VERSION.to_string();
+            validator_request.policy_record.minimum_validator_count = Some(1);
+            validator_request.policy_record.benchmark_package_refs =
+                vec![super::A1_MINIMAL_DISTRIBUTED_LM_BENCHMARK_PACKAGE_REF.to_string()];
+            store
+                .kernel
+                .register_compute_validator_policy(
+                    &training_kernel_mutation_context(
+                        "route-test-a1-minimal",
+                        (created_at_ms + 300) as u64,
+                    ),
+                    validator_request,
+                )
+                .expect("register A1 minimal validator policy");
+
+            let mut benchmark_request = compute_benchmark_package_request(
+                "idemp.compute.route.a1_minimal.benchmark",
+                created_at_ms + 400,
+            );
+            benchmark_request.benchmark_package.benchmark_package_ref =
+                super::A1_MINIMAL_DISTRIBUTED_LM_BENCHMARK_PACKAGE_REF.to_string();
+            benchmark_request.benchmark_package.version =
+                super::A1_MINIMAL_DISTRIBUTED_LM_POLICY_VERSION.to_string();
+            benchmark_request.benchmark_package.family = "validation_loss".to_string();
+            benchmark_request.benchmark_package.environment_ref =
+                PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF.to_string();
+            benchmark_request.benchmark_package.environment_version =
+                Some(super::A1_MINIMAL_DISTRIBUTED_LM_POLICY_VERSION.to_string());
+            benchmark_request.benchmark_package.artifact_refs =
+                vec!["artifact://a1-minimal-distributed-lm/validation-replay".to_string()];
+            store
+                .kernel
+                .register_compute_benchmark_package(
+                    &training_kernel_mutation_context(
+                        "route-test-a1-minimal",
+                        (created_at_ms + 400) as u64,
+                    ),
+                    benchmark_request,
+                )
+                .expect("register A1 minimal benchmark package");
+
+            let mut training_policy_request = compute_training_policy_request(
+                "idemp.compute.route.a1_minimal.training_policy",
+                created_at_ms + 500,
+            );
+            training_policy_request.training_policy.training_policy_ref =
+                super::A1_MINIMAL_DISTRIBUTED_LM_TRAINING_POLICY_REF.to_string();
+            training_policy_request.training_policy.version =
+                super::A1_MINIMAL_DISTRIBUTED_LM_POLICY_VERSION.to_string();
+            training_policy_request.training_policy.owner_id =
+                super::A1_MINIMAL_DISTRIBUTED_LM_OWNER_ID.to_string();
+            training_policy_request.training_policy.environment_refs =
+                vec![PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF.to_string()];
+            training_policy_request.training_policy.checkpoint_family =
+                super::A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY.to_string();
+            training_policy_request.training_policy.validator_policy_ref =
+                super::A1_MINIMAL_DISTRIBUTED_LM_VALIDATOR_POLICY_REF.to_string();
+            training_policy_request
+                .training_policy
+                .benchmark_package_refs =
+                vec![super::A1_MINIMAL_DISTRIBUTED_LM_BENCHMARK_PACKAGE_REF.to_string()];
+            training_policy_request.training_policy.stage_policy_refs = vec![
+                "policy.training.a1_minimal_distributed_lm.local_update".to_string(),
+                "policy.training.a1_minimal_distributed_lm.support_verifier".to_string(),
+            ];
+            training_policy_request.training_policy.metadata =
+                super::a1_minimal_distributed_lm_training_policy_metadata()
+                    .expect("A1 minimal metadata");
+            store
+                .kernel
+                .register_compute_training_policy(
+                    &training_kernel_mutation_context(
+                        "route-test-a1-minimal",
+                        (created_at_ms + 500) as u64,
+                    ),
+                    training_policy_request,
+                )
+                .expect("register A1 minimal training policy");
+        }
+
+        let app = build_router_with_state(state);
+        let session = create_session_token(&app).await?;
+        let uri = format!(
+            "/v1/kernel/compute/training/policies/{}/run-definition?version={}",
+            super::A1_MINIMAL_DISTRIBUTED_LM_TRAINING_POLICY_REF,
+            super::A1_MINIMAL_DISTRIBUTED_LM_POLICY_VERSION
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(uri)
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let definition: ComputeTrainingRunDefinition = response_json(response).await?;
+        assert_eq!(
+            definition.run_definition_ref,
+            super::A1_MINIMAL_DISTRIBUTED_LM_RUN_DEFINITION_REF
+        );
+        assert_eq!(
+            definition.lane_id.as_deref(),
+            Some(super::PSION_A1_MINIMAL_DISTRIBUTED_LM_LANE_ID)
+        );
+        assert_eq!(
+            definition.environment_ref.as_deref(),
+            Some(PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF)
+        );
+        assert_eq!(
+            definition.tokenizer_digest.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_TOKENIZER_DIGEST)
+        );
+        assert_eq!(
+            definition.tokenized_dataset_digest.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_TOKENIZED_DATASET_DIGEST)
+        );
+        assert_eq!(
+            definition.validation_set_digest.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_VALIDATION_SET_DIGEST)
+        );
+        assert_eq!(
+            definition.model_config_digest.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_MODEL_CONFIG_DIGEST)
+        );
+        assert_eq!(
+            definition.optimizer_config_digest.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_OPTIMIZER_CONFIG_DIGEST)
+        );
+        assert_eq!(
+            definition.scheduler_config_digest.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_SCHEDULER_CONFIG_DIGEST)
+        );
+        assert_eq!(
+            definition.aggregation_rule_ref.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_RULE_REF)
+        );
+        assert_eq!(
+            definition.checkpoint_family_ref.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY)
+        );
+        assert_eq!(
+            definition.base_checkpoint_ref.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF)
+        );
+        assert_eq!(
+            definition.benchmark_package_refs,
+            vec![super::A1_MINIMAL_DISTRIBUTED_LM_BENCHMARK_PACKAGE_REF.to_string()]
+        );
+        assert_eq!(definition.environments.len(), 1);
+        assert_eq!(definition.dataset_bindings.len(), 1);
+        assert_eq!(
+            definition.dataset_bindings[0].integrity_ref.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_TOKENIZED_DATASET_DIGEST)
+        );
+        assert_eq!(definition.benchmark_packages.len(), 1);
+        assert_eq!(
+            definition.reference_families.manifest_ref_family.as_deref(),
+            Some("manifest.family.a1_minimal_distributed_lm")
+        );
+
+        let mut training_run =
+            compute_training_run_request("idemp.a1_minimal.window.run", created_at_ms + 600)
+                .training_run;
+        training_run.training_run_id = "run.a1_minimal.window.test".to_string();
+        training_run.training_policy_ref =
+            super::A1_MINIMAL_DISTRIBUTED_LM_TRAINING_POLICY_REF.to_string();
+        training_run.environment_binding.environment_ref =
+            PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF.to_string();
+        training_run.checkpoint_binding.checkpoint_family =
+            super::A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY.to_string();
+        training_run.checkpoint_binding.latest_checkpoint_ref =
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string());
+        training_run.validator_policy_ref =
+            super::A1_MINIMAL_DISTRIBUTED_LM_VALIDATOR_POLICY_REF.to_string();
+        training_run.work_class = ComputeTrainingWorkClass::FullIslandLocalUpdateTraining;
+        training_run.replica_type = ComputeTrainingReplicaType::Island;
+        training_run.benchmark_package_refs =
+            vec![super::A1_MINIMAL_DISTRIBUTED_LM_BENCHMARK_PACKAGE_REF.to_string()];
+        training_run.model_ref = Some("model://a1-minimal-distributed-lm/tiny-transformer".into());
+        training_run.expected_step_count = Some(8);
+        let scheduled_run = ScheduledTrainingRun {
+            training_run_id: training_run.training_run_id.clone(),
+            network_id: "trainnet.a1_minimal".to_string(),
+            artifact_bucket_uri: "gs://a1-minimal-training".to_string(),
+            current_window_id: "window.a1_minimal.0001".to_string(),
+            checkpoint_ref: Some(super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string()),
+            role_plan: TrainingSchedulerRolePlan {
+                worker_count: 1,
+                validator_count: 1,
+                recovery_source_count: 0,
+            },
+            membership_revision: 1,
+            lease_issue_count: 1,
+            window_state: TrainingSchedulerWindowState::Active,
+            assignments: vec![ScheduledTrainingAssignment {
+                assignment_id: "assign.a1_minimal.window.0001.worker.1.attempt1".to_string(),
+                window_id: "window.a1_minimal.0001".to_string(),
+                role: TrainingNodeRoleClaim::Worker,
+                slot_ordinal: 1,
+                attempt: 1,
+                state: TrainingAssignmentState::Leased,
+                node_pubkey_hex: Some("node-a1-minimal".to_string()),
+                lease_id: Some("lease.a1_minimal.window.0001.worker.1".to_string()),
+                issued_at_ms: Some(created_at_ms + 650),
+                expires_at_ms: Some(created_at_ms + 1_650),
+                manifest_digest: None,
+            }],
+            updated_at_ms: created_at_ms + 650,
+        };
+        let dataset_slice = ComputeAdapterDatasetSlice {
+            dataset_id: super::A1_MINIMAL_DISTRIBUTED_LM_DATASET_REF.to_string(),
+            split_name: "train".to_string(),
+            slice_id: "slice.a1_minimal.0001".to_string(),
+            slice_digest: super::A1_MINIMAL_DISTRIBUTED_LM_TOKENIZED_DATASET_DIGEST.to_string(),
+        };
+        let mut planned_request = plan_training_window_request(
+            "idemp.a1_minimal.window.plan",
+            created_at_ms + 700,
+            training_run.training_run_id.as_str(),
+            vec![dataset_slice.clone()],
+        );
+        planned_request.base_checkpoint_ref =
+            super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string();
+        planned_request.planned_local_step_count = Some(8);
+        planned_request.aggregation_rule =
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_RULE_REF.to_string());
+        planned_request.aggregation_weight_basis =
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_WEIGHT_BASIS_REF.to_string());
+        planned_request.source_checkpoint_pointer.checkpoint_family =
+            super::A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY.to_string();
+        planned_request.source_checkpoint_pointer.checkpoint_ref =
+            super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string();
+        let window = training_window_base_record(
+            &training_run,
+            &scheduled_run,
+            &planned_request,
+            TrainingWindowMetadata {
+                network_id: scheduled_run.network_id.clone(),
+                artifact_bucket_uri: scheduled_run.artifact_bucket_uri.clone(),
+                environment_ref: PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF
+                    .to_string(),
+                backend_family: "cpu".to_string(),
+                membership_revision: "members.rev1".to_string(),
+                assignment_plans: vec![TrainingWindowAssignmentPlan {
+                    assignment_id: scheduled_run.assignments[0].assignment_id.clone(),
+                    node_pubkey_hex: "node-a1-minimal".to_string(),
+                    contributor_node_id: "node-a1-minimal".to_string(),
+                    worker_id: "worker.0001".to_string(),
+                    dataset_slice,
+                    assignment_seed: "seed.a1_minimal.window.0001".to_string(),
+                }],
+                validation: None,
+                planned_at_ms: created_at_ms + 700,
+                activated_at_ms: Some(created_at_ms + 700),
+                sealed_at_ms: None,
+                reconciled_at_ms: None,
+                defensibility: None,
+                seal_deadline_ms: created_at_ms + 3_700,
+            },
+            Some(&definition),
+            ComputeAdapterWindowStatus::Active,
+            created_at_ms + 700,
+        )
+        .expect("A1 minimal training window should build with run definition");
+        assert_eq!(
+            window.work_class,
+            ComputeTrainingWorkClass::FullIslandLocalUpdateTraining
+        );
+        assert_eq!(window.replica_type, ComputeTrainingReplicaType::Island);
+        assert_eq!(
+            window.aggregation_rule.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_RULE_REF)
+        );
+        assert_eq!(
+            window.aggregation_weight_basis.as_deref(),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_AGGREGATION_WEIGHT_BASIS_REF)
+        );
+        assert_eq!(
+            window.base_checkpoint_ref,
+            super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF
+        );
+        assert_eq!(
+            window.validator_policy_ref,
+            super::A1_MINIMAL_DISTRIBUTED_LM_VALIDATOR_POLICY_REF
+        );
+        let window_definition = window
+            .metadata
+            .get("run_definition")
+            .expect("window run definition metadata");
+        assert_eq!(
+            window_definition
+                .get("run_definition_ref")
+                .and_then(Value::as_str),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_RUN_DEFINITION_REF)
+        );
+        assert_eq!(
+            window_definition
+                .get("tokenizer_digest")
+                .and_then(Value::as_str),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_TOKENIZER_DIGEST)
+        );
+        assert_eq!(
+            window_definition
+                .get("tokenized_dataset_digest")
+                .and_then(Value::as_str),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_TOKENIZED_DATASET_DIGEST)
+        );
+        assert_eq!(
+            window_definition
+                .get("base_checkpoint_ref")
+                .and_then(Value::as_str),
+            Some(super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF)
         );
         Ok(())
     }

@@ -155,6 +155,7 @@ pub(super) fn window_event(
     closeout_status_by_outcome_id: &std::collections::HashMap<String, String>,
 ) -> Result<TrainingWindowEvent, String> {
     let metadata = super::training_window_metadata_from_value(&source.window.metadata)?;
+    let run_definition = source.window.metadata.get("run_definition");
     let mut extra_tags = vec![
         vec!["run".to_string(), source.window.training_run_id.clone()],
         vec!["class".to_string(), "training_window".to_string()],
@@ -169,6 +170,12 @@ pub(super) fn window_event(
     ];
     if let Some(sync_profile) = trn_sync_profile(source.window.work_class) {
         extra_tags.push(vec!["sync_profile".to_string(), sync_profile.to_string()]);
+    }
+    if let Some(run_definition_ref) = run_definition
+        .and_then(|value| value.get("run_definition_ref"))
+        .and_then(Value::as_str)
+    {
+        push_optional_tag(&mut extra_tags, "run_definition", run_definition_ref);
     }
     if let Some(round_index) = source.window.round_index {
         extra_tags.push(vec!["round".to_string(), round_index.to_string()]);
@@ -256,6 +263,7 @@ pub(super) fn window_event(
             "accepted_outcome_id": source.window.accepted_outcome_id,
             "kernel_object_id": source.window.window_id,
             "kernel_receipt_ids": vec![source.receipt_id.clone()],
+            "run_definition": run_definition.cloned(),
         }),
         policy_revision: Some(source.window.validator_policy_ref.clone()),
         assignment_seed: None,
