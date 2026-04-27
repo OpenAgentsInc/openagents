@@ -145,6 +145,12 @@ update class and can count as model progress only when the accepted output
 enters canonical training state. `aggregation` and `checkpoint_promotion` are
 checkpoint-advance classes.
 
+A1 Pylon manifests also carry explicit artifact ids. Support/verifier
+assignments upload `support_bundle` artifacts with artifact class `proof`.
+Local-update assignments upload `local_update` artifacts. Both use Nexus
+signed-access routes; weak devices are not expected to write local-update
+artifacts just to count as participants.
+
 ## Does every connected node do the same work?
 
 No.

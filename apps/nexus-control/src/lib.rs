@@ -52877,6 +52877,35 @@ mod tests {
                 .contains("X-Goog-Algorithm=GOOG4-RSA-SHA256")
         );
         assert!(signed_access.signed_url.contains("X-Goog-Signature="));
+
+        let support_artifact_id = "oa.train_artifact.v1~kind~support_bundle~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123";
+        let support_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/kernel/compute/training/artifacts/{support_artifact_id}/signed-access"
+                    ))
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "mode": "write",
+                            "digest": "sha256:support-bundle",
+                            "size_bytes": 1024,
+                        })
+                        .to_string(),
+                    ))?,
+            )
+            .await?;
+        assert_eq!(support_response.status(), StatusCode::OK);
+        let support_signed_access: PylonTrainingArtifactSignedAccessResponse =
+            response_json(support_response).await?;
+        assert_eq!(support_signed_access.artifact_id, support_artifact_id);
+        assert_eq!(support_signed_access.artifact_class.label(), "proof");
+        assert!(support_signed_access.signed_url.starts_with(
+            "https://storage.googleapis.com/launch-training-bucket/networks/trainnet.alpha/runs/run.alpha/windows/window.000123/contributions/assign.node01.window000123/support_bundle.json?"
+        ));
         Ok(())
     }
 

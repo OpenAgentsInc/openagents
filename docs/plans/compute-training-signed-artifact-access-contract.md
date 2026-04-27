@@ -96,6 +96,12 @@ The response shape is:
 }
 ```
 
+A1 minimal distributed LM support work uses the same signed-access path with
+`artifact_kind = "support_bundle"` and `artifact_class = "proof"`. That is the
+participation-only output class for verifier/support assignments. A1 local
+update work continues to use `artifact_kind = "local_update"` and
+`artifact_class = "local_update"`.
+
 ## Launch Behavior
 
 Launch posture is:

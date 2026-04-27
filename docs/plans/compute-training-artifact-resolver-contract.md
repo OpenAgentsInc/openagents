@@ -71,9 +71,15 @@ Examples:
 
 ```text
 oa.train_artifact.v1~kind~run_manifest~network~trainnet.alpha~run~run.alpha
+oa.train_artifact.v1~kind~tokenizer~network~trainnet.alpha~run~run.alpha
+oa.train_artifact.v1~kind~model_config~network~trainnet.alpha~run~run.alpha
+oa.train_artifact.v1~kind~optimizer_config~network~trainnet.alpha~run~run.alpha
+oa.train_artifact.v1~kind~validation_set~network~trainnet.alpha~run~run.alpha
 oa.train_artifact.v1~kind~latest_checkpoint_pointer~network~trainnet.alpha~run~run.alpha
 oa.train_artifact.v1~kind~checkpoint_manifest~network~trainnet.alpha~run~run.alpha~optimizer_step~42
+oa.train_artifact.v1~kind~tokenized_dataset_shard~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123
 oa.train_artifact.v1~kind~local_update~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123
+oa.train_artifact.v1~kind~support_bundle~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123
 oa.train_artifact.v1~kind~proof_bundle~network~trainnet.alpha~run~run.alpha~window~window.000123~assignment~assign.node01.window000123
 oa.train_artifact.v1~kind~validator_verdict~network~trainnet.alpha~run~run.alpha~window~window.000123~challenge~challenge.alpha
 oa.train_artifact.v1~kind~sealed_window~network~trainnet.alpha~run~run.alpha~window~window.000123
@@ -89,6 +95,8 @@ The shared typed artifact classes are:
 
 - `config`
 - `checkpoint`
+- `dataset`
+- `tokenizer`
 - `weights`
 - `optimizer`
 - `local_update`
@@ -103,9 +111,15 @@ as follows:
 | Artifact kind | Artifact class |
 | --- | --- |
 | `run_manifest` | `config` |
+| `tokenizer` | `tokenizer` |
+| `tokenized_dataset_shard` | `dataset` |
+| `validation_set` | `dataset` |
+| `model_config` | `config` |
+| `optimizer_config` | `optimizer` |
 | `latest_checkpoint_pointer` | `checkpoint` |
 | `checkpoint_manifest` | `checkpoint` |
 | `local_update` | `local_update` |
+| `support_bundle` | `proof` |
 | `proof_bundle` | `proof` |
 | `validator_verdict` | `eval` |
 | `sealed_window` | `proof` |
@@ -113,6 +127,13 @@ as follows:
 
 This change also updates the worker-facing expected artifact class from the old
 `delta` label to `local_update`, which now matches the updated local TRN draft.
+
+For `a1_minimal_distributed_lm_001`, manifests carry explicit input artifact
+ids for tokenizer, tokenized dataset shard, model config, optimizer config, and
+base checkpoint materialization. Local-update work expects a `local_update`
+output. Participation-only support work expects a `support_bundle` output, so
+support/verifier workers can upload accepted compute evidence without claiming a
+model-update artifact.
 
 ## Resolver Response Shape
 

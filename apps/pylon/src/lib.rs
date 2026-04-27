@@ -12394,6 +12394,7 @@ fn training_validator_assignment_for_manifest_context(
                     challenge_kind: claim.challenge_kind,
                     target_assignment_ids,
                     expected_manifest_digests,
+                    expected_artifact_ids: Vec::new(),
                     retry_attempt: claim.lease.as_ref().map(|lease| lease.attempt).unwrap_or(1),
                 },
             ));
@@ -12417,6 +12418,7 @@ fn training_validator_assignment_for_manifest_context(
             challenge_kind: "aggregate".to_string(),
             target_assignment_ids: vec![lease.assignment_id.clone()],
             expected_manifest_digests,
+            expected_artifact_ids: Vec::new(),
             retry_attempt: 1,
         },
     ))
@@ -12593,6 +12595,18 @@ fn inspect_manifest_local_artifacts(
             })? {
                 let entry = entry?;
                 if !entry.file_type()?.is_dir() {
+                    continue;
+                }
+                let fallback_assignment_id = entry.file_name().to_string_lossy().to_string();
+                if entry.path().join("support_bundle.json").is_file()
+                    && !entry.path().join("adapter_delta_bundle.json").is_file()
+                {
+                    bundles.push(inspect_training_artifact_bundle(
+                        context,
+                        PylonTrainingArtifactBundleKind::SupportContribution {
+                            assignment_id: fallback_assignment_id,
+                        },
+                    )?);
                     continue;
                 }
                 ensure_training_contribution_bridge_bundles(context, entry.path().as_path())?;
@@ -14676,6 +14690,28 @@ fn training_terminal_contribution_artifact_upload_blocked(
         .is_some_and(|error| {
             error.contains("terminal contribution artifact upload blocked window seal")
         })
+}
+
+fn training_terminal_worker_bundle_kind(
+    manifest: &openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+    assignment_id: &str,
+) -> PylonTrainingArtifactBundleKind {
+    if manifest.work_unit.as_ref().is_some_and(|work_unit| {
+        work_unit.expected_output_artifacts.iter().any(|artifact| {
+            artifact.artifact_kind == PylonTrainingArtifactKind::SupportBundle
+                && artifact
+                    .artifact_id
+                    .contains(format!("~assignment~{assignment_id}").as_str())
+        })
+    }) {
+        PylonTrainingArtifactBundleKind::SupportContribution {
+            assignment_id: assignment_id.to_string(),
+        }
+    } else {
+        PylonTrainingArtifactBundleKind::Contribution {
+            assignment_id: assignment_id.to_string(),
+        }
+    }
 }
 
 fn derive_training_terminal_window_state(
@@ -17359,13 +17395,10 @@ async fn ensure_training_terminal_contribution_artifacts_uploaded(
     context: &TrainingManifestInspectionContext,
 ) -> Result<PylonTrainingArtifactBundleTransferReport> {
     let artifact_client = PylonTrainingArtifactStoreClient::new_public_safe(config).await?;
+    let bundle_kind =
+        training_terminal_worker_bundle_kind(&context.manifest, active.assignment_id.as_str());
     let report = artifact_client
-        .upload_bundle(
-            &context.manifest,
-            PylonTrainingArtifactBundleKind::Contribution {
-                assignment_id: active.assignment_id.clone(),
-            },
-        )
+        .upload_bundle(&context.manifest, bundle_kind)
         .await?;
     ensure!(
         report.last_error.is_none(),
@@ -17373,7 +17406,7 @@ async fn ensure_training_terminal_contribution_artifacts_uploaded(
         report.last_error.unwrap_or_else(|| "unknown".to_string())
     );
     ensure!(
-        report.objects.len() >= 2
+        !report.objects.is_empty()
             && report
                 .objects
                 .iter()
@@ -19179,6 +19212,11 @@ fn training_bundle_kind_from_entry(
             ),
         "contribution" => entry.bundle_id.split_once(':').map(|(_, assignment_id)| {
             PylonTrainingArtifactBundleKind::Contribution {
+                assignment_id: assignment_id.to_string(),
+            }
+        }),
+        "support_contribution" => entry.bundle_id.split_once(':').map(|(_, assignment_id)| {
+            PylonTrainingArtifactBundleKind::SupportContribution {
                 assignment_id: assignment_id.to_string(),
             }
         }),
@@ -26481,17 +26519,21 @@ mod tests {
         },
         compute_contracts,
         pylon_training::{
+            PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF,
             PYLON_TRAINING_GCS_CREDENTIAL_SOURCE, PylonTrainingArtifactBundleKind,
             PylonTrainingArtifactKind, PylonTrainingArtifactLayout,
             PylonTrainingArtifactResolverResponse, PylonTrainingArtifactScope,
             PylonTrainingArtifactSignedAccessRequest, PylonTrainingArtifactSignedAccessResponse,
-            PylonTrainingArtifacts, PylonTrainingCheckpointBinding, PylonTrainingCollectiveKind,
-            PylonTrainingDatasetAssignment, PylonTrainingElasticBoundary,
+            PylonTrainingArtifacts, PylonTrainingAssignmentShard,
+            PylonTrainingAssignmentShardRange, PylonTrainingCheckpointBinding,
+            PylonTrainingCollectiveKind, PylonTrainingDatasetAssignment,
+            PylonTrainingElasticBoundary, PylonTrainingManifestArtifactRef,
             PylonTrainingManifestRole, PylonTrainingReputationLabel,
             PylonTrainingReputationNamespace, PylonTrainingReputationRecord,
             PylonTrainingRunManifestCommon, PylonTrainingTopology,
-            PylonTrainingTopologyBackendFamily, PylonTrainingTrn, artifact_digest_from_json,
-            parse_pylon_training_run_manifest_json,
+            PylonTrainingTopologyBackendFamily, PylonTrainingTrn, PylonTrainingWorkUnitManifest,
+            artifact_digest_from_json, parse_pylon_training_run_manifest_json,
+            pylon_training_a1_minimal_expected_output_artifact_kind,
         },
     };
     use openagents_provider_substrate::{
@@ -27335,6 +27377,79 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             .dataset(dataset)
             .build()?,
         )
+    }
+
+    fn manifest_artifact_ref(
+        kind: PylonTrainingArtifactKind,
+        scope: PylonTrainingArtifactScope,
+    ) -> Result<PylonTrainingManifestArtifactRef, Box<dyn std::error::Error>> {
+        let resolver = PylonTrainingArtifactResolverResponse::new(kind, scope)?;
+        Ok(PylonTrainingManifestArtifactRef {
+            artifact_id: resolver.artifact_id,
+            artifact_kind: resolver.artifact_kind,
+            artifact_class: resolver.artifact_class,
+            digest: None,
+            size_bytes: None,
+        })
+    }
+
+    fn attach_a1_support_work_unit(
+        manifest: &mut openagents_kernel_core::pylon_training::PylonTrainingRunManifestV1,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        manifest.run_definition_ref = Some("rundef.a1_minimal_distributed_lm.001.v1".to_string());
+        manifest.training_policy_ref = "policy.training.a1_minimal_distributed_lm.001".to_string();
+        manifest.validator_policy_ref = "policy.validator.a1_minimal_distributed_lm.v1".to_string();
+        manifest.environment_ref =
+            PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF.to_string();
+        manifest.checkpoint.checkpoint_family =
+            "psion.a1_minimal_distributed_lm.checkpoints.v1".to_string();
+        manifest.checkpoint.checkpoint_ref =
+            "base://a1_minimal_distributed_lm/step-000000".to_string();
+        let base_scope = PylonTrainingArtifactScope {
+            network_id: manifest.network_id.clone(),
+            run_id: manifest.run_id.clone(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: None,
+        };
+        let assignment_scope = PylonTrainingArtifactScope {
+            window_id: Some(manifest.window_id.clone()),
+            assignment_id: Some(manifest.assignment_id.clone()),
+            ..base_scope.clone()
+        };
+        let work_unit = A1MinimalDistributedLmWorkUnitKind::ValidationReplay;
+        manifest.work_unit = Some(PylonTrainingWorkUnitManifest {
+            work_unit_kind: work_unit.label().to_string(),
+            tokenizer_digest: "sha256:a1-tokenizer".to_string(),
+            tokenized_dataset_digest: "sha256:a1-tokenized-dataset".to_string(),
+            validation_set_digest: Some("sha256:a1-validation-set".to_string()),
+            base_checkpoint_ref: manifest.checkpoint.checkpoint_ref.clone(),
+            assignment_shard: Some(PylonTrainingAssignmentShard {
+                shard_id: "shard.a1.support.0001".to_string(),
+                shard_digest: "sha256:a1-support-shard".to_string(),
+                range: Some(PylonTrainingAssignmentShardRange {
+                    unit: "tokens".to_string(),
+                    start: 0,
+                    end: 1024,
+                }),
+            }),
+            input_artifacts: vec![
+                manifest_artifact_ref(PylonTrainingArtifactKind::Tokenizer, base_scope.clone())?,
+                manifest_artifact_ref(
+                    PylonTrainingArtifactKind::TokenizedDatasetShard,
+                    assignment_scope.clone(),
+                )?,
+            ],
+            expected_output_artifacts: vec![manifest_artifact_ref(
+                pylon_training_a1_minimal_expected_output_artifact_kind(work_unit),
+                assignment_scope,
+            )?],
+            validator_target_assignment_ids: Vec::new(),
+            validator_target_artifact_ids: Vec::new(),
+        });
+        manifest.manifest_digest = manifest.canonical_digest()?;
+        Ok(())
     }
 
     fn write_training_manifest_and_artifacts(
@@ -35517,6 +35632,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 challenge_kind: "aggregate".to_string(),
                 target_assignment_ids: vec!["assign.node01.window0001".to_string()],
                 expected_manifest_digests: vec!["sha256:manifest-alpha".to_string()],
+                expected_artifact_ids: Vec::new(),
                 retry_attempt: 1,
             },
         );
@@ -36280,6 +36396,224 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                         "/bucket/networks/trainnet.alpha/runs/run.alpha/checkpoints/step-42/checkpoint_manifest.json",
                     ),
             "explicit GCS bearer tokens should be sufficient for the artifact courier even when no ADC path or metadata source is present",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a1_minimal_artifact_courier_uploads_local_update_and_support_via_signed_access()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let _env_lock = training_env_lock();
+        let stored_objects = Arc::new(Mutex::new(
+            std::collections::BTreeMap::<String, Vec<u8>>::new(),
+        ));
+        let signed_requests = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+        let signed_base_url = Arc::new(Mutex::new(None::<String>));
+
+        let assignment_scope = PylonTrainingArtifactScope {
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: Some("window.0001".to_string()),
+            assignment_id: Some("assign.node01.window0001".to_string()),
+            challenge_id: None,
+            optimizer_step: None,
+        };
+        let local_update_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::LocalUpdate,
+            assignment_scope.clone(),
+        )?;
+        let proof_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::ProofBundle,
+            assignment_scope.clone(),
+        )?;
+        let support_resolver = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::SupportBundle,
+            assignment_scope,
+        )?;
+
+        let stored_objects_for_server = Arc::clone(&stored_objects);
+        let signed_requests_for_server = Arc::clone(&signed_requests);
+        let signed_base_url_for_server = Arc::clone(&signed_base_url);
+        let local_update_resolver_for_server = local_update_resolver.clone();
+        let proof_resolver_for_server = proof_resolver.clone();
+        let support_resolver_for_server = support_resolver.clone();
+        let base_url = start_mock_http_server(move |method, path, body| {
+            if method == "POST"
+                && path.starts_with("/v1/kernel/compute/training/artifacts/")
+                && path.ends_with("/signed-access")
+            {
+                let artifact_id = path
+                    .trim_start_matches("/v1/kernel/compute/training/artifacts/")
+                    .trim_end_matches("/signed-access")
+                    .trim_end_matches('/');
+                let (resolver, signed_path) =
+                    if artifact_id == local_update_resolver_for_server.artifact_id {
+                        (
+                            local_update_resolver_for_server.clone(),
+                            "/signed/local-update",
+                        )
+                    } else if artifact_id == proof_resolver_for_server.artifact_id {
+                        (proof_resolver_for_server.clone(), "/signed/proof-bundle")
+                    } else if artifact_id == support_resolver_for_server.artifact_id {
+                        (
+                            support_resolver_for_server.clone(),
+                            "/signed/support-bundle",
+                        )
+                    } else {
+                        return (
+                            404,
+                            "application/json",
+                            json!({"error":"missing_artifact","reason":artifact_id}).to_string(),
+                        );
+                    };
+                let request: PylonTrainingArtifactSignedAccessRequest =
+                    serde_json::from_str(body.as_str()).expect("signed access request");
+                signed_requests_for_server
+                    .lock()
+                    .expect("signed requests")
+                    .push((
+                        resolver.artifact_id.clone(),
+                        request.mode.label().to_string(),
+                    ));
+                let signed_base_url = signed_base_url_for_server
+                    .lock()
+                    .expect("signed base url")
+                    .clone()
+                    .expect("signed base url initialized");
+                let response = PylonTrainingArtifactSignedAccessResponse::new(
+                    &resolver,
+                    &request,
+                    format!("{signed_base_url}{signed_path}"),
+                    1_762_491_900,
+                    300,
+                )
+                .expect("signed access response");
+                return (
+                    200,
+                    "application/json",
+                    serde_json::to_string(&response).expect("signed access response json"),
+                );
+            }
+            match method.as_str() {
+                "PUT" => {
+                    stored_objects_for_server
+                        .lock()
+                        .expect("signed object store")
+                        .insert(path.clone(), body.into_bytes());
+                    (200, "application/json", "{}".to_string())
+                }
+                "GET" => {
+                    let payload = stored_objects_for_server
+                        .lock()
+                        .expect("signed object store")
+                        .get(path.as_str())
+                        .cloned()
+                        .unwrap_or_else(|| b"{}".to_vec());
+                    (
+                        200,
+                        "application/octet-stream",
+                        String::from_utf8(payload).expect("signed object utf8"),
+                    )
+                }
+                _ => (
+                    405,
+                    "application/json",
+                    json!({"error":"method_not_allowed"}).to_string(),
+                ),
+            }
+        })
+        .await?;
+        *signed_base_url.lock().expect("signed base url") = Some(base_url.clone());
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = load_or_create_config(config_path.as_path())?;
+        config.training.run_root = temp_dir.path().join("training");
+        config.training.nexus_authority_base_url = base_url;
+        save_config(config_path.as_path(), &config)?;
+        let local_run_root = config.training.run_root.join("runs").join("run.alpha");
+        let manifest =
+            write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
+        let support_root = local_run_root
+            .join("windows")
+            .join("window.0001")
+            .join("contributions")
+            .join("assign.node01.window0001");
+        std::fs::write(
+            support_root.join("support_bundle.json"),
+            json!({
+                "schema_version":"openagents.pylon_training.support_bundle.v1",
+                "assignment_id":"assign.node01.window0001",
+                "work_unit_kind":"validation_replay"
+            })
+            .to_string(),
+        )?;
+        let mut support_manifest = manifest.clone();
+        attach_a1_support_work_unit(&mut support_manifest)?;
+        ensure(
+            matches!(
+                super::training_terminal_worker_bundle_kind(
+                    &support_manifest,
+                    "assign.node01.window0001"
+                ),
+                PylonTrainingArtifactBundleKind::SupportContribution { .. }
+            ),
+            "A1 support manifests should select the support contribution artifact bundle",
+        )?;
+
+        let _env = TrainingEnvGuard::set(&[
+            (ENV_TRAINING_GCS_ENDPOINT, String::new()),
+            (ENV_TRAINING_GCS_BEARER_TOKEN, String::new()),
+            (ENV_GOOGLE_APPLICATION_CREDENTIALS, String::new()),
+            ("GCE_METADATA_HOST", String::new()),
+            ("GCE_METADATA_IP", String::new()),
+        ]);
+
+        let client = PylonTrainingArtifactStoreClient::new_public_safe(&config).await?;
+        let local_update_report = client
+            .upload_bundle(
+                &manifest,
+                PylonTrainingArtifactBundleKind::Contribution {
+                    assignment_id: "assign.node01.window0001".to_string(),
+                },
+            )
+            .await?;
+        let support_report = client
+            .upload_bundle(
+                &support_manifest,
+                PylonTrainingArtifactBundleKind::SupportContribution {
+                    assignment_id: "assign.node01.window0001".to_string(),
+                },
+            )
+            .await?;
+
+        ensure(
+            local_update_report.state == "uploaded"
+                && local_update_report.objects.iter().any(|object| {
+                    object.object_uri.ends_with("adapter_delta_bundle.json")
+                        && object.digest_verified
+                })
+                && support_report.state == "uploaded"
+                && support_report.objects.len() == 1
+                && support_report.objects[0]
+                    .object_uri
+                    .ends_with("support_bundle.json")
+                && support_report.objects[0].digest_verified,
+            "signed-access artifact courier should upload local-update and A1 support outputs with the expected artifact classes",
+        )?;
+        let requests = signed_requests.lock().expect("signed requests").clone();
+        ensure(
+            requests.iter().any(|(artifact_id, mode)| {
+                artifact_id == &local_update_resolver.artifact_id && mode == "write"
+            }) && requests.iter().any(|(artifact_id, mode)| {
+                artifact_id == &support_resolver.artifact_id && mode == "write"
+            }),
+            "signed-access requests should be scoped to the local-update and support artifact ids",
+        )?;
+        let stored = stored_objects.lock().expect("signed object store").clone();
+        ensure(
+            stored.contains_key("/signed/local-update")
+                && stored.contains_key("/signed/support-bundle"),
+            "signed temporary URLs should receive both local-update and support payloads",
         )
     }
 
