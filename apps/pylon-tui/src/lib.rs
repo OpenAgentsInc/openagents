@@ -199,6 +199,14 @@ struct OperatorPanelStats {
     last_provider_event_at_ms: Option<u64>,
     recent_activity: Vec<String>,
     online_uptime_seconds: Option<u64>,
+    payment_history: Vec<PaymentHistoryEntry>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct PaymentHistoryEntry {
+    settled_at_ms: u64,
+    amount_sats: u64,
+    job_id: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -2684,7 +2692,8 @@ impl AppShell {
             Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(6, 8)),
             Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(6, 8)),
             Constraint::Length((self.summary_lines().len() as u16 + 2).clamp(5, 7)),
-            Constraint::Min((self.rank_lines().len() as u16 + 2).clamp(7, 9)),
+            Constraint::Length((self.rank_lines().len() as u16 + 2).clamp(7, 9)),
+            Constraint::Min(4),
         ])
         .split(columns[1]);
 
@@ -2694,6 +2703,7 @@ impl AppShell {
         frame.render_widget(self.wallet_card_panel(), right[1]);
         frame.render_widget(self.summary_panel(), right[2]);
         frame.render_widget(self.rank_panel(), right[3]);
+        frame.render_widget(self.payment_feed_panel(), right[4]);
         frame.render_widget(self.footer_panel(), vertical[2]);
     }
 
@@ -2792,6 +2802,42 @@ impl AppShell {
 
     fn operator_panel(&self) -> Paragraph<'static> {
         panel("Earnings", Text::from(self.operator_lines()))
+    }
+
+    fn payment_feed_panel(&self) -> Paragraph<'static> {
+        panel("Payment History", Text::from(self.payment_feed_lines()))
+    }
+
+    fn payment_feed_lines(&self) -> Vec<Line<'static>> {
+        let history = &self.operator_stats.payment_history;
+        if history.is_empty() {
+            return vec![Line::from(Span::styled(
+                "No payouts received yet.",
+                muted_text(),
+            ))];
+        }
+        let now_ms = current_epoch_ms_u64();
+        history
+            .iter()
+            .map(|entry| {
+                let short_id = entry.job_id.chars().take(8).collect::<String>();
+                Line::from(vec![
+                    Span::styled(
+                        format!("+{}", format_sats(entry.amount_sats)),
+                        success_accent(),
+                    ),
+                    Span::raw("  "),
+                    Span::styled(
+                        format!(
+                            "{}  job:{}",
+                            format_elapsed_since_ms(entry.settled_at_ms, now_ms),
+                            short_id
+                        ),
+                        muted_text(),
+                    ),
+                ])
+            })
+            .collect()
     }
 
     fn wallet_overview_panel(&self) -> Paragraph<'static> {
@@ -4784,6 +4830,7 @@ fn compute_operator_panel_stats_at(
                 .max()
         });
     let recent_activity = recent_provider_activity(ledger, now_ms);
+    let payment_history = payment_history_feed(ledger);
 
     OperatorPanelStats {
         desired_mode,
@@ -4810,6 +4857,7 @@ fn compute_operator_panel_stats_at(
         last_provider_event_at_ms,
         recent_activity,
         online_uptime_seconds: snapshot.map(|value| value.runtime.online_uptime_seconds),
+        payment_history,
     }
 }
 
@@ -5090,6 +5138,24 @@ fn recent_provider_activity(ledger: &pylon::PylonLedger, now_ms: u64) -> Vec<Str
         .map(|(_, label)| label)
         .take(3)
         .collect()
+}
+
+fn payment_history_feed(ledger: &pylon::PylonLedger) -> Vec<PaymentHistoryEntry> {
+    let mut entries: Vec<PaymentHistoryEntry> = ledger
+        .settlements
+        .iter()
+        .filter(|s| {
+            s.direction == "provider"
+                && provider_settlement_counted_as_settled(s.status.as_str())
+        })
+        .map(|s| PaymentHistoryEntry {
+            settled_at_ms: s.updated_at_ms,
+            amount_sats: s.amount_msats / 1_000,
+            job_id: s.job_id.clone(),
+        })
+        .collect();
+    entries.sort_by(|a, b| b.settled_at_ms.cmp(&a.settled_at_ms));
+    entries
 }
 
 fn provider_job_activity_label(job: &pylon::PylonLedgerJob) -> Option<String> {
@@ -5831,6 +5897,7 @@ mod tests {
             last_provider_event_at_ms: Some(1_762_700_500_000),
             recent_activity: vec![String::from("settled 21 sats 6m ago")],
             online_uptime_seconds: Some(60),
+            payment_history: vec![],
         };
 
         let sidebar = app
