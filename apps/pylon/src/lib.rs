@@ -1630,6 +1630,7 @@ pub enum TrainingCommand {
         json: bool,
     },
     Intake {
+        requested_training_run_id: Option<String>,
         json: bool,
     },
     Sync {
@@ -7627,10 +7628,15 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 }
                 Ok(Some(render_training_trn_publication_report(&report)))
             }
-            TrainingCommand::Intake { json } => {
-                let report =
-                    run_training_assignment_intake_and_load_status(cli.config_path.as_path())
-                        .await?;
+            TrainingCommand::Intake {
+                requested_training_run_id,
+                json,
+            } => {
+                let report = run_training_assignment_intake_and_load_status(
+                    cli.config_path.as_path(),
+                    requested_training_run_id.as_deref(),
+                )
+                .await?;
                 if json {
                     return Ok(Some(serde_json::to_string_pretty(&report)?));
                 }
@@ -7803,7 +7809,7 @@ Commands:\n\
   training artifacts inspect [--json]\n\
   training artifacts gc [--json]\n\
   training publish [--manifest <path>] [--json]\n\
-  training intake [--json]\n\
+  training intake [--run-id <training_run_id>] [--json]\n\
   training sync [--json]\n\
   training refresh [--json]\n\
   gemma [list] [--json]\n\
@@ -8156,9 +8162,14 @@ fn parse_training_command(args: &[String], start_index: usize) -> Result<Trainin
                 json,
             })
         }
-        Some("intake") => Ok(TrainingCommand::Intake {
-            json: parse_json_only(args, start_index + 1, "training intake")?,
-        }),
+        Some("intake") => {
+            let (requested_training_run_id, json) =
+                parse_training_intake_command(args, start_index + 1)?;
+            Ok(TrainingCommand::Intake {
+                requested_training_run_id,
+                json,
+            })
+        }
         Some("sync") => Ok(TrainingCommand::Sync {
             json: parse_json_only(args, start_index + 1, "training sync")?,
         }),
@@ -8210,6 +8221,36 @@ fn parse_training_publish_command(
         }
     }
     Ok((manifest_path, json))
+}
+
+fn parse_training_intake_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(Option<String>, bool)> {
+    let mut requested_training_run_id = None::<String>;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--run-id" | "--training-run-id" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --run-id"))?
+                    .trim();
+                if value.is_empty() {
+                    bail!("--run-id must not be empty");
+                }
+                requested_training_run_id = Some(value.to_string());
+                index += 1;
+            }
+            other => bail!("unexpected argument for training intake: {other}"),
+        }
+    }
+    Ok((requested_training_run_id, json))
 }
 
 fn parse_account_link_command(args: &[String], mut index: usize) -> Result<(String, String, bool)> {
@@ -10736,12 +10777,32 @@ fn retire_failed_active_training_runtime_lease(state: &mut PylonTrainingRuntimeS
     true
 }
 
+#[cfg(test)]
 async fn run_training_assignment_intake_once_with_context(
     config: &PylonConfig,
     identity: &NostrIdentity,
     state: &mut PylonTrainingRuntimeState,
     host: &ProviderHostTelemetrySnapshot,
     runtime_surface: Option<&PsionicTrainRuntimeSurface>,
+) -> Result<()> {
+    run_training_assignment_intake_once_with_context_for_run(
+        config,
+        identity,
+        state,
+        host,
+        runtime_surface,
+        None,
+    )
+    .await
+}
+
+async fn run_training_assignment_intake_once_with_context_for_run(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    state: &mut PylonTrainingRuntimeState,
+    host: &ProviderHostTelemetrySnapshot,
+    runtime_surface: Option<&PsionicTrainRuntimeSurface>,
+    requested_training_run_id: Option<&str>,
 ) -> Result<()> {
     training_trace("starting training intake pass");
     let client = PylonTrainingCoordinatorClient::new(config)?;
@@ -10814,7 +10875,10 @@ async fn run_training_assignment_intake_once_with_context(
         save_training_runtime_state(config, state)?;
     }
 
-    if let Some(existing_offer) = newest_pending_training_work_offer(state) {
+    let existing_offer = newest_pending_training_work_offer(state).filter(|offer| {
+        requested_training_run_id.is_none_or(|requested| offer.training_run_id == requested)
+    });
+    if let Some(existing_offer) = existing_offer {
         let existing_lease = state
             .lease_cache
             .get(existing_offer.offer_id.as_str())
@@ -11000,7 +11064,7 @@ async fn run_training_assignment_intake_once_with_context(
                     &client,
                     runtime_surface,
                     requested_network_id.as_deref(),
-                    None,
+                    requested_training_run_id,
                 )
                 .await
                 {
@@ -11041,7 +11105,7 @@ async fn run_training_assignment_intake_once_with_context(
                     node_pubkey_hex: identity.public_key_hex.clone(),
                     role,
                     requested_network_id: requested_network_id.clone(),
-                    requested_training_run_id: None,
+                    requested_training_run_id: requested_training_run_id.map(ToOwned::to_owned),
                     membership_revision: membership_revision.clone(),
                 })
                 .await
@@ -11151,16 +11215,18 @@ async fn run_training_assignment_intake_once_with_context(
 async fn run_training_assignment_intake_once(
     config: &PylonConfig,
     identity: &NostrIdentity,
+    requested_training_run_id: Option<&str>,
 ) -> Result<()> {
     let mut state = load_or_create_training_runtime_state(config)?;
     let host = load_training_host_telemetry(config);
     let runtime_surface = inspect_psionic_train_runtime_surface().ok();
-    run_training_assignment_intake_once_with_context(
+    run_training_assignment_intake_once_with_context_for_run(
         config,
         identity,
         &mut state,
         &host,
         runtime_surface.as_ref(),
+        requested_training_run_id,
     )
     .await?;
     save_training_runtime_state(config, &state)
@@ -11168,10 +11234,11 @@ async fn run_training_assignment_intake_once(
 
 async fn run_training_assignment_intake_and_load_status(
     config_path: &Path,
+    requested_training_run_id: Option<&str>,
 ) -> Result<TrainingOperatorStatusReport> {
     let config = load_or_create_config(config_path)?;
     let identity = ensure_identity(config.identity_path.as_path())?;
-    run_training_assignment_intake_once(&config, &identity).await?;
+    run_training_assignment_intake_once(&config, &identity, requested_training_run_id).await?;
     load_training_status_report_local(config_path)
 }
 
@@ -21328,7 +21395,9 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
             if desired_mode == ProviderDesiredMode::Online
                 && Instant::now() >= next_training_assignment_intake_at
             {
-                if let Err(error) = run_training_assignment_intake_once(&config, &identity).await {
+                if let Err(error) =
+                    run_training_assignment_intake_once(&config, &identity, None).await
+                {
                     eprintln!(
                         "warning: automatic pylon training assignment intake failed: {}",
                         format_anyhow_error_chain(&error)
@@ -35382,9 +35451,29 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             ])?
             .command
                 == Command::Training {
-                    command: TrainingCommand::Intake { json: true },
+                    command: TrainingCommand::Intake {
+                        requested_training_run_id: None,
+                        json: true,
+                    },
                 },
             "training intake should parse json output selection",
+        )?;
+        ensure(
+            parse_args(vec![
+                "training".to_string(),
+                "intake".to_string(),
+                "--run-id".to_string(),
+                "run.cs336.a1.issue4451".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Training {
+                    command: TrainingCommand::Intake {
+                        requested_training_run_id: Some("run.cs336.a1.issue4451".to_string()),
+                        json: true,
+                    },
+                },
+            "training intake should parse a targeted run id for validator proof work",
         )
     }
 
