@@ -285,7 +285,7 @@ const DEFAULT_TRAINING_GCS_SIGNED_URL_TTL_SECONDS: u64 = 900;
 const DEFAULT_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS: u64 = 3_600;
 const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
 const TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS: u64 = 1_000;
-const PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS: u64 = 15_000;
+const PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS: u64 = 60_000;
 const TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT: usize = 64;
 const TRAINING_NODE_LIST_DEFAULT_LIMIT: usize = 128;
 #[cfg(test)]
@@ -1484,8 +1484,8 @@ const fn homework_launch_pay_only_on_accept_default() -> bool {
     true
 }
 
-const TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS: u64 = 30_000;
-const TRAINING_PUBLIC_MIRROR_MAX_AGE_MS: u64 = 120_000;
+const TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS: u64 = 120_000;
+const TRAINING_PUBLIC_MIRROR_MAX_AGE_MS: u64 = 300_000;
 const TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS: u64 = 120_000;
 const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_LIVE: &str = "live";
 const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_CACHE_FRESH: &str = "cache_fresh";
@@ -23580,7 +23580,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
                     cycle_started_at_unix_ms,
                 );
             }
-            let _ = force_refresh_public_stats_cache(state, cycle_started_at_unix_ms);
+            let _ = refresh_public_stats_cache(state, cycle_started_at_unix_ms);
             let _ = force_refresh_treasury_status_cache(state, cycle_started_at_unix_ms);
             finish_treasury_dispatch_cycle();
             return;
@@ -23612,7 +23612,7 @@ async fn run_treasury_dispatch_cycle(state: &AppState) {
     } else {
         tracing::error!("treasury dispatch cycle completion failed: session_store_poisoned");
     }
-    let _ = force_refresh_public_stats_cache(state, cycle_completed_at_unix_ms);
+    let _ = refresh_public_stats_cache(state, cycle_completed_at_unix_ms);
     let _ = force_refresh_treasury_status_cache(state, cycle_completed_at_unix_ms);
     finish_treasury_dispatch_cycle();
 }
