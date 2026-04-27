@@ -28,7 +28,7 @@ use std::sync::{Arc, OnceLock, RwLock, RwLockReadGuard, TryLockError};
 use std::time::{Duration, UNIX_EPOCH};
 
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -1520,6 +1520,7 @@ struct AppState {
     config: ServiceConfig,
     store: Arc<RwLock<ControlStore>>,
     public_stats_cache: Arc<RwLock<PublicStatsSnapshot>>,
+    public_stats_json_cache: Arc<RwLock<Vec<u8>>>,
     treasury_status_cache: Arc<RwLock<Option<TreasuryStatusResponse>>>,
     training_run_detail_cache: Arc<RwLock<HashMap<String, PublicTrainingRunDetailSnapshot>>>,
     training_launch_metrics: Arc<RwLock<TrainingLaunchLiveMetrics>>,
@@ -9073,12 +9074,15 @@ fn build_app_state(config: ServiceConfig) -> AppState {
     let mut initial_public_stats =
         build_public_stats_snapshot(&config, &store, &launch_metrics, now);
     apply_public_stats_cache_context(&mut initial_public_stats, now, "live");
+    let initial_public_stats_json =
+        public_stats_json_response_body(&initial_public_stats, now, "cached");
     let initial_treasury_status = store.treasury.status_response(&config.treasury, now);
     let (kernel_receipt_tx, _) = broadcast::channel(256);
     let (kernel_snapshot_tx, _) = broadcast::channel(256);
     AppState {
         store: Arc::new(RwLock::new(store)),
         public_stats_cache: Arc::new(RwLock::new(initial_public_stats)),
+        public_stats_json_cache: Arc::new(RwLock::new(initial_public_stats_json)),
         treasury_status_cache: Arc::new(RwLock::new(Some(initial_treasury_status))),
         training_run_detail_cache: Arc::new(RwLock::new(HashMap::new())),
         training_launch_metrics: Arc::new(RwLock::new(TrainingLaunchLiveMetrics::default())),
@@ -9537,18 +9541,22 @@ async fn healthz() -> Json<HealthResponse> {
     })
 }
 
-async fn public_stats(
-    State(state): State<AppState>,
-) -> Result<Json<PublicStatsSnapshot>, ApiError> {
-    let now = now_unix_ms();
-    let mut stats = cached_public_stats_snapshot(&state).ok_or_else(|| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "public_stats_cache_poisoned".to_string(),
-    })?;
-    apply_public_stats_cache_context(&mut stats, now, "cached");
+async fn public_stats(State(state): State<AppState>) -> Result<Response, ApiError> {
+    let body = match state.public_stats_json_cache.try_read() {
+        Ok(cache) => cache.clone(),
+        Err(TryLockError::WouldBlock) => {
+            return Err(store_lock_error("public_stats_json_cache_busy"));
+        }
+        Err(TryLockError::Poisoned(_)) => {
+            return Err(ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error: "internal_error",
+                reason: "public_stats_json_cache_poisoned".to_string(),
+            });
+        }
+    };
 
-    Ok(Json(stats))
+    Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
 }
 
 async fn training_operator_summary(
@@ -27011,9 +27019,29 @@ fn homepage_training_publication_from_record(
     }
 }
 
+fn public_stats_json_response_body(
+    snapshot: &PublicStatsSnapshot,
+    now_unix_ms: u64,
+    source: &str,
+) -> Vec<u8> {
+    let mut response_snapshot = snapshot.clone();
+    apply_public_stats_cache_context(&mut response_snapshot, now_unix_ms, source);
+    serde_json::to_vec(&response_snapshot).unwrap_or_else(|error| {
+        tracing::error!(
+            error = %error,
+            "failed to serialize cached public stats snapshot"
+        );
+        br#"{"error":"internal_error","reason":"public_stats_serialization_failed"}"#.to_vec()
+    })
+}
+
 fn replace_public_stats_cache(state: &AppState, snapshot: PublicStatsSnapshot) {
+    let body = public_stats_json_response_body(&snapshot, now_unix_ms(), "cached");
     if let Ok(mut cache) = state.public_stats_cache.write() {
         *cache = snapshot;
+    }
+    if let Ok(mut cache) = state.public_stats_json_cache.write() {
+        *cache = body;
     }
 }
 
@@ -34571,6 +34599,37 @@ mod tests {
                 .launch_health
                 .public_snapshot_source,
             "cached"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_fails_fast_when_serialized_cache_is_busy() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+        let _cache_guard = state
+            .public_stats_json_cache
+            .write()
+            .expect("hold serialized stats cache write lock");
+
+        let stats_response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("/api/stats should not wait behind serialized cache refresh")?;
+
+        assert_eq!(stats_response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let error: Value = response_json(stats_response).await?;
+        assert_eq!(
+            error.get("reason").and_then(Value::as_str),
+            Some("public_stats_json_cache_busy")
         );
 
         Ok(())
