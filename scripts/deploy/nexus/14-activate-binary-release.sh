@@ -17,6 +17,8 @@ REPORT_DIR="${ROOT_DIR}/docs/reports/nexus"
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
 LOCAL_RECEIPT_PATH="${REPORT_DIR}/${STAMP}-binary-release-activate-${NEXUS_RELEASE_SHORT_SHA}.json"
 OVERALL_STARTED_MS="$(timestamp_unix_ms)"
+: "${NEXUS_RELAY_MAX_WEBSOCKETS:=512}"
+: "${NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT:=256}"
 
 if ! instance_exists "$NEXUS_VM"; then
   die "Nexus VM does not exist: ${NEXUS_VM}. Run 02-provision-baseline.sh first."
@@ -42,6 +44,8 @@ runtime_env_path="$8"
 upstream_config_path="$9"
 systemd_unit_path="${10}"
 image_unit_backup_path="${11}"
+relay_max_websockets="${12}"
+relay_authority_max_in_flight="${13}"
 
 release_dir="${release_root}/releases/${release_sha}"
 old_target=""
@@ -51,6 +55,34 @@ sudo test -d "$release_dir"
 sudo test -f "${release_dir}/nexus-relay"
 sudo test -f "$runtime_env_path"
 sudo test -f "$upstream_config_path"
+
+sudo RUNTIME_ENV_PATH="$runtime_env_path" \
+  RELAY_MAX_WEBSOCKETS="$relay_max_websockets" \
+  RELAY_AUTHORITY_MAX_IN_FLIGHT="$relay_authority_max_in_flight" \
+  python3 - <<'PY'
+import os
+from pathlib import Path
+
+path = Path(os.environ["RUNTIME_ENV_PATH"])
+updates = {
+    "NEXUS_RELAY_MAX_WEBSOCKETS": os.environ["RELAY_MAX_WEBSOCKETS"],
+    "NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT": os.environ["RELAY_AUTHORITY_MAX_IN_FLIGHT"],
+}
+lines = path.read_text().splitlines()
+seen = set()
+updated_lines = []
+for line in lines:
+    key = line.split("=", 1)[0] if "=" in line else ""
+    if key in updates:
+        updated_lines.append(f"{key}={updates[key]}")
+        seen.add(key)
+    else:
+        updated_lines.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        updated_lines.append(f"{key}={value}")
+path.write_text("\n".join(updated_lines).rstrip() + "\n")
+PY
 
 if ! id -u "$service_user" >/dev/null 2>&1; then
   sudo useradd --system --uid "$service_uid" --user-group --no-create-home --shell /usr/sbin/nologin "$service_user"
@@ -127,7 +159,7 @@ ACTIVATION_RESULT="$(
     --tunnel-through-iap \
     --project "$GCP_PROJECT" \
     --zone "$GCP_ZONE" \
-    --command "chmod 755 /tmp/nexus-activate-binary-release.sh && /tmp/nexus-activate-binary-release.sh '${NEXUS_RELEASE_GIT_SHA}' '${NEXUS_RELEASE_ROOT}' '${NEXUS_CURRENT_LINK}' '${NEXUS_PREVIOUS_LINK}' '${NEXUS_SERVICE_USER}' '${NEXUS_SERVICE_GROUP}' '${NEXUS_SERVICE_UID}' '${NEXUS_RUNTIME_ENV_PATH}' '${NEXUS_UPSTREAM_CONFIG_PATH}' '${NEXUS_SYSTEMD_UNIT_PATH}' '${NEXUS_IMAGE_UNIT_BACKUP_PATH}'" \
+    --command "chmod 755 /tmp/nexus-activate-binary-release.sh && /tmp/nexus-activate-binary-release.sh '${NEXUS_RELEASE_GIT_SHA}' '${NEXUS_RELEASE_ROOT}' '${NEXUS_CURRENT_LINK}' '${NEXUS_PREVIOUS_LINK}' '${NEXUS_SERVICE_USER}' '${NEXUS_SERVICE_GROUP}' '${NEXUS_SERVICE_UID}' '${NEXUS_RUNTIME_ENV_PATH}' '${NEXUS_UPSTREAM_CONFIG_PATH}' '${NEXUS_SYSTEMD_UNIT_PATH}' '${NEXUS_IMAGE_UNIT_BACKUP_PATH}' '${NEXUS_RELAY_MAX_WEBSOCKETS}' '${NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT}'" \
     | tail -n 1
 )"
 ACTIVATION_FINISHED_MS="$(timestamp_unix_ms)"
