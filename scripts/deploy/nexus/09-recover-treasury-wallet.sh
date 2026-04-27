@@ -15,6 +15,7 @@ fi
 DEPLOY_IMAGE="${DEPLOY_IMAGE:-${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${NEXUS_ARTIFACT_REPO}/${NEXUS_IMAGE_NAME}:latest}"
 NEXUS_TREASURY_RECOVERY_ACTION="${NEXUS_TREASURY_RECOVERY_ACTION:-}"
 NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS="${NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS:-120000}"
+NEXUS_TREASURY_RECOVERY_COMMAND_TIMEOUT_SECONDS="${NEXUS_TREASURY_RECOVERY_COMMAND_TIMEOUT_SECONDS:-900}"
 NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS="${NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS:-false}"
 NEXUS_TREASURY_RECOVERY_RUST_LOG="${NEXUS_TREASURY_RECOVERY_RUST_LOG:-warn}"
 NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS="${NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS:-3}"
@@ -56,9 +57,16 @@ gcloud compute ssh "$NEXUS_VM" \
     echo \"\$ACCESS_TOKEN\" | sudo docker login -u oauth2accesstoken --password-stdin \"https://\${AR_HOST}\" >/dev/null; \
     sudo docker pull '$DEPLOY_IMAGE' >/dev/null; \
     REPORT_STDOUT_PATH='/tmp/openagents-nexus-treasury-wallet-recovery-${STAMP}.stdout.json'; \
+    recovery_child_active() { \
+      pgrep -f 'nexus-control treasury recovery-' >/dev/null 2>&1; \
+    }; \
     cleanup_relay_service() { \
       [[ \"\${BASH_SUBSHELL:-0}\" == \"0\" ]] || return 0; \
       rm -f \"\$REPORT_STDOUT_PATH\" >/dev/null 2>&1 || true; \
+      if recovery_child_active; then \
+        echo 'treasury recovery child is still active; leaving nexus-relay masked/stopped for wallet isolation' >&2; \
+        return 0; \
+      fi; \
       sudo systemctl unmask nexus-relay >/dev/null 2>&1 || true; \
       sudo systemctl start nexus-relay >/dev/null 2>&1 || true; \
     }; \
@@ -75,8 +83,17 @@ gcloud compute ssh "$NEXUS_VM" \
       sleep 1; \
     done; \
     [[ \"\$RELAY_STOPPED\" == \"1\" ]] || { echo 'nexus-relay did not stop before treasury recovery inspection' >&2; exit 1; }; \
+    ensure_relay_stopped_for_recovery() { \
+      sudo systemctl mask --runtime nexus-relay >/dev/null; \
+      sudo systemctl stop nexus-relay >/dev/null 2>&1 || true; \
+      sudo docker rm -f nexus-relay >/dev/null 2>&1 || true; \
+      if systemctl is-active nexus-relay >/dev/null; then \
+        echo 'nexus-relay restarted during treasury recovery inspection' >&2; \
+        return 1; \
+      fi; \
+    }; \
     run_nexus_control() { \
-      sudo docker run --rm \
+      timeout --foreground '${NEXUS_TREASURY_RECOVERY_COMMAND_TIMEOUT_SECONDS}' sudo docker run --rm \
         --entrypoint /usr/local/bin/nexus-control \
         --network host \
         --env-file /etc/nexus-relay/nexus-relay.env \
@@ -93,6 +110,7 @@ gcloud compute ssh "$NEXUS_VM" \
       local status=0; \
       while true; do \
         rm -f \"\$REPORT_STDOUT_PATH\"; \
+        ensure_relay_stopped_for_recovery; \
         if run_nexus_control treasury recovery-report --work-dir '${NEXUS_TREASURY_RECOVERY_WORK_DIR:-}' --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json >\"\$REPORT_STDOUT_PATH\"; then \
           cat \"\$REPORT_STDOUT_PATH\"; \
           return 0; \
@@ -110,9 +128,11 @@ gcloud compute ssh "$NEXUS_VM" \
       run_recovery_report; \
       if [[ '${NEXUS_TREASURY_RECOVERY_ACTION}' == 'report-and-cutover' ]]; then \
         jq -e '.comparison.validation_passed == true and .comparison.recommended_action == \"cutover_rebuilt_storage_after_service_stop\"' \"\$REPORT_STDOUT_PATH\" >/dev/null; \
+        ensure_relay_stopped_for_recovery; \
         run_nexus_control treasury recovery-cutover --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json; \
       fi; \
     else \
+      ensure_relay_stopped_for_recovery; \
       run_nexus_control treasury recovery-cutover --report-path '${NEXUS_TREASURY_RECOVERY_REPORT_PATH}' --json; \
     fi; \
     sudo systemctl unmask nexus-relay >/dev/null; \
