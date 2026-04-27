@@ -6751,11 +6751,26 @@ async fn inspect_treasury_wallet_storage(
             return inspection;
         }
     };
-    let wallet = match SparkWallet::new(signer, wallet_config).await {
-        Ok(wallet) => wallet,
-        Err(error) => {
+    inspection.runtime_status = Some("initializing".to_string());
+    inspection.runtime_detail =
+        Some("treasury wallet inspection is initializing isolated storage".to_string());
+    let wallet = match tokio::time::timeout(
+        Duration::from_millis(inspection_timeout_ms),
+        SparkWallet::new(signer, wallet_config),
+    )
+    .await
+    {
+        Ok(Ok(wallet)) => wallet,
+        Ok(Err(error)) => {
             inspection.error = Some(format!(
                 "failed to initialize treasury Spark wallet: {error}"
+            ));
+            return inspection;
+        }
+        Err(_) => {
+            inspection.runtime_status = Some("timeout".to_string());
+            inspection.error = Some(format!(
+                "timed out after {inspection_timeout_ms} ms while initializing treasury Spark wallet"
             ));
             return inspection;
         }

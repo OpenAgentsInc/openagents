@@ -50,6 +50,9 @@ SCRIPT_TEXT="$(cat "$TARGET_SCRIPT")"
 
 assert_contains 'REPORT_STDOUT_PATH=' "$SCRIPT_TEXT"
 assert_contains '[[ \"\${BASH_SUBSHELL:-0}\" == \"0\" ]] || return 0' "$SCRIPT_TEXT"
+assert_contains "pgrep -f 'nexus-control treasury recovery-'" "$SCRIPT_TEXT"
+assert_contains 'ensure_relay_stopped_for_recovery' "$SCRIPT_TEXT"
+assert_contains "timeout --foreground '\${NEXUS_TREASURY_RECOVERY_COMMAND_TIMEOUT_SECONDS}' sudo docker run" "$SCRIPT_TEXT"
 assert_contains 'run_nexus_control treasury recovery-report' "$SCRIPT_TEXT"
 assert_contains '>\"\$REPORT_STDOUT_PATH\"' "$SCRIPT_TEXT"
 assert_contains 'cat \"\$REPORT_STDOUT_PATH\"' "$SCRIPT_TEXT"
@@ -62,5 +65,6 @@ assert_not_contains '<<<\"\$REPORT_JSON\"' "$SCRIPT_TEXT"
 assert_before 'sudo docker pull' "trap 'cleanup_relay_service' EXIT"
 assert_before "trap 'cleanup_relay_service' EXIT" 'sudo systemctl mask --runtime nexus-relay'
 assert_before 'sudo systemctl mask --runtime nexus-relay' 'run_nexus_control treasury recovery-report'
+assert_before 'ensure_relay_stopped_for_recovery; \' 'run_nexus_control treasury recovery-report'
 
 printf 'ok: nexus recovery wrapper avoids cleanup trap subshell capture\n'
