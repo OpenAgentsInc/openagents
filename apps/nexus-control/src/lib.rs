@@ -6793,11 +6793,15 @@ fn training_window_closeout_payout_projection(
                 share_bps: share_bps.get(index).copied().unwrap_or(0),
                 weight_basis: weight_basis.clone(),
                 weight_value: participant_weights.get(index).copied().flatten(),
-                progress_credit: progress_class.progress_bearing(),
+                progress_credit: training_contribution_counts_as_accepted_progress(contribution),
                 validator_disposition: contribution.validator_disposition.label().to_string(),
             },
         )
         .collect::<Vec<_>>();
+    let progress_participant_count = participants
+        .iter()
+        .filter(|participant| participant.progress_credit)
+        .count() as u64;
 
     TrainingPayoutProjection {
         basis: training_payout_projection_basis(window.work_class, weighted)
@@ -6809,11 +6813,7 @@ fn training_window_closeout_payout_projection(
         shared_result,
         progress_bearing: progress_class.progress_bearing(),
         participant_count: participants.len() as u64,
-        progress_participant_count: if progress_class.progress_bearing() {
-            participants.len() as u64
-        } else {
-            0
-        },
+        progress_participant_count,
         participants,
     }
 }
@@ -7354,9 +7354,14 @@ fn training_window_closeout_summary(
             .or(base_summary.best_eval_score_bps),
         accepted_checkpoint_ref: if closeout_status.payout_eligible() && progress_bearing {
             window
-                .output_checkpoint_pointer
-                .as_ref()
-                .map(|pointer| pointer.checkpoint_ref.clone())
+                .promoted_checkpoint_ref
+                .clone()
+                .or_else(|| {
+                    window
+                        .output_checkpoint_pointer
+                        .as_ref()
+                        .map(|pointer| pointer.checkpoint_ref.clone())
+                })
                 .or(base_summary.accepted_checkpoint_ref)
         } else {
             None
@@ -7398,6 +7403,12 @@ fn training_window_closeout_metadata(
         "contributor_tiers": contributor_tiers,
         "window_summary_digest": window.window_summary_digest,
         "aggregated_delta_digest": window.aggregated_delta_digest,
+        "accepted_aggregate_id": window.accepted_aggregate_id,
+        "output_checkpoint_ref": window
+            .output_checkpoint_pointer
+            .as_ref()
+            .map(|pointer| pointer.checkpoint_ref.clone()),
+        "promoted_checkpoint_ref": window.promoted_checkpoint_ref,
         "gate_reason_codes": window.gate_reason_codes,
         "hold_reason_codes": window.hold_reason_codes,
         "validator_pool_ref": validation.validator_pool_ref,
@@ -7803,20 +7814,32 @@ fn training_window_contribution_outcomes_from_inputs(
                 .validator_disposition
                 .unwrap_or(ComputeAdapterContributionDisposition::ReplayRequired)
         };
+        let model_update_work =
+            training_work_class_counts_as_model_progress_participant(window.work_class);
         let aggregation_eligibility = if sealed_defaults {
-            ComputeAdapterAggregationEligibility::Eligible
+            if model_update_work {
+                ComputeAdapterAggregationEligibility::Eligible
+            } else {
+                ComputeAdapterAggregationEligibility::Ineligible
+            }
         } else {
-            input.aggregation_eligibility.unwrap_or_else(|| {
+            let requested_eligibility = input.aggregation_eligibility.unwrap_or_else(|| {
                 if validator_disposition == ComputeAdapterContributionDisposition::Accepted {
                     ComputeAdapterAggregationEligibility::Eligible
                 } else {
                     ComputeAdapterAggregationEligibility::Ineligible
                 }
-            })
+            });
+            if model_update_work {
+                requested_eligibility
+            } else {
+                ComputeAdapterAggregationEligibility::Ineligible
+            }
         };
         let accepted_for_aggregation = validator_disposition
             == ComputeAdapterContributionDisposition::Accepted
-            && aggregation_eligibility == ComputeAdapterAggregationEligibility::Eligible;
+            && aggregation_eligibility == ComputeAdapterAggregationEligibility::Eligible
+            && model_update_work;
         let validation_reason_codes = if sealed_defaults {
             vec![ComputeAdapterContributionValidationReasonCode::ReplayRequired]
         } else {
@@ -7935,16 +7958,21 @@ fn training_window_apply_contribution_disposition(
     contribution.validator_disposition = disposition;
     contribution.validator_receipt_digest = validator_receipt_digest.to_string();
     contribution.validation_reason_codes = training_validation_reason_codes(disposition);
+    let model_update_work =
+        training_work_class_counts_as_model_progress_participant(contribution.work_class);
     contribution.aggregation_eligibility =
-        if disposition == ComputeAdapterContributionDisposition::Accepted {
+        if disposition == ComputeAdapterContributionDisposition::Accepted && model_update_work {
             ComputeAdapterAggregationEligibility::Eligible
         } else {
             ComputeAdapterAggregationEligibility::Ineligible
         };
     contribution.accepted_for_aggregation = disposition
         == ComputeAdapterContributionDisposition::Accepted
-        && contribution.aggregation_eligibility == ComputeAdapterAggregationEligibility::Eligible;
+        && contribution.aggregation_eligibility == ComputeAdapterAggregationEligibility::Eligible
+        && model_update_work;
     if !contribution.accepted_for_aggregation {
+        contribution.aggregation_weight_basis = None;
+        contribution.aggregation_weight_value = None;
         contribution.aggregation_weight_bps = None;
     }
 }
@@ -23777,6 +23805,15 @@ fn training_work_progress_class(work_class: ComputeTrainingWorkClass) -> Trainin
     }
 }
 
+fn training_work_class_counts_as_model_progress_participant(
+    work_class: ComputeTrainingWorkClass,
+) -> bool {
+    matches!(
+        training_work_progress_class(work_class),
+        TrainingWorkProgressClass::ModelUpdate
+    )
+}
+
 fn training_outcome_work_class(
     outcome: &ComputeAcceptedOutcome,
 ) -> Option<ComputeTrainingWorkClass> {
@@ -23827,12 +23864,10 @@ fn training_work_class_weak_device_bearing(work_class: ComputeTrainingWorkClass)
 fn training_contribution_counts_as_accepted_progress(
     contribution: &ComputeAdapterContributionOutcome,
 ) -> bool {
-    training_work_progress_class(contribution.work_class).progress_bearing()
-        && (contribution.accepted_for_aggregation
-            || contribution.validator_disposition
-                == ComputeAdapterContributionDisposition::Accepted
-            || contribution.aggregation_eligibility
-                == ComputeAdapterAggregationEligibility::Eligible)
+    training_work_class_counts_as_model_progress_participant(contribution.work_class)
+        && contribution.validator_disposition == ComputeAdapterContributionDisposition::Accepted
+        && contribution.aggregation_eligibility == ComputeAdapterAggregationEligibility::Eligible
+        && contribution.accepted_for_aggregation
 }
 
 fn training_outcome_advances_checkpoint_lineage(outcome: &ComputeAcceptedOutcome) -> bool {
@@ -28294,6 +28329,146 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a1_minimal_contribution_inputs_mark_only_local_updates_for_aggregation() -> Result<()> {
+        let recorded_at_ms = 1_762_491_642_000i64;
+        let assignment = TrainingWindowAssignmentPlan {
+            assignment_id: "assignment.a1_minimal.local.0001".to_string(),
+            node_pubkey_hex: "node-a1-local".to_string(),
+            contributor_node_id: "node-a1-local".to_string(),
+            worker_id: "worker.a1.local".to_string(),
+            dataset_slice: training_window_dataset_slice(
+                "slice://a1-minimal/local",
+                "sha256:slice-a1-minimal-local",
+            ),
+            assignment_seed: "seed.a1.local".to_string(),
+        };
+        let make_window = |work_class: ComputeTrainingWorkClass| ComputeAdapterTrainingWindow {
+            window_id: format!("window.a1_minimal.{}", work_class.label()),
+            training_run_id: "a1_minimal_distributed_lm_001".to_string(),
+            stage_id: "stage.a1_minimal".to_string(),
+            contributor_set_revision_id: "contributors.a1.rev1".to_string(),
+            validator_policy_ref: super::A1_MINIMAL_DISTRIBUTED_LM_VALIDATOR_POLICY_REF.to_string(),
+            work_class,
+            replica_type: ComputeTrainingReplicaType::SingleNode,
+            round_index: Some(1),
+            base_checkpoint_ref: super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string(),
+            planned_local_step_count: Some(16),
+            aggregation_rule: Some("weighted_avg".to_string()),
+            aggregation_weight_basis: Some("tokens".to_string()),
+            adapter_target_id: String::new(),
+            adapter_family: String::new(),
+            base_model_ref: "model://a1-minimal-distributed-lm".to_string(),
+            adapter_format: String::new(),
+            source_policy_revision: compute_adapter_policy_revision(
+                "policy-rev-a1-minimal",
+                recorded_at_ms - 50,
+            ),
+            source_checkpoint_pointer: compute_adapter_checkpoint_pointer(
+                "sha256:pointer-a1-minimal",
+                recorded_at_ms - 25,
+            ),
+            status: ComputeAdapterWindowStatus::Reconciled,
+            total_contributions: 1,
+            admitted_contributions: 1,
+            accepted_contributions: 1,
+            quarantined_contributions: 0,
+            rejected_contributions: 0,
+            replay_required_contributions: 0,
+            replay_checked_contributions: 0,
+            held_out_average_score_bps: Some(9_500),
+            benchmark_pass_rate_bps: Some(9_700),
+            runtime_smoke_passed: Some(true),
+            promotion_ready: true,
+            gate_reason_codes: Vec::new(),
+            window_summary_digest: "sha256:a1-minimal-window".to_string(),
+            promotion_disposition: None,
+            hold_reason_codes: Vec::new(),
+            aggregated_delta_digest: Some("sha256:a1-minimal-aggregate".to_string()),
+            accepted_aggregate_id: Some("aggregate.a1_minimal.0001".to_string()),
+            output_policy_revision: None,
+            output_checkpoint_pointer: None,
+            promoted_checkpoint_ref: None,
+            accepted_outcome_id: None,
+            recorded_at_ms,
+            metadata: training_window_metadata_value(&TrainingWindowMetadata {
+                network_id: "trainnet.a1_minimal".to_string(),
+                artifact_bucket_uri: "gs://bucket".to_string(),
+                environment_ref: PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF
+                    .to_string(),
+                backend_family: "cpu".to_string(),
+                membership_revision: "members.a1.rev1".to_string(),
+                assignment_plans: vec![assignment.clone()],
+                validation: None,
+                planned_at_ms: recorded_at_ms - 200,
+                activated_at_ms: Some(recorded_at_ms - 150),
+                sealed_at_ms: Some(recorded_at_ms - 100),
+                reconciled_at_ms: Some(recorded_at_ms),
+                defensibility: None,
+                seal_deadline_ms: recorded_at_ms + 300_000,
+            }),
+        };
+
+        let mut local_input = training_window_contribution_input(
+            "contrib.a1_minimal.local",
+            assignment.assignment_id.as_str(),
+            "sha256:validator-a1-local",
+            Some(ComputeAdapterContributionDisposition::Accepted),
+        );
+        local_input.aggregation_eligibility = None;
+        let local_outcomes = super::training_window_contribution_outcomes_from_inputs(
+            &make_window(ComputeTrainingWorkClass::SmallModelLocalTraining),
+            std::slice::from_ref(&assignment),
+            None,
+            std::slice::from_ref(&local_input),
+            recorded_at_ms,
+            false,
+        )
+        .map_err(anyhow::Error::msg)?;
+        assert_eq!(
+            local_outcomes[0].aggregation_eligibility,
+            ComputeAdapterAggregationEligibility::Eligible
+        );
+        assert!(local_outcomes[0].accepted_for_aggregation);
+        assert!(super::training_contribution_counts_as_accepted_progress(
+            &local_outcomes[0]
+        ));
+
+        let mut support_input = local_input;
+        support_input.contribution_id = "contrib.a1_minimal.support".to_string();
+        support_input.artifact_id =
+            "oa.train_artifact.v1~kind~support_bundle~network~trainnet.a1_minimal~run~a1_minimal_distributed_lm_001~window~window.a1_minimal.support~assignment~assignment.a1_minimal.support.0001".to_string();
+        support_input.local_step_count = None;
+        support_input.consumed_token_count = None;
+        support_input.consumed_example_count = None;
+        support_input.aggregation_weight_basis = None;
+        support_input.aggregation_weight_value = None;
+        support_input.aggregation_weight_bps = None;
+        support_input.aggregation_eligibility =
+            Some(ComputeAdapterAggregationEligibility::Eligible);
+        let support_outcomes = super::training_window_contribution_outcomes_from_inputs(
+            &make_window(ComputeTrainingWorkClass::ValidationReplay),
+            std::slice::from_ref(&assignment),
+            None,
+            std::slice::from_ref(&support_input),
+            recorded_at_ms,
+            false,
+        )
+        .map_err(anyhow::Error::msg)?;
+        assert_eq!(
+            support_outcomes[0].aggregation_eligibility,
+            ComputeAdapterAggregationEligibility::Ineligible
+        );
+        assert!(!support_outcomes[0].accepted_for_aggregation);
+        assert_eq!(support_outcomes[0].aggregation_weight_basis, None);
+        assert_eq!(support_outcomes[0].aggregation_weight_value, None);
+        assert!(!super::training_contribution_counts_as_accepted_progress(
+            &support_outcomes[0]
+        ));
+
+        Ok(())
     }
 
     fn training_capability_envelope_v2(
@@ -47890,6 +48065,488 @@ mod tests {
         assert_eq!(
             validation_window.closeout_status.as_deref(),
             Some("rewarded")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a1_minimal_closeout_counts_participants_and_promoted_model_progress() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = 1_762_491_643_000u64;
+        let training_run_id = "a1_minimal_distributed_lm_001";
+        let network_id = "trainnet.a1_minimal";
+        let promoted_checkpoint_ref = "checkpoint://a1_minimal_distributed_lm/step-000001";
+
+        seed_training_scheduler_run_with_environment_contract_and_topology(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.a1_minimal.local.0001",
+            network_id,
+            "node-a1-local",
+            "sha256:build-a1-local",
+            PYLON_TRAINING_CUDA_ENVIRONMENT_REF,
+            ComputeTrainingWorkClass::SmallModelLocalTraining,
+            ComputeTrainingReplicaType::SingleNode,
+            Some(80),
+        );
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let mut support_node = training_node_admission_request_with_environment_refs(
+                "node-a1-support",
+                "sha256:build-a1-support",
+                vec![network_id],
+                Vec::new(),
+                Some(16),
+                vec![PYLON_TRAINING_APPLE_ENVIRONMENT_REF],
+            );
+            support_node.requested_at_ms = created_at_ms as i64 + 705;
+            store
+                .kernel
+                .record_training_node_admission(
+                    &training_kernel_mutation_context("node-a1-support", created_at_ms + 705),
+                    support_node,
+                )
+                .expect("admit support node");
+            let mut support_heartbeat = training_node_heartbeat_request_for_scope(
+                "node-a1-support",
+                "sha256:build-a1-support",
+                training_run_id,
+                "window.a1_minimal.support.0001",
+            );
+            support_heartbeat.recorded_at_ms = created_at_ms as i64 + 755;
+            support_heartbeat.last_heartbeat_at_ms = Some(created_at_ms as i64 + 755);
+            store
+                .kernel
+                .record_training_node_heartbeat(
+                    &training_kernel_mutation_context("node-a1-support", created_at_ms + 755),
+                    support_heartbeat,
+                )
+                .expect("heartbeat support node");
+        }
+
+        let run_definition = super::a1_minimal_distributed_lm_training_policy_metadata()
+            .map_err(anyhow::Error::msg)?
+            .get("run_definition")
+            .cloned()
+            .expect("A1 run definition metadata");
+        let make_metadata_value = |window_id: &str,
+                                   assignment_id: &str,
+                                   node_pubkey_hex: &str,
+                                   backend_family: &str,
+                                   planned_at_ms: i64,
+                                   recorded_at_ms: i64| {
+            let mut value = training_window_metadata_value(&TrainingWindowMetadata {
+                network_id: network_id.to_string(),
+                artifact_bucket_uri: "gs://bucket".to_string(),
+                environment_ref: PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF
+                    .to_string(),
+                backend_family: backend_family.to_string(),
+                membership_revision: "members.a1.rev1".to_string(),
+                assignment_plans: vec![TrainingWindowAssignmentPlan {
+                    assignment_id: assignment_id.to_string(),
+                    node_pubkey_hex: node_pubkey_hex.to_string(),
+                    contributor_node_id: node_pubkey_hex.to_string(),
+                    worker_id: format!("worker.{node_pubkey_hex}"),
+                    dataset_slice: training_window_dataset_slice(
+                        format!("slice://{window_id}").as_str(),
+                        format!("sha256:slice-{window_id}").as_str(),
+                    ),
+                    assignment_seed: format!("seed.{window_id}"),
+                }],
+                validation: None,
+                planned_at_ms,
+                activated_at_ms: Some(planned_at_ms + 50),
+                sealed_at_ms: Some(planned_at_ms + 100),
+                reconciled_at_ms: Some(recorded_at_ms),
+                defensibility: None,
+                seal_deadline_ms: recorded_at_ms + 300_000,
+            });
+            value["run_definition"] = run_definition.clone();
+            value
+        };
+
+        let local_window_id = "window.a1_minimal.local.0001";
+        let local_assignment_id = "assignment.a1_minimal.local.0001";
+        let support_window_id = "window.a1_minimal.support.0001";
+        let support_assignment_id = "assignment.a1_minimal.support.0001";
+        let local_recorded_at_ms = created_at_ms as i64 + 3_000;
+        let support_recorded_at_ms = created_at_ms as i64 + 2_000;
+        let source_policy_revision =
+            compute_adapter_policy_revision("policy-rev-a1-minimal", created_at_ms as i64 + 900);
+        let source_checkpoint_pointer = ComputeAdapterCheckpointPointer {
+            scope_kind: "training_run".to_string(),
+            scope_id: training_run_id.to_string(),
+            checkpoint_family: super::A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY.to_string(),
+            checkpoint_ref: super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF.to_string(),
+            manifest_digest: "sha256:a1-minimal-base-manifest".to_string(),
+            updated_at_ms: created_at_ms as i64 + 950,
+            pointer_digest: "sha256:a1-minimal-base-pointer".to_string(),
+        };
+        let output_checkpoint_pointer = ComputeAdapterCheckpointPointer {
+            scope_kind: "window".to_string(),
+            scope_id: local_window_id.to_string(),
+            checkpoint_family: super::A1_MINIMAL_DISTRIBUTED_LM_CHECKPOINT_FAMILY.to_string(),
+            checkpoint_ref: promoted_checkpoint_ref.to_string(),
+            manifest_digest: "sha256:a1-minimal-promoted-manifest".to_string(),
+            updated_at_ms: local_recorded_at_ms,
+            pointer_digest: "sha256:a1-minimal-promoted-pointer".to_string(),
+        };
+
+        let make_window = |window_id: &str,
+                           assignment_id: &str,
+                           node_pubkey_hex: &str,
+                           work_class: ComputeTrainingWorkClass,
+                           recorded_at_ms: i64,
+                           aggregate: bool|
+         -> ComputeAdapterTrainingWindow {
+            ComputeAdapterTrainingWindow {
+                window_id: window_id.to_string(),
+                training_run_id: training_run_id.to_string(),
+                stage_id: if aggregate {
+                    "stage.a1_minimal.local_update"
+                } else {
+                    "stage.a1_minimal.support"
+                }
+                .to_string(),
+                contributor_set_revision_id: "contributors.a1.rev1".to_string(),
+                validator_policy_ref: "policy://validator/mvp/v1".to_string(),
+                work_class,
+                replica_type: ComputeTrainingReplicaType::SingleNode,
+                round_index: Some(1),
+                base_checkpoint_ref: super::A1_MINIMAL_DISTRIBUTED_LM_BASE_CHECKPOINT_REF
+                    .to_string(),
+                planned_local_step_count: aggregate.then_some(16),
+                aggregation_rule: aggregate.then_some("weighted_avg".to_string()),
+                aggregation_weight_basis: aggregate.then_some("tokens".to_string()),
+                adapter_target_id: String::new(),
+                adapter_family: String::new(),
+                base_model_ref: "model://a1-minimal-distributed-lm".to_string(),
+                adapter_format: String::new(),
+                source_policy_revision: source_policy_revision.clone(),
+                source_checkpoint_pointer: source_checkpoint_pointer.clone(),
+                status: ComputeAdapterWindowStatus::Reconciled,
+                total_contributions: 1,
+                admitted_contributions: 1,
+                accepted_contributions: 1,
+                quarantined_contributions: 0,
+                rejected_contributions: 0,
+                replay_required_contributions: 0,
+                replay_checked_contributions: 0,
+                held_out_average_score_bps: aggregate.then_some(9_520),
+                benchmark_pass_rate_bps: aggregate.then_some(9_700),
+                runtime_smoke_passed: Some(true),
+                promotion_ready: aggregate,
+                gate_reason_codes: Vec::new(),
+                window_summary_digest: format!("sha256:summary-{window_id}"),
+                promotion_disposition: None,
+                hold_reason_codes: Vec::new(),
+                aggregated_delta_digest: aggregate
+                    .then_some("sha256:a1-minimal-aggregate".to_string()),
+                accepted_aggregate_id: aggregate.then_some("aggregate.a1_minimal.0001".to_string()),
+                output_policy_revision: None,
+                output_checkpoint_pointer: aggregate.then_some(output_checkpoint_pointer.clone()),
+                promoted_checkpoint_ref: aggregate.then_some(promoted_checkpoint_ref.to_string()),
+                accepted_outcome_id: None,
+                recorded_at_ms,
+                metadata: make_metadata_value(
+                    window_id,
+                    assignment_id,
+                    node_pubkey_hex,
+                    if aggregate { "cuda" } else { "metal" },
+                    recorded_at_ms - 200,
+                    recorded_at_ms,
+                ),
+            }
+        };
+
+        let local_window = make_window(
+            local_window_id,
+            local_assignment_id,
+            "node-a1-local",
+            ComputeTrainingWorkClass::SmallModelLocalTraining,
+            local_recorded_at_ms,
+            true,
+        );
+        let support_window = make_window(
+            support_window_id,
+            support_assignment_id,
+            "node-a1-support",
+            ComputeTrainingWorkClass::ValidationReplay,
+            support_recorded_at_ms,
+            false,
+        );
+
+        let mut local_input = training_window_contribution_input(
+            "contrib.a1_minimal.local",
+            local_assignment_id,
+            "sha256:validator-a1-local",
+            Some(ComputeAdapterContributionDisposition::Accepted),
+        );
+        local_input.artifact_id =
+            "oa.train_artifact.v1~kind~local_update~network~trainnet.a1_minimal~run~a1_minimal_distributed_lm_001~window~window.a1_minimal.local.0001~assignment~assignment.a1_minimal.local.0001".to_string();
+        local_input.local_step_count = Some(16);
+        local_input.consumed_token_count = Some(65_536);
+        local_input.aggregation_weight_value = Some(65_536);
+        local_input.metadata = json!({
+            "artifact_kind": "local_update",
+            "contributor_capability_tier": "tier2_trainer",
+            "contributor_weak_device_bearing": false,
+        });
+        let mut support_input = training_window_contribution_input(
+            "contrib.a1_minimal.support",
+            support_assignment_id,
+            "sha256:validator-a1-support",
+            Some(ComputeAdapterContributionDisposition::Accepted),
+        );
+        support_input.artifact_id =
+            "oa.train_artifact.v1~kind~support_bundle~network~trainnet.a1_minimal~run~a1_minimal_distributed_lm_001~window~window.a1_minimal.support.0001~assignment~assignment.a1_minimal.support.0001".to_string();
+        support_input.local_step_count = None;
+        support_input.consumed_token_count = None;
+        support_input.consumed_example_count = None;
+        support_input.aggregation_weight_basis = None;
+        support_input.aggregation_weight_value = None;
+        support_input.aggregation_weight_bps = None;
+        support_input.aggregation_eligibility =
+            Some(ComputeAdapterAggregationEligibility::Eligible);
+        support_input.metadata = json!({
+            "artifact_kind": "support_bundle",
+            "contributor_capability_tier": "tier1_validation",
+            "contributor_weak_device_bearing": true,
+        });
+
+        let local_assignment = TrainingWindowAssignmentPlan {
+            assignment_id: local_assignment_id.to_string(),
+            node_pubkey_hex: "node-a1-local".to_string(),
+            contributor_node_id: "node-a1-local".to_string(),
+            worker_id: "worker.node-a1-local".to_string(),
+            dataset_slice: training_window_dataset_slice(
+                "slice://a1-minimal-local",
+                "sha256:slice-a1-minimal-local",
+            ),
+            assignment_seed: "seed.a1.local".to_string(),
+        };
+        let support_assignment = TrainingWindowAssignmentPlan {
+            assignment_id: support_assignment_id.to_string(),
+            node_pubkey_hex: "node-a1-support".to_string(),
+            contributor_node_id: "node-a1-support".to_string(),
+            worker_id: "worker.node-a1-support".to_string(),
+            dataset_slice: training_window_dataset_slice(
+                "slice://a1-minimal-support",
+                "sha256:slice-a1-minimal-support",
+            ),
+            assignment_seed: "seed.a1.support".to_string(),
+        };
+        let local_contributions = super::training_window_contribution_outcomes_from_inputs(
+            &local_window,
+            std::slice::from_ref(&local_assignment),
+            None,
+            std::slice::from_ref(&local_input),
+            local_recorded_at_ms,
+            false,
+        )
+        .map_err(anyhow::Error::msg)?;
+        let support_contributions = super::training_window_contribution_outcomes_from_inputs(
+            &support_window,
+            std::slice::from_ref(&support_assignment),
+            None,
+            std::slice::from_ref(&support_input),
+            support_recorded_at_ms,
+            false,
+        )
+        .map_err(anyhow::Error::msg)?;
+        assert!(local_contributions[0].accepted_for_aggregation);
+        assert!(!support_contributions[0].accepted_for_aggregation);
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let run = store
+                .kernel
+                .get_compute_training_run(training_run_id)
+                .expect("A1 minimal training run")
+                .clone();
+            for (window, contributions, recorded_at_ms) in [
+                (
+                    support_window.clone(),
+                    support_contributions.clone(),
+                    support_recorded_at_ms,
+                ),
+                (
+                    local_window.clone(),
+                    local_contributions.clone(),
+                    local_recorded_at_ms,
+                ),
+            ] {
+                store
+                    .kernel
+                    .record_compute_adapter_window(
+                        &training_kernel_mutation_context("scheduler", recorded_at_ms as u64),
+                        RecordComputeAdapterWindowRequest {
+                            idempotency_key: format!(
+                                "idemp.a1_minimal.window.{}",
+                                window.window_id
+                            ),
+                            trace: TraceContext::default(),
+                            policy: kernel_policy(),
+                            window: window.clone(),
+                            contribution_outcomes: contributions.clone(),
+                            evidence: Vec::new(),
+                            hints: ReceiptHints::default(),
+                        },
+                    )
+                    .expect("record A1 minimal window");
+                let progress_class = training_work_progress_class(window.work_class);
+                let contributor_tiers =
+                    training_contributor_tier_projection(contributions.as_slice());
+                store
+                    .kernel
+                    .accept_compute_outcome(
+                        &training_kernel_mutation_context("scheduler", recorded_at_ms as u64 + 1),
+                        AcceptComputeOutcomeRequest {
+                            idempotency_key: format!(
+                                "idemp.a1_minimal.closeout.{}",
+                                window.window_id
+                            ),
+                            trace: TraceContext::default(),
+                            policy: kernel_policy(),
+                            outcome: ComputeAcceptedOutcome {
+                                outcome_id: format!("accepted.training_window.{}", window.window_id),
+                                outcome_kind: ComputeAcceptedOutcomeKind::TrainingRun,
+                                source_run_id: training_run_id.to_string(),
+                                environment_binding: run.environment_binding.clone(),
+                                checkpoint_binding: Some(run.checkpoint_binding.clone()),
+                                validator_policy_ref: Some(run.validator_policy_ref.clone()),
+                                benchmark_package_refs: run.benchmark_package_refs.clone(),
+                                accepted_at_ms: recorded_at_ms + 1,
+                                evaluation_summary: None,
+                                training_summary: Some(ComputeTrainingSummary {
+                                    completed_step_count: (window.work_class
+                                        == ComputeTrainingWorkClass::SmallModelLocalTraining)
+                                        .then_some(16),
+                                    processed_token_count: (window.work_class
+                                        == ComputeTrainingWorkClass::SmallModelLocalTraining)
+                                        .then_some(65_536),
+                                    average_loss: (window.work_class
+                                        == ComputeTrainingWorkClass::SmallModelLocalTraining)
+                                        .then_some(3.14),
+                                    best_eval_score_bps: window.held_out_average_score_bps,
+                                    accepted_checkpoint_ref: window.promoted_checkpoint_ref.clone(),
+                                    aggregate_metrics: Vec::new(),
+                                    artifacts: Vec::new(),
+                                }),
+                                metadata: json!({
+                                    "network_id": network_id,
+                                    "window_id": window.window_id,
+                                    "run_definition_ref": super::A1_MINIMAL_DISTRIBUTED_LM_RUN_DEFINITION_REF,
+                                    "run_definition": run_definition,
+                                    "closeout_status": "rewarded",
+                                    "payout_eligible": true,
+                                    "work_class": window.work_class.label(),
+                                    "replica_type": window.replica_type.label(),
+                                    "progress_class": progress_class.label(),
+                                    "contributor_tiers": contributor_tiers,
+                                    "aggregated_delta_digest": window.aggregated_delta_digest,
+                                    "accepted_aggregate_id": window.accepted_aggregate_id,
+                                    "output_checkpoint_ref": window
+                                        .output_checkpoint_pointer
+                                        .as_ref()
+                                        .map(|pointer| pointer.checkpoint_ref.clone()),
+                                    "promoted_checkpoint_ref": window.promoted_checkpoint_ref,
+                                    "payout_projection": super::training_window_closeout_payout_projection(
+                                        &window,
+                                        contributions.as_slice(),
+                                    ),
+                                }),
+                            },
+                            evidence: Vec::new(),
+                            hints: ReceiptHints::default(),
+                        },
+                    )
+                    .expect("accept A1 minimal closeout");
+            }
+        }
+
+        super::force_refresh_public_stats_cache(&state, created_at_ms + 4_000);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.training_assigned_contributors, 2);
+        assert_eq!(stats.training_accepted_contributors, 2);
+        assert_eq!(stats.training_model_progress_contributors, 1);
+        assert_eq!(
+            stats
+                .training_public_state
+                .latest_promoted_checkpoint_ref
+                .as_deref(),
+            Some(promoted_checkpoint_ref)
+        );
+        assert_eq!(
+            stats.training_public_state.latest_aggregate_ref.as_deref(),
+            Some("aggregate.a1_minimal.0001")
+        );
+
+        let detail_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/training/runs/{training_run_id}?refresh=true"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(detail_response.status(), StatusCode::OK);
+        let detail: PublicTrainingRunDetailSnapshot = response_json(detail_response).await?;
+        assert_eq!(detail.run.accepted_contributors, 2);
+        assert_eq!(detail.run.model_progress_contributors, 1);
+        assert_eq!(
+            detail.run.latest_promoted_checkpoint_ref.as_deref(),
+            Some(promoted_checkpoint_ref)
+        );
+        assert_eq!(
+            detail
+                .featured_window
+                .as_ref()
+                .and_then(|window| window.promoted_checkpoint_ref.as_deref()),
+            Some(promoted_checkpoint_ref)
+        );
+        let local_detail = detail
+            .contributions
+            .iter()
+            .find(|contribution| contribution.contribution_id == "contrib.a1_minimal.local")
+            .expect("local update contribution detail");
+        assert!(local_detail.accepted_for_aggregation);
+        assert_eq!(local_detail.local_step_count, Some(16));
+        assert_eq!(local_detail.consumed_token_count, Some(65_536));
+        let support_detail = detail
+            .contributions
+            .iter()
+            .find(|contribution| contribution.contribution_id == "contrib.a1_minimal.support")
+            .expect("support contribution detail");
+        assert_eq!(support_detail.validator_disposition, "accepted");
+        assert_eq!(support_detail.aggregation_eligibility, "ineligible");
+        assert!(!support_detail.accepted_for_aggregation);
+
+        let visualization = fetch_training_visualization(&app).await?;
+        assert_eq!(visualization.progress.accepted_contributors, 2);
+        assert_eq!(visualization.progress.model_progress_contributors, 1);
+        assert!(
+            visualization
+                .checkpoints
+                .iter()
+                .any(|checkpoint| checkpoint.checkpoint_role == "promoted"
+                    && checkpoint.checkpoint_ref == promoted_checkpoint_ref)
         );
 
         Ok(())
