@@ -198,7 +198,15 @@ struct OperatorPanelStats {
     last_job_result: Option<String>,
     last_provider_event_at_ms: Option<u64>,
     recent_activity: Vec<String>,
+    payment_history: Vec<PaymentHistoryEntry>,
     online_uptime_seconds: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PaymentHistoryEntry {
+    settled_at_ms: u64,
+    amount_sats: u64,
+    job_id: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -2680,20 +2688,37 @@ impl AppShell {
             Constraint::Min(8),
         ])
         .split(columns[0]);
-        let right = Layout::vertical([
-            Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(6, 8)),
-            Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(6, 8)),
-            Constraint::Length((self.summary_lines().len() as u16 + 2).clamp(5, 7)),
-            Constraint::Min((self.rank_lines().len() as u16 + 2).clamp(7, 9)),
-        ])
-        .split(columns[1]);
+        let compact_right_column = columns[1].height < 24;
+        let right = if compact_right_column {
+            Layout::vertical([
+                Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(4, 5)),
+                Constraint::Length((self.payment_feed_lines().len() as u16 + 2).clamp(4, 5)),
+                Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(4, 5)),
+                Constraint::Min((self.rank_lines().len() as u16 + 2).clamp(4, 6)),
+            ])
+            .split(columns[1])
+        } else {
+            Layout::vertical([
+                Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(6, 8)),
+                Constraint::Length((self.payment_feed_lines().len() as u16 + 2).clamp(6, 9)),
+                Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(6, 8)),
+                Constraint::Length((self.summary_lines().len() as u16 + 2).clamp(5, 7)),
+                Constraint::Min((self.rank_lines().len() as u16 + 2).clamp(7, 9)),
+            ])
+            .split(columns[1])
+        };
 
         frame.render_widget(self.homework_panel(), left[0]);
         frame.render_widget(self.activity_panel(), left[1]);
         frame.render_widget(self.operator_panel(), right[0]);
-        frame.render_widget(self.wallet_card_panel(), right[1]);
-        frame.render_widget(self.summary_panel(), right[2]);
-        frame.render_widget(self.rank_panel(), right[3]);
+        frame.render_widget(self.payment_feed_panel(), right[1]);
+        frame.render_widget(self.wallet_card_panel(), right[2]);
+        if compact_right_column {
+            frame.render_widget(self.rank_panel(), right[3]);
+        } else {
+            frame.render_widget(self.summary_panel(), right[3]);
+            frame.render_widget(self.rank_panel(), right[4]);
+        }
         frame.render_widget(self.footer_panel(), vertical[2]);
     }
 
@@ -2792,6 +2817,10 @@ impl AppShell {
 
     fn operator_panel(&self) -> Paragraph<'static> {
         panel("Earnings", Text::from(self.operator_lines()))
+    }
+
+    fn payment_feed_panel(&self) -> Paragraph<'static> {
+        panel("Payment History", Text::from(self.payment_feed_lines()))
     }
 
     fn wallet_overview_panel(&self) -> Paragraph<'static> {
@@ -3497,6 +3526,32 @@ impl AppShell {
                     format_elapsed_since_ms(payment.updated_at_ms, current_epoch_ms_u64())
                 )
             })
+    }
+
+    fn payment_feed_lines(&self) -> Vec<Line<'static>> {
+        if self.operator_stats.payment_history.is_empty() {
+            return vec![Line::from(Span::styled(
+                "No payouts received yet.",
+                muted_text(),
+            ))];
+        }
+
+        let now_ms = current_epoch_ms_u64();
+        self.operator_stats
+            .payment_history
+            .iter()
+            .map(|entry| {
+                Line::from(vec![
+                    Span::styled(format_sats(entry.amount_sats), success_accent()),
+                    Span::raw("  "),
+                    Span::raw(format!(
+                        "{} ago  job {}",
+                        format_elapsed_since_ms(entry.settled_at_ms, now_ms),
+                        short_job_id(entry.job_id.as_str())
+                    )),
+                ])
+            })
+            .collect()
     }
 
     fn rank_lines(&self) -> Vec<Line<'static>> {
@@ -4784,6 +4839,7 @@ fn compute_operator_panel_stats_at(
                 .max()
         });
     let recent_activity = recent_provider_activity(ledger, now_ms);
+    let payment_history = payment_history_feed(ledger);
 
     OperatorPanelStats {
         desired_mode,
@@ -4809,6 +4865,7 @@ fn compute_operator_panel_stats_at(
         last_job_result,
         last_provider_event_at_ms,
         recent_activity,
+        payment_history,
         online_uptime_seconds: snapshot.map(|value| value.runtime.online_uptime_seconds),
     }
 }
@@ -5090,6 +5147,35 @@ fn recent_provider_activity(ledger: &pylon::PylonLedger, now_ms: u64) -> Vec<Str
         .map(|(_, label)| label)
         .take(3)
         .collect()
+}
+
+fn payment_history_feed(ledger: &pylon::PylonLedger) -> Vec<PaymentHistoryEntry> {
+    let mut entries = ledger
+        .settlements
+        .iter()
+        .filter(|settlement| settlement.direction == "provider")
+        .filter(|settlement| provider_settlement_counted_as_settled(settlement.status.as_str()))
+        .map(|settlement| PaymentHistoryEntry {
+            settled_at_ms: settlement_settled_at_ms(settlement),
+            amount_sats: settlement.amount_msats / 1_000,
+            job_id: settlement.job_id.clone(),
+        })
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| {
+        right
+            .settled_at_ms
+            .cmp(&left.settled_at_ms)
+            .then_with(|| left.job_id.cmp(&right.job_id))
+    });
+    entries
+}
+
+fn settlement_settled_at_ms(settlement: &pylon::PylonSettlementRecord) -> u64 {
+    settlement.updated_at_ms.max(settlement.created_at_ms)
+}
+
+fn short_job_id(job_id: &str) -> String {
+    job_id.chars().take(8).collect()
 }
 
 fn provider_job_activity_label(job: &pylon::PylonLedgerJob) -> Option<String> {
@@ -5702,23 +5788,23 @@ fn estimate_token_count(text: &str) -> usize {
 mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission,
-        LOCAL_CHAT_PLAIN_TEXT_POLICY, OperatorPanelStats, ProviderCommandInFlight,
-        WalletSurfaceState, WorkerEvent, active_chat_title, admin_listener_reachable,
-        animated_right_now_suffix, animated_stack_gain_suffix, compute_operator_panel_stats_at,
-        current_epoch_ms_u64, estimate_token_count, local_chat_request_messages,
-        managed_worker_log_path, max_transcript_scroll_y, mission_control_signal_spans,
-        parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
-        parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
-        parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
-        parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
-        recent_provider_activity, render_rank_progress_spans, shell_title,
-        should_publish_provider_presence, stabilize_operator_panel_stats, stacker_rank_progress,
-        summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
-        wrapped_row_count,
+        LOCAL_CHAT_PLAIN_TEXT_POLICY, OperatorPanelStats, PaymentHistoryEntry,
+        ProviderCommandInFlight, WalletSurfaceState, WorkerEvent, active_chat_title,
+        admin_listener_reachable, animated_right_now_suffix, animated_stack_gain_suffix,
+        compute_operator_panel_stats_at, current_epoch_ms_u64, estimate_token_count,
+        local_chat_request_messages, managed_worker_log_path, max_transcript_scroll_y,
+        mission_control_signal_spans, parse_tui_buyer_job_history_request,
+        parse_tui_buyer_job_policy_mode, parse_tui_buyer_job_request_id,
+        parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
+        parse_tui_optional_limit, parse_tui_payout_history_request,
+        parse_tui_payout_withdraw_request, payment_history_feed, recent_provider_activity,
+        render_rank_progress_spans, shell_title, should_publish_provider_presence,
+        stabilize_operator_panel_stats, stacker_rank_progress, summarize_chat_metrics,
+        transcript_viewport_height, transcript_wrap_width, wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use openagents_provider_substrate::{ProviderDesiredMode, ProviderPersistedSnapshot};
-    use ratatui::layout::Rect;
+    use ratatui::{Terminal, backend::TestBackend, layout::Rect};
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
@@ -5830,6 +5916,7 @@ mod tests {
             last_job_result: Some("settled".to_string()),
             last_provider_event_at_ms: Some(1_762_700_500_000),
             recent_activity: vec![String::from("settled 21 sats 6m ago")],
+            payment_history: Vec::new(),
             online_uptime_seconds: Some(60),
         };
 
@@ -6440,6 +6527,129 @@ mod tests {
         assert!(activity.contains("[PAID] stacked 7 sats"));
         assert!(!activity.contains("[DONE]"));
         assert!(!activity.contains("[LIVE]"));
+    }
+
+    #[test]
+    fn payment_history_feed_includes_all_settled_provider_payments_newest_first() {
+        let now_ms = 1_762_700_500_000_u64;
+        let mut ledger = pylon::PylonLedger::default();
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "set-older".to_string(),
+            job_id: "job-older-abcdef".to_string(),
+            direction: "provider".to_string(),
+            status: "settled".to_string(),
+            amount_msats: 21_000,
+            payment_reference: None,
+            receipt_detail: None,
+            created_at_ms: now_ms - 20_000,
+            updated_at_ms: now_ms - 10_000,
+        });
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "set-newer".to_string(),
+            job_id: "job-newer-abcdef".to_string(),
+            direction: "provider".to_string(),
+            status: "payment_received".to_string(),
+            amount_msats: 42_000,
+            payment_reference: None,
+            receipt_detail: None,
+            created_at_ms: now_ms - 2_000,
+            updated_at_ms: now_ms - 1_000,
+        });
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "set-pending".to_string(),
+            job_id: "job-pending".to_string(),
+            direction: "provider".to_string(),
+            status: "payment_required".to_string(),
+            amount_msats: 84_000,
+            payment_reference: None,
+            receipt_detail: None,
+            created_at_ms: now_ms - 500,
+            updated_at_ms: now_ms - 400,
+        });
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "set-consumer".to_string(),
+            job_id: "job-consumer".to_string(),
+            direction: "consumer".to_string(),
+            status: "settled".to_string(),
+            amount_msats: 168_000,
+            payment_reference: None,
+            receipt_detail: None,
+            created_at_ms: now_ms - 300,
+            updated_at_ms: now_ms - 200,
+        });
+
+        let feed = payment_history_feed(&ledger);
+
+        assert_eq!(
+            feed,
+            vec![
+                PaymentHistoryEntry {
+                    settled_at_ms: now_ms - 1_000,
+                    amount_sats: 42,
+                    job_id: "job-newer-abcdef".to_string(),
+                },
+                PaymentHistoryEntry {
+                    settled_at_ms: now_ms - 10_000,
+                    amount_sats: 21,
+                    job_id: "job-older-abcdef".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn payment_feed_lines_render_empty_state_and_short_job_id() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+
+        let empty = app
+            .payment_feed_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(empty.contains("No payouts received yet."));
+
+        app.operator_stats.payment_history = vec![PaymentHistoryEntry {
+            settled_at_ms: current_epoch_ms_u64().saturating_sub(120_000),
+            amount_sats: 42,
+            job_id: "job-abcdef-1234567890".to_string(),
+        }];
+        let rendered = app
+            .payment_feed_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(rendered.contains("42 sats"));
+        assert!(rendered.contains("ago"));
+        assert!(rendered.contains("job job-abcd"));
+        assert!(!rendered.contains("1234567890"));
+    }
+
+    #[test]
+    fn payment_history_panel_renders_on_standard_terminal_size() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.operator_stats.payment_history = vec![PaymentHistoryEntry {
+            settled_at_ms: current_epoch_ms_u64().saturating_sub(60_000),
+            amount_sats: 13,
+            job_id: "job-render-123456".to_string(),
+        }];
+
+        terminal.draw(|frame| app.render(frame)).expect("render");
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(rendered.contains("Payment History"));
+        assert!(rendered.contains("13 sats"));
+        assert!(rendered.contains("job-rend"));
     }
 
     #[test]
