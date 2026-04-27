@@ -285,7 +285,7 @@ const DEFAULT_TRAINING_GCS_SIGNED_URL_TTL_SECONDS: u64 = 900;
 const DEFAULT_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS: u64 = 3_600;
 const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
 const TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS: u64 = 1_000;
-const PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS: u64 = 5_000;
+const PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS: u64 = 15_000;
 const TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT: usize = 64;
 const TRAINING_NODE_LIST_DEFAULT_LIMIT: usize = 128;
 #[cfg(test)]
@@ -1484,7 +1484,7 @@ const fn homework_launch_pay_only_on_accept_default() -> bool {
     true
 }
 
-const TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS: u64 = 15_000;
+const TRAINING_PUBLIC_SNAPSHOT_MAX_AGE_MS: u64 = 30_000;
 const TRAINING_PUBLIC_MIRROR_MAX_AGE_MS: u64 = 120_000;
 const TRAINING_RUN_DETAIL_CACHE_MAX_AGE_MS: u64 = 120_000;
 const TRAINING_RUN_DETAIL_SNAPSHOT_SOURCE_LIVE: &str = "live";
@@ -1523,6 +1523,7 @@ struct AppState {
     store: Arc<RwLock<ControlStore>>,
     public_stats_cache: Arc<RwLock<PublicStatsSnapshot>>,
     public_stats_json_cache: Arc<RwLock<Vec<u8>>>,
+    training_rollout_policy_cache: Arc<RwLock<TrainingRolloutPolicyResponse>>,
     treasury_status_cache: Arc<RwLock<Option<TreasuryStatusResponse>>>,
     training_run_detail_cache: Arc<RwLock<HashMap<String, PublicTrainingRunDetailSnapshot>>>,
     training_launch_metrics: Arc<RwLock<TrainingLaunchLiveMetrics>>,
@@ -1943,6 +1944,14 @@ fn training_rollout_abuse_summary_response(
         nodes_over_recent_non_useful_limit: snapshot.nodes_over_recent_non_useful_limit,
         payout_hold_nodes: snapshot.payout_hold_nodes,
     }
+}
+
+fn training_rollout_abuse_snapshot_required(controls: &TrainingRolloutAbuseControls) -> bool {
+    controls.enabled
+        && (controls.max_active_leases_per_settlement_destination > 0
+            || controls.max_recent_expired_leases_per_node > 0
+            || controls.max_recent_non_useful_contributions_per_node > 0
+            || controls.payout_hold_after_non_useful_contributions > 0)
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -6954,6 +6963,10 @@ fn training_fleet_abuse_snapshot(
     controls: &TrainingRolloutAbuseControls,
     now_unix_ms: u64,
 ) -> TrainingFleetAbuseSnapshot {
+    if !training_rollout_abuse_snapshot_required(controls) {
+        return TrainingFleetAbuseSnapshot::default();
+    }
+
     let lookback_window_ms = training_rollout_abuse_effective_lookback_ms(controls);
     let lookback_cutoff_ms = now_unix_ms.saturating_sub(lookback_window_ms);
     let admitted_nodes = kernel.list_admitted_training_nodes(
@@ -9107,6 +9120,7 @@ fn build_app_state(config: ServiceConfig) -> AppState {
     apply_public_stats_cache_context(&mut initial_public_stats, now, "live");
     let initial_public_stats_json =
         public_stats_json_response_body(&initial_public_stats, now, "cached");
+    let initial_rollout_policy = training_rollout_policy_snapshot(&store, now);
     let initial_treasury_status = store.treasury.status_response(&config.treasury, now);
     let (kernel_receipt_tx, _) = broadcast::channel(256);
     let (kernel_snapshot_tx, _) = broadcast::channel(256);
@@ -9114,6 +9128,7 @@ fn build_app_state(config: ServiceConfig) -> AppState {
         store: Arc::new(RwLock::new(store)),
         public_stats_cache: Arc::new(RwLock::new(initial_public_stats)),
         public_stats_json_cache: Arc::new(RwLock::new(initial_public_stats_json)),
+        training_rollout_policy_cache: Arc::new(RwLock::new(initial_rollout_policy)),
         treasury_status_cache: Arc::new(RwLock::new(Some(initial_treasury_status))),
         training_run_detail_cache: Arc::new(RwLock::new(HashMap::new())),
         training_launch_metrics: Arc::new(RwLock::new(TrainingLaunchLiveMetrics::default())),
@@ -9665,13 +9680,17 @@ async fn training_operator_summary(
 async fn training_rollout_policy(
     State(state): State<AppState>,
 ) -> Result<Json<TrainingRolloutPolicyResponse>, ApiError> {
-    let now = now_unix_ms();
-    let store = state.store.read().map_err(|_| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "session_store_poisoned".to_string(),
-    })?;
-    Ok(Json(training_rollout_policy_snapshot(&store, now)))
+    match state.training_rollout_policy_cache.try_read() {
+        Ok(cache) => Ok(Json(cache.clone())),
+        Err(TryLockError::WouldBlock) => {
+            Err(store_lock_error("training_rollout_policy_cache_busy"))
+        }
+        Err(TryLockError::Poisoned(_)) => Err(ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "training_rollout_policy_cache_poisoned".to_string(),
+        }),
+    }
 }
 
 async fn update_training_rollout_policy(
@@ -9691,7 +9710,9 @@ async fn update_training_rollout_policy(
         store
             .persist_training_scheduler_state()
             .map_err(kernel_api_error)?;
-        training_rollout_policy_snapshot(&store, now)
+        let response = training_rollout_policy_snapshot(&store, now);
+        replace_training_rollout_policy_cache(&state, response.clone());
+        response
     };
     Ok(Json(response))
 }
@@ -27223,6 +27244,15 @@ fn replace_public_stats_cache(state: &AppState, snapshot: PublicStatsSnapshot) {
     }
 }
 
+fn replace_training_rollout_policy_cache(
+    state: &AppState,
+    snapshot: TrainingRolloutPolicyResponse,
+) {
+    if let Ok(mut cache) = state.training_rollout_policy_cache.write() {
+        *cache = snapshot;
+    }
+}
+
 fn replace_treasury_status_cache(state: &AppState, snapshot: TreasuryStatusResponse) {
     if let Ok(mut cache) = state.treasury_status_cache.try_write() {
         *cache = Some(snapshot);
@@ -27591,9 +27621,11 @@ fn force_refresh_public_stats_cache(
     let launch_metrics = training_launch_live_metrics_snapshot(state);
     let mut snapshot =
         build_public_stats_snapshot(&state.config, &store, &launch_metrics, now_unix_ms);
+    let rollout_policy = training_rollout_policy_snapshot(&store, now_unix_ms);
     drop(store);
     apply_public_stats_cache_context(&mut snapshot, now_unix_ms, "live");
     replace_public_stats_cache(state, snapshot.clone());
+    replace_training_rollout_policy_cache(state, rollout_policy);
     Some(snapshot)
 }
 
@@ -27605,9 +27637,11 @@ fn try_force_refresh_public_stats_cache(
     let launch_metrics = training_launch_live_metrics_snapshot(state);
     let mut snapshot =
         build_public_stats_snapshot(&state.config, &store, &launch_metrics, now_unix_ms);
+    let rollout_policy = training_rollout_policy_snapshot(&store, now_unix_ms);
     drop(store);
     apply_public_stats_cache_context(&mut snapshot, now_unix_ms, "live");
     replace_public_stats_cache(state, snapshot.clone());
+    replace_training_rollout_policy_cache(state, rollout_policy);
     Some(snapshot)
 }
 
@@ -40280,6 +40314,35 @@ mod tests {
             1
         );
         assert_eq!(reloaded.abuse_summary.lookback_window_ms, 90_000);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_rollout_policy_endpoint_serves_cached_snapshot_while_store_writer_is_busy()
+    -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+
+        let _store_guard = state
+            .store
+            .write()
+            .expect("store write lock for cached rollout test");
+        let response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/training/rollout")
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("/api/training/rollout should return cached data while store is busy")?;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: TrainingRolloutPolicyResponse = response_json(response).await?;
+        assert_eq!(body.revision, 0);
+        assert_eq!(body.channels.len(), 3);
         Ok(())
     }
 
