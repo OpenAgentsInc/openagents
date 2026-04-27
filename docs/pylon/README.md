@@ -340,7 +340,7 @@ npx @openagentsinc/pylon
 bunx @openagentsinc/pylon
 npm install -g @openagentsinc/pylon && pylon
 bun install -g @openagentsinc/pylon && pylon
-npx @openagentsinc/pylon --version 0.1.15
+npx @openagentsinc/pylon --version 0.1.16
 npx @openagentsinc/pylon --no-launch
 npx @openagentsinc/pylon --download-curated-cache
 ```
@@ -450,7 +450,7 @@ target, asks Nexus for available work, and receives CS336 Assignment 1 starter
 work when that is the currently hosted starter lane available to the node.
 
 The current recommended public paid-training Pylon release for this path is
-`pylon-v0.1.15`, exposed through `@openagentsinc/pylon` `0.1.15` or newer. It
+`pylon-v0.1.16`, exposed through `@openagentsinc/pylon` `0.1.16` or newer. It
 keeps the `0.1.12` homework-earning TUI, the TUI-managed worker lifecycle,
 bootstrap behavior that launches the TUI after smoke checks, opt-in-only Gemma
 diagnostics/downloads, the Mac-safe Psionic training-worker launch path, the
@@ -464,11 +464,13 @@ validator roles. `0.1.15` keeps the `0.1.14` long hosted homework ID hashing
 and TUI worker-exit status fixes, then blocks terminal window seal until the
 worker contribution artifact bundle has uploaded and verified. That prevents
 Nexus from sealing a contribution whose signed artifact fetch can still return
-404 during validator replay. For Psionic-backed
-homework/training jobs, it still prefers a current
-`target/release/psionic-train` binary when the operator has already built one
-and otherwise falls back to `cargo run --release`, with signal and log-tail
-details in failure receipts instead of only `code -1`.
+404 during validator replay. `0.1.16` adds the packaged Psionic runtime surface
+and `psionic/target/release/psionic-train` to the standalone archive, so
+normal npm-installed Pylons can advertise homework training capability without
+a sibling Psionic checkout. For Psionic-backed homework/training jobs, it still
+prefers a current `target/release/psionic-train` binary when the operator has
+already built one and otherwise falls back to `cargo run --release`, with
+signal and log-tail details in failure receipts instead of only `code -1`.
 Older releases may still bring up local Gemma inference; `pylon-v0.1.10`
 contains the earlier payout fixes but its TUI did not supervise the worker and
 is not enough for the current user path, and `pylon-v0.1.11` can still launch
@@ -480,10 +482,13 @@ hosted CS336 earning because retained failed validator leases can block fresh
 paid worker intake. `pylon-v0.1.6` adds validator defaults but can still block
 terminal closeout behind artifact/TRN publication during the validator path.
 If `npx @openagentsinc/pylon` resolves an older version, update before testing
-paid training. If a platform does not yet have a matching `pylon-v0.1.15`
+paid training. If a platform does not yet have a matching `pylon-v0.1.16`
 release asset, use the npm bootstrap source fallback
 or a newer official release that includes these same paid-training guarantees.
-The `0.1.15` release receipt is
+The `0.1.16` release receipt is
+`docs/reports/nexus/20260427-pylon-v0.1.16-release.json`. It proves the
+packaged Psionic runtime release asset and npm bootstrap smoke for issue #4451.
+The prior `0.1.15` release receipt is
 `docs/reports/nexus/20260426-pylon-v0.1.15-release.json`. It proves the
 artifact-before-seal regression test, release asset, bootstrap smoke, and
 production earning drill for issue #4449.
@@ -509,13 +514,13 @@ That recommended Pylon version is necessary but not sufficient. Hosted starter
 work also
 requires production Nexus to run the corresponding hosted-starter fix set: the
 auto-launched starter lane must target online Pylons by
-`min_pylon_version=0.1.15`, must not require the provider's build digest to
+`min_pylon_version=0.1.16`, must not require the provider's build digest to
 match the Nexus service build, and must skip exhausted or sealed starter runs
 instead of returning `training_scheduler_run_not_schedulable` to the default
-Pylon loop. The current public floor is `min_pylon_version=0.1.15` so Nexus
-does not assign new accepted-work homework to clients that can seal before
-their contribution artifacts are reachable. If Nexus is older, a public
-`pylon-v0.1.15` or newer node can come online
+Pylon loop. The current public floor is `min_pylon_version=0.1.16` so Nexus
+does not assign new accepted-work homework to standalone clients missing the
+packaged Psionic runtime required for homework-worker admission. If Nexus is
+older, a public `pylon-v0.1.16` or newer node can come online
 correctly and still fail to receive fresh starter work. Treat that as a Nexus
 deployment/readiness problem, not a user opt-in problem.
 
@@ -625,7 +630,7 @@ explicit admin-launch proof path.
 Hosted Nexus now paces homework work automatically without changing the public
 user command. Production runs an internal CS336 A1 homework dispatcher every
 10 minutes. Each cycle creates a fresh homework run, targets online eligible
-Pylons on `pylon-v0.1.15` or newer, allows duplicated starter work across
+Pylons on `pylon-v0.1.16` or newer, allows duplicated starter work across
 cycles, pays 25 sats only for accepted closeouts, and caps the automatic cycle
 at 6,400 sats. The loop intentionally lives in Nexus rather than in each Pylon:
 users only run `pylon` and stay online.
@@ -653,7 +658,7 @@ wants duplicated starter work. It still pays only accepted homework closeouts:
 launching a run does not send sats, and periodic placeholder or liveness
 payouts must remain disabled for this claim. The default pacing contract is one
 fresh run, one contributor per run, one sat per accepted contribution, online
-nodes only, `min_pylon_version=0.1.15`, and no active-run reuse. Operators can
+nodes only, `min_pylon_version=0.1.16`, and no active-run reuse. Operators can
 raise `run_count`, `max_contributors_per_run`, or `amount_sats` in cron while
 using `total_budget_sats` as a per-call cap.
 

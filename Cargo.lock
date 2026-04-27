@@ -703,7 +703,7 @@ dependencies = [
  "keyring",
  "lightning-invoice",
  "mdns-sd",
- "nostr 0.1.15",
+ "nostr 0.1.16",
  "nostr-client",
  "openagents-cad",
  "openagents-compiled-agent",
@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "autopilot-spacetime"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "bitcoin 0.32.8",
  "hex",
@@ -1796,7 +1796,7 @@ dependencies = [
 
 [[package]]
 name = "codex-client"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
@@ -2525,7 +2525,7 @@ checksum = "f400d0750c0c069e8493f2256cb4da6f604b6d2eeb69a0ca8863acde352f8400"
 
 [[package]]
 name = "deck"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "serde",
  "toml 0.8.2",
@@ -5835,7 +5835,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexus-control"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
@@ -5846,7 +5846,7 @@ dependencies = [
  "hex",
  "http 1.4.0",
  "http-body-util",
- "nostr 0.1.15",
+ "nostr 0.1.16",
  "nostr-client",
  "openagents-kernel-core",
  "openagents-kernel-proto",
@@ -5873,14 +5873,14 @@ dependencies = [
 
 [[package]]
 name = "nexus-relay"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
  "futures-util",
  "hex",
  "nexus-control",
- "nostr 0.1.15",
+ "nostr 0.1.16",
  "nostr-client",
  "nostr-rs-relay",
  "reqwest 0.12.28",
@@ -5938,7 +5938,7 @@ checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
 
 [[package]]
 name = "nostr"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "aes",
  "anyhow",
@@ -5989,11 +5989,11 @@ dependencies = [
 
 [[package]]
 name = "nostr-client"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "futures-util",
  "hex",
- "nostr 0.1.15",
+ "nostr 0.1.16",
  "rustls 0.23.37",
  "serde",
  "serde_json",
@@ -6636,7 +6636,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-cad"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "robust",
  "serde",
@@ -6647,7 +6647,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-compiled-agent"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "serde",
  "serde_json",
@@ -6655,7 +6655,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-ios-domain"
-version = "0.1.15"
+version = "0.1.16"
 
 [[package]]
 name = "openagents-kernel-core"
@@ -6681,7 +6681,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-provider-substrate"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "axum 0.8.8",
  "bitcoin 0.32.8",
@@ -6699,7 +6699,7 @@ dependencies = [
 
 [[package]]
 name = "openagents-spark"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "bip39",
  "bitcoin 0.32.8",
@@ -8816,7 +8816,7 @@ dependencies = [
 
 [[package]]
 name = "psionic-train-contract"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "serde",
 ]
@@ -8888,7 +8888,7 @@ checksum = "b5a041e753da8b807c9255f28de81879c78c876392ff2469cde94799b2896b9d"
 
 [[package]]
 name = "pylon"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
@@ -8897,7 +8897,7 @@ dependencies = [
  "hex",
  "jsonwebtoken",
  "libc",
- "nostr 0.1.15",
+ "nostr 0.1.16",
  "nostr-client",
  "openagents-kernel-core",
  "openagents-provider-substrate",
@@ -8917,7 +8917,7 @@ dependencies = [
 
 [[package]]
 name = "pylon-tui"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -13765,7 +13765,7 @@ dependencies = [
 
 [[package]]
 name = "wgpui"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "bytemuck",
  "clap",
@@ -13806,14 +13806,14 @@ dependencies = [
 
 [[package]]
 name = "wgpui-core"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "bytemuck",
 ]
 
 [[package]]
 name = "wgpui-render"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "bytemuck",
  "log",

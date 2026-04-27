@@ -86,7 +86,7 @@ must continue to expose the live heartbeat versions that Nexus actually sees.
 ## Version Floor Rules
 
 For the current hosted training earning path, the minimum public Pylon release
-is `pylon-v0.1.15` / `@openagentsinc/pylon` `0.1.15`.
+is `pylon-v0.1.16` / `@openagentsinc/pylon` `0.1.16`.
 
 Older versions are useful historical proof points but not sufficient for final
 closeout:
@@ -120,20 +120,26 @@ closeout:
   verifies the worker contribution artifact bundle before sealing the window,
   so validators do not replay a sealed contribution whose signed artifact fetch
   still returns 404.
+- `0.1.16` fixes the issue #4451 packaging gap for standalone homework-worker
+  admission: the Pylon archive includes the minimal `./psionic` runtime surface
+  and `psionic/target/release/psionic-train`, so normal npm-installed Pylons
+  can advertise homework training capability without a sibling checkout.
 
 Nexus must enforce the same floor for new hosted starter runs:
 
 ```text
-min_pylon_version=0.1.15
+min_pylon_version=0.1.16
 ```
 
 If the code changes the earning-loop behavior again, update this floor, the
 Pylon docs, the Nexus treasury docs, the audit, and the issue comments together.
 
-The published `0.1.15` release receipt is
-`docs/reports/nexus/20260426-pylon-v0.1.15-release.json`. It proves the release
-asset, npm bootstrap smoke, issue #4449 artifact-before-seal regression, and
-production earning drill.
+The published `0.1.16` release receipt is
+`docs/reports/nexus/20260427-pylon-v0.1.16-release.json`. It proves the
+packaged Psionic runtime release asset, npm bootstrap smoke, and the
+worker-admission packaging bridge for issue #4451. The prior `0.1.15` receipt
+is `docs/reports/nexus/20260426-pylon-v0.1.15-release.json`; it proves the
+issue #4449 artifact-before-seal regression and production earning drill.
 
 The prior `0.1.12` release-smoke receipt is
 `docs/reports/nexus/20260423-issue-4414-pylon-v0.1.12-release.json`. It proves
@@ -249,14 +255,14 @@ mkdir -p "${PROOF_ROOT}/logs"
 
 HOME="${PWD}/${PROOF_ROOT}/home" \
 OPENAGENTS_DISABLE_TELEMETRY=1 \
-npx --yes @openagentsinc/pylon@0.1.15 --version 0.1.15 \
+npx --yes @openagentsinc/pylon@0.1.16 --version 0.1.16 \
   --pylon-home "${PWD}/${PROOF_ROOT}/home/.openagents/pylon" \
   --install-root "${PWD}/${PROOF_ROOT}/install" \
   --skip-diagnostics \
   --no-launch \
   --json | tee "${PROOF_ROOT}/bootstrap.json"
 
-PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.15-darwin-arm64"
+PYLON_DIR="${PWD}/${PROOF_ROOT}/install/versions/pylon-v0.1.16-darwin-arm64"
 PYLON_HOME="${PWD}/${PROOF_ROOT}/home/.openagents/pylon"
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PYLON_HOME}" \

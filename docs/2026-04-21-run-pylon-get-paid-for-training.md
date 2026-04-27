@@ -36,7 +36,7 @@ local admin/status endpoints, publishes provider presence when possible, and
 keeps provider and training intake running while the window stays open.
 
 Public paid-training onboarding now has a minimum recommended release:
-`pylon-v0.1.15`, exposed through `@openagentsinc/pylon` version `0.1.15`.
+`pylon-v0.1.16`, exposed through `@openagentsinc/pylon` version `0.1.16`.
 That release has the pieces needed for this claim: the minimal TUI-managed
 earning worker, npm bootstrap behavior that launches that TUI after smoke
 checks, no automatic Gemma diagnostics or model downloads during homework
@@ -48,14 +48,18 @@ serve path, retained snapshot reuse for validator replay retries, Autopilot
 proof projection fixes, the issue #4414 training launch fix that uses a current
 `target/release/psionic-train` on Mac instead of forcing debug Cargo, long-ID
 path hashing, and terminal closeout ordering that waits for contribution
-artifacts to upload and verify before sealing a training window.
+artifacts to upload and verify before sealing a training window. The `0.1.16`
+archive also packages the minimal Psionic runtime surface and
+`psionic/target/release/psionic-train`, so a normal standalone install can
+advertise homework training capability without a sibling Psionic checkout.
 
 Nexus can now offer hosted starter work to online paid-training-capable Pylons
 without asking the user to pick a course, enter a private credential, or run a
 one-off assignment command. The production starter lane targets online Pylons
-by `min_pylon_version=0.1.15`, skips exhausted or sealed starter runs, and does
+by `min_pylon_version=0.1.16`, skips exhausted or sealed starter runs, and does
 not require the provider's build digest to match the Nexus service build. This
-floor keeps Mac training-worker launch on the corrected path.
+floor keeps Mac training-worker launch on the corrected path and requires the
+packaged Psionic runtime needed for standalone homework-worker admission.
 
 The payout rule is also concrete. Pylon gets paid for accepted homework work.
 Periodic placeholder payouts and liveness payouts are not part of this claim
@@ -76,7 +80,7 @@ If `pylon` is already installed, check that it is new enough:
 pylon --version
 ```
 
-For paid hosted starter training, use `pylon-v0.1.15` or a newer release with
+For paid hosted starter training, use `pylon-v0.1.16` or a newer release with
 the same paid-training guarantees. Older versions may still bring up local
 Gemma inference, but they are not sufficient proof for the hosted starter
 earning claim.
@@ -93,7 +97,7 @@ installed `pylon` binary by default. To pin the first paid-training release
 explicitly:
 
 ```bash
-npx @openagentsinc/pylon --version 0.1.15
+npx @openagentsinc/pylon --version 0.1.16
 ```
 
 After install, the normal provider command is:
@@ -186,17 +190,27 @@ counts.
 
 ## The Production Proof
 
-The release receipt for the current recommended user-path floor is checked in at:
+The release receipt for the current recommended user-path floor is:
+
+```text
+docs/reports/nexus/20260427-pylon-v0.1.16-release.json
+```
+
+That receipt proves the `pylon-v0.1.16` release asset, npm bootstrap behavior,
+and packaged Psionic runtime needed for standalone homework-worker admission.
+The prior artifact-before-seal release receipt is:
 
 ```text
 docs/reports/nexus/20260426-pylon-v0.1.15-release.json
 ```
 
-That receipt proves the `pylon-v0.1.15` release asset, npm bootstrap behavior,
-TUI-managed worker lifecycle, no default Gemma model download, and the issue
-#4449 terminal closeout ordering fix that uploads and verifies contribution
-artifacts before sealing a training window. The prior `0.1.12` receipt remains
-the proof for the issue #4414 Psionic training launch regression:
+It proves the `pylon-v0.1.15` release asset, TUI-managed worker lifecycle, no
+default Gemma model download, and the issue #4449 terminal closeout ordering
+fix that uploads and verifies contribution artifacts before sealing a training
+window.
+
+The prior `0.1.12` receipt remains the proof for the issue #4414 Psionic
+training launch regression:
 
 ```text
 docs/reports/nexus/20260423-issue-4414-pylon-v0.1.12-release.json
@@ -275,7 +289,7 @@ used `@openagentsinc/pylon@0.1.7` and proved the bare `pylon` command could earn
 across four accepted homework outcomes. A later npm release-asset proof is
 `docs/reports/nexus/20260422-035746-pylon-npm-e2e-fb60b91678ca.json`, which
 used a newer npm-installed worker and a separate validator. Those receipts
-explain the path to the current release, but `0.1.15` is the minimum public
+explain the path to the current release, but `0.1.16` is the minimum public
 release to recommend now.
 
 One operational detail still matters for repeatability. The successful public
@@ -315,7 +329,7 @@ pylon training status --json
 pylon doctor
 ```
 
-Common causes are straightforward: the Pylon release is older than `0.1.15`, the
+Common causes are straightforward: the Pylon release is older than `0.1.16`, the
 node is not actually online, the local Psionic runtime cannot be found, Nexus
 has no currently available hosted starter work, or production Nexus is not
 running the hosted-starter fix set that matches the public Pylon release.

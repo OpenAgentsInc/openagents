@@ -45,10 +45,10 @@ ordinary scheduler and payout bugs.
 
 Minimum runtime requirements:
 
-- public Pylon release asset `pylon-v0.1.15` or newer. The npm bootstrap
+- public Pylon release asset `pylon-v0.1.16` or newer. The npm bootstrap
   package may still be invoked as `npx @openagentsinc/pylon`; the important
   version for earning and validation is the resolved standalone Pylon binary.
-  For releases cut after 2026-04-27, the archive must include the packaged
+  Starting with `pylon-v0.1.16`, the archive must include the packaged
   `./psionic` runtime surface and `psionic/target/release/psionic-train`, so a
   normal installed Pylon can advertise homework training capability without a
   separate sibling checkout.
@@ -108,7 +108,7 @@ cargo test -p nexus-control cs336_homework_auto_dispatch_cycle_targets_all_compa
 
 The homework validation-policy test must show that `homework_dispatch` and
 `homework_auto_dispatch` keep the aggregate validator challenge and skip
-per-contribution sample challenges. Use Pylon `0.1.15` or newer for current npm
+per-contribution sample challenges. Use Pylon `0.1.16` or newer for current npm
 proofs. `0.1.8` fixed the validator
 replay case where a retained claim can point at stale same-host local target
 bytes: Pylon falls back to the bridge-inline payload or rewrites the target
@@ -122,10 +122,12 @@ made the TUI manage the earning worker, removed the composer/transcript from
 the default homework surface, and kept Gemma diagnostics/downloads opt-in.
 Pylon `0.1.12` fixed issue #4414: Mac Psionic training jobs prefer the operator's current
 `target/release/psionic-train` build and fall back to `cargo run --release`
-instead of debug Cargo. Pylon `0.1.15` is the current recommended user-path
+instead of debug Cargo. Pylon `0.1.15` was the artifact-before-seal user-path
 floor because it also blocks terminal window seal until the worker contribution
 artifact bundle has uploaded and verified, preventing validator replay from
-hitting 404s against sealed contributions.
+hitting 404s against sealed contributions. Pylon `0.1.16` is the packaged
+runtime floor for public worker-admission proof because it ships the minimal
+Psionic runtime and `psionic-train` inside the standalone archive.
 
 ## Online Version Telemetry
 
@@ -152,15 +154,46 @@ in provider presence and derives Pylon HTTP user agents from
 `CARGO_PKG_VERSION`; the provider-presence histogram remains the source of
 truth for online versions.
 
+## Release `pylon-v0.1.16` Preparation
+
+Use `pylon-v0.1.16` as the current release floor for public homework earning.
+It keeps the `0.1.15` artifact-before-seal fix and adds the packaged Psionic
+runtime surface required for standalone Pylons to advertise homework training
+capability without a sibling checkout. New homework dispatches should require
+`min_pylon_version=0.1.16` when proving issue #4451 or any fanout that depends
+on normal npm-installed nodes being eligible workers.
+
+Before tagging `0.1.16`, run:
+
+```bash
+cargo test -p pylon-tui
+cargo test -p pylon --bin pylon
+cargo test -p pylon training_terminal_sync -- --nocapture --test-threads=1
+cargo test -p nexus-control cs336_homework_auto_dispatch_cycle_targets_all_compatible_online_pylons
+cd packages/pylon-bootstrap && bun test
+```
+
+Then prove from a fresh Pylon home that a `pylon-v0.1.16` worker resolves the
+published release asset, comes online with the packaged Psionic runtime
+discoverable, advertises homework-worker capability, claims a fresh hosted
+homework assignment, uploads contribution artifacts before seal, allows a
+separate validator to replay the contribution, closes out accepted work, and
+receives a settled accepted-work payout in the worker wallet.
+
+The published `0.1.16` release receipt is:
+
+```text
+docs/reports/nexus/20260427-pylon-v0.1.16-release.json
+```
+
 ## Release `pylon-v0.1.15` Preparation
 
-Use `pylon-v0.1.15` as the current release floor for public homework earning.
+Use `pylon-v0.1.15` as the prior release floor for public homework earning.
 It keeps the `0.1.14` long-ID path hashing and TUI worker-exit fixes, then
 fixes issue #4449: terminal workers must upload and verify the retained
 contribution artifact bundle before Pylon calls the Nexus window-seal endpoint.
-New homework dispatches should require `min_pylon_version=0.1.15` so validators
-do not receive sealed contributions whose signed artifact fetch still returns
-404.
+It does not package the Psionic runtime surface into the standalone archive, so
+it is not enough for the standalone public worker-admission proof in #4451.
 
 Before tagging `0.1.15`, run:
 
@@ -442,7 +475,7 @@ printf '%s\n' "${NETWORK_ID}" > "${PROOF_ROOT}/network-id.txt"
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
 npx --yes @openagentsinc/pylon \
-  --version 0.1.15 \
+  --version 0.1.16 \
   --pylon-home "${PROOF_ROOT}/pylon-home" \
   --config-path "${PROOF_ROOT}/pylon-home/config.json" \
   --install-root "${PROOF_ROOT}/install" \
@@ -460,7 +493,7 @@ for the bootstrap, then run the installed `pylon` binary directly.
 Configure the worker:
 
 ```bash
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.15-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.16-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
@@ -522,7 +555,7 @@ mkdir -p "${VAL_ROOT}/logs"
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PSIONIC_REPO="/Users/christopherdavid/work/psionic" \
 npx --yes @openagentsinc/pylon \
-  --version 0.1.15 \
+  --version 0.1.16 \
   --pylon-home "${VAL_ROOT}/pylon-home" \
   --install-root "${VAL_ROOT}/install" \
   --skip-diagnostics \
@@ -533,7 +566,7 @@ npx --yes @openagentsinc/pylon \
 Configure validator-only role claims:
 
 ```bash
-VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.15-darwin-arm64/pylon"
+VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.16-darwin-arm64/pylon"
 NETWORK_ID="$(cat "${PROOF_ROOT}/network-id.txt")"
 
 HOME="/Users/christopherdavid" \
@@ -591,7 +624,7 @@ printf '%s\n' "${RUN_PREFIX}" > "${PROOF_ROOT}/run-prefix.txt"
 
 payload="$(jq -nc \
   --arg prefix "${RUN_PREFIX}" \
-  --arg min_version "0.1.15" \
+  --arg min_version "0.1.16" \
   --arg network_id "${NETWORK_ID}" \
   '{
     run_count: 1,
@@ -648,7 +681,7 @@ NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_INTERVAL_SECONDS=600
 NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_AMOUNT_SATS=25
 NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MAX_CONTRIBUTORS=256
 NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_TOTAL_BUDGET_SATS=6400
-NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MIN_PYLON_VERSION=0.1.15
+NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MIN_PYLON_VERSION=0.1.16
 NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_REQUIRE_UPDATED_BUILD=false
 NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_WINDOW_DURATION_SECONDS=1800
 ```
@@ -672,7 +705,7 @@ cycle should make `/api/stats` advance through the normal sequence:
   wallet balance tick only after treasury dispatch confirms or settles the
   accepted-work payout
 
-For production verification, keep at least one fresh `pylon-v0.1.15` worker
+For production verification, keep at least one fresh `pylon-v0.1.16` worker
 online on the default network before restarting Nexus. Because the first
 automatic cycle runs immediately on process start, starting the worker first
 avoids waiting the full 10-minute interval for the next cycle. After the worker
@@ -729,7 +762,7 @@ token="${NEXUS_CONTROL_ADMIN_BEARER_TOKEN:-${NEXUS_ADMIN_BEARER_TOKEN:-}}"
 batch_slug="cron.cs336.a1.$(date -u +%Y%m%d%H%M%S)"
 payload="$(jq -nc \
   --arg prefix "${batch_slug}" \
-  --arg min_version "0.1.15" \
+  --arg min_version "0.1.16" \
   '{
     run_count: 4,
     max_contributors_per_run: 1,
@@ -810,7 +843,7 @@ detail still shows `total_contributions: 0`, force the worker-side publication
 path once:
 
 ```bash
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.15-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.16-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
@@ -860,7 +893,7 @@ validator intake and sync once:
 
 ```bash
 VAL_ROOT="${PROOF_ROOT}/validator"
-VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.15-darwin-arm64/pylon"
+VAL_BIN="${VAL_ROOT}/install/versions/pylon-v0.1.16-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${VAL_ROOT}/pylon-home" \
@@ -920,7 +953,7 @@ contribution-sample replay path stops producing artifact-manifest digest drift.
 If the validator log reports an `artifact_digest_mismatch` where the target
 `contribution_artifact_manifest` artifact id digest differs from the materialized
 target bytes, the validator is running an older Pylon release. Upgrade to
-`pylon-v0.1.15` or newer and retry the run. Current releases repair stale
+`pylon-v0.1.16` or newer and retry the run. Current releases repair stale
 retained target artifact ids and fall back away from mismatched local same-host
 target files.
 
@@ -953,7 +986,7 @@ Verify the worker wallet directly:
 
 ```bash
 PROOF_ROOT="$(cat /private/tmp/pylon-npm-e2e-latest-root)"
-PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.15-darwin-arm64/pylon"
+PYLON_BIN="${PROOF_ROOT}/install/versions/pylon-v0.1.16-darwin-arm64/pylon"
 
 HOME="/Users/christopherdavid" \
 OPENAGENTS_PYLON_HOME="${PROOF_ROOT}/pylon-home" \
