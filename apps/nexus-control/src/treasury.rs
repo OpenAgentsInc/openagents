@@ -1752,7 +1752,7 @@ pub enum TreasuryPayoutClass {
 }
 
 impl TreasuryPayoutClass {
-    const fn label(self) -> &'static str {
+    pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::PlaceholderLiveness => "availability_stipend",
             Self::AcceptedWork => "accepted_work",
@@ -1794,7 +1794,7 @@ pub struct TreasuryPayoutClassification {
 }
 
 impl TreasuryPayoutClassification {
-    fn effective_payout_class(&self) -> TreasuryPayoutClass {
+    pub(crate) fn effective_payout_class(&self) -> TreasuryPayoutClass {
         if self.payout_class != TreasuryPayoutClass::PlaceholderLiveness {
             return self.payout_class;
         }
@@ -4353,6 +4353,44 @@ impl TreasuryState {
                 .then_with(|| left.payout_key.cmp(&right.payout_key))
         });
         rows.truncate(TREASURY_STATUS_PAYOUT_LEDGER_ROW_LIMIT);
+        rows
+    }
+
+    pub(crate) fn training_payout_ledger_entries_for_run(
+        &self,
+        training_run_id: &str,
+    ) -> Vec<TreasuryTrainingPayoutLedgerEntry> {
+        let mut rows = self
+            .payout_records_by_key
+            .values()
+            .filter(|record| {
+                record.classification.training_run_id.as_deref() == Some(training_run_id)
+            })
+            .map(|record| TreasuryTrainingPayoutLedgerEntry {
+                payout_key: record.payout_key.clone(),
+                nostr_pubkey_hex: record.nostr_pubkey_hex.clone(),
+                payout_target: record.payout_target.clone(),
+                amount_sats: record.amount_sats,
+                status: record.status.clone(),
+                reconciliation_status: treasury_payout_reconciliation_status(record).to_string(),
+                reason: record.reason.clone(),
+                payment_id: record.payment_id.clone(),
+                window_started_at_unix_ms: record.window_started_at_unix_ms,
+                window_ends_at_unix_ms: record.window_ends_at_unix_ms,
+                created_at_unix_ms: record.created_at_unix_ms,
+                updated_at_unix_ms: record.updated_at_unix_ms,
+                sellable_at_window_open: record.sellable_at_window_open,
+                classification: record.classification.clone(),
+            })
+            .collect::<Vec<_>>();
+
+        rows.sort_by(|left, right| {
+            right
+                .updated_at_unix_ms
+                .cmp(&left.updated_at_unix_ms)
+                .then_with(|| right.created_at_unix_ms.cmp(&left.created_at_unix_ms))
+                .then_with(|| left.payout_key.cmp(&right.payout_key))
+        });
         rows
     }
 
