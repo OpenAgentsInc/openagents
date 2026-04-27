@@ -166,6 +166,10 @@ bash -n scripts/release/pylon-binary-release.sh
 
 The stable-tag release path must tolerate an empty release-flag array. Do not
 use an unguarded `${RELEASE_FLAGS[@]}` expansion with `set -u`.
+The Pylon archive must also include the packaged Psionic training runtime
+surface under `./psionic`; otherwise public Pylons can be online for presence
+while reporting `homework_worker_training_capability_missing` and remaining
+ineligible for homework-worker dispatch.
 
 Do not run standalone `pylon training intake` or `pylon training sync` against
 the same Pylon home while a bare `pylon` process is already running. The

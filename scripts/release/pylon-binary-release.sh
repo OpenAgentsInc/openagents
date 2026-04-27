@@ -5,6 +5,11 @@ set -euo pipefail
 SCRIPT_NAME=$(basename "$0")
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 REPO_SLUG="${OPENAGENTS_RELEASE_REPO:-OpenAgentsInc/openagents}"
+DEFAULT_PSIONIC_REPO="${REPO_ROOT}/../psionic"
+if [[ ! -f "${DEFAULT_PSIONIC_REPO}/Cargo.toml" && -f "${REPO_ROOT}/../../psionic/Cargo.toml" ]]; then
+  DEFAULT_PSIONIC_REPO="${REPO_ROOT}/../../psionic"
+fi
+PSIONIC_REPO="${OPENAGENTS_PSIONIC_REPO:-${DEFAULT_PSIONIC_REPO}}"
 
 VERSION=""
 PUBLISH=false
@@ -93,6 +98,48 @@ release_exists() {
 
 build_binaries() {
   cargo build --release -p pylon -p pylon-tui
+  cargo build --manifest-path "${PSIONIC_REPO}/Cargo.toml" --release -p psionic-train
+}
+
+ensure_psionic_runtime_source() {
+  [[ -f "${PSIONIC_REPO}/Cargo.toml" ]] || die "Missing Psionic checkout at ${PSIONIC_REPO}; set OPENAGENTS_PSIONIC_REPO"
+  [[ -f "${PSIONIC_REPO}/Cargo.lock" ]] || die "Missing Psionic Cargo.lock at ${PSIONIC_REPO}"
+  [[ -f "${PSIONIC_REPO}/TRAIN" ]] || die "Missing Psionic TRAIN entrypoint at ${PSIONIC_REPO}"
+  [[ -f "${PSIONIC_REPO}/crates/psionic-train/Cargo.toml" ]] || die "Missing Psionic psionic-train Cargo.toml at ${PSIONIC_REPO}"
+  [[ -f "${PSIONIC_REPO}/crates/psionic-train/src/main.rs" ]] || die "Missing Psionic psionic-train main.rs at ${PSIONIC_REPO}"
+  [[ -f "${PSIONIC_REPO}/crates/psionic-train/src/train_runtime.rs" ]] || die "Missing Psionic psionic-train train_runtime.rs at ${PSIONIC_REPO}"
+}
+
+ensure_clean_psionic_git() {
+  git -C "$PSIONIC_REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "Psionic repo must be a Git worktree: ${PSIONIC_REPO}"
+  [[ -z "$(git -C "$PSIONIC_REPO" status --porcelain)" ]] || die "Psionic worktree must be clean before cutting a Pylon release"
+}
+
+psionic_train_binary_name() {
+  case "$(host_os)" in
+    windows) echo "psionic-train.exe" ;;
+    *) echo "psionic-train" ;;
+  esac
+}
+
+install_psionic_train_runtime_surface() {
+  local source_binary="${PSIONIC_REPO}/target/release/$(psionic_train_binary_name)"
+  local runtime_root="${STAGE_DIR}/psionic"
+
+  [[ -x "$source_binary" ]] || die "Missing built psionic-train binary at ${source_binary}"
+
+  mkdir -p \
+    "${runtime_root}/target/release" \
+    "${runtime_root}/crates/psionic-train/src"
+
+  install -m 0755 "$source_binary" "${runtime_root}/target/release/$(psionic_train_binary_name)"
+  cp -p "${PSIONIC_REPO}/Cargo.toml" "${runtime_root}/Cargo.toml"
+  cp -p "${PSIONIC_REPO}/Cargo.lock" "${runtime_root}/Cargo.lock"
+  cp -p "${PSIONIC_REPO}/TRAIN" "${runtime_root}/TRAIN"
+  cp -p "${PSIONIC_REPO}/crates/psionic-train/Cargo.toml" "${runtime_root}/crates/psionic-train/Cargo.toml"
+  cp -p "${PSIONIC_REPO}/crates/psionic-train/src/main.rs" "${runtime_root}/crates/psionic-train/src/main.rs"
+  cp -p "${PSIONIC_REPO}/crates/psionic-train/src/train_runtime.rs" "${runtime_root}/crates/psionic-train/src/train_runtime.rs"
+  chmod 0755 "${runtime_root}/TRAIN"
 }
 
 write_readme() {
@@ -106,6 +153,8 @@ Platform: $(host_os)-$(host_arch)
 This archive contains:
 - pylon: the default user entrypoint plus headless worker/provider CLI
 - pylon-tui: the minimal homework-earning terminal dashboard
+- psionic/target/release/psionic-train: the packaged machine-training runtime
+  used by Pylon for admin-triggered homework/training work
 
 Quick start:
   cd ${archive_dir}
@@ -129,8 +178,10 @@ Important:
 - The dashboard starts and supervises the earning worker automatically.
 - First-run Gemma diagnostics persist to ~/.openagents/pylon/diagnostics/gemma/latest.json only when run explicitly.
 - When the node is online and eligible, the long-lived worker loop publishes or refreshes provider presence.
-- The retained Gemma benchmark path still shells into a sibling Psionic checkout.
-  Set OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic when you need that lane.
+- The packaged psionic-train runtime is enough for the current homework/training
+  earning lane. The retained Gemma benchmark path still shells into a full
+  sibling Psionic checkout; set OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic
+  when you need that lane.
 - Source builds remain the fallback for unsupported platforms or when you need
   to modify the code.
 EOF
@@ -167,6 +218,10 @@ cd pylon-v${VERSION}-$(host_os)-$(host_arch)
 Notes:
 - This release is unsigned and not notarized.
 - The current user-facing paid lane is admin-triggered homework/training work.
+- This archive includes a minimal packaged Psionic runtime surface at
+  \`./psionic\`, including \`psionic/target/release/psionic-train\`, so the
+  default homework worker can advertise training capability without a separate
+  sibling checkout.
 - Bare interactive \`pylon\` opens the minimal homework dashboard and supervises the worker.
 - Noninteractive \`pylon\` remains the direct worker/service path for automation.
 - Curated GGUF downloads are optional local cache only; they do not make the sellable lane ready by themselves.
@@ -204,6 +259,8 @@ require_command git
 require_command tar
 cd "$REPO_ROOT"
 ensure_clean_git
+ensure_psionic_runtime_source
+ensure_clean_psionic_git
 
 if [[ "$PUBLISH" == true ]]; then
   require_command gh
@@ -226,6 +283,7 @@ build_binaries
 
 install -m 0755 "${REPO_ROOT}/target/release/pylon" "${STAGE_DIR}/pylon"
 install -m 0755 "${REPO_ROOT}/target/release/pylon-tui" "${STAGE_DIR}/pylon-tui"
+install_psionic_train_runtime_surface
 write_readme "${STAGE_DIR}/README.txt" "$ARCHIVE_DIR"
 
 rm -f "$ARCHIVE_PATH" "$SHA_PATH"
