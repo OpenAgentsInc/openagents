@@ -126,6 +126,14 @@ Default to:
 ## Nexus Release Process
 
 - There is one production Nexus release path.
+- Nexus and treasury wallet code must use the upstream Breez Spark SDK from
+  `https://github.com/breez/spark-sdk` at the newest stable upstream tag.
+  Do not pin `openagents-spark`, `nexus-control`, or treasury payout code to
+  `AtlantisPleb/spark-sdk` or any other fork unless the user explicitly
+  approves a temporary emergency fork in writing. Before any Nexus payout
+  deploy, verify the current upstream tag with `git ls-remote
+  https://github.com/breez/spark-sdk.git 'refs/tags/*'` or the GitHub tags API
+  and keep `crates/spark/Cargo.toml` aligned with that tag.
 - Use a clean `openagents` checkout or temporary worktree at the exact commit
   being shipped.
 - Build and push the registry image with:

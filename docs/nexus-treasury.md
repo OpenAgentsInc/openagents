@@ -285,24 +285,27 @@ Use that debug register when the operator needs to answer "why is this worker
 not accruing?" or "which row owns this beneficiary right now?" without reading
 raw payout-ledger rows by hand.
 
-## Supported Breez Floor
+## Supported Breez Source
 
-The repo-owned Spark integration is now pinned to `breez/spark-sdk 0.12.2`.
-Do not roll production Nexus treasury back onto `0.6.6`.
+The repo-owned Spark integration must pin `crates/spark/Cargo.toml` to the
+newest stable upstream tag from `https://github.com/breez/spark-sdk`. Do not
+pin production Nexus treasury code to `AtlantisPleb/spark-sdk` or any other
+fork unless the user explicitly approves a temporary emergency fork in writing.
 
-Why this floor exists:
+Why this rule exists:
 
-- `0.6.6` hard-failed on newer backend tree node statuses such as
+- older SDK pins hard-failed on newer backend tree node statuses such as
   `PARENT_EXITED`
 - that failure can collapse treasury wallet visibility to `0 sats` even when
   funds still exist in the wallet
-- `0.12.2` includes the upstream `PARENT_EXITED` fix and tolerant unknown-status
-  parsing
+- upstream tags carry the current Spark/Breez wallet fixes; stale forks can lag
+  behind wallet hydration, tree-selection, and parser changes
 
 If a copied treasury wallet still reports suspiciously low or zero balance on
-`0.12.2`, treat that as stale local wallet state, not proof that funds are
-gone. Rebuild validation from the mnemonic into a fresh storage dir before
-making operator decisions about payout continuity or treasury solvency.
+the current upstream tag, treat that as stale local wallet state or an upstream
+wallet/runtime failure, not proof that funds are gone. Rebuild validation from
+the mnemonic into a fresh storage dir before making operator decisions about
+payout continuity or treasury solvency.
 
 ## Runtime Configuration
 
@@ -605,6 +608,7 @@ following on the upgraded tree:
 cargo test -p openagents-spark
 cargo check -p nexus-control -p pylon -p autopilot-desktop -p openagents-provider-substrate
 cargo run -p nexus-control -- treasury status
+git ls-remote https://github.com/breez/spark-sdk.git 'refs/tags/*'
 ```
 
 For production-like recovery work:
@@ -612,7 +616,8 @@ For production-like recovery work:
 - use a copied mnemonic and copied wallet storage, never the live production
   files in place
 - if the reused storage still reports `0 sats` or an obviously stale balance on
-  `0.12.2`, rebuild into a fresh storage dir from the same mnemonic and compare
+  the current upstream tag, rebuild into a fresh storage dir from the same
+  mnemonic and compare
 - do not conclude that funds were spent merely because the old local storage
   view is empty
 

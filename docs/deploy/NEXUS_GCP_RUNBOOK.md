@@ -836,10 +836,11 @@ The baseline bind is `0.0.0.0:8080` on the VM. Public DNS/TLS exposure is a late
 Treasury deployment note:
 
 - do not rely on the repo-relative treasury defaults in production
-- the supported Breez Spark SDK floor for treasury is now `0.12.2`
-- do not redeploy or roll back production Nexus onto the older `0.6.6` Spark
-  pin; that version can report `0 sats` after backend enum drift even when the
-  wallet still has funds
+- the supported Breez Spark SDK source for treasury is the upstream
+  `https://github.com/breez/spark-sdk` repo at the newest stable upstream tag
+- do not redeploy or roll back production Nexus onto old Spark pins or the
+  `AtlantisPleb/spark-sdk` fork; old pins can report `0 sats` after backend
+  enum/state drift even when the wallet still has funds
 - `scripts/deploy/nexus/03-configure-and-start.sh` now writes
   `NEXUS_CONTROL_TREASURY_STATE_PATH`,
   `NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH`, and
