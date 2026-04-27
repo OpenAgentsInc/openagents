@@ -30,11 +30,13 @@ const ENV_UPSTREAM_CONFIG_FILE: &str = "NEXUS_RELAY_UPSTREAM_CONFIG_FILE";
 const ENV_ENABLE_NIP42_AUTH: &str = "NEXUS_RELAY_ENABLE_NIP42_AUTH";
 const ENV_MAX_WEBSOCKETS: &str = "NEXUS_RELAY_MAX_WEBSOCKETS";
 const ENV_AUTHORITY_MAX_IN_FLIGHT: &str = "NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT";
+const ENV_AUTHORITY_TOKIO_WORKER_THREADS: &str = "NEXUS_RELAY_AUTHORITY_TOKIO_WORKER_THREADS";
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42110";
 const DEFAULT_UPSTREAM_LISTEN_ADDR: &str = "127.0.0.1:42111";
 const DEFAULT_DATA_DIR: &str = ".nexus-relay-data";
 const DEFAULT_MAX_WEBSOCKETS: usize = 512;
 const DEFAULT_AUTHORITY_MAX_IN_FLIGHT: usize = 256;
+const DEFAULT_AUTHORITY_TOKIO_WORKER_THREADS: usize = 4;
 const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 const NEXUS_PRODUCT_NAME: &str = "OpenAgents Nexus";
 const NEXUS_PRODUCT_DESCRIPTION: &str = "The OpenAgents relay and authority host for Autopilot.";
@@ -51,6 +53,7 @@ pub struct DurableRelayConfig {
     pub enable_nip42_auth: bool,
     pub max_websockets: usize,
     pub authority_max_in_flight: usize,
+    pub authority_tokio_worker_threads: usize,
 }
 
 impl DurableRelayConfig {
@@ -90,6 +93,11 @@ impl DurableRelayConfig {
         let max_websockets = parse_usize_env(ENV_MAX_WEBSOCKETS, DEFAULT_MAX_WEBSOCKETS)?;
         let authority_max_in_flight =
             parse_usize_env(ENV_AUTHORITY_MAX_IN_FLIGHT, DEFAULT_AUTHORITY_MAX_IN_FLIGHT)?.max(1);
+        let authority_tokio_worker_threads = parse_usize_env(
+            ENV_AUTHORITY_TOKIO_WORKER_THREADS,
+            DEFAULT_AUTHORITY_TOKIO_WORKER_THREADS,
+        )?
+        .max(1);
 
         Ok(Self {
             listen_addr,
@@ -100,6 +108,7 @@ impl DurableRelayConfig {
             enable_nip42_auth,
             max_websockets,
             authority_max_in_flight,
+            authority_tokio_worker_threads,
         })
     }
 
@@ -180,7 +189,8 @@ pub async fn run_server(config: DurableRelayConfig) -> Result<(), anyhow::Error>
 
     let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
     let local_addr = listener.local_addr()?;
-    let authority_http_base_url = spawn_authority_server(authority_config)?;
+    let authority_http_base_url =
+        spawn_authority_server(authority_config, config.authority_tokio_worker_threads)?;
     let upstream = UpstreamRelayHandle::spawn(config.clone()).await?;
     tracing::info!("nexus-relay durable shell accepting on {}", local_addr);
     let serve_result = axum::serve(listener, build_router(config, authority_http_base_url)).await;
@@ -192,6 +202,7 @@ pub async fn run_server(config: DurableRelayConfig) -> Result<(), anyhow::Error>
 
 fn spawn_authority_server(
     authority_config: nexus_control::ServiceConfig,
+    authority_tokio_worker_threads: usize,
 ) -> Result<Url, anyhow::Error> {
     let authority_http_base_url = authority_url_for_addr(authority_config.listen_addr)?;
     let authority_listen_addr = authority_config.listen_addr;
@@ -200,7 +211,7 @@ fn spawn_authority_server(
         .spawn(move || {
             let runtime = match tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
-                .worker_threads(32)
+                .worker_threads(authority_tokio_worker_threads)
                 .thread_name("nexus-control-api")
                 .build()
             {
@@ -215,6 +226,7 @@ fn spawn_authority_server(
             };
             tracing::info!(
                 listen_addr = %authority_listen_addr,
+                tokio_worker_threads = authority_tokio_worker_threads,
                 "starting embedded Nexus control API server"
             );
             if let Err(error) = runtime.block_on(nexus_control::run_server(authority_config)) {
@@ -741,6 +753,7 @@ mod tests {
             enable_nip42_auth: false,
             max_websockets: super::DEFAULT_MAX_WEBSOCKETS,
             authority_max_in_flight: super::DEFAULT_AUTHORITY_MAX_IN_FLIGHT,
+            authority_tokio_worker_threads: super::DEFAULT_AUTHORITY_TOKIO_WORKER_THREADS,
         })
     }
 
