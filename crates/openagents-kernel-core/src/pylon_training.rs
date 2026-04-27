@@ -5,7 +5,10 @@ use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
-use crate::{compute::ComputeAdapterDatasetSlice, ids::sha256_prefixed_bytes};
+use crate::{
+    compute::{A1MinimalDistributedLmWorkUnitKind, ComputeAdapterDatasetSlice},
+    ids::sha256_prefixed_bytes,
+};
 
 pub const PYLON_TRAINING_RUN_MANIFEST_V1: &str = "openagents.pylon_training_run_manifest.v1";
 pub const PYLON_TRAINING_ARTIFACT_RESOLVER_SCHEMA_V1: &str =
@@ -174,6 +177,8 @@ pub struct PylonTrainingValidatorAssignment {
     pub target_assignment_ids: Vec<String>,
     #[serde(default)]
     pub expected_manifest_digests: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub expected_artifact_ids: Vec<String>,
     pub retry_attempt: u32,
 }
 
@@ -182,6 +187,52 @@ pub struct PylonTrainingResumeFrom {
     pub checkpoint_ref: String,
     pub latest_pointer_ref: String,
     pub manifest_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingAssignmentShardRange {
+    pub unit: String,
+    pub start: u64,
+    pub end: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingAssignmentShard {
+    pub shard_id: String,
+    pub shard_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<PylonTrainingAssignmentShardRange>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingManifestArtifactRef {
+    pub artifact_id: String,
+    pub artifact_kind: PylonTrainingArtifactKind,
+    pub artifact_class: PylonTrainingArtifactClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonTrainingWorkUnitManifest {
+    pub work_unit_kind: String,
+    pub tokenizer_digest: String,
+    pub tokenized_dataset_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_set_digest: Option<String>,
+    pub base_checkpoint_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment_shard: Option<PylonTrainingAssignmentShard>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_artifacts: Vec<PylonTrainingManifestArtifactRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub expected_output_artifacts: Vec<PylonTrainingManifestArtifactRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub validator_target_assignment_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub validator_target_artifact_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -219,6 +270,8 @@ pub struct PylonTrainingRunManifestV1 {
     pub validator: Option<PylonTrainingValidatorAssignment>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_from: Option<PylonTrainingResumeFrom>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_unit: Option<PylonTrainingWorkUnitManifest>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -285,9 +338,15 @@ pub struct PylonTrainingCredentialResolution {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PylonTrainingArtifactBundleKind {
     RunManifest,
+    Tokenizer,
+    ModelConfig,
+    OptimizerConfig,
+    ValidationSet,
+    TokenizedDatasetShard { assignment_id: String },
     LatestCheckpointPointer,
     CheckpointManifest { optimizer_step: u64 },
     Contribution { assignment_id: String },
+    SupportContribution { assignment_id: String },
     ValidatorVerdict { challenge_id: String },
     SealedWindow,
     ScoreSnapshot,
@@ -298,6 +357,8 @@ pub enum PylonTrainingArtifactBundleKind {
 pub enum PylonTrainingArtifactClass {
     Config,
     Checkpoint,
+    Dataset,
+    Tokenizer,
     Weights,
     Optimizer,
     LocalUpdate,
@@ -312,6 +373,8 @@ impl PylonTrainingArtifactClass {
         match self {
             Self::Config => "config",
             Self::Checkpoint => "checkpoint",
+            Self::Dataset => "dataset",
+            Self::Tokenizer => "tokenizer",
             Self::Weights => "weights",
             Self::Optimizer => "optimizer",
             Self::LocalUpdate => "local_update",
@@ -326,6 +389,8 @@ impl PylonTrainingArtifactClass {
         match value.trim() {
             "config" => Some(Self::Config),
             "checkpoint" => Some(Self::Checkpoint),
+            "dataset" => Some(Self::Dataset),
+            "tokenizer" => Some(Self::Tokenizer),
             "weights" => Some(Self::Weights),
             "optimizer" => Some(Self::Optimizer),
             "local_update" => Some(Self::LocalUpdate),
@@ -342,9 +407,15 @@ impl PylonTrainingArtifactClass {
 #[serde(rename_all = "snake_case")]
 pub enum PylonTrainingArtifactKind {
     RunManifest,
+    Tokenizer,
+    TokenizedDatasetShard,
+    ValidationSet,
+    ModelConfig,
+    OptimizerConfig,
     LatestCheckpointPointer,
     CheckpointManifest,
     LocalUpdate,
+    SupportBundle,
     ProofBundle,
     ValidatorVerdict,
     SealedWindow,
@@ -355,9 +426,15 @@ impl PylonTrainingArtifactKind {
     pub const fn label(self) -> &'static str {
         match self {
             Self::RunManifest => "run_manifest",
+            Self::Tokenizer => "tokenizer",
+            Self::TokenizedDatasetShard => "tokenized_dataset_shard",
+            Self::ValidationSet => "validation_set",
+            Self::ModelConfig => "model_config",
+            Self::OptimizerConfig => "optimizer_config",
             Self::LatestCheckpointPointer => "latest_checkpoint_pointer",
             Self::CheckpointManifest => "checkpoint_manifest",
             Self::LocalUpdate => "local_update",
+            Self::SupportBundle => "support_bundle",
             Self::ProofBundle => "proof_bundle",
             Self::ValidatorVerdict => "validator_verdict",
             Self::SealedWindow => "sealed_window",
@@ -368,9 +445,15 @@ impl PylonTrainingArtifactKind {
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim() {
             "run_manifest" => Some(Self::RunManifest),
+            "tokenizer" => Some(Self::Tokenizer),
+            "tokenized_dataset_shard" => Some(Self::TokenizedDatasetShard),
+            "validation_set" => Some(Self::ValidationSet),
+            "model_config" => Some(Self::ModelConfig),
+            "optimizer_config" => Some(Self::OptimizerConfig),
             "latest_checkpoint_pointer" => Some(Self::LatestCheckpointPointer),
             "checkpoint_manifest" => Some(Self::CheckpointManifest),
             "local_update" => Some(Self::LocalUpdate),
+            "support_bundle" => Some(Self::SupportBundle),
             "proof_bundle" => Some(Self::ProofBundle),
             "validator_verdict" => Some(Self::ValidatorVerdict),
             "sealed_window" => Some(Self::SealedWindow),
@@ -381,12 +464,19 @@ impl PylonTrainingArtifactKind {
 
     pub const fn artifact_class(self) -> PylonTrainingArtifactClass {
         match self {
-            Self::RunManifest => PylonTrainingArtifactClass::Config,
+            Self::RunManifest | Self::ModelConfig => PylonTrainingArtifactClass::Config,
+            Self::Tokenizer => PylonTrainingArtifactClass::Tokenizer,
+            Self::TokenizedDatasetShard | Self::ValidationSet => {
+                PylonTrainingArtifactClass::Dataset
+            }
+            Self::OptimizerConfig => PylonTrainingArtifactClass::Optimizer,
             Self::LatestCheckpointPointer | Self::CheckpointManifest => {
                 PylonTrainingArtifactClass::Checkpoint
             }
             Self::LocalUpdate => PylonTrainingArtifactClass::LocalUpdate,
-            Self::ProofBundle | Self::SealedWindow => PylonTrainingArtifactClass::Proof,
+            Self::SupportBundle | Self::ProofBundle | Self::SealedWindow => {
+                PylonTrainingArtifactClass::Proof
+            }
             Self::ValidatorVerdict => PylonTrainingArtifactClass::Eval,
             Self::ScoreSnapshot => PylonTrainingArtifactClass::Score,
         }
@@ -395,12 +485,17 @@ impl PylonTrainingArtifactKind {
     pub const fn retention_class(self) -> PylonTrainingArtifactRetentionClass {
         match self {
             Self::RunManifest => PylonTrainingArtifactRetentionClass::EphemeralTransport,
+            Self::Tokenizer | Self::ValidationSet | Self::ModelConfig | Self::OptimizerConfig => {
+                PylonTrainingArtifactRetentionClass::AcceptedAuthority
+            }
+            Self::TokenizedDatasetShard => PylonTrainingArtifactRetentionClass::PrivateStaging,
             Self::LatestCheckpointPointer => {
                 PylonTrainingArtifactRetentionClass::PublicVerification
             }
             Self::CheckpointManifest => PylonTrainingArtifactRetentionClass::AcceptedAuthority,
             Self::LocalUpdate => PylonTrainingArtifactRetentionClass::PrivateStaging,
-            Self::ProofBundle
+            Self::SupportBundle
+            | Self::ProofBundle
             | Self::ValidatorVerdict
             | Self::SealedWindow
             | Self::ScoreSnapshot => PylonTrainingArtifactRetentionClass::PublicVerification,
@@ -409,10 +504,16 @@ impl PylonTrainingArtifactKind {
 
     pub const fn mirror_policy(self) -> PylonTrainingArtifactMirrorPolicy {
         match self {
-            Self::RunManifest | Self::CheckpointManifest | Self::LocalUpdate => {
-                PylonTrainingArtifactMirrorPolicy::Never
-            }
+            Self::RunManifest
+            | Self::Tokenizer
+            | Self::TokenizedDatasetShard
+            | Self::ValidationSet
+            | Self::ModelConfig
+            | Self::OptimizerConfig
+            | Self::CheckpointManifest
+            | Self::LocalUpdate => PylonTrainingArtifactMirrorPolicy::Never,
             Self::LatestCheckpointPointer
+            | Self::SupportBundle
             | Self::ProofBundle
             | Self::ValidatorVerdict
             | Self::SealedWindow
@@ -1154,6 +1255,29 @@ impl PylonTrainingArtifactLayout {
         format!("{}/manifests/run_manifest.json", self.run_root())
     }
 
+    pub fn tokenizer_path(&self) -> String {
+        format!("{}/inputs/tokenizer/tokenizer.json", self.run_root())
+    }
+
+    pub fn tokenized_dataset_shard_path(&self, assignment_id: &str) -> String {
+        format!(
+            "{}/assignments/{assignment_id}/tokenized_dataset_shard.bin",
+            self.window_root()
+        )
+    }
+
+    pub fn validation_set_path(&self) -> String {
+        format!("{}/inputs/validation_set/validation.bin", self.run_root())
+    }
+
+    pub fn model_config_path(&self) -> String {
+        format!("{}/inputs/model_config.json", self.run_root())
+    }
+
+    pub fn optimizer_config_path(&self) -> String {
+        format!("{}/inputs/optimizer_config.json", self.run_root())
+    }
+
     pub fn latest_pointer_path(&self) -> String {
         format!("{}/checkpoints/latest_pointer.json", self.run_root())
     }
@@ -1168,6 +1292,13 @@ impl PylonTrainingArtifactLayout {
     pub fn contribution_bundle_path(&self, assignment_id: &str) -> String {
         format!(
             "{}/contributions/{assignment_id}/adapter_delta_bundle.json",
+            self.window_root()
+        )
+    }
+
+    pub fn support_bundle_path(&self, assignment_id: &str) -> String {
+        format!(
+            "{}/contributions/{assignment_id}/support_bundle.json",
             self.window_root()
         )
     }
@@ -1289,6 +1420,8 @@ impl PylonTrainingArtifactScope {
         if matches!(
             kind,
             PylonTrainingArtifactKind::LocalUpdate
+                | PylonTrainingArtifactKind::TokenizedDatasetShard
+                | PylonTrainingArtifactKind::SupportBundle
                 | PylonTrainingArtifactKind::ProofBundle
                 | PylonTrainingArtifactKind::ValidatorVerdict
                 | PylonTrainingArtifactKind::SealedWindow
@@ -1303,7 +1436,10 @@ impl PylonTrainingArtifactScope {
         }
         if matches!(
             kind,
-            PylonTrainingArtifactKind::LocalUpdate | PylonTrainingArtifactKind::ProofBundle
+            PylonTrainingArtifactKind::LocalUpdate
+                | PylonTrainingArtifactKind::TokenizedDatasetShard
+                | PylonTrainingArtifactKind::SupportBundle
+                | PylonTrainingArtifactKind::ProofBundle
         ) {
             require_artifact_scope_component(
                 self.assignment_id
@@ -1358,6 +1494,13 @@ impl PylonTrainingArtifactResolverResponse {
 }
 
 impl PylonTrainingArtifactSignedAccessMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Write => "write",
+        }
+    }
+
     pub const fn method(self) -> PylonTrainingArtifactSignedAccessMethod {
         match self {
             Self::Read => PylonTrainingArtifactSignedAccessMethod::Get,
@@ -1485,6 +1628,17 @@ pub fn pylon_training_artifact_relative_path_from_scope(
     scope.validate_for_kind(kind)?;
     Ok(match kind {
         PylonTrainingArtifactKind::RunManifest => "manifests/run_manifest.json".to_string(),
+        PylonTrainingArtifactKind::Tokenizer => "inputs/tokenizer/tokenizer.json".to_string(),
+        PylonTrainingArtifactKind::TokenizedDatasetShard => format!(
+            "windows/{}/assignments/{}/tokenized_dataset_shard.bin",
+            scope.window_id.as_deref().unwrap_or_default(),
+            scope.assignment_id.as_deref().unwrap_or_default()
+        ),
+        PylonTrainingArtifactKind::ValidationSet => {
+            "inputs/validation_set/validation.bin".to_string()
+        }
+        PylonTrainingArtifactKind::ModelConfig => "inputs/model_config.json".to_string(),
+        PylonTrainingArtifactKind::OptimizerConfig => "inputs/optimizer_config.json".to_string(),
         PylonTrainingArtifactKind::LatestCheckpointPointer => {
             "checkpoints/latest_pointer.json".to_string()
         }
@@ -1494,6 +1648,11 @@ pub fn pylon_training_artifact_relative_path_from_scope(
         ),
         PylonTrainingArtifactKind::LocalUpdate => format!(
             "windows/{}/contributions/{}/adapter_delta_bundle.json",
+            scope.window_id.as_deref().unwrap_or_default(),
+            scope.assignment_id.as_deref().unwrap_or_default()
+        ),
+        PylonTrainingArtifactKind::SupportBundle => format!(
+            "windows/{}/contributions/{}/support_bundle.json",
             scope.window_id.as_deref().unwrap_or_default(),
             scope.assignment_id.as_deref().unwrap_or_default()
         ),
@@ -1567,6 +1726,32 @@ fn pylon_training_artifact_scope_from_relative_path(
             PylonTrainingArtifactKind::RunManifest,
             scope(None, None, None, None),
         )),
+        [inputs, tokenizer, file]
+            if inputs == "inputs" && tokenizer == "tokenizer" && file == "tokenizer.json" =>
+        {
+            Ok((
+                PylonTrainingArtifactKind::Tokenizer,
+                scope(None, None, None, None),
+            ))
+        }
+        [inputs, validation_set, file]
+            if inputs == "inputs"
+                && validation_set == "validation_set"
+                && file == "validation.bin" =>
+        {
+            Ok((
+                PylonTrainingArtifactKind::ValidationSet,
+                scope(None, None, None, None),
+            ))
+        }
+        [inputs, file] if inputs == "inputs" && file == "model_config.json" => Ok((
+            PylonTrainingArtifactKind::ModelConfig,
+            scope(None, None, None, None),
+        )),
+        [inputs, file] if inputs == "inputs" && file == "optimizer_config.json" => Ok((
+            PylonTrainingArtifactKind::OptimizerConfig,
+            scope(None, None, None, None),
+        )),
         [checkpoints, file] if checkpoints == "checkpoints" && file == "latest_pointer.json" => {
             Ok((
                 PylonTrainingArtifactKind::LatestCheckpointPointer,
@@ -1586,6 +1771,21 @@ fn pylon_training_artifact_scope_from_relative_path(
                 scope(None, None, None, Some(optimizer_step)),
             ))
         }
+        [windows, window_id, assignments, assignment_id, file]
+            if windows == "windows"
+                && assignments == "assignments"
+                && file == "tokenized_dataset_shard.bin" =>
+        {
+            Ok((
+                PylonTrainingArtifactKind::TokenizedDatasetShard,
+                scope(
+                    Some(window_id.clone()),
+                    Some(assignment_id.clone()),
+                    None,
+                    None,
+                ),
+            ))
+        }
         [windows, window_id, contributions, assignment_id, file]
             if windows == "windows"
                 && contributions == "contributions"
@@ -1593,6 +1793,21 @@ fn pylon_training_artifact_scope_from_relative_path(
         {
             Ok((
                 PylonTrainingArtifactKind::LocalUpdate,
+                scope(
+                    Some(window_id.clone()),
+                    Some(assignment_id.clone()),
+                    None,
+                    None,
+                ),
+            ))
+        }
+        [windows, window_id, contributions, assignment_id, file]
+            if windows == "windows"
+                && contributions == "contributions"
+                && file == "support_bundle.json" =>
+        {
+            Ok((
+                PylonTrainingArtifactKind::SupportBundle,
                 scope(
                     Some(window_id.clone()),
                     Some(assignment_id.clone()),
@@ -1785,6 +2000,10 @@ impl PylonTrainingValidatorAssignment {
         for digest in &self.expected_manifest_digests {
             require_prefixed_sha256(digest.as_str(), "validator_expected_manifest_digest")?;
         }
+        for artifact_id in &self.expected_artifact_ids {
+            require_non_empty(artifact_id.as_str(), "validator_expected_artifact_id")?;
+            pylon_training_resolve_artifact_id(artifact_id.as_str())?;
+        }
         Ok(())
     }
 }
@@ -1797,6 +2016,141 @@ impl PylonTrainingResumeFrom {
             "resume_latest_pointer_ref",
         )?;
         require_prefixed_sha256(self.manifest_digest.as_str(), "resume_manifest_digest")?;
+        Ok(())
+    }
+}
+
+impl PylonTrainingAssignmentShardRange {
+    fn validate(&self) -> ContractResult<()> {
+        require_non_empty(self.unit.as_str(), "assignment_shard_range_unit")?;
+        if self.end <= self.start {
+            return Err("pylon_training_assignment_shard_range_invalid".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl PylonTrainingAssignmentShard {
+    fn validate(&self) -> ContractResult<()> {
+        require_non_empty(self.shard_id.as_str(), "assignment_shard_id")?;
+        require_prefixed_sha256(self.shard_digest.as_str(), "assignment_shard_digest")?;
+        if let Some(range) = self.range.as_ref() {
+            range.validate()?;
+        }
+        Ok(())
+    }
+}
+
+impl PylonTrainingManifestArtifactRef {
+    fn validate(&self) -> ContractResult<()> {
+        require_non_empty(self.artifact_id.as_str(), "manifest_artifact_id")?;
+        let resolver = pylon_training_resolve_artifact_id(self.artifact_id.as_str())?;
+        if resolver.artifact_kind != self.artifact_kind {
+            return Err("pylon_training_manifest_artifact_kind_mismatch".to_string());
+        }
+        if resolver.artifact_class != self.artifact_class {
+            return Err("pylon_training_manifest_artifact_class_mismatch".to_string());
+        }
+        if self.artifact_kind.artifact_class() != self.artifact_class {
+            return Err("pylon_training_manifest_artifact_class_invalid".to_string());
+        }
+        if let Some(digest) = self.digest.as_deref() {
+            require_prefixed_sha256(digest, "manifest_artifact_digest")?;
+        }
+        if self.size_bytes == Some(0) {
+            return Err("pylon_training_manifest_artifact_size_bytes_invalid".to_string());
+        }
+        Ok(())
+    }
+}
+
+pub fn pylon_training_a1_minimal_expected_output_artifact_kind(
+    work_unit: A1MinimalDistributedLmWorkUnitKind,
+) -> PylonTrainingArtifactKind {
+    match work_unit {
+        A1MinimalDistributedLmWorkUnitKind::LocalUpdate => PylonTrainingArtifactKind::LocalUpdate,
+        A1MinimalDistributedLmWorkUnitKind::Aggregation
+        | A1MinimalDistributedLmWorkUnitKind::CheckpointPromotion => {
+            PylonTrainingArtifactKind::CheckpointManifest
+        }
+        A1MinimalDistributedLmWorkUnitKind::TokenizationShardValidation
+        | A1MinimalDistributedLmWorkUnitKind::ValidationReplay
+        | A1MinimalDistributedLmWorkUnitKind::CheckpointVerification
+        | A1MinimalDistributedLmWorkUnitKind::EvaluationBatch
+        | A1MinimalDistributedLmWorkUnitKind::ArtifactRematerialization
+        | A1MinimalDistributedLmWorkUnitKind::ProofGeneration
+        | A1MinimalDistributedLmWorkUnitKind::CloseoutVerification => {
+            PylonTrainingArtifactKind::SupportBundle
+        }
+    }
+}
+
+fn pylon_training_run_definition_ref_is_a1_minimal(run_definition_ref: Option<&str>) -> bool {
+    run_definition_ref
+        .map(str::trim)
+        .is_some_and(|value| value.contains("a1_minimal_distributed_lm"))
+}
+
+impl PylonTrainingWorkUnitManifest {
+    fn validate(
+        &self,
+        run_definition_ref: Option<&str>,
+        checkpoint_ref: &str,
+    ) -> ContractResult<()> {
+        require_non_empty(self.work_unit_kind.as_str(), "work_unit_kind")?;
+        require_prefixed_sha256(self.tokenizer_digest.as_str(), "work_unit_tokenizer_digest")?;
+        require_prefixed_sha256(
+            self.tokenized_dataset_digest.as_str(),
+            "work_unit_tokenized_dataset_digest",
+        )?;
+        if let Some(validation_set_digest) = self.validation_set_digest.as_deref() {
+            require_prefixed_sha256(validation_set_digest, "work_unit_validation_set_digest")?;
+        }
+        require_non_empty(
+            self.base_checkpoint_ref.as_str(),
+            "work_unit_base_checkpoint_ref",
+        )?;
+        if self.base_checkpoint_ref != checkpoint_ref {
+            return Err("pylon_training_work_unit_checkpoint_ref_mismatch".to_string());
+        }
+        if let Some(assignment_shard) = self.assignment_shard.as_ref() {
+            assignment_shard.validate()?;
+        }
+        for artifact in self
+            .input_artifacts
+            .iter()
+            .chain(self.expected_output_artifacts.iter())
+        {
+            artifact.validate()?;
+        }
+        for assignment_id in &self.validator_target_assignment_ids {
+            require_non_empty(assignment_id.as_str(), "validator_target_assignment_id")?;
+        }
+        for artifact_id in &self.validator_target_artifact_ids {
+            require_non_empty(artifact_id.as_str(), "validator_target_artifact_id")?;
+            pylon_training_resolve_artifact_id(artifact_id.as_str())?;
+        }
+        if pylon_training_run_definition_ref_is_a1_minimal(run_definition_ref) {
+            let work_unit = A1MinimalDistributedLmWorkUnitKind::parse(self.work_unit_kind.as_str())
+                .ok_or_else(|| "pylon_training_a1_work_unit_kind_invalid".to_string())?;
+            if self.assignment_shard.is_none() {
+                return Err("pylon_training_a1_assignment_shard_missing".to_string());
+            }
+            if self.input_artifacts.is_empty() {
+                return Err("pylon_training_a1_input_artifacts_missing".to_string());
+            }
+            if self.expected_output_artifacts.is_empty() {
+                return Err("pylon_training_a1_output_artifacts_missing".to_string());
+            }
+            let expected_kind = pylon_training_a1_minimal_expected_output_artifact_kind(work_unit);
+            if !self
+                .expected_output_artifacts
+                .iter()
+                .any(|artifact| artifact.artifact_kind == expected_kind)
+            {
+                return Err("pylon_training_a1_output_artifact_kind_mismatch".to_string());
+            }
+        }
         Ok(())
     }
 }
@@ -1841,6 +2195,7 @@ impl PylonTrainingRunManifestV1 {
                 dataset: None,
                 validator: None,
                 resume_from: None,
+                work_unit: None,
             },
         }
     }
@@ -1894,6 +2249,16 @@ impl PylonTrainingRunManifestV1 {
             self.window_id.as_str(),
         )?;
         self.trn.validate()?;
+        if let Some(work_unit) = self.work_unit.as_ref() {
+            work_unit.validate(
+                self.run_definition_ref.as_deref(),
+                self.checkpoint.checkpoint_ref.as_str(),
+            )?;
+        } else if pylon_training_run_definition_ref_is_a1_minimal(
+            self.run_definition_ref.as_deref(),
+        ) {
+            return Err("pylon_training_a1_work_unit_missing".to_string());
+        }
         match self.role {
             PylonTrainingManifestRole::Worker => {
                 self.dataset
@@ -1982,6 +2347,11 @@ impl PylonTrainingRunManifestBuilder {
 
     pub fn resume_from(mut self, resume_from: PylonTrainingResumeFrom) -> Self {
         self.manifest.resume_from = Some(resume_from);
+        self
+    }
+
+    pub fn work_unit(mut self, work_unit: PylonTrainingWorkUnitManifest) -> Self {
+        self.manifest.work_unit = Some(work_unit);
         self
     }
 
@@ -2170,11 +2540,21 @@ impl PylonTrainingArtifactBundleKind {
     pub fn bundle_id(&self) -> String {
         match self {
             Self::RunManifest => "run_manifest".to_string(),
+            Self::Tokenizer => "tokenizer".to_string(),
+            Self::ModelConfig => "model_config".to_string(),
+            Self::OptimizerConfig => "optimizer_config".to_string(),
+            Self::ValidationSet => "validation_set".to_string(),
+            Self::TokenizedDatasetShard { assignment_id } => {
+                format!("tokenized_dataset_shard:{assignment_id}")
+            }
             Self::LatestCheckpointPointer => "latest_checkpoint_pointer".to_string(),
             Self::CheckpointManifest { optimizer_step } => {
                 format!("checkpoint_manifest:{optimizer_step}")
             }
             Self::Contribution { assignment_id } => format!("contribution:{assignment_id}"),
+            Self::SupportContribution { assignment_id } => {
+                format!("support_contribution:{assignment_id}")
+            }
             Self::ValidatorVerdict { challenge_id } => format!("validator_verdict:{challenge_id}"),
             Self::SealedWindow => "sealed_window".to_string(),
             Self::ScoreSnapshot => "score_snapshot".to_string(),
@@ -2184,9 +2564,15 @@ impl PylonTrainingArtifactBundleKind {
     pub fn bundle_kind_label(&self) -> &'static str {
         match self {
             Self::RunManifest => "run_manifest",
+            Self::Tokenizer => "tokenizer",
+            Self::ModelConfig => "model_config",
+            Self::OptimizerConfig => "optimizer_config",
+            Self::ValidationSet => "validation_set",
+            Self::TokenizedDatasetShard { .. } => "tokenized_dataset_shard",
             Self::LatestCheckpointPointer => "latest_checkpoint_pointer",
             Self::CheckpointManifest { .. } => "checkpoint_manifest",
             Self::Contribution { .. } => "contribution",
+            Self::SupportContribution { .. } => "support_contribution",
             Self::ValidatorVerdict { .. } => "validator_verdict",
             Self::SealedWindow => "sealed_window",
             Self::ScoreSnapshot => "score_snapshot",
@@ -2196,6 +2582,13 @@ impl PylonTrainingArtifactBundleKind {
     pub fn required_paths(&self, layout: &PylonTrainingArtifactLayout) -> BTreeSet<String> {
         match self {
             Self::RunManifest => BTreeSet::from([layout.run_manifest_path()]),
+            Self::Tokenizer => BTreeSet::from([layout.tokenizer_path()]),
+            Self::ModelConfig => BTreeSet::from([layout.model_config_path()]),
+            Self::OptimizerConfig => BTreeSet::from([layout.optimizer_config_path()]),
+            Self::ValidationSet => BTreeSet::from([layout.validation_set_path()]),
+            Self::TokenizedDatasetShard { assignment_id } => {
+                BTreeSet::from([layout.tokenized_dataset_shard_path(assignment_id.as_str())])
+            }
             Self::LatestCheckpointPointer => BTreeSet::from([layout.latest_pointer_path()]),
             Self::CheckpointManifest { optimizer_step } => {
                 BTreeSet::from([layout.checkpoint_manifest_path(*optimizer_step)])
@@ -2204,6 +2597,9 @@ impl PylonTrainingArtifactBundleKind {
                 layout.contribution_bundle_path(assignment_id.as_str()),
                 layout.contribution_proof_bundle_path(assignment_id.as_str()),
             ]),
+            Self::SupportContribution { assignment_id } => {
+                BTreeSet::from([layout.support_bundle_path(assignment_id.as_str())])
+            }
             Self::ValidatorVerdict { challenge_id } => {
                 BTreeSet::from([layout.validator_verdict_path(challenge_id.as_str())])
             }
@@ -2659,6 +3055,125 @@ mod tests {
         .expect("worker manifest should build")
     }
 
+    fn artifact_ref(
+        kind: PylonTrainingArtifactKind,
+        scope: PylonTrainingArtifactScope,
+    ) -> PylonTrainingManifestArtifactRef {
+        let resolver = PylonTrainingArtifactResolverResponse::new(kind, scope)
+            .expect("artifact resolver should build");
+        PylonTrainingManifestArtifactRef {
+            artifact_id: resolver.artifact_id,
+            artifact_kind: resolver.artifact_kind,
+            artifact_class: resolver.artifact_class,
+            digest: None,
+            size_bytes: None,
+        }
+    }
+
+    fn a1_manifest_common() -> PylonTrainingRunManifestCommon {
+        let mut common = manifest_common();
+        common.training_policy_ref = "policy.training.a1_minimal_distributed_lm.001".to_string();
+        common.run_definition_ref = Some("rundef.a1_minimal_distributed_lm.001.v1".to_string());
+        common.validator_policy_ref = "policy.validator.a1_minimal_distributed_lm.v1".to_string();
+        common.environment_ref =
+            PYLON_TRAINING_A1_MINIMAL_DISTRIBUTED_LM_ENVIRONMENT_REF.to_string();
+        common
+    }
+
+    fn a1_checkpoint() -> PylonTrainingCheckpointBinding {
+        PylonTrainingCheckpointBinding {
+            checkpoint_family: "psion.a1_minimal_distributed_lm.checkpoints.v1".to_string(),
+            checkpoint_ref: "base://a1_minimal_distributed_lm/step-000000".to_string(),
+            manifest_digest: "sha256:a1-checkpoint-manifest".to_string(),
+            latest_pointer_ref:
+                "gs://bucket/networks/trainnet.alpha/runs/run.alpha/checkpoints/latest_pointer.json"
+                    .to_string(),
+        }
+    }
+
+    fn a1_work_unit(
+        work_unit: A1MinimalDistributedLmWorkUnitKind,
+    ) -> PylonTrainingWorkUnitManifest {
+        let base_scope = PylonTrainingArtifactScope {
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: None,
+        };
+        let assignment_scope = PylonTrainingArtifactScope {
+            window_id: Some("window.000123".to_string()),
+            assignment_id: Some("assign.node01.window000123".to_string()),
+            ..base_scope.clone()
+        };
+        PylonTrainingWorkUnitManifest {
+            work_unit_kind: work_unit.label().to_string(),
+            tokenizer_digest: "sha256:a1-tokenizer".to_string(),
+            tokenized_dataset_digest: "sha256:a1-tokenized-dataset".to_string(),
+            validation_set_digest: Some("sha256:a1-validation-set".to_string()),
+            base_checkpoint_ref: "base://a1_minimal_distributed_lm/step-000000".to_string(),
+            assignment_shard: Some(PylonTrainingAssignmentShard {
+                shard_id: "shard.a1.0001".to_string(),
+                shard_digest: "sha256:a1-shard-0001".to_string(),
+                range: Some(PylonTrainingAssignmentShardRange {
+                    unit: "tokens".to_string(),
+                    start: 0,
+                    end: 2048,
+                }),
+            }),
+            input_artifacts: vec![
+                artifact_ref(PylonTrainingArtifactKind::Tokenizer, base_scope.clone()),
+                artifact_ref(PylonTrainingArtifactKind::ModelConfig, base_scope.clone()),
+                artifact_ref(
+                    PylonTrainingArtifactKind::OptimizerConfig,
+                    base_scope.clone(),
+                ),
+                artifact_ref(
+                    PylonTrainingArtifactKind::TokenizedDatasetShard,
+                    assignment_scope.clone(),
+                ),
+            ],
+            expected_output_artifacts: vec![artifact_ref(
+                pylon_training_a1_minimal_expected_output_artifact_kind(work_unit),
+                assignment_scope,
+            )],
+            validator_target_assignment_ids: Vec::new(),
+            validator_target_artifact_ids: Vec::new(),
+        }
+    }
+
+    fn a1_worker_manifest(
+        work_unit: A1MinimalDistributedLmWorkUnitKind,
+    ) -> PylonTrainingRunManifestV1 {
+        let dataset_slice = dataset_slice();
+        PylonTrainingRunManifestV1::builder(
+            PylonTrainingManifestRole::Worker,
+            a1_manifest_common(),
+            topology(),
+            a1_checkpoint(),
+            artifacts(),
+            trn(),
+        )
+        .dataset(PylonTrainingDatasetAssignment {
+            dataset_id: dataset_slice.dataset_id.clone(),
+            slice_id: dataset_slice.slice_id.clone(),
+            slice_digest: dataset_slice.slice_digest.clone(),
+            assignment_seed: pylon_training_assignment_seed(
+                "run.alpha",
+                "window.000123",
+                "members.rev7",
+                "assign.node01.window000123",
+                "0123abcd",
+                &dataset_slice,
+            )
+            .expect("assignment seed"),
+        })
+        .work_unit(a1_work_unit(work_unit))
+        .build()
+        .expect("A1 worker manifest should build")
+    }
+
     #[test]
     fn manifest_builder_round_trips_and_stabilizes_digest() {
         let manifest = worker_manifest();
@@ -2976,6 +3491,130 @@ mod tests {
         assert_eq!(
             PylonTrainingArtifactBundleKind::ScoreSnapshot.bundle_kind_label(),
             "score_snapshot"
+        );
+    }
+
+    #[test]
+    fn a1_minimal_manifest_carries_artifact_backed_work_unit_contract() {
+        let manifest = a1_worker_manifest(A1MinimalDistributedLmWorkUnitKind::ValidationReplay);
+        let work_unit = manifest.work_unit.expect("A1 work unit");
+        assert_eq!(work_unit.work_unit_kind, "validation_replay");
+        assert_eq!(
+            work_unit
+                .input_artifacts
+                .iter()
+                .map(|artifact| artifact.artifact_kind)
+                .collect::<Vec<_>>(),
+            vec![
+                PylonTrainingArtifactKind::Tokenizer,
+                PylonTrainingArtifactKind::ModelConfig,
+                PylonTrainingArtifactKind::OptimizerConfig,
+                PylonTrainingArtifactKind::TokenizedDatasetShard,
+            ]
+        );
+        assert_eq!(
+            work_unit.expected_output_artifacts[0].artifact_kind,
+            PylonTrainingArtifactKind::SupportBundle
+        );
+        assert_eq!(
+            work_unit.expected_output_artifacts[0].artifact_class,
+            PylonTrainingArtifactClass::Proof
+        );
+        assert!(
+            work_unit.expected_output_artifacts[0]
+                .artifact_id
+                .contains("~kind~support_bundle~")
+        );
+    }
+
+    #[test]
+    fn a1_minimal_manifest_rejects_missing_expected_output_artifact() {
+        let mut work_unit = a1_work_unit(A1MinimalDistributedLmWorkUnitKind::LocalUpdate);
+        work_unit.expected_output_artifacts.clear();
+        let dataset_slice = dataset_slice();
+        let err = PylonTrainingRunManifestV1::builder(
+            PylonTrainingManifestRole::Worker,
+            a1_manifest_common(),
+            topology(),
+            a1_checkpoint(),
+            artifacts(),
+            trn(),
+        )
+        .dataset(PylonTrainingDatasetAssignment {
+            dataset_id: dataset_slice.dataset_id.clone(),
+            slice_id: dataset_slice.slice_id.clone(),
+            slice_digest: dataset_slice.slice_digest.clone(),
+            assignment_seed: "seed.a1".to_string(),
+        })
+        .work_unit(work_unit)
+        .build()
+        .expect_err("A1 manifest without output artifact should fail");
+        assert_eq!(err, "pylon_training_a1_output_artifacts_missing");
+    }
+
+    #[test]
+    fn a1_minimal_output_artifact_mapping_separates_support_from_model_update() {
+        assert_eq!(
+            pylon_training_a1_minimal_expected_output_artifact_kind(
+                A1MinimalDistributedLmWorkUnitKind::LocalUpdate
+            ),
+            PylonTrainingArtifactKind::LocalUpdate
+        );
+        assert_eq!(
+            pylon_training_a1_minimal_expected_output_artifact_kind(
+                A1MinimalDistributedLmWorkUnitKind::CheckpointVerification
+            ),
+            PylonTrainingArtifactKind::SupportBundle
+        );
+        assert_eq!(
+            pylon_training_a1_minimal_expected_output_artifact_kind(
+                A1MinimalDistributedLmWorkUnitKind::CheckpointPromotion
+            ),
+            PylonTrainingArtifactKind::CheckpointManifest
+        );
+    }
+
+    #[test]
+    fn a1_minimal_artifact_ids_resolve_inputs_and_support_outputs() {
+        let base_scope = PylonTrainingArtifactScope {
+            network_id: "trainnet.alpha".to_string(),
+            run_id: "run.alpha".to_string(),
+            window_id: None,
+            assignment_id: None,
+            challenge_id: None,
+            optimizer_step: None,
+        };
+        let assignment_scope = PylonTrainingArtifactScope {
+            window_id: Some("window.000123".to_string()),
+            assignment_id: Some("assign.node01.window000123".to_string()),
+            ..base_scope.clone()
+        };
+        let tokenizer = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::Tokenizer,
+            base_scope,
+        )
+        .expect("tokenizer resolver");
+        let shard = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::TokenizedDatasetShard,
+            assignment_scope.clone(),
+        )
+        .expect("dataset shard resolver");
+        let support = PylonTrainingArtifactResolverResponse::new(
+            PylonTrainingArtifactKind::SupportBundle,
+            assignment_scope,
+        )
+        .expect("support resolver");
+        assert_eq!(
+            tokenizer.artifact_class,
+            PylonTrainingArtifactClass::Tokenizer
+        );
+        assert_eq!(shard.artifact_class, PylonTrainingArtifactClass::Dataset);
+        assert_eq!(support.artifact_class, PylonTrainingArtifactClass::Proof);
+        assert_eq!(
+            pylon_training_resolve_artifact_id(support.artifact_id.as_str())
+                .expect("support artifact id resolves")
+                .relative_object_path,
+            "windows/window.000123/contributions/assign.node01.window000123/support_bundle.json"
         );
     }
 

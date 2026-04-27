@@ -374,6 +374,14 @@ Aggregation maps to `aggregation`, and promotion maps to
 `participation_only` for support/eval work, `model_update` for local updates,
 and `checkpoint_advance` for aggregation/promotion.
 
+The Pylon run manifest now carries a typed `work_unit` block for this lane:
+`work_unit_kind`, tokenizer digest, tokenized dataset digest, optional
+validation-set digest, base checkpoint ref, assignment shard/range, input
+artifact ids, expected output artifact ids, and validator-target ids. A1
+local-update work expects a `local_update` artifact. Participation-only support
+work expects a `support_bundle` artifact, which lets weak/verifier devices
+upload real compute evidence without using the local-update artifact class.
+
 That gives Transcript 222 a single answer to "what run did this node actually
 work on?" even before all downstream issue work lands.
 
