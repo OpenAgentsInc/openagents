@@ -53,14 +53,18 @@ the VM is temporarily running a local recovery proxy:
 - `nexus-cloudflared.service`: forwards public traffic to
   `http://127.0.0.1:8081`
 - `nexus-cloudflared-b.service`: inactive
-- recovery proxy behavior: forwards normal HTTP API traffic to `127.0.0.1:8080`
-  and rejects WebSocket upgrades during recovery
+- recovery proxy behavior: serves `/healthz` directly, forwards normal HTTP API
+  traffic to `127.0.0.1:8080`, serves stale cached `/api/stats` and
+  `/api/training/summary` when the upstream shell is slow, and rejects WebSocket
+  upgrades during recovery
 - `NEXUS_RELAY_MAX_WEBSOCKETS=4`
 - `NEXUS_CONTROL_CS336_HOMEWORK_AUTO_DISPATCH_MIN_PYLON_VERSION=0.1.16`
 
 This is a recovery posture, not the final distributed-training posture. It keeps
-`/healthz`, `/api/stats`, and operator HTTP reads usable, but public relay
-WebSocket work should be treated as temporarily constrained.
+`/healthz`, `/api/stats`, `/api/training/summary`, and operator HTTP reads
+usable, but public relay WebSocket work should be treated as temporarily
+constrained. Responses with `X-Nexus-Recovery-Proxy-Cache: stale` are cached
+fallbacks because the upstream shell did not answer within the proxy timeout.
 
 ## Current Production Snapshot
 
