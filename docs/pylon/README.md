@@ -395,6 +395,15 @@ replaces the current platform assets when the tag already exists, so
 `darwin-arm64` and `linux-x86_64` can land on the same `pylon-v...` tag
 without manual asset shuffling.
 
+Release archives cut after 2026-04-27 also include a minimal packaged Psionic
+runtime surface at `./psionic`, including
+`psionic/target/release/psionic-train`. That packaged runtime is what lets
+normal npm-installed Pylons advertise the current homework training capability
+without requiring users to clone a sibling Psionic checkout. If public stats
+show online Pylons with `homework_worker_training_capability_missing`, first
+check whether those nodes are running an older archive or direct binary that
+lacks the packaged `./psionic` surface.
+
 Use a direct release asset install only when the operator explicitly does not want the npm bootstrap layer.
 Direct release assets are manual-upgrade binaries today. They do not contain a
 native GitHub release poller and they do not honor the npm launcher's

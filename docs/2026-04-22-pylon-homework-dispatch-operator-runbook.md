@@ -48,6 +48,10 @@ Minimum runtime requirements:
 - public Pylon release asset `pylon-v0.1.15` or newer. The npm bootstrap
   package may still be invoked as `npx @openagentsinc/pylon`; the important
   version for earning and validation is the resolved standalone Pylon binary.
+  For releases cut after 2026-04-27, the archive must include the packaged
+  `./psionic` runtime surface and `psionic/target/release/psionic-train`, so a
+  normal installed Pylon can advertise homework training capability without a
+  separate sibling checkout.
 - production Nexus running the lease-priority fix that tries existing
   schedulable runs before auto-launching fresh hosted starter work
 - production Nexus running the validator-priority fix that validates automatic
@@ -63,7 +67,10 @@ Minimum runtime requirements:
 - local Gemma runtime visible to Pylon only when the proof also covers sellable
   inference. Hosted homework earning itself must not require an automatic Gemma
   download or diagnostic.
-- compatible Psionic checkout discoverable by Pylon
+- compatible Psionic runtime surface discoverable by Pylon. For current public
+  releases this should be the packaged `./psionic` directory inside the Pylon
+  archive; use `OPENAGENTS_PSIONIC_REPO=/absolute/path/to/psionic` only for
+  source-development or explicit operator override.
 - treasury wallet status connected and funded
 - placeholder/liveness payouts disabled for this proof
 
