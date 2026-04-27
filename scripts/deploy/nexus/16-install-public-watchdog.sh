@@ -648,6 +648,9 @@ UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable --now nexus-public-watchdog.timer
 sudo systemctl reset-failed nexus-public-watchdog.service || true
+if sudo systemctl is-active --quiet nexus-http-recovery-proxy.service; then
+  sudo systemctl restart nexus-http-recovery-proxy.service
+fi
 sudo systemctl --no-pager --full status nexus-public-watchdog.service | sed -n '1,40p' || true
 sudo systemctl --no-pager --full status nexus-public-watchdog.timer | sed -n '1,40p' || true
 REMOTE
