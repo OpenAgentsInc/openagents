@@ -503,6 +503,18 @@ class Handler(BaseHTTPRequestHandler):
             self._send_bytes(200, HEALTH_BODY)
             return
 
+        if self.command == "GET" and path_only in CACHE_BY_PATH:
+            cached = self._read_cache(path_only)
+            if cached is not None:
+                self._send_bytes(
+                    200,
+                    cached,
+                    extra_headers={
+                        "X-Nexus-Recovery-Proxy-Cache": "served",
+                    },
+                )
+                return
+
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else None
         headers = {

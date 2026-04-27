@@ -3212,14 +3212,22 @@ struct TrainingOperatorSummaryQuery {
 
 #[derive(Debug, Clone, Deserialize)]
 struct TrainingNodeListQuery {
-    #[serde(flatten)]
-    filter: TrainingNodeQuery,
+    #[serde(default)]
+    network_id: Option<String>,
+    #[serde(default)]
+    requested_network_id: Option<String>,
+    #[serde(default)]
+    role: Option<TrainingNodeRoleClaim>,
+    #[serde(default)]
+    online_only: Option<String>,
+    #[serde(default)]
+    eligible_only: Option<String>,
     #[serde(default)]
     limit: Option<usize>,
     #[serde(default)]
-    refresh_reputation: bool,
+    refresh_reputation: Option<String>,
     #[serde(default)]
-    include_scheduler_availability: bool,
+    include_scheduler_availability: Option<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -9608,6 +9616,34 @@ fn training_operator_summary_run_limit(
     Ok(Some(
         parsed.min(TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT),
     ))
+}
+
+fn training_node_query_bool(
+    value: Option<&str>,
+    parameter: &'static str,
+) -> Result<bool, ApiError> {
+    let Some(value) = value else {
+        return Ok(false);
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "false" | "0" | "no" | "off" => Ok(false),
+        "true" | "1" | "yes" | "on" => Ok(true),
+        _ => Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: format!("training_node_query_{parameter}_invalid"),
+        }),
+    }
+}
+
+fn training_node_list_filter(query: &TrainingNodeListQuery) -> Result<TrainingNodeQuery, ApiError> {
+    Ok(TrainingNodeQuery {
+        network_id: query.network_id.clone(),
+        requested_network_id: query.requested_network_id.clone(),
+        role: query.role,
+        online_only: training_node_query_bool(query.online_only.as_deref(), "online_only")?,
+        eligible_only: training_node_query_bool(query.eligible_only.as_deref(), "eligible_only")?,
+    })
 }
 
 async fn training_operator_summary(
@@ -17527,22 +17563,27 @@ async fn list_training_nodes(
 ) -> Result<Json<Vec<AdmittedTrainingNodeView>>, ApiError> {
     let now = now_unix_ms() as i64;
     let limit = query.limit.unwrap_or(TRAINING_NODE_LIST_DEFAULT_LIMIT);
+    let filter = training_node_list_filter(&query)?;
+    let refresh_reputation =
+        training_node_query_bool(query.refresh_reputation.as_deref(), "refresh_reputation")?;
+    let include_scheduler_availability = training_node_query_bool(
+        query.include_scheduler_availability.as_deref(),
+        "include_scheduler_availability",
+    )?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    let base_nodes = store
-        .kernel
-        .list_admitted_training_nodes(&query.filter, now);
-    let mut nodes = if query.refresh_reputation {
+    let base_nodes = store.kernel.list_admitted_training_nodes(&filter, now);
+    let mut nodes = if refresh_reputation {
         training_authority_refresh_node_views(&store.kernel, base_nodes, now)
             .map_err(kernel_api_error)?
     } else {
         base_nodes
     };
     nodes.truncate(limit);
-    if query.include_scheduler_availability {
+    if include_scheduler_availability {
         let mut scheduler = store.training_scheduler.clone();
         scheduler.recover_from_kernel(&store.kernel, now);
         nodes = nodes
