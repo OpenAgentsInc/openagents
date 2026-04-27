@@ -3147,13 +3147,15 @@ impl KernelState {
         let mut items = self
             .compute_training_runs
             .values()
-            .map(|record| record.training_run.clone())
-            .filter(|run| {
-                training_policy_ref.is_none_or(|expected| run.training_policy_ref == expected)
-                    && environment_ref
-                        .is_none_or(|expected| run.environment_binding.environment_ref == expected)
-                    && status.is_none_or(|expected| run.status == expected)
+            .filter(|record| {
+                training_policy_ref
+                    .is_none_or(|expected| record.training_run.training_policy_ref == expected)
+                    && environment_ref.is_none_or(|expected| {
+                        record.training_run.environment_binding.environment_ref == expected
+                    })
+                    && status.is_none_or(|expected| record.training_run.status == expected)
             })
+            .map(|record| record.training_run.clone())
             .collect::<Vec<_>>();
         items.sort_by(|lhs, rhs| {
             lhs.created_at_ms
@@ -3493,11 +3495,11 @@ impl KernelState {
         let mut items = self
             .compute_adapter_training_windows
             .values()
-            .map(|record| record.window.clone())
-            .filter(|window| {
-                training_run_id.is_none_or(|expected| window.training_run_id == expected)
-                    && status.is_none_or(|expected| window.status == expected)
+            .filter(|record| {
+                training_run_id.is_none_or(|expected| record.window.training_run_id == expected)
+                    && status.is_none_or(|expected| record.window.status == expected)
             })
+            .map(|record| record.window.clone())
             .collect::<Vec<_>>();
         items.sort_by(|lhs, rhs| {
             lhs.recorded_at_ms
@@ -3551,13 +3553,15 @@ impl KernelState {
         let mut items = self
             .compute_adapter_contribution_outcomes
             .values()
-            .map(|record| record.contribution.clone())
-            .filter(|contribution| {
-                training_run_id.is_none_or(|expected| contribution.training_run_id == expected)
-                    && window_id.is_none_or(|expected| contribution.window_id == expected)
-                    && disposition
-                        .is_none_or(|expected| contribution.validator_disposition == expected)
+            .filter(|record| {
+                training_run_id
+                    .is_none_or(|expected| record.contribution.training_run_id == expected)
+                    && window_id.is_none_or(|expected| record.contribution.window_id == expected)
+                    && disposition.is_none_or(|expected| {
+                        record.contribution.validator_disposition == expected
+                    })
             })
+            .map(|record| record.contribution.clone())
             .collect::<Vec<_>>();
         items.sort_by(|lhs, rhs| {
             lhs.recorded_at_ms

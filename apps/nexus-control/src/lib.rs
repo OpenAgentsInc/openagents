@@ -25890,21 +25890,6 @@ fn training_visualization_increment_window_validator_status(
     }
 }
 
-fn training_visualization_challenge_window_binding<'a>(
-    challenge_id: &str,
-    windows: &'a [ComputeAdapterTrainingWindow],
-) -> Option<(&'a str, &'a str)> {
-    windows.iter().find_map(|window| {
-        let prefix = format!(
-            "challenge.training.{}.{}.",
-            window.training_run_id, window.window_id
-        );
-        challenge_id
-            .starts_with(prefix.as_str())
-            .then_some((window.training_run_id.as_str(), window.window_id.as_str()))
-    })
-}
-
 fn training_visualization_snapshot(
     store: &ControlStore,
     now_unix_ms: u64,
@@ -25980,8 +25965,17 @@ fn training_visualization_snapshot_with_summary(
     let mut window_metadata_by_id = HashMap::new();
     let mut outcomes_by_window_id: HashMap<String, Vec<&ComputeAcceptedOutcome>> = HashMap::new();
     let mut windows_by_run_id: HashMap<String, Vec<&ComputeAdapterTrainingWindow>> = HashMap::new();
+    let mut challenge_window_bindings = HashMap::<String, (String, String)>::new();
     for window in &training_windows {
         if let Ok(metadata) = training_window_metadata_from_value(&window.metadata) {
+            if let Some(validation) = metadata.validation.as_ref() {
+                for challenge in &validation.challenges {
+                    challenge_window_bindings.insert(
+                        challenge.challenge_id.clone(),
+                        (window.training_run_id.clone(), window.window_id.clone()),
+                    );
+                }
+            }
             window_metadata_by_id.insert(window.window_id.clone(), metadata);
         }
         windows_by_run_id
@@ -26075,10 +26069,9 @@ fn training_visualization_snapshot_with_summary(
     > = BTreeMap::new();
     for challenge in &validator_challenges {
         training_visualization_increment_validator_status(&mut validators, challenge.status);
-        if let Some((training_run_id, window_id)) = training_visualization_challenge_window_binding(
-            challenge.request.context.challenge_id.as_str(),
-            training_windows.as_slice(),
-        ) {
+        if let Some((training_run_id, window_id)) =
+            challenge_window_bindings.get(challenge.request.context.challenge_id.as_str())
+        {
             let entry = validator_windows
                 .entry((training_run_id.to_string(), window_id.to_string()))
                 .or_insert_with(|| TrainingVisualizationValidatorWindowSummary {
