@@ -382,6 +382,16 @@ local-update work expects a `local_update` artifact. Participation-only support
 work expects a `support_bundle` artifact, which lets weak/verifier devices
 upload real compute evidence without using the local-update artifact class.
 
+Nexus closeout accounting treats those artifact paths differently. Accepted
+support/verifier receipts can count as run participants through
+`training_accepted_contributors`, but they remain ineligible for aggregation and
+do not increment `training_model_progress_contributors`. Model-progress
+participant credit requires an accepted local-update contribution whose
+`aggregation_eligibility` is `eligible` and whose `accepted_for_aggregation`
+flag is true. Promoted checkpoints and accepted aggregate ids are now carried
+through closeout metadata, public training state, run detail, and visualization
+snapshots so the local-update participants can be tied to checkpoint lineage.
+
 That gives Transcript 222 a single answer to "what run did this node actually
 work on?" even before all downstream issue work lands.
 

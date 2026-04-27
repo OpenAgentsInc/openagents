@@ -171,5 +171,11 @@ The current public truth comes from the `Nexus` training and payout surfaces:
 - model-progress contributors
 - accepted-work payout totals
 
+For the A1 minimal distributed LM path, accepted verifier/support receipts can
+count in the accepted-contributor/participant total, but they are explicitly
+not aggregation-eligible and do not count as model-progress contributors.
+Model-progress contributor credit is reserved for accepted local-update work
+that enters aggregation and promoted-checkpoint lineage.
+
 Those are the counters that matter for the launch story, not generic online
 presence by itself.
