@@ -143,9 +143,9 @@ use crate::economy::{
     PublicRuntimeSnapshot, PublicStatsSnapshot, PublicTrainingLaunchAlert,
     PublicTrainingLaunchHealthSnapshot, PublicTrainingLaunchState, PublicTrainingQueuePressure,
     PublicTrainingRunCaveat, PublicTrainingRunContributionRow, PublicTrainingRunDetailSnapshot,
-    PublicTrainingRunNodeRow, PublicTrainingRunState, PublicTrainingRunTreasuryStatus,
-    PublicTrainingStatsSnapshot, PublicTrainingWindowState, PublicTrainingWorkClassState,
-    ReceiptLedger,
+    PublicTrainingRunNodeRow, PublicTrainingRunPayoutRow, PublicTrainingRunState,
+    PublicTrainingRunTreasuryStatus, PublicTrainingStatsSnapshot, PublicTrainingWindowState,
+    PublicTrainingWorkClassState, ReceiptLedger,
 };
 use crate::kernel::{
     AdmittedTrainingNodeView, ComputeAcceptedOutcomePublicationSource,
@@ -170,8 +170,9 @@ use crate::treasury::{
     TreasuryIntegrationImportResponse, TreasuryPayoutClass, TreasuryPayoutClassification,
     TreasuryPayoutPreparation, TreasuryPlaceholderPayoutMode, TreasuryPublicStats,
     TreasuryQueuedPayoutRequest, TreasuryReceiptEvent, TreasuryState, TreasuryStatusResponse,
-    TreasuryTrainingPayoutLedgerSummary, create_live_funding_target, dispatch_live_payouts,
-    load_live_wallet_refresh_result_with_plan, parse_pylon_client_version,
+    TreasuryTrainingPayoutLedgerEntry, TreasuryTrainingPayoutLedgerSummary,
+    create_live_funding_target, dispatch_live_payouts, load_live_wallet_refresh_result_with_plan,
+    parse_pylon_client_version,
 };
 
 pub use crate::treasury::{
@@ -24934,6 +24935,38 @@ fn training_run_detail_contribution_row(
     }
 }
 
+fn training_run_detail_payout_row(
+    entry: &TreasuryTrainingPayoutLedgerEntry,
+) -> PublicTrainingRunPayoutRow {
+    let classification = &entry.classification;
+    PublicTrainingRunPayoutRow {
+        payout_key: entry.payout_key.clone(),
+        nostr_pubkey_hex: entry.nostr_pubkey_hex.clone(),
+        amount_sats: entry.amount_sats,
+        status: entry.status.clone(),
+        reconciliation_status: entry.reconciliation_status.clone(),
+        reason: entry.reason.clone(),
+        payout_class: classification.effective_payout_class().label().to_string(),
+        payout_basis: classification.payout_basis.clone(),
+        work_class: classification.work_class.clone(),
+        progress_class: classification.progress_class.clone(),
+        accepted_outcome_id: classification.accepted_outcome_id.clone(),
+        training_run_id: classification.training_run_id.clone(),
+        window_id: classification.window_id.clone(),
+        contribution_id: classification.contribution_id.clone(),
+        assignment_id: classification.assignment_id.clone(),
+        share_bps: classification.share_bps,
+        weight_basis: classification.weight_basis.clone(),
+        weight_value: classification.weight_value,
+        weak_device_bearing: classification.weak_device_bearing,
+        progress_bearing: classification.progress_bearing,
+        window_started_at_unix_ms: entry.window_started_at_unix_ms,
+        window_ends_at_unix_ms: entry.window_ends_at_unix_ms,
+        created_at_unix_ms: entry.created_at_unix_ms,
+        updated_at_unix_ms: entry.updated_at_unix_ms,
+    }
+}
+
 fn training_run_detail_node_row(node: &AdmittedTrainingNodeView) -> PublicTrainingRunNodeRow {
     PublicTrainingRunNodeRow {
         node_pubkey_hex: node.node_pubkey_hex.clone(),
@@ -25118,6 +25151,12 @@ fn training_run_detail_snapshot(
             .cmp(&lhs.recorded_at_ms)
             .then_with(|| lhs.contribution_id.cmp(&rhs.contribution_id))
     });
+    let payouts = store
+        .treasury
+        .training_payout_ledger_entries_for_run(training_run_id.as_str())
+        .iter()
+        .map(training_run_detail_payout_row)
+        .collect::<Vec<_>>();
 
     let requested_featured_window_id = training_run_detail_featured_window_id(&run);
     let featured_window = requested_featured_window_id
@@ -25168,6 +25207,7 @@ fn training_run_detail_snapshot(
         launch,
         windows,
         contributions,
+        payouts,
         nodes,
         caveats,
     })
@@ -48992,6 +49032,35 @@ mod tests {
             }
         }
 
+        {
+            let mut store = state.store.write().expect("write store");
+            let abuse_controls = TrainingRolloutAbuseControls::default();
+            let abuse_snapshot = TrainingFleetAbuseSnapshot::default();
+            let mut payout_requests = super::training_window_closeout_treasury_payout_requests(
+                120,
+                &local_window,
+                local_contributions.as_slice(),
+                local_recorded_at_ms + 1,
+                TrainingWindowCloseoutStatus::Rewarded,
+                &abuse_controls,
+                &abuse_snapshot,
+            );
+            payout_requests.extend(super::training_window_closeout_treasury_payout_requests(
+                80,
+                &support_window,
+                support_contributions.as_slice(),
+                support_recorded_at_ms + 1,
+                TrainingWindowCloseoutStatus::Rewarded,
+                &abuse_controls,
+                &abuse_snapshot,
+            ));
+            store.treasury.queue_payout_requests(
+                &state.config.treasury,
+                payout_requests.as_slice(),
+                created_at_ms + 3_500,
+            );
+        }
+
         super::force_refresh_public_stats_cache(&state, created_at_ms + 4_000);
 
         let stats_response = app
@@ -49060,6 +49129,83 @@ mod tests {
         assert_eq!(support_detail.validator_disposition, "accepted");
         assert_eq!(support_detail.aggregation_eligibility, "ineligible");
         assert!(!support_detail.accepted_for_aggregation);
+        assert_eq!(detail.payouts.len(), 2);
+        let local_payout = detail
+            .payouts
+            .iter()
+            .find(|payout| payout.contribution_id.as_deref() == Some("contrib.a1_minimal.local"))
+            .expect("local update payout row");
+        assert_eq!(local_payout.payout_class, "accepted_work");
+        assert_eq!(local_payout.amount_sats, 120);
+        assert_eq!(
+            local_payout.payout_basis.as_deref(),
+            Some("aggregation_weight")
+        );
+        assert_eq!(
+            local_payout.work_class.as_deref(),
+            Some("small_model_local_training")
+        );
+        assert_eq!(local_payout.progress_class.as_deref(), Some("model_update"));
+        assert_eq!(
+            local_payout.accepted_outcome_id.as_deref(),
+            Some("accepted.training_window.window.a1_minimal.local.0001")
+        );
+        assert_eq!(
+            local_payout.training_run_id.as_deref(),
+            Some(training_run_id)
+        );
+        assert_eq!(local_payout.window_id.as_deref(), Some(local_window_id));
+        assert_eq!(
+            local_payout.assignment_id.as_deref(),
+            Some(local_assignment_id)
+        );
+        assert_eq!(local_payout.share_bps, Some(10_000));
+        assert_eq!(local_payout.weight_basis.as_deref(), Some("tokens"));
+        assert_eq!(local_payout.weight_value, Some(65_536));
+        assert!(!local_payout.weak_device_bearing);
+        assert!(local_payout.progress_bearing);
+        assert!(local_detail.accepted_for_aggregation);
+
+        let support_payout = detail
+            .payouts
+            .iter()
+            .find(|payout| payout.contribution_id.as_deref() == Some("contrib.a1_minimal.support"))
+            .expect("support payout row");
+        assert_eq!(support_payout.payout_class, "accepted_work");
+        assert_eq!(support_payout.amount_sats, 80);
+        assert_eq!(
+            support_payout.payout_basis.as_deref(),
+            Some("validator_verdict")
+        );
+        assert_eq!(
+            support_payout.work_class.as_deref(),
+            Some("validation_replay")
+        );
+        assert_eq!(
+            support_payout.progress_class.as_deref(),
+            Some("participation_only")
+        );
+        assert_eq!(
+            support_payout.accepted_outcome_id.as_deref(),
+            Some("accepted.training_window.window.a1_minimal.support.0001")
+        );
+        assert_eq!(
+            support_payout.training_run_id.as_deref(),
+            Some(training_run_id)
+        );
+        assert_eq!(support_payout.window_id.as_deref(), Some(support_window_id));
+        assert_eq!(
+            support_payout.assignment_id.as_deref(),
+            Some(support_assignment_id)
+        );
+        assert_eq!(support_payout.share_bps, Some(10_000));
+        assert_eq!(support_payout.weight_basis, None);
+        assert_eq!(support_payout.weight_value, None);
+        assert!(support_payout.weak_device_bearing);
+        assert!(!support_payout.progress_bearing);
+        let detail_json = serde_json::to_string(&detail)?;
+        assert!(!detail_json.contains("spark:"));
+        assert!(!detail_json.contains("payment-"));
 
         let visualization = fetch_training_visualization(&app).await?;
         assert_eq!(visualization.progress.accepted_contributors, 2);

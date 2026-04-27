@@ -446,6 +446,32 @@ Important qualifier:
 So the public split is real now, but the settlement substrate remains one
 hosted treasury system.
 
+Run-detail payout rows now expose accepted-work settlement joins without
+leaking payout targets or payment ids. The safe public row fields are:
+
+- `payout_class`
+- `payout_basis`
+- `work_class`
+- `progress_class`
+- `weak_device_bearing`
+- `progress_bearing`
+- `share_bps`
+- `weight_basis`
+- `weight_value`
+- `accepted_outcome_id`
+- `training_run_id`
+- `window_id`
+- `contribution_id`
+- `assignment_id`
+
+For the A1 minimal distributed LM path, support/verifier payout rows should
+have `payout_class = accepted_work`, `progress_class = participation_only`,
+and `progress_bearing = false`. Local-update or checkpoint-advance payout rows
+should carry the model-progress progress class and join back to the accepted
+contribution, window, outcome, and checkpoint lineage. Public run detail must
+not expose Spark addresses, wallet payment ids, wallet recovery state, or
+operator-only treasury recovery details.
+
 ## Canonical Claim Rules
 
 ### Public statements that are allowed today

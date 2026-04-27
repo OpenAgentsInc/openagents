@@ -392,6 +392,16 @@ flag is true. Promoted checkpoints and accepted aggregate ids are now carried
 through closeout metadata, public training state, run detail, and visualization
 snapshots so the local-update participants can be tied to checkpoint lineage.
 
+Run detail also projects safe payout rows for this lane. Those rows expose
+`payout_class`, `payout_basis`, `work_class`, `progress_class`,
+`weak_device_bearing`, `progress_bearing`, `share_bps`, `weight_basis`,
+`weight_value`, `accepted_outcome_id`, `window_id`, `contribution_id`, and
+`assignment_id`. They intentionally do not expose payout targets, payment ids,
+wallet runtime details, or treasury recovery data. This lets support work show
+up as accepted work without becoming model-progress work, while local-update
+payouts still join back to accepted model-progress contributions and promoted
+checkpoint lineage.
+
 That gives Transcript 222 a single answer to "what run did this node actually
 work on?" even before all downstream issue work lands.
 

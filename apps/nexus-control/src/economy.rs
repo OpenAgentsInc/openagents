@@ -437,6 +437,58 @@ pub struct PublicTrainingRunContributionRow {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PublicTrainingRunPayoutRow {
+    #[serde(default)]
+    pub payout_key: String,
+    #[serde(default)]
+    pub nostr_pubkey_hex: String,
+    #[serde(default)]
+    pub amount_sats: u64,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub reconciliation_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub payout_class: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accepted_outcome_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contribution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub share_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight_basis: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight_value: Option<u64>,
+    #[serde(default)]
+    pub weak_device_bearing: bool,
+    #[serde(default)]
+    pub progress_bearing: bool,
+    #[serde(default)]
+    pub window_started_at_unix_ms: u64,
+    #[serde(default)]
+    pub window_ends_at_unix_ms: u64,
+    #[serde(default)]
+    pub created_at_unix_ms: u64,
+    #[serde(default)]
+    pub updated_at_unix_ms: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PublicTrainingRunNodeRow {
     #[serde(default)]
     pub node_pubkey_hex: String,
@@ -550,6 +602,8 @@ pub struct PublicTrainingRunDetailSnapshot {
     pub windows: Vec<PublicTrainingWindowState>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub contributions: Vec<PublicTrainingRunContributionRow>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payouts: Vec<PublicTrainingRunPayoutRow>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub nodes: Vec<PublicTrainingRunNodeRow>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
