@@ -104,6 +104,8 @@ Autopilot drives proof lanes through `oa proof run`:
 oa proof run cs336-a1 --namespace <namespace> --workers 1 --validators 1 --json
 oa proof run cs336-a1-stale-recovery --namespace <namespace> --workers 1 --validators 1 --json
 oa proof run cs336-a1-replacement-attempt --namespace <namespace> --workers 0 --validators 0 --json
+oa proof run a1-minimal-distributed-lm-launch-a --namespace <namespace> --json
+oa proof run a1-minimal-distributed-lm-launch-b --namespace <namespace> --json
 ```
 
 The returned projection is assembled from:
@@ -160,6 +162,16 @@ The proof card must show the namespace, lane, run/window/assignment/lease IDs,
 first red stage, first red subject, blocker, closeout state, transport split,
 worker nodes, validator nodes, and artifact paths. Empty fields should remain
 explicitly visible as `none` or `unknown`.
+
+The A1 minimal distributed LM lanes are deterministic local projections. They
+do not require live Pylons. `a1-minimal-distributed-lm-launch-a` writes the
+canonical participant counters where support/verifier work can count as
+`training_accepted_contributors` but not
+`training_model_progress_contributors`. `a1-minimal-distributed-lm-launch-b`
+writes the promoted-checkpoint projection where accepted local updates enter
+aggregate/promotion lineage. Both lanes persist the same run report, authority
+trace, proof summary, first-red-stage fields, public stats projection, payout
+projection, and signed artifact class projection as the CS336 proof lanes.
 
 Reduced, redacted contract fixtures live under:
 

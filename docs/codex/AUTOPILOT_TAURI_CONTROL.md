@@ -269,6 +269,14 @@ binaries when the installed proof runtime itself is under test:
 scripts/autopilot/tauri-homework-matrix.sh --real-binaries
 ```
 
+Additional direct `oa proof run` lanes are available for the A1 minimal
+distributed LM record contract:
+
+| Lane | Workers | Validators | Why It Exists |
+| --- | ---: | ---: | --- |
+| `a1-minimal-distributed-lm-launch-a` | 0 | 0 | Deterministic local projection for the participant-count claim path: support/verifier work counts as participants, not model-progress participants. |
+| `a1-minimal-distributed-lm-launch-b` | 0 | 0 | Deterministic local projection for the model-progress participant path: accepted local updates enter aggregate/promotion lineage. |
+
 In real-binaries mode the wrapper resolves or builds the workspace `pylon` and
 `oa` binaries, creates a disposable app-owned Pylon home under
 `target/autopilot-tauri-control-smoke/pylon-home`, runs `pylon init`, generates

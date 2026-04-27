@@ -7698,7 +7698,7 @@ Commands:\n\
   proof fleet down --namespace <ns> [--json]\n\
   proof fleet reset --namespace <ns> [--json]\n\
   proof run <lane> [--namespace <ns>] [--workers <n>] [--validators <n>] [--timeout-seconds <n>] [--mode prod-shaped|debug-authority] [--stale-worker-state] [--stale-validator-state] [--json]\n\
-    lanes: cs336-a1, cs336-a1-hosted-starter, cs336-a1-stale-recovery, cs336-a1-replacement-attempt\n\
+    lanes: cs336-a1, cs336-a1-hosted-starter, cs336-a1-stale-recovery, cs336-a1-replacement-attempt, a1-minimal-distributed-lm-launch-a, a1-minimal-distributed-lm-launch-b\n\
   proof doctor [--namespace <ns>] [--json]\n\
   serve\n\
   account link --base-url <url> --token <one_time_token> [--json]\n\
