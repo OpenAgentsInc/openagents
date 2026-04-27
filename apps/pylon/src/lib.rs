@@ -10774,6 +10774,7 @@ fn retire_failed_active_training_runtime_lease(state: &mut PylonTrainingRuntimeS
     }
     let lease_id = active.lease_id.clone();
     update_cached_training_lease_state(state, lease_id.as_str(), "failed", now_epoch_ms());
+    state.active_runtime = None;
     true
 }
 
@@ -29250,8 +29251,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 .lease_cache
                 .get(active.lease_id.as_str())
                 .is_some_and(|lease| lease.state == "failed")
+                && state.active_runtime.is_none()
                 && newest_pending_training_work_offer(&state).is_none(),
-            "failed retained leases must become terminal so intake can request fresh paid work",
+            "failed retained leases must become terminal and clear the failed runtime so intake can request fresh paid work",
         )
     }
 
