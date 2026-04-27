@@ -150,6 +150,8 @@ pub enum ProofLane {
     Cs336A1HostedStarter,
     Cs336A1StaleRecovery,
     Cs336A1ReplacementAttempt,
+    A1MinimalDistributedLmLaunchA,
+    A1MinimalDistributedLmLaunchB,
 }
 
 impl ProofLane {
@@ -159,6 +161,8 @@ impl ProofLane {
             Self::Cs336A1HostedStarter => "cs336-a1-hosted-starter",
             Self::Cs336A1StaleRecovery => "cs336-a1-stale-recovery",
             Self::Cs336A1ReplacementAttempt => "cs336-a1-replacement-attempt",
+            Self::A1MinimalDistributedLmLaunchA => "a1-minimal-distributed-lm-launch-a",
+            Self::A1MinimalDistributedLmLaunchB => "a1-minimal-distributed-lm-launch-b",
         }
     }
 
@@ -168,6 +172,8 @@ impl ProofLane {
             Self::Cs336A1HostedStarter => "run.cs336.a1.proof.hosted.starter",
             Self::Cs336A1StaleRecovery => "run.cs336.a1.proof.stale",
             Self::Cs336A1ReplacementAttempt => "run.cs336.a1.proof.replace",
+            Self::A1MinimalDistributedLmLaunchA => "run.a1_minimal_distributed_lm.proof.launch_a",
+            Self::A1MinimalDistributedLmLaunchB => "run.a1_minimal_distributed_lm.proof.launch_b",
         }
     }
 
@@ -177,6 +183,8 @@ impl ProofLane {
             Self::Cs336A1HostedStarter => "Proof CS336 A1 Hosted Starter",
             Self::Cs336A1StaleRecovery => "Proof CS336 A1 Stale Recovery",
             Self::Cs336A1ReplacementAttempt => "Proof CS336 A1 Replacement Attempt",
+            Self::A1MinimalDistributedLmLaunchA => "Proof A1 Minimal Distributed LM Launch A",
+            Self::A1MinimalDistributedLmLaunchB => "Proof A1 Minimal Distributed LM Launch B",
         }
     }
 
@@ -184,7 +192,9 @@ impl ProofLane {
         match self {
             Self::Cs336A1 | Self::Cs336A1HostedStarter => 2,
             Self::Cs336A1StaleRecovery => 1,
-            Self::Cs336A1ReplacementAttempt => 0,
+            Self::Cs336A1ReplacementAttempt
+            | Self::A1MinimalDistributedLmLaunchA
+            | Self::A1MinimalDistributedLmLaunchB => 0,
         }
     }
 
@@ -192,21 +202,27 @@ impl ProofLane {
         match self {
             Self::Cs336A1 | Self::Cs336A1HostedStarter => 1,
             Self::Cs336A1StaleRecovery => 1,
-            Self::Cs336A1ReplacementAttempt => 0,
+            Self::Cs336A1ReplacementAttempt
+            | Self::A1MinimalDistributedLmLaunchA
+            | Self::A1MinimalDistributedLmLaunchB => 0,
         }
     }
 
     const fn minimum_workers(self) -> usize {
         match self {
             Self::Cs336A1 | Self::Cs336A1HostedStarter | Self::Cs336A1StaleRecovery => 1,
-            Self::Cs336A1ReplacementAttempt => 0,
+            Self::Cs336A1ReplacementAttempt
+            | Self::A1MinimalDistributedLmLaunchA
+            | Self::A1MinimalDistributedLmLaunchB => 0,
         }
     }
 
     const fn minimum_validators(self) -> usize {
         match self {
             Self::Cs336A1 | Self::Cs336A1HostedStarter | Self::Cs336A1StaleRecovery => 1,
-            Self::Cs336A1ReplacementAttempt => 0,
+            Self::Cs336A1ReplacementAttempt
+            | Self::A1MinimalDistributedLmLaunchA
+            | Self::A1MinimalDistributedLmLaunchB => 0,
         }
     }
 
@@ -214,7 +230,9 @@ impl ProofLane {
         match self {
             Self::Cs336A1 | Self::Cs336A1HostedStarter => None,
             Self::Cs336A1StaleRecovery => Some(ProofNodeRuntimeFixture::StaleWorkerLease),
-            Self::Cs336A1ReplacementAttempt => None,
+            Self::Cs336A1ReplacementAttempt
+            | Self::A1MinimalDistributedLmLaunchA
+            | Self::A1MinimalDistributedLmLaunchB => None,
         }
     }
 
@@ -222,12 +240,21 @@ impl ProofLane {
         match self {
             Self::Cs336A1 | Self::Cs336A1HostedStarter => None,
             Self::Cs336A1StaleRecovery => Some(ProofNodeRuntimeFixture::StaleValidatorLease),
-            Self::Cs336A1ReplacementAttempt => None,
+            Self::Cs336A1ReplacementAttempt
+            | Self::A1MinimalDistributedLmLaunchA
+            | Self::A1MinimalDistributedLmLaunchB => None,
         }
     }
 
     const fn uses_manual_authority_scenario(self) -> bool {
         matches!(self, Self::Cs336A1ReplacementAttempt)
+    }
+
+    const fn uses_a1_minimal_simulated_scenario(self) -> bool {
+        matches!(
+            self,
+            Self::A1MinimalDistributedLmLaunchA | Self::A1MinimalDistributedLmLaunchB
+        )
     }
 
     const fn uses_hosted_starter_autolaunch(self) -> bool {
@@ -649,6 +676,108 @@ struct ProofRunLaunchResponse {
     run_detail: ProofAuthorityTrainingRunDetailResponse,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofA1MinimalCounterMapping {
+    public_label: String,
+    internal_source_of_truth: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofA1MinimalCanonicalCounters {
+    training_admitted_contributors: u64,
+    training_assigned_contributors: u64,
+    training_accepted_contributors: u64,
+    training_model_progress_contributors: u64,
+    training_weak_device_assigned_contributors: u64,
+    training_weak_device_accepted_contributors: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofA1MinimalParticipantWorkProjection {
+    participant_id: String,
+    provider_id: String,
+    assignment_id: String,
+    work_unit_kind: String,
+    work_class: String,
+    progress_class: String,
+    weak_device: bool,
+    accepted: bool,
+    artifact_kind: String,
+    artifact_class: String,
+    support_or_verifier_work: bool,
+    model_progress_work: bool,
+    enters_promoted_checkpoint_lineage: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofA1MinimalArtifactProjection {
+    participant_id: String,
+    assignment_id: String,
+    direction: String,
+    artifact_id: String,
+    artifact_kind: String,
+    artifact_class: String,
+    signed_access_mode: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofA1MinimalCheckpointLineage {
+    base_checkpoint_ref: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    local_update_artifact_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aggregated_delta_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accepted_aggregate_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    promoted_checkpoint_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    validation_loss_before_bps: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    validation_loss_after_bps: Option<u32>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofA1MinimalPayoutProjection {
+    accepted_work_payout_count: u64,
+    support_work_payout_count: u64,
+    model_progress_payout_count: u64,
+    total_projected_sats: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofA1MinimalPublicStatsProjection {
+    run_id: String,
+    training_accepted_contributors: u64,
+    training_model_progress_contributors: u64,
+    training_weak_device_accepted_contributors: u64,
+    public_participant_label: String,
+    public_model_progress_label: String,
+    public_checkpoint_lineage_label: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProofA1MinimalLaunchProjection {
+    launch: String,
+    run_id: String,
+    run_definition_ref: String,
+    tokenizer_digest: String,
+    tokenized_dataset_digest: String,
+    validation_set_digest: String,
+    claim_warning: String,
+    public_claim_copy: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    counter_mappings: Vec<ProofA1MinimalCounterMapping>,
+    canonical_counters: ProofA1MinimalCanonicalCounters,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    participants: Vec<ProofA1MinimalParticipantWorkProjection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    artifacts: Vec<ProofA1MinimalArtifactProjection>,
+    payout_projection: ProofA1MinimalPayoutProjection,
+    public_stats_projection: ProofA1MinimalPublicStatsProjection,
+    checkpoint_lineage: ProofA1MinimalCheckpointLineage,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct ProofRunReport {
     namespace: String,
@@ -666,6 +795,8 @@ struct ProofRunReport {
     observed_run: Option<ProofObservedTrainingRunDetail>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     first_failed_authority_write: Option<ProofAuthorityWriteFailureCapture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    a1_minimal_projection: Option<ProofA1MinimalLaunchProjection>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -771,6 +902,8 @@ struct ProofTraceArtifact {
     observed_run: Option<ProofObservedTrainingRunDetail>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     first_failed_authority_write: Option<ProofAuthorityWriteFailureCapture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    a1_minimal_projection: Option<ProofA1MinimalLaunchProjection>,
     artifact_transport: ProofArtifactTraceSnapshot,
     transport: ProofTransportSplitView,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -805,6 +938,8 @@ struct ProofSummaryArtifact {
     closeout_last_error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     first_failed_authority_write: Option<ProofAuthorityWriteFailureCapture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    a1_minimal_projection: Option<ProofA1MinimalLaunchProjection>,
     trace_path: String,
     transport: ProofTransportSplitView,
 }
@@ -1454,6 +1589,16 @@ fn parse_proof_lane(value: &str) -> Result<ProofLane> {
         "cs336-a1-replacement-attempt"
         | "cs336_a1_replacement_attempt"
         | "cs336/a1/replacement-attempt" => Ok(ProofLane::Cs336A1ReplacementAttempt),
+        "a1-minimal-distributed-lm-launch-a"
+        | "a1_minimal_distributed_lm_launch_a"
+        | "a1/minimal-distributed-lm/launch-a"
+        | "a1-minimal-launch-a"
+        | "a1_minimal_launch_a" => Ok(ProofLane::A1MinimalDistributedLmLaunchA),
+        "a1-minimal-distributed-lm-launch-b"
+        | "a1_minimal_distributed_lm_launch_b"
+        | "a1/minimal-distributed-lm/launch-b"
+        | "a1-minimal-launch-b"
+        | "a1_minimal_launch_b" => Ok(ProofLane::A1MinimalDistributedLmLaunchB),
         other => bail!("unknown proof lane: {other}"),
     }
 }
@@ -1911,7 +2056,452 @@ async fn run_proof_lane(config_path: &Path, command: &ProofRunCommand) -> Result
     if command.lane.uses_manual_authority_scenario() {
         return run_manual_replacement_attempt_proof_lane(config_path, command, namespace).await;
     }
+    if command.lane.uses_a1_minimal_simulated_scenario() {
+        return run_a1_minimal_simulated_proof_lane(config_path, command, namespace).await;
+    }
     run_standard_proof_lane(config_path, command, namespace).await
+}
+
+async fn run_a1_minimal_simulated_proof_lane(
+    config_path: &Path,
+    command: &ProofRunCommand,
+    namespace: String,
+) -> Result<ProofRunReport> {
+    let projection = build_a1_minimal_launch_projection(command.lane, namespace.as_str())?;
+    validate_a1_minimal_launch_projection(&projection)?;
+    let observed_run = a1_minimal_observed_run(&projection);
+    let fleet = a1_minimal_simulated_fleet_status(
+        config_path,
+        namespace.as_str(),
+        command.mode,
+        &projection,
+    );
+    let detail = format!(
+        "{} local proof projected {} participant(s), {} model-progress participant(s), support_model_progress_mismatch=false",
+        projection.launch,
+        projection.canonical_counters.training_accepted_contributors,
+        projection
+            .canonical_counters
+            .training_model_progress_contributors
+    );
+    let report = ProofRunReport {
+        namespace,
+        lane: command.lane.label().to_string(),
+        generated_at_ms: super::now_epoch_ms(),
+        timeout_seconds: command.timeout_seconds,
+        status: "completed".to_string(),
+        detail,
+        blocker_id: None,
+        fleet,
+        launch: None,
+        observed_run: Some(observed_run),
+        first_failed_authority_write: None,
+        a1_minimal_projection: Some(projection),
+    };
+    persist_proof_run_outputs(config_path, &report).await?;
+    Ok(report)
+}
+
+fn build_a1_minimal_launch_projection(
+    lane: ProofLane,
+    namespace: &str,
+) -> Result<ProofA1MinimalLaunchProjection> {
+    let launch = match lane {
+        ProofLane::A1MinimalDistributedLmLaunchA => "launch_a",
+        ProofLane::A1MinimalDistributedLmLaunchB => "launch_b",
+        _ => bail!("a1 minimal projection requested for non-A1 proof lane"),
+    };
+    let run_id = "a1_minimal_distributed_lm_001";
+    let participants = match lane {
+        ProofLane::A1MinimalDistributedLmLaunchA => vec![
+            a1_minimal_work_projection(
+                run_id,
+                "pylon-a1-weak-001",
+                "assign.a1.launch_a.support.001",
+                openagents_kernel_core::compute::A1MinimalDistributedLmWorkUnitKind::ValidationReplay,
+                true,
+                false,
+            ),
+            a1_minimal_work_projection(
+                run_id,
+                "pylon-a1-weak-002",
+                "assign.a1.launch_a.support.002",
+                openagents_kernel_core::compute::A1MinimalDistributedLmWorkUnitKind::EvaluationBatch,
+                true,
+                false,
+            ),
+            a1_minimal_work_projection(
+                run_id,
+                "pylon-a1-weak-003",
+                "assign.a1.launch_a.support.003",
+                openagents_kernel_core::compute::A1MinimalDistributedLmWorkUnitKind::CheckpointVerification,
+                true,
+                false,
+            ),
+            a1_minimal_work_projection(
+                run_id,
+                "pylon-a1-strong-001",
+                "assign.a1.launch_a.local_update.001",
+                openagents_kernel_core::compute::A1MinimalDistributedLmWorkUnitKind::LocalUpdate,
+                false,
+                true,
+            ),
+        ],
+        ProofLane::A1MinimalDistributedLmLaunchB => vec![
+            a1_minimal_work_projection(
+                run_id,
+                "pylon-a1-strong-001",
+                "assign.a1.launch_b.local_update.001",
+                openagents_kernel_core::compute::A1MinimalDistributedLmWorkUnitKind::LocalUpdate,
+                false,
+                true,
+            ),
+            a1_minimal_work_projection(
+                run_id,
+                "pylon-a1-strong-002",
+                "assign.a1.launch_b.local_update.002",
+                openagents_kernel_core::compute::A1MinimalDistributedLmWorkUnitKind::LocalUpdate,
+                false,
+                true,
+            ),
+            a1_minimal_work_projection(
+                run_id,
+                "pylon-a1-strong-003",
+                "assign.a1.launch_b.local_update.003",
+                openagents_kernel_core::compute::A1MinimalDistributedLmWorkUnitKind::LocalUpdate,
+                false,
+                true,
+            ),
+            a1_minimal_work_projection(
+                run_id,
+                "pylon-a1-strong-004",
+                "assign.a1.launch_b.local_update.004",
+                openagents_kernel_core::compute::A1MinimalDistributedLmWorkUnitKind::LocalUpdate,
+                false,
+                true,
+            ),
+            a1_minimal_work_projection(
+                run_id,
+                "pylon-a1-weak-004",
+                "assign.a1.launch_b.support.001",
+                openagents_kernel_core::compute::A1MinimalDistributedLmWorkUnitKind::CloseoutVerification,
+                true,
+                false,
+            ),
+        ],
+        _ => unreachable!(),
+    };
+    let canonical_counters = derive_a1_minimal_canonical_counters(&participants);
+    let artifacts = participants
+        .iter()
+        .map(|participant| a1_minimal_output_artifact_projection(run_id, participant))
+        .collect::<Vec<_>>();
+    let local_update_artifact_ids = artifacts
+        .iter()
+        .filter(|artifact| artifact.artifact_kind == "local_update")
+        .map(|artifact| artifact.artifact_id.clone())
+        .collect::<Vec<_>>();
+    let checkpoint_lineage = ProofA1MinimalCheckpointLineage {
+        base_checkpoint_ref: "base://a1_minimal_distributed_lm/step-000000".to_string(),
+        local_update_artifact_ids,
+        aggregated_delta_digest: Some(sha256_prefixed_bytes(
+            format!("a1-minimal:{launch}:{namespace}:aggregate").as_bytes(),
+        )),
+        accepted_aggregate_id: Some(format!("aggregate.a1_minimal.{launch}.{namespace}")),
+        promoted_checkpoint_ref: Some(format!(
+            "checkpoint://psion/a1_minimal_distributed_lm/{run_id}/{launch}/step-000001"
+        )),
+        validation_loss_before_bps: Some(5200),
+        validation_loss_after_bps: Some(if launch == "launch_b" { 4700 } else { 5050 }),
+    };
+    let public_claim_copy = if launch == "launch_b" {
+        "OpenAgents ran what we believe is the world's largest distributed language-model training run by number of model-progress participants: N distinct Pylons contributed accepted local-update work that advanced promoted checkpoint X for run Y.".to_string()
+    } else {
+        "OpenAgents ran what we believe is the world's largest distributed language-model training run by number of participants: N distinct Pylons contributed real compute through Psionic and completed accepted work for the same run, with run/window/checkpoint lineage published publicly.".to_string()
+    };
+
+    Ok(ProofA1MinimalLaunchProjection {
+        launch: launch.to_string(),
+        run_id: run_id.to_string(),
+        run_definition_ref: "rundef.a1_minimal_distributed_lm.001.v1".to_string(),
+        tokenizer_digest: "sha256:a1-minimal-tokenizer-fixture".to_string(),
+        tokenized_dataset_digest: "sha256:a1-minimal-tokenized-dataset-fixture".to_string(),
+        validation_set_digest: "sha256:a1-minimal-validation-set-fixture".to_string(),
+        claim_warning: "The phrase \"by number of participants\" is allowed only when \"participant\" means accepted real compute work under one run id. It must never be inferred from online Pylons, seen-in-24h Pylons, sellable Pylons, generic payout totals, Discord members, downloads, or app sessions.".to_string(),
+        public_claim_copy,
+        counter_mappings: vec![
+            ProofA1MinimalCounterMapping {
+                public_label: "participants".to_string(),
+                internal_source_of_truth: "training_accepted_contributors".to_string(),
+            },
+            ProofA1MinimalCounterMapping {
+                public_label: "model-progress participants".to_string(),
+                internal_source_of_truth: "training_model_progress_contributors".to_string(),
+            },
+        ],
+        canonical_counters: canonical_counters.clone(),
+        participants,
+        artifacts,
+        payout_projection: ProofA1MinimalPayoutProjection {
+            accepted_work_payout_count: canonical_counters.training_accepted_contributors,
+            support_work_payout_count: canonical_counters
+                .training_accepted_contributors
+                .saturating_sub(canonical_counters.training_model_progress_contributors),
+            model_progress_payout_count: canonical_counters.training_model_progress_contributors,
+            total_projected_sats: canonical_counters
+                .training_accepted_contributors
+                .saturating_mul(120),
+        },
+        public_stats_projection: ProofA1MinimalPublicStatsProjection {
+            run_id: run_id.to_string(),
+            training_accepted_contributors: canonical_counters.training_accepted_contributors,
+            training_model_progress_contributors: canonical_counters
+                .training_model_progress_contributors,
+            training_weak_device_accepted_contributors: canonical_counters
+                .training_weak_device_accepted_contributors,
+            public_participant_label: "Participants".to_string(),
+            public_model_progress_label: "Model-progress participants".to_string(),
+            public_checkpoint_lineage_label: format!(
+                "Checkpoint advanced by {} model-progress participants",
+                canonical_counters.training_model_progress_contributors
+            ),
+        },
+        checkpoint_lineage,
+    })
+}
+
+fn a1_minimal_work_projection(
+    _run_id: &str,
+    participant_id: &str,
+    assignment_id: &str,
+    work_unit: openagents_kernel_core::compute::A1MinimalDistributedLmWorkUnitKind,
+    weak_device: bool,
+    enters_promoted_checkpoint_lineage: bool,
+) -> ProofA1MinimalParticipantWorkProjection {
+    let output_artifact_kind =
+        openagents_kernel_core::pylon_training::pylon_training_a1_minimal_expected_output_artifact_kind(
+            work_unit,
+        );
+    ProofA1MinimalParticipantWorkProjection {
+        participant_id: participant_id.to_string(),
+        provider_id: format!("provider.{participant_id}"),
+        assignment_id: assignment_id.to_string(),
+        work_unit_kind: work_unit.label().to_string(),
+        work_class: work_unit.work_class().label().to_string(),
+        progress_class: work_unit.progress_class_label().to_string(),
+        weak_device,
+        accepted: true,
+        artifact_kind: output_artifact_kind.label().to_string(),
+        artifact_class: output_artifact_kind.artifact_class().label().to_string(),
+        support_or_verifier_work: work_unit.participation_only(),
+        model_progress_work: work_unit.model_progress_bearing(),
+        enters_promoted_checkpoint_lineage,
+    }
+}
+
+fn a1_minimal_output_artifact_projection(
+    run_id: &str,
+    participant: &ProofA1MinimalParticipantWorkProjection,
+) -> ProofA1MinimalArtifactProjection {
+    ProofA1MinimalArtifactProjection {
+        participant_id: participant.participant_id.clone(),
+        assignment_id: participant.assignment_id.clone(),
+        direction: "output".to_string(),
+        artifact_id: format!(
+            "oa.train_artifact.v1~kind~{}~network~trainnet.a1_minimal_distributed_lm.proof~run~{}~window~window.a1_minimal_distributed_lm.proof.0001~assignment~{}",
+            participant.artifact_kind, run_id, participant.assignment_id
+        ),
+        artifact_kind: participant.artifact_kind.clone(),
+        artifact_class: participant.artifact_class.clone(),
+        signed_access_mode: "write".to_string(),
+    }
+}
+
+fn derive_a1_minimal_canonical_counters(
+    participants: &[ProofA1MinimalParticipantWorkProjection],
+) -> ProofA1MinimalCanonicalCounters {
+    let assigned = participants
+        .iter()
+        .map(|participant| participant.participant_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let accepted = participants
+        .iter()
+        .filter(|participant| participant.accepted)
+        .map(|participant| participant.participant_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let weak_assigned = participants
+        .iter()
+        .filter(|participant| participant.weak_device)
+        .map(|participant| participant.participant_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let weak_accepted = participants
+        .iter()
+        .filter(|participant| participant.accepted && participant.weak_device)
+        .map(|participant| participant.participant_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let model_progress = participants
+        .iter()
+        .filter(|participant| {
+            participant.accepted
+                && participant.model_progress_work
+                && participant.enters_promoted_checkpoint_lineage
+        })
+        .map(|participant| participant.participant_id.as_str())
+        .collect::<BTreeSet<_>>();
+    ProofA1MinimalCanonicalCounters {
+        training_admitted_contributors: assigned.len() as u64,
+        training_assigned_contributors: assigned.len() as u64,
+        training_accepted_contributors: accepted.len() as u64,
+        training_model_progress_contributors: model_progress.len() as u64,
+        training_weak_device_assigned_contributors: weak_assigned.len() as u64,
+        training_weak_device_accepted_contributors: weak_accepted.len() as u64,
+    }
+}
+
+fn validate_a1_minimal_launch_projection(
+    projection: &ProofA1MinimalLaunchProjection,
+) -> Result<()> {
+    ensure!(
+        projection
+            .participants
+            .iter()
+            .all(|participant| !(participant.support_or_verifier_work
+                && participant.model_progress_work)),
+        "a1_minimal_support_counted_as_model_progress"
+    );
+    let derived = derive_a1_minimal_canonical_counters(projection.participants.as_slice());
+    ensure!(
+        projection.canonical_counters == derived,
+        "a1_minimal_canonical_counter_mismatch"
+    );
+    ensure!(
+        projection
+            .public_stats_projection
+            .training_accepted_contributors
+            == projection.canonical_counters.training_accepted_contributors,
+        "a1_minimal_public_stats_participant_counter_mismatch"
+    );
+    ensure!(
+        projection
+            .public_stats_projection
+            .training_model_progress_contributors
+            == projection
+                .canonical_counters
+                .training_model_progress_contributors,
+        "a1_minimal_public_stats_model_progress_counter_mismatch"
+    );
+    if projection.launch == "launch_b" {
+        ensure!(
+            projection
+                .checkpoint_lineage
+                .promoted_checkpoint_ref
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty()),
+            "a1_minimal_launch_b_promoted_checkpoint_missing"
+        );
+        ensure!(
+            projection
+                .canonical_counters
+                .training_model_progress_contributors
+                > 0,
+            "a1_minimal_launch_b_model_progress_missing"
+        );
+    }
+    Ok(())
+}
+
+fn a1_minimal_observed_run(
+    projection: &ProofA1MinimalLaunchProjection,
+) -> ProofObservedTrainingRunDetail {
+    let window_id = format!("window.{}.proof.0001", projection.run_id);
+    ProofObservedTrainingRunDetail {
+        training_run_id: projection.run_id.clone(),
+        run: ProofObservedRunState {
+            training_run_id: projection.run_id.clone(),
+            run_status: "running".to_string(),
+            current_window_id: window_id.clone(),
+            active_window_count: 0,
+            pending_validation_window_count: 0,
+            validator_challenges_open: 0,
+            validator_challenges_queued: 0,
+            latest_closeout_status: Some("rewarded".to_string()),
+        },
+        windows: vec![ProofObservedWindowState {
+            window_id,
+            status: "reconciled".to_string(),
+            closeout_status: Some("rewarded".to_string()),
+            accepted_contributions: projection
+                .canonical_counters
+                .training_accepted_contributors
+                .min(u64::from(u32::MAX)) as u32,
+            validator_challenges_open: 0,
+            validator_challenges_queued: 0,
+        }],
+        contribution_count: projection.participants.len(),
+        node_count: projection.participants.len(),
+        caveat_count: 0,
+        first_caveat_id: None,
+        first_caveat_severity: None,
+        first_caveat_title: None,
+        first_caveat_detail: None,
+    }
+}
+
+fn a1_minimal_simulated_fleet_status(
+    config_path: &Path,
+    namespace: &str,
+    mode: ProofAuthorityMode,
+    projection: &ProofA1MinimalLaunchProjection,
+) -> ProofFleetStatusReport {
+    let layout = proof_layout(config_path, namespace);
+    ProofFleetStatusReport {
+        configured: true,
+        namespace: namespace.to_string(),
+        mode: Some(mode),
+        network_id: Some("trainnet.a1_minimal_distributed_lm.proof".to_string()),
+        run_slug: Some(projection.run_id.clone()),
+        paths: Some(ProofFleetPaths {
+            namespace_root: layout.namespace_root.display().to_string(),
+            fleet_root: layout.fleet_root.display().to_string(),
+            fleet_state_path: layout.fleet_state_path.display().to_string(),
+            run_report_path: layout.run_report_path.display().to_string(),
+            trace_path: layout.trace_path.display().to_string(),
+            summary_path: layout.summary_path.display().to_string(),
+        }),
+        authority: ProofAuthorityStatusReport {
+            configured: true,
+            namespace: namespace.to_string(),
+            mode: Some(mode),
+            started_at_ms: Some(super::now_epoch_ms()),
+            admin_auth_configured: true,
+            treasury_enabled: true,
+            ports: None,
+            paths: Some(ProofPersistedPaths {
+                namespace_root: layout.namespace_root.display().to_string(),
+                authority_env_path: layout.authority_env_path.display().to_string(),
+                relay_data_dir: layout.relay_data_dir.display().to_string(),
+                receipt_log_path: layout.receipt_log_path.display().to_string(),
+                kernel_state_path: layout.kernel_state_path.display().to_string(),
+                treasury_state_path: layout.treasury_state_path.display().to_string(),
+                treasury_wallet_dir: layout.treasury_wallet_dir.display().to_string(),
+                treasury_wallet_mnemonic_path: layout
+                    .treasury_wallet_mnemonic_path
+                    .display()
+                    .to_string(),
+                training_trn_identity_path: layout.training_trn_identity_path.display().to_string(),
+                signer_credentials_path: layout.signer_credentials_path.display().to_string(),
+                artifact_store_root: layout.artifact_store_root.display().to_string(),
+                artifact_trace_path: layout.artifact_trace_path.display().to_string(),
+            }),
+            urls: None,
+            authority_process: None,
+            artifact_store_process: None,
+            probes: Vec::new(),
+            artifact_smoke: None,
+        },
+        nodes: Vec::new(),
+        launched_run: None,
+    }
 }
 
 async fn run_standard_proof_lane(
@@ -1990,6 +2580,7 @@ async fn run_standard_proof_lane(
             launch,
             observed_run: Some(launch_detail),
             first_failed_authority_write,
+            a1_minimal_projection: None,
         };
         persist_proof_run_outputs(config_path, &report).await?;
         return Ok(report);
@@ -2017,6 +2608,7 @@ async fn run_standard_proof_lane(
                     launch: launch.clone(),
                     observed_run: Some(detail),
                     first_failed_authority_write: first_failed_authority_write.clone(),
+                    a1_minimal_projection: None,
                 };
                 persist_proof_run_outputs(config_path, &report).await?;
                 return Ok(report);
@@ -2038,6 +2630,7 @@ async fn run_standard_proof_lane(
                 launch: launch.clone(),
                 observed_run: last_detail,
                 first_failed_authority_write: first_failed_authority_write.clone(),
+                a1_minimal_projection: None,
             };
             persist_proof_run_outputs(config_path, &report).await?;
             return Ok(report);
@@ -2062,6 +2655,7 @@ async fn run_standard_proof_lane(
                     launch: launch.clone(),
                     observed_run: last_detail,
                     first_failed_authority_write: first_failed_authority_write.clone(),
+                    a1_minimal_projection: None,
                 };
                 persist_proof_run_outputs(config_path, &report).await?;
                 return Ok(report);
@@ -2083,6 +2677,7 @@ async fn run_standard_proof_lane(
                 launch: launch.clone(),
                 observed_run: last_detail,
                 first_failed_authority_write,
+                a1_minimal_projection: None,
             };
             persist_proof_run_outputs(config_path, &report).await?;
             return Ok(report);
@@ -2311,6 +2906,7 @@ async fn run_manual_replacement_attempt_proof_lane(
             launch: Some(launch),
             observed_run,
             first_failed_authority_write,
+            a1_minimal_projection: None,
         };
         persist_proof_run_outputs(config_path, &report).await?;
         return Ok(report);
@@ -2448,6 +3044,7 @@ async fn run_manual_replacement_attempt_proof_lane(
             launch: Some(launch),
             observed_run,
             first_failed_authority_write,
+            a1_minimal_projection: None,
         };
         persist_proof_run_outputs(config_path, &report).await?;
         return Ok(report);
@@ -2477,6 +3074,7 @@ async fn run_manual_replacement_attempt_proof_lane(
             launch: Some(launch),
             observed_run,
             first_failed_authority_write,
+            a1_minimal_projection: None,
         };
         persist_proof_run_outputs(config_path, &report).await?;
         return Ok(report);
@@ -2494,6 +3092,7 @@ async fn run_manual_replacement_attempt_proof_lane(
         launch: Some(launch),
         observed_run,
         first_failed_authority_write,
+        a1_minimal_projection: None,
     };
     persist_proof_run_outputs(config_path, &report).await?;
     Ok(report)
@@ -3516,6 +4115,9 @@ async fn launch_proof_lane(
             serde_json::from_str::<ProofRunLaunchResponse>(body.as_str())
                 .context("failed to decode proof run launch response")
         }
+        ProofLane::A1MinimalDistributedLmLaunchA | ProofLane::A1MinimalDistributedLmLaunchB => {
+            bail!("A1 minimal proof lanes use the local simulated projection path")
+        }
     }
 }
 
@@ -3668,6 +4270,7 @@ async fn collect_proof_trace_artifact(
             .first_failed_authority_write
             .clone()
             .or_else(|| infer_first_authority_write_failure(node_traces.as_slice())),
+        a1_minimal_projection: report.a1_minimal_projection.clone(),
         artifact_transport,
         transport,
         node_traces,
@@ -4009,6 +4612,7 @@ fn build_proof_summary_artifact(trace: &ProofTraceArtifact) -> ProofSummaryArtif
         closeout_next_action: signal.closeout_next_action,
         closeout_last_error: signal.closeout_last_error,
         first_failed_authority_write: trace.first_failed_authority_write.clone(),
+        a1_minimal_projection: trace.a1_minimal_projection.clone(),
         trace_path,
         transport: trace.transport.clone(),
     }
@@ -5470,6 +6074,37 @@ fn render_proof_run_report(report: &ProofRunReport) -> String {
             ));
         }
     }
+    if let Some(projection) = report.a1_minimal_projection.as_ref() {
+        lines.push(format!(
+            "a1_minimal: launch={} run_id={} participants={} model_progress_participants={} weak_device_participants={}",
+            projection.launch,
+            projection.run_id,
+            projection
+                .canonical_counters
+                .training_accepted_contributors,
+            projection
+                .canonical_counters
+                .training_model_progress_contributors,
+            projection
+                .canonical_counters
+                .training_weak_device_accepted_contributors
+        ));
+        lines.push(format!(
+            "a1_minimal source_of_truth: participants=training_accepted_contributors model_progress_participants=training_model_progress_contributors"
+        ));
+        lines.push(format!(
+            "a1_minimal checkpoint: promoted={} local_updates={}",
+            projection
+                .checkpoint_lineage
+                .promoted_checkpoint_ref
+                .as_deref()
+                .unwrap_or("-"),
+            projection
+                .checkpoint_lineage
+                .local_update_artifact_ids
+                .len()
+        ));
+    }
     lines.push(render_proof_fleet_status_report(&report.fleet));
     lines.join("\n")
 }
@@ -5724,11 +6359,13 @@ fn internal_error(error: impl std::fmt::Display) -> (StatusCode, String) {
 #[cfg(test)]
 mod tests {
     use super::{
-        PROOF_ARTIFACT_UPLOAD_PREFIX, ProofLane, ProofNodeRuntimeFixture, detect_proof_run_blocker,
+        PROOF_ARTIFACT_UPLOAD_PREFIX, ProofLane, ProofNodeRuntimeFixture,
+        build_a1_minimal_launch_projection, detect_proof_run_blocker,
         load_proof_node_runtime_fixture, load_proof_replacement_contribution_template,
         parse_proof_command, parse_proof_lane, parse_status_body_from_reason,
         proof_namespace_ports, proof_training_run_detail_status_is_retryable,
         render_proof_status_report, run_artifact_store_server,
+        validate_a1_minimal_launch_projection,
     };
 
     use anyhow::{Result, anyhow};
@@ -6256,6 +6893,136 @@ mod tests {
         assert_eq!(
             parse_proof_lane("cs336/a1/replacement-attempt").expect("replacement-attempt lane"),
             ProofLane::Cs336A1ReplacementAttempt
+        );
+        assert_eq!(
+            parse_proof_lane("a1-minimal-distributed-lm-launch-a").expect("launch A lane"),
+            ProofLane::A1MinimalDistributedLmLaunchA
+        );
+        assert_eq!(
+            parse_proof_lane("a1_minimal_launch_b").expect("launch B lane"),
+            ProofLane::A1MinimalDistributedLmLaunchB
+        );
+    }
+
+    #[test]
+    fn a1_minimal_launch_a_counts_support_as_participants_only() -> Result<()> {
+        let projection = build_a1_minimal_launch_projection(
+            ProofLane::A1MinimalDistributedLmLaunchA,
+            "proof.a1",
+        )?;
+        validate_a1_minimal_launch_projection(&projection)?;
+
+        assert_eq!(projection.launch, "launch_a");
+        assert_eq!(
+            projection.canonical_counters.training_accepted_contributors,
+            4
+        );
+        assert_eq!(
+            projection
+                .canonical_counters
+                .training_model_progress_contributors,
+            1
+        );
+        assert_eq!(
+            projection
+                .canonical_counters
+                .training_weak_device_accepted_contributors,
+            3
+        );
+        assert_eq!(
+            projection
+                .public_stats_projection
+                .training_accepted_contributors,
+            4
+        );
+        assert_eq!(
+            projection
+                .public_stats_projection
+                .training_model_progress_contributors,
+            1
+        );
+        assert!(
+            projection
+                .participants
+                .iter()
+                .filter(|participant| participant.support_or_verifier_work)
+                .all(|participant| !participant.model_progress_work
+                    && participant.artifact_kind == "support_bundle")
+        );
+        assert!(
+            projection
+                .artifacts
+                .iter()
+                .any(|artifact| artifact.artifact_kind == "local_update")
+        );
+        assert!(projection.claim_warning.contains("online Pylons"));
+        Ok(())
+    }
+
+    #[test]
+    fn a1_minimal_launch_b_projects_promoted_checkpoint_lineage() -> Result<()> {
+        let projection = build_a1_minimal_launch_projection(
+            ProofLane::A1MinimalDistributedLmLaunchB,
+            "proof.a1",
+        )?;
+        validate_a1_minimal_launch_projection(&projection)?;
+
+        assert_eq!(projection.launch, "launch_b");
+        assert_eq!(
+            projection.canonical_counters.training_accepted_contributors,
+            5
+        );
+        assert_eq!(
+            projection
+                .canonical_counters
+                .training_model_progress_contributors,
+            4
+        );
+        assert_eq!(
+            projection
+                .checkpoint_lineage
+                .local_update_artifact_ids
+                .len(),
+            4
+        );
+        assert!(
+            projection
+                .checkpoint_lineage
+                .promoted_checkpoint_ref
+                .as_deref()
+                .is_some_and(|value| value.contains("a1_minimal_distributed_lm"))
+        );
+        assert!(
+            projection
+                .public_stats_projection
+                .public_checkpoint_lineage_label
+                .contains("4 model-progress participants")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a1_minimal_projection_rejects_support_counted_as_model_progress() {
+        let mut projection = build_a1_minimal_launch_projection(
+            ProofLane::A1MinimalDistributedLmLaunchA,
+            "proof.a1",
+        )
+        .expect("projection");
+        let support = projection
+            .participants
+            .iter_mut()
+            .find(|participant| participant.support_or_verifier_work)
+            .expect("support participant");
+        support.model_progress_work = true;
+        let error = validate_a1_minimal_launch_projection(&projection)
+            .expect_err("support model-progress mismatch must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("a1_minimal_support_counted_as_model_progress")
+                || error
+                    .to_string()
+                    .contains("a1_minimal_canonical_counter_mismatch")
         );
     }
 
