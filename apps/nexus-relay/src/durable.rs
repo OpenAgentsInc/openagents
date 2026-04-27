@@ -435,10 +435,19 @@ async fn proxy_authority_http_request(state: &AppState, request: Request) -> Res
 
     let status = authority.status();
     let authority_headers = authority.headers().clone();
-    let body_stream = authority.bytes_stream().map_err(std::io::Error::other);
+    let body_bytes = match authority.bytes().await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                format!("failed to read embedded Nexus control API response: {error}"),
+            )
+                .into_response();
+        }
+    };
     let mut response = match Response::builder()
         .status(status)
-        .body(Body::from_stream(body_stream))
+        .body(Body::from(body_bytes))
     {
         Ok(response) => response,
         Err(error) => {
