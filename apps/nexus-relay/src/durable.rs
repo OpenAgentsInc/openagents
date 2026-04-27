@@ -193,7 +193,7 @@ fn spawn_authority_server(
         .spawn(move || {
             let runtime = match tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
-                .worker_threads(8)
+                .worker_threads(32)
                 .thread_name("nexus-control-api")
                 .build()
             {

@@ -3217,6 +3217,8 @@ struct TrainingNodeListQuery {
     #[serde(default)]
     limit: Option<usize>,
     #[serde(default)]
+    refresh_reputation: bool,
+    #[serde(default)]
     include_scheduler_availability: bool,
 }
 
@@ -17530,14 +17532,15 @@ async fn list_training_nodes(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    let mut nodes = training_authority_refresh_node_views(
-        &store.kernel,
-        store
-            .kernel
-            .list_admitted_training_nodes(&query.filter, now),
-        now,
-    )
-    .map_err(kernel_api_error)?;
+    let base_nodes = store
+        .kernel
+        .list_admitted_training_nodes(&query.filter, now);
+    let mut nodes = if query.refresh_reputation {
+        training_authority_refresh_node_views(&store.kernel, base_nodes, now)
+            .map_err(kernel_api_error)?
+    } else {
+        base_nodes
+    };
     nodes.truncate(limit);
     if query.include_scheduler_availability {
         let mut scheduler = store.training_scheduler.clone();
