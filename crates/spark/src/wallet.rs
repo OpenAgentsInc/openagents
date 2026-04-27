@@ -7,8 +7,8 @@ use breez_sdk_spark::{
     BreezSdk, ClaimDepositRequest, Config as SdkConfig, DepositClaimError, GetInfoRequest,
     GetPaymentRequest, ListPaymentsRequest, ListUnclaimedDepositsRequest, MaxFee,
     Network as SdkNetwork, Payment, PaymentDetails, PaymentStatus, PaymentType,
-    PrepareSendPaymentRequest, ReceivePaymentMethod, ReceivePaymentRequest, SdkBuilder, Seed,
-    SdkError as BreezSparkSdkError, SendPaymentRequest, SyncWalletRequest, default_config,
+    PrepareSendPaymentRequest, ReceivePaymentMethod, ReceivePaymentRequest, SdkBuilder,
+    SdkError as BreezSparkSdkError, Seed, SendPaymentRequest, SyncWalletRequest, default_config,
 };
 use spark_wallet::{
     DefaultSigner as DirectSparkSigner, ListTransfersRequest as DirectListTransfersRequest,
@@ -218,8 +218,7 @@ impl SparkWallet {
         let sdk_config = sdk_config_for_wallet(&config)?;
 
         let builder = SdkBuilder::new(sdk_config, seed)
-            .with_default_storage(config.storage_dir.to_string_lossy().to_string())
-            .with_background_processing(config.background_processing);
+            .with_default_storage(config.storage_dir.to_string_lossy().to_string());
         let sdk = builder
             .build()
             .await
@@ -300,7 +299,7 @@ impl SparkWallet {
         let response = self
             .sdk
             .receive_payment(ReceivePaymentRequest {
-                payment_method: ReceivePaymentMethod::BitcoinAddress,
+                payment_method: ReceivePaymentMethod::BitcoinAddress { new_address: None },
             })
             .await
             .map_err(|error| SparkError::Wallet(error.to_string()))?;
@@ -590,7 +589,8 @@ fn sdk_config_for_wallet(config: &WalletConfig) -> Result<SdkConfig, SparkError>
 fn direct_wallet_config_for_lookup(
     config: &WalletConfig,
 ) -> Result<DirectSparkWalletConfig, SparkError> {
-    let mut wallet_config = DirectSparkWalletConfig::default_config(config.network.to_direct_network()?);
+    let mut wallet_config =
+        DirectSparkWalletConfig::default_config(config.network.to_direct_network()?);
     wallet_config.service_provider_config.user_agent =
         Some("openagents-spark-transfer-lookup".to_string());
     Ok(wallet_config)
@@ -847,6 +847,22 @@ mod tests {
     }
 
     #[test]
+    fn spark_sdk_dependencies_stay_on_upstream_breez() {
+        let manifest =
+            std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+                .expect("spark crate manifest");
+
+        assert!(
+            manifest.contains("https://github.com/breez/spark-sdk"),
+            "Spark SDK dependencies must use upstream Breez"
+        );
+        assert!(
+            !manifest.contains("AtlantisPleb/spark-sdk"),
+            "Spark SDK dependencies must not use the AtlantisPleb fork"
+        );
+    }
+
+    #[test]
     fn sdk_config_disables_real_time_sync_without_api_key() {
         let config = WalletConfig {
             network: Network::Mainnet,
@@ -986,6 +1002,7 @@ mod tests {
             txid: "deposit-txid-123".to_string(),
             vout: 1,
             amount_sats: 10_000,
+            is_mature: true,
             refund_tx: None,
             refund_tx_id: None,
             claim_error: Some(DepositClaimError::MaxDepositClaimFeeExceeded {
