@@ -29,10 +29,12 @@ const ENV_PUBLIC_WS_URL: &str = "NEXUS_RELAY_PUBLIC_WS_URL";
 const ENV_UPSTREAM_CONFIG_FILE: &str = "NEXUS_RELAY_UPSTREAM_CONFIG_FILE";
 const ENV_ENABLE_NIP42_AUTH: &str = "NEXUS_RELAY_ENABLE_NIP42_AUTH";
 const ENV_MAX_WEBSOCKETS: &str = "NEXUS_RELAY_MAX_WEBSOCKETS";
+const ENV_AUTHORITY_MAX_IN_FLIGHT: &str = "NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT";
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42110";
 const DEFAULT_UPSTREAM_LISTEN_ADDR: &str = "127.0.0.1:42111";
 const DEFAULT_DATA_DIR: &str = ".nexus-relay-data";
 const DEFAULT_MAX_WEBSOCKETS: usize = 128;
+const DEFAULT_AUTHORITY_MAX_IN_FLIGHT: usize = 16;
 const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 const NEXUS_PRODUCT_NAME: &str = "OpenAgents Nexus";
 const NEXUS_PRODUCT_DESCRIPTION: &str = "The OpenAgents relay and authority host for Autopilot.";
@@ -48,6 +50,7 @@ pub struct DurableRelayConfig {
     pub upstream_config_file: Option<PathBuf>,
     pub enable_nip42_auth: bool,
     pub max_websockets: usize,
+    pub authority_max_in_flight: usize,
 }
 
 impl DurableRelayConfig {
@@ -85,6 +88,8 @@ impl DurableRelayConfig {
                 parse_bool_env(ENV_ENABLE_NIP42_AUTH, &value)
             })?;
         let max_websockets = parse_usize_env(ENV_MAX_WEBSOCKETS, DEFAULT_MAX_WEBSOCKETS)?;
+        let authority_max_in_flight =
+            parse_usize_env(ENV_AUTHORITY_MAX_IN_FLIGHT, DEFAULT_AUTHORITY_MAX_IN_FLIGHT)?.max(1);
 
         Ok(Self {
             listen_addr,
@@ -94,6 +99,7 @@ impl DurableRelayConfig {
             upstream_config_file,
             enable_nip42_auth,
             max_websockets,
+            authority_max_in_flight,
         })
     }
 
@@ -164,6 +170,7 @@ struct AppState {
     config: DurableRelayConfig,
     http_client: reqwest::Client,
     websocket_slots: Arc<Semaphore>,
+    authority_slots: Arc<Semaphore>,
     authority_http_base_url: Url,
 }
 
@@ -239,6 +246,7 @@ fn build_router(config: DurableRelayConfig, authority_http_base_url: Url) -> Rou
     let state = AppState {
         http_client,
         websocket_slots: Arc::new(Semaphore::new(config.max_websockets)),
+        authority_slots: Arc::new(Semaphore::new(config.authority_max_in_flight)),
         authority_http_base_url,
         config,
     };
@@ -368,6 +376,16 @@ async fn proxy_upstream_request(
 }
 
 async fn proxy_authority_http_request(state: &AppState, request: Request) -> Response {
+    let _permit = match state.authority_slots.clone().try_acquire_owned() {
+        Ok(permit) => permit,
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "embedded Nexus control API capacity exhausted",
+            )
+                .into_response();
+        }
+    };
     let method = request.method().clone();
     let uri = request.uri().clone();
     let headers = request.headers().clone();
@@ -713,6 +731,7 @@ mod tests {
             upstream_config_file: None,
             enable_nip42_auth: false,
             max_websockets: super::DEFAULT_MAX_WEBSOCKETS,
+            authority_max_in_flight: super::DEFAULT_AUTHORITY_MAX_IN_FLIGHT,
         })
     }
 
