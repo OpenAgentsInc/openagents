@@ -3292,6 +3292,42 @@ impl KernelState {
             .unwrap_or_else(|| {
                 training_node_admission_id(node_pubkey_hex.as_str(), build_digest.as_str())
             });
+        let response = RecordTrainingNodeAdmissionResponse {
+            ack: TrainingCoordinatorAck {
+                idempotency_key: req.idempotency_key.clone(),
+                recorded_at_ms: req.requested_at_ms,
+                authority_state: if admitted {
+                    "admitted".to_string()
+                } else {
+                    "refused".to_string()
+                },
+            },
+            admission_id: admission_id.clone(),
+            admitted,
+            reason: reason.clone(),
+        };
+
+        if let Some(existing_record) = existing_record.as_ref() {
+            let node = admitted_training_node_from_request(
+                Some(&existing_record.node),
+                &req,
+                admission_id,
+                build_digest.clone(),
+            );
+            self.admitted_training_nodes.insert(
+                registry_key,
+                AdmittedTrainingNodeRecord {
+                    node,
+                    receipt_id: existing_record.receipt_id.clone(),
+                },
+            );
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
         let request_hash = request_hash(&req)?;
         let receipt = build_receipt(
             context,
@@ -3322,20 +3358,6 @@ impl KernelState {
             request_hash.as_str(),
             receipt,
         );
-        let response = RecordTrainingNodeAdmissionResponse {
-            ack: TrainingCoordinatorAck {
-                idempotency_key: req.idempotency_key.clone(),
-                recorded_at_ms: req.requested_at_ms,
-                authority_state: if admitted {
-                    "admitted".to_string()
-                } else {
-                    "refused".to_string()
-                },
-            },
-            admission_id: admission_id.clone(),
-            admitted,
-            reason: reason.clone(),
-        };
         let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
         if put_result.replayed {
             return Ok(MutationResult {
