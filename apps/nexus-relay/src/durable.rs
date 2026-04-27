@@ -29,10 +29,12 @@ const ENV_PUBLIC_WS_URL: &str = "NEXUS_RELAY_PUBLIC_WS_URL";
 const ENV_UPSTREAM_CONFIG_FILE: &str = "NEXUS_RELAY_UPSTREAM_CONFIG_FILE";
 const ENV_ENABLE_NIP42_AUTH: &str = "NEXUS_RELAY_ENABLE_NIP42_AUTH";
 const ENV_MAX_WEBSOCKETS: &str = "NEXUS_RELAY_MAX_WEBSOCKETS";
+const ENV_AUTHORITY_MAX_IN_FLIGHT: &str = "NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT";
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42110";
 const DEFAULT_UPSTREAM_LISTEN_ADDR: &str = "127.0.0.1:42111";
 const DEFAULT_DATA_DIR: &str = ".nexus-relay-data";
 const DEFAULT_MAX_WEBSOCKETS: usize = 128;
+const DEFAULT_AUTHORITY_MAX_IN_FLIGHT: usize = 16;
 const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 const NEXUS_PRODUCT_NAME: &str = "OpenAgents Nexus";
 const NEXUS_PRODUCT_DESCRIPTION: &str = "The OpenAgents relay and authority host for Autopilot.";
@@ -48,6 +50,7 @@ pub struct DurableRelayConfig {
     pub upstream_config_file: Option<PathBuf>,
     pub enable_nip42_auth: bool,
     pub max_websockets: usize,
+    pub authority_max_in_flight: usize,
 }
 
 impl DurableRelayConfig {
@@ -85,6 +88,8 @@ impl DurableRelayConfig {
                 parse_bool_env(ENV_ENABLE_NIP42_AUTH, &value)
             })?;
         let max_websockets = parse_usize_env(ENV_MAX_WEBSOCKETS, DEFAULT_MAX_WEBSOCKETS)?;
+        let authority_max_in_flight =
+            parse_usize_env(ENV_AUTHORITY_MAX_IN_FLIGHT, DEFAULT_AUTHORITY_MAX_IN_FLIGHT)?.max(1);
 
         Ok(Self {
             listen_addr,
@@ -94,6 +99,7 @@ impl DurableRelayConfig {
             upstream_config_file,
             enable_nip42_auth,
             max_websockets,
+            authority_max_in_flight,
         })
     }
 
@@ -164,36 +170,97 @@ struct AppState {
     config: DurableRelayConfig,
     http_client: reqwest::Client,
     websocket_slots: Arc<Semaphore>,
+    authority_slots: Arc<Semaphore>,
+    authority_http_base_url: Url,
 }
 
 pub async fn run_server(config: DurableRelayConfig) -> Result<(), anyhow::Error> {
     config.ensure_data_dir()?;
-    let _upstream = UpstreamRelayHandle::spawn(config.clone()).await?;
     let authority_config = build_authority_config(&config)?;
 
     let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
     let local_addr = listener.local_addr()?;
-    tracing::info!("nexus-relay durable shell listening on {}", local_addr);
-    axum::serve(listener, build_router(config, authority_config)).await?;
+    let authority_http_base_url = spawn_authority_server(authority_config)?;
+    let upstream = UpstreamRelayHandle::spawn(config.clone()).await?;
+    tracing::info!("nexus-relay durable shell accepting on {}", local_addr);
+    let serve_result = axum::serve(listener, build_router(config, authority_http_base_url)).await;
+    let shutdown_result = upstream.shutdown().await;
+    serve_result.map_err(anyhow::Error::from)?;
+    shutdown_result?;
     Ok(())
 }
 
-fn build_router(
-    config: DurableRelayConfig,
+fn spawn_authority_server(
     authority_config: nexus_control::ServiceConfig,
-) -> Router {
+) -> Result<Url, anyhow::Error> {
+    let authority_http_base_url = authority_url_for_addr(authority_config.listen_addr)?;
+    let authority_listen_addr = authority_config.listen_addr;
+    std::thread::Builder::new()
+        .name("nexus-control-api".to_string())
+        .spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .worker_threads(32)
+                .thread_name("nexus-control-api")
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        "failed to build embedded Nexus control API runtime"
+                    );
+                    return;
+                }
+            };
+            tracing::info!(
+                listen_addr = %authority_listen_addr,
+                "starting embedded Nexus control API server"
+            );
+            if let Err(error) = runtime.block_on(nexus_control::run_server(authority_config)) {
+                tracing::error!(
+                    error = %error,
+                    "embedded Nexus control API server exited"
+                );
+            }
+        })?;
+    Ok(authority_http_base_url)
+}
+
+fn authority_url_for_addr(addr: std::net::SocketAddr) -> Result<Url, anyhow::Error> {
+    Url::parse(format!("http://{addr}/").as_str())
+        .map_err(|error| anyhow::anyhow!("invalid embedded authority URL for {addr}: {error}"))
+}
+
+fn build_router(config: DurableRelayConfig, authority_http_base_url: Url) -> Router {
+    let http_client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|error| {
+            tracing::error!(
+                error = %error,
+                "failed to build Nexus relay HTTP client; using default client"
+            );
+            reqwest::Client::new()
+        });
     let state = AppState {
-        http_client: reqwest::Client::new(),
+        http_client,
         websocket_slots: Arc::new(Semaphore::new(config.max_websockets)),
+        authority_slots: Arc::new(Semaphore::new(config.authority_max_in_flight)),
+        authority_http_base_url,
         config,
     };
-    let shell_router = Router::new()
+    Router::new()
         .route("/", any(relay_root))
         .route("/ws", any(relay_websocket))
         .route("/metrics", get(proxy_upstream_metrics))
         .route("/healthz", get(healthz))
-        .with_state(state);
-    shell_router.merge(nexus_control::build_api_router(authority_config))
+        .fallback(proxy_authority_request)
+        .with_state(state)
+}
+
+async fn proxy_authority_request(State(state): State<AppState>, request: Request) -> Response {
+    proxy_authority_http_request(&state, request).await
 }
 
 async fn relay_root(State(state): State<AppState>, request: Request) -> Response {
@@ -305,6 +372,84 @@ async fn proxy_upstream_request(
         }
     };
     copy_proxy_response_headers(response.headers_mut(), &upstream_headers);
+    response
+}
+
+async fn proxy_authority_http_request(state: &AppState, request: Request) -> Response {
+    let _permit = match state.authority_slots.clone().try_acquire_owned() {
+        Ok(permit) => permit,
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "embedded Nexus control API capacity exhausted",
+            )
+                .into_response();
+        }
+    };
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let headers = request.headers().clone();
+    let body_bytes = match to_bytes(request.into_body(), MAX_PROXY_REQUEST_BYTES).await {
+        Ok(body) => body,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("failed to read proxied Nexus control request body: {error}"),
+            )
+                .into_response();
+        }
+    };
+    let path_and_query = uri
+        .path_and_query()
+        .map_or_else(|| uri.path().to_string(), std::string::ToString::to_string);
+    let target = match state.authority_http_base_url.join(path_and_query.as_str()) {
+        Ok(url) => url,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                format!("invalid embedded Nexus control API path: {error}"),
+            )
+                .into_response();
+        }
+    };
+
+    let mut authority_request = state.http_client.request(method, target);
+    for (name, value) in &headers {
+        if should_skip_proxy_request_header(name) {
+            continue;
+        }
+        authority_request = authority_request.header(name, value);
+    }
+    authority_request = authority_request.body(body_bytes.to_vec());
+
+    let authority = match authority_request.send().await {
+        Ok(response) => response,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                format!("failed to reach embedded Nexus control API: {error}"),
+            )
+                .into_response();
+        }
+    };
+
+    let status = authority.status();
+    let authority_headers = authority.headers().clone();
+    let body_stream = authority.bytes_stream().map_err(std::io::Error::other);
+    let mut response = match Response::builder()
+        .status(status)
+        .body(Body::from_stream(body_stream))
+    {
+        Ok(response) => response,
+        Err(error) => {
+            let mut response = Response::new(Body::from(format!(
+                "failed to build embedded Nexus control API response: {error}"
+            )));
+            *response.status_mut() = StatusCode::BAD_GATEWAY;
+            return response;
+        }
+    };
+    copy_proxy_response_headers(response.headers_mut(), &authority_headers);
     response
 }
 
@@ -586,6 +731,7 @@ mod tests {
             upstream_config_file: None,
             enable_nip42_auth: false,
             max_websockets: super::DEFAULT_MAX_WEBSOCKETS,
+            authority_max_in_flight: super::DEFAULT_AUTHORITY_MAX_IN_FLIGHT,
         })
     }
 
@@ -594,16 +740,23 @@ mod tests {
     ) -> Result<(
         SocketAddr,
         tokio::task::JoinHandle<Result<(), anyhow::Error>>,
+        tokio::task::JoinHandle<Result<(), anyhow::Error>>,
     )> {
-        let authority_config = build_authority_config(&config)?;
+        let mut authority_config = build_authority_config(&config)?;
+        authority_config.listen_addr = unused_socket_addr()?;
+        let authority_http_base_url = super::authority_url_for_addr(authority_config.listen_addr)?;
+        let authority_health_url = authority_http_base_url.join("healthz")?;
+        let authority = tokio::spawn(nexus_control::run_server(authority_config));
+        super::wait_for_upstream_ready(authority_health_url.as_str()).await?;
+
         let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
         let addr = listener.local_addr()?;
         let server = tokio::spawn(async move {
-            axum::serve(listener, build_router(config, authority_config))
+            axum::serve(listener, build_router(config, authority_http_base_url))
                 .await
                 .map_err(anyhow::Error::from)
         });
-        Ok((addr, server))
+        Ok((addr, server, authority))
     }
 
     #[tokio::test]
@@ -671,7 +824,7 @@ mod tests {
         let config = durable_config(tempdir.path())?;
         let expected_upstream = config.upstream_ws_url();
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
-        let (addr, server) = start_shell_server(config).await?;
+        let (addr, server, authority) = start_shell_server(config).await?;
 
         let response = reqwest::get(format!("http://{addr}/healthz")).await?;
         assert_eq!(response.status(), StatusCode::OK);
@@ -685,7 +838,74 @@ mod tests {
         );
 
         server.abort();
+        authority.abort();
         relay.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn durable_shell_serves_health_while_authority_router_is_starting() -> Result<()> {
+        let tempdir = tempdir()?;
+        let config = durable_config(tempdir.path())?;
+        let authority_addr = unused_socket_addr()?;
+        let authority_http_base_url = super::authority_url_for_addr(authority_addr)?;
+        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+        let addr = listener.local_addr()?;
+        let shell_config = config.clone();
+        let server_authority_http_base_url = authority_http_base_url.clone();
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                build_router(shell_config, server_authority_http_base_url),
+            )
+            .await
+            .map_err(anyhow::Error::from)
+        });
+
+        let client = reqwest::Client::new();
+        let health = client.get(format!("http://{addr}/healthz")).send().await?;
+        assert_eq!(health.status(), StatusCode::OK);
+
+        let stats_while_starting = client
+            .get(format!("http://{addr}/api/stats"))
+            .send()
+            .await?;
+        assert_eq!(stats_while_starting.status(), StatusCode::BAD_GATEWAY);
+
+        let mut authority_config = build_authority_config(&config)?;
+        authority_config.listen_addr = authority_addr;
+        let authority_health_url = authority_http_base_url.join("healthz")?;
+        let authority = tokio::spawn(nexus_control::run_server(authority_config));
+        super::wait_for_upstream_ready(authority_health_url.as_str()).await?;
+        let stats_ready = client
+            .get(format!("http://{addr}/api/stats"))
+            .send()
+            .await?;
+        assert_eq!(stats_ready.status(), StatusCode::OK);
+
+        server.abort();
+        authority.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn run_server_does_not_start_upstream_when_public_port_is_occupied() -> Result<()> {
+        let tempdir = tempdir()?;
+        let config = durable_config(tempdir.path())?;
+        let _occupied_public_listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+
+        let result = timeout(Duration::from_secs(2), super::run_server(config.clone()))
+            .await
+            .map_err(|_| anyhow::anyhow!("run_server should fail promptly on bind conflict"))?;
+        let error = result.expect_err("public bind conflict should fail startup");
+        assert!(
+            error.to_string().contains("Address already in use")
+                || error.to_string().contains("os error 48")
+                || error.to_string().contains("os error 98"),
+            "unexpected bind error: {error}"
+        );
+
+        let _upstream_listener = tokio::net::TcpListener::bind(config.upstream_listen_addr).await?;
         Ok(())
     }
 
@@ -699,7 +919,7 @@ mod tests {
             .public_http_url()
             .ok_or_else(|| anyhow::anyhow!("expected public http url"))?;
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
-        let (addr, server) = start_shell_server(config).await?;
+        let (addr, server, authority) = start_shell_server(config).await?;
 
         let client = reqwest::Client::new();
         let response = client
@@ -741,6 +961,7 @@ mod tests {
         );
 
         server.abort();
+        authority.abort();
         relay.shutdown().await?;
         Ok(())
     }
@@ -754,7 +975,7 @@ mod tests {
             .public_http_url()
             .ok_or_else(|| anyhow::anyhow!("expected public http url"))?;
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
-        let (addr, server) = start_shell_server(config).await?;
+        let (addr, server, authority) = start_shell_server(config).await?;
 
         let response = reqwest::get(format!("http://{addr}/")).await?;
         assert_eq!(response.status(), StatusCode::OK);
@@ -777,6 +998,7 @@ mod tests {
         assert!(body.contains("kernel authority APIs"));
 
         server.abort();
+        authority.abort();
         relay.shutdown().await?;
         Ok(())
     }
@@ -786,7 +1008,7 @@ mod tests {
         let tempdir = tempdir()?;
         let config = durable_config(tempdir.path())?;
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
-        let (addr, server) = start_shell_server(config).await?;
+        let (addr, server, authority) = start_shell_server(config).await?;
 
         let response = reqwest::get(format!("http://{addr}/metrics")).await?;
         assert_eq!(response.status(), StatusCode::OK);
@@ -795,6 +1017,7 @@ mod tests {
         assert!(body.contains("nostr_cmd_event_total"));
 
         server.abort();
+        authority.abort();
         relay.shutdown().await?;
         Ok(())
     }
@@ -805,7 +1028,7 @@ mod tests {
         let mut config = durable_config(tempdir.path())?;
         config.enable_nip42_auth = true;
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
-        let (addr, server) = start_shell_server(config).await?;
+        let (addr, server, authority) = start_shell_server(config).await?;
 
         let (mut socket, _) = connect_async(format!("ws://{addr}/")).await?;
         let first = timeout(Duration::from_secs(2), socket.next()).await;
@@ -820,6 +1043,7 @@ mod tests {
         assert!(first.contains("\"AUTH\""));
 
         server.abort();
+        authority.abort();
         relay.shutdown().await?;
         Ok(())
     }
@@ -829,7 +1053,7 @@ mod tests {
         let tempdir = tempdir()?;
         let config = durable_config(tempdir.path())?;
         let relay = UpstreamRelayHandle::spawn(config.clone()).await?;
-        let (addr, server) = start_shell_server(config).await?;
+        let (addr, server, authority) = start_shell_server(config).await?;
 
         let client = reqwest::Client::new();
         let session = client
@@ -870,6 +1094,7 @@ mod tests {
         assert_eq!(snapshot.status(), StatusCode::OK);
 
         server.abort();
+        authority.abort();
         relay.shutdown().await?;
         Ok(())
     }

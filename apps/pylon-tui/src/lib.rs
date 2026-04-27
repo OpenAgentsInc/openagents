@@ -6,7 +6,8 @@ mod transcript;
 
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Stdout};
+use std::future::Future;
+use std::io::{self, Stdout, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -41,8 +42,17 @@ use unicode_width::UnicodeWidthStr;
 const TICK_RATE: Duration = Duration::from_millis(50);
 const REFRESH_RATE: Duration = Duration::from_secs(10);
 const GPU_REFRESH_RATE: Duration = Duration::from_secs(300);
+const REFRESH_TREASURY_TIMEOUT: Duration = Duration::from_secs(4);
+const REFRESH_WALLET_TIMEOUT: Duration = Duration::from_secs(5);
+const REFRESH_TRAINING_STATUS_TIMEOUT: Duration = Duration::from_secs(5);
+const REFRESH_CONFIG_STATUS_TIMEOUT: Duration = Duration::from_secs(5);
+const REFRESH_PROVIDER_PRESENCE_TIMEOUT: Duration = Duration::from_secs(4);
 const MANAGED_WORKER_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 const MANAGED_WORKER_LOG_FILE: &str = "pylon-tui-managed-worker.log";
+const TUI_SESSION_LOG_FILE: &str = "pylon-tui-session.log";
+const CPU_WATCHDOG_THRESHOLD_PERCENT: f32 = 95.0;
+const MEMORY_WATCHDOG_AVAILABLE_FLOOR_BYTES: u64 = 512 * 1024 * 1024;
+const WATCHDOG_LOG_INTERVAL: Duration = Duration::from_secs(60);
 const LOOKBACK_WINDOW_24H_MS: u64 = 86_400_000;
 const LOCAL_CHAT_PLAIN_TEXT_POLICY: &str = "Reply in plain terminal text only. Do not use Markdown, LaTeX, HTML, tables, or code fences. For math, use plain text or simple Unicode, not TeX commands or delimiters.";
 
@@ -198,11 +208,19 @@ struct OperatorPanelStats {
     last_job_result: Option<String>,
     last_provider_event_at_ms: Option<u64>,
     recent_activity: Vec<String>,
+    payment_history: Vec<PaymentHistoryEntry>,
     online_uptime_seconds: Option<u64>,
     payment_history: Vec<PaymentHistoryEntry>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct PaymentHistoryEntry {
+    settled_at_ms: u64,
+    amount_sats: u64,
+    job_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct PaymentHistoryEntry {
     settled_at_ms: u64,
     amount_sats: u64,
@@ -543,6 +561,8 @@ struct AppShell {
     next_nexus_treasury_refresh_at: Instant,
     managed_worker: Option<ManagedPylonWorker>,
     worker_runtime_issue: Option<String>,
+    next_cpu_watchdog_log_at: Instant,
+    next_memory_watchdog_log_at: Instant,
 }
 
 impl AppShell {
@@ -608,6 +628,8 @@ impl AppShell {
             next_nexus_treasury_refresh_at: Instant::now(),
             managed_worker: None,
             worker_runtime_issue: None,
+            next_cpu_watchdog_log_at: Instant::now(),
+            next_memory_watchdog_log_at: Instant::now(),
         }
     }
 
@@ -2422,6 +2444,7 @@ impl AppShell {
             self.next_nexus_treasury_refresh_at = Instant::now() + GPU_REFRESH_RATE;
         }
         std::thread::spawn(move || {
+            append_tui_session_log(config_path.as_path(), "refresh worker started");
             let installed_gemma_models = installed_gemma_models(config_path.as_path());
             let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -2429,6 +2452,10 @@ impl AppShell {
             {
                 Ok(runtime) => runtime,
                 Err(error) => {
+                    append_tui_session_log(
+                        config_path.as_path(),
+                        format!("refresh runtime build failed error={error}"),
+                    );
                     let _ = tx.send(WorkerEvent::RefreshCompleted {
                         loaded: None,
                         installed_gemma_models,
@@ -2446,9 +2473,14 @@ impl AppShell {
             let event = runtime.block_on(async move {
                 match pylon::ensure_local_setup(config_path.as_path()) {
                     Ok(_) => {
+                        append_tui_session_log(config_path.as_path(), "refresh local setup ok");
                         let config = match pylon::load_config_or_default(config_path.as_path()) {
                             Ok(config) => config,
                             Err(error) => {
+                                append_tui_session_log(
+                                    config_path.as_path(),
+                                    format!("refresh config load failed error={error}"),
+                                );
                                 return WorkerEvent::RefreshCompleted {
                                     loaded: None,
                                     installed_gemma_models,
@@ -2463,33 +2495,78 @@ impl AppShell {
                             }
                         };
                         let nexus_treasury_health = if treasury_refresh_due {
-                            pylon::fetch_nexus_treasury_health(&config)
-                                .await
-                                .ok()
-                                .or(current_nexus_treasury)
+                            match run_bounded_refresh_phase(
+                                config_path.as_path(),
+                                "nexus_treasury",
+                                REFRESH_TREASURY_TIMEOUT,
+                                async { pylon::fetch_nexus_treasury_health(&config).await },
+                            )
+                            .await
+                            {
+                                Ok(health) => Some(health),
+                                Err(_) => current_nexus_treasury,
+                            }
                         } else {
                             current_nexus_treasury
                         };
-                        let (wallet_status, last_wallet_error) =
-                            match pylon::load_wallet_balance_status_report(config_path.as_path())
-                                .await
-                            {
-                                Ok(report) => (Some(report), None),
-                                Err(error) => (None, Some(error.to_string())),
-                            };
-                        let training_status_lines =
-                            load_training_status_lines(config_path.as_path()).await;
-                        match pylon::load_config_and_status(config_path.as_path()).await {
+                        let (wallet_status, last_wallet_error) = match run_bounded_refresh_phase(
+                            config_path.as_path(),
+                            "wallet_status",
+                            REFRESH_WALLET_TIMEOUT,
+                            async {
+                                pylon::load_wallet_balance_status_report(config_path.as_path())
+                                    .await
+                            },
+                        )
+                        .await
+                        {
+                            Ok(report) => (Some(report), None),
+                            Err(error) => (None, Some(error.to_string())),
+                        };
+                        let training_status_lines = match run_bounded_refresh_phase(
+                            config_path.as_path(),
+                            "training_status",
+                            REFRESH_TRAINING_STATUS_TIMEOUT,
+                            async { Ok(load_training_status_lines(config_path.as_path()).await) },
+                        )
+                        .await
+                        {
+                            Ok(lines) => lines,
+                            Err(error) => vec![format!("training status unavailable: {error}")],
+                        };
+                        match run_bounded_refresh_phase(
+                            config_path.as_path(),
+                            "config_status",
+                            REFRESH_CONFIG_STATUS_TIMEOUT,
+                            async { pylon::load_config_and_status(config_path.as_path()).await },
+                        )
+                        .await
+                        {
                             Ok((_, status)) => {
-                                let provider_presence_online = sync_provider_presence_for_refresh(
-                                    config_path.as_path(),
-                                    session_id.as_str(),
-                                    status.desired_mode,
-                                    status.snapshot.as_ref(),
-                                    provider_presence_online,
-                                    heartbeat_due,
-                                )
-                                .await;
+                                let (provider_presence_online, last_error) =
+                                    match run_bounded_refresh_phase(
+                                        config_path.as_path(),
+                                        "provider_presence",
+                                        REFRESH_PROVIDER_PRESENCE_TIMEOUT,
+                                        async {
+                                            Ok(sync_provider_presence_for_refresh(
+                                                config_path.as_path(),
+                                                session_id.as_str(),
+                                                status.desired_mode,
+                                                status.snapshot.as_ref(),
+                                                provider_presence_online,
+                                                heartbeat_due,
+                                            )
+                                            .await)
+                                        },
+                                    )
+                                    .await
+                                    {
+                                        Ok(online) => (online, None),
+                                        Err(error) => {
+                                            (provider_presence_online, Some(error.to_string()))
+                                        }
+                                    };
                                 let ledger =
                                     pylon::load_ledger(config_path.as_path()).unwrap_or_default();
                                 WorkerEvent::RefreshCompleted {
@@ -2512,22 +2589,34 @@ impl AppShell {
                                         &ledger,
                                         session_started_at_ms,
                                     ),
-                                    last_error: None,
+                                    last_error,
                                     last_wallet_error,
                                     provider_presence_online,
                                     nexus_treasury_health,
                                 }
                             }
                             Err(error) => {
-                                let provider_presence_online = sync_provider_presence_for_refresh(
+                                let provider_presence_online = match run_bounded_refresh_phase(
                                     config_path.as_path(),
-                                    session_id.as_str(),
-                                    ProviderDesiredMode::Offline,
-                                    None,
-                                    provider_presence_online,
-                                    heartbeat_due,
+                                    "provider_presence_offline",
+                                    REFRESH_PROVIDER_PRESENCE_TIMEOUT,
+                                    async {
+                                        Ok(sync_provider_presence_for_refresh(
+                                            config_path.as_path(),
+                                            session_id.as_str(),
+                                            ProviderDesiredMode::Offline,
+                                            None,
+                                            provider_presence_online,
+                                            heartbeat_due,
+                                        )
+                                        .await)
+                                    },
                                 )
-                                .await;
+                                .await
+                                {
+                                    Ok(online) => online,
+                                    Err(_) => provider_presence_online,
+                                };
                                 let ledger =
                                     pylon::load_ledger(config_path.as_path()).unwrap_or_default();
                                 WorkerEvent::RefreshCompleted {
@@ -2559,15 +2648,31 @@ impl AppShell {
                         }
                     }
                     Err(error) => {
-                        let provider_presence_online = sync_provider_presence_for_refresh(
+                        append_tui_session_log(
                             config_path.as_path(),
-                            session_id.as_str(),
-                            ProviderDesiredMode::Offline,
-                            None,
-                            provider_presence_online,
-                            heartbeat_due,
+                            format!("refresh local setup failed error={error}"),
+                        );
+                        let provider_presence_online = match run_bounded_refresh_phase(
+                            config_path.as_path(),
+                            "provider_presence_offline",
+                            REFRESH_PROVIDER_PRESENCE_TIMEOUT,
+                            async {
+                                Ok(sync_provider_presence_for_refresh(
+                                    config_path.as_path(),
+                                    session_id.as_str(),
+                                    ProviderDesiredMode::Offline,
+                                    None,
+                                    provider_presence_online,
+                                    heartbeat_due,
+                                )
+                                .await)
+                            },
                         )
-                        .await;
+                        .await
+                        {
+                            Ok(online) => online,
+                            Err(_) => provider_presence_online,
+                        };
                         let ledger = pylon::load_ledger(config_path.as_path()).unwrap_or_default();
                         let wallet_surface =
                             match pylon::load_config_or_default(config_path.as_path()) {
@@ -2647,6 +2752,41 @@ impl AppShell {
         self.system_stats.free_swap_bytes = Some(self.system.free_swap());
         self.system_stats.total_swap_bytes = Some(self.system.total_swap());
         self.system_stats.uptime_seconds = Some(System::uptime());
+
+        let now = Instant::now();
+        if let Some(cpu) = self.system_stats.cpu_usage_percent
+            && cpu >= CPU_WATCHDOG_THRESHOLD_PERCENT
+            && now >= self.next_cpu_watchdog_log_at
+        {
+            let message = format!("Host CPU is {:.0}% during Pylon TUI refresh.", cpu);
+            append_tui_session_log(
+                self.config_path.as_path(),
+                format!("cpu watchdog threshold crossed cpu_percent={cpu:.1}"),
+            );
+            self.push_system_message("CPU Watchdog", message);
+            self.next_cpu_watchdog_log_at = now + WATCHDOG_LOG_INTERVAL;
+        }
+        if let (Some(available), Some(total)) = (
+            self.system_stats.available_memory_bytes,
+            self.system_stats.total_memory_bytes,
+        ) && available <= MEMORY_WATCHDOG_AVAILABLE_FLOOR_BYTES
+            && total > MEMORY_WATCHDOG_AVAILABLE_FLOOR_BYTES
+            && now >= self.next_memory_watchdog_log_at
+        {
+            let message = format!(
+                "Host memory is low: {} available.",
+                format_byte_size(available)
+            );
+            append_tui_session_log(
+                self.config_path.as_path(),
+                format!(
+                    "memory watchdog threshold crossed available_bytes={available} total_bytes={total}"
+                ),
+            );
+            self.push_system_message("Memory Watchdog", message);
+            self.next_memory_watchdog_log_at = now + WATCHDOG_LOG_INTERVAL;
+        }
+
         self.system_stats.disk_summary =
             detect_disk_summary(self.disks.list(), self.config_path.as_path());
         self.system_stats.disk_io_summary =
@@ -2688,22 +2828,37 @@ impl AppShell {
             Constraint::Min(8),
         ])
         .split(columns[0]);
-        let right = Layout::vertical([
-            Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(6, 8)),
-            Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(6, 8)),
-            Constraint::Length((self.summary_lines().len() as u16 + 2).clamp(5, 7)),
-            Constraint::Length((self.rank_lines().len() as u16 + 2).clamp(7, 9)),
-            Constraint::Min(4),
-        ])
-        .split(columns[1]);
+        let compact_right_column = columns[1].height < 24;
+        let right = if compact_right_column {
+            Layout::vertical([
+                Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(4, 5)),
+                Constraint::Length((self.payment_feed_lines().len() as u16 + 2).clamp(4, 5)),
+                Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(4, 5)),
+                Constraint::Min((self.rank_lines().len() as u16 + 2).clamp(4, 6)),
+            ])
+            .split(columns[1])
+        } else {
+            Layout::vertical([
+                Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(6, 8)),
+                Constraint::Length((self.payment_feed_lines().len() as u16 + 2).clamp(6, 9)),
+                Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(6, 8)),
+                Constraint::Length((self.summary_lines().len() as u16 + 2).clamp(5, 7)),
+                Constraint::Min((self.rank_lines().len() as u16 + 2).clamp(7, 9)),
+            ])
+            .split(columns[1])
+        };
 
         frame.render_widget(self.homework_panel(), left[0]);
         frame.render_widget(self.activity_panel(), left[1]);
         frame.render_widget(self.operator_panel(), right[0]);
-        frame.render_widget(self.wallet_card_panel(), right[1]);
-        frame.render_widget(self.summary_panel(), right[2]);
-        frame.render_widget(self.rank_panel(), right[3]);
-        frame.render_widget(self.payment_feed_panel(), right[4]);
+        frame.render_widget(self.payment_feed_panel(), right[1]);
+        frame.render_widget(self.wallet_card_panel(), right[2]);
+        if compact_right_column {
+            frame.render_widget(self.rank_panel(), right[3]);
+        } else {
+            frame.render_widget(self.summary_panel(), right[3]);
+            frame.render_widget(self.rank_panel(), right[4]);
+        }
         frame.render_widget(self.footer_panel(), vertical[2]);
     }
 
@@ -3543,6 +3698,32 @@ impl AppShell {
                     format_elapsed_since_ms(payment.updated_at_ms, current_epoch_ms_u64())
                 )
             })
+    }
+
+    fn payment_feed_lines(&self) -> Vec<Line<'static>> {
+        if self.operator_stats.payment_history.is_empty() {
+            return vec![Line::from(Span::styled(
+                "No payouts received yet.",
+                muted_text(),
+            ))];
+        }
+
+        let now_ms = current_epoch_ms_u64();
+        self.operator_stats
+            .payment_history
+            .iter()
+            .map(|entry| {
+                Line::from(vec![
+                    Span::styled(format_sats(entry.amount_sats), success_accent()),
+                    Span::raw("  "),
+                    Span::raw(format!(
+                        "{} ago  job {}",
+                        format_elapsed_since_ms(entry.settled_at_ms, now_ms),
+                        short_job_id(entry.job_id.as_str())
+                    )),
+                ])
+            })
+            .collect()
     }
 
     fn rank_lines(&self) -> Vec<Line<'static>> {
@@ -4394,7 +4575,8 @@ fn take_next_tui_word(value: &str) -> (&str, &str) {
 }
 
 pub fn usage() -> &'static str {
-    "Usage: pylon-tui [--config-path <path>]\n\
+    "Usage: pylon-tui [--max-cores <n>|--max-threads <n>] [--config-path <path>]\n\
+Startup flags cap native thread pools for small machines.\n\
 Controls:\n\
   Ctrl+C   quit\n\
   Keep this window open to stay eligible for admin-triggered homework jobs.\n\
@@ -4422,6 +4604,11 @@ pub async fn run_pylon_tui_with_args(args: Vec<String>) -> Result<()> {
 }
 
 async fn run_pylon_tui_with_config(config: TuiLaunchConfig) -> Result<()> {
+    initialize_tui_session_log(config.config_path.as_path())?;
+    append_tui_session_log(
+        config.config_path.as_path(),
+        format!("session start config_path={}", config.config_path.display()),
+    );
     let managed_worker_launch = start_managed_pylon_worker(config.config_path.as_path())?;
     let mut stdout = io::stdout();
     enable_raw_mode()?;
@@ -4519,6 +4706,96 @@ fn managed_worker_log_path(config_path: &Path) -> PathBuf {
         .unwrap_or_else(|| Path::new("."))
         .join("logs")
         .join(MANAGED_WORKER_LOG_FILE)
+}
+
+fn tui_session_log_path(config_path: &Path) -> PathBuf {
+    config_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("logs")
+        .join(TUI_SESSION_LOG_FILE)
+}
+
+fn initialize_tui_session_log(config_path: &Path) -> Result<PathBuf> {
+    let log_path = tui_session_log_path(config_path);
+    if let Some(parent) = log_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(log_path.as_path())?;
+    writeln!(
+        file,
+        "{} pylon-tui session log initialized",
+        current_epoch_ms_u64()
+    )?;
+    Ok(log_path)
+}
+
+fn append_tui_session_log(config_path: &Path, message: impl AsRef<str>) {
+    let log_path = tui_session_log_path(config_path);
+    if let Some(parent) = log_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path.as_path())
+    else {
+        return;
+    };
+    let _ = writeln!(file, "{} {}", current_epoch_ms_u64(), message.as_ref());
+}
+
+async fn run_bounded_refresh_phase<T, F>(
+    config_path: &Path,
+    phase: &str,
+    timeout_duration: Duration,
+    future: F,
+) -> Result<T>
+where
+    F: Future<Output = Result<T>>,
+{
+    append_tui_session_log(config_path, format!("refresh phase {phase} start"));
+    let started = Instant::now();
+    match tokio::time::timeout(timeout_duration, future).await {
+        Ok(Ok(value)) => {
+            append_tui_session_log(
+                config_path,
+                format!(
+                    "refresh phase {phase} completed elapsed={}",
+                    format_duration(started.elapsed())
+                ),
+            );
+            Ok(value)
+        }
+        Ok(Err(error)) => {
+            append_tui_session_log(
+                config_path,
+                format!(
+                    "refresh phase {phase} failed elapsed={} error={}",
+                    format_duration(started.elapsed()),
+                    error
+                ),
+            );
+            Err(error)
+        }
+        Err(_) => {
+            append_tui_session_log(
+                config_path,
+                format!(
+                    "refresh phase {phase} timed_out timeout={}",
+                    format_duration(timeout_duration)
+                ),
+            );
+            bail!(
+                "refresh phase {phase} timed out after {}",
+                format_duration(timeout_duration)
+            )
+        }
+    }
 }
 
 fn admin_listener_reachable(listen_addr: &str) -> bool {
@@ -4856,6 +5133,7 @@ fn compute_operator_panel_stats_at(
         last_job_result,
         last_provider_event_at_ms,
         recent_activity,
+        payment_history,
         online_uptime_seconds: snapshot.map(|value| value.runtime.online_uptime_seconds),
         payment_history,
     }
@@ -5141,21 +5419,32 @@ fn recent_provider_activity(ledger: &pylon::PylonLedger, now_ms: u64) -> Vec<Str
 }
 
 fn payment_history_feed(ledger: &pylon::PylonLedger) -> Vec<PaymentHistoryEntry> {
-    let mut entries: Vec<PaymentHistoryEntry> = ledger
+    let mut entries = ledger
         .settlements
         .iter()
-        .filter(|s| {
-            s.direction == "provider"
-                && provider_settlement_counted_as_settled(s.status.as_str())
+        .filter(|settlement| settlement.direction == "provider")
+        .filter(|settlement| provider_settlement_counted_as_settled(settlement.status.as_str()))
+        .map(|settlement| PaymentHistoryEntry {
+            settled_at_ms: settlement_settled_at_ms(settlement),
+            amount_sats: settlement.amount_msats / 1_000,
+            job_id: settlement.job_id.clone(),
         })
-        .map(|s| PaymentHistoryEntry {
-            settled_at_ms: s.updated_at_ms,
-            amount_sats: s.amount_msats / 1_000,
-            job_id: s.job_id.clone(),
-        })
-        .collect();
-    entries.sort_by(|a, b| b.settled_at_ms.cmp(&a.settled_at_ms));
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| {
+        right
+            .settled_at_ms
+            .cmp(&left.settled_at_ms)
+            .then_with(|| left.job_id.cmp(&right.job_id))
+    });
     entries
+}
+
+fn settlement_settled_at_ms(settlement: &pylon::PylonSettlementRecord) -> u64 {
+    settlement.updated_at_ms.max(settlement.created_at_ms)
+}
+
+fn short_job_id(job_id: &str) -> String {
+    job_id.chars().take(8).collect()
 }
 
 fn provider_job_activity_label(job: &pylon::PylonLedgerJob) -> Option<String> {
@@ -5768,23 +6057,24 @@ fn estimate_token_count(text: &str) -> usize {
 mod tests {
     use super::{
         ActiveChatMetrics, AppShell, ChatMetricsSummary, ComposerSubmission,
-        LOCAL_CHAT_PLAIN_TEXT_POLICY, OperatorPanelStats, ProviderCommandInFlight,
-        WalletSurfaceState, WorkerEvent, active_chat_title, admin_listener_reachable,
-        animated_right_now_suffix, animated_stack_gain_suffix, compute_operator_panel_stats_at,
-        current_epoch_ms_u64, estimate_token_count, local_chat_request_messages,
-        managed_worker_log_path, max_transcript_scroll_y, mission_control_signal_spans,
-        parse_tui_buyer_job_history_request, parse_tui_buyer_job_policy_mode,
-        parse_tui_buyer_job_request_id, parse_tui_buyer_job_submit_request,
-        parse_tui_buyer_job_watch_request, parse_tui_optional_limit,
-        parse_tui_payout_history_request, parse_tui_payout_withdraw_request,
-        recent_provider_activity, render_rank_progress_spans, shell_title,
-        should_publish_provider_presence, stabilize_operator_panel_stats, stacker_rank_progress,
-        summarize_chat_metrics, transcript_viewport_height, transcript_wrap_width,
+        LOCAL_CHAT_PLAIN_TEXT_POLICY, OperatorPanelStats, PaymentHistoryEntry,
+        ProviderCommandInFlight, WalletSurfaceState, WorkerEvent, active_chat_title,
+        admin_listener_reachable, animated_right_now_suffix, animated_stack_gain_suffix,
+        compute_operator_panel_stats_at, current_epoch_ms_u64, estimate_token_count,
+        local_chat_request_messages, managed_worker_log_path, max_transcript_scroll_y,
+        mission_control_signal_spans, parse_tui_buyer_job_history_request,
+        parse_tui_buyer_job_policy_mode, parse_tui_buyer_job_request_id,
+        parse_tui_buyer_job_submit_request, parse_tui_buyer_job_watch_request,
+        parse_tui_optional_limit, parse_tui_payout_history_request,
+        parse_tui_payout_withdraw_request, payment_history_feed, recent_provider_activity,
+        render_rank_progress_spans, shell_title, should_publish_provider_presence,
+        stabilize_operator_panel_stats, stacker_rank_progress, summarize_chat_metrics,
+        transcript_viewport_height, transcript_wrap_width, tui_session_log_path, usage,
         wrapped_row_count,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use openagents_provider_substrate::{ProviderDesiredMode, ProviderPersistedSnapshot};
-    use ratatui::layout::Rect;
+    use ratatui::{Terminal, backend::TestBackend, layout::Rect};
     use std::path::PathBuf;
     use std::time::{Duration, Instant};
 
@@ -5806,6 +6096,21 @@ mod tests {
             path,
             PathBuf::from("/tmp/pylon/logs/pylon-tui-managed-worker.log")
         );
+    }
+
+    #[test]
+    fn tui_session_log_path_lives_next_to_config() {
+        let path = tui_session_log_path(PathBuf::from("/tmp/pylon/config.json").as_path());
+
+        assert_eq!(path, PathBuf::from("/tmp/pylon/logs/pylon-tui-session.log"));
+    }
+
+    #[test]
+    fn tui_usage_surfaces_startup_thread_cap_flags() {
+        let usage = usage();
+
+        assert!(usage.contains("--max-cores <n>"));
+        assert!(usage.contains("--max-threads <n>"));
     }
 
     #[test]
@@ -5896,6 +6201,7 @@ mod tests {
             last_job_result: Some("settled".to_string()),
             last_provider_event_at_ms: Some(1_762_700_500_000),
             recent_activity: vec![String::from("settled 21 sats 6m ago")],
+            payment_history: Vec::new(),
             online_uptime_seconds: Some(60),
             payment_history: vec![],
         };
@@ -6507,6 +6813,129 @@ mod tests {
         assert!(activity.contains("[PAID] stacked 7 sats"));
         assert!(!activity.contains("[DONE]"));
         assert!(!activity.contains("[LIVE]"));
+    }
+
+    #[test]
+    fn payment_history_feed_includes_all_settled_provider_payments_newest_first() {
+        let now_ms = 1_762_700_500_000_u64;
+        let mut ledger = pylon::PylonLedger::default();
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "set-older".to_string(),
+            job_id: "job-older-abcdef".to_string(),
+            direction: "provider".to_string(),
+            status: "settled".to_string(),
+            amount_msats: 21_000,
+            payment_reference: None,
+            receipt_detail: None,
+            created_at_ms: now_ms - 20_000,
+            updated_at_ms: now_ms - 10_000,
+        });
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "set-newer".to_string(),
+            job_id: "job-newer-abcdef".to_string(),
+            direction: "provider".to_string(),
+            status: "payment_received".to_string(),
+            amount_msats: 42_000,
+            payment_reference: None,
+            receipt_detail: None,
+            created_at_ms: now_ms - 2_000,
+            updated_at_ms: now_ms - 1_000,
+        });
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "set-pending".to_string(),
+            job_id: "job-pending".to_string(),
+            direction: "provider".to_string(),
+            status: "payment_required".to_string(),
+            amount_msats: 84_000,
+            payment_reference: None,
+            receipt_detail: None,
+            created_at_ms: now_ms - 500,
+            updated_at_ms: now_ms - 400,
+        });
+        ledger.settlements.push(pylon::PylonSettlementRecord {
+            settlement_id: "set-consumer".to_string(),
+            job_id: "job-consumer".to_string(),
+            direction: "consumer".to_string(),
+            status: "settled".to_string(),
+            amount_msats: 168_000,
+            payment_reference: None,
+            receipt_detail: None,
+            created_at_ms: now_ms - 300,
+            updated_at_ms: now_ms - 200,
+        });
+
+        let feed = payment_history_feed(&ledger);
+
+        assert_eq!(
+            feed,
+            vec![
+                PaymentHistoryEntry {
+                    settled_at_ms: now_ms - 1_000,
+                    amount_sats: 42,
+                    job_id: "job-newer-abcdef".to_string(),
+                },
+                PaymentHistoryEntry {
+                    settled_at_ms: now_ms - 10_000,
+                    amount_sats: 21,
+                    job_id: "job-older-abcdef".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn payment_feed_lines_render_empty_state_and_short_job_id() {
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+
+        let empty = app
+            .payment_feed_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(empty.contains("No payouts received yet."));
+
+        app.operator_stats.payment_history = vec![PaymentHistoryEntry {
+            settled_at_ms: current_epoch_ms_u64().saturating_sub(120_000),
+            amount_sats: 42,
+            job_id: "job-abcdef-1234567890".to_string(),
+        }];
+        let rendered = app
+            .payment_feed_lines()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(rendered.contains("42 sats"));
+        assert!(rendered.contains("ago"));
+        assert!(rendered.contains("job job-abcd"));
+        assert!(!rendered.contains("1234567890"));
+    }
+
+    #[test]
+    fn payment_history_panel_renders_on_standard_terminal_size() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        let mut app = AppShell::new(PathBuf::from("/tmp/pylon-test"));
+        app.operator_stats.payment_history = vec![PaymentHistoryEntry {
+            settled_at_ms: current_epoch_ms_u64().saturating_sub(60_000),
+            amount_sats: 13,
+            job_id: "job-render-123456".to_string(),
+        }];
+
+        terminal.draw(|frame| app.render(frame)).expect("render");
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(rendered.contains("Payment History"));
+        assert!(rendered.contains("13 sats"));
+        assert!(rendered.contains("job-rend"));
     }
 
     #[test]

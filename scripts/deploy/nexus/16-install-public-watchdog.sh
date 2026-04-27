@@ -19,8 +19,9 @@ fi
 
 TMP_ENV="$(mktemp)"
 TMP_CHECK_SCRIPT="$(mktemp)"
+TMP_PROXY_SCRIPT="$(mktemp)"
 TMP_REMOTE_SCRIPT="$(mktemp)"
-trap 'rm -f "$TMP_ENV" "$TMP_CHECK_SCRIPT" "$TMP_REMOTE_SCRIPT"' EXIT
+trap 'rm -f "$TMP_ENV" "$TMP_CHECK_SCRIPT" "$TMP_PROXY_SCRIPT" "$TMP_REMOTE_SCRIPT"' EXIT
 
 cat >"$TMP_ENV" <<ENV
 # Managed by scripts/deploy/nexus/16-install-public-watchdog.sh
@@ -35,6 +36,11 @@ NEXUS_PUBLIC_WATCHDOG_TUNNEL_SERVICE_NAME=${NEXUS_PUBLIC_WATCHDOG_TUNNEL_SERVICE
 NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_ENABLED=${NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_ENABLED}
 NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_AFTER_FAILURES=${NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_AFTER_FAILURES}
 NEXUS_PUBLIC_WATCHDOG_EDGE_RECHECK_SECONDS=${NEXUS_PUBLIC_WATCHDOG_EDGE_RECHECK_SECONDS}
+NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ENABLED=${NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ENABLED}
+NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_SERVICE_NAME=${NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_SERVICE_NAME}
+NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ORIGIN_URL=${NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ORIGIN_URL}
+NEXUS_PUBLIC_WATCHDOG_NORMAL_ORIGIN_URL=${NEXUS_PUBLIC_WATCHDOG_NORMAL_ORIGIN_URL}
+NEXUS_PUBLIC_WATCHDOG_CLOUDFLARED_ENV_PATH=${NEXUS_PUBLIC_WATCHDOG_CLOUDFLARED_ENV_PATH}
 ENV
 
 cat >"$TMP_CHECK_SCRIPT" <<'CHECK'
@@ -52,6 +58,11 @@ DRY_RUN="${NEXUS_PUBLIC_WATCHDOG_DRY_RUN:-false}"
 EDGE_REBOOT_ENABLED="${NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_ENABLED:-true}"
 EDGE_REBOOT_AFTER_FAILURES="${NEXUS_PUBLIC_WATCHDOG_EDGE_REBOOT_AFTER_FAILURES:-2}"
 EDGE_RECHECK_SECONDS="${NEXUS_PUBLIC_WATCHDOG_EDGE_RECHECK_SECONDS:-15}"
+RECOVERY_PROXY_ENABLED="${NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ENABLED:-true}"
+RECOVERY_PROXY_SERVICE_NAME="${NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_SERVICE_NAME:-nexus-http-recovery-proxy}"
+RECOVERY_PROXY_ORIGIN_URL="${NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ORIGIN_URL:-http://127.0.0.1:8081}"
+NORMAL_ORIGIN_URL="${NEXUS_PUBLIC_WATCHDOG_NORMAL_ORIGIN_URL:-http://127.0.0.1:8080}"
+CLOUDFLARED_ENV_PATH="${NEXUS_PUBLIC_WATCHDOG_CLOUDFLARED_ENV_PATH:-/etc/nexus-relay/nexus-cloudflared.env}"
 STATE_DIR="${NEXUS_PUBLIC_WATCHDOG_STATE_DIR:-/var/lib/nexus-relay/watchdog/public}"
 EVENT_LOG_PATH="${STATE_DIR}/events.jsonl"
 LAST_EVENT_PATH="${STATE_DIR}/last-event.json"
@@ -158,6 +169,47 @@ reboot_vm_for_public_edge_failure() {
   systemctl reboot
 }
 
+set_cloudflared_origin_url() {
+  local origin_url="$1"
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    log "dry_run set_cloudflared_origin_url origin_url=${origin_url} env_path=${CLOUDFLARED_ENV_PATH}"
+    return
+  fi
+
+  if [[ ! -f "$CLOUDFLARED_ENV_PATH" ]]; then
+    log "cloudflared_env_missing env_path=${CLOUDFLARED_ENV_PATH}"
+    return 1
+  fi
+
+  if grep -q '^TUNNEL_ORIGIN_URL=' "$CLOUDFLARED_ENV_PATH"; then
+    sed -i "s#^TUNNEL_ORIGIN_URL=.*#TUNNEL_ORIGIN_URL=${origin_url}#" "$CLOUDFLARED_ENV_PATH"
+  else
+    printf '\nTUNNEL_ORIGIN_URL=%s\n' "$origin_url" >>"$CLOUDFLARED_ENV_PATH"
+  fi
+}
+
+activate_recovery_proxy_for_public_edge_failure() {
+  local reason="$1"
+  local local_code="$2"
+  local public_code="$3"
+  local relay_uptime="$4"
+  local tunnel_uptime="$5"
+  local edge_failure_count="$6"
+
+  emit_event "recovering" "$reason" "activate_recovery_proxy:${RECOVERY_PROXY_SERVICE_NAME}" "$local_code" "$public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    log "dry_run activate_recovery_proxy service=${RECOVERY_PROXY_SERVICE_NAME} origin_url=${RECOVERY_PROXY_ORIGIN_URL} reason=${reason} consecutive_edge_failures=${edge_failure_count}"
+    return
+  fi
+
+  log "activate_recovery_proxy service=${RECOVERY_PROXY_SERVICE_NAME} origin_url=${RECOVERY_PROXY_ORIGIN_URL} reason=${reason} consecutive_edge_failures=${edge_failure_count}"
+  systemctl enable --now "$RECOVERY_PROXY_SERVICE_NAME"
+  set_cloudflared_origin_url "$RECOVERY_PROXY_ORIGIN_URL"
+  systemctl restart "$TUNNEL_SERVICE_NAME"
+}
+
 recover_public_edge_failure() {
   local reason="$1"
   local local_code="$2"
@@ -166,6 +218,11 @@ recover_public_edge_failure() {
   local tunnel_uptime="$5"
   local edge_failure_count
   edge_failure_count="$(record_edge_failure_count)"
+
+  if [[ "$RECOVERY_PROXY_ENABLED" == "true" ]] && (( edge_failure_count >= EDGE_REBOOT_AFTER_FAILURES )); then
+    activate_recovery_proxy_for_public_edge_failure "$reason" "$local_code" "$public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
+    exit 1
+  fi
 
   if [[ "$EDGE_REBOOT_ENABLED" == "true" ]] && (( edge_failure_count >= EDGE_REBOOT_AFTER_FAILURES )); then
     reboot_vm_for_public_edge_failure "$reason" "$local_code" "$public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
@@ -199,6 +256,10 @@ recover_public_edge_failure() {
 
   if public_edge_failure "$retry_public_health_code" "$retry_public_health_body" || public_edge_failure "$retry_public_stats_code" "$retry_public_stats_body"; then
     edge_failure_count="$(record_edge_failure_count)"
+    if [[ "$RECOVERY_PROXY_ENABLED" == "true" ]] && (( edge_failure_count >= EDGE_REBOOT_AFTER_FAILURES )); then
+      activate_recovery_proxy_for_public_edge_failure "${reason}_after_tunnel_restart" "$local_code" "$retry_public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
+      exit 1
+    fi
     if [[ "$EDGE_REBOOT_ENABLED" == "true" ]] && (( edge_failure_count >= EDGE_REBOOT_AFTER_FAILURES )); then
       reboot_vm_for_public_edge_failure "${reason}_after_tunnel_restart" "$local_code" "$retry_public_code" "$relay_uptime" "$tunnel_uptime" "$edge_failure_count"
       exit 1
@@ -258,6 +319,13 @@ public_code_for_event() {
   fi
 }
 
+recovery_proxy_public_origin_active() {
+  [[ "$RECOVERY_PROXY_ENABLED" == "true" ]] || return 1
+  [[ "$(systemctl is-active "$RECOVERY_PROXY_SERVICE_NAME" 2>/dev/null || true)" == "active" ]] || return 1
+  [[ -f "$CLOUDFLARED_ENV_PATH" ]] || return 1
+  grep -qx "TUNNEL_ORIGIN_URL=${RECOVERY_PROXY_ORIGIN_URL}" "$CLOUDFLARED_ENV_PATH"
+}
+
 probe_http_code() {
   sed -n '1p'
 }
@@ -296,7 +364,12 @@ if (( relay_uptime_seconds < STARTUP_GRACE_SECONDS || tunnel_uptime_seconds < ST
   exit 0
 fi
 
-local_probe="$(http_probe "$LOCAL_HEALTH_URL")"
+effective_local_health_url="$LOCAL_HEALTH_URL"
+if recovery_proxy_public_origin_active; then
+  effective_local_health_url="${RECOVERY_PROXY_ORIGIN_URL%/}/healthz"
+fi
+
+local_probe="$(http_probe "$effective_local_health_url")"
 local_code="$(printf '%s\n' "$local_probe" | probe_http_code)"
 if [[ "$local_code" != "200" ]]; then
   reset_edge_failure_count
@@ -331,13 +404,190 @@ log "degraded local_health=${local_code} public_health=${public_health_code} pub
 exit 0
 CHECK
 
+cat >"$TMP_PROXY_SCRIPT" <<'PROXY'
+#!/usr/bin/env python3
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+import http.client
+import json
+import socket
+
+HOP_BY_HOP = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "content-length",
+}
+CACHE_BY_PATH = {
+    "/api/stats": Path("/var/lib/nexus-relay/recovery-stats-cache.json"),
+    "/api/training/summary": Path(
+        "/var/lib/nexus-relay/recovery-training-summary-cache.json"
+    ),
+}
+HEALTH_BODY = (
+    json.dumps(
+        {
+            "ok": True,
+            "service": "nexus-relay",
+            "relay_backend": "durable-upstream",
+            "authority_mode": "in-process",
+            "managed_groups_mode": "recovery-proxy",
+            "recovery_proxy": True,
+        }
+    ).encode()
+    + b"\n"
+)
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    server_version = "nexus-http-recovery-proxy/1.0"
+
+    def log_message(self, fmt, *args):
+        return
+
+    def _is_websocket(self):
+        upgrade = self.headers.get("Upgrade", "")
+        connection = self.headers.get("Connection", "")
+        return upgrade.lower() == "websocket" or "upgrade" in connection.lower()
+
+    def _send_bytes(self, status, data, content_type="application/json", extra_headers=None):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Connection", "close")
+        if extra_headers:
+            for key, value in extra_headers.items():
+                self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(data)
+        self.close_connection = True
+
+    def _reject_websocket(self):
+        self._send_bytes(
+            503,
+            b"nexus websocket relay temporarily disabled during recovery\n",
+            "text/plain; charset=utf-8",
+        )
+
+    def _read_cache(self, path):
+        cache_path = CACHE_BY_PATH.get(path)
+        if not cache_path or not cache_path.exists():
+            return None
+        try:
+            return cache_path.read_bytes()
+        except OSError:
+            return None
+
+    def _write_cache(self, path, data):
+        cache_path = CACHE_BY_PATH.get(path)
+        if not cache_path:
+            return
+        try:
+            cache_path.write_bytes(data)
+        except OSError:
+            pass
+
+    def _proxy(self):
+        if self._is_websocket():
+            self._reject_websocket()
+            return
+
+        path_only = self.path.split("?", 1)[0]
+        if path_only == "/healthz":
+            self._send_bytes(200, HEALTH_BODY)
+            return
+
+        if self.command == "GET" and path_only in CACHE_BY_PATH:
+            cached = self._read_cache(path_only)
+            if cached is not None:
+                self._send_bytes(
+                    200,
+                    cached,
+                    extra_headers={
+                        "X-Nexus-Recovery-Proxy-Cache": "served",
+                    },
+                )
+                return
+
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length) if length else None
+        headers = {
+            key: value
+            for key, value in self.headers.items()
+            if key.lower() not in HOP_BY_HOP
+        }
+        headers["Host"] = "127.0.0.1:8080"
+        conn = http.client.HTTPConnection("127.0.0.1", 8080, timeout=12)
+        try:
+            conn.request(self.command, self.path, body=body, headers=headers)
+            response = conn.getresponse()
+            data = response.read()
+            if response.status == 200 and path_only in CACHE_BY_PATH:
+                self._write_cache(path_only, data)
+            self.send_response(response.status, response.reason)
+            for key, value in response.getheaders():
+                if key.lower() not in HOP_BY_HOP:
+                    self.send_header(key, value)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(data)
+            self.close_connection = True
+        except Exception as exc:
+            cached = self._read_cache(path_only)
+            if cached is not None:
+                self._send_bytes(
+                    200,
+                    cached,
+                    extra_headers={
+                        "X-Nexus-Recovery-Proxy-Cache": "stale",
+                        "X-Nexus-Recovery-Proxy-Upstream-Error": str(exc)[:160],
+                    },
+                )
+            else:
+                data = f"nexus recovery proxy upstream error: {exc}\n".encode()
+                self._send_bytes(502, data, "text/plain; charset=utf-8")
+        finally:
+            conn.close()
+
+    def do_GET(self):
+        self._proxy()
+
+    def do_POST(self):
+        self._proxy()
+
+    def do_PUT(self):
+        self._proxy()
+
+    def do_PATCH(self):
+        self._proxy()
+
+    def do_DELETE(self):
+        self._proxy()
+
+    def do_OPTIONS(self):
+        self._proxy()
+
+
+if __name__ == "__main__":
+    socket.setdefaulttimeout(12)
+    ThreadingHTTPServer(("127.0.0.1", 8081), Handler).serve_forever()
+PROXY
+
 cat >"$TMP_REMOTE_SCRIPT" <<'REMOTE'
 #!/usr/bin/env bash
 set -euo pipefail
 
 ENV_SOURCE_PATH="$1"
 CHECK_SOURCE_PATH="$2"
-WATCHDOG_INTERVAL_SECONDS="$3"
+PROXY_SOURCE_PATH="$3"
+WATCHDOG_INTERVAL_SECONDS="$4"
 
 sudo mkdir -p /etc/nexus-relay
 sudo mv "$ENV_SOURCE_PATH" /etc/nexus-relay/public-watchdog.env
@@ -347,6 +597,10 @@ sudo chown root:root /etc/nexus-relay/public-watchdog.env
 sudo mv "$CHECK_SOURCE_PATH" /usr/local/bin/nexus-public-watchdog-check
 sudo chmod 755 /usr/local/bin/nexus-public-watchdog-check
 sudo chown root:root /usr/local/bin/nexus-public-watchdog-check
+
+sudo mv "$PROXY_SOURCE_PATH" /usr/local/bin/nexus-http-recovery-proxy.py
+sudo chmod 755 /usr/local/bin/nexus-http-recovery-proxy.py
+sudo chown root:root /usr/local/bin/nexus-http-recovery-proxy.py
 
 sudo tee /etc/systemd/system/nexus-public-watchdog.service >/dev/null <<'UNIT'
 [Unit]
@@ -358,6 +612,22 @@ Wants=nexus-relay.service nexus-cloudflared.service
 Type=oneshot
 EnvironmentFile=-/etc/nexus-relay/public-watchdog.env
 ExecStart=/usr/local/bin/nexus-public-watchdog-check
+UNIT
+
+sudo tee /etc/systemd/system/nexus-http-recovery-proxy.service >/dev/null <<'UNIT'
+[Unit]
+Description=OpenAgents Nexus HTTP recovery proxy
+After=network-online.target nexus-relay.service
+Wants=network-online.target nexus-relay.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nexus-http-recovery-proxy.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
 UNIT
 
 sudo tee /etc/systemd/system/nexus-public-watchdog.timer >/dev/null <<UNIT
@@ -378,11 +648,15 @@ UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable --now nexus-public-watchdog.timer
 sudo systemctl reset-failed nexus-public-watchdog.service || true
+if sudo systemctl is-active --quiet nexus-http-recovery-proxy.service; then
+  sudo systemctl restart nexus-http-recovery-proxy.service
+fi
 sudo systemctl --no-pager --full status nexus-public-watchdog.service | sed -n '1,40p' || true
 sudo systemctl --no-pager --full status nexus-public-watchdog.timer | sed -n '1,40p' || true
 REMOTE
 
 chmod +x "$TMP_CHECK_SCRIPT" "$TMP_REMOTE_SCRIPT"
+chmod +x "$TMP_PROXY_SCRIPT"
 
 gcloud compute scp --tunnel-through-iap \
   --project "$GCP_PROJECT" \
@@ -397,12 +671,17 @@ gcloud compute scp --tunnel-through-iap \
 gcloud compute scp --tunnel-through-iap \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" \
+  "$TMP_PROXY_SCRIPT" "${NEXUS_VM}:/tmp/nexus-http-recovery-proxy.py"
+
+gcloud compute scp --tunnel-through-iap \
+  --project "$GCP_PROJECT" \
+  --zone "$GCP_ZONE" \
   "$TMP_REMOTE_SCRIPT" "${NEXUS_VM}:/tmp/nexus-install-public-watchdog.sh"
 
 gcloud compute ssh "$NEXUS_VM" \
   --tunnel-through-iap \
   --project "$GCP_PROJECT" \
   --zone "$GCP_ZONE" \
-  --command "chmod +x /tmp/nexus-install-public-watchdog.sh && /tmp/nexus-install-public-watchdog.sh '/tmp/nexus-public-watchdog.env' '/tmp/nexus-public-watchdog-check' '${NEXUS_PUBLIC_WATCHDOG_INTERVAL_SECONDS}'"
+  --command "chmod +x /tmp/nexus-install-public-watchdog.sh && /tmp/nexus-install-public-watchdog.sh '/tmp/nexus-public-watchdog.env' '/tmp/nexus-public-watchdog-check' '/tmp/nexus-http-recovery-proxy.py' '${NEXUS_PUBLIC_WATCHDOG_INTERVAL_SECONDS}'"
 
 log "Public watchdog installed on ${NEXUS_VM}"

@@ -28,7 +28,7 @@ use std::sync::{Arc, OnceLock, RwLock, RwLockReadGuard, TryLockError};
 use std::time::{Duration, UNIX_EPOCH};
 
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -286,6 +286,8 @@ const DEFAULT_TRAINING_GCS_SIGNED_URL_MAX_TTL_SECONDS: u64 = 3_600;
 const TREASURY_DISPATCH_LOOP_INTERVAL_MS: u64 = 2_000;
 const TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS: u64 = 1_000;
 const PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS: u64 = 5_000;
+const TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT: usize = 64;
+const TRAINING_NODE_LIST_DEFAULT_LIMIT: usize = 128;
 #[cfg(test)]
 const TREASURY_PUBLIC_STATS_LATENCY_SLO_MS: u64 = 250;
 const PROVIDER_PRESENCE_RETENTION_WINDOW_MS: u64 = 86_400_000;
@@ -1520,6 +1522,7 @@ struct AppState {
     config: ServiceConfig,
     store: Arc<RwLock<ControlStore>>,
     public_stats_cache: Arc<RwLock<PublicStatsSnapshot>>,
+    public_stats_json_cache: Arc<RwLock<Vec<u8>>>,
     treasury_status_cache: Arc<RwLock<Option<TreasuryStatusResponse>>>,
     training_run_detail_cache: Arc<RwLock<HashMap<String, PublicTrainingRunDetailSnapshot>>>,
     training_launch_metrics: Arc<RwLock<TrainingLaunchLiveMetrics>>,
@@ -3197,6 +3200,34 @@ struct TrainingOperatorSummaryResponse {
     runs_with_accepted_progress: u64,
     #[serde(default)]
     runs: Vec<TrainingOperatorRunSummary>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct TrainingOperatorSummaryQuery {
+    #[serde(default)]
+    detail: Option<String>,
+    #[serde(default)]
+    run_limit: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TrainingNodeListQuery {
+    #[serde(default)]
+    network_id: Option<String>,
+    #[serde(default)]
+    requested_network_id: Option<String>,
+    #[serde(default)]
+    role: Option<TrainingNodeRoleClaim>,
+    #[serde(default)]
+    online_only: Option<String>,
+    #[serde(default)]
+    eligible_only: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    refresh_reputation: Option<String>,
+    #[serde(default)]
+    include_scheduler_availability: Option<String>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -9063,6 +9094,7 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
     spawn_treasury_dispatch_loop(state.clone());
     spawn_treasury_wallet_refresh_loop(state.clone());
     spawn_cs336_homework_auto_dispatch_loop(state.clone());
+    spawn_public_stats_refresh_loop(state.clone());
     build_api_router_with_state(state)
 }
 
@@ -9073,12 +9105,15 @@ fn build_app_state(config: ServiceConfig) -> AppState {
     let mut initial_public_stats =
         build_public_stats_snapshot(&config, &store, &launch_metrics, now);
     apply_public_stats_cache_context(&mut initial_public_stats, now, "live");
+    let initial_public_stats_json =
+        public_stats_json_response_body(&initial_public_stats, now, "cached");
     let initial_treasury_status = store.treasury.status_response(&config.treasury, now);
     let (kernel_receipt_tx, _) = broadcast::channel(256);
     let (kernel_snapshot_tx, _) = broadcast::channel(256);
     AppState {
         store: Arc::new(RwLock::new(store)),
         public_stats_cache: Arc::new(RwLock::new(initial_public_stats)),
+        public_stats_json_cache: Arc::new(RwLock::new(initial_public_stats_json)),
         treasury_status_cache: Arc::new(RwLock::new(Some(initial_treasury_status))),
         training_run_detail_cache: Arc::new(RwLock::new(HashMap::new())),
         training_launch_metrics: Arc::new(RwLock::new(TrainingLaunchLiveMetrics::default())),
@@ -9526,6 +9561,7 @@ pub async fn run_server(config: ServiceConfig) -> Result<(), anyhow::Error> {
     spawn_treasury_dispatch_loop(state.clone());
     spawn_treasury_wallet_refresh_loop(state.clone());
     spawn_cs336_homework_auto_dispatch_loop(state.clone());
+    spawn_public_stats_refresh_loop(state.clone());
     axum::serve(listener, build_router_with_state(state)).await?;
     Ok(())
 }
@@ -9537,30 +9573,93 @@ async fn healthz() -> Json<HealthResponse> {
     })
 }
 
-async fn public_stats(
-    State(state): State<AppState>,
-) -> Result<Json<PublicStatsSnapshot>, ApiError> {
-    let now = now_unix_ms();
-    let mut stats = cached_public_stats_snapshot(&state).ok_or_else(|| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        error: "internal_error",
-        reason: "public_stats_cache_poisoned".to_string(),
-    })?;
-    apply_public_stats_cache_context(&mut stats, now, "cached");
+async fn public_stats(State(state): State<AppState>) -> Result<Response, ApiError> {
+    let body = match state.public_stats_json_cache.try_read() {
+        Ok(cache) => cache.clone(),
+        Err(TryLockError::WouldBlock) => {
+            return Err(store_lock_error("public_stats_json_cache_busy"));
+        }
+        Err(TryLockError::Poisoned(_)) => {
+            return Err(ApiError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                error: "internal_error",
+                reason: "public_stats_json_cache_poisoned".to_string(),
+            });
+        }
+    };
 
-    Ok(Json(stats))
+    Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
+}
+
+fn training_operator_summary_run_limit(
+    query: &TrainingOperatorSummaryQuery,
+) -> Result<Option<usize>, ApiError> {
+    if query
+        .detail
+        .as_deref()
+        .is_some_and(|detail| matches!(detail.trim(), "full" | "all"))
+    {
+        return Ok(None);
+    }
+    let Some(value) = query.run_limit.as_deref() else {
+        return Ok(Some(TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT));
+    };
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("all") || value.eq_ignore_ascii_case("full") {
+        return Ok(None);
+    }
+    let parsed = value.parse::<usize>().map_err(|_| ApiError {
+        status: StatusCode::BAD_REQUEST,
+        error: "invalid_request",
+        reason: "training_summary_run_limit_invalid".to_string(),
+    })?;
+    Ok(Some(
+        parsed.min(TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT),
+    ))
+}
+
+fn training_node_query_bool(
+    value: Option<&str>,
+    parameter: &'static str,
+) -> Result<bool, ApiError> {
+    let Some(value) = value else {
+        return Ok(false);
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "false" | "0" | "no" | "off" => Ok(false),
+        "true" | "1" | "yes" | "on" => Ok(true),
+        _ => Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_request",
+            reason: format!("training_node_query_{parameter}_invalid"),
+        }),
+    }
+}
+
+fn training_node_list_filter(query: &TrainingNodeListQuery) -> Result<TrainingNodeQuery, ApiError> {
+    Ok(TrainingNodeQuery {
+        network_id: query.network_id.clone(),
+        requested_network_id: query.requested_network_id.clone(),
+        role: query.role,
+        online_only: training_node_query_bool(query.online_only.as_deref(), "online_only")?,
+        eligible_only: training_node_query_bool(query.eligible_only.as_deref(), "eligible_only")?,
+    })
 }
 
 async fn training_operator_summary(
     State(state): State<AppState>,
+    Query(query): Query<TrainingOperatorSummaryQuery>,
 ) -> Result<Json<TrainingOperatorSummaryResponse>, ApiError> {
     let now = now_unix_ms();
+    let run_limit = training_operator_summary_run_limit(&query)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(training_operator_summary_snapshot(&store, now)))
+    Ok(Json(training_operator_summary_snapshot_with_run_limit(
+        &store, now, run_limit,
+    )))
 }
 
 async fn training_rollout_policy(
@@ -10741,7 +10840,7 @@ fn prepare_homework_launch(
         )
         .map_err(kernel_api_error)?,
     );
-    let matched_nodes = admitted_nodes
+    let mut matched_nodes = admitted_nodes
         .iter()
         .filter(|node| {
             homework_launch_node_target_matches(
@@ -10761,6 +10860,19 @@ fn prepare_homework_launch(
         })
         .cloned()
         .collect::<Vec<_>>();
+    matched_nodes.sort_by(|left, right| {
+        let left_explicit = left
+            .allowed_networks
+            .iter()
+            .any(|allowed| allowed == &network_id);
+        let right_explicit = right
+            .allowed_networks
+            .iter()
+            .any(|allowed| allowed == &network_id);
+        right_explicit
+            .cmp(&left_explicit)
+            .then_with(|| left.node_pubkey_hex.cmp(&right.node_pubkey_hex))
+    });
     if matched_nodes.is_empty() {
         let mut rejection_counts = BTreeMap::<String, usize>::new();
         let mut rejection_samples = Vec::new();
@@ -13454,7 +13566,7 @@ async fn claim_training_run_lease(
         }
         Err(error) => return Err(error),
     };
-    let _ = force_refresh_public_stats_cache(&state, now_unix_ms());
+    throttle_public_stats_cache_invalidation(&state, now_unix_ms());
     Ok(Json(response))
 }
 
@@ -17460,28 +17572,40 @@ async fn publish_training_trn_state(
 
 async fn list_training_nodes(
     State(state): State<AppState>,
-    Query(query): Query<TrainingNodeQuery>,
+    Query(query): Query<TrainingNodeListQuery>,
 ) -> Result<Json<Vec<AdmittedTrainingNodeView>>, ApiError> {
     let now = now_unix_ms() as i64;
+    let limit = query.limit.unwrap_or(TRAINING_NODE_LIST_DEFAULT_LIMIT);
+    let filter = training_node_list_filter(&query)?;
+    let refresh_reputation =
+        training_node_query_bool(query.refresh_reputation.as_deref(), "refresh_reputation")?;
+    let include_scheduler_availability = training_node_query_bool(
+        query.include_scheduler_availability.as_deref(),
+        "include_scheduler_availability",
+    )?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    let nodes = training_authority_refresh_node_views(
-        &store.kernel,
-        store.kernel.list_admitted_training_nodes(&query, now),
-        now,
-    )
-    .map_err(kernel_api_error)?;
-    let mut scheduler = store.training_scheduler.clone();
-    scheduler.recover_from_kernel(&store.kernel, now);
-    let nodes = nodes
-        .into_iter()
-        .map(|node| {
-            training_authority_attach_scheduler_availability(&store.kernel, &scheduler, node)
-        })
-        .collect::<Vec<_>>();
+    let base_nodes = store.kernel.list_admitted_training_nodes(&filter, now);
+    let mut nodes = if refresh_reputation {
+        training_authority_refresh_node_views(&store.kernel, base_nodes, now)
+            .map_err(kernel_api_error)?
+    } else {
+        base_nodes
+    };
+    nodes.truncate(limit);
+    if include_scheduler_availability {
+        let mut scheduler = store.training_scheduler.clone();
+        scheduler.recover_from_kernel(&store.kernel, now);
+        nodes = nodes
+            .into_iter()
+            .map(|node| {
+                training_authority_attach_scheduler_availability(&store.kernel, &scheduler, node)
+            })
+            .collect::<Vec<_>>();
+    }
     Ok(Json(nodes))
 }
 
@@ -23147,7 +23271,7 @@ fn finish_cs336_homework_auto_dispatch_cycle() {
 }
 
 fn spawn_treasury_dispatch_loop(state: AppState) {
-    tokio::spawn(async move {
+    spawn_control_background_loop("nexus-treasury-dispatch", async move {
         let mut interval =
             tokio::time::interval(Duration::from_millis(TREASURY_DISPATCH_LOOP_INTERVAL_MS));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -23159,7 +23283,7 @@ fn spawn_treasury_dispatch_loop(state: AppState) {
 }
 
 fn spawn_treasury_wallet_refresh_loop(state: AppState) {
-    tokio::spawn(async move {
+    spawn_control_background_loop("nexus-treasury-wallet-refresh", async move {
         let mut interval = tokio::time::interval(Duration::from_millis(
             TREASURY_WALLET_REFRESH_LOOP_INTERVAL_MS,
         ));
@@ -23175,7 +23299,7 @@ fn spawn_cs336_homework_auto_dispatch_loop(state: AppState) {
     if !state.config.cs336_homework_auto_dispatch_enabled {
         return;
     }
-    tokio::spawn(async move {
+    spawn_control_background_loop("nexus-cs336-homework-dispatch", async move {
         let interval_seconds = state.config.cs336_homework_auto_dispatch_interval_seconds;
         tracing::info!(
             interval_seconds,
@@ -23200,6 +23324,51 @@ fn spawn_cs336_homework_auto_dispatch_loop(state: AppState) {
             }
         }
     });
+}
+
+fn spawn_public_stats_refresh_loop(state: AppState) {
+    spawn_control_background_loop("nexus-public-stats-refresh", async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(
+            PUBLIC_STATS_CACHE_REFRESH_MIN_INTERVAL_MS,
+        ));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let _ = try_force_refresh_public_stats_cache(&state, now_unix_ms());
+        }
+    });
+}
+
+fn spawn_control_background_loop<F>(loop_name: &'static str, future: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    let result = std::thread::Builder::new()
+        .name(loop_name.to_string())
+        .spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    tracing::error!(
+                        loop_name,
+                        error = %error,
+                        "failed to start Nexus control background runtime"
+                    );
+                    return;
+                }
+            };
+            runtime.block_on(future);
+        });
+    if let Err(error) = result {
+        tracing::error!(
+            loop_name,
+            error = %error,
+            "failed to spawn Nexus control background thread"
+        );
+    }
 }
 
 fn cs336_homework_auto_dispatch_request(
@@ -24133,6 +24302,14 @@ fn training_operator_summary_snapshot(
     store: &ControlStore,
     now_unix_ms: u64,
 ) -> TrainingOperatorSummaryResponse {
+    training_operator_summary_snapshot_with_run_limit(store, now_unix_ms, None)
+}
+
+fn training_operator_summary_snapshot_with_run_limit(
+    store: &ControlStore,
+    now_unix_ms: u64,
+    run_limit: Option<usize>,
+) -> TrainingOperatorSummaryResponse {
     let admitted_nodes = store.kernel.list_admitted_training_nodes(
         &TrainingNodeQuery {
             network_id: None,
@@ -24173,7 +24350,36 @@ fn training_operator_summary_snapshot(
             }
         }
     }
-
+    let mut windows_by_run_id = HashMap::<&str, Vec<&ComputeAdapterTrainingWindow>>::new();
+    let mut window_metadata_by_run_id =
+        HashMap::<&str, Vec<(&ComputeAdapterTrainingWindow, TrainingWindowMetadata)>>::new();
+    for window in &training_windows {
+        windows_by_run_id
+            .entry(window.training_run_id.as_str())
+            .or_default()
+            .push(window);
+        if let Ok(metadata) = training_window_metadata_from_value(&window.metadata) {
+            window_metadata_by_run_id
+                .entry(window.training_run_id.as_str())
+                .or_default()
+                .push((window, metadata));
+        }
+    }
+    let mut accepted_outcomes_by_run_id = HashMap::<&str, Vec<&ComputeAcceptedOutcome>>::new();
+    for outcome in &accepted_outcomes {
+        accepted_outcomes_by_run_id
+            .entry(outcome.source_run_id.as_str())
+            .or_default()
+            .push(outcome);
+    }
+    let mut contribution_outcomes_by_run_id =
+        HashMap::<&str, Vec<&ComputeAdapterContributionOutcome>>::new();
+    for contribution in &contribution_outcomes {
+        contribution_outcomes_by_run_id
+            .entry(contribution.training_run_id.as_str())
+            .or_default()
+            .push(contribution);
+    }
     let mut progress_contributor_ids = HashSet::<String>::new();
     let mut assigned_contributor_ids = HashSet::<String>::new();
     let mut weak_device_assigned_contributor_ids = HashSet::<String>::new();
@@ -24246,18 +24452,14 @@ fn training_operator_summary_snapshot(
                 })
                 .count() as u64;
 
-            let run_windows = training_windows
-                .iter()
-                .filter(|window| window.training_run_id == run.training_run_id)
-                .collect::<Vec<_>>();
-            let run_window_metadata = run_windows
-                .iter()
-                .filter_map(|window| {
-                    training_window_metadata_from_value(&window.metadata)
-                        .ok()
-                        .map(|metadata| (*window, metadata))
-                })
-                .collect::<Vec<_>>();
+            let run_windows = windows_by_run_id
+                .get(run.training_run_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let run_window_metadata = window_metadata_by_run_id
+                .get(run.training_run_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
             let weak_device_bearing_run = training_work_class_weak_device_bearing(run.work_class);
             let mut run_assigned_contributor_ids = HashSet::<String>::new();
             for assignment in scheduler_state
@@ -24274,7 +24476,7 @@ fn training_operator_summary_snapshot(
                 }
                 run_assigned_contributor_ids.insert(node_pubkey_hex.to_string());
             }
-            for (_, metadata) in &run_window_metadata {
+            for (_, metadata) in run_window_metadata {
                 for assignment in &metadata.assignment_plans {
                     let contributor_node_id = if assignment.contributor_node_id.trim().is_empty() {
                         assignment.node_pubkey_hex.trim()
@@ -24287,10 +24489,11 @@ fn training_operator_summary_snapshot(
                     run_assigned_contributor_ids.insert(contributor_node_id.to_string());
                 }
             }
-            for contribution in contribution_outcomes
-                .iter()
-                .filter(|contribution| contribution.training_run_id == run.training_run_id)
-            {
+            let run_contributions = contribution_outcomes_by_run_id
+                .get(run.training_run_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            for contribution in run_contributions {
                 let contributor_node_id = contribution.contributor_node_id.trim();
                 if contributor_node_id.is_empty() {
                     continue;
@@ -24348,10 +24551,10 @@ fn training_operator_summary_snapshot(
                 })
                 .count() as u64;
 
-            let run_outcomes = accepted_outcomes
-                .iter()
-                .filter(|outcome| outcome.source_run_id == run.training_run_id)
-                .collect::<Vec<_>>();
+            let run_outcomes = accepted_outcomes_by_run_id
+                .get(run.training_run_id.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
             let accepted_terminal_outcomes = run_outcomes
                 .iter()
                 .copied()
@@ -24370,9 +24573,9 @@ fn training_operator_summary_snapshot(
                 .iter()
                 .filter_map(|outcome| outcome.metadata.get("window_id").and_then(Value::as_str))
                 .collect::<HashSet<_>>();
-            let accepted_contributors = contribution_outcomes
+            let accepted_contributors = run_contributions
                 .iter()
-                .filter(|contribution| contribution.training_run_id == run.training_run_id)
+                .copied()
                 .filter(|contribution| {
                     accepted_terminal_window_ids.contains(contribution.window_id.as_str())
                 })
@@ -24383,9 +24586,9 @@ fn training_operator_summary_snapshot(
                 })
                 .collect::<HashSet<_>>();
             accepted_contributor_ids.extend(accepted_contributors.iter().cloned());
-            let weak_device_accepted_contributors = contribution_outcomes
+            let weak_device_accepted_contributors = run_contributions
                 .iter()
-                .filter(|contribution| contribution.training_run_id == run.training_run_id)
+                .copied()
                 .filter(|contribution| {
                     accepted_terminal_window_ids.contains(contribution.window_id.as_str())
                 })
@@ -24401,9 +24604,9 @@ fn training_operator_summary_snapshot(
                 .collect::<HashSet<_>>();
             weak_device_accepted_contributor_ids
                 .extend(weak_device_accepted_contributors.iter().cloned());
-            let nodes_contributing_to_accepted_progress = contribution_outcomes
+            let nodes_contributing_to_accepted_progress = run_contributions
                 .iter()
-                .filter(|contribution| contribution.training_run_id == run.training_run_id)
+                .copied()
                 .filter(|contribution| {
                     accepted_progress_window_ids.contains(contribution.window_id.as_str())
                 })
@@ -24642,7 +24845,26 @@ fn training_operator_summary_snapshot(
             }
         })
         .collect::<Vec<_>>();
-    run_summaries.sort_by(|lhs, rhs| lhs.training_run_id.cmp(&rhs.training_run_id));
+    run_summaries.sort_by(|lhs, rhs| {
+        let lhs_active = training_run_state_counts_as_active(
+            lhs.run_status.as_str(),
+            lhs.active_window_count,
+            lhs.pending_validation_window_count,
+        );
+        let rhs_active = training_run_state_counts_as_active(
+            rhs.run_status.as_str(),
+            rhs.active_window_count,
+            rhs.pending_validation_window_count,
+        );
+        rhs_active
+            .cmp(&lhs_active)
+            .then_with(|| {
+                rhs.pending_validation_window_count
+                    .cmp(&lhs.pending_validation_window_count)
+            })
+            .then_with(|| rhs.accepted_contributors.cmp(&lhs.accepted_contributors))
+            .then_with(|| lhs.training_run_id.cmp(&rhs.training_run_id))
+    });
 
     let checkpoint_max_age_ms = run_summaries
         .iter()
@@ -24733,6 +24955,9 @@ fn training_operator_summary_snapshot(
         weak_device_bearing_closeouts: settlement_weak_device_bearing_closeouts,
         work_classes: work_class_summaries.into_values().collect(),
     };
+    if let Some(limit) = run_limit {
+        run_summaries.truncate(limit);
+    }
 
     TrainingOperatorSummaryResponse {
         generated_at_unix_ms: now_unix_ms,
@@ -25678,21 +25903,6 @@ fn training_visualization_increment_window_validator_status(
     }
 }
 
-fn training_visualization_challenge_window_binding<'a>(
-    challenge_id: &str,
-    windows: &'a [ComputeAdapterTrainingWindow],
-) -> Option<(&'a str, &'a str)> {
-    windows.iter().find_map(|window| {
-        let prefix = format!(
-            "challenge.training.{}.{}.",
-            window.training_run_id, window.window_id
-        );
-        challenge_id
-            .starts_with(prefix.as_str())
-            .then_some((window.training_run_id.as_str(), window.window_id.as_str()))
-    })
-}
-
 fn training_visualization_snapshot(
     store: &ControlStore,
     now_unix_ms: u64,
@@ -25768,8 +25978,17 @@ fn training_visualization_snapshot_with_summary(
     let mut window_metadata_by_id = HashMap::new();
     let mut outcomes_by_window_id: HashMap<String, Vec<&ComputeAcceptedOutcome>> = HashMap::new();
     let mut windows_by_run_id: HashMap<String, Vec<&ComputeAdapterTrainingWindow>> = HashMap::new();
+    let mut challenge_window_bindings = HashMap::<String, (String, String)>::new();
     for window in &training_windows {
         if let Ok(metadata) = training_window_metadata_from_value(&window.metadata) {
+            if let Some(validation) = metadata.validation.as_ref() {
+                for challenge in &validation.challenges {
+                    challenge_window_bindings.insert(
+                        challenge.challenge_id.clone(),
+                        (window.training_run_id.clone(), window.window_id.clone()),
+                    );
+                }
+            }
             window_metadata_by_id.insert(window.window_id.clone(), metadata);
         }
         windows_by_run_id
@@ -25863,10 +26082,9 @@ fn training_visualization_snapshot_with_summary(
     > = BTreeMap::new();
     for challenge in &validator_challenges {
         training_visualization_increment_validator_status(&mut validators, challenge.status);
-        if let Some((training_run_id, window_id)) = training_visualization_challenge_window_binding(
-            challenge.request.context.challenge_id.as_str(),
-            training_windows.as_slice(),
-        ) {
+        if let Some((training_run_id, window_id)) =
+            challenge_window_bindings.get(challenge.request.context.challenge_id.as_str())
+        {
             let entry = validator_windows
                 .entry((training_run_id.to_string(), window_id.to_string()))
                 .or_insert_with(|| TrainingVisualizationValidatorWindowSummary {
@@ -26979,9 +27197,29 @@ fn homepage_training_publication_from_record(
     }
 }
 
+fn public_stats_json_response_body(
+    snapshot: &PublicStatsSnapshot,
+    now_unix_ms: u64,
+    source: &str,
+) -> Vec<u8> {
+    let mut response_snapshot = snapshot.clone();
+    apply_public_stats_cache_context(&mut response_snapshot, now_unix_ms, source);
+    serde_json::to_vec(&response_snapshot).unwrap_or_else(|error| {
+        tracing::error!(
+            error = %error,
+            "failed to serialize cached public stats snapshot"
+        );
+        br#"{"error":"internal_error","reason":"public_stats_serialization_failed"}"#.to_vec()
+    })
+}
+
 fn replace_public_stats_cache(state: &AppState, snapshot: PublicStatsSnapshot) {
+    let body = public_stats_json_response_body(&snapshot, now_unix_ms(), "cached");
     if let Ok(mut cache) = state.public_stats_cache.write() {
         *cache = snapshot;
+    }
+    if let Ok(mut cache) = state.public_stats_json_cache.write() {
+        *cache = body;
     }
 }
 
@@ -27995,6 +28233,42 @@ mod tests {
     }
 
     #[test]
+    fn training_operator_summary_query_defaults_to_bounded_runs() {
+        let default_query = super::TrainingOperatorSummaryQuery::default();
+        assert_eq!(
+            super::training_operator_summary_run_limit(&default_query).expect("default run limit"),
+            Some(super::TRAINING_OPERATOR_SUMMARY_DEFAULT_RUN_LIMIT)
+        );
+
+        let full_query = super::TrainingOperatorSummaryQuery {
+            detail: Some("full".to_string()),
+            run_limit: None,
+        };
+        assert_eq!(
+            super::training_operator_summary_run_limit(&full_query).expect("full run limit"),
+            None
+        );
+
+        let all_query = super::TrainingOperatorSummaryQuery {
+            detail: None,
+            run_limit: Some("all".to_string()),
+        };
+        assert_eq!(
+            super::training_operator_summary_run_limit(&all_query).expect("all run limit"),
+            None
+        );
+
+        let invalid_query = super::TrainingOperatorSummaryQuery {
+            detail: None,
+            run_limit: Some("wide".to_string()),
+        };
+        let error = super::training_operator_summary_run_limit(&invalid_query)
+            .expect_err("invalid run limit should fail");
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.reason, "training_summary_run_limit_invalid");
+    }
+
+    #[test]
     fn homework_launch_default_payout_uses_accepted_work_policy_not_availability_stipend() {
         let mut config = test_config().expect("test config");
         config.treasury.accepted_work_default_payout_sats = 240;
@@ -28166,10 +28440,15 @@ mod tests {
         settlement_destination: Option<&str>,
     ) {
         let mut store = state.store.write().expect("write store");
+        let allowed_networks = if network_id.trim().is_empty() {
+            Vec::new()
+        } else {
+            vec![network_id]
+        };
         let mut request = training_node_admission_request_with_environment_refs(
             node_pubkey_hex,
             build_digest,
-            vec![network_id],
+            allowed_networks,
             Vec::new(),
             Some(32),
             vec![PYLON_TRAINING_CS336_A1_DEMO_ENVIRONMENT_REF],
@@ -28194,10 +28473,15 @@ mod tests {
             )
             .expect("record homework launch node admission");
 
+        let presence_run_id = if network_id.trim().is_empty() {
+            "presence.default".to_string()
+        } else {
+            format!("presence.{network_id}")
+        };
         let mut heartbeat = training_node_heartbeat_request_for_scope(
             node_pubkey_hex,
             build_digest,
-            format!("presence.{network_id}").as_str(),
+            presence_run_id.as_str(),
             "window.presence.0001",
         );
         heartbeat.recorded_at_ms = recorded_at_ms as i64 + 10;
@@ -34539,6 +34823,37 @@ mod tests {
                 .launch_health
                 .public_snapshot_source,
             "cached"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_stats_fails_fast_when_serialized_cache_is_busy() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_router_with_state(state.clone());
+        let _cache_guard = state
+            .public_stats_json_cache
+            .write()
+            .expect("hold serialized stats cache write lock");
+
+        let stats_response = tokio::time::timeout(
+            Duration::from_millis(100),
+            app.oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            ),
+        )
+        .await
+        .expect("/api/stats should not wait behind serialized cache refresh")?;
+
+        assert_eq!(stats_response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let error: Value = response_json(stats_response).await?;
+        assert_eq!(
+            error.get("reason").and_then(Value::as_str),
+            Some("public_stats_json_cache_busy")
         );
 
         Ok(())
@@ -44749,6 +45064,7 @@ mod tests {
             )
             .await?;
         assert_eq!(sealed.status(), StatusCode::OK);
+        super::force_refresh_public_stats_cache(&state, created_at_ms + 1_300);
 
         let stats_response = app
             .clone()
@@ -44871,7 +45187,7 @@ mod tests {
                 .training_public_state
                 .launch_health
                 .public_snapshot_source,
-            "live"
+            "cached"
         );
         assert_eq!(
             initial_stats
@@ -45163,6 +45479,7 @@ mod tests {
             )
             .await?;
         assert_eq!(reconciled.status(), StatusCode::OK);
+        super::force_refresh_public_stats_cache(&state, created_at_ms + 1_400);
 
         let stats_response = app
             .clone()
@@ -45247,14 +45564,14 @@ mod tests {
                 .training_public_state
                 .launch_health
                 .overall_status,
-            "good"
+            "warn"
         );
         assert_eq!(
             final_stats
                 .training_public_state
                 .launch_health
                 .active_alert_count,
-            0
+            2
         );
         assert_eq!(
             final_stats
@@ -46628,6 +46945,93 @@ mod tests {
             .cloned()
             .collect::<std::collections::BTreeSet<String>>();
         assert_eq!(unique_uploaded_paths.len(), 6, "{uploaded_paths:?}");
+
+        upload_server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn admin_cs336_homework_dispatch_prefers_explicit_network_workers() -> Result<()> {
+        let (training_artifact_signed_url, _dir, _upload_paths, upload_server) =
+            spawn_training_artifact_upload_sink("gs://dispatch-explicit-network-bucket").await?;
+        let mut config = test_config()?;
+        config.admin_bearer_token = Some("episode224-admin".to_string());
+        config.training_artifact_signed_url = Some(training_artifact_signed_url);
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
+        let app = build_api_router_with_state(state.clone());
+        let recorded_at_ms = now_unix_ms();
+        let current_release_id = current_homework_launch_release_id_for_test();
+        let current_build_version = current_homework_launch_build_version_for_test();
+        let isolated_network_id = "trainnet.cs336.a1.issue4451fresh";
+
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(200),
+            "node-dispatch-broad",
+            "sha256:build-dispatch-broad",
+            "",
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodedispatchbroad"),
+        );
+        seed_homework_launch_node(
+            &state,
+            recorded_at_ms.saturating_sub(100),
+            "node-dispatch-explicit",
+            "sha256:build-dispatch-explicit",
+            isolated_network_id,
+            current_release_id.as_str(),
+            current_build_version.as_str(),
+            vec![TrainingNodeRoleClaim::Worker],
+            Some("lnbc1nodedispatchexplicit"),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/homework/cs336-a1/dispatch")
+                    .header("authorization", "Bearer episode224-admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &super::DispatchCs336A1HomeworkRunsRequest {
+                            run_count: 1,
+                            max_contributors_per_run: 1,
+                            amount_sats: 9,
+                            total_budget_sats: Some(9),
+                            run_slug_prefix: Some("explicit.network".to_string()),
+                            display_name_prefix: Some("Explicit Network CS336 A1".to_string()),
+                            network_id: Some(isolated_network_id.to_string()),
+                            min_pylon_version: Some(
+                                super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION.to_string(),
+                            ),
+                            require_updated_build: false,
+                            ..super::DispatchCs336A1HomeworkRunsRequest::default()
+                        },
+                    )?))?,
+            )
+            .await?;
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(bytes.as_ref())
+        );
+        let dispatch =
+            serde_json::from_slice::<super::DispatchCs336A1HomeworkRunsResponse>(bytes.as_ref())?;
+        assert_eq!(dispatch.launched_run_count, 1);
+        let launch = dispatch.launches.first().expect("dispatched launch");
+        assert_eq!(launch.network_id, isolated_network_id);
+        assert_eq!(launch.matched_pylons.len(), 2);
+        assert_eq!(launch.assigned_pylons.len(), 1);
+        assert_eq!(
+            launch.assigned_pylons[0].node.node_pubkey_hex,
+            "node-dispatch-explicit"
+        );
 
         upload_server.abort();
         Ok(())

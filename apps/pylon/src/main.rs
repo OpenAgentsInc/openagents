@@ -77,9 +77,19 @@ fn launch_pylon_tui(args: &[String]) -> Result<()> {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+fn main() -> Result<()> {
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let args = match pylon::strip_startup_thread_limit_args(raw_args) {
+        Ok((args, limit)) => {
+            pylon::apply_startup_thread_limit(limit);
+            args
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            eprintln!("{}", pylon::usage());
+            std::process::exit(1);
+        }
+    };
     if matches!(args.as_slice(), [flag] if flag == "--version" || flag == "-V") {
         println!("pylon {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
@@ -115,7 +125,11 @@ async fn main() -> Result<()> {
         }
     };
 
-    if let Some(output) = pylon::run_cli(cli).await? {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("failed to build pylon runtime")?;
+    if let Some(output) = runtime.block_on(pylon::run_cli(cli))? {
         println!("{output}");
     }
     Ok(())

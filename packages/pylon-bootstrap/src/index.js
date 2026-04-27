@@ -20,7 +20,7 @@ export const DEFAULT_MODEL_ID = "gemma-4-e4b";
 export const DEFAULT_DIAGNOSTIC_REPEATS = 3;
 export const DEFAULT_DIAGNOSTIC_MAX_OUTPUT_TOKENS = 96;
 export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
-export const DEFAULT_UPDATE_CHECK_INTERVAL_MS = 30_000;
+export const DEFAULT_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const DEFAULT_TRUSTED_RELEASE_AUTHOR = "AtlantisPleb";
 const PYLON_RELEASE_TAG_PREFIX = "pylon-v";
 const RELEASE_ASSET_INSTALL_METHOD = "release_asset";
@@ -215,8 +215,9 @@ function requestHeaders() {
     accept: "application/vnd.github+json",
     "user-agent": "@openagentsinc/pylon bootstrap",
   };
-  if (process.env.GITHUB_TOKEN) {
-    headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const githubToken = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  if (githubToken) {
+    headers.authorization = `Bearer ${githubToken}`;
   }
   return headers;
 }
@@ -2015,6 +2016,26 @@ export async function launchInstalledPylon(
 }
 
 export const launchInstalledPylonTui = launchInstalledPylon;
+
+export async function runInstalledPylonCli(
+  options,
+  args = [],
+  {
+    runProcessImpl = runProcess,
+    onStatus = null,
+  } = {},
+) {
+  const pylonPath = path.resolve(options.pylonPath);
+  emitStatus(
+    onStatus,
+    "Running Pylon CLI command",
+    [path.basename(pylonPath), ...args].join(" "),
+  );
+  return runProcessImpl(pylonPath, args, {
+    env: buildPylonEnv(options),
+    stdio: "inherit",
+  });
+}
 
 export async function launchInstalledPylonWithUpdates(
   options,

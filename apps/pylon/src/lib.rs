@@ -154,9 +154,9 @@ pub const ENV_TRAINING_NEXUS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_NEX
 pub const ENV_TRAINING_GCS_ENDPOINT: &str = "OPENAGENTS_PYLON_TRAINING_GCS_ENDPOINT";
 pub const ENV_TRAINING_GCS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_GCS_BEARER_TOKEN";
 pub const ENV_GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
-const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 5_000;
-const DEFAULT_PROVIDER_AUTO_RUN_INTERVAL_MS: u64 = 2_000;
-const DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS: u64 = 5_000;
+const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 30_000;
+const DEFAULT_PROVIDER_AUTO_RUN_INTERVAL_MS: u64 = 10_000;
+const DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS: u64 = 30_000;
 const DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS: u64 = 1;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
@@ -181,6 +181,15 @@ const PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB: u32 = 32;
 const TRN_TRAINING_NODE_RECORD_KIND: u16 = 39_501;
 const TRN_TRAINING_RECEIPT_KIND: u16 = 39_511;
 const TRN_TRAINING_ARTIFACT_LOCATOR_KIND: u16 = 39_520;
+const STARTUP_THREAD_LIMIT_ENV_VARS: [&str; 7] = [
+    "RAYON_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "OMP_NUM_THREADS",
+    "OMP_THREAD_LIMIT",
+];
 
 #[derive(Clone, Debug)]
 struct ProviderHostTelemetryCacheEntry {
@@ -1621,6 +1630,7 @@ pub enum TrainingCommand {
         json: bool,
     },
     Intake {
+        requested_training_run_id: Option<String>,
         json: bool,
     },
     Sync {
@@ -2382,6 +2392,17 @@ pub struct GemmaDiagnosticRequest {
 pub struct Cli {
     pub command: Command,
     pub config_path: PathBuf,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StartupThreadLimit {
+    threads: usize,
+}
+
+impl StartupThreadLimit {
+    pub const fn threads(self) -> usize {
+        self.threads
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -7220,6 +7241,50 @@ fn render_byte_size(bytes: u64) -> String {
     }
 }
 
+pub fn strip_startup_thread_limit_args(
+    args: Vec<String>,
+) -> Result<(Vec<String>, Option<StartupThreadLimit>)> {
+    let mut filtered = Vec::with_capacity(args.len());
+    let mut limit = None;
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--max-cores" | "--max-threads" => {
+                let flag = args[index].clone();
+                let raw = args
+                    .get(index + 1)
+                    .ok_or_else(|| anyhow!("missing value for {flag}"))?;
+                let threads = raw
+                    .parse::<usize>()
+                    .with_context(|| format!("invalid value for {flag}: {raw}"))?;
+                if threads == 0 {
+                    bail!("{flag} must be greater than zero");
+                }
+                limit = Some(StartupThreadLimit { threads });
+                index += 2;
+            }
+            _ => {
+                filtered.push(args[index].clone());
+                index += 1;
+            }
+        }
+    }
+    Ok((filtered, limit))
+}
+
+pub fn apply_startup_thread_limit(limit: Option<StartupThreadLimit>) {
+    let Some(limit) = limit else {
+        return;
+    };
+    let value = limit.threads.to_string();
+    for key in STARTUP_THREAD_LIMIT_ENV_VARS {
+        // This is called from synchronous process startup before Tokio or worker threads exist.
+        unsafe {
+            std::env::set_var(key, value.as_str());
+        }
+    }
+}
+
 pub fn parse_args(args: Vec<String>) -> Result<Cli> {
     let mut index = 0usize;
     let mut config_path = default_config_path();
@@ -7563,10 +7628,15 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 }
                 Ok(Some(render_training_trn_publication_report(&report)))
             }
-            TrainingCommand::Intake { json } => {
-                let report =
-                    run_training_assignment_intake_and_load_status(cli.config_path.as_path())
-                        .await?;
+            TrainingCommand::Intake {
+                requested_training_run_id,
+                json,
+            } => {
+                let report = run_training_assignment_intake_and_load_status(
+                    cli.config_path.as_path(),
+                    requested_training_run_id.as_deref(),
+                )
+                .await?;
                 if json {
                     return Ok(Some(serde_json::to_string_pretty(&report)?));
                 }
@@ -7685,7 +7755,9 @@ Use `pylon-tui` or `pylon tui` to open the terminal UI explicitly.\n\
 Use the commands below for explicit provider control and inspection.\n\
 From this repo, run them with `cargo pylon-headless <command>`, the `pylon` binary directly, or the `oa` binary for proof-runtime commands.\n\
 \n\
-Usage: pylon|oa [--config-path <path>] [command]\n\
+Usage: pylon|oa [--max-cores <n>|--max-threads <n>] [--config-path <path>] [command]\n\
+Startup flags:\n\
+  --max-cores <n> / --max-threads <n> cap native thread pools for small machines\n\
 Commands:\n\
   init\n\
   doctor\n\
@@ -7737,7 +7809,7 @@ Commands:\n\
   training artifacts inspect [--json]\n\
   training artifacts gc [--json]\n\
   training publish [--manifest <path>] [--json]\n\
-  training intake [--json]\n\
+  training intake [--run-id <training_run_id>] [--json]\n\
   training sync [--json]\n\
   training refresh [--json]\n\
   gemma [list] [--json]\n\
@@ -8090,9 +8162,14 @@ fn parse_training_command(args: &[String], start_index: usize) -> Result<Trainin
                 json,
             })
         }
-        Some("intake") => Ok(TrainingCommand::Intake {
-            json: parse_json_only(args, start_index + 1, "training intake")?,
-        }),
+        Some("intake") => {
+            let (requested_training_run_id, json) =
+                parse_training_intake_command(args, start_index + 1)?;
+            Ok(TrainingCommand::Intake {
+                requested_training_run_id,
+                json,
+            })
+        }
         Some("sync") => Ok(TrainingCommand::Sync {
             json: parse_json_only(args, start_index + 1, "training sync")?,
         }),
@@ -8144,6 +8221,36 @@ fn parse_training_publish_command(
         }
     }
     Ok((manifest_path, json))
+}
+
+fn parse_training_intake_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(Option<String>, bool)> {
+    let mut requested_training_run_id = None::<String>;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--run-id" | "--training-run-id" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --run-id"))?
+                    .trim();
+                if value.is_empty() {
+                    bail!("--run-id must not be empty");
+                }
+                requested_training_run_id = Some(value.to_string());
+                index += 1;
+            }
+            other => bail!("unexpected argument for training intake: {other}"),
+        }
+    }
+    Ok((requested_training_run_id, json))
 }
 
 fn parse_account_link_command(args: &[String], mut index: usize) -> Result<(String, String, bool)> {
@@ -10667,15 +10774,36 @@ fn retire_failed_active_training_runtime_lease(state: &mut PylonTrainingRuntimeS
     }
     let lease_id = active.lease_id.clone();
     update_cached_training_lease_state(state, lease_id.as_str(), "failed", now_epoch_ms());
+    state.active_runtime = None;
     true
 }
 
+#[cfg(test)]
 async fn run_training_assignment_intake_once_with_context(
     config: &PylonConfig,
     identity: &NostrIdentity,
     state: &mut PylonTrainingRuntimeState,
     host: &ProviderHostTelemetrySnapshot,
     runtime_surface: Option<&PsionicTrainRuntimeSurface>,
+) -> Result<()> {
+    run_training_assignment_intake_once_with_context_for_run(
+        config,
+        identity,
+        state,
+        host,
+        runtime_surface,
+        None,
+    )
+    .await
+}
+
+async fn run_training_assignment_intake_once_with_context_for_run(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    state: &mut PylonTrainingRuntimeState,
+    host: &ProviderHostTelemetrySnapshot,
+    runtime_surface: Option<&PsionicTrainRuntimeSurface>,
+    requested_training_run_id: Option<&str>,
 ) -> Result<()> {
     training_trace("starting training intake pass");
     let client = PylonTrainingCoordinatorClient::new(config)?;
@@ -10748,7 +10876,10 @@ async fn run_training_assignment_intake_once_with_context(
         save_training_runtime_state(config, state)?;
     }
 
-    if let Some(existing_offer) = newest_pending_training_work_offer(state) {
+    let existing_offer = newest_pending_training_work_offer(state).filter(|offer| {
+        requested_training_run_id.is_none_or(|requested| offer.training_run_id == requested)
+    });
+    if let Some(existing_offer) = existing_offer {
         let existing_lease = state
             .lease_cache
             .get(existing_offer.offer_id.as_str())
@@ -10934,7 +11065,7 @@ async fn run_training_assignment_intake_once_with_context(
                     &client,
                     runtime_surface,
                     requested_network_id.as_deref(),
-                    None,
+                    requested_training_run_id,
                 )
                 .await
                 {
@@ -10975,7 +11106,7 @@ async fn run_training_assignment_intake_once_with_context(
                     node_pubkey_hex: identity.public_key_hex.clone(),
                     role,
                     requested_network_id: requested_network_id.clone(),
-                    requested_training_run_id: None,
+                    requested_training_run_id: requested_training_run_id.map(ToOwned::to_owned),
                     membership_revision: membership_revision.clone(),
                 })
                 .await
@@ -11085,16 +11216,18 @@ async fn run_training_assignment_intake_once_with_context(
 async fn run_training_assignment_intake_once(
     config: &PylonConfig,
     identity: &NostrIdentity,
+    requested_training_run_id: Option<&str>,
 ) -> Result<()> {
     let mut state = load_or_create_training_runtime_state(config)?;
     let host = load_training_host_telemetry(config);
     let runtime_surface = inspect_psionic_train_runtime_surface().ok();
-    run_training_assignment_intake_once_with_context(
+    run_training_assignment_intake_once_with_context_for_run(
         config,
         identity,
         &mut state,
         &host,
         runtime_surface.as_ref(),
+        requested_training_run_id,
     )
     .await?;
     save_training_runtime_state(config, &state)
@@ -11102,10 +11235,11 @@ async fn run_training_assignment_intake_once(
 
 async fn run_training_assignment_intake_and_load_status(
     config_path: &Path,
+    requested_training_run_id: Option<&str>,
 ) -> Result<TrainingOperatorStatusReport> {
     let config = load_or_create_config(config_path)?;
     let identity = ensure_identity(config.identity_path.as_path())?;
-    run_training_assignment_intake_once(&config, &identity).await?;
+    run_training_assignment_intake_once(&config, &identity, requested_training_run_id).await?;
     load_training_status_report_local(config_path)
 }
 
@@ -21262,7 +21396,9 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
             if desired_mode == ProviderDesiredMode::Online
                 && Instant::now() >= next_training_assignment_intake_at
             {
-                if let Err(error) = run_training_assignment_intake_once(&config, &identity).await {
+                if let Err(error) =
+                    run_training_assignment_intake_once(&config, &identity, None).await
+                {
                     eprintln!(
                         "warning: automatic pylon training assignment intake failed: {}",
                         format_anyhow_error_chain(&error)
@@ -26477,12 +26613,13 @@ mod tests {
         maybe_start_training_supervisor_from_retained_assignment, merge_ledger_earnings,
         merge_ledger_recent_jobs, mutate_ledger, newest_pending_training_work_offer, now_epoch_ms,
         parse_args, planned_gemma_benchmark_modes, poll_training_supervisor, provider_admin_config,
-        provider_control_plane_runtime_error, provider_presence_client,
-        psionic_gemma_benchmark_command_args, psionic_repo_root_candidates_with_inputs,
-        psionic_train_release_binary_path, psionic_train_supervisor_command_for_surface,
-        publish_announcement_report, publish_training_trn_state, refresh_relay_report,
-        remove_configured_relay, render_earnings_report, render_human_status, render_jobs_report,
-        render_public_config_json, render_sandbox_report, render_training_status_report,
+        provider_auto_run_interval, provider_control_plane_runtime_error, provider_presence_client,
+        provider_presence_heartbeat_interval, psionic_gemma_benchmark_command_args,
+        psionic_repo_root_candidates_with_inputs, psionic_train_release_binary_path,
+        psionic_train_supervisor_command_for_surface, publish_announcement_report,
+        publish_training_trn_state, refresh_relay_report, remove_configured_relay,
+        render_earnings_report, render_human_status, render_jobs_report, render_public_config_json,
+        render_sandbox_report, render_training_status_report,
         report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, retire_failed_active_training_runtime_lease,
@@ -26493,10 +26630,11 @@ mod tests {
         snapshot_training_retained_artifact_binding, snapshot_training_status_report,
         stabilize_training_retained_psionic_worker_contract,
         stable_training_contribution_receipt_digest, start_training_checkpoint_server,
-        start_training_supervisor, submit_buyer_job, sync_live_announcement,
-        sync_provider_payout_target_with_report, sync_training_authority_state,
-        sync_training_terminal_runtime_once, training_artifact_digest_from_locator_payload,
-        training_artifact_resolved_cache_key, training_download_cache_root,
+        start_training_supervisor, strip_startup_thread_limit_args, submit_buyer_job,
+        sync_live_announcement, sync_provider_payout_target_with_report,
+        sync_training_authority_state, sync_training_terminal_runtime_once,
+        training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
+        training_assignment_intake_interval, training_download_cache_root,
         training_lease_claim_error_is_nonfatal, training_raw_sha256_hex,
         training_retained_assignment_authority_error_is_stale, training_run_root_for_id,
         training_runs_root, training_runtime_manifest_path_for_run, training_runtime_state_path,
@@ -28537,6 +28675,56 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     }
 
     #[test]
+    fn startup_thread_limit_flags_are_stripped_before_cli_parsing()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (args, limit) = strip_startup_thread_limit_args(vec![
+            "--max-cores".to_string(),
+            "4".to_string(),
+            "--config-path".to_string(),
+            "/tmp/pylon.json".to_string(),
+            "serve".to_string(),
+        ])?;
+
+        ensure(
+            args == vec![
+                "--config-path".to_string(),
+                "/tmp/pylon.json".to_string(),
+                "serve".to_string(),
+            ],
+            "startup thread limit flags should not reach normal CLI parsing",
+        )?;
+        ensure(
+            limit.is_some_and(|limit| limit.threads() == 4),
+            "startup thread limit should retain the requested cap",
+        )
+    }
+
+    #[test]
+    fn startup_thread_limit_rejects_zero_threads() {
+        let error =
+            strip_startup_thread_limit_args(vec!["--max-threads".to_string(), "0".to_string()])
+                .expect_err("zero startup thread cap should be rejected");
+        assert!(error.to_string().contains("greater than zero"));
+    }
+
+    #[test]
+    fn provider_idle_intervals_use_lower_power_defaults() -> Result<(), Box<dyn std::error::Error>>
+    {
+        ensure(
+            provider_presence_heartbeat_interval() >= Duration::from_secs(30),
+            "presence heartbeat should not poll every few seconds while idle",
+        )?;
+        ensure(
+            provider_auto_run_interval() >= Duration::from_secs(10),
+            "provider auto-run should use a lower-power idle cadence",
+        )?;
+        ensure(
+            training_assignment_intake_interval() >= Duration::from_secs(30),
+            "training intake should use a lower-power idle cadence",
+        )
+    }
+
+    #[test]
     fn parse_args_supports_status_json() -> Result<(), Box<dyn std::error::Error>> {
         let cli = parse_args(vec!["status".to_string(), "--json".to_string()])?;
         ensure(
@@ -29063,8 +29251,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 .lease_cache
                 .get(active.lease_id.as_str())
                 .is_some_and(|lease| lease.state == "failed")
+                && state.active_runtime.is_none()
                 && newest_pending_training_work_offer(&state).is_none(),
-            "failed retained leases must become terminal so intake can request fresh paid work",
+            "failed retained leases must become terminal and clear the failed runtime so intake can request fresh paid work",
         )
     }
 
@@ -35264,9 +35453,29 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             ])?
             .command
                 == Command::Training {
-                    command: TrainingCommand::Intake { json: true },
+                    command: TrainingCommand::Intake {
+                        requested_training_run_id: None,
+                        json: true,
+                    },
                 },
             "training intake should parse json output selection",
+        )?;
+        ensure(
+            parse_args(vec![
+                "training".to_string(),
+                "intake".to_string(),
+                "--run-id".to_string(),
+                "run.cs336.a1.issue4451".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Training {
+                    command: TrainingCommand::Intake {
+                        requested_training_run_id: Some("run.cs336.a1.issue4451".to_string()),
+                        json: true,
+                    },
+                },
+            "training intake should parse a targeted run id for validator proof work",
         )
     }
 

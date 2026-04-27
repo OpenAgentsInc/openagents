@@ -151,11 +151,13 @@ pylon
 ```
 
 By default, the package-managed launcher checks trusted GitHub `pylon-v...`
-releases while the Pylon terminal UI is open. If a newer release initiated by
-`AtlantisPleb` appears, the launcher downloads and verifies the matching
-standalone binary, then restarts the local dashboard from the updated cache.
-Use `pylon --no-updates` only when you intentionally need to keep the currently
-installed cached binary running.
+releases at startup and then on a six-hour background cadence while the Pylon
+terminal UI is open. If a newer release initiated by `AtlantisPleb` appears,
+the launcher downloads and verifies the matching standalone binary, then
+restarts the local dashboard from the updated cache. Set `GITHUB_TOKEN` or
+`GH_TOKEN` to authenticate GitHub release lookups when running from a shared
+network, and use `pylon --no-updates` only when you intentionally need to keep
+the currently installed cached binary running.
 
 Auto-update is a launcher feature, not a native feature of direct release
 assets. Keep the npm or bun-installed `pylon` command on `PATH` if you want
@@ -174,14 +176,14 @@ paid when assigned work closes out as accepted.
 Current production truth:
 
 - The current recommended paid-training launcher is `@openagentsinc/pylon`
-  `0.1.15` or newer. It resolves the latest trusted `pylon-v...` release asset
-  and keeps the running dashboard updated unless `--no-updates` or a pinned
-  `--version` is used.
-- The latest trusted standalone binary release is `pylon-v0.1.15`, published
+  `0.1.17` or newer. It resolves the latest trusted `pylon-v...` release asset
+  and keeps the running dashboard updated on the bounded background cadence
+  unless `--no-updates` or a pinned `--version` is used.
+- The latest trusted standalone binary release is `pylon-v0.1.16`, published
   by `AtlantisPleb`.
 - Public `/api/stats` online client versions are live provider heartbeat
   versions, not installer intent. A lingering `pylon/0.1.14` row after
-  `pylon-v0.1.15` is published means an old process is still running, a pinned
+  `pylon-v0.1.16` is published means an old process is still running, a pinned
   or `--no-updates` launcher is active, or a direct-release binary was started
   manually. It is not fixed by the stats page hiding the old row.
 - The live paid work class is bounded hosted homework/training work, currently
@@ -190,7 +192,7 @@ Current production truth:
   paces paid homework jobs from the server side.
 - Production Nexus automatically dispatches a fresh CS336 A1 homework run about
   every 10 minutes for online eligible Pylons. The current automatic pacing
-  target is `pylon-v0.1.15+`, online-only, up to 256 contributors, 25 sats per
+  target is `pylon-v0.1.16+`, online-only, up to 256 contributors, 25 sats per
   accepted contribution, and a 6,400-sat cap per automatic cycle.
 - Admins can still trigger override batches with
   `POST /v1/admin/homework/cs336-a1/dispatch` when they need a bounded proof,
@@ -211,7 +213,11 @@ Current production truth:
   dashboard panels still looked alive. `0.1.15` additionally blocks terminal
   training-window seal until the worker contribution artifact bundle has
   uploaded and verified, preventing validators from seeing a sealed
-  contribution whose signed artifact fetch still returns 404. Pylon runs a current
+  contribution whose signed artifact fetch still returns 404. `0.1.16`
+  packages the minimal Psionic training runtime for standalone homework-worker
+  admission. `@openagentsinc/pylon` `0.1.17` is a package-only launcher update
+  that forwards CLI subcommands such as `pylon status --json` and uses a
+  bounded background update cadence. Pylon runs a current
   `target/release/psionic-train` when present and otherwise falls back to
   `cargo run --release`, with failure receipts that show signal/log-tail
   details instead of only `code -1`.
@@ -250,10 +256,14 @@ minimal homework dashboard, had the TUI start and supervise the earning worker,
 and kept Gemma diagnostics/downloads opt-in during homework onboarding.
 `pylon-v0.1.12` was the first live hosted-Nexus homework dispatcher floor
 because it fixed the Psionic-backed Mac training-worker launch path.
-`pylon-v0.1.15` is the current recommended public build because it keeps the
-`0.1.14` path-hashing and TUI worker-exit fixes, then prevents terminal workers
-from sealing a window before their contribution artifact bundle is actually
-reachable for validator replay.
+`pylon-v0.1.16` is the current recommended public binary because it keeps the
+`0.1.14` path-hashing and TUI worker-exit fixes, prevents terminal workers from
+sealing a window before their contribution artifact bundle is actually
+reachable for validator replay, and packages the minimal Psionic training
+runtime. Use `@openagentsinc/pylon` `0.1.17` or newer for the package-managed
+launcher fixes around CLI forwarding and bounded GitHub update polling.
+The `0.1.16` release receipt is
+[docs/reports/nexus/20260427-pylon-v0.1.16-release.json](docs/reports/nexus/20260427-pylon-v0.1.16-release.json).
 The `0.1.15` release receipt is
 [docs/reports/nexus/20260426-pylon-v0.1.15-release.json](docs/reports/nexus/20260426-pylon-v0.1.15-release.json).
 The `0.1.14` release receipt is
