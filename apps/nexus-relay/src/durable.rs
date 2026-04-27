@@ -16,11 +16,12 @@ use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use reqwest::Url;
 use serde::Serialize;
-use tokio::sync::Semaphore;
+use tokio::sync::{RwLock, Semaphore};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::{self, Message as UpstreamMessage};
+use tower::ServiceExt;
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_RELAY_LISTEN_ADDR";
 const ENV_UPSTREAM_LISTEN_ADDR: &str = "NEXUS_RELAY_UPSTREAM_LISTEN_ADDR";
@@ -164,6 +165,7 @@ struct AppState {
     config: DurableRelayConfig,
     http_client: reqwest::Client,
     websocket_slots: Arc<Semaphore>,
+    authority_router: Arc<RwLock<Option<Router>>>,
 }
 
 pub async fn run_server(config: DurableRelayConfig) -> Result<(), anyhow::Error> {
@@ -172,31 +174,106 @@ pub async fn run_server(config: DurableRelayConfig) -> Result<(), anyhow::Error>
 
     let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
     let local_addr = listener.local_addr()?;
+    let authority_router = Arc::new(RwLock::new(None));
+    spawn_authority_router_builder(authority_config, authority_router.clone());
     let upstream = UpstreamRelayHandle::spawn(config.clone()).await?;
-    tracing::info!("nexus-relay durable shell listening on {}", local_addr);
-    let serve_result = axum::serve(listener, build_router(config, authority_config)).await;
+    tracing::info!("nexus-relay durable shell accepting on {}", local_addr);
+    let serve_result = axum::serve(
+        listener,
+        build_router_with_deferred_authority(config, authority_router),
+    )
+    .await;
     let shutdown_result = upstream.shutdown().await;
     serve_result.map_err(anyhow::Error::from)?;
     shutdown_result?;
     Ok(())
 }
 
+fn spawn_authority_router_builder(
+    authority_config: nexus_control::ServiceConfig,
+    authority_router: Arc<RwLock<Option<Router>>>,
+) {
+    tokio::spawn(async move {
+        tracing::info!("building embedded Nexus control API router");
+        let router = match tokio::task::spawn_blocking(move || {
+            nexus_control::build_api_router(authority_config)
+        })
+        .await
+        {
+            Ok(router) => router,
+            Err(error) => {
+                tracing::error!(
+                    error = %error,
+                    "embedded Nexus control API router builder failed"
+                );
+                return;
+            }
+        };
+        *authority_router.write().await = Some(router);
+        tracing::info!("embedded Nexus control API router ready");
+    });
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 fn build_router(
     config: DurableRelayConfig,
     authority_config: nexus_control::ServiceConfig,
 ) -> Router {
+    build_router_with_authority_router(
+        config,
+        Some(nexus_control::build_api_router(authority_config)),
+    )
+}
+
+fn build_router_with_deferred_authority(
+    config: DurableRelayConfig,
+    authority_router: Arc<RwLock<Option<Router>>>,
+) -> Router {
+    build_router_inner(config, authority_router)
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn build_router_with_authority_router(
+    config: DurableRelayConfig,
+    authority_router: Option<Router>,
+) -> Router {
+    build_router_inner(config, Arc::new(RwLock::new(authority_router)))
+}
+
+fn build_router_inner(
+    config: DurableRelayConfig,
+    authority_router: Arc<RwLock<Option<Router>>>,
+) -> Router {
     let state = AppState {
         http_client: reqwest::Client::new(),
         websocket_slots: Arc::new(Semaphore::new(config.max_websockets)),
+        authority_router,
         config,
     };
-    let shell_router = Router::new()
+    Router::new()
         .route("/", any(relay_root))
         .route("/ws", any(relay_websocket))
         .route("/metrics", get(proxy_upstream_metrics))
         .route("/healthz", get(healthz))
-        .with_state(state);
-    shell_router.merge(nexus_control::build_api_router(authority_config))
+        .fallback(proxy_authority_request)
+        .with_state(state)
+}
+
+async fn proxy_authority_request(State(state): State<AppState>, request: Request) -> Response {
+    let Some(router) = state.authority_router.read().await.clone() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "authority_router_starting",
+                "reason": "embedded Nexus control API router is still starting"
+            })),
+        )
+            .into_response();
+    };
+    match router.oneshot(request).await {
+        Ok(response) => response,
+        Err(error) => match error {},
+    }
 }
 
 async fn relay_root(State(state): State<AppState>, request: Request) -> Response {
@@ -563,7 +640,9 @@ mod tests {
     use serde_json::Value;
     use std::net::SocketAddr;
     use std::path::Path;
+    use std::sync::Arc;
     use tempfile::tempdir;
+    use tokio::sync::RwLock;
     use tokio::time::{Duration, timeout};
     use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 
@@ -689,6 +768,48 @@ mod tests {
 
         server.abort();
         relay.shutdown().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn durable_shell_serves_health_while_authority_router_is_starting() -> Result<()> {
+        let tempdir = tempdir()?;
+        let config = durable_config(tempdir.path())?;
+        let authority_router = Arc::new(RwLock::new(None));
+        let authority_config = build_authority_config(&config)?;
+        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+        let addr = listener.local_addr()?;
+        let server_authority_router = authority_router.clone();
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                super::build_router_with_deferred_authority(config, server_authority_router),
+            )
+            .await
+            .map_err(anyhow::Error::from)
+        });
+
+        let client = reqwest::Client::new();
+        let health = client.get(format!("http://{addr}/healthz")).send().await?;
+        assert_eq!(health.status(), StatusCode::OK);
+
+        let stats_while_starting = client
+            .get(format!("http://{addr}/api/stats"))
+            .send()
+            .await?;
+        assert_eq!(
+            stats_while_starting.status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+
+        *authority_router.write().await = Some(nexus_control::build_api_router(authority_config));
+        let stats_ready = client
+            .get(format!("http://{addr}/api/stats"))
+            .send()
+            .await?;
+        assert_eq!(stats_ready.status(), StatusCode::OK);
+
+        server.abort();
         Ok(())
     }
 
