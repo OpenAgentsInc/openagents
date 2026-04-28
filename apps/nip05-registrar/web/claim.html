@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Claim your OpenAgents NIP-05</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d10;
+        --fg: #e6e8eb;
+        --muted: #8b9199;
+        --accent: #ffb000;
+        --error: #ff5d5d;
+        --ok: #7bd88f;
+        --border: #20242a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", monospace;
+        background: var(--bg);
+        color: var(--fg);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      main {
+        max-width: 560px;
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 24px;
+        background: #11141a;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 1.25rem;
+      }
+      p.subtitle {
+        margin: 0 0 20px;
+        color: var(--muted);
+      }
+      label {
+        display: block;
+        margin-top: 14px;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      input {
+        width: 100%;
+        margin-top: 4px;
+        padding: 10px 12px;
+        background: #0b0d10;
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 1rem;
+      }
+      input:focus { outline: 1px solid var(--accent); }
+      button {
+        margin-top: 20px;
+        padding: 10px 16px;
+        background: var(--accent);
+        color: #000;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 1rem;
+      }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      .row { display: flex; gap: 8px; }
+      .row > * { flex: 1; }
+      .out {
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-size: 0.85rem;
+        background: #0b0d10;
+        display: none;
+      }
+      .out.show { display: block; }
+      .out.ok { border-color: var(--ok); }
+      .out.err { border-color: var(--error); }
+      .hint { color: var(--muted); font-size: 0.8rem; margin-top: 6px; }
+      .verify { margin-top: 18px; font-size: 0.85rem; color: var(--muted); }
+      a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Claim your OpenAgents NIP-05</h1>
+      <p class="subtitle">
+        Maps <code>name@openagents.com</code> to your Nostr public key.
+      </p>
+
+      <label for="base">Registrar base URL</label>
+      <input id="base" value="https://openagents.com" autocomplete="off" />
+
+      <label for="token">Operator bearer token</label>
+      <input id="token" type="password" placeholder="paste booth token" autocomplete="off" />
+      <div class="hint">
+        This page is intended for the booth device. Paste the operator token
+        provided by the booth lead. Tokens are not stored or sent anywhere
+        except the registrar API.
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="name">Handle</label>
+          <input id="name" placeholder="e.g. alice" autocomplete="off" />
+          <div class="hint">a–z, 0–9, <code>_ - .</code> — up to 32 chars</div>
+        </div>
+        <div>
+          <label for="npub">Public key (npub or 64-hex)</label>
+          <input id="npub" placeholder="npub1…" autocomplete="off" />
+        </div>
+      </div>
+
+      <button id="submit">Claim handle</button>
+      <div id="out" class="out"></div>
+
+      <div class="verify">
+        After success, verify by visiting
+        <a id="verifyLink" href="#" target="_blank" rel="noopener">/.well-known/nostr.json?name=…</a>.
+      </div>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const out = $("out");
+      const verifyLink = $("verifyLink");
+
+      function show(kind, text) {
+        out.className = "out show " + kind;
+        out.textContent = text;
+      }
+
+      $("submit").addEventListener("click", async () => {
+        const base = $("base").value.trim().replace(/\/+$/, "");
+        const token = $("token").value.trim();
+        const name = $("name").value.trim();
+        const npub = $("npub").value.trim();
+
+        if (!base || !token || !name || !npub) {
+          show("err", "All fields are required.");
+          return;
+        }
+
+        const body = { name };
+        if (npub.toLowerCase().startsWith("npub1")) body.npub = npub;
+        else body.pubkey = npub;
+
+        $("submit").disabled = true;
+        show("", "Submitting…");
+        try {
+          const resp = await fetch(base + "/admin/claim", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: "Bearer " + token,
+            },
+            body: JSON.stringify(body),
+          });
+          const text = await resp.text();
+          let parsed;
+          try { parsed = JSON.parse(text); } catch (_) { parsed = text; }
+          if (resp.ok) {
+            show(
+              "ok",
+              "Claimed " + name + "@openagents.com\n\n" +
+                JSON.stringify(parsed, null, 2)
+            );
+            const url = base + "/.well-known/nostr.json?name=" + encodeURIComponent(name);
+            verifyLink.textContent = url;
+            verifyLink.href = url;
+          } else {
+            show(
+              "err",
+              "HTTP " + resp.status + "\n\n" +
+                (typeof parsed === "string" ? parsed : JSON.stringify(parsed, null, 2))
+            );
+          }
+        } catch (err) {
+          show("err", "Network error: " + (err && err.message ? err.message : String(err)));
+        } finally {
+          $("submit").disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

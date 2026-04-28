@@ -1,0 +1,28 @@
+[package]
+name = "nip05-registrar"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "OpenAgents NIP-05 registrar service for openagents.com"
+
+[dependencies]
+anyhow.workspace = true
+axum = "0.8"
+bech32.workspace = true
+hex.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror.workspace = true
+tokio.workspace = true
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+reqwest = { workspace = true }
+tempfile = "3"
+
+[lints]
+workspace = true
