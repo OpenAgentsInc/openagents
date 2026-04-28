@@ -1,0 +1,74 @@
+{
+  "generated_at": "20260428-214607",
+  "kind": "nexus_binary_release_upload",
+  "vm": "nexus-mainnet-1",
+  "builder_vm": "nexus-builder-1",
+  "git_sha": "dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+  "git_short_sha": "dfed9ed687fb",
+  "builder_artifact_root": "/mnt/disks/nexus-builder-cache/artifacts/dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+  "builder_archive_path": "/tmp/nexus-release-dfed9ed687fb8bd23001dec5de6cedb98eda9786.tar.gz",
+  "builder_archive_size_bytes": 107781259,
+  "binary_sha256": "d370e49cf1c8ee23fc88b32a536a2800a4bb76523b02b1c6a3d1ef48783901f1",
+  "build_metadata": {
+    "built_at": "20260428-214605",
+    "builder_hostname": "nexus-builder-1",
+    "builder_user": "nexus-builder",
+    "git_sha": "dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+    "git_short_sha": "dfed9ed687fb",
+    "git_ref": "main",
+    "build_profile": "fast-release",
+    "clear_caches": false,
+    "source_archive_sha256": "147a14e78a742e58b2b75f211b504f46e5c2264d832f4e3ad0ad09dd49366d9d",
+    "source_archive_size_bytes": 1326592,
+    "source_root": "/mnt/disks/nexus-builder-cache/sources/dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+    "artifact_root": "/mnt/disks/nexus-builder-cache/artifacts/dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+    "binary_path": "/mnt/disks/nexus-builder-cache/artifacts/dfed9ed687fb8bd23001dec5de6cedb98eda9786/nexus-relay",
+    "binary_sha256": "d370e49cf1c8ee23fc88b32a536a2800a4bb76523b02b1c6a3d1ef48783901f1",
+    "binary_size_bytes": 478918280,
+    "timing": {
+      "build_started_unix_ms": 1777412623213,
+      "build_finished_unix_ms": 1777412765933,
+      "total_duration_ms": 142720,
+      "fetch_started_unix_ms": 1777412623229,
+      "fetch_finished_unix_ms": 1777412623880,
+      "fetch_duration_ms": 651,
+      "compile_started_unix_ms": 1777412623881,
+      "compile_finished_unix_ms": 1777412764128,
+      "compile_duration_ms": 140247
+    },
+    "cache_layout": {
+      "cargo_home": "/mnt/disks/nexus-builder-cache/cargo-home",
+      "rustup_home": "/mnt/disks/nexus-builder-cache/rustup-home",
+      "cargo_target_dir": "/mnt/disks/nexus-builder-cache/target",
+      "sccache_dir": "/mnt/disks/nexus-builder-cache/sccache"
+    },
+    "tool_versions": {
+      "rustc": "rustc 1.88.0 (6b00bc388 2025-06-23)",
+      "cargo": "cargo 1.88.0 (873a06493 2025-05-10)",
+      "sccache": "sccache 0.8.2"
+    }
+  },
+  "upload_result": {
+    "release_path": "/opt/nexus-relay/releases/dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+    "reused_existing_release": false,
+    "runtime_env_path": "/etc/nexus-relay/nexus-relay.env",
+    "upstream_config_path": "/etc/nexus-relay/upstream-config.toml"
+  },
+  "timing": {
+    "started_unix_ms": 1777412767706,
+    "finished_unix_ms": 1777412857000,
+    "total_duration_ms": 89294,
+    "archive_started_unix_ms": 1777412770125,
+    "archive_finished_unix_ms": 1777412786531,
+    "archive_duration_ms": 16406,
+    "download_started_unix_ms": 1777412786547,
+    "download_finished_unix_ms": 1777412812383,
+    "download_duration_ms": 25836,
+    "upload_started_unix_ms": 1777412818564,
+    "upload_finished_unix_ms": 1777412845182,
+    "upload_duration_ms": 26618,
+    "remote_install_started_unix_ms": 1777412848989,
+    "remote_install_finished_unix_ms": 1777412856873,
+    "remote_install_duration_ms": 7884
+  }
+}
