@@ -52,6 +52,15 @@ Required run evidence:
 - payout projection or payout ledger rows for accepted work
 - public run detail and claim-gate JSON
 
+The guarded fanout/control-plane closure receipt for `#4456` is:
+
+```text
+docs/reports/nexus/20260427-issue-4456-closure.md
+```
+
+That receipt closes the implementation issue. It does not waive the live
+launch-health gates below.
+
 ## Local Proof Before Production
 
 Run these from the `openagents` repo before any production canary or beta:
