@@ -186,6 +186,16 @@ The published `0.1.16` release receipt is:
 docs/reports/nexus/20260427-pylon-v0.1.16-release.json
 ```
 
+The admission/blocker closure receipt for `#4451` is:
+
+```text
+docs/reports/nexus/20260427-issue-4451-closure.md
+```
+
+Use that receipt with `/api/stats` and
+`/api/training/nodes?eligible_only=true&role=worker` when you need to separate
+worker admission from later launch-health, closeout, or treasury failures.
+
 ## Release `pylon-v0.1.15` Preparation
 
 Use `pylon-v0.1.15` as the prior release floor for public homework earning.
