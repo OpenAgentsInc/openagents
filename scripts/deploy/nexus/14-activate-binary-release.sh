@@ -19,6 +19,7 @@ LOCAL_RECEIPT_PATH="${REPORT_DIR}/${STAMP}-binary-release-activate-${NEXUS_RELEA
 OVERALL_STARTED_MS="$(timestamp_unix_ms)"
 : "${NEXUS_RELAY_MAX_WEBSOCKETS:=512}"
 : "${NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT:=256}"
+: "${NEXUS_RELAY_AUTHORITY_TOKIO_WORKER_THREADS:=4}"
 
 if ! instance_exists "$NEXUS_VM"; then
   die "Nexus VM does not exist: ${NEXUS_VM}. Run 02-provision-baseline.sh first."
@@ -46,6 +47,7 @@ systemd_unit_path="${10}"
 image_unit_backup_path="${11}"
 relay_max_websockets="${12}"
 relay_authority_max_in_flight="${13}"
+relay_authority_tokio_worker_threads="${14}"
 
 release_dir="${release_root}/releases/${release_sha}"
 old_target=""
@@ -59,6 +61,7 @@ sudo test -f "$upstream_config_path"
 sudo RUNTIME_ENV_PATH="$runtime_env_path" \
   RELAY_MAX_WEBSOCKETS="$relay_max_websockets" \
   RELAY_AUTHORITY_MAX_IN_FLIGHT="$relay_authority_max_in_flight" \
+  RELAY_AUTHORITY_TOKIO_WORKER_THREADS="$relay_authority_tokio_worker_threads" \
   python3 - <<'PY'
 import os
 from pathlib import Path
@@ -67,6 +70,7 @@ path = Path(os.environ["RUNTIME_ENV_PATH"])
 updates = {
     "NEXUS_RELAY_MAX_WEBSOCKETS": os.environ["RELAY_MAX_WEBSOCKETS"],
     "NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT": os.environ["RELAY_AUTHORITY_MAX_IN_FLIGHT"],
+    "NEXUS_RELAY_AUTHORITY_TOKIO_WORKER_THREADS": os.environ["RELAY_AUTHORITY_TOKIO_WORKER_THREADS"],
 }
 lines = path.read_text().splitlines()
 seen = set()
@@ -159,7 +163,7 @@ ACTIVATION_RESULT="$(
     --tunnel-through-iap \
     --project "$GCP_PROJECT" \
     --zone "$GCP_ZONE" \
-    --command "chmod 755 /tmp/nexus-activate-binary-release.sh && /tmp/nexus-activate-binary-release.sh '${NEXUS_RELEASE_GIT_SHA}' '${NEXUS_RELEASE_ROOT}' '${NEXUS_CURRENT_LINK}' '${NEXUS_PREVIOUS_LINK}' '${NEXUS_SERVICE_USER}' '${NEXUS_SERVICE_GROUP}' '${NEXUS_SERVICE_UID}' '${NEXUS_RUNTIME_ENV_PATH}' '${NEXUS_UPSTREAM_CONFIG_PATH}' '${NEXUS_SYSTEMD_UNIT_PATH}' '${NEXUS_IMAGE_UNIT_BACKUP_PATH}' '${NEXUS_RELAY_MAX_WEBSOCKETS}' '${NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT}'" \
+    --command "chmod 755 /tmp/nexus-activate-binary-release.sh && /tmp/nexus-activate-binary-release.sh '${NEXUS_RELEASE_GIT_SHA}' '${NEXUS_RELEASE_ROOT}' '${NEXUS_CURRENT_LINK}' '${NEXUS_PREVIOUS_LINK}' '${NEXUS_SERVICE_USER}' '${NEXUS_SERVICE_GROUP}' '${NEXUS_SERVICE_UID}' '${NEXUS_RUNTIME_ENV_PATH}' '${NEXUS_UPSTREAM_CONFIG_PATH}' '${NEXUS_SYSTEMD_UNIT_PATH}' '${NEXUS_IMAGE_UNIT_BACKUP_PATH}' '${NEXUS_RELAY_MAX_WEBSOCKETS}' '${NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT}' '${NEXUS_RELAY_AUTHORITY_TOKIO_WORKER_THREADS}'" \
     | tail -n 1
 )"
 ACTIVATION_FINISHED_MS="$(timestamp_unix_ms)"

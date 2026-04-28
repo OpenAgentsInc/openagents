@@ -4742,6 +4742,45 @@ impl TreasuryState {
         self.payout_loop_last_completed_at_unix_ms = Some(now_unix_ms);
     }
 
+    pub fn dispatch_cycle_due(
+        &self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+        idle_interval_ms: u64,
+    ) -> bool {
+        let policy = self.active_policy(config);
+        if !policy.treasury_enabled {
+            return false;
+        }
+        let last_cycle_at = self
+            .payout_loop_last_completed_at_unix_ms
+            .or(self.payout_loop_last_started_at_unix_ms)
+            .or(self.last_payout_reconciliation_at_unix_ms);
+        if self
+            .payout_records_by_key
+            .values()
+            .any(|record| record.status == "queued")
+        {
+            return true;
+        }
+        let retryable_failed_work_due = self
+            .payout_records_by_key
+            .values()
+            .any(|record| retryable_failed_accepted_work_payout_is_due(record, now_unix_ms));
+        if retryable_failed_work_due {
+            return last_cycle_at
+                .map(|last_cycle_at| now_unix_ms.saturating_sub(last_cycle_at) >= idle_interval_ms)
+                .unwrap_or(true);
+        }
+        if policy.payout_interval_seconds == 0 {
+            return false;
+        }
+        let interval_ms = policy.payout_interval_ms().max(idle_interval_ms);
+        last_cycle_at
+            .map(|last_cycle_at| now_unix_ms.saturating_sub(last_cycle_at) >= interval_ms)
+            .unwrap_or(true)
+    }
+
     pub fn issue_registration_challenge(
         &mut self,
         config: &TreasuryConfig,
@@ -12638,6 +12677,78 @@ mod tests {
         state.note_payout_loop_completed(1_345_678, None);
         assert_eq!(state.last_payout_reconciliation_at_unix_ms, Some(1_345_678));
         assert_eq!(state.payout_loop_last_completed_at_unix_ms, Some(1_345_678));
+    }
+
+    #[test]
+    fn dispatch_cycle_due_throttles_idle_availability_scan_but_honors_queued_work() {
+        let config = test_treasury_config();
+        let mut state = TreasuryState::default();
+        let completed_at_unix_ms = 1_345_678;
+        let idle_interval_ms = 300_000;
+        state.note_payout_loop_completed(completed_at_unix_ms, None);
+
+        assert!(!state.dispatch_cycle_due(
+            &config,
+            completed_at_unix_ms.saturating_add(config.payout_interval_ms()),
+            idle_interval_ms,
+        ));
+        assert!(state.dispatch_cycle_due(
+            &config,
+            completed_at_unix_ms.saturating_add(idle_interval_ms),
+            idle_interval_ms,
+        ));
+
+        state.payout_records_by_key.insert(
+            "accepted-work:one".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "accepted-work:one".to_string(),
+                nostr_pubkey_hex: "pubkey-a".to_string(),
+                payout_target: "spark:alice".to_string(),
+                amount_sats: 25,
+                status: "queued".to_string(),
+                reason: None,
+                payment_id: None,
+                window_started_at_unix_ms: 1_000,
+                window_ends_at_unix_ms: 2_000,
+                created_at_unix_ms: completed_at_unix_ms,
+                updated_at_unix_ms: completed_at_unix_ms,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("accepted.one".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+        assert!(state.dispatch_cycle_due(
+            &config,
+            completed_at_unix_ms.saturating_add(1),
+            idle_interval_ms,
+        ));
+
+        let record = state
+            .payout_records_by_key
+            .get_mut("accepted-work:one")
+            .expect("queued payout record");
+        record.status = "failed".to_string();
+        record.reason = Some("wallet_send_retryable:leaf_selection:test".to_string());
+        record.updated_at_unix_ms = completed_at_unix_ms
+            .saturating_sub(super::TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS);
+        assert!(!state.dispatch_cycle_due(
+            &config,
+            completed_at_unix_ms.saturating_add(1),
+            idle_interval_ms,
+        ));
+        assert!(state.dispatch_cycle_due(
+            &config,
+            completed_at_unix_ms.saturating_add(idle_interval_ms),
+            idle_interval_ms,
+        ));
     }
 
     #[test]
