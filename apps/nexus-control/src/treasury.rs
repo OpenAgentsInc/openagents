@@ -476,8 +476,8 @@ impl TreasuryConfig {
 
     pub fn dispatch_result_timeout_ms(&self, payout_interval_ms: u64) -> u64 {
         let _ = payout_interval_ms;
+        let _ = self.wallet_status_refresh_seconds;
         TREASURY_DISPATCH_RESULT_TIMEOUT_MS
-            .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
     }
 
     pub fn max_concurrent_send_operations(&self, plan_count: usize) -> usize {
@@ -13348,6 +13348,13 @@ mod tests {
         let mut config = test_treasury_config();
         config.payout_interval_seconds = 600;
         config.wallet_status_refresh_seconds = 30;
+
+        assert_eq!(
+            config.dispatch_result_timeout_ms(config.payout_interval_ms()),
+            60_000
+        );
+
+        config.wallet_status_refresh_seconds = 300;
 
         assert_eq!(
             config.dispatch_result_timeout_ms(config.payout_interval_ms()),
