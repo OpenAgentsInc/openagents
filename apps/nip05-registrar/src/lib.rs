@@ -1,3 +1,4 @@
+pub mod challenge;
 pub mod config;
 pub mod error;
 pub mod routes;
@@ -17,10 +18,7 @@ pub use store::{NostrJson, Store};
 pub async fn run(config: Config) -> Result<()> {
     let store = Store::load(config.data_file.clone(), config.reserved.clone())
         .map_err(|err| anyhow::anyhow!("failed to load store: {err}"))?;
-    let state = AppState {
-        store: Arc::new(store),
-        admin_token: Arc::new(config.admin_token.clone()),
-    };
+    let state = AppState::new(Arc::new(store), config.admin_token.clone());
     let app = router(state);
 
     let listener = TcpListener::bind(config.listen_addr)

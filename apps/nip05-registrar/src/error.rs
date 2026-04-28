@@ -22,6 +22,12 @@ pub enum RegistrarError {
     NotFound,
     #[error("malformed request body")]
     BadRequest,
+    #[error("challenge not found or already used")]
+    ChallengeNotFound,
+    #[error("challenge expired")]
+    ChallengeExpired,
+    #[error("challenge proof invalid: {0}")]
+    ChallengeInvalid(&'static str),
     #[error("internal server error")]
     Internal,
 }
@@ -33,9 +39,11 @@ impl RegistrarError {
             Self::InvalidHandle
             | Self::ReservedHandle
             | Self::InvalidNpub
-            | Self::BadRequest => StatusCode::BAD_REQUEST,
+            | Self::BadRequest
+            | Self::ChallengeInvalid(_) => StatusCode::BAD_REQUEST,
             Self::HandleTaken | Self::PubkeyTaken => StatusCode::CONFLICT,
-            Self::NotFound => StatusCode::NOT_FOUND,
+            Self::NotFound | Self::ChallengeNotFound => StatusCode::NOT_FOUND,
+            Self::ChallengeExpired => StatusCode::GONE,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -50,6 +58,9 @@ impl RegistrarError {
             Self::PubkeyTaken => "pubkey_taken",
             Self::NotFound => "not_found",
             Self::BadRequest => "bad_request",
+            Self::ChallengeNotFound => "challenge_not_found",
+            Self::ChallengeExpired => "challenge_expired",
+            Self::ChallengeInvalid(_) => "challenge_invalid",
             Self::Internal => "internal_error",
         }
     }

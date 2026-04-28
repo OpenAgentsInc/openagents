@@ -72,8 +72,8 @@ impl Config {
             .unwrap_or_else(|| DEFAULT_DATA_FILE.to_string());
         let data_file = PathBuf::from(data_file);
 
-        let admin_token = std::env::var(ENV_ADMIN_TOKEN)
-            .map_err(|_| format!("{ENV_ADMIN_TOKEN} must be set"))?;
+        let admin_token =
+            std::env::var(ENV_ADMIN_TOKEN).map_err(|_| format!("{ENV_ADMIN_TOKEN} must be set"))?;
         let admin_token = admin_token.trim().to_string();
         if admin_token.is_empty() {
             return Err(format!("{ENV_ADMIN_TOKEN} must not be empty"));

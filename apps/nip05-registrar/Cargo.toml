@@ -11,14 +11,19 @@ description = "OpenAgents NIP-05 registrar service for openagents.com"
 anyhow.workspace = true
 axum = "0.8"
 bech32.workspace = true
+bitcoin.workspace = true
 hex.workspace = true
+nostr = { path = "../../crates/nostr/core", default-features = false, features = ["full"] }
+rand.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+subtle = "2.5"
 thiserror.workspace = true
 tokio.workspace = true
 tower-http = { version = "0.6", features = ["cors"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 reqwest = { workspace = true }

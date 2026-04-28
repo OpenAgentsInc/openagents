@@ -23,17 +23,41 @@ postmaster, press, privacy, registrar, root, security, staff, status, support,
 sysop, system, test, webmaster, well-known, www
 ```
 
-Additional reserved names can be supplied at boot via the
-`NIP05_REGISTRAR_RESERVED_EXTRA` environment variable (comma-separated).
+`NIP05_REGISTRAR_RESERVED_EXTRA` can **add** additional reserved names at
+boot (comma-separated). It cannot remove built-in reserved entries; the
+hard-coded list is the floor and any value supplied is unioned with it.
 
 `_` is reserved per NIP-05's "root identifier" convention; we do not currently
 serve a `_` entry.
 
-> Note: `agent` is on the reserved list. The booth lead may pre-claim `agent`
-> for the official OpenAgents agent identity by adding it to
-> `NIP05_REGISTRAR_RESERVED_EXTRA` removal, or by claiming via the admin API
-> *before* setting it reserved. The reserved list is a hard runtime block; do
-> not attempt to claim a reserved handle through the booth flow.
+### Bootstrapping officially-managed reserved handles
+
+Reserved names cannot be claimed through the public `/claim/challenge`
+flow. The only way to seed an officially-managed reserved handle (for
+example, binding `agent` to the OpenAgents-controlled key on a fresh
+deploy) is the operator override path:
+
+```
+POST /admin/claim
+Authorization: Bearer <NIP05_REGISTRAR_ADMIN_TOKEN>
+{
+  "name": "agent",
+  "npub": "npub1...",            # OpenAgents-controlled pubkey
+  "operator_override": true       # required; without this the call is refused
+}
+```
+
+Even with the operator bearer token, the registrar still refuses the
+claim if the handle is on the reserved list — the override only bypasses
+the proof-of-control flow, not the reserved-name block. To bootstrap a
+reserved handle, the operator must temporarily remove it from the
+hard-coded list (build a custom registrar binary), seed the mapping, and
+revert. Day-to-day operators should not need this path; it is a
+one-time deploy step.
+
+> The reserved list is a hard runtime block. Do not attempt to claim a
+> reserved handle through the public flow — it will be refused before
+> any signing happens.
 
 ## Collision and duplicate policy
 

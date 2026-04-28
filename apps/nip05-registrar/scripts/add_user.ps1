@@ -1,11 +1,22 @@
 <#
 .SYNOPSIS
-    Claim an OpenAgents NIP-05 handle by POSTing to the registrar.
+    Operator override: claim an OpenAgents NIP-05 handle without proof of
+    Nostr key control.
 
 .DESCRIPTION
-    Sends a runtime-authenticated claim to the live NIP-05 registrar service.
-    The bearer token must come from the booth operator's environment; do not
-    hard-code it in source control.
+    POSTs an operator-override claim to /admin/claim. This BYPASSES the
+    normal /claim/challenge + /claim/complete proof-of-control flow and
+    should only be used to:
+      - Bootstrap officially-managed reserved handles on a fresh deploy
+        (e.g. seeding 'agent' to the OpenAgents-controlled key).
+      - Correct an emergency that cannot be resolved via the public flow.
+
+    For users who already have a Nostr key, point them at
+    https://openagents.com/claim (the self-serve OTP flow) instead.
+
+    The bearer token must come from the booth operator's environment; do
+    not hard-code it in source control. Each override claim is logged
+    server-side as event=claim_admin_override for audit.
 
 .PARAMETER BaseUrl
     Registrar base URL (e.g. https://openagents.com). Defaults to env
@@ -18,22 +29,28 @@
     Handle to claim. Must match ^[a-z0-9_\-\.]{1,32}$.
 
 .PARAMETER Npub
-    npub1... bech32 OR 64-char lowercase hex public key.
+    npub1... bech32 OR 64-char lowercase hex x-only public key.
+
+.PARAMETER Confirm
+    Required. Acknowledges the operator-override semantics. Pass
+    -Confirm to actually run.
 
 .EXAMPLE
-    PS> .\add_user.ps1 -Handle alice -Npub npub1...
-
-.EXAMPLE
-    PS> .\add_user.ps1 -BaseUrl https://staging.openagents.com `
-                       -Handle bob -Npub abcd...64hex
+    PS> .\add_user.ps1 -Handle agent -Npub npub1... -Confirm
 #>
 [CmdletBinding()]
 param(
     [string]$BaseUrl,
     [string]$Token,
     [Parameter(Mandatory = $true)][string]$Handle,
-    [Parameter(Mandatory = $true)][string]$Npub
+    [Parameter(Mandatory = $true)][string]$Npub,
+    [switch]$Confirm
 )
+
+if (-not $Confirm) {
+    Write-Error "This script issues an OPERATOR OVERRIDE claim that bypasses Nostr key proof-of-control. Pass -Confirm to acknowledge. For self-service claims with proof, use https://openagents.com/claim instead."
+    exit 2
+}
 
 $ErrorActionPreference = 'Stop'
 
@@ -52,7 +69,7 @@ if (-not $Token -or $Token.Trim() -eq '') {
     throw 'Operator bearer token is required. Pass -Token or set NIP05_REGISTRAR_ADMIN_TOKEN.'
 }
 
-$body = @{ name = $Handle }
+$body = @{ name = $Handle; operator_override = $true }
 if ($Npub.ToLower().StartsWith('npub1')) {
     $body['npub'] = $Npub
 } else {

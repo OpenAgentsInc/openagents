@@ -240,6 +240,35 @@ Must not own:
   or backlog-drain supervisor that now belong in the separate private
   `treasury` repo.
 
+## `apps/nip05-registrar`
+
+Owns:
+
+- The runtime mapping of OpenAgents-hosted NIP-05 handles
+  (`name@openagents.com`) to Nostr public keys served at
+  `https://openagents.com/.well-known/nostr.json`.
+- The proof-of-control challenge/complete flow for users who already have
+  a Nostr key (challenge issuance, OTP, canonical message rendering,
+  signed-event verification).
+- The operator-only emergency override path for seeding officially-managed
+  reserved handles (e.g. the OpenAgents agent identity).
+- Atomic writes, startup validation, and audit logging for handle changes.
+
+Must not own:
+
+- Custody of any user's Nostr private key or the OpenAgents agent's
+  private key. The registrar verifies signatures; it does not sign.
+- Autopilot identity, wallet identity, or pylon identity. Those pubkeys
+  may be referenced as reserved handles, but their authority lives
+  elsewhere.
+- Nexus authority identity, marketplace authorization, or compute-market
+  settlement state.
+- Any application-layer policy (chat, payouts, agents-as-services) that
+  happens to use NIP-05 names — the registrar publishes mappings only.
+- Long-term archival of claim history beyond the current `nostr.json`
+  snapshot. Off-host backups belong to the operator's existing host
+  state pipeline.
+
 ## Planned Compute Extension Surfaces
 
 These are not all active crates today, but their owner split is already fixed
