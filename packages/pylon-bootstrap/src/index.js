@@ -30,6 +30,18 @@ const LEGACY_SOURCE_BUILD_SIBLING_REPOSITORIES = {
   "spark-sdk": "https://github.com/AtlantisPleb/spark-sdk.git",
 };
 
+function archiveExtensionForTarget(target) {
+  return target?.os === "windows" ? ".zip" : ".tar.gz";
+}
+
+function binaryExtensionForTarget(target) {
+  return target?.os === "windows" ? ".exe" : "";
+}
+
+function binaryNameForTarget(binaryName, target) {
+  return `${binaryName}${binaryExtensionForTarget(target)}`;
+}
+
 function emitStatus(onStatus, message, detail = null) {
   if (typeof onStatus === "function") {
     onStatus({ message, detail });
@@ -390,10 +402,11 @@ export function resolvePlatformTarget(
     {
       darwin: "darwin",
       linux: "linux",
+      win32: "windows",
     }[platform] ?? null;
   if (!osLabel) {
     throw new Error(
-      `Unsupported platform \`${platform}\`. The npm launcher only supports darwin and linux in v1.`,
+      `Unsupported platform \`${platform}\`. The npm launcher only supports darwin, linux, and native Windows in v1.`,
     );
   }
 
@@ -420,10 +433,12 @@ export function buildArchiveBasename(version, target) {
 
 export function buildAssetNames(version, target) {
   const archiveBasename = buildArchiveBasename(version, target);
+  const archiveExtension = archiveExtensionForTarget(target);
+  const archiveName = `${archiveBasename}${archiveExtension}`;
   return {
     archiveBasename,
-    archiveName: `${archiveBasename}.tar.gz`,
-    checksumName: `${archiveBasename}.tar.gz.sha256`,
+    archiveName,
+    checksumName: `${archiveName}.sha256`,
   };
 }
 
@@ -762,8 +777,8 @@ export function buildInstallPaths(installRoot, version, target) {
     archivePath: path.join(downloadsDir, archiveName),
     checksumPath: path.join(downloadsDir, checksumName),
     manifestPath: path.join(installDir, "install.json"),
-    pylonPath: path.join(installDir, "pylon"),
-    pylonTuiPath: path.join(installDir, "pylon-tui"),
+    pylonPath: path.join(installDir, binaryNameForTarget("pylon", target)),
+    pylonTuiPath: path.join(installDir, binaryNameForTarget("pylon-tui", target)),
   };
 }
 
@@ -1219,8 +1234,18 @@ async function installSourceBuild(
       stdio: "inherit",
     });
 
-    const builtPylonPath = path.join(repoDir, "target", "release", "pylon");
-    const builtPylonTuiPath = path.join(repoDir, "target", "release", "pylon-tui");
+    const builtPylonPath = path.join(
+      repoDir,
+      "target",
+      "release",
+      binaryNameForTarget("pylon", target),
+    );
+    const builtPylonTuiPath = path.join(
+      repoDir,
+      "target",
+      "release",
+      binaryNameForTarget("pylon-tui", target),
+    );
     if (!(await pathExists(builtPylonPath)) || !(await pathExists(builtPylonTuiPath))) {
       throw new Error(
         `Source build completed without the expected binaries at ${path.join(repoDir, "target", "release")}.`,
@@ -1315,8 +1340,11 @@ async function findLatestCachedInstall(installRoot, target) {
 
     const installDir = path.join(versionsDir, entry.name);
     const manifestPath = path.join(installDir, "install.json");
-    const pylonPath = path.join(installDir, "pylon");
-    const pylonTuiPath = path.join(installDir, "pylon-tui");
+    const pylonPath = path.join(installDir, binaryNameForTarget("pylon", target));
+    const pylonTuiPath = path.join(
+      installDir,
+      binaryNameForTarget("pylon-tui", target),
+    );
     if (
       !(await pathExists(manifestPath)) ||
       !(await pathExists(pylonPath)) ||
@@ -1447,8 +1475,34 @@ function spawnPylonTui(pylonTuiPath, options, spawnProcessImpl) {
   });
 }
 
-async function extractArchive(archivePath, destinationDir, runProcessImpl) {
+async function extractArchive(archivePath, destinationDir, target, runProcessImpl) {
   await fs.mkdir(destinationDir, { recursive: true });
+  if (target?.os === "windows") {
+    const args = [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      "& { param([string]$ArchivePath, [string]$DestinationPath) Expand-Archive -LiteralPath $ArchivePath -DestinationPath $DestinationPath -Force }",
+      archivePath,
+      destinationDir,
+    ];
+    for (const command of ["powershell.exe", "pwsh", "powershell"]) {
+      try {
+        await runProcessImpl(command, args);
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.startsWith(`Failed to start ${command}`)) {
+          throw error;
+        }
+      }
+    }
+    throw new Error(
+      "Windows archive extraction requires PowerShell (tried powershell.exe, pwsh, and powershell).",
+    );
+  }
   await runProcessImpl("tar", ["-xzf", archivePath, "-C", destinationDir]);
 }
 
@@ -1782,7 +1836,7 @@ export async function ensureReleaseInstall(
     paths.installDir,
   );
   await fs.rm(paths.installDir, { recursive: true, force: true });
-  await extractArchive(paths.archivePath, paths.versionsDir, runProcessImpl);
+  await extractArchive(paths.archivePath, paths.versionsDir, target, runProcessImpl);
 
   if (!(await pathExists(paths.pylonPath)) || !(await pathExists(paths.pylonTuiPath))) {
     throw new Error(

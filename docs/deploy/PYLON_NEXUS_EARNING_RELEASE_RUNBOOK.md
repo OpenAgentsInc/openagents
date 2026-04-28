@@ -77,6 +77,15 @@ restarting the dashboard from the newly installed cache path. `GITHUB_TOKEN` or
 operators. `pylon --no-updates` disables background polling, and
 `pylon --version <x.y.z>` remains a pinned run that does not auto-upgrade.
 
+When cutting a native Windows binary release, package it on a clean native
+Windows x86_64 host. The release-asset contract is:
+
+- `pylon-vX.Y.Z-windows-x86_64.zip`
+- `pylon-vX.Y.Z-windows-x86_64.zip.sha256`
+
+The npm bootstrap now resolves that asset on native Windows x86_64 and installs
+`pylon.exe` plus `pylon-tui.exe` from the unpacked cache path.
+
 Directly extracted release assets are outside that auto-update contract. A
 standalone `./pylon` or `./pylon-tui` launched from an archive reports its
 compiled version until the operator manually replaces the archive or moves back

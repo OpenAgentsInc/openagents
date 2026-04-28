@@ -57,9 +57,19 @@ describe("@openagentsinc/pylon bootstrap", () => {
       os: "linux",
       arch: "x86_64",
     });
-    expect(() => resolvePlatformTarget("win32", "x64")).toThrow(
-      "Unsupported platform",
-    );
+    expect(resolvePlatformTarget("win32", "x64")).toEqual({
+      os: "windows",
+      arch: "x86_64",
+    });
+  });
+
+  test("buildAssetNames uses zip archives for native Windows assets", () => {
+    const target = resolvePlatformTarget("win32", "x64");
+    expect(buildAssetNames("1.2.3", target)).toEqual({
+      archiveBasename: "pylon-v1.2.3-windows-x86_64",
+      archiveName: "pylon-v1.2.3-windows-x86_64.zip",
+      checksumName: "pylon-v1.2.3-windows-x86_64.zip.sha256",
+    });
   });
 
   test("selectReleaseAssets matches the expected GitHub asset names", () => {
@@ -453,6 +463,82 @@ describe("@openagentsinc/pylon bootstrap", () => {
       expect(second.cached).toBe(true);
       expect(server.counters().archiveHits - initialCounters.archiveHits).toBe(1);
       expect(server.counters().taggedReleaseHits - initialCounters.taggedReleaseHits).toBe(1);
+    });
+
+    test("installs native Windows release assets with .exe paths", async () => {
+      const installRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "pylon-bootstrap-windows-install-"),
+      );
+      const target = resolvePlatformTarget("win32", "x64");
+      const { archiveName } = buildAssetNames("1.2.3", target);
+      const archivePayload = Buffer.from("fake windows zip payload", "utf8");
+      const checksumPayload = `${createHash("sha256").update(archivePayload).digest("hex")}  ${archiveName}\n`;
+      const commands = [];
+
+      const install = await ensureReleaseInstall(
+        {
+          apiBase: "https://api.github.com",
+          repo: "OpenAgentsInc/openagents",
+          installRoot,
+          platform: "win32",
+          arch: "x64",
+        },
+        {
+          fetchImpl: async (url) => {
+            if (url === "https://api.github.com/repos/OpenAgentsInc/openagents/releases?per_page=100") {
+              return Response.json([
+                trustedRelease({
+                  tag_name: "pylon-v1.2.3",
+                  draft: false,
+                  assets: [
+                    {
+                      name: archiveName,
+                      browser_download_url: "https://downloads.example.test/windows.zip",
+                    },
+                    {
+                      name: `${archiveName}.sha256`,
+                      browser_download_url:
+                        "https://downloads.example.test/windows.zip.sha256",
+                    },
+                  ],
+                }),
+              ]);
+            }
+            if (url === "https://downloads.example.test/windows.zip") {
+              return new Response(archivePayload);
+            }
+            if (url === "https://downloads.example.test/windows.zip.sha256") {
+              return new Response(checksumPayload);
+            }
+            throw new Error(`Unexpected fetch URL: ${url}`);
+          },
+          runProcessImpl: async (command, args) => {
+            commands.push([command, ...args]);
+            if (command !== "powershell.exe") {
+              throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+            }
+            const installDir = path.join(
+              installRoot,
+              "versions",
+              "pylon-v1.2.3-windows-x86_64",
+            );
+            await fs.mkdir(installDir, { recursive: true });
+            await fs.writeFile(path.join(installDir, "pylon.exe"), "");
+            await fs.writeFile(path.join(installDir, "pylon-tui.exe"), "");
+            return { stdout: "", stderr: "" };
+          },
+        },
+      );
+
+      expect(install.target).toEqual(target);
+      expect(install.archivePath.endsWith(".zip")).toBe(true);
+      expect(install.checksumPath.endsWith(".zip.sha256")).toBe(true);
+      expect(install.pylonPath.endsWith(`${path.sep}pylon.exe`)).toBe(true);
+      expect(install.pylonTuiPath.endsWith(`${path.sep}pylon-tui.exe`)).toBe(true);
+      expect(await fs.stat(install.pylonPath)).toBeTruthy();
+      expect(await fs.stat(install.pylonTuiPath)).toBeTruthy();
+      expect(commands.some(([command]) => command === "powershell.exe")).toBe(true);
+      expect(commands.some(([command]) => command === "tar")).toBe(false);
     });
 
     test("installs a newer tagged pylon release when the cached install is older", async () => {
@@ -926,6 +1012,90 @@ describe("@openagentsinc/pylon bootstrap", () => {
       expect(cached.cached).toBe(true);
       expect(cached.installMethod).toBe("source_build");
       expect(cached.sourceCommit).toBe(expectedCommit);
+    });
+
+    test("source build fallback expects Windows .exe artifacts", async () => {
+      const installRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "pylon-bootstrap-windows-source-install-"),
+      );
+      const expectedCommit = "fedcba0987654321fedcba0987654321fedcba09";
+
+      const install = await ensureReleaseInstall(
+        {
+          apiBase: "https://api.github.com",
+          repo: "OpenAgentsInc/openagents",
+          installRoot,
+          platform: "win32",
+          arch: "x64",
+          sourceRepoUrl: "/tmp/openagents-source.git",
+        },
+        {
+          fetchImpl: latestReleaseFetch({
+            tag_name: "pylon-v1.2.3",
+            target_commitish: expectedCommit,
+            draft: false,
+            assets: [
+              {
+                name: "pylon-v1.2.3-darwin-arm64.tar.gz",
+                browser_download_url: "https://example.com/archive",
+              },
+              {
+                name: "pylon-v1.2.3-darwin-arm64.tar.gz.sha256",
+                browser_download_url: "https://example.com/checksum",
+              },
+            ],
+          }),
+          commandExistsImpl: async (command) =>
+            ["git", "cargo", "rustc"].includes(command),
+          runProcessImpl: async (command, args, options = {}) => {
+            const joined = args.join(" ");
+            if (command === "git" && joined === "init") {
+              return { stdout: "", stderr: "" };
+            }
+            if (
+              command === "git" &&
+              joined === "remote add origin /tmp/openagents-source.git"
+            ) {
+              return { stdout: "", stderr: "" };
+            }
+            if (
+              command === "git" &&
+              joined ===
+                "fetch --depth 1 origin refs/tags/pylon-v1.2.3:refs/tags/pylon-v1.2.3"
+            ) {
+              return { stdout: "", stderr: "" };
+            }
+            if (
+              command === "git" &&
+              joined === "checkout --detach refs/tags/pylon-v1.2.3"
+            ) {
+              return { stdout: "", stderr: "" };
+            }
+            if (command === "git" && joined === "rev-parse HEAD") {
+              return { stdout: `${expectedCommit}\n`, stderr: "" };
+            }
+            if (
+              command === "cargo" &&
+              joined === "build --release -p pylon -p pylon-tui"
+            ) {
+              const releaseDir = path.join(options.cwd, "target", "release");
+              await fs.mkdir(releaseDir, { recursive: true });
+              await fs.writeFile(path.join(releaseDir, "pylon.exe"), "");
+              await fs.writeFile(path.join(releaseDir, "pylon-tui.exe"), "");
+              return { stdout: "", stderr: "" };
+            }
+            throw new Error(`Unexpected command: ${command} ${joined}`);
+          },
+        },
+      );
+
+      expect(install.installMethod).toBe("source_build");
+      expect(install.cached).toBe(false);
+      expect(install.sourceCommit).toBe(expectedCommit);
+      expect(install.pylonPath.endsWith(`${path.sep}pylon.exe`)).toBe(true);
+      expect(install.pylonTuiPath.endsWith(`${path.sep}pylon-tui.exe`)).toBe(true);
+      expect(await fs.stat(install.pylonPath)).toBeTruthy();
+      expect(await fs.stat(install.pylonTuiPath)).toBeTruthy();
     });
 
     test("prompts before installing Rust when a source build needs a toolchain", async () => {
