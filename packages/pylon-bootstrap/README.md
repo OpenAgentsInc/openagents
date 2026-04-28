@@ -28,8 +28,9 @@ The launcher:
 - checks GitHub for the latest tagged `pylon-v...` release on each default run,
   or resolves a specific tagged `Pylon` version when `--version` is provided
 - only installs releases initiated by `AtlantisPleb` in GitHub Releases
-- resolves the correct `pylon-v<version>-<os>-<arch>.tar.gz` asset for the
-  current machine
+- resolves the correct release asset for the current machine:
+  `pylon-v<version>-<os>-<arch>.tar.gz` on darwin/linux and
+  `pylon-v<version>-windows-x86_64.zip` on native Windows x86_64
 - falls back to the exact tagged source checkout and builds `pylon` plus
   `pylon-tui` locally when no matching release asset exists for the machine
 - prompts before installing the Rust toolchain via `rustup` if a source build
@@ -63,6 +64,8 @@ The launcher:
   unless `--no-launch` is set
 - forwards CLI subcommands such as `pylon status --json` to the installed
   `pylon` binary after bootstrap instead of opening `pylon-tui`
+- on native Windows x86_64, installs `pylon.exe` and `pylon-tui.exe` from the
+  Windows `.zip` release asset and forwards CLI subcommands to `pylon.exe`
 - while the TUI is running on the default release track, checks GitHub Releases
   on a six-hour cadence and restarts the TUI from a newer trusted cached release
   without replacing the global npm/bun command
