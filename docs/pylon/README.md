@@ -282,7 +282,11 @@ cargo pylon-headless account link --base-url https://openagents.com --token <one
    use the dashboard's `Refresh after linking` action.
 7. The linked node should then appear in `My Pylons` with its current label,
    identity, runtime state, ready model, eligible product summary, and any
-   runtime diagnostic blocker reported by the local Pylon.
+   runtime diagnostic blocker reported by the local Pylon. The signed payload
+   also includes a web-safe `capabilities` array. Today Pylon advertises a
+   `codex_agent` capability when it can inspect the local Codex runner surface,
+   using normalized states such as `ready`, `needs_auth`, or `not_installed`
+   without uploading local credential paths or tokens.
 
 The account-link request is signed by the node-held identity key and carries
 the local runtime diagnostic snapshot. If the local admin endpoint is stale or

@@ -8893,6 +8893,7 @@ dependencies = [
  "anyhow",
  "axum 0.8.8",
  "bip39",
+ "codex-client",
  "futures-util",
  "hex",
  "jsonwebtoken",
