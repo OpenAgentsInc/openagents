@@ -315,6 +315,13 @@ The brokered runner starts Codex in read-only mode with approval requests
 rejected. Pylon projects local Codex output into web-safe workload events such
 as `run.status`, `assistant.delta`, `tool.start`, `tool.end`,
 `patch.preview`, and `pylon.error`, then reports a terminal completion status.
+Runs are bounded by `codex_workload_timeout_seconds` and poll the broker every
+`codex_workload_cancel_poll_seconds` while active. Browser cancellation is
+acknowledged with `pylon.cancelled` / `run.status: cancelled`; local timeout is
+reported as `pylon.timeout` / `run.status: timed_out` and completed as a failed
+web completion with a timeout error code because the current web completion API
+does not accept `timed_out` as a completion status. Late Codex output after
+cancellation or timeout is not forwarded as normal assistant text.
 Raw local Codex tokens, browser/WorkOS cookies, and local workspace roots are
 not included in the web event payloads.
 
@@ -325,8 +332,8 @@ cargo pylon-headless codex workload once --base-url https://openagents.com --jso
 ```
 
 That command claims at most one pending `pylon_codex` assignment for the active
-linked identity, posts signed workload events, posts terminal completion, and
-then exits.
+linked identity, posts signed workload events, posts terminal completion when
+the broker has not already made the assignment terminal, and then exits.
 
 The account-link request is signed by the node-held identity key and carries
 the local runtime diagnostic snapshot. If the local admin endpoint is stale or

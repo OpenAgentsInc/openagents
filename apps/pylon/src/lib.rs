@@ -157,6 +157,8 @@ pub const ENV_TRAINING_GCS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_GCS_B
 pub const ENV_GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 30_000;
 const DEFAULT_PROVIDER_AUTO_RUN_INTERVAL_MS: u64 = 10_000;
+const DEFAULT_CODEX_WORKLOAD_TIMEOUT_SECONDS: u64 = 600;
+const DEFAULT_CODEX_WORKLOAD_CANCEL_POLL_SECONDS: u64 = 2;
 const DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS: u64 = 30_000;
 const DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS: u64 = 1;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
@@ -332,6 +334,10 @@ pub struct PylonConfig {
     pub declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub codex_workspaces: Vec<PylonCodexWorkspaceConfig>,
+    #[serde(default = "default_codex_workload_timeout_seconds")]
+    pub codex_workload_timeout_seconds: u64,
+    #[serde(default = "default_codex_workload_cancel_poll_seconds")]
+    pub codex_workload_cancel_poll_seconds: u64,
     #[serde(default)]
     pub training: PylonTrainingConfig,
 }
@@ -2669,6 +2675,8 @@ enum PylonCodexRunnerEvent {
     ToolOutputSummary { tool: String, summary: String },
     PatchPreview { diff: String },
     Error { code: String, message: String },
+    Cancelled { code: String, message: String },
+    TimedOut { code: String, message: String },
     Completed { usage: Option<Value> },
 }
 
@@ -2729,6 +2737,27 @@ struct OpenAgentsPylonWorkloadCompletionSubmission {
 struct OpenAgentsPylonWorkloadNextResponse {
     #[serde(default)]
     assignment: Option<OpenAgentsPylonWorkloadEnvelope>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+struct OpenAgentsPylonWorkloadStatusResponse {
+    assignment: OpenAgentsPylonWorkloadStatus,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenAgentsPylonWorkloadStatus {
+    assignment_uuid: String,
+    capability_key: String,
+    status: String,
+    #[serde(default)]
+    terminal: bool,
+    #[serde(default)]
+    cancellation_requested: bool,
+    #[serde(default)]
+    error_code: Option<String>,
+    #[serde(default)]
+    error_message: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -21365,8 +21394,18 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         inventory_controls,
         declared_sandbox_profiles: Vec::new(),
         codex_workspaces: Vec::new(),
+        codex_workload_timeout_seconds: default_codex_workload_timeout_seconds(),
+        codex_workload_cancel_poll_seconds: default_codex_workload_cancel_poll_seconds(),
         training: default_training_config(base_dir),
     }
+}
+
+fn default_codex_workload_timeout_seconds() -> u64 {
+    DEFAULT_CODEX_WORKLOAD_TIMEOUT_SECONDS
+}
+
+fn default_codex_workload_cancel_poll_seconds() -> u64 {
+    DEFAULT_CODEX_WORKLOAD_CANCEL_POLL_SECONDS
 }
 
 fn default_relay_urls() -> Vec<String> {
@@ -26013,6 +26052,155 @@ fn pylon_codex_workspace_scope_value(value: &Value) -> Option<String> {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PylonCodexWorkloadStopKind {
+    Cancelled,
+    TimedOut,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PylonCodexWorkloadStopReason {
+    kind: PylonCodexWorkloadStopKind,
+    code: String,
+    message: String,
+}
+
+impl PylonCodexWorkloadStopReason {
+    fn cancelled(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: PylonCodexWorkloadStopKind::Cancelled,
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    fn timed_out(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: PylonCodexWorkloadStopKind::TimedOut,
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    fn into_runner_event(self) -> PylonCodexRunnerEvent {
+        match self.kind {
+            PylonCodexWorkloadStopKind::Cancelled => PylonCodexRunnerEvent::Cancelled {
+                code: self.code,
+                message: self.message,
+            },
+            PylonCodexWorkloadStopKind::TimedOut => PylonCodexRunnerEvent::TimedOut {
+                code: self.code,
+                message: self.message,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PylonCodexBrokerCancellationProbe<'a> {
+    client: &'a reqwest::Client,
+    base_url: &'a str,
+    identity: &'a NostrIdentity,
+    assignment: &'a OpenAgentsPylonWorkloadEnvelope,
+}
+
+struct PylonCodexWorkloadRunControl<'a> {
+    timeout: Duration,
+    cancel_poll_interval: Duration,
+    broker: Option<PylonCodexBrokerCancellationProbe<'a>>,
+}
+
+impl Default for PylonCodexWorkloadRunControl<'_> {
+    fn default() -> Self {
+        Self {
+            timeout: Duration::from_secs(DEFAULT_CODEX_WORKLOAD_TIMEOUT_SECONDS),
+            cancel_poll_interval: Duration::from_secs(DEFAULT_CODEX_WORKLOAD_CANCEL_POLL_SECONDS),
+            broker: None,
+        }
+    }
+}
+
+impl<'a> PylonCodexWorkloadRunControl<'a> {
+    fn from_config(config: &PylonConfig) -> Self {
+        Self {
+            timeout: Duration::from_secs(config.codex_workload_timeout_seconds.max(1)),
+            cancel_poll_interval: Duration::from_secs(
+                config.codex_workload_cancel_poll_seconds.max(1),
+            ),
+            broker: None,
+        }
+    }
+
+    async fn stop_reason(&self) -> Result<Option<PylonCodexWorkloadStopReason>> {
+        let Some(broker) = self.broker else {
+            return Ok(None);
+        };
+        let status = get_openagents_pylon_workload_status(
+            broker.client,
+            broker.base_url,
+            broker.identity,
+            broker.assignment.assignment_uuid.as_str(),
+        )
+        .await?;
+        Ok(pylon_codex_stop_reason_from_assignment_status(&status))
+    }
+
+    fn timeout_reason(&self) -> PylonCodexWorkloadStopReason {
+        PylonCodexWorkloadStopReason::timed_out(
+            "local_codex_timeout",
+            format!(
+                "Local Codex run exceeded the configured {} second timeout.",
+                self.timeout.as_secs()
+            ),
+        )
+    }
+}
+
+fn pylon_codex_stop_reason_from_assignment_status(
+    status: &OpenAgentsPylonWorkloadStatus,
+) -> Option<PylonCodexWorkloadStopReason> {
+    if status.cancellation_requested || status.status == "cancelled" {
+        return Some(PylonCodexWorkloadStopReason::cancelled(
+            "broker_cancelled",
+            status.error_message.clone().unwrap_or_else(|| {
+                "OpenAgents broker cancelled the Pylon Codex assignment.".to_string()
+            }),
+        ));
+    }
+
+    if status.status == "timed_out" {
+        return Some(PylonCodexWorkloadStopReason::timed_out(
+            "broker_timed_out",
+            status.error_message.clone().unwrap_or_else(|| {
+                "OpenAgents broker timed out the Pylon Codex assignment.".to_string()
+            }),
+        ));
+    }
+
+    if status.status == "expired" {
+        return Some(PylonCodexWorkloadStopReason::timed_out(
+            "broker_expired",
+            status.error_message.clone().unwrap_or_else(|| {
+                "OpenAgents broker expired the Pylon Codex assignment.".to_string()
+            }),
+        ));
+    }
+
+    if status.terminal && status.status != "succeeded" {
+        return Some(PylonCodexWorkloadStopReason::cancelled(
+            "broker_terminal",
+            status.error_message.clone().unwrap_or_else(|| {
+                format!(
+                    "OpenAgents broker marked the Pylon Codex assignment terminal with status `{}`.",
+                    status.status
+                )
+            }),
+        ));
+    }
+
+    None
+}
+
 fn pylon_codex_refusal_result(
     assignment: &OpenAgentsPylonWorkloadEnvelope,
     refusal: PylonCodexWorkloadRefusal,
@@ -26159,6 +26347,60 @@ fn project_pylon_codex_runner_events(
                 saw_terminal = true;
                 break;
             }
+            PylonCodexRunnerEvent::Cancelled { code, message } => {
+                builder.push(
+                    "pylon.cancelled",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("code".to_string(), json!(code.clone())),
+                        ("message".to_string(), json!(message.clone())),
+                    ]),
+                );
+                builder.push(
+                    "run.status",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("status".to_string(), json!("cancelled")),
+                        ("error_code".to_string(), json!(code.clone())),
+                    ]),
+                );
+                completion = PylonCodexWorkloadCompletion {
+                    status: "cancelled".to_string(),
+                    error_code: Some(code),
+                    error_message: Some(message),
+                    usage: None,
+                };
+                saw_terminal = true;
+                break;
+            }
+            PylonCodexRunnerEvent::TimedOut { code, message } => {
+                builder.push(
+                    "pylon.timeout",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("code".to_string(), json!(code.clone())),
+                        ("message".to_string(), json!(message.clone())),
+                    ]),
+                );
+                builder.push(
+                    "run.status",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("status".to_string(), json!("timed_out")),
+                        ("error_code".to_string(), json!(code.clone())),
+                    ]),
+                );
+                completion = PylonCodexWorkloadCompletion {
+                    // The current openagents.com completion API accepts succeeded, failed, and
+                    // cancelled. The event stream carries the precise timed_out state.
+                    status: "failed".to_string(),
+                    error_code: Some(code),
+                    error_message: Some(message),
+                    usage: None,
+                };
+                saw_terminal = true;
+                break;
+            }
             PylonCodexRunnerEvent::Completed { usage } => {
                 builder.push(
                     "run.status",
@@ -26264,13 +26506,23 @@ async fn run_local_pylon_codex_workload(
     config: &PylonConfig,
     assignment: &OpenAgentsPylonWorkloadEnvelope,
 ) -> PylonCodexWorkloadRunResult {
+    let control = PylonCodexWorkloadRunControl::from_config(config);
+    run_local_pylon_codex_workload_with_control(config, assignment, control).await
+}
+
+#[allow(dead_code)]
+async fn run_local_pylon_codex_workload_with_control(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    control: PylonCodexWorkloadRunControl<'_>,
+) -> PylonCodexWorkloadRunResult {
     let health = run_codex_agent_health_check();
     let prepared = match prepare_pylon_codex_workload_assignment(config, &health, assignment) {
         Ok(prepared) => prepared,
         Err(refusal) => return pylon_codex_refusal_result(assignment, refusal),
     };
 
-    match run_prepared_local_pylon_codex_workload(&prepared).await {
+    match run_prepared_local_pylon_codex_workload_with_control(&prepared, &control).await {
         Ok(events) => project_pylon_codex_runner_events(&prepared, events),
         Err(error) => project_pylon_codex_runner_events(
             &prepared,
@@ -26286,6 +26538,19 @@ async fn run_local_pylon_codex_workload(
 async fn run_prepared_local_pylon_codex_workload(
     prepared: &PreparedPylonCodexWorkload,
 ) -> Result<Vec<PylonCodexRunnerEvent>> {
+    let control = PylonCodexWorkloadRunControl::default();
+    run_prepared_local_pylon_codex_workload_with_control(prepared, &control).await
+}
+
+#[allow(dead_code)]
+async fn run_prepared_local_pylon_codex_workload_with_control(
+    prepared: &PreparedPylonCodexWorkload,
+    control: &PylonCodexWorkloadRunControl<'_>,
+) -> Result<Vec<PylonCodexRunnerEvent>> {
+    if let Some(reason) = control.stop_reason().await? {
+        return Ok(vec![reason.into_runner_event()]);
+    }
+
     let (client, mut channels) =
         codex_client::AppServerClient::spawn(codex_client::AppServerConfig {
             cwd: Some(prepared.workspace.root.clone()),
@@ -26295,7 +26560,7 @@ async fn run_prepared_local_pylon_codex_workload(
         .await
         .context("failed to spawn local Codex app-server")?;
 
-    client
+    if let Err(error) = client
         .initialize(codex_client::InitializeParams {
             client_info: codex_client::ClientInfo {
                 name: "openagents-pylon-codex-workload".to_string(),
@@ -26313,14 +26578,17 @@ async fn run_prepared_local_pylon_codex_workload(
             }),
         })
         .await
-        .context("failed to initialize local Codex app-server")?;
+    {
+        let _ = client.shutdown().await;
+        return Err(error).context("failed to initialize local Codex app-server");
+    }
 
     let approval_policy = codex_client::AskForApproval::Reject {
         sandbox_approval: true,
         rules: true,
         mcp_elicitations: true,
     };
-    let thread = client
+    let thread = match client
         .thread_start(codex_client::ThreadStartParams {
             model: None,
             model_provider: None,
@@ -26333,10 +26601,16 @@ async fn run_prepared_local_pylon_codex_workload(
             dynamic_tools: None,
         })
         .await
-        .context("failed to start local Codex thread")?;
+    {
+        Ok(thread) => thread,
+        Err(error) => {
+            let _ = client.shutdown().await;
+            return Err(error).context("failed to start local Codex thread");
+        }
+    };
     let thread_id = thread.thread.id;
 
-    let turn = client
+    let turn = match client
         .turn_start(codex_client::TurnStartParams {
             thread_id: thread_id.clone(),
             input: vec![codex_client::UserInput::Text {
@@ -26355,16 +26629,38 @@ async fn run_prepared_local_pylon_codex_workload(
             collaboration_mode: None,
         })
         .await
-        .context("failed to start local Codex turn")?;
+    {
+        Ok(turn) => turn,
+        Err(error) => {
+            let _ = client.shutdown().await;
+            return Err(error).context("failed to start local Codex turn");
+        }
+    };
     let turn_id = turn.turn.id;
 
     let mut events = Vec::new();
     events.push(PylonCodexRunnerEvent::RunStatus {
         status: "running".to_string(),
     });
+    let timeout = tokio::time::sleep(control.timeout);
+    tokio::pin!(timeout);
+    let mut cancel_poll = tokio::time::interval(control.cancel_poll_interval);
+    cancel_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         tokio::select! {
+            _ = &mut timeout => {
+                interrupt_pylon_codex_turn(&client, thread_id.as_str(), turn_id.as_str()).await;
+                events.push(control.timeout_reason().into_runner_event());
+                break;
+            }
+            _ = cancel_poll.tick(), if control.broker.is_some() => {
+                if let Some(reason) = control.stop_reason().await? {
+                    interrupt_pylon_codex_turn(&client, thread_id.as_str(), turn_id.as_str()).await;
+                    events.push(reason.into_runner_event());
+                    break;
+                }
+            }
             maybe_notification = channels.notifications.recv() => {
                 let Some(notification) = maybe_notification else {
                     break;
@@ -26376,7 +26672,10 @@ async fn run_prepared_local_pylon_codex_workload(
                 ) {
                     let terminal = matches!(
                         event,
-                        PylonCodexRunnerEvent::Completed { .. } | PylonCodexRunnerEvent::Error { .. }
+                        PylonCodexRunnerEvent::Completed { .. }
+                            | PylonCodexRunnerEvent::Error { .. }
+                            | PylonCodexRunnerEvent::Cancelled { .. }
+                            | PylonCodexRunnerEvent::TimedOut { .. }
                     );
                     events.push(event);
                     if terminal {
@@ -26389,15 +26688,15 @@ async fn run_prepared_local_pylon_codex_workload(
                     break;
                 };
                 if let Some(event) = handle_pylon_codex_server_request(&client, request).await? {
-                    let terminal = matches!(event, PylonCodexRunnerEvent::Error { .. });
+                    let terminal = matches!(
+                        event,
+                        PylonCodexRunnerEvent::Error { .. }
+                            | PylonCodexRunnerEvent::Cancelled { .. }
+                            | PylonCodexRunnerEvent::TimedOut { .. }
+                    );
                     events.push(event);
                     if terminal {
-                        let _ = client
-                            .turn_interrupt(codex_client::TurnInterruptParams {
-                                thread_id: thread_id.clone(),
-                                turn_id: turn_id.clone(),
-                            })
-                            .await;
+                        interrupt_pylon_codex_turn(&client, thread_id.as_str(), turn_id.as_str()).await;
                         break;
                     }
                 }
@@ -26405,7 +26704,22 @@ async fn run_prepared_local_pylon_codex_workload(
         }
     }
 
+    let _ = client.shutdown().await;
     Ok(events)
+}
+
+#[allow(dead_code)]
+async fn interrupt_pylon_codex_turn(
+    client: &codex_client::AppServerClient,
+    thread_id: &str,
+    turn_id: &str,
+) {
+    let _ = client
+        .turn_interrupt(codex_client::TurnInterruptParams {
+            thread_id: thread_id.to_string(),
+            turn_id: turn_id.to_string(),
+        })
+        .await;
 }
 
 #[allow(dead_code)]
@@ -26852,21 +27166,38 @@ async fn run_pylon_codex_workload_once(
         });
     };
 
-    let result = run_local_pylon_codex_workload(&config, &assignment).await;
+    let mut control = PylonCodexWorkloadRunControl::from_config(&config);
+    control.broker = Some(PylonCodexBrokerCancellationProbe {
+        client: &client,
+        base_url,
+        identity: &identity,
+        assignment: &assignment,
+    });
+
+    let result = run_local_pylon_codex_workload_with_control(&config, &assignment, control).await;
+    let broker_terminal_completion =
+        pylon_codex_completion_reflects_broker_terminal(&result.completion);
     let mut events_sent = 0;
     for event in &result.events {
+        if broker_terminal_completion
+            && !pylon_codex_event_is_broker_cancel_ack(event, &result.completion)
+        {
+            continue;
+        }
         post_openagents_pylon_workload_event(&client, base_url, &identity, &assignment, event)
             .await?;
         events_sent += 1;
     }
-    complete_openagents_pylon_workload(
-        &client,
-        base_url,
-        &identity,
-        &assignment,
-        &result.completion,
-    )
-    .await?;
+    if !broker_terminal_completion {
+        complete_openagents_pylon_workload(
+            &client,
+            base_url,
+            &identity,
+            &assignment,
+            &result.completion,
+        )
+        .await?;
+    }
 
     Ok(PylonCodexWorkloadOnceReport {
         claimed: true,
@@ -26876,6 +27207,35 @@ async fn run_pylon_codex_workload_once(
         error_code: result.completion.error_code,
         error_message: result.completion.error_message,
     })
+}
+
+fn pylon_codex_completion_reflects_broker_terminal(
+    completion: &PylonCodexWorkloadCompletion,
+) -> bool {
+    matches!(
+        completion.error_code.as_deref(),
+        Some("broker_cancelled" | "broker_timed_out" | "broker_expired" | "broker_terminal")
+    )
+}
+
+fn pylon_codex_event_is_broker_cancel_ack(
+    event: &PylonCodexWorkloadEvent,
+    completion: &PylonCodexWorkloadCompletion,
+) -> bool {
+    if completion.error_code.as_deref() != Some("broker_cancelled") {
+        return false;
+    }
+
+    if event.event_type == "pylon.cancelled" {
+        return true;
+    }
+
+    event.event_type == "run.status"
+        && event
+            .payload
+            .get("status")
+            .and_then(Value::as_str)
+            .is_some_and(|status| status == "cancelled" || status == "canceled")
 }
 
 async fn claim_next_openagents_pylon_workload(
@@ -26911,6 +27271,44 @@ async fn claim_next_openagents_pylon_workload(
         .json::<OpenAgentsPylonWorkloadNextResponse>()
         .await
         .with_context(|| format!("failed to decode OpenAgents Pylon workload claim from {url}"))
+        .map(|response| response.assignment)
+}
+
+async fn get_openagents_pylon_workload_status(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment_uuid: &str,
+) -> Result<OpenAgentsPylonWorkloadStatus> {
+    let path = format!("/api/pylon/workloads/{assignment_uuid}");
+    let mut url = openagents_pylon_workload_url(base_url, path.as_str())?;
+    url.query_pairs_mut()
+        .append_pair("public_key_hex", identity.public_key_hex.as_str());
+    let proof = build_openagents_http_proof(identity, &url, HttpMethod::Get, b"")?;
+    let response = client
+        .get(url.clone())
+        .header(
+            reqwest::header::AUTHORIZATION,
+            proof.authorization_header.as_str(),
+        )
+        .send()
+        .await
+        .with_context(|| format!("failed to fetch Pylon workload status from {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode OpenAgents workload status error".to_string());
+        bail!(
+            "OpenAgents Pylon workload status failed: {}",
+            http_error_message(detail.as_str())
+        );
+    }
+
+    response
+        .json::<OpenAgentsPylonWorkloadStatusResponse>()
+        .await
+        .with_context(|| format!("failed to decode OpenAgents Pylon workload status from {url}"))
         .map(|response| response.assignment)
 }
 
@@ -28124,6 +28522,7 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
     use std::process::Command as StdCommand;
     use std::sync::{Arc, Barrier, Mutex, OnceLock};
@@ -45045,6 +45444,175 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         assert!(!combined.contains("/tmp/openagents-local"));
         assert!(!combined.contains("access_token"));
         assert!(!combined.contains("credential"));
+    }
+
+    #[test]
+    fn pylon_codex_workload_timeout_stops_late_output() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "before timeout".to_string(),
+                },
+                super::PylonCodexRunnerEvent::TimedOut {
+                    code: "local_codex_timeout".to_string(),
+                    message: "Local Codex run exceeded the configured timeout.".to_string(),
+                },
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "late output".to_string(),
+                },
+                super::PylonCodexRunnerEvent::Completed { usage: None },
+            ],
+        );
+
+        assert_eq!(result.completion.status, "failed");
+        assert_eq!(
+            result.completion.error_code.as_deref(),
+            Some("local_codex_timeout")
+        );
+        assert!(result.events.iter().any(|event| {
+            event.event_type == "run.status"
+                && event.payload.get("status") == Some(&json!("timed_out"))
+        }));
+        assert!(!result.events.iter().any(|event| {
+            event
+                .payload
+                .get("delta")
+                .and_then(Value::as_str)
+                .is_some_and(|delta| delta.contains("late output"))
+        }));
+    }
+
+    #[test]
+    fn pylon_codex_workload_cancellation_before_start_projects_terminal_ack() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![
+                super::PylonCodexRunnerEvent::Cancelled {
+                    code: "broker_cancelled".to_string(),
+                    message: "Browser cancelled the run.".to_string(),
+                },
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "late output".to_string(),
+                },
+            ],
+        );
+
+        assert_eq!(result.completion.status, "cancelled");
+        assert_eq!(
+            result.completion.error_code.as_deref(),
+            Some("broker_cancelled")
+        );
+        assert_eq!(
+            result
+                .events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["run.status", "pylon.cancelled", "run.status"]
+        );
+        assert_eq!(
+            result.events[2].payload.get("status"),
+            Some(&json!("cancelled"))
+        );
+        assert!(!result.events.iter().any(|event| {
+            event
+                .payload
+                .get("delta")
+                .and_then(Value::as_str)
+                .is_some_and(|delta| delta.contains("late output"))
+        }));
+    }
+
+    #[test]
+    fn pylon_codex_broker_status_maps_to_stop_reasons() {
+        let cancelled = super::OpenAgentsPylonWorkloadStatus {
+            assignment_uuid: "assignment-1".to_string(),
+            capability_key: "codex_agent".to_string(),
+            status: "cancelled".to_string(),
+            terminal: true,
+            cancellation_requested: true,
+            error_code: Some("browser_cancelled".to_string()),
+            error_message: Some("Browser cancelled the run.".to_string()),
+        };
+        let timed_out = super::OpenAgentsPylonWorkloadStatus {
+            assignment_uuid: "assignment-2".to_string(),
+            capability_key: "codex_agent".to_string(),
+            status: "timed_out".to_string(),
+            terminal: true,
+            cancellation_requested: false,
+            error_code: Some("claimed_timeout".to_string()),
+            error_message: Some("Broker timeout.".to_string()),
+        };
+        let running = super::OpenAgentsPylonWorkloadStatus {
+            assignment_uuid: "assignment-3".to_string(),
+            capability_key: "codex_agent".to_string(),
+            status: "running".to_string(),
+            terminal: false,
+            cancellation_requested: false,
+            error_code: None,
+            error_message: None,
+        };
+
+        assert_eq!(
+            super::pylon_codex_stop_reason_from_assignment_status(&cancelled)
+                .map(|reason| (reason.kind, reason.code)),
+            Some((
+                super::PylonCodexWorkloadStopKind::Cancelled,
+                "broker_cancelled".to_string()
+            ))
+        );
+        assert_eq!(
+            super::pylon_codex_stop_reason_from_assignment_status(&timed_out)
+                .map(|reason| (reason.kind, reason.code)),
+            Some((
+                super::PylonCodexWorkloadStopKind::TimedOut,
+                "broker_timed_out".to_string()
+            ))
+        );
+        assert!(super::pylon_codex_stop_reason_from_assignment_status(&running).is_none());
+    }
+
+    #[test]
+    fn pylon_codex_broker_cancel_ack_filters_late_events() {
+        let completion = super::PylonCodexWorkloadCompletion {
+            status: "cancelled".to_string(),
+            error_code: Some("broker_cancelled".to_string()),
+            error_message: Some("Browser cancelled the run.".to_string()),
+            usage: None,
+        };
+        let cancel_event = super::PylonCodexWorkloadEvent {
+            sequence: 1,
+            event_type: "pylon.cancelled".to_string(),
+            actor_type: Some("pylon".to_string()),
+            payload: BTreeMap::new(),
+        };
+        let late_delta = super::PylonCodexWorkloadEvent {
+            sequence: 2,
+            event_type: "assistant.delta".to_string(),
+            actor_type: Some("assistant".to_string()),
+            payload: BTreeMap::from([("delta".to_string(), json!("late"))]),
+        };
+
+        assert!(super::pylon_codex_completion_reflects_broker_terminal(
+            &completion
+        ));
+        assert!(super::pylon_codex_event_is_broker_cancel_ack(
+            &cancel_event,
+            &completion
+        ));
+        assert!(!super::pylon_codex_event_is_broker_cancel_ack(
+            &late_delta,
+            &completion
+        ));
     }
 
     #[test]

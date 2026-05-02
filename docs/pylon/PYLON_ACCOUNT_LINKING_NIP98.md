@@ -68,12 +68,18 @@ file-change approval requests, and emit web-safe ordered events:
 - `tool.end`
 - `patch.preview`
 - `pylon.error`
+- `pylon.cancelled`
+- `pylon.timeout`
 
-Completion is sent separately as `succeeded`, `failed`, or, once cancellation
-support is enabled, a cancellation/timeout terminal state. The event and
-completion payloads carry the assignment nonce returned at claim time, but they
-do not include local Codex tokens, WorkOS browser tokens, or raw local workspace
-paths.
+Completion is sent separately as `succeeded`, `failed`, or `cancelled`.
+Timeouts carry their precise state in the event stream as `pylon.timeout` plus
+`run.status: timed_out`; the current web completion endpoint still receives a
+failed completion with a timeout error code. While a run is active, Pylon polls
+the broker status endpoint for cancellation/timeout, interrupts the local Codex
+turn when the broker goes terminal, and drops late runner output after the
+terminal cancellation/timeout event. The event and completion payloads carry
+the assignment nonce returned at claim time, but they do not include local
+Codex tokens, WorkOS browser tokens, or raw local workspace paths.
 
 The bounded operator command is:
 
