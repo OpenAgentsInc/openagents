@@ -281,7 +281,14 @@ cargo pylon-headless account link --base-url https://openagents.com --token <one
 6. After the command succeeds, refresh `https://openagents.com/dashboard` or
    use the dashboard's `Refresh after linking` action.
 7. The linked node should then appear in `My Pylons` with its current label,
-   identity, runtime state, ready model, and eligible product summary.
+   identity, runtime state, ready model, eligible product summary, and any
+   runtime diagnostic blocker reported by the local Pylon.
+
+The account-link request is signed by the node-held identity key and carries
+the local runtime diagnostic snapshot. If the local admin endpoint is stale or
+does not explicitly report the same Pylon public key as the signing identity,
+the command falls back to a freshly detected local status before completing the
+link.
 
 Keep the product posture explicit:
 

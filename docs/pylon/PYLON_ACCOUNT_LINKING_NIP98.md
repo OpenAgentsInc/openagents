@@ -21,9 +21,17 @@ The JSON body still carries:
 - `npub`
 - `node_label`
 - `runtime_state`
+- `runtime`
 - `ready_model`
 - `eligible_product_count`
 - `products`
+
+`runtime` is a nested diagnostic summary copied from the local provider status
+snapshot. It may include `mode`, `last_action`, `last_error`,
+`degraded_reason_code`, `authoritative_status`, `authoritative_error_class`,
+`execution_backend_label`, and `provider_blocker_codes`. The website stores
+those fields for linked-node diagnostics so an operator sees the actual local
+blocker instead of a bare `Error` label.
 
 The NIP-98 event binds:
 
@@ -54,6 +62,9 @@ The CLI now:
 - serializes the JSON body first
 - hashes those exact bytes for NIP-98 payload binding
 - signs the request with the local Pylon identity
+- ignores a live admin status endpoint if it does not explicitly report the
+  same public key as the local identity used to sign the account-link proof
+- includes the current runtime diagnostic summary in the signed JSON body
 - sends the NIP-98 header on the same completion request
 - exposes proof metadata in the command report:
   - `proof_scheme`
