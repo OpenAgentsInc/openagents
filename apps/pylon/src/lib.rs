@@ -22,6 +22,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use bip39::{Language, Mnemonic};
+use codex_client::CodexInstallationProbe;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use nostr::{
     Event, EventTemplate, NostrIdentity, derive_keypair, finalize_event, load_identity_from_path,
@@ -181,6 +182,11 @@ const PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB: u32 = 32;
 const TRN_TRAINING_NODE_RECORD_KIND: u16 = 39_501;
 const TRN_TRAINING_RECEIPT_KIND: u16 = 39_511;
 const TRN_TRAINING_ARTIFACT_LOCATOR_KIND: u16 = 39_520;
+const CODEX_AGENT_CAPABILITY_KEY: &str = "codex_agent";
+const CODEX_AGENT_RUNNER_KIND: &str = "codex_cli";
+const CODEX_AGENT_TRANSPORT_KIND: &str = "pylon_workload_poll";
+const CODEX_AGENT_SUPPORTED_ACTIONS: [&str; 3] = ["chat", "repo_read", "patch_preview"];
+const CODEX_AGENT_REQUIRED_CONFIRMATIONS: [&str; 3] = ["shell", "file_write", "pull_request"];
 const STARTUP_THREAD_LIMIT_ENV_VARS: [&str; 7] = [
     "RAYON_NUM_THREADS",
     "OPENBLAS_NUM_THREADS",
@@ -2468,6 +2474,8 @@ struct AccountLinkReport {
     ready_model: Option<String>,
     eligible_product_count: u64,
     products: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    capabilities: Vec<OpenAgentsPylonCapability>,
     observed_pylon_id: u64,
     account_link_id: u64,
     user_id: u64,
@@ -2498,6 +2506,8 @@ struct OpenAgentsPylonLinkCompletionRequest {
     ready_model: Option<String>,
     eligible_product_count: u64,
     products: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    capabilities: Vec<OpenAgentsPylonCapability>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -2526,6 +2536,37 @@ struct OpenAgentsPylonRuntimeDiagnostics {
     raw: Option<Value>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct OpenAgentsPylonCapability {
+    key: String,
+    status: String,
+    display_label: String,
+    auth_state: String,
+    runner_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runner_version: Option<String>,
+    transport_kind: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    supported_actions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    required_confirmations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    workspace_roots: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    blocker_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    metadata: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CodexAgentCapabilityInput {
+    runner_available: bool,
+    runner_version: Option<String>,
+    runner_error: Option<String>,
+    auth_state: String,
+    auth_blocker: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenAgentsPylonLinkCompletionResponse {
@@ -2549,6 +2590,8 @@ struct OpenAgentsObservedPylonSummary {
     eligible_product_count: Option<u64>,
     #[serde(default)]
     products: Vec<String>,
+    #[serde(default)]
+    capabilities: Vec<OpenAgentsPylonCapability>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -24599,6 +24642,18 @@ fn render_account_link_report(report: &AccountLinkReport) -> String {
         ),
         format!("eligible_product_count: {}", report.eligible_product_count),
         format!("products: {}", comma_or_none(report.products.as_slice())),
+        format!(
+            "capabilities: {}",
+            report
+                .capabilities
+                .iter()
+                .map(|capability| format!(
+                    "{}:{}:{}",
+                    capability.key, capability.status, capability.auth_state
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         format!("account_link_id: {}", report.account_link_id),
         format!("observed_pylon_id: {}", report.observed_pylon_id),
         format!("user_id: {}", report.user_id),
@@ -25381,6 +25436,154 @@ fn openagents_account_link_runtime_diagnostics(
     })
 }
 
+fn codex_auth_file_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(value) = std::env::var("CODEX_HOME") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            candidates.push(PathBuf::from(trimmed).join("auth.json"));
+        }
+    }
+    if let Ok(value) = std::env::var("HOME") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            candidates.push(PathBuf::from(trimmed).join(".codex").join("auth.json"));
+        }
+    }
+    candidates
+}
+
+fn codex_auth_payload_has_login_marker(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    object.iter().any(|(key, value)| {
+        matches!(
+            key.as_str(),
+            "access_token"
+                | "api_key"
+                | "auth_token"
+                | "id_token"
+                | "openai_api_key"
+                | "refresh_token"
+                | "tokens"
+        ) && !value.is_null()
+            && value.as_str().is_none_or(|text| !text.trim().is_empty())
+    })
+}
+
+fn inspect_codex_auth_state() -> (String, Option<String>) {
+    for candidate in codex_auth_file_candidates() {
+        if !candidate.exists() {
+            continue;
+        }
+        let payload = match std::fs::read_to_string(candidate.as_path()) {
+            Ok(payload) => payload,
+            Err(_) => {
+                return (
+                    "unknown".to_string(),
+                    Some("CODEX_AUTH_EXPIRED".to_string()),
+                );
+            }
+        };
+        if payload.trim().is_empty() {
+            return (
+                "needs_login".to_string(),
+                Some("CODEX_AUTH_MISSING".to_string()),
+            );
+        }
+        let Ok(value) = serde_json::from_str::<Value>(payload.as_str()) else {
+            return (
+                "unknown".to_string(),
+                Some("CODEX_AUTH_EXPIRED".to_string()),
+            );
+        };
+        if codex_auth_payload_has_login_marker(&value) {
+            return ("ready".to_string(), None);
+        }
+        return (
+            "needs_login".to_string(),
+            Some("CODEX_AUTH_MISSING".to_string()),
+        );
+    }
+
+    (
+        "needs_login".to_string(),
+        Some("CODEX_AUTH_MISSING".to_string()),
+    )
+}
+
+fn codex_agent_capability_input_from_probe(
+    probe: CodexInstallationProbe,
+) -> CodexAgentCapabilityInput {
+    let (auth_state, auth_blocker) = inspect_codex_auth_state();
+    CodexAgentCapabilityInput {
+        runner_available: probe.available,
+        runner_version: probe.version,
+        runner_error: probe.error,
+        auth_state,
+        auth_blocker,
+    }
+}
+
+fn codex_agent_capability_from_input(
+    node_label: &str,
+    input: CodexAgentCapabilityInput,
+) -> OpenAgentsPylonCapability {
+    let mut blocker_codes = Vec::new();
+    let status = if !input.runner_available {
+        blocker_codes.push("CODEX_NOT_INSTALLED".to_string());
+        "not_installed"
+    } else {
+        match input.auth_state.as_str() {
+            "ready" => "ready",
+            "needs_login" | "expired" => "needs_auth",
+            "unknown" => "degraded",
+            _ => "degraded",
+        }
+    };
+
+    if let Some(blocker) = input.auth_blocker {
+        if !blocker_codes.iter().any(|value| value == &blocker) {
+            blocker_codes.push(blocker);
+        }
+    }
+    if input.runner_error.is_some() && input.runner_available {
+        blocker_codes.push("CODEX_HEALTH_CHECK_FAILED".to_string());
+    }
+
+    OpenAgentsPylonCapability {
+        key: CODEX_AGENT_CAPABILITY_KEY.to_string(),
+        status: status.to_string(),
+        display_label: format!("Codex on {node_label}"),
+        auth_state: input.auth_state,
+        runner_kind: CODEX_AGENT_RUNNER_KIND.to_string(),
+        runner_version: input.runner_version,
+        transport_kind: CODEX_AGENT_TRANSPORT_KIND.to_string(),
+        supported_actions: CODEX_AGENT_SUPPORTED_ACTIONS
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        required_confirmations: CODEX_AGENT_REQUIRED_CONFIRMATIONS
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        workspace_roots: Vec::new(),
+        blocker_codes,
+        metadata: BTreeMap::from([(
+            "schema_version".to_string(),
+            json!("openagents.pylon.capability.v1"),
+        )]),
+    }
+}
+
+fn detect_codex_agent_capability(config: &PylonConfig) -> OpenAgentsPylonCapability {
+    codex_agent_capability_from_input(
+        config.node_label.as_str(),
+        codex_agent_capability_input_from_probe(codex_client::probe_codex_installation()),
+    )
+}
+
 fn build_openagents_account_link_request(
     config: &PylonConfig,
     identity: &NostrIdentity,
@@ -25408,6 +25611,7 @@ fn build_openagents_account_link_request(
         ready_model,
         eligible_product_count: products.len() as u64,
         products,
+        capabilities: vec![detect_codex_agent_capability(config)],
     }
 }
 
@@ -25453,6 +25657,7 @@ fn build_account_link_report(
         account_link,
     } = response;
     let products = observed_pylon.products;
+    let capabilities = observed_pylon.capabilities;
     AccountLinkReport {
         linked,
         base_url: base_url.trim_end_matches('/').to_string(),
@@ -25471,6 +25676,7 @@ fn build_account_link_report(
             .eligible_product_count
             .unwrap_or(products.len() as u64),
         products,
+        capabilities,
         observed_pylon_id: observed_pylon.id,
         account_link_id: account_link.id,
         user_id: account_link.user_id,
@@ -43161,6 +43367,137 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         assert_eq!(provider_control_plane_runtime_error(None, None), None);
     }
 
+    #[test]
+    fn codex_agent_capability_reports_ready_without_secret_paths() {
+        let capability = super::codex_agent_capability_from_input(
+            "desk-pylon",
+            super::CodexAgentCapabilityInput {
+                runner_available: true,
+                runner_version: Some("codex 5.4.0".to_string()),
+                runner_error: None,
+                auth_state: "ready".to_string(),
+                auth_blocker: None,
+            },
+        );
+
+        assert_eq!(capability.key, "codex_agent");
+        assert_eq!(capability.status, "ready");
+        assert_eq!(capability.display_label, "Codex on desk-pylon");
+        assert_eq!(capability.auth_state, "ready");
+        assert_eq!(capability.runner_kind, "codex_cli");
+        assert_eq!(capability.runner_version.as_deref(), Some("codex 5.4.0"));
+        assert_eq!(capability.transport_kind, "pylon_workload_poll");
+        assert!(
+            capability
+                .supported_actions
+                .iter()
+                .any(|value| value == "chat")
+        );
+        assert!(capability.workspace_roots.is_empty());
+
+        let serialized = serde_json::to_value(&capability).expect("serialize capability");
+        assert!(serialized.get("runner_path").is_none());
+        assert!(serialized.get("credential_path").is_none());
+        assert!(serialized.to_string().contains("codex 5.4.0"));
+    }
+
+    #[test]
+    fn codex_agent_capability_reports_not_installed() {
+        let capability = super::codex_agent_capability_from_input(
+            "desk-pylon",
+            super::CodexAgentCapabilityInput {
+                runner_available: false,
+                runner_version: None,
+                runner_error: Some("missing codex binary".to_string()),
+                auth_state: "needs_login".to_string(),
+                auth_blocker: Some("CODEX_AUTH_MISSING".to_string()),
+            },
+        );
+
+        assert_eq!(capability.status, "not_installed");
+        assert!(
+            capability
+                .blocker_codes
+                .iter()
+                .any(|value| value == "CODEX_NOT_INSTALLED")
+        );
+    }
+
+    #[test]
+    fn codex_agent_capability_reports_needs_auth() {
+        let capability = super::codex_agent_capability_from_input(
+            "desk-pylon",
+            super::CodexAgentCapabilityInput {
+                runner_available: true,
+                runner_version: Some("codex 5.4.0".to_string()),
+                runner_error: None,
+                auth_state: "needs_login".to_string(),
+                auth_blocker: Some("CODEX_AUTH_MISSING".to_string()),
+            },
+        );
+
+        assert_eq!(capability.status, "needs_auth");
+        assert_eq!(capability.auth_state, "needs_login");
+        assert!(
+            capability
+                .blocker_codes
+                .iter()
+                .any(|value| value == "CODEX_AUTH_MISSING")
+        );
+    }
+
+    #[test]
+    fn codex_agent_capability_reports_degraded_health_check() {
+        let capability = super::codex_agent_capability_from_input(
+            "desk-pylon",
+            super::CodexAgentCapabilityInput {
+                runner_available: true,
+                runner_version: Some("codex 5.4.0".to_string()),
+                runner_error: Some("version probe failed".to_string()),
+                auth_state: "unknown".to_string(),
+                auth_blocker: Some("CODEX_AUTH_EXPIRED".to_string()),
+            },
+        );
+
+        assert_eq!(capability.status, "degraded");
+        assert!(
+            capability
+                .blocker_codes
+                .iter()
+                .any(|value| value == "CODEX_HEALTH_CHECK_FAILED")
+        );
+    }
+
+    #[test]
+    fn account_link_response_remains_backward_compatible_without_capabilities()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let response =
+            serde_json::from_value::<super::OpenAgentsPylonLinkCompletionResponse>(json!({
+                "linked": true,
+                "observedPylon": {
+                    "id": 41,
+                    "identityKey": "11111111...22222222",
+                    "publicKeyHex": "aa",
+                    "npub": "npub1test",
+                    "nodeLabel": "legacy-pylon",
+                    "runtimeState": "online",
+                    "readyModel": null,
+                    "eligibleProductCount": 0,
+                    "products": []
+                },
+                "accountLink": {
+                    "id": 91,
+                    "userId": 7,
+                    "observedPylonId": 41,
+                    "state": "active",
+                    "method": "cli_token"
+                }
+            }))?;
+
+        assert!(response.observed_pylon.capabilities.is_empty());
+        Ok(())
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn account_link_command_posts_local_identity_and_snapshot_to_openagents()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -43189,7 +43526,8 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                             "runtimeDiagnostics": payload["runtime"],
                             "readyModel": payload["ready_model"],
                             "eligibleProductCount": payload["eligible_product_count"],
-                            "products": payload["products"]
+                            "products": payload["products"],
+                            "capabilities": payload["capabilities"]
                         },
                         "accountLink": {
                             "id": 91,
@@ -43276,6 +43614,28 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "account link report should retain the eligible product ids for automation",
         )?;
         ensure(
+            report["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities.iter().any(|capability| {
+                        capability["key"] == json!("codex_agent")
+                            && capability["transport_kind"] == json!("pylon_workload_poll")
+                            && capability["supported_actions"]
+                                .as_array()
+                                .is_some_and(|actions| {
+                                    actions.iter().any(|action| action.as_str() == Some("chat"))
+                                        && actions
+                                            .iter()
+                                            .any(|action| action.as_str() == Some("repo_read"))
+                                        && actions
+                                            .iter()
+                                            .any(|action| action.as_str() == Some("patch_preview"))
+                                })
+                    })
+                }),
+            "account link report should echo the local Codex capability advertisement",
+        )?;
+        ensure(
             report["account_link_id"] == json!(91)
                 && report["observed_pylon_id"] == json!(41)
                 && report["user_id"] == json!(7)
@@ -43324,6 +43684,20 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             completion_request.1["eligible_product_count"] == json!(3),
             "account link request should include the count of eligible products",
+        )?;
+        ensure(
+            completion_request.1["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities.iter().any(|capability| {
+                        capability["key"] == json!("codex_agent")
+                            && capability["runner_kind"] == json!("codex_cli")
+                            && capability["transport_kind"] == json!("pylon_workload_poll")
+                            && capability.get("runner_path").is_none()
+                            && capability.get("credential_path").is_none()
+                    })
+                }),
+            "account link request should include a web-safe Codex capability without local secret paths",
         )?;
         let product_ids = completion_request.1["products"]
             .as_array()

@@ -25,6 +25,7 @@ The JSON body still carries:
 - `ready_model`
 - `eligible_product_count`
 - `products`
+- `capabilities`
 
 `runtime` is a nested diagnostic summary copied from the local provider status
 snapshot. It may include `mode`, `last_action`, `last_error`,
@@ -32,6 +33,16 @@ snapshot. It may include `mode`, `last_action`, `last_error`,
 `execution_backend_label`, and `provider_blocker_codes`. The website stores
 those fields for linked-node diagnostics so an operator sees the actual local
 blocker instead of a bare `Error` label.
+
+`capabilities` is optional for backward compatibility. Current Pylon builds
+send a `codex_agent` capability snapshot with web-safe fields only:
+`status`, `auth_state`, `runner_kind`, optional `runner_version`,
+`transport_kind`, `supported_actions`, `required_confirmations`,
+`workspace_roots`, `blocker_codes`, and non-secret metadata. The CLI must not
+include raw Codex tokens, local credential paths, or local workspace paths in
+this web-bound payload. The first advertised action set is chat/read/patch
+preview only; shell, file-write, and pull-request actions remain confirmation
+gated for later workload execution.
 
 The NIP-98 event binds:
 
@@ -65,6 +76,8 @@ The CLI now:
 - ignores a live admin status endpoint if it does not explicitly report the
   same public key as the local identity used to sign the account-link proof
 - includes the current runtime diagnostic summary in the signed JSON body
+- includes the current web-safe capability snapshot, including `codex_agent`
+  readiness if a local Codex runner can be detected
 - sends the NIP-98 header on the same completion request
 - exposes proof metadata in the command report:
   - `proof_scheme`
