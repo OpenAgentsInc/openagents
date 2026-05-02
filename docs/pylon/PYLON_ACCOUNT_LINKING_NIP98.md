@@ -44,6 +44,17 @@ this web-bound payload. The first advertised action set is chat/read/patch
 preview only; shell, file-write, and pull-request actions remain confirmation
 gated for later workload execution.
 
+The `codex_agent` capability is derived from the same local health report that
+`pylon doctor --json` exposes under `codex_agent`. That report intentionally
+uses blocker codes instead of paths or credential details:
+
+- `CODEX_NOT_INSTALLED`
+- `CODEX_AUTH_MISSING`
+- `CODEX_AUTH_EXPIRED`
+- `CODEX_UNSUPPORTED_VERSION`
+- `CODEX_HEALTH_CHECK_FAILED`
+- `NO_ALLOWED_WORKSPACE`
+
 The NIP-98 event binds:
 
 - exact absolute URL
