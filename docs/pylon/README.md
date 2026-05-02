@@ -294,6 +294,40 @@ supported actions, required confirmations, and blocker codes. It deliberately
 omits raw auth tokens, credential file paths, and local workspace paths from
 the JSON output.
 
+Linked Pylons can now run the first conservative brokered Codex chat workload
+shape used by `openagents.com` admin chat. The assignment is accepted only when
+the requested `workspace_scope` maps to an operator-configured
+`codex_workspaces` entry in the local Pylon config:
+
+```json
+{
+  "codex_workspaces": [
+    {
+      "id": "repo-42",
+      "label": "OpenAgents",
+      "root": "/Users/alice/work/openagents"
+    }
+  ]
+}
+```
+
+The brokered runner starts Codex in read-only mode with approval requests
+rejected. Pylon projects local Codex output into web-safe workload events such
+as `run.status`, `assistant.delta`, `tool.start`, `tool.end`,
+`patch.preview`, and `pylon.error`, then reports a terminal completion status.
+Raw local Codex tokens, browser/WorkOS cookies, and local workspace roots are
+not included in the web event payloads.
+
+For a bounded operator poll, run:
+
+```bash
+cargo pylon-headless codex workload once --base-url https://openagents.com --json
+```
+
+That command claims at most one pending `pylon_codex` assignment for the active
+linked identity, posts signed workload events, posts terminal completion, and
+then exits.
+
 The account-link request is signed by the node-held identity key and carries
 the local runtime diagnostic snapshot. If the local admin endpoint is stale or
 does not explicitly report the same Pylon public key as the signing identity,

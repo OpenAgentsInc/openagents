@@ -185,6 +185,7 @@ const TRN_TRAINING_ARTIFACT_LOCATOR_KIND: u16 = 39_520;
 const CODEX_AGENT_CAPABILITY_KEY: &str = "codex_agent";
 const CODEX_AGENT_RUNNER_KIND: &str = "codex_cli";
 const CODEX_AGENT_TRANSPORT_KIND: &str = "pylon_workload_poll";
+const CODEX_AGENT_WEB_MODE: &str = "pylon_codex";
 const CODEX_AGENT_SUPPORTED_ACTIONS: [&str; 3] = ["chat", "repo_read", "patch_preview"];
 const CODEX_AGENT_REQUIRED_CONFIRMATIONS: [&str; 3] = ["shell", "file_write", "pull_request"];
 const STARTUP_THREAD_LIMIT_ENV_VARS: [&str; 7] = [
@@ -292,6 +293,14 @@ impl Default for PylonTrainingConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonCodexWorkspaceConfig {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    pub root: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonConfig {
     pub schema_version: u32,
     pub node_label: String,
@@ -321,6 +330,8 @@ pub struct PylonConfig {
     pub apple_fm_base_url: Option<String>,
     pub inventory_controls: ProviderInventoryControls,
     pub declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub codex_workspaces: Vec<PylonCodexWorkspaceConfig>,
     #[serde(default)]
     pub training: PylonTrainingConfig,
 }
@@ -2148,6 +2159,9 @@ pub enum Command {
     Account {
         command: AccountCommand,
     },
+    Codex {
+        command: CodexCommand,
+    },
     Status {
         json: bool,
     },
@@ -2269,6 +2283,11 @@ pub enum AccountCommand {
         token: String,
         json: bool,
     },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CodexCommand {
+    WorkloadOnce { base_url: String, json: bool },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2578,6 +2597,151 @@ struct CodexAgentHealthReport {
 struct CodexAuthInspection {
     auth_state: String,
     blocker_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenAgentsPylonWorkloadEnvelope {
+    assignment_uuid: String,
+    capability_key: String,
+    status: String,
+    nonce: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    expires_at: Option<String>,
+    #[serde(default)]
+    request: OpenAgentsPylonCodexWorkloadRequest,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct OpenAgentsPylonCodexWorkloadRequest {
+    #[serde(default)]
+    mode: String,
+    #[serde(default)]
+    prompt: String,
+    #[serde(default)]
+    messages: Vec<OpenAgentsPylonCodexMessage>,
+    #[serde(default)]
+    workspace_scope: OpenAgentsPylonCodexWorkspaceScope,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct OpenAgentsPylonCodexMessage {
+    #[serde(default)]
+    role: String,
+    #[serde(default)]
+    content: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct OpenAgentsPylonCodexWorkspaceScope {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    organization_id: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project_id: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project_repository_id: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workspace_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    repository_label: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PreparedPylonCodexWorkload {
+    assignment_uuid: String,
+    assignment_nonce: String,
+    prompt: String,
+    messages: Vec<OpenAgentsPylonCodexMessage>,
+    workspace: PylonCodexWorkspaceConfig,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PylonCodexWorkloadRefusal {
+    code: String,
+    message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PylonCodexRunnerEvent {
+    RunStatus { status: String },
+    AssistantTextDelta { delta: String },
+    ToolStarted { tool: String, label: String },
+    ToolOutputSummary { tool: String, summary: String },
+    PatchPreview { diff: String },
+    Error { code: String, message: String },
+    Completed { usage: Option<Value> },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct PylonCodexWorkloadEvent {
+    sequence: u64,
+    event_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    actor_type: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    payload: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct PylonCodexWorkloadCompletion {
+    status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    usage: Option<Value>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PylonCodexWorkloadRunResult {
+    events: Vec<PylonCodexWorkloadEvent>,
+    completion: PylonCodexWorkloadCompletion,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OpenAgentsPylonWorkloadEventSubmission {
+    public_key_hex: String,
+    assignment_nonce: String,
+    sequence: u64,
+    event_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    actor_type: Option<String>,
+    payload: BTreeMap<String, Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    occurred_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OpenAgentsPylonWorkloadCompletionSubmission {
+    public_key_hex: String,
+    assignment_nonce: String,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    usage: Option<Value>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+struct OpenAgentsPylonWorkloadNextResponse {
+    #[serde(default)]
+    assignment: Option<OpenAgentsPylonWorkloadEnvelope>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct PylonCodexWorkloadOnceReport {
+    claimed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    assignment_uuid: Option<String>,
+    events_sent: u64,
+    completion_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_message: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -7464,6 +7628,17 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 Ok(Some(render_account_link_report(&report)))
             }
         },
+        Command::Codex { command } => match command {
+            CodexCommand::WorkloadOnce { base_url, json } => {
+                let report =
+                    run_pylon_codex_workload_once(cli.config_path.as_path(), base_url.as_str())
+                        .await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_pylon_codex_workload_once_report(&report)))
+            }
+        },
         Command::Status { json } => {
             let status = load_status_or_detect(cli.config_path.as_path()).await?;
             if json {
@@ -7862,6 +8037,7 @@ Commands:\n\
   proof doctor [--namespace <ns>] [--json]\n\
   serve\n\
   account link --base-url <url> --token <one_time_token> [--json]\n\
+  codex workload once --base-url <url> [--json]\n\
   status [--json]\n\
   backends [--json]\n\
   inventory [--json] [--limit <n>]\n\
@@ -7940,6 +8116,9 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
         }
         "account" => Ok(Command::Account {
             command: parse_account_command(args, start_index + 1)?,
+        }),
+        "codex" => Ok(Command::Codex {
+            command: parse_codex_command(args, start_index + 1)?,
         }),
         "status" => {
             let json = match args.get(start_index + 1) {
@@ -8233,6 +8412,47 @@ fn parse_account_command(args: &[String], start_index: usize) -> Result<AccountC
         Some(other) => bail!("unknown account command: {other}"),
         None => bail!("missing account subcommand"),
     }
+}
+
+fn parse_codex_command(args: &[String], start_index: usize) -> Result<CodexCommand> {
+    match args.get(start_index).map(String::as_str) {
+        Some("workload") => match args.get(start_index + 1).map(String::as_str) {
+            Some("once") => {
+                let (base_url, json) = parse_codex_workload_once_command(args, start_index + 2)?;
+                Ok(CodexCommand::WorkloadOnce { base_url, json })
+            }
+            Some(other) => bail!("unknown codex workload command: {other}"),
+            None => bail!("missing codex workload command"),
+        },
+        Some(other) => bail!("unknown codex command: {other}"),
+        None => bail!("missing codex subcommand"),
+    }
+}
+
+fn parse_codex_workload_once_command(args: &[String], mut index: usize) -> Result<(String, bool)> {
+    let mut base_url = None;
+    let mut json = false;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--base-url" => {
+                index += 1;
+                base_url = Some(
+                    args.get(index)
+                        .ok_or_else(|| anyhow!("missing value for --base-url"))?
+                        .clone(),
+                );
+            }
+            "--json" => json = true,
+            other => bail!("unexpected argument for codex workload once: {other}"),
+        }
+        index += 1;
+    }
+
+    Ok((
+        base_url.ok_or_else(|| anyhow!("missing --base-url for codex workload once"))?,
+        json,
+    ))
 }
 
 fn parse_training_command(args: &[String], start_index: usize) -> Result<TrainingCommand> {
@@ -21144,6 +21364,7 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         apple_fm_base_url: None,
         inventory_controls,
         declared_sandbox_profiles: Vec::new(),
+        codex_workspaces: Vec::new(),
         training: default_training_config(base_dir),
     }
 }
@@ -24680,6 +24901,24 @@ fn render_account_link_report(report: &AccountLinkReport) -> String {
     lines.join("\n")
 }
 
+fn render_pylon_codex_workload_once_report(report: &PylonCodexWorkloadOnceReport) -> String {
+    let mut lines = vec![
+        format!("claimed: {}", report.claimed),
+        format!("completion_status: {}", report.completion_status),
+        format!("events_sent: {}", report.events_sent),
+    ];
+    if let Some(assignment_uuid) = report.assignment_uuid.as_deref() {
+        lines.push(format!("assignment_uuid: {assignment_uuid}"));
+    }
+    if let Some(error_code) = report.error_code.as_deref() {
+        lines.push(format!("error_code: {error_code}"));
+    }
+    if let Some(error_message) = report.error_message.as_deref() {
+        lines.push(format!("error_message: {error_message}"));
+    }
+    lines.join("\n")
+}
+
 #[derive(Debug, Serialize)]
 struct NexusProviderPresenceHeartbeatRequest {
     nostr_pubkey_hex: String,
@@ -25374,6 +25613,14 @@ fn openagents_account_link_url(base_url: &str) -> Result<reqwest::Url> {
     })
 }
 
+fn openagents_pylon_workload_url(base_url: &str, path: &str) -> Result<reqwest::Url> {
+    let parsed = reqwest::Url::parse(base_url)
+        .with_context(|| format!("invalid OpenAgents base URL: {base_url}"))?;
+    parsed
+        .join(path)
+        .with_context(|| format!("failed to build OpenAgents Pylon workload endpoint {path}"))
+}
+
 fn status_snapshot_identity_matches(
     status: &ProviderStatusResponse,
     identity: &NostrIdentity,
@@ -25620,6 +25867,803 @@ fn detect_codex_agent_capability(config: &PylonConfig) -> OpenAgentsPylonCapabil
     codex_agent_capability_from_health(config.node_label.as_str(), &run_codex_agent_health_check())
 }
 
+impl PylonCodexWorkloadRefusal {
+    fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+}
+
+fn prepare_pylon_codex_workload_assignment(
+    config: &PylonConfig,
+    health: &CodexAgentHealthReport,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> std::result::Result<PreparedPylonCodexWorkload, PylonCodexWorkloadRefusal> {
+    if assignment.capability_key != CODEX_AGENT_CAPABILITY_KEY {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "unsupported_capability",
+            format!(
+                "Pylon cannot run capability `{}` with the local Codex adapter.",
+                assignment.capability_key
+            ),
+        ));
+    }
+
+    if !assignment.request.mode.is_empty() && assignment.request.mode != CODEX_AGENT_WEB_MODE {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "unsupported_mode",
+            format!(
+                "Pylon cannot run Codex assignment mode `{}`.",
+                assignment.request.mode
+            ),
+        ));
+    }
+
+    if health.status != "ready" {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "codex_agent_not_ready",
+            "Local Codex is not ready on this Pylon.",
+        ));
+    }
+
+    let prompt = pylon_codex_assignment_prompt(&assignment.request).ok_or_else(|| {
+        PylonCodexWorkloadRefusal::new(
+            "malformed_assignment",
+            "Pylon Codex assignment is missing a prompt.",
+        )
+    })?;
+
+    let workspace = resolve_pylon_codex_workspace(config, &assignment.request.workspace_scope)
+        .ok_or_else(|| {
+            PylonCodexWorkloadRefusal::new(
+                "no_allowed_workspace",
+                "Pylon Codex assignment did not map to a configured local workspace.",
+            )
+        })?;
+
+    Ok(PreparedPylonCodexWorkload {
+        assignment_uuid: assignment.assignment_uuid.clone(),
+        assignment_nonce: assignment.nonce.clone(),
+        prompt,
+        messages: assignment.request.messages.clone(),
+        workspace,
+    })
+}
+
+fn pylon_codex_assignment_prompt(request: &OpenAgentsPylonCodexWorkloadRequest) -> Option<String> {
+    let prompt = request.prompt.trim();
+    if !prompt.is_empty() {
+        return Some(prompt.to_string());
+    }
+
+    request
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "user" && !message.content.trim().is_empty())
+        .map(|message| message.content.trim().to_string())
+}
+
+fn resolve_pylon_codex_workspace(
+    config: &PylonConfig,
+    scope: &OpenAgentsPylonCodexWorkspaceScope,
+) -> Option<PylonCodexWorkspaceConfig> {
+    let requested = pylon_codex_workspace_scope_candidates(scope);
+
+    config
+        .codex_workspaces
+        .iter()
+        .find(|workspace| {
+            requested.iter().any(|candidate| {
+                workspace.id == *candidate
+                    || workspace
+                        .label
+                        .as_deref()
+                        .is_some_and(|label| label == candidate)
+            })
+        })
+        .cloned()
+}
+
+fn pylon_codex_workspace_scope_candidates(
+    scope: &OpenAgentsPylonCodexWorkspaceScope,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+    for value in [
+        scope.repository_label.as_deref(),
+        scope.workspace_label.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            candidates.push(trimmed.to_string());
+        }
+    }
+
+    for value in [
+        scope.project_repository_id.as_ref(),
+        scope.project_id.as_ref(),
+        scope.organization_id.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(candidate) = pylon_codex_workspace_scope_value(value) {
+            candidates.push(candidate);
+        }
+    }
+
+    candidates.sort();
+    candidates.dedup();
+    candidates
+}
+
+fn pylon_codex_workspace_scope_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(raw) => {
+            let trimmed = raw.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        }
+        Value::Number(number) => Some(number.to_string()),
+        _ => None,
+    }
+}
+
+fn pylon_codex_refusal_result(
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    refusal: PylonCodexWorkloadRefusal,
+) -> PylonCodexWorkloadRunResult {
+    let mut builder = PylonCodexEventBuilder::default();
+    builder.push(
+        "pylon.error",
+        Some("pylon"),
+        BTreeMap::from([
+            ("code".to_string(), json!(refusal.code)),
+            ("message".to_string(), json!(refusal.message.clone())),
+            (
+                "assignment_uuid".to_string(),
+                json!(assignment.assignment_uuid),
+            ),
+        ]),
+    );
+    builder.push(
+        "run.status",
+        Some("pylon"),
+        BTreeMap::from([
+            ("status".to_string(), json!("failed")),
+            ("error_code".to_string(), json!("assignment_refused")),
+        ]),
+    );
+
+    PylonCodexWorkloadRunResult {
+        events: builder.events,
+        completion: PylonCodexWorkloadCompletion {
+            status: "failed".to_string(),
+            error_code: Some("assignment_refused".to_string()),
+            error_message: Some(refusal.message),
+            usage: None,
+        },
+    }
+}
+
+fn run_pylon_codex_workload_with_runner_events(
+    config: &PylonConfig,
+    health: &CodexAgentHealthReport,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    runner_events: Vec<PylonCodexRunnerEvent>,
+) -> PylonCodexWorkloadRunResult {
+    let prepared = match prepare_pylon_codex_workload_assignment(config, health, assignment) {
+        Ok(prepared) => prepared,
+        Err(refusal) => return pylon_codex_refusal_result(assignment, refusal),
+    };
+
+    project_pylon_codex_runner_events(&prepared, runner_events)
+}
+
+fn project_pylon_codex_runner_events(
+    prepared: &PreparedPylonCodexWorkload,
+    runner_events: Vec<PylonCodexRunnerEvent>,
+) -> PylonCodexWorkloadRunResult {
+    let mut builder = PylonCodexEventBuilder::default();
+    builder.push(
+        "run.status",
+        Some("pylon"),
+        BTreeMap::from([
+            ("status".to_string(), json!("running")),
+            (
+                "assignment_uuid".to_string(),
+                json!(prepared.assignment_uuid),
+            ),
+        ]),
+    );
+
+    let mut completion = PylonCodexWorkloadCompletion {
+        status: "succeeded".to_string(),
+        error_code: None,
+        error_message: None,
+        usage: None,
+    };
+    let mut saw_terminal = false;
+
+    for runner_event in runner_events {
+        match runner_event {
+            PylonCodexRunnerEvent::RunStatus { status } => {
+                builder.push(
+                    "run.status",
+                    Some("pylon"),
+                    BTreeMap::from([("status".to_string(), json!(status))]),
+                );
+            }
+            PylonCodexRunnerEvent::AssistantTextDelta { delta } if !delta.is_empty() => {
+                builder.push(
+                    "assistant.delta",
+                    Some("assistant"),
+                    BTreeMap::from([("delta".to_string(), json!(delta))]),
+                );
+            }
+            PylonCodexRunnerEvent::AssistantTextDelta { .. } => {}
+            PylonCodexRunnerEvent::ToolStarted { tool, label } => {
+                builder.push(
+                    "tool.start",
+                    Some("tool"),
+                    BTreeMap::from([
+                        ("tool".to_string(), json!(tool)),
+                        ("label".to_string(), json!(label)),
+                    ]),
+                );
+            }
+            PylonCodexRunnerEvent::ToolOutputSummary { tool, summary } => {
+                builder.push(
+                    "tool.end",
+                    Some("tool"),
+                    BTreeMap::from([
+                        ("tool".to_string(), json!(tool)),
+                        ("summary".to_string(), json!(summary)),
+                    ]),
+                );
+            }
+            PylonCodexRunnerEvent::PatchPreview { diff } => {
+                builder.push(
+                    "patch.preview",
+                    Some("assistant"),
+                    BTreeMap::from([("diff".to_string(), json!(diff))]),
+                );
+            }
+            PylonCodexRunnerEvent::Error { code, message } => {
+                builder.push(
+                    "pylon.error",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("code".to_string(), json!(code.clone())),
+                        ("message".to_string(), json!(message.clone())),
+                    ]),
+                );
+                builder.push(
+                    "run.status",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("status".to_string(), json!("failed")),
+                        ("error_code".to_string(), json!(code)),
+                    ]),
+                );
+                completion = PylonCodexWorkloadCompletion {
+                    status: "failed".to_string(),
+                    error_code: Some("local_codex_error".to_string()),
+                    error_message: Some(message),
+                    usage: None,
+                };
+                saw_terminal = true;
+                break;
+            }
+            PylonCodexRunnerEvent::Completed { usage } => {
+                builder.push(
+                    "run.status",
+                    Some("pylon"),
+                    BTreeMap::from([("status".to_string(), json!("succeeded"))]),
+                );
+                completion.usage = usage;
+                saw_terminal = true;
+                break;
+            }
+        }
+    }
+
+    if !saw_terminal {
+        builder.push(
+            "pylon.error",
+            Some("pylon"),
+            BTreeMap::from([
+                ("code".to_string(), json!("codex_runner_incomplete")),
+                (
+                    "message".to_string(),
+                    json!("Local Codex runner ended without a terminal event."),
+                ),
+            ]),
+        );
+        builder.push(
+            "run.status",
+            Some("pylon"),
+            BTreeMap::from([
+                ("status".to_string(), json!("failed")),
+                ("error_code".to_string(), json!("codex_runner_incomplete")),
+            ]),
+        );
+        completion = PylonCodexWorkloadCompletion {
+            status: "failed".to_string(),
+            error_code: Some("codex_runner_incomplete".to_string()),
+            error_message: Some("Local Codex runner ended without a terminal event.".to_string()),
+            usage: None,
+        };
+    }
+
+    PylonCodexWorkloadRunResult {
+        events: builder.events,
+        completion,
+    }
+}
+
+#[derive(Default)]
+struct PylonCodexEventBuilder {
+    events: Vec<PylonCodexWorkloadEvent>,
+}
+
+impl PylonCodexEventBuilder {
+    fn push(
+        &mut self,
+        event_type: impl Into<String>,
+        actor_type: Option<&str>,
+        payload: BTreeMap<String, Value>,
+    ) {
+        let sequence = self.events.len() as u64 + 1;
+        self.events.push(PylonCodexWorkloadEvent {
+            sequence,
+            event_type: event_type.into(),
+            actor_type: actor_type.map(ToString::to_string),
+            payload,
+        });
+    }
+}
+
+fn build_openagents_pylon_workload_event_submission(
+    public_key_hex: &str,
+    assignment_nonce: &str,
+    event: &PylonCodexWorkloadEvent,
+) -> OpenAgentsPylonWorkloadEventSubmission {
+    OpenAgentsPylonWorkloadEventSubmission {
+        public_key_hex: public_key_hex.to_string(),
+        assignment_nonce: assignment_nonce.to_string(),
+        sequence: event.sequence,
+        event_type: event.event_type.clone(),
+        actor_type: event.actor_type.clone(),
+        payload: event.payload.clone(),
+        occurred_at: None,
+    }
+}
+
+fn build_openagents_pylon_workload_completion_submission(
+    public_key_hex: &str,
+    assignment_nonce: &str,
+    completion: &PylonCodexWorkloadCompletion,
+) -> OpenAgentsPylonWorkloadCompletionSubmission {
+    OpenAgentsPylonWorkloadCompletionSubmission {
+        public_key_hex: public_key_hex.to_string(),
+        assignment_nonce: assignment_nonce.to_string(),
+        status: completion.status.clone(),
+        error_code: completion.error_code.clone(),
+        error_message: completion.error_message.clone(),
+        usage: completion.usage.clone(),
+    }
+}
+
+#[allow(dead_code)]
+async fn run_local_pylon_codex_workload(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> PylonCodexWorkloadRunResult {
+    let health = run_codex_agent_health_check();
+    let prepared = match prepare_pylon_codex_workload_assignment(config, &health, assignment) {
+        Ok(prepared) => prepared,
+        Err(refusal) => return pylon_codex_refusal_result(assignment, refusal),
+    };
+
+    match run_prepared_local_pylon_codex_workload(&prepared).await {
+        Ok(events) => project_pylon_codex_runner_events(&prepared, events),
+        Err(error) => project_pylon_codex_runner_events(
+            &prepared,
+            vec![PylonCodexRunnerEvent::Error {
+                code: "local_codex_runner_failed".to_string(),
+                message: safe_pylon_codex_error_message(&error.to_string()),
+            }],
+        ),
+    }
+}
+
+#[allow(dead_code)]
+async fn run_prepared_local_pylon_codex_workload(
+    prepared: &PreparedPylonCodexWorkload,
+) -> Result<Vec<PylonCodexRunnerEvent>> {
+    let (client, mut channels) =
+        codex_client::AppServerClient::spawn(codex_client::AppServerConfig {
+            cwd: Some(prepared.workspace.root.clone()),
+            wire_log: None,
+            env: Vec::new(),
+        })
+        .await
+        .context("failed to spawn local Codex app-server")?;
+
+    client
+        .initialize(codex_client::InitializeParams {
+            client_info: codex_client::ClientInfo {
+                name: "openagents-pylon-codex-workload".to_string(),
+                title: Some("OpenAgents Pylon Codex Workload".to_string()),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            capabilities: Some(codex_client::InitializeCapabilities {
+                experimental_api: true,
+                opt_out_notification_methods: Some(
+                    codex_client::legacy_codex_event_opt_out_notification_methods()
+                        .iter()
+                        .map(|method| (*method).to_string())
+                        .collect(),
+                ),
+            }),
+        })
+        .await
+        .context("failed to initialize local Codex app-server")?;
+
+    let approval_policy = codex_client::AskForApproval::Reject {
+        sandbox_approval: true,
+        rules: true,
+        mcp_elicitations: true,
+    };
+    let thread = client
+        .thread_start(codex_client::ThreadStartParams {
+            model: None,
+            model_provider: None,
+            service_tier: None,
+            cwd: Some(prepared.workspace.root.display().to_string()),
+            approval_policy: Some(approval_policy),
+            sandbox: Some(codex_client::SandboxMode::ReadOnly),
+            personality: Some(codex_client::Personality::Pragmatic),
+            ephemeral: Some(true),
+            dynamic_tools: None,
+        })
+        .await
+        .context("failed to start local Codex thread")?;
+    let thread_id = thread.thread.id;
+
+    let turn = client
+        .turn_start(codex_client::TurnStartParams {
+            thread_id: thread_id.clone(),
+            input: vec![codex_client::UserInput::Text {
+                text: prepared.prompt.clone(),
+                text_elements: Vec::new(),
+            }],
+            cwd: Some(prepared.workspace.root.clone()),
+            approval_policy: Some(approval_policy),
+            sandbox_policy: Some(codex_client::SandboxPolicy::ReadOnly),
+            model: None,
+            service_tier: None,
+            effort: None,
+            summary: None,
+            personality: Some(codex_client::Personality::Pragmatic),
+            output_schema: None,
+            collaboration_mode: None,
+        })
+        .await
+        .context("failed to start local Codex turn")?;
+    let turn_id = turn.turn.id;
+
+    let mut events = Vec::new();
+    events.push(PylonCodexRunnerEvent::RunStatus {
+        status: "running".to_string(),
+    });
+
+    loop {
+        tokio::select! {
+            maybe_notification = channels.notifications.recv() => {
+                let Some(notification) = maybe_notification else {
+                    break;
+                };
+                if let Some(event) = pylon_codex_runner_event_from_notification(
+                    notification,
+                    thread_id.as_str(),
+                    turn_id.as_str(),
+                ) {
+                    let terminal = matches!(
+                        event,
+                        PylonCodexRunnerEvent::Completed { .. } | PylonCodexRunnerEvent::Error { .. }
+                    );
+                    events.push(event);
+                    if terminal {
+                        break;
+                    }
+                }
+            }
+            maybe_request = channels.requests.recv() => {
+                let Some(request) = maybe_request else {
+                    break;
+                };
+                if let Some(event) = handle_pylon_codex_server_request(&client, request).await? {
+                    let terminal = matches!(event, PylonCodexRunnerEvent::Error { .. });
+                    events.push(event);
+                    if terminal {
+                        let _ = client
+                            .turn_interrupt(codex_client::TurnInterruptParams {
+                                thread_id: thread_id.clone(),
+                                turn_id: turn_id.clone(),
+                            })
+                            .await;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(events)
+}
+
+#[allow(dead_code)]
+fn pylon_codex_runner_event_from_notification(
+    notification: codex_client::AppServerNotification,
+    expected_thread_id: &str,
+    expected_turn_id: &str,
+) -> Option<PylonCodexRunnerEvent> {
+    let method = codex_client::canonical_notification_method(notification.method.as_str());
+    let params = notification.params?;
+    if !pylon_codex_matches_turn(&params, expected_thread_id, expected_turn_id) {
+        return None;
+    }
+
+    match method {
+        "agent_message_delta" => pylon_codex_string_field(&params, &["delta"])
+            .or_else(|| {
+                params
+                    .get("msg")
+                    .and_then(|value| pylon_codex_string_field(value, &["delta"]))
+            })
+            .map(|delta| PylonCodexRunnerEvent::AssistantTextDelta { delta }),
+        "item/started" => {
+            let item = params.get("item").unwrap_or(&params);
+            let kind = pylon_codex_string_field(item, &["type", "kind", "name"])
+                .unwrap_or_else(|| "codex_tool".to_string());
+            if kind.contains("command") || kind.contains("tool") || kind.contains("file") {
+                Some(PylonCodexRunnerEvent::ToolStarted {
+                    tool: kind,
+                    label: pylon_codex_safe_tool_label(item),
+                })
+            } else {
+                None
+            }
+        }
+        "item/commandExecution/outputDelta" | "command/exec/outputDelta" => {
+            pylon_codex_string_field(&params, &["delta", "output"]).map(|summary| {
+                PylonCodexRunnerEvent::ToolOutputSummary {
+                    tool: "command_execution".to_string(),
+                    summary: summarize_pylon_codex_tool_output(summary.as_str()),
+                }
+            })
+        }
+        "turn/diff/updated" => pylon_codex_string_field(&params, &["diff"])
+            .filter(|diff| !diff.trim().is_empty())
+            .map(|diff| PylonCodexRunnerEvent::PatchPreview { diff }),
+        "turn/completed" | "task_complete" => {
+            let status = params
+                .get("turn")
+                .and_then(|value| pylon_codex_string_field(value, &["status"]))
+                .or_else(|| pylon_codex_string_field(&params, &["status"]));
+            let error = params
+                .get("turn")
+                .and_then(|value| value.get("error"))
+                .and_then(|value| pylon_codex_string_field(value, &["message"]))
+                .or_else(|| {
+                    params
+                        .get("error")
+                        .and_then(|value| pylon_codex_string_field(value, &["message"]))
+                });
+            if matches!(status.as_deref(), Some("failed" | "cancelled")) || error.is_some() {
+                Some(PylonCodexRunnerEvent::Error {
+                    code: "local_codex_turn_failed".to_string(),
+                    message: safe_pylon_codex_error_message(
+                        error
+                            .unwrap_or_else(|| "Local Codex turn failed.".to_string())
+                            .as_str(),
+                    ),
+                })
+            } else {
+                Some(PylonCodexRunnerEvent::Completed {
+                    usage: pylon_codex_usage_payload(&params),
+                })
+            }
+        }
+        "turn/error" | "task_failed" => Some(PylonCodexRunnerEvent::Error {
+            code: "local_codex_turn_failed".to_string(),
+            message: safe_pylon_codex_error_message(
+                pylon_codex_string_field(&params, &["message"])
+                    .or_else(|| {
+                        params
+                            .get("error")
+                            .and_then(|value| pylon_codex_string_field(value, &["message"]))
+                    })
+                    .unwrap_or_else(|| "Local Codex turn failed.".to_string())
+                    .as_str(),
+            ),
+        }),
+        _ => None,
+    }
+}
+
+#[allow(dead_code)]
+async fn handle_pylon_codex_server_request(
+    client: &codex_client::AppServerClient,
+    request: codex_client::AppServerRequest,
+) -> Result<Option<PylonCodexRunnerEvent>> {
+    match request.method.as_str() {
+        "item/commandExecution/requestApproval" => {
+            client
+                .respond(
+                    request.id,
+                    &codex_client::CommandExecutionRequestApprovalResponse {
+                        decision: codex_client::ApprovalDecision::Decline,
+                    },
+                )
+                .await
+                .context("failed to decline local Codex command approval request")?;
+            Ok(Some(PylonCodexRunnerEvent::ToolOutputSummary {
+                tool: "command_execution".to_string(),
+                summary: "Declined by Pylon broker policy.".to_string(),
+            }))
+        }
+        "item/fileChange/requestApproval" => {
+            client
+                .respond(
+                    request.id,
+                    &codex_client::FileChangeRequestApprovalResponse {
+                        decision: codex_client::ApprovalDecision::Decline,
+                    },
+                )
+                .await
+                .context("failed to decline local Codex file-change request")?;
+            Ok(Some(PylonCodexRunnerEvent::ToolOutputSummary {
+                tool: "file_change".to_string(),
+                summary: "Declined by Pylon broker policy.".to_string(),
+            }))
+        }
+        "item/tool/requestUserInput" => {
+            client
+                .respond(
+                    request.id,
+                    &codex_client::ToolRequestUserInputResponse {
+                        answers: std::collections::HashMap::new(),
+                    },
+                )
+                .await
+                .context("failed to reject local Codex user-input request")?;
+            Ok(Some(PylonCodexRunnerEvent::Error {
+                code: "interactive_request_blocked".to_string(),
+                message: "Local Codex requested interactive input, which is disabled for web brokered runs."
+                    .to_string(),
+            }))
+        }
+        "item/tool/call" => {
+            client
+                .respond(
+                    request.id,
+                    &codex_client::DynamicToolCallResponse {
+                        content_items: Vec::new(),
+                        success: false,
+                    },
+                )
+                .await
+                .context("failed to reject local Codex dynamic tool call")?;
+            Ok(Some(PylonCodexRunnerEvent::Error {
+                code: "dynamic_tool_blocked".to_string(),
+                message: "Local Codex requested a dynamic tool call, which is disabled for web brokered runs."
+                    .to_string(),
+            }))
+        }
+        "account/chatgptAuthTokens/refresh" => Ok(Some(PylonCodexRunnerEvent::Error {
+            code: "codex_auth_refresh_required".to_string(),
+            message:
+                "Local Codex requested a ChatGPT token refresh. Sign in locally before retrying."
+                    .to_string(),
+        })),
+        other => Ok(Some(PylonCodexRunnerEvent::Error {
+            code: "unsupported_codex_request".to_string(),
+            message: format!("Local Codex requested unsupported broker interaction `{other}`."),
+        })),
+    }
+}
+
+#[allow(dead_code)]
+fn pylon_codex_matches_turn(
+    params: &Value,
+    expected_thread_id: &str,
+    expected_turn_id: &str,
+) -> bool {
+    let thread_id = pylon_codex_string_field(params, &["threadId", "thread_id"]).or_else(|| {
+        params
+            .get("thread")
+            .and_then(|value| pylon_codex_string_field(value, &["id"]))
+    });
+    if thread_id
+        .as_deref()
+        .is_some_and(|value| value != expected_thread_id)
+    {
+        return false;
+    }
+
+    let turn_id = pylon_codex_string_field(params, &["turnId", "turn_id"]).or_else(|| {
+        params
+            .get("turn")
+            .and_then(|value| pylon_codex_string_field(value, &["id"]))
+    });
+    if turn_id
+        .as_deref()
+        .is_some_and(|value| value != expected_turn_id)
+    {
+        return false;
+    }
+
+    true
+}
+
+#[allow(dead_code)]
+fn pylon_codex_string_field(value: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_str))
+        .map(ToString::to_string)
+}
+
+#[allow(dead_code)]
+fn pylon_codex_safe_tool_label(item: &Value) -> String {
+    pylon_codex_string_field(item, &["label", "title", "name", "kind", "type"])
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "Local Codex tool".to_string())
+}
+
+#[allow(dead_code)]
+fn summarize_pylon_codex_tool_output(output: &str) -> String {
+    const MAX_SUMMARY_CHARS: usize = 512;
+    let mut summary = output
+        .trim()
+        .chars()
+        .take(MAX_SUMMARY_CHARS)
+        .collect::<String>();
+    if output.trim().chars().count() > MAX_SUMMARY_CHARS {
+        summary.push_str("...");
+    }
+    summary
+}
+
+#[allow(dead_code)]
+fn safe_pylon_codex_error_message(message: &str) -> String {
+    let mut safe = message.trim().chars().take(1024).collect::<String>();
+    if safe.is_empty() {
+        safe = "Local Codex run failed.".to_string();
+    }
+    safe
+}
+
+#[allow(dead_code)]
+fn pylon_codex_usage_payload(params: &Value) -> Option<Value> {
+    params
+        .get("usage")
+        .cloned()
+        .or_else(|| params.get("tokenUsage").cloned())
+        .or_else(|| {
+            params
+                .get("turn")
+                .and_then(|turn| turn.get("usage"))
+                .cloned()
+        })
+}
+
 fn build_openagents_account_link_request(
     config: &PylonConfig,
     identity: &NostrIdentity,
@@ -25662,9 +26706,18 @@ fn build_openagents_account_link_proof(
     url: &reqwest::Url,
     body: &[u8],
 ) -> Result<OpenAgentsAccountLinkProof> {
+    build_openagents_http_proof(identity, url, HttpMethod::Post, body)
+}
+
+fn build_openagents_http_proof(
+    identity: &NostrIdentity,
+    url: &reqwest::Url,
+    method: HttpMethod,
+    body: &[u8],
+) -> Result<OpenAgentsAccountLinkProof> {
     let payload_hash = hash_payload(body);
-    let auth = HttpAuth::new(url.as_str().to_string(), HttpMethod::Post)
-        .with_payload_hash(payload_hash.clone());
+    let auth =
+        HttpAuth::new(url.as_str().to_string(), method).with_payload_hash(payload_hash.clone());
     let secret_key = decode_private_key_hex(identity.private_key_hex.as_str())?;
     let created_at = nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?;
     let event =
@@ -25777,6 +26830,166 @@ async fn run_account_link_command(
     let (response, proof) =
         complete_openagents_account_link(&client, base_url, &identity, &payload).await?;
     Ok(build_account_link_report(base_url, response, &proof))
+}
+
+async fn run_pylon_codex_workload_once(
+    config_path: &Path,
+    base_url: &str,
+) -> Result<PylonCodexWorkloadOnceReport> {
+    let config = ensure_local_setup(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let client = openagents_account_link_client()?;
+    let Some(assignment) =
+        claim_next_openagents_pylon_workload(&client, base_url, &identity).await?
+    else {
+        return Ok(PylonCodexWorkloadOnceReport {
+            claimed: false,
+            assignment_uuid: None,
+            events_sent: 0,
+            completion_status: "idle".to_string(),
+            error_code: None,
+            error_message: None,
+        });
+    };
+
+    let result = run_local_pylon_codex_workload(&config, &assignment).await;
+    let mut events_sent = 0;
+    for event in &result.events {
+        post_openagents_pylon_workload_event(&client, base_url, &identity, &assignment, event)
+            .await?;
+        events_sent += 1;
+    }
+    complete_openagents_pylon_workload(
+        &client,
+        base_url,
+        &identity,
+        &assignment,
+        &result.completion,
+    )
+    .await?;
+
+    Ok(PylonCodexWorkloadOnceReport {
+        claimed: true,
+        assignment_uuid: Some(assignment.assignment_uuid),
+        events_sent,
+        completion_status: result.completion.status,
+        error_code: result.completion.error_code,
+        error_message: result.completion.error_message,
+    })
+}
+
+async fn claim_next_openagents_pylon_workload(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+) -> Result<Option<OpenAgentsPylonWorkloadEnvelope>> {
+    let mut url = openagents_pylon_workload_url(base_url, "/api/pylon/workloads/next")?;
+    url.query_pairs_mut()
+        .append_pair("public_key_hex", identity.public_key_hex.as_str());
+    let proof = build_openagents_http_proof(identity, &url, HttpMethod::Get, b"")?;
+    let response = client
+        .get(url.clone())
+        .header(
+            reqwest::header::AUTHORIZATION,
+            proof.authorization_header.as_str(),
+        )
+        .send()
+        .await
+        .with_context(|| format!("failed to claim next Pylon workload from {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode OpenAgents workload claim error".to_string());
+        bail!(
+            "OpenAgents Pylon workload claim failed: {}",
+            http_error_message(detail.as_str())
+        );
+    }
+
+    response
+        .json::<OpenAgentsPylonWorkloadNextResponse>()
+        .await
+        .with_context(|| format!("failed to decode OpenAgents Pylon workload claim from {url}"))
+        .map(|response| response.assignment)
+}
+
+async fn post_openagents_pylon_workload_event(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    event: &PylonCodexWorkloadEvent,
+) -> Result<()> {
+    let path = format!("/api/pylon/workloads/{}/events", assignment.assignment_uuid);
+    let url = openagents_pylon_workload_url(base_url, path.as_str())?;
+    let payload = build_openagents_pylon_workload_event_submission(
+        identity.public_key_hex.as_str(),
+        assignment.nonce.as_str(),
+        event,
+    );
+    post_signed_openagents_json(client, &url, identity, &payload, "Pylon workload event").await
+}
+
+async fn complete_openagents_pylon_workload(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    completion: &PylonCodexWorkloadCompletion,
+) -> Result<()> {
+    let path = format!(
+        "/api/pylon/workloads/{}/complete",
+        assignment.assignment_uuid
+    );
+    let url = openagents_pylon_workload_url(base_url, path.as_str())?;
+    let payload = build_openagents_pylon_workload_completion_submission(
+        identity.public_key_hex.as_str(),
+        assignment.nonce.as_str(),
+        completion,
+    );
+    post_signed_openagents_json(
+        client,
+        &url,
+        identity,
+        &payload,
+        "Pylon workload completion",
+    )
+    .await
+}
+
+async fn post_signed_openagents_json<T: Serialize>(
+    client: &reqwest::Client,
+    url: &reqwest::Url,
+    identity: &NostrIdentity,
+    payload: &T,
+    label: &str,
+) -> Result<()> {
+    let body =
+        serde_json::to_vec(payload).with_context(|| format!("failed to serialize {label}"))?;
+    let proof = build_openagents_http_proof(identity, url, HttpMethod::Post, body.as_slice())?;
+    let response = client
+        .post(url.clone())
+        .header(
+            reqwest::header::AUTHORIZATION,
+            proof.authorization_header.as_str(),
+        )
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(body)
+        .send()
+        .await
+        .with_context(|| format!("failed to post {label} to {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| format!("failed to decode {label} error"));
+        bail!(
+            "OpenAgents {label} failed: {}",
+            http_error_message(detail.as_str())
+        );
+    }
+    Ok(())
 }
 
 async fn try_live_status(config: &PylonConfig) -> Result<Option<ProviderStatusResponse>> {
@@ -26917,7 +28130,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
-        AccountCommand, AnnouncementAction, BuyerJobSubmitRequest, Cli, Command,
+        AccountCommand, AnnouncementAction, BuyerJobSubmitRequest, Cli, CodexCommand, Command,
         DEFAULT_GEMMA_BENCH_PROMPT, DEFAULT_GEMMA_DIAGNOSTIC_ID,
         ENV_GOOGLE_APPLICATION_CREDENTIALS, ENV_TRAINING_GCS_BEARER_TOKEN,
         ENV_TRAINING_GCS_ENDPOINT, GemmaBenchExecutionMode, GemmaBenchmarkMode,
@@ -29132,6 +30345,28 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     },
                 },
             "account link should parse base URL, token, and json flags",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_codex_workload_once_command() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "codex".to_string(),
+                "workload".to_string(),
+                "once".to_string(),
+                "--base-url".to_string(),
+                "https://openagents.com".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Codex {
+                    command: CodexCommand::WorkloadOnce {
+                        base_url: "https://openagents.com".to_string(),
+                        json: true,
+                    },
+                },
+            "codex workload once should parse base URL and json flags",
         )
     }
 
@@ -43542,6 +44777,274 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         assert!(serialized.get("credential_path").is_none());
         assert!(serialized.get("auth_file").is_none());
         assert!(!serialized.to_string().contains("access_token"));
+    }
+
+    fn ready_codex_health() -> super::CodexAgentHealthReport {
+        super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("codex 5.4.0"), None),
+            super::CodexAuthInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            },
+        )
+    }
+
+    fn pylon_codex_test_config() -> PylonConfig {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-codex-test"));
+        config.codex_workspaces = vec![super::PylonCodexWorkspaceConfig {
+            id: "repo-42".to_string(),
+            label: Some("OpenAgents".to_string()),
+            root: PathBuf::from("/tmp/openagents-local"),
+        }];
+        config
+    }
+
+    fn pylon_codex_assignment() -> super::OpenAgentsPylonWorkloadEnvelope {
+        serde_json::from_value(json!({
+            "assignmentUuid": "workload-001",
+            "capabilityKey": "codex_agent",
+            "status": "claimed",
+            "nonce": "nonce-001",
+            "expiresAt": "2026-05-02T21:00:00Z",
+            "request": {
+                "mode": "pylon_codex",
+                "prompt": "Inspect the local repo.",
+                "messages": [
+                    {"role": "user", "content": "Inspect the local repo."}
+                ],
+                "workspace_scope": {
+                    "workspace_label": "Team",
+                    "repository_label": "OpenAgents",
+                    "project_repository_id": "repo-42"
+                }
+            }
+        }))
+        .expect("valid pylon codex assignment")
+    }
+
+    #[test]
+    fn pylon_codex_workload_projects_runner_events_in_stable_order() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![
+                super::PylonCodexRunnerEvent::RunStatus {
+                    status: "started".to_string(),
+                },
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "Local ".to_string(),
+                },
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "Codex".to_string(),
+                },
+                super::PylonCodexRunnerEvent::ToolStarted {
+                    tool: "repo_read".to_string(),
+                    label: "Inspect repo".to_string(),
+                },
+                super::PylonCodexRunnerEvent::ToolOutputSummary {
+                    tool: "repo_read".to_string(),
+                    summary: "Read-only inspection complete.".to_string(),
+                },
+                super::PylonCodexRunnerEvent::PatchPreview {
+                    diff: "diff --git a/README.md b/README.md".to_string(),
+                },
+                super::PylonCodexRunnerEvent::Completed {
+                    usage: Some(json!({"output_tokens": 12})),
+                },
+            ],
+        );
+
+        assert_eq!(result.completion.status, "succeeded");
+        assert_eq!(result.completion.usage, Some(json!({"output_tokens": 12})));
+        assert_eq!(
+            result
+                .events
+                .iter()
+                .map(|event| (event.sequence, event.event_type.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (1, "run.status"),
+                (2, "run.status"),
+                (3, "assistant.delta"),
+                (4, "assistant.delta"),
+                (5, "tool.start"),
+                (6, "tool.end"),
+                (7, "patch.preview"),
+                (8, "run.status"),
+            ]
+        );
+        assert_eq!(
+            result.events[2].payload.get("delta"),
+            Some(&json!("Local "))
+        );
+        assert_eq!(
+            result.events[7].payload.get("status"),
+            Some(&json!("succeeded"))
+        );
+    }
+
+    #[test]
+    fn pylon_codex_workload_refuses_unsupported_capability() {
+        let config = pylon_codex_test_config();
+        let mut assignment = pylon_codex_assignment();
+        assignment.capability_key = "local_gemma".to_string();
+
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![super::PylonCodexRunnerEvent::Completed { usage: None }],
+        );
+
+        assert_eq!(result.completion.status, "failed");
+        assert_eq!(
+            result.completion.error_code.as_deref(),
+            Some("assignment_refused")
+        );
+        assert_eq!(result.events[0].event_type, "pylon.error");
+        assert!(
+            result.events[0]
+                .payload
+                .get("message")
+                .and_then(Value::as_str)
+                .is_some_and(|message| message.contains("local_gemma"))
+        );
+    }
+
+    #[test]
+    fn pylon_codex_workload_refuses_missing_workspace_mapping() {
+        let config = default_config(std::path::Path::new("/tmp/pylon-codex-test"));
+        let assignment = pylon_codex_assignment();
+
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![super::PylonCodexRunnerEvent::Completed { usage: None }],
+        );
+
+        assert_eq!(result.completion.status, "failed");
+        assert!(result.events.iter().any(|event| {
+            event.event_type == "pylon.error"
+                && event
+                    .payload
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .is_some_and(|message| message.contains("configured local workspace"))
+        }));
+    }
+
+    #[test]
+    fn pylon_codex_workload_maps_runner_failure_to_safe_events() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![super::PylonCodexRunnerEvent::Error {
+                code: "codex_auth_expired".to_string(),
+                message: "Local Codex auth expired.".to_string(),
+            }],
+        );
+
+        assert_eq!(result.completion.status, "failed");
+        assert_eq!(
+            result.completion.error_message.as_deref(),
+            Some("Local Codex auth expired.")
+        );
+        assert_eq!(
+            result
+                .events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["run.status", "pylon.error", "run.status"]
+        );
+        assert_eq!(
+            result.events[2].payload.get("status"),
+            Some(&json!("failed"))
+        );
+    }
+
+    #[test]
+    fn pylon_codex_workload_refuses_malformed_prompt() {
+        let config = pylon_codex_test_config();
+        let mut assignment = pylon_codex_assignment();
+        assignment.request.prompt.clear();
+        assignment.request.messages.clear();
+
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![super::PylonCodexRunnerEvent::Completed { usage: None }],
+        );
+
+        assert_eq!(result.completion.status, "failed");
+        assert!(
+            result
+                .events
+                .first()
+                .and_then(|event| event.payload.get("message"))
+                .and_then(Value::as_str)
+                .is_some_and(|message| message.contains("missing a prompt"))
+        );
+    }
+
+    #[test]
+    fn pylon_codex_workload_event_submissions_are_web_safe() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "Hello".to_string(),
+                },
+                super::PylonCodexRunnerEvent::Completed { usage: None },
+            ],
+        );
+        let submission = super::build_openagents_pylon_workload_event_submission(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            assignment.nonce.as_str(),
+            &result.events[1],
+        );
+        let completion = super::build_openagents_pylon_workload_completion_submission(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            assignment.nonce.as_str(),
+            &result.completion,
+        );
+        let serialized = serde_json::to_value(&submission).expect("serialize event submission");
+        let serialized_completion =
+            serde_json::to_value(&completion).expect("serialize completion submission");
+
+        assert_eq!(
+            serialized.get("public_key_hex").and_then(Value::as_str),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+        assert_eq!(
+            serialized.get("assignment_nonce").and_then(Value::as_str),
+            Some("nonce-001")
+        );
+        assert_eq!(
+            serialized.get("event_type").and_then(Value::as_str),
+            Some("assistant.delta")
+        );
+        assert_eq!(
+            serialized_completion.get("status").and_then(Value::as_str),
+            Some("succeeded")
+        );
+
+        let combined = format!("{serialized}{serialized_completion}");
+        assert!(!combined.contains("/tmp/openagents-local"));
+        assert!(!combined.contains("access_token"));
+        assert!(!combined.contains("credential"));
     }
 
     #[test]

@@ -55,6 +55,32 @@ uses blocker codes instead of paths or credential details:
 - `CODEX_HEALTH_CHECK_FAILED`
 - `NO_ALLOWED_WORKSPACE`
 
+After linking, the web workload broker can assign `pylon_codex` chat work to a
+ready `codex_agent` capability. Pylon refuses assignments for unsupported
+capabilities, non-`pylon_codex` modes, non-ready Codex health, missing prompts,
+or a `workspace_scope` that does not match a local `codex_workspaces` config
+entry. Accepted runs launch local Codex in read-only mode, decline command and
+file-change approval requests, and emit web-safe ordered events:
+
+- `run.status`
+- `assistant.delta`
+- `tool.start`
+- `tool.end`
+- `patch.preview`
+- `pylon.error`
+
+Completion is sent separately as `succeeded`, `failed`, or, once cancellation
+support is enabled, a cancellation/timeout terminal state. The event and
+completion payloads carry the assignment nonce returned at claim time, but they
+do not include local Codex tokens, WorkOS browser tokens, or raw local workspace
+paths.
+
+The bounded operator command is:
+
+```bash
+pylon codex workload once --base-url https://openagents.com --json
+```
+
 The NIP-98 event binds:
 
 - exact absolute URL
