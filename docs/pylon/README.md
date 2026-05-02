@@ -288,6 +288,12 @@ cargo pylon-headless account link --base-url https://openagents.com --token <one
    using normalized states such as `ready`, `needs_auth`, or `not_installed`
    without uploading local credential paths or tokens.
 
+For local diagnostics, `pylon doctor --json` includes a `codex_agent` health
+report with the runner kind, optional runner version, status, auth state,
+supported actions, required confirmations, and blocker codes. It deliberately
+omits raw auth tokens, credential file paths, and local workspace paths from
+the JSON output.
+
 The account-link request is signed by the node-held identity key and carries
 the local runtime diagnostic snapshot. If the local admin endpoint is stale or
 does not explicitly report the same Pylon public key as the signing identity,

@@ -2429,6 +2429,7 @@ struct DoctorReport {
     identity: ProviderIdentityMetadata,
     availability: ProviderAvailability,
     products: Vec<ProductEntry>,
+    codex_agent: CodexAgentHealthReport,
     training: TrainingDoctorStatus,
     nexus_treasury: Option<NexusTreasuryHealthSnapshot>,
 }
@@ -2558,13 +2559,25 @@ struct OpenAgentsPylonCapability {
     metadata: BTreeMap<String, Value>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct CodexAgentCapabilityInput {
-    runner_available: bool,
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct CodexAgentHealthReport {
+    runner_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     runner_version: Option<String>,
-    runner_error: Option<String>,
+    status: String,
     auth_state: String,
-    auth_blocker: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    blocker_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    supported_actions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    required_confirmations: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CodexAuthInspection {
+    auth_state: String,
+    blocker_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -7424,6 +7437,7 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 identity: identity_metadata(&identity, config.node_label.as_str()),
                 availability,
                 products,
+                codex_agent: run_codex_agent_health_check(),
                 training,
                 nexus_treasury,
             })?))
@@ -25472,7 +25486,7 @@ fn codex_auth_payload_has_login_marker(value: &Value) -> bool {
     })
 }
 
-fn inspect_codex_auth_state() -> (String, Option<String>) {
+fn inspect_codex_auth_state() -> CodexAuthInspection {
     for candidate in codex_auth_file_candidates() {
         if !candidate.exists() {
             continue;
@@ -25480,62 +25494,59 @@ fn inspect_codex_auth_state() -> (String, Option<String>) {
         let payload = match std::fs::read_to_string(candidate.as_path()) {
             Ok(payload) => payload,
             Err(_) => {
-                return (
-                    "unknown".to_string(),
-                    Some("CODEX_AUTH_EXPIRED".to_string()),
-                );
+                return CodexAuthInspection {
+                    auth_state: "unknown".to_string(),
+                    blocker_code: Some("CODEX_AUTH_EXPIRED".to_string()),
+                };
             }
         };
         if payload.trim().is_empty() {
-            return (
-                "needs_login".to_string(),
-                Some("CODEX_AUTH_MISSING".to_string()),
-            );
+            return CodexAuthInspection {
+                auth_state: "needs_login".to_string(),
+                blocker_code: Some("CODEX_AUTH_MISSING".to_string()),
+            };
         }
         let Ok(value) = serde_json::from_str::<Value>(payload.as_str()) else {
-            return (
-                "unknown".to_string(),
-                Some("CODEX_AUTH_EXPIRED".to_string()),
-            );
+            return CodexAuthInspection {
+                auth_state: "unknown".to_string(),
+                blocker_code: Some("CODEX_AUTH_EXPIRED".to_string()),
+            };
         };
         if codex_auth_payload_has_login_marker(&value) {
-            return ("ready".to_string(), None);
+            return CodexAuthInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            };
         }
-        return (
-            "needs_login".to_string(),
-            Some("CODEX_AUTH_MISSING".to_string()),
-        );
+        return CodexAuthInspection {
+            auth_state: "needs_login".to_string(),
+            blocker_code: Some("CODEX_AUTH_MISSING".to_string()),
+        };
     }
 
-    (
-        "needs_login".to_string(),
-        Some("CODEX_AUTH_MISSING".to_string()),
-    )
+    CodexAuthInspection {
+        auth_state: "needs_login".to_string(),
+        blocker_code: Some("CODEX_AUTH_MISSING".to_string()),
+    }
 }
 
-fn codex_agent_capability_input_from_probe(
+fn codex_agent_health_report_from_probe(probe: CodexInstallationProbe) -> CodexAgentHealthReport {
+    codex_agent_health_report_from_parts(probe, inspect_codex_auth_state())
+}
+
+fn codex_agent_health_report_from_parts(
     probe: CodexInstallationProbe,
-) -> CodexAgentCapabilityInput {
-    let (auth_state, auth_blocker) = inspect_codex_auth_state();
-    CodexAgentCapabilityInput {
-        runner_available: probe.available,
-        runner_version: probe.version,
-        runner_error: probe.error,
-        auth_state,
-        auth_blocker,
-    }
-}
-
-fn codex_agent_capability_from_input(
-    node_label: &str,
-    input: CodexAgentCapabilityInput,
-) -> OpenAgentsPylonCapability {
+    auth: CodexAuthInspection,
+) -> CodexAgentHealthReport {
     let mut blocker_codes = Vec::new();
-    let status = if !input.runner_available {
+    let status = if !probe.available {
         blocker_codes.push("CODEX_NOT_INSTALLED".to_string());
         "not_installed"
+    } else if codex_runner_version_is_unsupported(probe.version.as_deref()) {
+        blocker_codes.push("CODEX_UNSUPPORTED_VERSION".to_string());
+        "unsupported"
     } else {
-        match input.auth_state.as_str() {
+        match auth.auth_state.as_str() {
             "ready" => "ready",
             "needs_login" | "expired" => "needs_auth",
             "unknown" => "degraded",
@@ -25543,23 +25554,21 @@ fn codex_agent_capability_from_input(
         }
     };
 
-    if let Some(blocker) = input.auth_blocker {
+    if let Some(blocker) = auth.blocker_code {
         if !blocker_codes.iter().any(|value| value == &blocker) {
             blocker_codes.push(blocker);
         }
     }
-    if input.runner_error.is_some() && input.runner_available {
+    if probe.error.is_some() && probe.available {
         blocker_codes.push("CODEX_HEALTH_CHECK_FAILED".to_string());
     }
 
-    OpenAgentsPylonCapability {
-        key: CODEX_AGENT_CAPABILITY_KEY.to_string(),
-        status: status.to_string(),
-        display_label: format!("Codex on {node_label}"),
-        auth_state: input.auth_state,
+    CodexAgentHealthReport {
         runner_kind: CODEX_AGENT_RUNNER_KIND.to_string(),
-        runner_version: input.runner_version,
-        transport_kind: CODEX_AGENT_TRANSPORT_KIND.to_string(),
+        runner_version: probe.version,
+        status: status.to_string(),
+        auth_state: auth.auth_state,
+        blocker_codes,
         supported_actions: CODEX_AGENT_SUPPORTED_ACTIONS
             .iter()
             .map(ToString::to_string)
@@ -25568,8 +25577,38 @@ fn codex_agent_capability_from_input(
             .iter()
             .map(ToString::to_string)
             .collect(),
+    }
+}
+
+fn codex_runner_version_is_unsupported(version: Option<&str>) -> bool {
+    version
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            !normalized.is_empty() && !normalized.contains("codex")
+        })
+        .unwrap_or(false)
+}
+
+fn run_codex_agent_health_check() -> CodexAgentHealthReport {
+    codex_agent_health_report_from_probe(codex_client::probe_codex_installation())
+}
+
+fn codex_agent_capability_from_health(
+    node_label: &str,
+    health: &CodexAgentHealthReport,
+) -> OpenAgentsPylonCapability {
+    OpenAgentsPylonCapability {
+        key: CODEX_AGENT_CAPABILITY_KEY.to_string(),
+        status: health.status.clone(),
+        display_label: format!("Codex on {node_label}"),
+        auth_state: health.auth_state.clone(),
+        runner_kind: health.runner_kind.clone(),
+        runner_version: health.runner_version.clone(),
+        transport_kind: CODEX_AGENT_TRANSPORT_KIND.to_string(),
+        supported_actions: health.supported_actions.clone(),
+        required_confirmations: health.required_confirmations.clone(),
         workspace_roots: Vec::new(),
-        blocker_codes,
+        blocker_codes: health.blocker_codes.clone(),
         metadata: BTreeMap::from([(
             "schema_version".to_string(),
             json!("openagents.pylon.capability.v1"),
@@ -25578,10 +25617,7 @@ fn codex_agent_capability_from_input(
 }
 
 fn detect_codex_agent_capability(config: &PylonConfig) -> OpenAgentsPylonCapability {
-    codex_agent_capability_from_input(
-        config.node_label.as_str(),
-        codex_agent_capability_input_from_probe(codex_client::probe_codex_installation()),
-    )
+    codex_agent_capability_from_health(config.node_label.as_str(), &run_codex_agent_health_check())
 }
 
 fn build_openagents_account_link_request(
@@ -43367,20 +43403,33 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         assert_eq!(provider_control_plane_runtime_error(None, None), None);
     }
 
+    fn codex_probe(
+        available: bool,
+        version: Option<&str>,
+        error: Option<&str>,
+    ) -> codex_client::CodexInstallationProbe {
+        codex_client::CodexInstallationProbe {
+            available,
+            invocation: available.then(|| "codex app-server".to_string()),
+            resolved_program: None,
+            version: version.map(ToString::to_string),
+            error: error.map(ToString::to_string),
+        }
+    }
+
     #[test]
-    fn codex_agent_capability_reports_ready_without_secret_paths() {
-        let capability = super::codex_agent_capability_from_input(
-            "desk-pylon",
-            super::CodexAgentCapabilityInput {
-                runner_available: true,
-                runner_version: Some("codex 5.4.0".to_string()),
-                runner_error: None,
+    fn codex_agent_health_reports_ready_and_feeds_capability() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("codex 5.4.0"), None),
+            super::CodexAuthInspection {
                 auth_state: "ready".to_string(),
-                auth_blocker: None,
+                blocker_code: None,
             },
         );
+        let capability = super::codex_agent_capability_from_health("desk-pylon", &health);
 
         assert_eq!(capability.key, "codex_agent");
+        assert_eq!(health.status, "ready");
         assert_eq!(capability.status, "ready");
         assert_eq!(capability.display_label, "Codex on desk-pylon");
         assert_eq!(capability.auth_state, "ready");
@@ -43402,21 +43451,18 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     }
 
     #[test]
-    fn codex_agent_capability_reports_not_installed() {
-        let capability = super::codex_agent_capability_from_input(
-            "desk-pylon",
-            super::CodexAgentCapabilityInput {
-                runner_available: false,
-                runner_version: None,
-                runner_error: Some("missing codex binary".to_string()),
+    fn codex_agent_health_reports_not_installed() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(false, None, Some("missing codex binary")),
+            super::CodexAuthInspection {
                 auth_state: "needs_login".to_string(),
-                auth_blocker: Some("CODEX_AUTH_MISSING".to_string()),
+                blocker_code: Some("CODEX_AUTH_MISSING".to_string()),
             },
         );
 
-        assert_eq!(capability.status, "not_installed");
+        assert_eq!(health.status, "not_installed");
         assert!(
-            capability
+            health
                 .blocker_codes
                 .iter()
                 .any(|value| value == "CODEX_NOT_INSTALLED")
@@ -43424,22 +43470,19 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     }
 
     #[test]
-    fn codex_agent_capability_reports_needs_auth() {
-        let capability = super::codex_agent_capability_from_input(
-            "desk-pylon",
-            super::CodexAgentCapabilityInput {
-                runner_available: true,
-                runner_version: Some("codex 5.4.0".to_string()),
-                runner_error: None,
+    fn codex_agent_health_reports_needs_auth() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("codex 5.4.0"), None),
+            super::CodexAuthInspection {
                 auth_state: "needs_login".to_string(),
-                auth_blocker: Some("CODEX_AUTH_MISSING".to_string()),
+                blocker_code: Some("CODEX_AUTH_MISSING".to_string()),
             },
         );
 
-        assert_eq!(capability.status, "needs_auth");
-        assert_eq!(capability.auth_state, "needs_login");
+        assert_eq!(health.status, "needs_auth");
+        assert_eq!(health.auth_state, "needs_login");
         assert!(
-            capability
+            health
                 .blocker_codes
                 .iter()
                 .any(|value| value == "CODEX_AUTH_MISSING")
@@ -43447,25 +43490,58 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     }
 
     #[test]
-    fn codex_agent_capability_reports_degraded_health_check() {
-        let capability = super::codex_agent_capability_from_input(
-            "desk-pylon",
-            super::CodexAgentCapabilityInput {
-                runner_available: true,
-                runner_version: Some("codex 5.4.0".to_string()),
-                runner_error: Some("version probe failed".to_string()),
+    fn codex_agent_health_reports_degraded_health_check() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("codex 5.4.0"), Some("version probe failed")),
+            super::CodexAuthInspection {
                 auth_state: "unknown".to_string(),
-                auth_blocker: Some("CODEX_AUTH_EXPIRED".to_string()),
+                blocker_code: Some("CODEX_AUTH_EXPIRED".to_string()),
             },
         );
 
-        assert_eq!(capability.status, "degraded");
+        assert_eq!(health.status, "degraded");
         assert!(
-            capability
+            health
                 .blocker_codes
                 .iter()
                 .any(|value| value == "CODEX_HEALTH_CHECK_FAILED")
         );
+    }
+
+    #[test]
+    fn codex_agent_health_reports_unsupported_runner_output() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("node v24.0.0"), None),
+            super::CodexAuthInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            },
+        );
+
+        assert_eq!(health.status, "unsupported");
+        assert!(
+            health
+                .blocker_codes
+                .iter()
+                .any(|value| value == "CODEX_UNSUPPORTED_VERSION")
+        );
+    }
+
+    #[test]
+    fn codex_agent_health_serializes_without_secrets_or_local_paths() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("codex 5.4.0"), None),
+            super::CodexAuthInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            },
+        );
+        let serialized = serde_json::to_value(&health).expect("serialize health");
+
+        assert!(serialized.get("runner_path").is_none());
+        assert!(serialized.get("credential_path").is_none());
+        assert!(serialized.get("auth_file").is_none());
+        assert!(!serialized.to_string().contains("access_token"));
     }
 
     #[test]
@@ -48277,6 +48353,20 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 product.get("backend").and_then(Value::as_str) != Some("apple_foundation_models")
             }),
             "doctor should hide the legacy Apple FM-only surface from standalone Pylon onboarding",
+        )?;
+        ensure(
+            json.get("codex_agent")
+                .and_then(Value::as_object)
+                .is_some_and(|report| {
+                    report
+                        .get("runner_kind")
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| value == "codex_cli")
+                        && report.get("runner_path").is_none()
+                        && report.get("credential_path").is_none()
+                        && report.get("auth_file").is_none()
+                }),
+            "doctor should include a local Codex readiness report without credential paths",
         )
     }
 
