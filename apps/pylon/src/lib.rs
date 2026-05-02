@@ -2464,6 +2464,7 @@ struct AccountLinkReport {
     npub: String,
     node_label: String,
     runtime_state: String,
+    runtime: Option<OpenAgentsPylonRuntimeDiagnostics>,
     ready_model: Option<String>,
     eligible_product_count: u64,
     products: Vec<String>,
@@ -2492,9 +2493,37 @@ struct OpenAgentsPylonLinkCompletionRequest {
     npub: String,
     node_label: Option<String>,
     runtime_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime: Option<OpenAgentsPylonRuntimeDiagnostics>,
     ready_model: Option<String>,
     eligible_product_count: u64,
     products: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct OpenAgentsPylonRuntimeDiagnostics {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
+    #[serde(default, alias = "lastAction", skip_serializing_if = "Option::is_none")]
+    last_action: Option<String>,
+    #[serde(default, alias = "lastError", skip_serializing_if = "Option::is_none")]
+    last_error: Option<String>,
+    #[serde(
+        default,
+        alias = "degradedReasonCode",
+        skip_serializing_if = "Option::is_none"
+    )]
+    degraded_reason_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    authoritative_status: Option<String>,
+    #[serde(default, alias = "errorClass", skip_serializing_if = "Option::is_none")]
+    authoritative_error_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    execution_backend_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    provider_blocker_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    raw: Option<Value>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -2514,6 +2543,8 @@ struct OpenAgentsObservedPylonSummary {
     npub: String,
     node_label: Option<String>,
     runtime_state: Option<String>,
+    #[serde(default)]
+    runtime_diagnostics: Option<OpenAgentsPylonRuntimeDiagnostics>,
     ready_model: Option<String>,
     eligible_product_count: Option<u64>,
     #[serde(default)]
@@ -24535,7 +24566,7 @@ fn comma_or_none(values: &[String]) -> String {
 }
 
 fn render_account_link_report(report: &AccountLinkReport) -> String {
-    [
+    let mut lines = vec![
         format!("linked: {}", report.linked),
         format!("base_url: {}", report.base_url),
         format!("identity_key: {}", report.identity_key),
@@ -24543,6 +24574,25 @@ fn render_account_link_report(report: &AccountLinkReport) -> String {
         format!("npub: {}", report.npub),
         format!("public_key_hex: {}", report.public_key_hex),
         format!("runtime_state: {}", report.runtime_state),
+    ];
+    if let Some(runtime) = report.runtime.as_ref() {
+        if let Some(mode) = runtime.mode.as_deref() {
+            lines.push(format!("runtime_mode: {mode}"));
+        }
+        if let Some(reason) = runtime.degraded_reason_code.as_deref() {
+            lines.push(format!("runtime_degraded_reason_code: {reason}"));
+        }
+        if let Some(class) = runtime.authoritative_error_class.as_deref() {
+            lines.push(format!("runtime_error_class: {class}"));
+        }
+        if let Some(action) = runtime.last_action.as_deref() {
+            lines.push(format!("runtime_last_action: {action}"));
+        }
+        if let Some(error) = runtime.last_error.as_deref() {
+            lines.push(format!("runtime_last_error: {error}"));
+        }
+    }
+    lines.extend([
         format!(
             "ready_model: {}",
             report.ready_model.as_deref().unwrap_or("none")
@@ -24557,8 +24607,8 @@ fn render_account_link_report(report: &AccountLinkReport) -> String {
         format!("proof_scheme: {}", report.proof_scheme),
         format!("proof_event_id: {}", report.proof_event_id),
         format!("proof_payload_hash: {}", report.proof_payload_hash),
-    ]
-    .join("\n")
+    ]);
+    lines.join("\n")
 }
 
 #[derive(Debug, Serialize)]
@@ -25255,6 +25305,42 @@ fn openagents_account_link_url(base_url: &str) -> Result<reqwest::Url> {
     })
 }
 
+fn status_snapshot_identity_matches(
+    status: &ProviderStatusResponse,
+    identity: &NostrIdentity,
+) -> bool {
+    match status
+        .snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.identity.as_ref())
+        .and_then(|metadata| metadata.public_key_hex.as_deref())
+    {
+        Some(public_key_hex) => public_key_hex
+            .trim()
+            .eq_ignore_ascii_case(identity.public_key_hex.as_str()),
+        None => false,
+    }
+}
+
+async fn load_account_link_status(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+) -> Result<ProviderStatusResponse> {
+    if let Some(status) = try_live_status(config).await? {
+        if status_snapshot_identity_matches(&status, identity) {
+            return Ok(status);
+        }
+    }
+
+    let admin_config = provider_admin_config(config)?;
+    let store = if config.admin_db_path.exists() {
+        Some(ProviderPersistenceStore::open(&admin_config).map_err(anyhow::Error::msg)?)
+    } else {
+        None
+    };
+    load_status_with_store(config, store.as_ref(), None).await
+}
+
 fn decode_private_key_hex(private_key_hex: &str) -> Result<[u8; 32]> {
     let key_bytes = hex::decode(private_key_hex.trim())
         .with_context(|| format!("invalid identity private_key_hex: {private_key_hex}"))?;
@@ -25264,6 +25350,34 @@ fn decode_private_key_hex(private_key_hex: &str) -> Result<[u8; 32]> {
             "invalid identity private_key_hex length {}, expected 32 bytes",
             key_length
         )
+    })
+}
+
+fn openagents_account_link_runtime_diagnostics(
+    status: &ProviderStatusResponse,
+) -> Option<OpenAgentsPylonRuntimeDiagnostics> {
+    status.snapshot.as_ref().map(|snapshot| {
+        let runtime = &snapshot.runtime;
+        OpenAgentsPylonRuntimeDiagnostics {
+            mode: Some(runtime.mode.label().to_string()),
+            last_action: runtime.last_action.clone(),
+            last_error: runtime.last_error.clone(),
+            degraded_reason_code: runtime.degraded_reason_code.clone(),
+            authoritative_status: runtime
+                .authoritative_status
+                .clone()
+                .or_else(|| Some(runtime.mode.label().to_string())),
+            authoritative_error_class: runtime
+                .authoritative_error_class
+                .map(|failure_class| failure_class.label().to_string()),
+            execution_backend_label: if runtime.execution_backend_label.trim().is_empty() {
+                None
+            } else {
+                Some(runtime.execution_backend_label.clone())
+            },
+            provider_blocker_codes: runtime.provider_blocker_codes.clone(),
+            raw: None,
+        }
     })
 }
 
@@ -25290,6 +25404,7 @@ fn build_openagents_account_link_request(
         npub: identity.npub.clone(),
         node_label: Some(config.node_label.clone()),
         runtime_state: Some(provider_runtime_state_label(status)),
+        runtime: openagents_account_link_runtime_diagnostics(status),
         ready_model,
         eligible_product_count: products.len() as u64,
         products,
@@ -25350,6 +25465,7 @@ fn build_account_link_report(
         runtime_state: observed_pylon
             .runtime_state
             .unwrap_or_else(|| "unknown".to_string()),
+        runtime: observed_pylon.runtime_diagnostics,
         ready_model: observed_pylon.ready_model,
         eligible_product_count: observed_pylon
             .eligible_product_count
@@ -25413,7 +25529,7 @@ async fn run_account_link_command(
 ) -> Result<AccountLinkReport> {
     let config = ensure_local_setup(config_path)?;
     let identity = ensure_identity(config.identity_path.as_path())?;
-    let status = load_status_or_detect(config_path).await?;
+    let status = load_account_link_status(&config, &identity).await?;
     let payload = build_openagents_account_link_request(&config, &identity, &status, token);
     let client = openagents_account_link_client()?;
     let (response, proof) =
@@ -43070,6 +43186,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                             "npub": payload["npub"],
                             "nodeLabel": payload["node_label"],
                             "runtimeState": payload["runtime_state"],
+                            "runtimeDiagnostics": payload["runtime"],
                             "readyModel": payload["ready_model"],
                             "eligibleProductCount": payload["eligible_product_count"],
                             "products": payload["products"]
@@ -43140,14 +43257,22 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "account link report should echo the local identity and runtime state",
         )?;
         ensure(
+            report["runtime"]["mode"] == json!("online")
+                && report["runtime"]["last_action"]
+                    .as_str()
+                    .is_some_and(|value| value.contains("pylon is online"))
+                && report["runtime"]["authoritative_status"] == json!("online"),
+            "account link report should echo the runtime diagnostic summary from the website",
+        )?;
+        ensure(
             report["ready_model"] == json!("gemma4:e4b")
-                && report["eligible_product_count"] == json!(2),
+                && report["eligible_product_count"] == json!(3),
             "account link report should include the ready model and eligible product count",
         )?;
         ensure(
             report["products"]
                 .as_array()
-                .is_some_and(|products| products.len() == 2),
+                .is_some_and(|products| products.len() == 3),
             "account link report should retain the eligible product ids for automation",
         )?;
         ensure(
@@ -43186,11 +43311,18 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             completion_request.1["node_label"] == json!("linked-pylon-alpha")
                 && completion_request.1["runtime_state"] == json!("online")
+                && completion_request.1["runtime"]["mode"] == json!("online")
+                && completion_request.1["runtime"]["last_action"]
+                    .as_str()
+                    .is_some_and(|value| value.contains("pylon is online"))
+                && completion_request.1["runtime"]["authoritative_status"] == json!("online")
+                && completion_request.1["runtime"]["execution_backend_label"]
+                    == json!("local Gemma runtime")
                 && completion_request.1["ready_model"] == json!("gemma4:e4b"),
             "account link request should include the current local node label and runtime summary",
         )?;
         ensure(
-            completion_request.1["eligible_product_count"] == json!(2),
+            completion_request.1["eligible_product_count"] == json!(3),
             "account link request should include the count of eligible products",
         )?;
         let product_ids = completion_request.1["products"]
@@ -43202,11 +43334,89 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 .any(|value| value.as_str() == Some("psionic.local.inference.gemma.single_node"))
                 && product_ids.iter().any(|value| {
                     value.as_str()
+                        == Some("psionic.cluster.training.adapter_contributor.cluster_attached")
+                })
+                && product_ids.iter().any(|value| {
+                    value.as_str()
                         == Some(
                             "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated",
                         )
                 }),
             "account link request should send the canonical eligible product ids",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn account_link_status_ignores_live_admin_status_for_a_different_identity()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let local_gemma_base_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/api/tags") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "models": [
+                            {"name": "gemma4:e4b"}
+                        ]
+                    })
+                    .to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = seed_observability_snapshot(config_path.as_path())?;
+        config.local_gemma_base_url = local_gemma_base_url;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let local_status = load_status_or_detect(config_path.as_path()).await?;
+        let mut mismatched_live_status = serde_json::to_value(&local_status)?;
+        mismatched_live_status["snapshot"]["identity"]["public_key_hex"] = json!("cd".repeat(32));
+        mismatched_live_status["snapshot"]["identity"]["npub"] =
+            json!("npub1staleadminstatusstaleadminstatusstaleadminstatus");
+        mismatched_live_status["snapshot"]["runtime"]["authoritative_status"] = json!("error");
+        mismatched_live_status["snapshot"]["runtime"]["mode"] = json!("degraded");
+        mismatched_live_status["snapshot"]["runtime"]["last_error"] =
+            json!("stale live admin status from a different Pylon identity");
+        let mismatched_live_status_for_server = mismatched_live_status.clone();
+        let admin_status_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/v1/status") => (
+                    200,
+                    "application/json",
+                    mismatched_live_status_for_server.to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+
+        config.admin_listen_addr = admin_status_url
+            .strip_prefix("http://")
+            .unwrap_or(admin_status_url.as_str())
+            .to_string();
+        save_config(config_path.as_path(), &config)?;
+
+        let status = super::load_account_link_status(&config, &identity).await?;
+        let snapshot = status
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("missing account-link status snapshot"))?;
+
+        ensure(
+            snapshot
+                .identity
+                .as_ref()
+                .and_then(|metadata| metadata.public_key_hex.as_deref())
+                == Some(identity.public_key_hex.as_str())
+                && provider_runtime_state_label(&status) == "online"
+                && snapshot.runtime.last_error.as_deref()
+                    != Some("stale live admin status from a different Pylon identity"),
+            "account linking should not publish stale live status from another node identity",
         )
     }
 
