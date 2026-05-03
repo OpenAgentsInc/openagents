@@ -2352,6 +2352,8 @@ fn retryable_failed_payout_is_due(record: &TreasuryPayoutRecord, now_unix_ms: u6
 
 fn failed_payout_reason_is_retryable(reason: &str) -> bool {
     reason == "dispatch_outcome_timeout"
+        || reason == "insufficient_funds"
+        || reason == "wallet_balance_insufficient"
         || reason.starts_with("wallet_open_timeout:")
         || reason.starts_with("wallet_send_timeout:")
         || reason.starts_with("wallet_send_retryable:")
@@ -2888,6 +2890,10 @@ impl TreasuryState {
                 && record.payment_id.is_some()
         }) || self.payout_records_by_key.values().any(|record| {
             record.status == "queued"
+                && record.reason.as_deref() == Some("wallet_balance_insufficient")
+        }) || self.payout_records_by_key.values().any(|record| {
+            record.status == "failed"
+                && record.payment_id.is_none()
                 && record.reason.as_deref() == Some("wallet_balance_insufficient")
         }) || self.payout_records_by_key.values().any(|record| {
             record.status == "failed"
@@ -11909,6 +11915,15 @@ mod tests {
 
         assert!(state.due_wallet_refresh_requires_reconciliation());
 
+        let record = state
+            .payout_records_by_key
+            .get_mut(payout_key.as_str())
+            .expect("queued payout");
+        record.status = "failed".to_string();
+        record.reason = Some("wallet_balance_insufficient".to_string());
+
+        assert!(state.due_wallet_refresh_requires_reconciliation());
+
         state
             .payout_records_by_key
             .get_mut(payout_key.as_str())
@@ -12384,6 +12399,33 @@ mod tests {
             },
         );
         state.payout_records_by_key.insert(
+            "accepted-work:balance-recovered".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "accepted-work:balance-recovered".to_string(),
+                nostr_pubkey_hex: "pubkey-one".to_string(),
+                payout_target: "spark:one".to_string(),
+                amount_sats: 1,
+                status: "failed".to_string(),
+                reason: Some("wallet_balance_insufficient".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: retry_due_updated_at.saturating_sub(75),
+                updated_at_unix_ms: retry_due_updated_at,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("accepted.balance-recovered".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+        state.payout_records_by_key.insert(
             "placeholder:old".to_string(),
             TreasuryPayoutRecord {
                 payout_key: "placeholder:old".to_string(),
@@ -12418,14 +12460,33 @@ mod tests {
 
         let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms);
 
-        assert_eq!(prepared.dispatch_plans.len(), 1);
-        assert_eq!(prepared.dispatch_plans[0].payout_key, "accepted-work:one");
-        assert_eq!(prepared.dispatch_plans[0].amount_sats, 1);
-        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:one");
+        assert_eq!(prepared.dispatch_plans.len(), 2);
+        let dispatch_keys = prepared
+            .dispatch_plans
+            .iter()
+            .map(|plan| plan.payout_key.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            dispatch_keys,
+            vec!["accepted-work:balance-recovered", "accepted-work:one"]
+        );
+        assert!(
+            prepared
+                .dispatch_plans
+                .iter()
+                .all(|plan| plan.amount_sats == 1 && plan.payment_request == "spark:one")
+        );
         assert_eq!(
             state
                 .payout_records_by_key
                 .get("accepted-work:one")
+                .map(|record| (record.status.as_str(), record.reason.as_deref())),
+            Some(("dispatching", None))
+        );
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get("accepted-work:balance-recovered")
                 .map(|record| (record.status.as_str(), record.reason.as_deref())),
             Some(("dispatching", None))
         );
@@ -12441,7 +12502,7 @@ mod tests {
                 .payout_records_by_key
                 .get("placeholder:old")
                 .map(|record| (record.status.as_str(), record.reason.as_deref())),
-            Some(("queued", Some("placeholder_payouts_disabled")))
+            Some(("skipped", Some("placeholder_payouts_disabled")))
         );
     }
 
