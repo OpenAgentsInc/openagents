@@ -6416,19 +6416,9 @@ async fn send_treasury_payout(
     plan: &TreasuryDispatchPlan,
 ) -> std::result::Result<String, SparkError> {
     let payment_request = plan.payment_request.trim();
-    if payment_request_is_raw_spark_address(payment_request) {
-        return wallet
-            .send_spark_address_direct(payment_request, plan.amount_sats)
-            .await;
-    }
-
     wallet
         .send_payment_simple(payment_request, Some(plan.amount_sats))
         .await
-}
-
-fn payment_request_is_raw_spark_address(payment_request: &str) -> bool {
-    payment_request.trim().starts_with("spark1")
 }
 
 fn classify_wallet_send_failure(reason: &str) -> String {
@@ -14135,18 +14125,6 @@ mod tests {
             super::classify_wallet_send_failure("some permanent failure"),
             "wallet_send_failed:unknown:some permanent failure"
         );
-    }
-
-    #[test]
-    fn raw_spark_address_payouts_use_direct_transfer_path() {
-        assert!(super::payment_request_is_raw_spark_address(
-            "spark1pgssx8svpepmx7l6gm9ssulhumqstwmx"
-        ));
-        assert!(super::payment_request_is_raw_spark_address(
-            "  spark1pgssx8svpepmx7l6gm9ssulhumqstwmx  "
-        ));
-        assert!(!super::payment_request_is_raw_spark_address("spark:alice"));
-        assert!(!super::payment_request_is_raw_spark_address("lnbc1invoice"));
     }
 
     #[test]
