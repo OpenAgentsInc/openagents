@@ -57,6 +57,9 @@ so `nexus-mainnet-1` was reset. After boot:
 - `https://nexus.openagents.com/healthz` returned HTTP 200.
 - `https://nexus.openagents.com/api/stats` returned HTTP 200.
 - The formal deploy verifier completed successfully.
+- A fresh provider heartbeat followed immediately by
+  `/api/provider-payout-target/challenge` for the same Pylon pubkey/session
+  returned HTTP 200 and issued a challenge.
 
 ## Pylon Verification
 
