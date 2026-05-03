@@ -2353,6 +2353,7 @@ fn retryable_failed_accepted_work_payout_is_due(
 
 fn failed_payout_reason_is_retryable(reason: &str) -> bool {
     reason == "dispatch_outcome_timeout"
+        || reason.starts_with("wallet_open_timeout:")
         || reason.starts_with("wallet_send_timeout:")
         || reason.starts_with("wallet_send_retryable:")
 }
@@ -6149,9 +6150,15 @@ pub async fn dispatch_live_payouts(
     let operation_lock = live_wallet_operation_lock();
     let _operation_guard = operation_lock.lock().await;
 
-    let wallet = match open_wallet(config, false).await {
-        Ok(wallet) => wallet,
-        Err(error) => {
+    let send_timeout_ms = config.dispatch_result_timeout_ms(config.payout_interval_ms());
+    let wallet = match tokio::time::timeout(
+        Duration::from_millis(send_timeout_ms),
+        open_wallet(config, false),
+    )
+    .await
+    {
+        Ok(Ok(wallet)) => wallet,
+        Ok(Err(error)) => {
             return TreasuryDispatchBatchResult {
                 outcomes: plans
                     .iter()
@@ -6164,9 +6171,21 @@ pub async fn dispatch_live_payouts(
                 wallet_error: Some(error.to_string()),
             };
         }
+        Err(_) => {
+            let reason = format!("wallet_open_timeout:{send_timeout_ms}");
+            return TreasuryDispatchBatchResult {
+                outcomes: plans
+                    .iter()
+                    .map(|plan| TreasuryDispatchOutcome::Failed {
+                        payout_key: plan.payout_key.clone(),
+                        reason: reason.clone(),
+                    })
+                    .collect(),
+                wallet_snapshot: None,
+                wallet_error: Some(reason),
+            };
+        }
     };
-
-    let send_timeout_ms = config.dispatch_result_timeout_ms(config.payout_interval_ms());
 
     // Keep the wallet-operation lock held for a bounded window even when the
     // upstream Spark send path stalls or many Pylons become due together.
@@ -13528,6 +13547,13 @@ mod tests {
             outcome,
             TreasuryDispatchOutcome::Failed { ref reason, .. }
                 if reason == "wallet_send_timeout:5"
+        ));
+    }
+
+    #[test]
+    fn wallet_open_timeout_remains_retryable_for_accepted_work() {
+        assert!(super::failed_payout_reason_is_retryable(
+            "wallet_open_timeout:60000"
         ));
     }
 
