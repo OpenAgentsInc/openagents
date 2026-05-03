@@ -384,6 +384,8 @@ impl SparkWallet {
             ));
         }
 
+        self.sync_wallet_state().await?;
+
         let prepare_response = self
             .sdk
             .prepare_send_payment(PrepareSendPaymentRequest {
