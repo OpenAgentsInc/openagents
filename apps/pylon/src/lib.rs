@@ -2289,6 +2289,10 @@ pub enum AccountCommand {
         token: String,
         json: bool,
     },
+    Refresh {
+        base_url: String,
+        json: bool,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2523,6 +2527,21 @@ struct OpenAgentsAccountLinkProof {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct OpenAgentsPylonLinkCompletionRequest {
     token: String,
+    public_key_hex: String,
+    npub: String,
+    node_label: Option<String>,
+    runtime_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime: Option<OpenAgentsPylonRuntimeDiagnostics>,
+    ready_model: Option<String>,
+    eligible_product_count: u64,
+    products: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    capabilities: Vec<OpenAgentsPylonCapability>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OpenAgentsPylonLinkRefreshRequest {
     public_key_hex: String,
     npub: String,
     node_label: Option<String>,
@@ -7678,6 +7697,14 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 }
                 Ok(Some(render_account_link_report(&report)))
             }
+            AccountCommand::Refresh { base_url, json } => {
+                let report =
+                    run_account_refresh_command(cli.config_path.as_path(), &base_url).await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_account_link_report(&report)))
+            }
         },
         Command::Codex { command } => match command {
             CodexCommand::WorkloadOnce { base_url, json } => {
@@ -8088,6 +8115,7 @@ Commands:\n\
   proof doctor [--namespace <ns>] [--json]\n\
   serve\n\
   account link --base-url <url> --token <one_time_token> [--json]\n\
+  account refresh --base-url <url> [--json]\n\
   codex workload once --base-url <url> [--json]\n\
   status [--json]\n\
   backends [--json]\n\
@@ -8460,6 +8488,10 @@ fn parse_account_command(args: &[String], start_index: usize) -> Result<AccountC
                 json,
             })
         }
+        Some("refresh") => {
+            let (base_url, json) = parse_account_refresh_command(args, start_index + 1)?;
+            Ok(AccountCommand::Refresh { base_url, json })
+        }
         Some(other) => bail!("unknown account command: {other}"),
         None => bail!("missing account subcommand"),
     }
@@ -8644,6 +8676,32 @@ fn parse_account_link_command(args: &[String], mut index: usize) -> Result<(Stri
     Ok((
         base_url.ok_or_else(|| anyhow!("missing --base-url for account link"))?,
         token.ok_or_else(|| anyhow!("missing --token for account link"))?,
+        json,
+    ))
+}
+
+fn parse_account_refresh_command(args: &[String], mut index: usize) -> Result<(String, bool)> {
+    let mut base_url = None::<String>;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--base-url" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --base-url"))?;
+                base_url = Some(value.clone());
+                index += 1;
+            }
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            other => bail!("unexpected argument for account refresh: {other}"),
+        }
+    }
+    Ok((
+        base_url.ok_or_else(|| anyhow!("missing --base-url for account refresh"))?,
         json,
     ))
 }
@@ -25674,6 +25732,14 @@ fn openagents_account_link_url(base_url: &str) -> Result<reqwest::Url> {
     })
 }
 
+fn openagents_account_refresh_url(base_url: &str) -> Result<reqwest::Url> {
+    let parsed = reqwest::Url::parse(base_url)
+        .with_context(|| format!("invalid OpenAgents base URL: {base_url}"))?;
+    parsed.join("/api/pylon-links/refresh").with_context(|| {
+        format!("failed to build OpenAgents account-refresh endpoint from {base_url}")
+    })
+}
+
 fn openagents_pylon_workload_url(base_url: &str, path: &str) -> Result<reqwest::Url> {
     let parsed = reqwest::Url::parse(base_url)
         .with_context(|| format!("invalid OpenAgents base URL: {base_url}"))?;
@@ -27033,10 +27099,36 @@ fn build_openagents_account_link_request(
     }
 }
 
+fn build_openagents_account_refresh_request(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    status: &ProviderStatusResponse,
+) -> OpenAgentsPylonLinkRefreshRequest {
+    let link_request = build_openagents_account_link_request(config, identity, status, "");
+
+    OpenAgentsPylonLinkRefreshRequest {
+        public_key_hex: link_request.public_key_hex,
+        npub: link_request.npub,
+        node_label: link_request.node_label,
+        runtime_state: link_request.runtime_state,
+        runtime: link_request.runtime,
+        ready_model: link_request.ready_model,
+        eligible_product_count: link_request.eligible_product_count,
+        products: link_request.products,
+        capabilities: link_request.capabilities,
+    }
+}
+
 fn build_openagents_account_link_body(
     payload: &OpenAgentsPylonLinkCompletionRequest,
 ) -> Result<Vec<u8>> {
     serde_json::to_vec(payload).context("failed to serialize Pylon account-link payload")
+}
+
+fn build_openagents_account_refresh_body(
+    payload: &OpenAgentsPylonLinkRefreshRequest,
+) -> Result<Vec<u8>> {
+    serde_json::to_vec(payload).context("failed to serialize Pylon account-refresh payload")
 }
 
 fn build_openagents_account_link_proof(
@@ -27161,6 +27253,51 @@ async fn complete_openagents_account_link(
         .map(|response| (response, proof))
 }
 
+async fn refresh_openagents_account_link(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    payload: &OpenAgentsPylonLinkRefreshRequest,
+) -> Result<(
+    OpenAgentsPylonLinkCompletionResponse,
+    OpenAgentsAccountLinkProof,
+)> {
+    let url = openagents_account_refresh_url(base_url)?;
+    let body = build_openagents_account_refresh_body(payload)?;
+    let proof = build_openagents_account_link_proof(identity, &url, body.as_slice())?;
+    let response = client
+        .post(url.clone())
+        .header(
+            reqwest::header::AUTHORIZATION,
+            proof.authorization_header.as_str(),
+        )
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(body)
+        .send()
+        .await
+        .with_context(|| format!("failed to post Pylon account refresh to {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode OpenAgents account-refresh error".to_string());
+        bail!(
+            "OpenAgents account refresh failed: {}",
+            http_error_message(detail.as_str())
+        );
+    }
+    let detail = response.text().await.with_context(|| {
+        format!("failed to read OpenAgents account-refresh response from {url}")
+    })?;
+    if detail.trim().is_empty() {
+        bail!("OpenAgents account refresh failed: empty JSON response from {url}");
+    }
+    serde_json::from_str::<OpenAgentsPylonLinkCompletionResponse>(detail.as_str())
+        .with_context(|| format!("failed to decode OpenAgents account-refresh response from {url}"))
+        .map(|response| (response, proof))
+}
+
 async fn run_account_link_command(
     config_path: &Path,
     base_url: &str,
@@ -27176,13 +27313,30 @@ async fn run_account_link_command(
     Ok(build_account_link_report(base_url, response, &proof))
 }
 
+async fn run_account_refresh_command(
+    config_path: &Path,
+    base_url: &str,
+) -> Result<AccountLinkReport> {
+    let config = ensure_local_setup(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let status = load_account_link_status(&config, &identity).await?;
+    let payload = build_openagents_account_refresh_request(&config, &identity, &status);
+    let client = openagents_account_link_client()?;
+    let (response, proof) =
+        refresh_openagents_account_link(&client, base_url, &identity, &payload).await?;
+    Ok(build_account_link_report(base_url, response, &proof))
+}
+
 async fn run_pylon_codex_workload_once(
     config_path: &Path,
     base_url: &str,
 ) -> Result<PylonCodexWorkloadOnceReport> {
     let config = ensure_local_setup(config_path)?;
     let identity = ensure_identity(config.identity_path.as_path())?;
+    let status = load_account_link_status(&config, &identity).await?;
+    let refresh_payload = build_openagents_account_refresh_request(&config, &identity, &status);
     let client = openagents_account_link_client()?;
+    refresh_openagents_account_link(&client, base_url, &identity, &refresh_payload).await?;
     let Some(assignment) =
         claim_next_openagents_pylon_workload(&client, base_url, &identity).await?
     else {
@@ -30774,6 +30928,27 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     },
                 },
             "account link should parse base URL, token, and json flags",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_account_refresh_command() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "account".to_string(),
+                "refresh".to_string(),
+                "--base-url".to_string(),
+                "https://openagents.com".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Account {
+                    command: AccountCommand::Refresh {
+                        base_url: "https://openagents.com".to_string(),
+                        json: true,
+                    },
+                },
+            "account refresh should parse base URL and json flags",
         )
     }
 
@@ -45956,6 +46131,126 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                         )
                 }),
             "account link request should send the canonical eligible product ids",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn account_refresh_command_posts_current_snapshot_without_a_token()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let recorded_requests = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let recorded_requests_for_server = Arc::clone(&recorded_requests);
+        let openagents_base_url = start_mock_http_server(move |method, path, body| {
+            let payload = serde_json::from_str::<Value>(body.as_str())
+                .unwrap_or_else(|_| json!({"raw_body": body}));
+            recorded_requests_for_server
+                .lock()
+                .expect("account-refresh request log")
+                .push((format!("{method} {path}"), payload.clone()));
+            match (method.as_str(), path.as_str()) {
+                ("POST", "/api/pylon-links/refresh") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "linked": true,
+                        "observedPylon": {
+                            "id": 41,
+                            "identityKey": "11111111...22222222",
+                            "publicKeyHex": payload["public_key_hex"],
+                            "npub": payload["npub"],
+                            "nodeLabel": payload["node_label"],
+                            "runtimeState": payload["runtime_state"],
+                            "runtimeDiagnostics": payload["runtime"],
+                            "readyModel": payload["ready_model"],
+                            "eligibleProductCount": payload["eligible_product_count"],
+                            "products": payload["products"],
+                            "capabilities": payload["capabilities"]
+                        },
+                        "accountLink": {
+                            "id": 91,
+                            "userId": 7,
+                            "observedPylonId": 41,
+                            "state": "active",
+                            "method": "cli_token"
+                        }
+                    })
+                    .to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+        let local_gemma_base_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/api/tags") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "models": [
+                            {"name": "gemma4:e4b"}
+                        ]
+                    })
+                    .to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = seed_observability_snapshot(config_path.as_path())?;
+        config.node_label = "refresh-pylon-alpha".to_string();
+        config.local_gemma_base_url = local_gemma_base_url;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let output = run_cli(Cli {
+            command: Command::Account {
+                command: AccountCommand::Refresh {
+                    base_url: openagents_base_url.clone(),
+                    json: true,
+                },
+            },
+            config_path: config_path.clone(),
+        })
+        .await?
+        .ok_or_else(|| std::io::Error::other("missing account-refresh output"))?;
+        let report = serde_json::from_str::<Value>(output.as_str())?;
+
+        ensure(
+            report["linked"] == json!(true)
+                && report["base_url"] == json!(openagents_base_url)
+                && report["node_label"] == json!("refresh-pylon-alpha")
+                && report["public_key_hex"] == json!(identity.public_key_hex),
+            "account refresh report should confirm the refreshed linked Pylon",
+        )?;
+
+        let requests = recorded_requests
+            .lock()
+            .expect("account-refresh request log")
+            .clone();
+        let refresh_request = requests
+            .iter()
+            .find(|(route, _)| route == "POST /api/pylon-links/refresh")
+            .ok_or_else(|| std::io::Error::other("missing account-refresh request"))?;
+
+        ensure(
+            refresh_request.1.get("token").is_none()
+                && refresh_request.1["public_key_hex"] == json!(identity.public_key_hex)
+                && refresh_request.1["npub"] == json!(identity.npub)
+                && refresh_request.1["node_label"] == json!("refresh-pylon-alpha"),
+            "account refresh request should publish identity state without a one-time token",
+        )?;
+        ensure(
+            refresh_request.1["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities.iter().any(|capability| {
+                        capability["key"] == json!("codex_agent")
+                            && capability["transport_kind"] == json!("pylon_workload_poll")
+                    })
+                }),
+            "account refresh request should publish the current Codex capability snapshot",
         )
     }
 
