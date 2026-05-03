@@ -341,7 +341,7 @@ cancellation or timeout is not forwarded as normal assistant text.
 Raw local Codex tokens, browser/WorkOS cookies, and local workspace roots are
 not included in the web event payloads.
 
-For a bounded operator poll, run:
+For a bounded diagnostic poll, run:
 
 ```bash
 cargo pylon-headless codex workload once --base-url https://openagents.com --json
@@ -351,6 +351,18 @@ That command first refreshes the linked-node runtime and capability snapshot,
 then claims at most one pending `pylon_codex` assignment for the active linked
 identity, posts signed workload events, posts terminal completion when the
 broker has not already made the assignment terminal, and then exits.
+
+For a live web chat experience, run the long-lived broker poller under the
+same service manager that keeps Pylon online:
+
+```bash
+cargo pylon-headless codex workload poll --base-url https://openagents.com --interval-seconds 2
+```
+
+The web app only queues the assignment. The local poller must claim it and
+return signed events. If the poller is not running, the web stream will time
+out waiting for local events even when the linked-node page shows Codex
+capability as ready.
 
 The account-link request is signed by the node-held identity key and carries
 the local runtime diagnostic snapshot. If the local admin endpoint is stale or
