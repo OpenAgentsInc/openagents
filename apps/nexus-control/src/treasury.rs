@@ -5447,14 +5447,33 @@ impl TreasuryState {
         now_unix_ms: u64,
     ) -> Vec<TreasuryReceiptEvent> {
         let mut persist_needed = self.normalize_legacy_payout_classes();
-        self.wallet_runtime_status = Some(snapshot.runtime_status.clone());
-        self.wallet_last_error = snapshot.runtime_detail.clone();
-        self.wallet_hydration_mode = snapshot.wallet_hydration_mode.clone();
-        self.wallet_payment_scan_mode = snapshot.wallet_payment_scan_mode.clone();
+        let next_wallet_runtime_status = Some(snapshot.runtime_status.clone());
+        let next_wallet_last_error = snapshot.runtime_detail.clone();
+        let next_wallet_hydration_mode = snapshot.wallet_hydration_mode.clone();
+        let next_wallet_payment_scan_mode = snapshot.wallet_payment_scan_mode.clone();
+        let next_wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        let next_last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        let next_last_wallet_refresh_attempt_at_unix_ms = Some(now_unix_ms);
+        if self.wallet_runtime_status != next_wallet_runtime_status
+            || self.wallet_last_error != next_wallet_last_error
+            || self.wallet_hydration_mode != next_wallet_hydration_mode
+            || self.wallet_payment_scan_mode != next_wallet_payment_scan_mode
+            || self.wallet_balance_sats != snapshot.balance_sats
+            || self.wallet_balance_updated_at_unix_ms != next_wallet_balance_updated_at_unix_ms
+            || self.last_wallet_sync_at_unix_ms != next_last_wallet_sync_at_unix_ms
+            || self.last_wallet_refresh_attempt_at_unix_ms
+                != next_last_wallet_refresh_attempt_at_unix_ms
+        {
+            persist_needed = true;
+        }
+        self.wallet_runtime_status = next_wallet_runtime_status;
+        self.wallet_last_error = next_wallet_last_error;
+        self.wallet_hydration_mode = next_wallet_hydration_mode;
+        self.wallet_payment_scan_mode = next_wallet_payment_scan_mode;
         self.wallet_balance_sats = snapshot.balance_sats;
-        self.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
-        self.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
-        self.last_wallet_refresh_attempt_at_unix_ms = Some(now_unix_ms);
+        self.wallet_balance_updated_at_unix_ms = next_wallet_balance_updated_at_unix_ms;
+        self.last_wallet_sync_at_unix_ms = next_last_wallet_sync_at_unix_ms;
+        self.last_wallet_refresh_attempt_at_unix_ms = next_last_wallet_refresh_attempt_at_unix_ms;
 
         let mut receipt_events = Vec::new();
         let mut last_confirmed_payout_at_unix_ms = self.last_confirmed_payout_at_unix_ms;
@@ -9669,14 +9688,20 @@ mod tests {
     }
 
     #[test]
-    fn wallet_snapshot_without_ledger_changes_does_not_rewrite_treasury_state() {
+    fn wallet_snapshot_without_ledger_changes_persists_wallet_status() {
         let path = unique_treasury_state_path("wallet-refresh-noop");
         let mut state = TreasuryState::default();
         state.next_challenge_nonce = 1;
+        state.wallet_runtime_status = Some("error".to_string());
+        state.wallet_last_error = Some("treasury_isolated_dispatch_timeout:70000".to_string());
+        state.wallet_balance_sats = 12;
+        state.wallet_balance_updated_at_unix_ms = Some(1_776_027_000_000u64);
+        state.last_wallet_refresh_attempt_at_unix_ms = Some(1_776_027_000_000u64);
         state.state_path = Some(path.clone());
         state.persist();
 
         let before = std::fs::read_to_string(path.as_path()).expect("read persisted state");
+        let now_unix_ms = 1_776_028_000_000u64;
         let receipts = state.apply_wallet_snapshot(
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
@@ -9686,13 +9711,36 @@ mod tests {
                 balance_sats: 321,
                 payments: Vec::new(),
             },
-            1_776_028_000_000u64,
+            now_unix_ms,
         );
 
         assert!(receipts.is_empty());
+        let after = std::fs::read_to_string(path.as_path()).expect("read persisted state");
+        assert_ne!(after, before);
+
+        let persisted = TreasuryState::new(path.clone());
         assert_eq!(
-            std::fs::read_to_string(path.as_path()).expect("read persisted state"),
-            before
+            persisted.wallet_runtime_status.as_deref(),
+            Some("connected")
+        );
+        assert_eq!(persisted.wallet_last_error, None);
+        assert_eq!(
+            persisted.wallet_hydration_mode.as_deref(),
+            Some("sync_wallet_then_cached_balance")
+        );
+        assert_eq!(
+            persisted.wallet_payment_scan_mode.as_deref(),
+            Some("recent_only")
+        );
+        assert_eq!(persisted.wallet_balance_sats, 321);
+        assert_eq!(
+            persisted.wallet_balance_updated_at_unix_ms,
+            Some(now_unix_ms)
+        );
+        assert_eq!(persisted.last_wallet_sync_at_unix_ms, Some(now_unix_ms));
+        assert_eq!(
+            persisted.last_wallet_refresh_attempt_at_unix_ms,
+            Some(now_unix_ms)
         );
 
         let _ = std::fs::remove_file(path);
