@@ -5,6 +5,7 @@ mod training_trn_mapping;
 mod wallet_runtime;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use bip39::{Language, Mnemonic};
 use codex_client::CodexInstallationProbe;
+use hmac::{Hmac, Mac};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use nostr::{
     Event, EventTemplate, NostrIdentity, derive_keypair, finalize_event, load_identity_from_path,
@@ -117,6 +119,8 @@ use tokio::{
     task::JoinHandle,
 };
 
+type HmacSha256 = Hmac<Sha256>;
+
 pub use ledger::{
     PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonLedgerPayout, PylonLedgerSummary,
     PylonRelayActivity, PylonRelayConfigSnapshot, PylonRelayState, PylonSettlementRecord,
@@ -190,6 +194,25 @@ const CODEX_AGENT_TRANSPORT_KIND: &str = "pylon_workload_poll";
 const CODEX_AGENT_WEB_MODE: &str = "pylon_codex";
 const CODEX_AGENT_SUPPORTED_ACTIONS: [&str; 3] = ["chat", "repo_read", "patch_preview"];
 const CODEX_AGENT_REQUIRED_CONFIRMATIONS: [&str; 3] = ["shell", "file_write", "pull_request"];
+const PROBE_AGENT_CAPABILITY_KEY: &str = "probe_agent";
+const PROBE_AGENT_RUNNER_KIND: &str = "probe_cli";
+const PROBE_AGENT_TRANSPORT_KIND: &str = "pylon_probe_signed_bridge";
+const PROBE_AGENT_WEB_MODE: &str = "pylon_probe";
+const PROBE_AGENT_BRIDGE_PURPOSE: &str = "probe-admin-chat-bridge-v1";
+const PROBE_AGENT_DEFAULT_BACKEND_PROFILE: &str = "openai-codex-subscription";
+const PROBE_AGENT_DEFAULT_SECRET_ENV: &str = "PROBE_ADMIN_CHAT_BRIDGE_SECRET";
+const PROBE_AGENT_SUPPORTED_ACTIONS: [&str; 6] = [
+    "chat",
+    "repo_read",
+    "patch_preview",
+    "tool_approval",
+    "child_session",
+    "artifact_ref",
+];
+const PROBE_AGENT_REQUIRED_CONFIRMATIONS: [&str; 4] =
+    ["shell", "file_write", "network", "pull_request"];
+const DEFAULT_PROBE_WORKLOAD_TIMEOUT_SECONDS: u64 = 900;
+const DEFAULT_PROBE_WORKLOAD_CANCEL_POLL_SECONDS: u64 = 2;
 const STARTUP_THREAD_LIMIT_ENV_VARS: [&str; 7] = [
     "RAYON_NUM_THREADS",
     "OPENBLAS_NUM_THREADS",
@@ -303,6 +326,34 @@ pub struct PylonCodexWorkspaceConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonProbeConfig {
+    #[serde(default = "default_probe_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_probe_bin")]
+    pub probe_bin: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_home: Option<PathBuf>,
+    #[serde(default = "default_probe_bridge_secret_env")]
+    pub bridge_secret_env: String,
+    #[serde(default = "default_probe_backend_profile")]
+    pub backend_profile: String,
+    #[serde(default = "default_probe_provider_mode")]
+    pub provider_mode: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workspaces: Vec<PylonCodexWorkspaceConfig>,
+    #[serde(default = "default_probe_workload_timeout_seconds")]
+    pub workload_timeout_seconds: u64,
+    #[serde(default = "default_probe_workload_cancel_poll_seconds")]
+    pub workload_cancel_poll_seconds: u64,
+}
+
+impl Default for PylonProbeConfig {
+    fn default() -> Self {
+        default_probe_config()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonConfig {
     pub schema_version: u32,
     pub node_label: String,
@@ -334,6 +385,8 @@ pub struct PylonConfig {
     pub declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub codex_workspaces: Vec<PylonCodexWorkspaceConfig>,
+    #[serde(default)]
+    pub probe: PylonProbeConfig,
     #[serde(default = "default_codex_workload_timeout_seconds")]
     pub codex_workload_timeout_seconds: u64,
     #[serde(default = "default_codex_workload_cancel_poll_seconds")]
@@ -385,6 +438,8 @@ struct PylonPublicConfig {
     local_gemma_preferred_model: Option<String>,
     inventory_controls: PylonPublicInventoryControls,
     declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
+    codex_workspaces: Vec<PylonCodexWorkspaceConfig>,
+    probe: PylonProbeConfig,
     training: PylonTrainingConfig,
 }
 
@@ -409,6 +464,8 @@ impl From<&PylonConfig> for PylonPublicConfig {
             local_gemma_preferred_model: value.local_gemma_preferred_model.clone(),
             inventory_controls: PylonPublicInventoryControls::from(&value.inventory_controls),
             declared_sandbox_profiles: value.declared_sandbox_profiles.clone(),
+            codex_workspaces: value.codex_workspaces.clone(),
+            probe: value.probe.clone(),
             training: value.training.clone(),
         }
     }
@@ -2467,6 +2524,7 @@ struct DoctorReport {
     availability: ProviderAvailability,
     products: Vec<ProductEntry>,
     codex_agent: CodexAgentHealthReport,
+    probe_agent: ProbeAgentHealthReport,
     training: TrainingDoctorStatus,
     nexus_treasury: Option<NexusTreasuryHealthSnapshot>,
 }
@@ -2646,8 +2704,41 @@ struct CodexAgentHealthReport {
     required_confirmations: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct ProbeAgentHealthReport {
+    runner_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runner_version: Option<String>,
+    status: String,
+    auth_state: String,
+    bridge_state: String,
+    backend_state: String,
+    workspace_state: String,
+    backend_profile: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    blocker_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    supported_actions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    required_confirmations: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CodexAuthInspection {
+    auth_state: String,
+    blocker_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ProbeInstallationProbe {
+    available: bool,
+    version: Option<String>,
+    bridge_supported: bool,
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ProbeBridgeSecretInspection {
     auth_state: String,
     blocker_code: Option<String>,
 }
@@ -2675,6 +2766,8 @@ struct OpenAgentsPylonCodexWorkloadRequest {
     messages: Vec<OpenAgentsPylonCodexMessage>,
     #[serde(default)]
     workspace_scope: OpenAgentsPylonCodexWorkspaceScope,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    metadata: BTreeMap<String, Value>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -2703,6 +2796,15 @@ struct OpenAgentsPylonCodexWorkspaceScope {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PreparedPylonCodexWorkload {
+    assignment_uuid: String,
+    assignment_nonce: String,
+    prompt: String,
+    messages: Vec<OpenAgentsPylonCodexMessage>,
+    workspace: PylonCodexWorkspaceConfig,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PreparedPylonProbeWorkload {
     assignment_uuid: String,
     assignment_nonce: String,
     prompt: String,
@@ -2754,6 +2856,91 @@ struct PylonCodexWorkloadCompletion {
 struct PylonCodexWorkloadRunResult {
     events: Vec<PylonCodexWorkloadEvent>,
     completion: PylonCodexWorkloadCompletion,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatBridgeSignedRequest {
+    auth: PylonProbeAdminChatBridgeAuth,
+    request: PylonProbeAdminChatBridgeRequest,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatBridgeAuth {
+    key_id: String,
+    issued_at_ms: u64,
+    expires_at_ms: u64,
+    nonce: String,
+    signature: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatBridgeRequest {
+    request_id: String,
+    workspace: String,
+    web_user_id: u64,
+    web_user_email: String,
+    conversation_id: String,
+    run_id: String,
+    prompt: String,
+    messages: Vec<PylonProbeAdminChatBridgeMessage>,
+    provider: PylonProbeAdminChatProviderSelection,
+    tool_policy: PylonProbeAdminChatToolPolicy,
+    metadata: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatBridgeMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatProviderSelection {
+    key: String,
+    mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatToolPolicy {
+    mode: String,
+    allowed_tools: Vec<String>,
+    approval_required: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeBridgeCliJsonOutput {
+    accepted: PylonProbeBridgeAcceptedResponse,
+    #[serde(default)]
+    events: Vec<Value>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeBridgeAcceptedResponse {
+    request_id: String,
+    run_id: String,
+    probe_session_id: String,
+    probe_turn_id: String,
+    provider: Value,
+    transcript_ref: String,
+    correlation: Value,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum PylonProbeBridgeRunOutcome {
+    Accepted(PylonProbeBridgeCliJsonOutput),
+    Stopped(PylonCodexWorkloadStopReason),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -7680,6 +7867,7 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 availability,
                 products,
                 codex_agent: run_codex_agent_health_check(),
+                probe_agent: run_probe_agent_health_check(&config),
                 training,
                 nexus_treasury,
             })?))
@@ -9535,7 +9723,30 @@ fn render_public_config_json(config: &PylonConfig) -> Result<String> {
 }
 
 fn validate_pylon_config(config: &PylonConfig) -> Result<()> {
+    validate_pylon_probe_config(&config.probe)?;
     validate_pylon_training_config(&config.training)
+}
+
+fn validate_pylon_probe_config(config: &PylonProbeConfig) -> Result<()> {
+    if config.enabled && config.probe_bin.as_os_str().is_empty() {
+        bail!("probe.probe_bin must not be empty when Probe support is enabled");
+    }
+    if config.bridge_secret_env.trim().is_empty() {
+        bail!("probe.bridge_secret_env must not be empty");
+    }
+    if config.backend_profile.trim().is_empty() {
+        bail!("probe.backend_profile must not be empty");
+    }
+    if config.provider_mode.trim().is_empty() {
+        bail!("probe.provider_mode must not be empty");
+    }
+    if config.workload_timeout_seconds == 0 {
+        bail!("probe.workload_timeout_seconds must be at least 1");
+    }
+    if config.workload_cancel_poll_seconds == 0 {
+        bail!("probe.workload_cancel_poll_seconds must be at least 1");
+    }
+    Ok(())
 }
 
 fn validate_pylon_training_config(config: &PylonTrainingConfig) -> Result<()> {
@@ -21549,10 +21760,53 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         inventory_controls,
         declared_sandbox_profiles: Vec::new(),
         codex_workspaces: Vec::new(),
+        probe: default_probe_config(),
         codex_workload_timeout_seconds: default_codex_workload_timeout_seconds(),
         codex_workload_cancel_poll_seconds: default_codex_workload_cancel_poll_seconds(),
         training: default_training_config(base_dir),
     }
+}
+
+fn default_probe_config() -> PylonProbeConfig {
+    PylonProbeConfig {
+        enabled: default_probe_enabled(),
+        probe_bin: default_probe_bin(),
+        probe_home: None,
+        bridge_secret_env: default_probe_bridge_secret_env(),
+        backend_profile: default_probe_backend_profile(),
+        provider_mode: default_probe_provider_mode(),
+        workspaces: Vec::new(),
+        workload_timeout_seconds: default_probe_workload_timeout_seconds(),
+        workload_cancel_poll_seconds: default_probe_workload_cancel_poll_seconds(),
+    }
+}
+
+const fn default_probe_enabled() -> bool {
+    true
+}
+
+fn default_probe_bin() -> PathBuf {
+    PathBuf::from("probe")
+}
+
+fn default_probe_bridge_secret_env() -> String {
+    PROBE_AGENT_DEFAULT_SECRET_ENV.to_string()
+}
+
+fn default_probe_backend_profile() -> String {
+    PROBE_AGENT_DEFAULT_BACKEND_PROFILE.to_string()
+}
+
+fn default_probe_provider_mode() -> String {
+    "chatgpt_subscription".to_string()
+}
+
+fn default_probe_workload_timeout_seconds() -> u64 {
+    DEFAULT_PROBE_WORKLOAD_TIMEOUT_SECONDS
+}
+
+fn default_probe_workload_cancel_poll_seconds() -> u64 {
+    DEFAULT_PROBE_WORKLOAD_CANCEL_POLL_SECONDS
 }
 
 fn default_codex_workload_timeout_seconds() -> u64 {
@@ -26069,6 +26323,257 @@ fn detect_codex_agent_capability(config: &PylonConfig) -> OpenAgentsPylonCapabil
     codex_agent_capability_from_health(config.node_label.as_str(), &run_codex_agent_health_check())
 }
 
+fn probe_installation_probe(config: &PylonConfig) -> ProbeInstallationProbe {
+    if !config.probe.enabled {
+        return ProbeInstallationProbe {
+            available: false,
+            version: None,
+            bridge_supported: false,
+            error: Some("Probe support is disabled in local Pylon config.".to_string()),
+        };
+    }
+
+    let version_output = StdCommand::new(&config.probe.probe_bin)
+        .arg("--version")
+        .output();
+    let (available, version, error) = match version_output {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(output.stdout.as_slice())
+                .trim()
+                .to_string();
+            let stderr = String::from_utf8_lossy(output.stderr.as_slice())
+                .trim()
+                .to_string();
+            let version = if stdout.is_empty() { stderr } else { stdout };
+            (true, (!version.is_empty()).then_some(version), None)
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(output.stderr.as_slice())
+                .trim()
+                .to_string();
+            (
+                false,
+                None,
+                Some(if stderr.is_empty() {
+                    "probe --version failed".to_string()
+                } else {
+                    stderr
+                }),
+            )
+        }
+        Err(error) => (false, None, Some(error.to_string())),
+    };
+
+    let bridge_supported = if available {
+        StdCommand::new(&config.probe.probe_bin)
+            .args(["admin-chat-bridge", "signed", "--help"])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    ProbeInstallationProbe {
+        available,
+        version,
+        bridge_supported,
+        error,
+    }
+}
+
+fn inspect_probe_bridge_secret_state(config: &PylonConfig) -> ProbeBridgeSecretInspection {
+    match std::env::var(config.probe.bridge_secret_env.as_str()) {
+        Ok(secret) if secret.as_bytes().len() >= 32 => ProbeBridgeSecretInspection {
+            auth_state: "ready".to_string(),
+            blocker_code: None,
+        },
+        Ok(_) => ProbeBridgeSecretInspection {
+            auth_state: "needs_secret".to_string(),
+            blocker_code: Some("PROBE_BRIDGE_SECRET_TOO_SHORT".to_string()),
+        },
+        Err(_) => ProbeBridgeSecretInspection {
+            auth_state: "needs_secret".to_string(),
+            blocker_code: Some("PROBE_BRIDGE_SECRET_MISSING".to_string()),
+        },
+    }
+}
+
+fn probe_backend_profile_supported(profile: &str) -> bool {
+    matches!(
+        profile.trim(),
+        "openai-codex-subscription"
+            | "psionic-inference-mesh"
+            | "psionic-apple-fm-bridge"
+            | "psionic-apple-fm-oracle"
+            | "psionic-qwen35-2b-q8-registry"
+            | "psionic-qwen35-2b-q8-oracle"
+            | "psionic-qwen35-2b-q8-long-context"
+    )
+}
+
+fn probe_workspace_mappings(config: &PylonConfig) -> Vec<PylonCodexWorkspaceConfig> {
+    if !config.probe.workspaces.is_empty() {
+        return config.probe.workspaces.clone();
+    }
+    config.codex_workspaces.clone()
+}
+
+fn probe_agent_health_report_from_parts(
+    config: &PylonConfig,
+    probe: ProbeInstallationProbe,
+    secret: ProbeBridgeSecretInspection,
+) -> ProbeAgentHealthReport {
+    let mut blocker_codes = Vec::new();
+    if !config.probe.enabled {
+        blocker_codes.push("PROBE_AGENT_DISABLED".to_string());
+    }
+    if !probe.available {
+        blocker_codes.push("PROBE_NOT_INSTALLED".to_string());
+    }
+    if probe.available && !probe.bridge_supported {
+        blocker_codes.push("PROBE_SIGNED_BRIDGE_UNAVAILABLE".to_string());
+    }
+    if let Some(blocker) = secret.blocker_code {
+        blocker_codes.push(blocker);
+    }
+    if !probe_backend_profile_supported(config.probe.backend_profile.as_str()) {
+        blocker_codes.push("PROBE_BACKEND_PROFILE_UNKNOWN".to_string());
+    }
+    if probe_workspace_mappings(config).is_empty() {
+        blocker_codes.push("NO_ALLOWED_WORKSPACE".to_string());
+    }
+    if probe.error.is_some() && probe.available {
+        blocker_codes.push("PROBE_HEALTH_CHECK_FAILED".to_string());
+    }
+    blocker_codes.sort();
+    blocker_codes.dedup();
+
+    let bridge_state = if probe.bridge_supported {
+        "ready"
+    } else if probe.available {
+        "unsupported"
+    } else {
+        "unavailable"
+    };
+    let backend_state = if probe_backend_profile_supported(config.probe.backend_profile.as_str()) {
+        "ready"
+    } else {
+        "unsupported"
+    };
+    let workspace_state = if probe_workspace_mappings(config).is_empty() {
+        "missing"
+    } else {
+        "ready"
+    };
+    let status = if !config.probe.enabled {
+        "disabled"
+    } else if !probe.available {
+        "not_installed"
+    } else if !probe.bridge_supported || backend_state != "ready" {
+        "unsupported"
+    } else if secret.auth_state != "ready" {
+        "needs_auth"
+    } else if workspace_state != "ready" {
+        "blocked"
+    } else if probe.error.is_some() {
+        "degraded"
+    } else {
+        "ready"
+    };
+
+    ProbeAgentHealthReport {
+        runner_kind: PROBE_AGENT_RUNNER_KIND.to_string(),
+        runner_version: probe.version,
+        status: status.to_string(),
+        auth_state: secret.auth_state,
+        bridge_state: bridge_state.to_string(),
+        backend_state: backend_state.to_string(),
+        workspace_state: workspace_state.to_string(),
+        backend_profile: config.probe.backend_profile.clone(),
+        blocker_codes,
+        supported_actions: PROBE_AGENT_SUPPORTED_ACTIONS
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        required_confirmations: PROBE_AGENT_REQUIRED_CONFIRMATIONS
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+    }
+}
+
+fn run_probe_agent_health_check(config: &PylonConfig) -> ProbeAgentHealthReport {
+    probe_agent_health_report_from_parts(
+        config,
+        probe_installation_probe(config),
+        inspect_probe_bridge_secret_state(config),
+    )
+}
+
+fn probe_agent_capability_from_health(
+    node_label: &str,
+    health: &ProbeAgentHealthReport,
+    workspace_count: usize,
+) -> OpenAgentsPylonCapability {
+    OpenAgentsPylonCapability {
+        key: PROBE_AGENT_CAPABILITY_KEY.to_string(),
+        status: health.status.clone(),
+        display_label: format!("Probe on {node_label}"),
+        auth_state: health.auth_state.clone(),
+        runner_kind: health.runner_kind.clone(),
+        runner_version: health.runner_version.clone(),
+        transport_kind: PROBE_AGENT_TRANSPORT_KIND.to_string(),
+        supported_actions: health.supported_actions.clone(),
+        required_confirmations: health.required_confirmations.clone(),
+        workspace_roots: Vec::new(),
+        blocker_codes: health.blocker_codes.clone(),
+        metadata: BTreeMap::from([
+            (
+                "schema_version".to_string(),
+                json!("openagents.pylon.capability.v1"),
+            ),
+            (
+                "probe_bridge_schema".to_string(),
+                json!("probe.admin_chat_bridge.signed.v1"),
+            ),
+            (
+                "backend_profile".to_string(),
+                json!(health.backend_profile.clone()),
+            ),
+            (
+                "bridge_state".to_string(),
+                json!(health.bridge_state.clone()),
+            ),
+            (
+                "backend_state".to_string(),
+                json!(health.backend_state.clone()),
+            ),
+            (
+                "workspace_state".to_string(),
+                json!(health.workspace_state.clone()),
+            ),
+            ("workspace_count".to_string(), json!(workspace_count)),
+        ]),
+    }
+}
+
+fn detect_probe_agent_capability(config: &PylonConfig) -> OpenAgentsPylonCapability {
+    let health = run_probe_agent_health_check(config);
+    probe_agent_capability_from_health(
+        config.node_label.as_str(),
+        &health,
+        probe_workspace_mappings(config).len(),
+    )
+}
+
+fn detect_openagents_pylon_capabilities(config: &PylonConfig) -> Vec<OpenAgentsPylonCapability> {
+    vec![
+        detect_probe_agent_capability(config),
+        detect_codex_agent_capability(config),
+    ]
+}
+
 impl PylonCodexWorkloadRefusal {
     fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
@@ -26167,6 +26672,80 @@ fn resolve_pylon_codex_workspace(
             })
         })
         .cloned()
+}
+
+fn prepare_pylon_probe_workload_assignment(
+    config: &PylonConfig,
+    health: &ProbeAgentHealthReport,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> std::result::Result<PreparedPylonProbeWorkload, PylonCodexWorkloadRefusal> {
+    if assignment.capability_key != PROBE_AGENT_CAPABILITY_KEY {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "unsupported_capability",
+            format!(
+                "Pylon cannot run capability `{}` with the local Probe adapter.",
+                assignment.capability_key
+            ),
+        ));
+    }
+
+    if !assignment.request.mode.is_empty() && assignment.request.mode != PROBE_AGENT_WEB_MODE {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "unsupported_mode",
+            format!(
+                "Pylon cannot run Probe assignment mode `{}`.",
+                assignment.request.mode
+            ),
+        ));
+    }
+
+    if health.status != "ready" {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "probe_agent_not_ready",
+            "Local Probe is not ready on this Pylon.",
+        ));
+    }
+
+    let prompt = pylon_codex_assignment_prompt(&assignment.request).ok_or_else(|| {
+        PylonCodexWorkloadRefusal::new(
+            "malformed_assignment",
+            "Pylon Probe assignment is missing a prompt.",
+        )
+    })?;
+
+    let workspace = resolve_pylon_probe_workspace(config, &assignment.request.workspace_scope)
+        .ok_or_else(|| {
+            PylonCodexWorkloadRefusal::new(
+                "no_allowed_workspace",
+                "Pylon Probe assignment did not map to a configured local workspace.",
+            )
+        })?;
+
+    Ok(PreparedPylonProbeWorkload {
+        assignment_uuid: assignment.assignment_uuid.clone(),
+        assignment_nonce: assignment.nonce.clone(),
+        prompt,
+        messages: assignment.request.messages.clone(),
+        workspace,
+    })
+}
+
+fn resolve_pylon_probe_workspace(
+    config: &PylonConfig,
+    scope: &OpenAgentsPylonCodexWorkspaceScope,
+) -> Option<PylonCodexWorkspaceConfig> {
+    let requested = pylon_codex_workspace_scope_candidates(scope);
+    probe_workspace_mappings(config)
+        .into_iter()
+        .find(|workspace| {
+            requested.iter().any(|candidate| {
+                workspace.id == *candidate
+                    || workspace
+                        .label
+                        .as_deref()
+                        .is_some_and(|label| label == candidate)
+            })
+        })
 }
 
 fn pylon_codex_workspace_scope_candidates(
@@ -26295,6 +26874,16 @@ impl<'a> PylonCodexWorkloadRunControl<'a> {
         }
     }
 
+    fn probe_from_config(config: &PylonConfig) -> Self {
+        Self {
+            timeout: Duration::from_secs(config.probe.workload_timeout_seconds.max(1)),
+            cancel_poll_interval: Duration::from_secs(
+                config.probe.workload_cancel_poll_seconds.max(1),
+            ),
+            broker: None,
+        }
+    }
+
     async fn stop_reason(&self) -> Result<Option<PylonCodexWorkloadStopReason>> {
         let Some(broker) = self.broker else {
             return Ok(None);
@@ -26314,6 +26903,16 @@ impl<'a> PylonCodexWorkloadRunControl<'a> {
             "local_codex_timeout",
             format!(
                 "Local Codex run exceeded the configured {} second timeout.",
+                self.timeout.as_secs()
+            ),
+        )
+    }
+
+    fn probe_timeout_reason(&self) -> PylonCodexWorkloadStopReason {
+        PylonCodexWorkloadStopReason::timed_out(
+            "local_probe_timeout",
+            format!(
+                "Local Probe run exceeded the configured {} second timeout.",
                 self.timeout.as_secs()
             ),
         )
@@ -26400,6 +26999,361 @@ fn pylon_codex_refusal_result(
             usage: None,
         },
     }
+}
+
+fn pylon_probe_refusal_result(
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    refusal: PylonCodexWorkloadRefusal,
+) -> PylonCodexWorkloadRunResult {
+    let mut result = pylon_codex_refusal_result(assignment, refusal);
+    for event in &mut result.events {
+        if event.event_type == "pylon.error" {
+            event
+                .payload
+                .insert("runner_kind".to_string(), json!(PROBE_AGENT_RUNNER_KIND));
+        }
+    }
+    result
+}
+
+fn pylon_probe_metadata_string(
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    keys: &[&str],
+) -> Option<String> {
+    keys.iter()
+        .find_map(|key| match assignment.request.metadata.get(*key) {
+            Some(Value::String(value)) if !value.trim().is_empty() => Some(value.clone()),
+            Some(Value::Number(number)) => Some(number.to_string()),
+            _ => None,
+        })
+}
+
+fn pylon_probe_metadata_u64(
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    keys: &[&str],
+) -> Option<u64> {
+    keys.iter()
+        .find_map(|key| match assignment.request.metadata.get(*key) {
+            Some(Value::Number(number)) => number.as_u64(),
+            Some(Value::String(value)) => value.trim().parse::<u64>().ok(),
+            _ => None,
+        })
+}
+
+fn build_pylon_probe_bridge_request(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    prepared: &PreparedPylonProbeWorkload,
+) -> PylonProbeAdminChatBridgeRequest {
+    let workspace = prepared
+        .workspace
+        .label
+        .clone()
+        .unwrap_or_else(|| prepared.workspace.id.clone());
+    let mut metadata = assignment.request.metadata.clone();
+    metadata.insert(
+        "backendProfile".to_string(),
+        Value::String(config.probe.backend_profile.clone()),
+    );
+    metadata.insert(
+        "assignmentUuid".to_string(),
+        Value::String(assignment.assignment_uuid.clone()),
+    );
+    metadata.insert(
+        "capabilityKey".to_string(),
+        Value::String(PROBE_AGENT_CAPABILITY_KEY.to_string()),
+    );
+    metadata.insert(
+        "transportKind".to_string(),
+        Value::String(PROBE_AGENT_TRANSPORT_KIND.to_string()),
+    );
+
+    PylonProbeAdminChatBridgeRequest {
+        request_id: pylon_probe_metadata_string(assignment, &["requestId", "request_id"])
+            .unwrap_or_else(|| assignment.assignment_uuid.clone()),
+        workspace,
+        web_user_id: pylon_probe_metadata_u64(assignment, &["webUserId", "web_user_id"])
+            .unwrap_or(0),
+        web_user_email: pylon_probe_metadata_string(
+            assignment,
+            &["webUserEmail", "web_user_email"],
+        )
+        .unwrap_or_else(|| "pylon@openagents.local".to_string()),
+        conversation_id: pylon_probe_metadata_string(
+            assignment,
+            &["conversationId", "conversation_id"],
+        )
+        .unwrap_or_else(|| format!("pylon.assignment.{}", assignment.assignment_uuid)),
+        run_id: pylon_probe_metadata_string(assignment, &["runId", "run_id"])
+            .unwrap_or_else(|| assignment.assignment_uuid.clone()),
+        prompt: prepared.prompt.clone(),
+        messages: prepared
+            .messages
+            .iter()
+            .map(|message| PylonProbeAdminChatBridgeMessage {
+                role: message.role.clone(),
+                content: message.content.clone(),
+            })
+            .collect(),
+        provider: PylonProbeAdminChatProviderSelection {
+            key: "openai".to_string(),
+            mode: config.probe.provider_mode.clone(),
+            account_ref: pylon_probe_metadata_string(
+                assignment,
+                &["providerAccountRef", "provider_account_ref"],
+            ),
+            label: Some("Pylon Probe bridge".to_string()),
+        },
+        tool_policy: PylonProbeAdminChatToolPolicy {
+            mode: "admin_chat".to_string(),
+            allowed_tools: Vec::new(),
+            approval_required: true,
+        },
+        metadata,
+    }
+}
+
+fn sign_pylon_probe_bridge_request(
+    request: PylonProbeAdminChatBridgeRequest,
+    key_id: &str,
+    secret: &str,
+) -> Result<PylonProbeAdminChatBridgeSignedRequest> {
+    ensure!(
+        secret.as_bytes().len() >= 32,
+        "Probe bridge shared secret must be at least 32 bytes"
+    );
+    let issued_at_ms = u64::try_from(now_epoch_ms().max(0)).unwrap_or(0);
+    let expires_at_ms = issued_at_ms.saturating_add(60_000);
+    let nonce = format!("pylon-{}-{}", issued_at_ms, random_token());
+    let mut auth = PylonProbeAdminChatBridgeAuth {
+        key_id: key_id.to_string(),
+        issued_at_ms,
+        expires_at_ms,
+        nonce,
+        signature: String::new(),
+    };
+    let request_json =
+        serde_json::to_string(&request).context("failed to serialize Probe bridge request")?;
+    let canonical = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        PROBE_AGENT_BRIDGE_PURPOSE,
+        auth.key_id,
+        auth.issued_at_ms,
+        auth.expires_at_ms,
+        auth.nonce,
+        request_json
+    );
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| anyhow!("failed to initialize Probe bridge HMAC"))?;
+    mac.update(canonical.as_bytes());
+    auth.signature = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+
+    Ok(PylonProbeAdminChatBridgeSignedRequest { auth, request })
+}
+
+fn pylon_probe_bridge_request_path(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> PathBuf {
+    config
+        .admin_db_path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_home_dir)
+        .join("probe-bridge")
+        .join("requests")
+        .join(format!(
+            "{}-{}.json",
+            training_safe_path_segment(assignment.assignment_uuid.as_str(), "assignment"),
+            random_token()
+        ))
+}
+
+fn write_pylon_probe_signed_request(
+    path: &Path,
+    signed: &PylonProbeAdminChatBridgeSignedRequest,
+) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create Probe bridge request dir {}",
+                parent.display()
+            )
+        })?;
+    }
+    let payload = serde_json::to_vec_pretty(signed)
+        .context("failed to serialize signed Probe bridge request")?;
+    fs::write(path, payload)
+        .with_context(|| format!("failed to write Probe bridge request {}", path.display()))
+}
+
+fn project_pylon_probe_bridge_output(
+    prepared: &PreparedPylonProbeWorkload,
+    output: PylonProbeBridgeCliJsonOutput,
+) -> PylonCodexWorkloadRunResult {
+    let mut builder = PylonCodexEventBuilder::default();
+    builder.push(
+        "run.status",
+        Some("pylon"),
+        BTreeMap::from([
+            ("status".to_string(), json!("running")),
+            (
+                "assignment_uuid".to_string(),
+                json!(prepared.assignment_uuid.clone()),
+            ),
+            (
+                "runner_kind".to_string(),
+                json!(PROBE_AGENT_RUNNER_KIND.to_string()),
+            ),
+        ]),
+    );
+    builder.push(
+        "probe.session.accepted",
+        Some("probe"),
+        BTreeMap::from([
+            (
+                "probe_session_id".to_string(),
+                json!(output.accepted.probe_session_id.clone()),
+            ),
+            (
+                "probe_turn_id".to_string(),
+                json!(output.accepted.probe_turn_id.clone()),
+            ),
+            (
+                "transcript_ref".to_string(),
+                json!(output.accepted.transcript_ref.clone()),
+            ),
+            ("provider".to_string(), output.accepted.provider.clone()),
+            (
+                "correlation".to_string(),
+                output.accepted.correlation.clone(),
+            ),
+        ]),
+    );
+
+    let mut usage = None;
+    let mut failure = None;
+    for event in output.events {
+        let event_type = event
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("probe_event")
+            .to_string();
+        match event_type.as_str() {
+            "text_delta" => {
+                if let Some(delta) = event.get("delta").and_then(Value::as_str) {
+                    builder.push(
+                        "assistant.delta",
+                        Some("assistant"),
+                        BTreeMap::from([("delta".to_string(), json!(delta))]),
+                    );
+                }
+            }
+            "run_completed" => {
+                usage = event.get("usage").cloned();
+                builder.push(
+                    "run.status",
+                    Some("probe"),
+                    BTreeMap::from([
+                        ("status".to_string(), json!("succeeded")),
+                        ("probe_event".to_string(), event),
+                    ]),
+                );
+            }
+            "run_failed" => {
+                let message = event
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Probe bridge run failed.")
+                    .to_string();
+                let code = event
+                    .get("errorCode")
+                    .or_else(|| event.get("error_code"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("probe_bridge_failed")
+                    .to_string();
+                failure = Some((code.clone(), message.clone()));
+                builder.push(
+                    "pylon.error",
+                    Some("probe"),
+                    BTreeMap::from([
+                        ("code".to_string(), json!(code)),
+                        ("message".to_string(), json!(message)),
+                        ("probe_event".to_string(), event),
+                    ]),
+                );
+            }
+            _ => builder.push(
+                "probe.event",
+                Some("probe"),
+                BTreeMap::from([
+                    ("probe_event_type".to_string(), json!(event_type)),
+                    ("probe_event".to_string(), event),
+                ]),
+            ),
+        }
+    }
+
+    if failure.is_none()
+        && !builder.events.iter().any(|event| {
+            event.event_type == "run.status"
+                && event
+                    .payload
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .is_some_and(|status| status == "succeeded")
+        })
+    {
+        builder.push(
+            "run.status",
+            Some("probe"),
+            BTreeMap::from([("status".to_string(), json!("succeeded"))]),
+        );
+    }
+
+    PylonCodexWorkloadRunResult {
+        events: builder.events,
+        completion: PylonCodexWorkloadCompletion {
+            status: if failure.is_some() {
+                "failed".to_string()
+            } else {
+                "succeeded".to_string()
+            },
+            error_code: failure.as_ref().map(|(code, _)| code.clone()),
+            error_message: failure.map(|(_, message)| message),
+            usage,
+        },
+    }
+}
+
+fn prepared_probe_as_codex(prepared: &PreparedPylonProbeWorkload) -> PreparedPylonCodexWorkload {
+    PreparedPylonCodexWorkload {
+        assignment_uuid: prepared.assignment_uuid.clone(),
+        assignment_nonce: prepared.assignment_nonce.clone(),
+        prompt: prepared.prompt.clone(),
+        messages: prepared.messages.clone(),
+        workspace: prepared.workspace.clone(),
+    }
+}
+
+fn project_pylon_probe_runner_events(
+    prepared: &PreparedPylonProbeWorkload,
+    runner_events: Vec<PylonCodexRunnerEvent>,
+) -> PylonCodexWorkloadRunResult {
+    let codex_prepared = prepared_probe_as_codex(prepared);
+    let mut result = project_pylon_codex_runner_events(&codex_prepared, runner_events);
+    for event in &mut result.events {
+        if event.event_type == "run.status" {
+            event
+                .payload
+                .entry("runner_kind".to_string())
+                .or_insert_with(|| json!(PROBE_AGENT_RUNNER_KIND));
+        }
+    }
+    if result.completion.error_code.as_deref() == Some("local_codex_error") {
+        result.completion.error_code = Some("local_probe_error".to_string());
+    }
+    result
 }
 
 #[allow(dead_code)]
@@ -27056,6 +28010,135 @@ async fn run_prepared_local_pylon_codex_workload_with_control_and_observer(
     Ok(events)
 }
 
+#[allow(dead_code)]
+async fn run_local_pylon_probe_workload(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> PylonCodexWorkloadRunResult {
+    let control = PylonCodexWorkloadRunControl::probe_from_config(config);
+    run_local_pylon_probe_workload_with_control(config, assignment, control).await
+}
+
+async fn run_local_pylon_probe_workload_with_control(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    control: PylonCodexWorkloadRunControl<'_>,
+) -> PylonCodexWorkloadRunResult {
+    let health = run_probe_agent_health_check(config);
+    let prepared = match prepare_pylon_probe_workload_assignment(config, &health, assignment) {
+        Ok(prepared) => prepared,
+        Err(refusal) => return pylon_probe_refusal_result(assignment, refusal),
+    };
+
+    match run_prepared_local_pylon_probe_bridge_with_control(
+        config, assignment, &prepared, &control,
+    )
+    .await
+    {
+        Ok(PylonProbeBridgeRunOutcome::Accepted(output)) => {
+            project_pylon_probe_bridge_output(&prepared, output)
+        }
+        Ok(PylonProbeBridgeRunOutcome::Stopped(reason)) => {
+            project_pylon_probe_runner_events(&prepared, vec![reason.into_runner_event()])
+        }
+        Err(error) => project_pylon_probe_runner_events(
+            &prepared,
+            vec![PylonCodexRunnerEvent::Error {
+                code: "local_probe_bridge_failed".to_string(),
+                message: safe_pylon_codex_error_message(&error.to_string()),
+            }],
+        ),
+    }
+}
+
+async fn run_prepared_local_pylon_probe_bridge_with_control(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    prepared: &PreparedPylonProbeWorkload,
+    control: &PylonCodexWorkloadRunControl<'_>,
+) -> Result<PylonProbeBridgeRunOutcome> {
+    if let Some(reason) = control.stop_reason().await? {
+        return Ok(PylonProbeBridgeRunOutcome::Stopped(reason));
+    }
+
+    let secret = std::env::var(config.probe.bridge_secret_env.as_str()).with_context(|| {
+        format!(
+            "missing Probe bridge shared secret env {}",
+            config.probe.bridge_secret_env
+        )
+    })?;
+    let request = build_pylon_probe_bridge_request(config, assignment, prepared);
+    let signed = sign_pylon_probe_bridge_request(request, "openagents-pylon", secret.as_str())?;
+    let request_path = pylon_probe_bridge_request_path(config, assignment);
+    write_pylon_probe_signed_request(request_path.as_path(), &signed)?;
+
+    let mut command = TokioCommand::new(&config.probe.probe_bin);
+    command
+        .arg("admin-chat-bridge")
+        .arg("signed")
+        .arg("--request")
+        .arg(request_path.as_os_str())
+        .arg("--secret-env")
+        .arg(config.probe.bridge_secret_env.as_str())
+        .arg("--cwd")
+        .arg(prepared.workspace.root.as_os_str())
+        .arg("--format")
+        .arg("json")
+        .env(config.probe.bridge_secret_env.as_str(), secret.as_str())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(probe_home) = config.probe.probe_home.as_ref() {
+        command.arg("--probe-home").arg(probe_home);
+    }
+
+    let output_future = command.output();
+    tokio::pin!(output_future);
+    let timeout = tokio::time::sleep(control.timeout);
+    tokio::pin!(timeout);
+    let mut cancel_poll = tokio::time::interval(control.cancel_poll_interval);
+    cancel_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    let output = loop {
+        tokio::select! {
+            result = &mut output_future => {
+                break result.context("failed to run local Probe bridge")?;
+            }
+            _ = &mut timeout => {
+                let _ = tokio::fs::remove_file(request_path.as_path()).await;
+                return Ok(PylonProbeBridgeRunOutcome::Stopped(control.probe_timeout_reason()));
+            }
+            _ = cancel_poll.tick(), if control.broker.is_some() => {
+                if let Some(reason) = control.stop_reason().await? {
+                    let _ = tokio::fs::remove_file(request_path.as_path()).await;
+                    return Ok(PylonProbeBridgeRunOutcome::Stopped(reason));
+                }
+            }
+        }
+    };
+
+    let _ = tokio::fs::remove_file(request_path.as_path()).await;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(output.stderr.as_slice())
+            .trim()
+            .to_string();
+        bail!(
+            "Probe bridge exited with {}: {}",
+            output.status,
+            if stderr.is_empty() {
+                "no stderr detail".to_string()
+            } else {
+                safe_pylon_codex_error_message(stderr.as_str())
+            }
+        );
+    }
+
+    let decoded = serde_json::from_slice::<PylonProbeBridgeCliJsonOutput>(output.stdout.as_slice())
+        .context("failed to decode Probe bridge JSON output")?;
+    Ok(PylonProbeBridgeRunOutcome::Accepted(decoded))
+}
+
 fn push_pylon_codex_runner_event(
     events: &mut Vec<PylonCodexRunnerEvent>,
     event: PylonCodexRunnerEvent,
@@ -27364,7 +28447,7 @@ fn build_openagents_account_link_request(
         ready_model,
         eligible_product_count: products.len() as u64,
         products,
-        capabilities: vec![detect_codex_agent_capability(config)],
+        capabilities: detect_openagents_pylon_capabilities(config),
     }
 }
 
@@ -27725,6 +28808,63 @@ async fn run_and_stream_pylon_codex_workload(
     Ok((completion, events_sent))
 }
 
+async fn run_and_stream_pylon_probe_workload(
+    config: &PylonConfig,
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    control: PylonCodexWorkloadRunControl<'_>,
+) -> Result<(PylonCodexWorkloadCompletion, u64)> {
+    let result = run_local_pylon_probe_workload_with_control(config, assignment, control).await;
+    let events_sent =
+        post_pylon_codex_workload_result_events(client, base_url, identity, assignment, &result)
+            .await?;
+    if !pylon_codex_completion_reflects_broker_terminal(&result.completion) {
+        complete_openagents_pylon_workload(
+            client,
+            base_url,
+            identity,
+            assignment,
+            &result.completion,
+        )
+        .await?;
+    }
+    Ok((result.completion, events_sent))
+}
+
+async fn run_and_stream_openagents_pylon_workload(
+    config: &PylonConfig,
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> Result<(PylonCodexWorkloadCompletion, u64)> {
+    if assignment.capability_key == PROBE_AGENT_CAPABILITY_KEY {
+        let mut control = PylonCodexWorkloadRunControl::probe_from_config(config);
+        control.broker = Some(PylonCodexBrokerCancellationProbe {
+            client,
+            base_url,
+            identity,
+            assignment,
+        });
+        return run_and_stream_pylon_probe_workload(
+            config, client, base_url, identity, assignment, control,
+        )
+        .await;
+    }
+
+    let mut control = PylonCodexWorkloadRunControl::from_config(config);
+    control.broker = Some(PylonCodexBrokerCancellationProbe {
+        client,
+        base_url,
+        identity,
+        assignment,
+    });
+    run_and_stream_pylon_codex_workload(config, client, base_url, identity, assignment, control)
+        .await
+}
+
 async fn project_and_post_pylon_codex_runner_event(
     prepared: &PreparedPylonCodexWorkload,
     builder: &mut PylonCodexEventBuilder,
@@ -27805,21 +28945,12 @@ async fn run_pylon_codex_workload_once(
         });
     };
 
-    let mut control = PylonCodexWorkloadRunControl::from_config(&config);
-    control.broker = Some(PylonCodexBrokerCancellationProbe {
-        client: &client,
-        base_url,
-        identity: &identity,
-        assignment: &assignment,
-    });
-
-    let (completion, events_sent) = run_and_stream_pylon_codex_workload(
+    let (completion, events_sent) = run_and_stream_openagents_pylon_workload(
         &config,
         &client,
         base_url,
         &identity,
         &assignment,
-        control,
     )
     .await?;
 
@@ -29106,6 +30237,40 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
         }
         "backend.adapter_training_contributor_enabled" => {
             next.inventory_controls.adapter_training_contributor_enabled = parse_bool(value)?;
+        }
+        "probe.enabled" => {
+            next.probe.enabled = parse_bool(value)?;
+        }
+        "probe.probe_bin" => {
+            next.probe.probe_bin = PathBuf::from(value.trim());
+        }
+        "probe.probe_home" => {
+            next.probe.probe_home = if value.trim().is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(value.trim()))
+            };
+        }
+        "probe.bridge_secret_env" => {
+            next.probe.bridge_secret_env = value.trim().to_string();
+        }
+        "probe.backend_profile" => {
+            next.probe.backend_profile = value.trim().to_string();
+        }
+        "probe.provider_mode" => {
+            next.probe.provider_mode = value.trim().to_string();
+        }
+        "probe.workload_timeout_seconds" => {
+            next.probe.workload_timeout_seconds = value
+                .trim()
+                .parse::<u64>()
+                .with_context(|| format!("invalid probe.workload_timeout_seconds: {value}"))?;
+        }
+        "probe.workload_cancel_poll_seconds" => {
+            next.probe.workload_cancel_poll_seconds = value
+                .trim()
+                .parse::<u64>()
+                .with_context(|| format!("invalid probe.workload_cancel_poll_seconds: {value}"))?;
         }
         "training.allowed_networks" => {
             next.training.allowed_networks = parse_csv_list(value);
@@ -45927,6 +47092,32 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         config
     }
 
+    fn pylon_probe_test_config() -> PylonConfig {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-probe-test"));
+        config.probe.workspaces = vec![super::PylonCodexWorkspaceConfig {
+            id: "repo-42".to_string(),
+            label: Some("OpenAgents".to_string()),
+            root: PathBuf::from("/tmp/openagents-local"),
+        }];
+        config
+    }
+
+    fn ready_probe_health(config: &PylonConfig) -> super::ProbeAgentHealthReport {
+        super::probe_agent_health_report_from_parts(
+            config,
+            super::ProbeInstallationProbe {
+                available: true,
+                version: Some("probe 0.1.0".to_string()),
+                bridge_supported: true,
+                error: None,
+            },
+            super::ProbeBridgeSecretInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            },
+        )
+    }
+
     fn pylon_codex_assignment() -> super::OpenAgentsPylonWorkloadEnvelope {
         serde_json::from_value(json!({
             "assignmentUuid": "workload-001",
@@ -45949,6 +47140,145 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             }
         }))
         .expect("valid pylon codex assignment")
+    }
+
+    fn pylon_probe_assignment() -> super::OpenAgentsPylonWorkloadEnvelope {
+        serde_json::from_value(json!({
+            "assignmentUuid": "workload-probe-001",
+            "capabilityKey": "probe_agent",
+            "status": "claimed",
+            "nonce": "nonce-probe-001",
+            "request": {
+                "mode": "pylon_probe",
+                "prompt": "Inspect the local repo through Probe.",
+                "messages": [
+                    {"role": "user", "content": "Inspect the local repo through Probe."}
+                ],
+                "workspace_scope": {
+                    "repository_label": "OpenAgents",
+                    "project_repository_id": "repo-42"
+                },
+                "metadata": {
+                    "webUserId": 7,
+                    "webUserEmail": "admin@example.com",
+                    "conversationId": "conversation-001",
+                    "runId": "run-001",
+                    "scheduleId": "schedule-001"
+                }
+            }
+        }))
+        .expect("valid pylon probe assignment")
+    }
+
+    #[test]
+    fn probe_agent_health_reports_ready_and_feeds_capability() {
+        let config = pylon_probe_test_config();
+        let health = ready_probe_health(&config);
+        let capability = super::probe_agent_capability_from_health(
+            "desk-pylon",
+            &health,
+            super::probe_workspace_mappings(&config).len(),
+        );
+
+        assert_eq!(health.status, "ready");
+        assert_eq!(capability.key, "probe_agent");
+        assert_eq!(capability.status, "ready");
+        assert_eq!(capability.display_label, "Probe on desk-pylon");
+        assert_eq!(capability.auth_state, "ready");
+        assert_eq!(capability.runner_kind, "probe_cli");
+        assert_eq!(capability.runner_version.as_deref(), Some("probe 0.1.0"));
+        assert_eq!(capability.transport_kind, "pylon_probe_signed_bridge");
+        assert!(
+            capability
+                .supported_actions
+                .iter()
+                .any(|value| value == "child_session")
+        );
+        assert!(capability.workspace_roots.is_empty());
+
+        let serialized = serde_json::to_value(&capability).expect("serialize capability");
+        assert!(serialized.get("runner_path").is_none());
+        assert!(serialized.get("credential_path").is_none());
+        assert!(!serialized.to_string().contains("/tmp/openagents-local"));
+    }
+
+    #[test]
+    fn pylon_probe_assignment_builds_signed_request_without_secret_leak() {
+        let config = pylon_probe_test_config();
+        let assignment = pylon_probe_assignment();
+        let prepared = super::prepare_pylon_probe_workload_assignment(
+            &config,
+            &ready_probe_health(&config),
+            &assignment,
+        )
+        .expect("prepared probe workload");
+        let request = super::build_pylon_probe_bridge_request(&config, &assignment, &prepared);
+        let signed = super::sign_pylon_probe_bridge_request(
+            request,
+            "openagents-pylon",
+            "abcdefghijklmnopqrstuvwxyz0123456789",
+        )
+        .expect("signed request");
+        let serialized = serde_json::to_value(&signed).expect("serialize signed request");
+
+        assert_eq!(serialized["request"]["runId"], json!("run-001"));
+        assert_eq!(
+            serialized["request"]["metadata"]["backendProfile"],
+            json!("openai-codex-subscription")
+        );
+        assert!(
+            serialized["auth"]["signature"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("sha256="))
+        );
+        assert!(
+            !serialized
+                .to_string()
+                .contains("abcdefghijklmnopqrstuvwxyz0123456789")
+        );
+    }
+
+    #[test]
+    fn pylon_probe_bridge_output_projects_session_metadata_events() {
+        let config = pylon_probe_test_config();
+        let assignment = pylon_probe_assignment();
+        let prepared = super::prepare_pylon_probe_workload_assignment(
+            &config,
+            &ready_probe_health(&config),
+            &assignment,
+        )
+        .expect("prepared probe workload");
+        let result = super::project_pylon_probe_bridge_output(
+            &prepared,
+            super::PylonProbeBridgeCliJsonOutput {
+                accepted: super::PylonProbeBridgeAcceptedResponse {
+                    request_id: "request-001".to_string(),
+                    run_id: "run-001".to_string(),
+                    probe_session_id: "session-001".to_string(),
+                    probe_turn_id: "turn-001".to_string(),
+                    provider: json!({"backendProfile": "openai-codex-subscription"}),
+                    transcript_ref: "probe://sessions/session-001/transcript".to_string(),
+                    correlation: json!({"scheduleId": "schedule-001"}),
+                },
+                events: vec![
+                    json!({"type": "run_started", "runId": "run-001"}),
+                    json!({"type": "text_delta", "runId": "run-001", "delta": "Probe accepted"}),
+                    json!({"type": "run_completed", "runId": "run-001", "status": "accepted"}),
+                ],
+            },
+        );
+
+        assert_eq!(result.completion.status, "succeeded");
+        assert!(result.events.iter().any(|event| {
+            event.event_type == "probe.session.accepted"
+                && event.payload.get("probe_session_id") == Some(&json!("session-001"))
+                && event.payload.get("transcript_ref")
+                    == Some(&json!("probe://sessions/session-001/transcript"))
+        }));
+        assert!(result.events.iter().any(|event| {
+            event.event_type == "assistant.delta"
+                && event.payload.get("delta") == Some(&json!("Probe accepted"))
+        }));
     }
 
     #[test]

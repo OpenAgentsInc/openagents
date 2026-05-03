@@ -8896,6 +8896,7 @@ dependencies = [
  "codex-client",
  "futures-util",
  "hex",
+ "hmac",
  "jsonwebtoken",
  "libc",
  "nostr 0.1.16",

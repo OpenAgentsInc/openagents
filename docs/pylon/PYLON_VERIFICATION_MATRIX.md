@@ -34,6 +34,7 @@ If any release note, marketing text, or operator doc violates one of those state
 | Sandbox status truth | `cargo run -p pylon -- status` on a node with declared sandbox profiles | status includes sandbox execution classes, profile IDs, and scan/runtime errors when relevant |
 | Sandbox runtime/profile view | `cargo run -p pylon -- sandbox --json` | returns declared runtimes/profiles, ready execution classes, and profile digests |
 | Inventory | `cargo run -p pylon -- inventory` | shows inventory rows with capability summaries and explicit eligibility |
+| Probe capability | `cargo run -p pylon -- doctor` with `PROBE_ADMIN_CHAT_BRIDGE_SECRET` set | advertises `probe_agent` only when the Probe CLI, signed bridge, backend profile, bridge secret, and workspace mapping are ready |
 | Jobs | `cargo run -p pylon -- jobs` | shows recent jobs or an empty truthful list, including sandbox family/profile/failure detail when present |
 | Earnings | `cargo run -p pylon -- earnings` | shows earnings summary or explicit none-state |
 | Receipts | `cargo run -p pylon -- receipts` | shows receipt summaries or an empty truthful list, including sandbox profile/termination/failure detail when present |
@@ -52,6 +53,8 @@ These checks should pass before a release candidate is called valid:
 
 ```bash
 cargo test -p pylon -- --nocapture
+cargo test -p pylon pylon_probe --lib -- --nocapture
+cargo test -p pylon probe_agent --lib -- --nocapture
 cargo clippy -p pylon --all-targets -- -D warnings
 cargo test -p openagents-provider-substrate -- --nocapture
 cargo clippy -p openagents-provider-substrate --all-targets -- -D warnings
