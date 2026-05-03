@@ -6442,6 +6442,12 @@ async fn send_treasury_payout(
     plan: &TreasuryDispatchPlan,
 ) -> std::result::Result<String, SparkError> {
     let payment_request = plan.payment_request.trim();
+    if SparkWallet::is_direct_spark_address(payment_request) {
+        return wallet
+            .send_spark_address_direct(payment_request, plan.amount_sats)
+            .await;
+    }
+
     wallet
         .send_payment_simple(payment_request, Some(plan.amount_sats))
         .await
