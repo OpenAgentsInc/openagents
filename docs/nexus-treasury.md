@@ -58,6 +58,9 @@ request is useful for receive addresses, not for invoice payment. For Nexus
 payout liquidity, prefer `spark_invoice` or `spark_address`. Use
 `bolt11_invoice` only when the payer cannot send Spark yet. The returned invoice
 is the payment request to give the operator. It is not proof of payment.
+Hosted Nexus should create the Spark invoice before attempting the compatibility
+Bolt11 invoice; if Bolt11 creation fails, operators should still receive the
+Spark invoice rather than losing the direct payout-liquidity path.
 
 After the payer sends funds, verify the result with `/v1/treasury/status`.
 Treat the invoice as paid only after the status surface shows the receive in
