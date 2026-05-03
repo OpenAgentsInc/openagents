@@ -26613,6 +26613,166 @@ fn project_pylon_codex_runner_events(
     }
 }
 
+fn project_pylon_codex_runner_event_for_streaming(
+    prepared: &PreparedPylonCodexWorkload,
+    builder: &mut PylonCodexEventBuilder,
+    completion: &mut PylonCodexWorkloadCompletion,
+    saw_terminal: &mut bool,
+    runner_event: PylonCodexRunnerEvent,
+) {
+    if *saw_terminal {
+        return;
+    }
+
+    match runner_event {
+        PylonCodexRunnerEvent::RunStatus { status } => {
+            let mut payload = BTreeMap::from([("status".to_string(), json!(status))]);
+            if payload
+                .get("status")
+                .and_then(Value::as_str)
+                .is_some_and(|status| status == "running")
+            {
+                payload.insert(
+                    "assignment_uuid".to_string(),
+                    json!(prepared.assignment_uuid),
+                );
+            }
+            builder.push("run.status", Some("pylon"), payload);
+        }
+        PylonCodexRunnerEvent::AssistantTextDelta { delta } if !delta.is_empty() => {
+            builder.push(
+                "assistant.delta",
+                Some("assistant"),
+                BTreeMap::from([("delta".to_string(), json!(delta))]),
+            );
+        }
+        PylonCodexRunnerEvent::AssistantTextDelta { .. } => {}
+        PylonCodexRunnerEvent::ToolStarted { tool, label } => {
+            builder.push(
+                "tool.start",
+                Some("tool"),
+                BTreeMap::from([
+                    ("tool".to_string(), json!(tool)),
+                    ("label".to_string(), json!(label)),
+                ]),
+            );
+        }
+        PylonCodexRunnerEvent::ToolOutputSummary { tool, summary } => {
+            builder.push(
+                "tool.end",
+                Some("tool"),
+                BTreeMap::from([
+                    ("tool".to_string(), json!(tool)),
+                    ("summary".to_string(), json!(summary)),
+                ]),
+            );
+        }
+        PylonCodexRunnerEvent::PatchPreview { diff } => {
+            builder.push(
+                "patch.preview",
+                Some("assistant"),
+                BTreeMap::from([("diff".to_string(), json!(diff))]),
+            );
+        }
+        PylonCodexRunnerEvent::Error { code, message } => {
+            builder.push(
+                "pylon.error",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("code".to_string(), json!(code.clone())),
+                    ("message".to_string(), json!(message.clone())),
+                ]),
+            );
+            builder.push(
+                "run.status",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("status".to_string(), json!("failed")),
+                    ("error_code".to_string(), json!(code)),
+                ]),
+            );
+            *completion = PylonCodexWorkloadCompletion {
+                status: "failed".to_string(),
+                error_code: Some("local_codex_error".to_string()),
+                error_message: Some(message),
+                usage: None,
+            };
+            *saw_terminal = true;
+        }
+        PylonCodexRunnerEvent::Cancelled { code, message } => {
+            builder.push(
+                "pylon.cancelled",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("code".to_string(), json!(code.clone())),
+                    ("message".to_string(), json!(message.clone())),
+                ]),
+            );
+            builder.push(
+                "run.status",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("status".to_string(), json!("cancelled")),
+                    ("error_code".to_string(), json!(code.clone())),
+                ]),
+            );
+            *completion = PylonCodexWorkloadCompletion {
+                status: "cancelled".to_string(),
+                error_code: Some(code),
+                error_message: Some(message),
+                usage: None,
+            };
+            *saw_terminal = true;
+        }
+        PylonCodexRunnerEvent::TimedOut { code, message } => {
+            builder.push(
+                "pylon.timeout",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("code".to_string(), json!(code.clone())),
+                    ("message".to_string(), json!(message.clone())),
+                ]),
+            );
+            builder.push(
+                "run.status",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("status".to_string(), json!("timed_out")),
+                    ("error_code".to_string(), json!(code.clone())),
+                ]),
+            );
+            *completion = PylonCodexWorkloadCompletion {
+                status: "failed".to_string(),
+                error_code: Some(code),
+                error_message: Some(message),
+                usage: None,
+            };
+            *saw_terminal = true;
+        }
+        PylonCodexRunnerEvent::Completed { usage } => {
+            builder.push(
+                "run.status",
+                Some("pylon"),
+                BTreeMap::from([("status".to_string(), json!("succeeded"))]),
+            );
+            completion.status = "succeeded".to_string();
+            completion.error_code = None;
+            completion.error_message = None;
+            completion.usage = usage;
+            *saw_terminal = true;
+        }
+    }
+}
+
+fn default_pylon_codex_workload_completion() -> PylonCodexWorkloadCompletion {
+    PylonCodexWorkloadCompletion {
+        status: "succeeded".to_string(),
+        error_code: None,
+        error_message: None,
+        usage: None,
+    }
+}
+
 #[derive(Default)]
 struct PylonCodexEventBuilder {
     events: Vec<PylonCodexWorkloadEvent>,
@@ -26712,8 +26872,19 @@ async fn run_prepared_local_pylon_codex_workload_with_control(
     prepared: &PreparedPylonCodexWorkload,
     control: &PylonCodexWorkloadRunControl<'_>,
 ) -> Result<Vec<PylonCodexRunnerEvent>> {
+    run_prepared_local_pylon_codex_workload_with_control_and_observer(prepared, control, None).await
+}
+
+async fn run_prepared_local_pylon_codex_workload_with_control_and_observer(
+    prepared: &PreparedPylonCodexWorkload,
+    control: &PylonCodexWorkloadRunControl<'_>,
+    event_observer: Option<tokio::sync::mpsc::UnboundedSender<PylonCodexRunnerEvent>>,
+) -> Result<Vec<PylonCodexRunnerEvent>> {
     if let Some(reason) = control.stop_reason().await? {
-        return Ok(vec![reason.into_runner_event()]);
+        let mut events = Vec::new();
+        push_pylon_codex_runner_event(&mut events, reason.into_runner_event(), &event_observer);
+
+        return Ok(events);
     }
 
     let (client, mut channels) =
@@ -26804,9 +26975,13 @@ async fn run_prepared_local_pylon_codex_workload_with_control(
     let turn_id = turn.turn.id;
 
     let mut events = Vec::new();
-    events.push(PylonCodexRunnerEvent::RunStatus {
-        status: "running".to_string(),
-    });
+    push_pylon_codex_runner_event(
+        &mut events,
+        PylonCodexRunnerEvent::RunStatus {
+            status: "running".to_string(),
+        },
+        &event_observer,
+    );
     let timeout = tokio::time::sleep(control.timeout);
     tokio::pin!(timeout);
     let mut cancel_poll = tokio::time::interval(control.cancel_poll_interval);
@@ -26816,13 +26991,21 @@ async fn run_prepared_local_pylon_codex_workload_with_control(
         tokio::select! {
             _ = &mut timeout => {
                 interrupt_pylon_codex_turn(&client, thread_id.as_str(), turn_id.as_str()).await;
-                events.push(control.timeout_reason().into_runner_event());
+                push_pylon_codex_runner_event(
+                    &mut events,
+                    control.timeout_reason().into_runner_event(),
+                    &event_observer,
+                );
                 break;
             }
             _ = cancel_poll.tick(), if control.broker.is_some() => {
                 if let Some(reason) = control.stop_reason().await? {
                     interrupt_pylon_codex_turn(&client, thread_id.as_str(), turn_id.as_str()).await;
-                    events.push(reason.into_runner_event());
+                    push_pylon_codex_runner_event(
+                        &mut events,
+                        reason.into_runner_event(),
+                        &event_observer,
+                    );
                     break;
                 }
             }
@@ -26842,7 +27025,7 @@ async fn run_prepared_local_pylon_codex_workload_with_control(
                             | PylonCodexRunnerEvent::Cancelled { .. }
                             | PylonCodexRunnerEvent::TimedOut { .. }
                     );
-                    events.push(event);
+                    push_pylon_codex_runner_event(&mut events, event, &event_observer);
                     if terminal {
                         break;
                     }
@@ -26859,7 +27042,7 @@ async fn run_prepared_local_pylon_codex_workload_with_control(
                             | PylonCodexRunnerEvent::Cancelled { .. }
                             | PylonCodexRunnerEvent::TimedOut { .. }
                     );
-                    events.push(event);
+                    push_pylon_codex_runner_event(&mut events, event, &event_observer);
                     if terminal {
                         interrupt_pylon_codex_turn(&client, thread_id.as_str(), turn_id.as_str()).await;
                         break;
@@ -26871,6 +27054,17 @@ async fn run_prepared_local_pylon_codex_workload_with_control(
 
     let _ = client.shutdown().await;
     Ok(events)
+}
+
+fn push_pylon_codex_runner_event(
+    events: &mut Vec<PylonCodexRunnerEvent>,
+    event: PylonCodexRunnerEvent,
+    observer: &Option<tokio::sync::mpsc::UnboundedSender<PylonCodexRunnerEvent>>,
+) {
+    if let Some(observer) = observer {
+        let _ = observer.send(event.clone());
+    }
+    events.push(event);
 }
 
 #[allow(dead_code)]
@@ -27402,6 +27596,192 @@ async fn run_account_refresh_command(
     Ok(build_account_link_report(base_url, response, &proof))
 }
 
+async fn run_and_stream_pylon_codex_workload(
+    config: &PylonConfig,
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    control: PylonCodexWorkloadRunControl<'_>,
+) -> Result<(PylonCodexWorkloadCompletion, u64)> {
+    let health = run_codex_agent_health_check();
+    let prepared = match prepare_pylon_codex_workload_assignment(config, &health, assignment) {
+        Ok(prepared) => prepared,
+        Err(refusal) => {
+            let result = pylon_codex_refusal_result(assignment, refusal);
+            let events_sent = post_pylon_codex_workload_result_events(
+                client, base_url, identity, assignment, &result,
+            )
+            .await?;
+            complete_openagents_pylon_workload(
+                client,
+                base_url,
+                identity,
+                assignment,
+                &result.completion,
+            )
+            .await?;
+
+            return Ok((result.completion, events_sent));
+        }
+    };
+
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let run_future = run_prepared_local_pylon_codex_workload_with_control_and_observer(
+        &prepared,
+        &control,
+        Some(event_tx),
+    );
+    tokio::pin!(run_future);
+
+    let mut builder = PylonCodexEventBuilder::default();
+    let mut completion = default_pylon_codex_workload_completion();
+    let mut saw_terminal = false;
+    let mut events_sent = 0u64;
+    let runner_result = loop {
+        tokio::select! {
+            maybe_event = event_rx.recv() => {
+                if let Some(event) = maybe_event {
+                    project_and_post_pylon_codex_runner_event(
+                        &prepared,
+                        &mut builder,
+                        &mut completion,
+                        &mut saw_terminal,
+                        client,
+                        base_url,
+                        identity,
+                        assignment,
+                        &mut events_sent,
+                        event,
+                    )
+                    .await?;
+                }
+            }
+            result = &mut run_future => {
+                break result;
+            }
+        }
+    };
+
+    while let Ok(event) = event_rx.try_recv() {
+        project_and_post_pylon_codex_runner_event(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            client,
+            base_url,
+            identity,
+            assignment,
+            &mut events_sent,
+            event,
+        )
+        .await?;
+    }
+
+    if let Err(error) = runner_result {
+        project_and_post_pylon_codex_runner_event(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            client,
+            base_url,
+            identity,
+            assignment,
+            &mut events_sent,
+            PylonCodexRunnerEvent::Error {
+                code: "local_codex_runner_failed".to_string(),
+                message: safe_pylon_codex_error_message(&error.to_string()),
+            },
+        )
+        .await?;
+    }
+
+    if !saw_terminal {
+        project_and_post_pylon_codex_runner_event(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            client,
+            base_url,
+            identity,
+            assignment,
+            &mut events_sent,
+            PylonCodexRunnerEvent::Error {
+                code: "codex_runner_incomplete".to_string(),
+                message: "Local Codex runner ended without a terminal event.".to_string(),
+            },
+        )
+        .await?;
+    }
+
+    if !pylon_codex_completion_reflects_broker_terminal(&completion) {
+        complete_openagents_pylon_workload(client, base_url, identity, assignment, &completion)
+            .await?;
+    }
+
+    Ok((completion, events_sent))
+}
+
+async fn project_and_post_pylon_codex_runner_event(
+    prepared: &PreparedPylonCodexWorkload,
+    builder: &mut PylonCodexEventBuilder,
+    completion: &mut PylonCodexWorkloadCompletion,
+    saw_terminal: &mut bool,
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    events_sent: &mut u64,
+    runner_event: PylonCodexRunnerEvent,
+) -> Result<()> {
+    let previous_event_count = builder.events.len();
+    project_pylon_codex_runner_event_for_streaming(
+        prepared,
+        builder,
+        completion,
+        saw_terminal,
+        runner_event,
+    );
+
+    let broker_terminal_completion = pylon_codex_completion_reflects_broker_terminal(completion);
+    for event in builder.events[previous_event_count..].iter() {
+        if broker_terminal_completion && !pylon_codex_event_is_broker_cancel_ack(event, completion)
+        {
+            continue;
+        }
+        post_openagents_pylon_workload_event(client, base_url, identity, assignment, event).await?;
+        *events_sent += 1;
+    }
+
+    Ok(())
+}
+
+async fn post_pylon_codex_workload_result_events(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    result: &PylonCodexWorkloadRunResult,
+) -> Result<u64> {
+    let broker_terminal_completion =
+        pylon_codex_completion_reflects_broker_terminal(&result.completion);
+    let mut events_sent = 0u64;
+    for event in &result.events {
+        if broker_terminal_completion
+            && !pylon_codex_event_is_broker_cancel_ack(event, &result.completion)
+        {
+            continue;
+        }
+        post_openagents_pylon_workload_event(client, base_url, identity, assignment, event).await?;
+        events_sent += 1;
+    }
+
+    Ok(events_sent)
+}
+
 async fn run_pylon_codex_workload_once(
     config_path: &Path,
     base_url: &str,
@@ -27433,38 +27813,23 @@ async fn run_pylon_codex_workload_once(
         assignment: &assignment,
     });
 
-    let result = run_local_pylon_codex_workload_with_control(&config, &assignment, control).await;
-    let broker_terminal_completion =
-        pylon_codex_completion_reflects_broker_terminal(&result.completion);
-    let mut events_sent = 0;
-    for event in &result.events {
-        if broker_terminal_completion
-            && !pylon_codex_event_is_broker_cancel_ack(event, &result.completion)
-        {
-            continue;
-        }
-        post_openagents_pylon_workload_event(&client, base_url, &identity, &assignment, event)
-            .await?;
-        events_sent += 1;
-    }
-    if !broker_terminal_completion {
-        complete_openagents_pylon_workload(
-            &client,
-            base_url,
-            &identity,
-            &assignment,
-            &result.completion,
-        )
-        .await?;
-    }
+    let (completion, events_sent) = run_and_stream_pylon_codex_workload(
+        &config,
+        &client,
+        base_url,
+        &identity,
+        &assignment,
+        control,
+    )
+    .await?;
 
     Ok(PylonCodexWorkloadOnceReport {
         claimed: true,
         assignment_uuid: Some(assignment.assignment_uuid),
         events_sent,
-        completion_status: result.completion.status,
-        error_code: result.completion.error_code,
-        error_message: result.completion.error_message,
+        completion_status: completion.status,
+        error_code: completion.error_code,
+        error_message: completion.error_message,
     })
 }
 
@@ -45648,6 +46013,83 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             result.events[7].payload.get("status"),
             Some(&json!("succeeded"))
         );
+    }
+
+    #[test]
+    fn pylon_codex_streaming_projection_emits_events_before_completion() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let prepared = super::prepare_pylon_codex_workload_assignment(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+        )
+        .expect("prepared workload");
+        let mut builder = super::PylonCodexEventBuilder::default();
+        let mut completion = super::default_pylon_codex_workload_completion();
+        let mut saw_terminal = false;
+
+        super::project_pylon_codex_runner_event_for_streaming(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            super::PylonCodexRunnerEvent::RunStatus {
+                status: "running".to_string(),
+            },
+        );
+
+        assert_eq!(builder.events.len(), 1);
+        assert_eq!(builder.events[0].sequence, 1);
+        assert_eq!(builder.events[0].event_type, "run.status");
+        assert_eq!(
+            builder.events[0].payload.get("status"),
+            Some(&json!("running"))
+        );
+        assert_eq!(
+            builder.events[0].payload.get("assignment_uuid"),
+            Some(&json!("workload-001"))
+        );
+        assert!(!saw_terminal);
+
+        super::project_pylon_codex_runner_event_for_streaming(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            super::PylonCodexRunnerEvent::AssistantTextDelta {
+                delta: "streamed before terminal".to_string(),
+            },
+        );
+
+        assert_eq!(builder.events.len(), 2);
+        assert_eq!(builder.events[1].sequence, 2);
+        assert_eq!(builder.events[1].event_type, "assistant.delta");
+        assert_eq!(
+            builder.events[1].payload.get("delta"),
+            Some(&json!("streamed before terminal"))
+        );
+        assert_eq!(completion.status, "succeeded");
+        assert!(!saw_terminal);
+
+        super::project_pylon_codex_runner_event_for_streaming(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            super::PylonCodexRunnerEvent::Completed {
+                usage: Some(json!({"output_tokens": 3})),
+            },
+        );
+
+        assert!(saw_terminal);
+        assert_eq!(builder.events.len(), 3);
+        assert_eq!(builder.events[2].sequence, 3);
+        assert_eq!(
+            builder.events[2].payload.get("status"),
+            Some(&json!("succeeded"))
+        );
+        assert_eq!(completion.usage, Some(json!({"output_tokens": 3})));
     }
 
     #[test]

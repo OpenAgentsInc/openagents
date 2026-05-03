@@ -328,9 +328,11 @@ the requested `workspace_scope` maps to an operator-configured
 ```
 
 The brokered runner starts Codex in read-only mode with approval requests
-rejected. Pylon projects local Codex output into web-safe workload events such
-as `run.status`, `assistant.delta`, `tool.start`, `tool.end`,
-`patch.preview`, and `pylon.error`, then reports a terminal completion status.
+rejected. Pylon projects each local Codex notification into a web-safe workload
+event such as `run.status`, `assistant.delta`, `tool.start`, `tool.end`,
+`patch.preview`, and `pylon.error`, then immediately POSTs that signed event to
+openagents.com while the local run is still active. The final completion status
+is sent separately after the terminal event.
 Runs are bounded by `codex_workload_timeout_seconds` and poll the broker every
 `codex_workload_cancel_poll_seconds` while active. Browser cancellation is
 acknowledged with `pylon.cancelled` / `run.status: cancelled`; local timeout is
@@ -349,8 +351,9 @@ cargo pylon-headless codex workload once --base-url https://openagents.com --jso
 
 That command first refreshes the linked-node runtime and capability snapshot,
 then claims at most one pending `pylon_codex` assignment for the active linked
-identity, posts signed workload events, posts terminal completion when the
-broker has not already made the assignment terminal, and then exits.
+identity, posts signed workload events as they are produced, posts terminal
+completion when the broker has not already made the assignment terminal, and
+then exits.
 
 For a live web chat experience, run the long-lived broker poller under the
 same service manager that keeps Pylon online:
@@ -359,10 +362,11 @@ same service manager that keeps Pylon online:
 cargo pylon-headless codex workload poll --base-url https://openagents.com --interval-seconds 2
 ```
 
-The web app only queues the assignment. The local poller must claim it and
-return signed events. If the poller is not running, the web stream will time
-out waiting for local events even when the linked-node page shows Codex
-capability as ready.
+The web app only queues the assignment. The local poller is assignment intake,
+not browser streaming; browser streaming comes from openagents.com after it
+accepts each signed event and broadcasts it over Reverb. If the poller is not
+running, the web stream will time out waiting for local events even when the
+linked-node page shows Codex capability as ready.
 
 The account-link request is signed by the node-held identity key and carries
 the local runtime diagnostic snapshot. If the local admin endpoint is stale or
