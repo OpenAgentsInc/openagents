@@ -109,7 +109,7 @@ const TREASURY_PAYOUT_TARGET_DOMAIN: &str = "openagents:nexus-treasury-payout-ta
 const TREASURY_POLICY_SCHEMA_VERSION: u32 = 3;
 const TREASURY_STATE_RETENTION_WINDOW_MS: u64 = 30 * 86_400_000;
 const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 60_000;
-const TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS: u64 = TREASURY_DISPATCH_RESULT_TIMEOUT_MS;
+const TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS: u64 = TREASURY_DISPATCH_RESULT_TIMEOUT_MS;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
 const TREASURY_PAYOUT_LIMIT: usize = 262_144;
 const TREASURY_PLACEHOLDER_PAYOUT_RECORD_LIMIT: usize = 1_024;
@@ -2333,13 +2333,12 @@ fn recovered_treasury_state_from_payload(
     state
 }
 
-fn retryable_failed_accepted_work_payout_is_due(
+fn retryable_failed_payout_is_due(
     record: &TreasuryPayoutRecord,
     now_unix_ms: u64,
 ) -> bool {
     record.status == "failed"
         && record.payment_id.is_none()
-        && record.classification.accepted_work()
         && !record.payout_target.trim().is_empty()
         && record
             .reason
@@ -2348,7 +2347,7 @@ fn retryable_failed_accepted_work_payout_is_due(
         && now_unix_ms
             >= record
                 .updated_at_unix_ms
-                .saturating_add(TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS)
+                .saturating_add(TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS)
 }
 
 fn failed_payout_reason_is_retryable(reason: &str) -> bool {
@@ -2358,10 +2357,9 @@ fn failed_payout_reason_is_retryable(reason: &str) -> bool {
         || reason.starts_with("wallet_send_retryable:")
 }
 
-fn failed_accepted_work_payout_is_retryable_pending(record: &TreasuryPayoutRecord) -> bool {
+fn failed_payout_is_retryable_pending(record: &TreasuryPayoutRecord) -> bool {
     record.status == "failed"
         && record.payment_id.is_none()
-        && record.classification.accepted_work()
         && !record.payout_target.trim().is_empty()
         && record
             .reason
@@ -4301,11 +4299,14 @@ impl TreasuryState {
                     }
                 }
                 "failed" => {
-                    if failed_accepted_work_payout_is_retryable_pending(record) {
+                    if failed_payout_is_retryable_pending(record) {
                         summary.pending_payout_count =
                             summary.pending_payout_count.saturating_add(1);
-                        summary.accepted_work_pending_payout_count =
-                            summary.accepted_work_pending_payout_count.saturating_add(1);
+                        if record.classification.accepted_work() {
+                            summary.accepted_work_pending_payout_count = summary
+                                .accepted_work_pending_payout_count
+                                .saturating_add(1);
+                        }
                     } else {
                         summary.failed_payout_count = summary.failed_payout_count.saturating_add(1);
                         summary.attention_payout_count =
@@ -4789,7 +4790,7 @@ impl TreasuryState {
         let retryable_failed_work_due = self
             .payout_records_by_key
             .values()
-            .any(|record| retryable_failed_accepted_work_payout_is_due(record, now_unix_ms));
+            .any(|record| retryable_failed_payout_is_due(record, now_unix_ms));
         if retryable_failed_work_due {
             return last_cycle_at
                 .map(|last_cycle_at| now_unix_ms.saturating_sub(last_cycle_at) >= idle_interval_ms)
@@ -4958,7 +4959,7 @@ impl TreasuryState {
             .values()
             .filter(|record| {
                 record.status == "queued"
-                    || retryable_failed_accepted_work_payout_is_due(record, now_unix_ms)
+                    || retryable_failed_payout_is_due(record, now_unix_ms)
             })
             .map(|record| {
                 (
@@ -7428,6 +7429,7 @@ fn treasury_payout_reconciliation_status(record: &TreasuryPayoutRecord) -> &'sta
         "confirmed" => "settled",
         "queued" => "pending_dispatch",
         "dispatching" | "dispatched" => "pending_confirmation",
+        "failed" if failed_payout_is_retryable_pending(record) => "pending_retry",
         "failed" => "attention_required",
         "skipped" => {
             if record.reason.as_deref() == Some("missing_payout_target") {
@@ -12023,7 +12025,7 @@ mod tests {
         state.wallet_balance_sats = 4;
         let now_unix_ms = super::now_unix_ms();
         let retry_due_updated_at = now_unix_ms
-            .saturating_sub(super::TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS)
+            .saturating_sub(super::TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS)
             .saturating_sub(1);
 
         for (pubkey, target) in [
@@ -12123,7 +12125,7 @@ mod tests {
         );
 
         assert!(state.treasury_enabled(&config));
-        assert!(super::retryable_failed_accepted_work_payout_is_due(
+        assert!(super::retryable_failed_payout_is_due(
             state
                 .payout_records_by_key
                 .get("accepted-work:one")
@@ -12197,6 +12199,54 @@ mod tests {
         assert_eq!(summary.failed_payout_count, 0);
         assert_eq!(summary.accepted_work_attention_payout_count, 0);
         assert_eq!(summary.reconciliation_status, "pending");
+    }
+
+    #[test]
+    fn retryable_failed_availability_payout_counts_as_pending_not_attention() {
+        let mut state = TreasuryState::default();
+        state.payout_records_by_key.insert(
+            "availability:retryable".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "availability:retryable".to_string(),
+                nostr_pubkey_hex: "pubkey-retryable".to_string(),
+                payout_target: "spark:retryable".to_string(),
+                amount_sats: 25,
+                status: "failed".to_string(),
+                reason: Some(
+                    "wallet_send_retryable:isolated_runtime:treasury_isolated_dispatch_timeout:70000"
+                        .to_string(),
+                ),
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: 100,
+                updated_at_unix_ms: 200,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        let summary = state.training_payout_ledger_summary();
+        assert_eq!(summary.pending_payout_count, 1);
+        assert_eq!(summary.accepted_work_pending_payout_count, 0);
+        assert_eq!(summary.failed_payout_count, 0);
+        assert_eq!(summary.attention_payout_count, 0);
+        assert_eq!(summary.accepted_work_attention_payout_count, 0);
+        assert_eq!(summary.reconciliation_status, "clean");
+        assert_eq!(
+            super::treasury_payout_reconciliation_status(
+                state
+                    .payout_records_by_key
+                    .get("availability:retryable")
+                    .expect("retryable availability record")
+            ),
+            "pending_retry"
+        );
     }
 
     #[test]
@@ -12854,7 +12904,7 @@ mod tests {
         record.status = "failed".to_string();
         record.reason = Some("wallet_send_retryable:leaf_selection:test".to_string());
         record.updated_at_unix_ms = completed_at_unix_ms
-            .saturating_sub(super::TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS);
+            .saturating_sub(super::TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS);
         assert!(!state.dispatch_cycle_due(
             &config,
             completed_at_unix_ms.saturating_add(1),
