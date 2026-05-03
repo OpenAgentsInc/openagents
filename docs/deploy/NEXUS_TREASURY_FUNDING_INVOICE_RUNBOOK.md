@@ -45,6 +45,8 @@ funding is the direct payout-liquidity path. The `bolt11_invoice` field remains
 available for normal Lightning payers, but a paid Bolt11 invoice is not by
 itself proof that the wallet now has Spark leaves available for Spark-address
 payouts.
+Hosted Nexus should return the Spark invoice even if compatibility Bolt11
+invoice creation fails.
 
 The durable relay shell proxies this request into embedded Nexus-control. Keep
 `NEXUS_RELAY_AUTHORITY_HTTP_TIMEOUT_MS` longer than

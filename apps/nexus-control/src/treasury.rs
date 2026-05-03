@@ -6180,20 +6180,6 @@ pub async fn create_live_funding_target(
             .get_bitcoin_address()
             .await
             .context("failed to create treasury Bitcoin receive address")?;
-        let bolt11_invoice = match request.amount_sats {
-            Some(amount_sats) if amount_sats > 0 => Some(
-                wallet
-                    .create_bolt11_invoice(
-                        amount_sats,
-                        request.description.clone(),
-                        request.expiry_seconds,
-                    )
-                    .await
-                    .context("failed to create treasury Bolt11 invoice")?,
-            ),
-            Some(_) => bail!("treasury funding amount must be greater than 0"),
-            None => None,
-        };
         let spark_invoice = match request.amount_sats {
             Some(amount_sats) if amount_sats > 0 => Some(
                 wallet
@@ -6205,6 +6191,27 @@ pub async fn create_live_funding_target(
                     .await
                     .context("failed to create treasury Spark invoice")?,
             ),
+            Some(_) => bail!("treasury funding amount must be greater than 0"),
+            None => None,
+        };
+        let bolt11_invoice = match request.amount_sats {
+            Some(amount_sats) if amount_sats > 0 => match wallet
+                .create_bolt11_invoice(
+                    amount_sats,
+                    request.description.clone(),
+                    request.expiry_seconds,
+                )
+                .await
+            {
+                Ok(invoice) => Some(invoice),
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "treasury Bolt11 invoice creation failed after Spark invoice creation"
+                    );
+                    None
+                }
+            },
             Some(_) => bail!("treasury funding amount must be greater than 0"),
             None => None,
         };
