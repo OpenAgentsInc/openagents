@@ -143,6 +143,7 @@ From a source checkout, the equivalent commands are:
 cargo pylon-headless account link --base-url https://openagents.com --token <one_time_token>
 cargo pylon-headless account refresh --base-url https://openagents.com --json
 cargo pylon-headless codex workload once --base-url https://openagents.com --json
+cargo pylon-headless codex workload poll --base-url https://openagents.com --interval-seconds 2
 ```
 
 Before running a link command, confirm the selected binary is runnable:
@@ -166,14 +167,15 @@ diagnostics just to link an account.
 7. If the linked page later shows stale runtime or stale Codex capability,
    run `pylon account refresh --base-url https://openagents.com --json`.
 
-If the Pylon is polling for web Codex assignments, the poll command performs
-the refresh before claim:
+If the Pylon is polling for web Codex assignments, the workload command
+performs the refresh before claim:
 
 ```bash
 pylon codex workload once --base-url https://openagents.com --json
+pylon codex workload poll --base-url https://openagents.com --interval-seconds 2
 ```
 
-The output should show either a claimed assignment or an idle report:
+The `once` output should show either a claimed assignment or an idle report:
 
 ```json
 {
@@ -185,6 +187,13 @@ The output should show either a claimed assignment or an idle report:
 
 Idle means no pending web workload was available for that linked identity. It
 does not mean account linking failed.
+
+For a live web chat experience, run the long-lived `poll` form under the same
+service manager that keeps the local Pylon online. The web app only queues a
+broker assignment. A local Pylon poller must claim it, stream signed events
+back, and complete it. If no poller claims the assignment, the browser stream
+times out after its web deadline even though the linked Pylon can still show a
+ready Codex capability.
 
 ## What The Web Page Shows
 
@@ -283,12 +292,15 @@ Run:
 
 ```bash
 pylon codex workload once --base-url https://openagents.com --json
+pylon codex workload poll --base-url https://openagents.com --interval-seconds 2
 ```
 
-If it returns `claimed: false`, there was no pending assignment for that
+Use `once` for diagnosis and `poll` for a live web-backed Codex mode. If
+`once` returns `claimed: false`, there was no pending assignment for that
 identity. If it fails before claim, read the account-refresh or workload claim
 error. The poller refreshes account state before claiming work, so failures at
-that stage are usually link, proof, or deployment issues.
+that stage are usually link, proof, deployment, or local service-manager
+issues.
 
 ## Product Boundary
 

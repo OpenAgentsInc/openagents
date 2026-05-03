@@ -2297,7 +2297,15 @@ pub enum AccountCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodexCommand {
-    WorkloadOnce { base_url: String, json: bool },
+    WorkloadOnce {
+        base_url: String,
+        json: bool,
+    },
+    WorkloadPoll {
+        base_url: String,
+        interval_seconds: u64,
+        json: bool,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -7716,6 +7724,20 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 }
                 Ok(Some(render_pylon_codex_workload_once_report(&report)))
             }
+            CodexCommand::WorkloadPoll {
+                base_url,
+                interval_seconds,
+                json,
+            } => {
+                run_pylon_codex_workload_poll(
+                    cli.config_path.as_path(),
+                    base_url.as_str(),
+                    interval_seconds,
+                    json,
+                )
+                .await?;
+                Ok(None)
+            }
         },
         Command::Status { json } => {
             let status = load_status_or_detect(cli.config_path.as_path()).await?;
@@ -8117,6 +8139,7 @@ Commands:\n\
   account link --base-url <url> --token <one_time_token> [--json]\n\
   account refresh --base-url <url> [--json]\n\
   codex workload once --base-url <url> [--json]\n\
+  codex workload poll --base-url <url> [--interval-seconds <n>] [--json]\n\
   status [--json]\n\
   backends [--json]\n\
   inventory [--json] [--limit <n>]\n\
@@ -8504,6 +8527,15 @@ fn parse_codex_command(args: &[String], start_index: usize) -> Result<CodexComma
                 let (base_url, json) = parse_codex_workload_once_command(args, start_index + 2)?;
                 Ok(CodexCommand::WorkloadOnce { base_url, json })
             }
+            Some("poll") => {
+                let (base_url, interval_seconds, json) =
+                    parse_codex_workload_poll_command(args, start_index + 2)?;
+                Ok(CodexCommand::WorkloadPoll {
+                    base_url,
+                    interval_seconds,
+                    json,
+                })
+            }
             Some(other) => bail!("unknown codex workload command: {other}"),
             None => bail!("missing codex workload command"),
         },
@@ -8534,6 +8566,49 @@ fn parse_codex_workload_once_command(args: &[String], mut index: usize) -> Resul
 
     Ok((
         base_url.ok_or_else(|| anyhow!("missing --base-url for codex workload once"))?,
+        json,
+    ))
+}
+
+fn parse_codex_workload_poll_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(String, u64, bool)> {
+    let mut base_url = None;
+    let mut interval_seconds = 2u64;
+    let mut json = false;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--base-url" => {
+                index += 1;
+                base_url = Some(
+                    args.get(index)
+                        .ok_or_else(|| anyhow!("missing value for --base-url"))?
+                        .clone(),
+                );
+            }
+            "--interval-seconds" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --interval-seconds"))?;
+                interval_seconds = value.parse::<u64>().with_context(|| {
+                    format!("invalid --interval-seconds value `{value}` for codex workload poll")
+                })?;
+                if interval_seconds == 0 {
+                    bail!("--interval-seconds must be at least 1");
+                }
+            }
+            "--json" => json = true,
+            other => bail!("unexpected argument for codex workload poll: {other}"),
+        }
+        index += 1;
+    }
+
+    Ok((
+        base_url.ok_or_else(|| anyhow!("missing --base-url for codex workload poll"))?,
+        interval_seconds,
         json,
     ))
 }
@@ -27393,6 +27468,65 @@ async fn run_pylon_codex_workload_once(
     })
 }
 
+async fn run_pylon_codex_workload_poll(
+    config_path: &Path,
+    base_url: &str,
+    interval_seconds: u64,
+    json_output: bool,
+) -> Result<()> {
+    let interval = Duration::from_secs(interval_seconds.max(1));
+    eprintln!(
+        "pylon: polling OpenAgents Codex workloads from {} every {}s",
+        base_url.trim_end_matches('/'),
+        interval.as_secs()
+    );
+
+    loop {
+        match run_pylon_codex_workload_once(config_path, base_url).await {
+            Ok(report) if report.claimed => {
+                if json_output {
+                    println!("{}", serde_json::to_string(&report)?);
+                } else {
+                    println!("{}", render_pylon_codex_workload_once_report(&report));
+                }
+                std::io::stdout()
+                    .flush()
+                    .context("failed to flush codex workload poll output")?;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                if json_output {
+                    println!(
+                        "{}",
+                        serde_json::to_string(&json!({
+                            "type": "error",
+                            "message": format_anyhow_error_chain(&error),
+                        }))?
+                    );
+                    std::io::stdout()
+                        .flush()
+                        .context("failed to flush codex workload poll error")?;
+                } else {
+                    eprintln!(
+                        "warning: pylon codex workload poll failed: {}",
+                        format_anyhow_error_chain(&error)
+                    );
+                }
+            }
+        }
+
+        tokio::select! {
+            result = tokio::signal::ctrl_c() => {
+                result.context("failed waiting for ctrl-c")?;
+                break;
+            }
+            () = tokio::time::sleep(interval) => {}
+        }
+    }
+
+    Ok(())
+}
+
 fn pylon_codex_completion_reflects_broker_terminal(
     completion: &PylonCodexWorkloadCompletion,
 ) -> bool {
@@ -30971,6 +31105,31 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     },
                 },
             "codex workload once should parse base URL and json flags",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_codex_workload_poll_command() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "codex".to_string(),
+                "workload".to_string(),
+                "poll".to_string(),
+                "--base-url".to_string(),
+                "https://openagents.com".to_string(),
+                "--interval-seconds".to_string(),
+                "3".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Codex {
+                    command: CodexCommand::WorkloadPoll {
+                        base_url: "https://openagents.com".to_string(),
+                        interval_seconds: 3,
+                        json: true,
+                    },
+                },
+            "codex workload poll should parse base URL, interval, and json flags",
         )
     }
 
