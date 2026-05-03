@@ -23139,7 +23139,7 @@ fn treasury_dispatch_isolation_failure_batch(
             })
             .collect(),
         wallet_snapshot: None,
-        wallet_error: Some(reason),
+        wallet_error: None,
     }
 }
 
