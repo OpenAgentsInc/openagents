@@ -17803,6 +17803,7 @@ async fn create_treasury_funding_target(
         wallet_balance_updated_at_unix_ms: now,
         spark_address: material.spark_address,
         bitcoin_address: material.bitcoin_address,
+        spark_invoice: material.spark_invoice,
         bolt11_invoice: material.bolt11_invoice,
     }))
 }
@@ -34170,6 +34171,7 @@ mod tests {
                 Ok(TreasuryFundingMaterial {
                     spark_address: "spark:treasury".to_string(),
                     bitcoin_address: "bc1qtreasury".to_string(),
+                    spark_invoice: Some("sparkinvoice210fund".to_string()),
                     bolt11_invoice: Some("lnbc210fund".to_string()),
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
@@ -34202,6 +34204,10 @@ mod tests {
         assert_eq!(funding_response.status(), StatusCode::OK);
         let funding: TreasuryFundingTargetResponse = response_json(funding_response).await?;
         assert_eq!(funding.spark_address, "spark:treasury");
+        assert_eq!(
+            funding.spark_invoice.as_deref(),
+            Some("sparkinvoice210fund")
+        );
         assert_eq!(funding.bolt11_invoice.as_deref(), Some("lnbc210fund"));
 
         let stats_response = app
@@ -34259,6 +34265,7 @@ mod tests {
                 Ok(TreasuryFundingMaterial {
                     spark_address: "spark:treasury".to_string(),
                     bitcoin_address: "bc1qtreasury".to_string(),
+                    spark_invoice: None,
                     bolt11_invoice: None,
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
@@ -34330,6 +34337,7 @@ mod tests {
                 Ok(TreasuryFundingMaterial {
                     spark_address: "spark:treasury".to_string(),
                     bitcoin_address: "bc1qtreasury".to_string(),
+                    spark_invoice: None,
                     bolt11_invoice: None,
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),

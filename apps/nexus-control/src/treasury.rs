@@ -593,6 +593,8 @@ pub struct TreasuryFundingTargetResponse {
     pub spark_address: String,
     pub bitcoin_address: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spark_invoice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bolt11_invoice: Option<String>,
 }
 
@@ -2243,6 +2245,7 @@ pub struct TreasuryWalletRefreshResult {
 pub struct TreasuryFundingMaterial {
     pub spark_address: String,
     pub bitcoin_address: String,
+    pub spark_invoice: Option<String>,
     pub bolt11_invoice: Option<String>,
     pub wallet_snapshot: TreasuryWalletSnapshot,
 }
@@ -6122,6 +6125,7 @@ fn simulated_funding_target(
     TreasuryFundingMaterial {
         spark_address: "spark:simulated-treasury-proof-wallet".to_string(),
         bitcoin_address: "bcrt1qsimulatedtreasuryproofwallet".to_string(),
+        spark_invoice: (amount > 0).then(|| format!("sparkinvoice{amount}simulatedproofwallet")),
         bolt11_invoice: (amount > 0).then(|| format!("lnbc{amount}simulatedproofwallet")),
         wallet_snapshot: simulated_wallet_snapshot(config, Vec::new()),
     }
@@ -6190,11 +6194,26 @@ pub async fn create_live_funding_target(
             Some(_) => bail!("treasury funding amount must be greater than 0"),
             None => None,
         };
+        let spark_invoice = match request.amount_sats {
+            Some(amount_sats) if amount_sats > 0 => Some(
+                wallet
+                    .create_invoice(
+                        amount_sats,
+                        request.description.clone(),
+                        request.expiry_seconds.map(u64::from),
+                    )
+                    .await
+                    .context("failed to create treasury Spark invoice")?,
+            ),
+            Some(_) => bail!("treasury funding amount must be greater than 0"),
+            None => None,
+        };
         let wallet_snapshot =
             wallet_snapshot_from_wallet_for_funding_target(wallet.as_ref()).await?;
         Ok(TreasuryFundingMaterial {
             spark_address,
             bitcoin_address,
+            spark_invoice,
             bolt11_invoice,
             wallet_snapshot,
         })
@@ -6651,6 +6670,7 @@ pub async fn run_treasury_command(
                 wallet_balance_updated_at_unix_ms: now_unix_ms(),
                 spark_address: material.spark_address,
                 bitcoin_address: material.bitcoin_address,
+                spark_invoice: material.spark_invoice,
                 bolt11_invoice: material.bolt11_invoice,
             };
             if *json {
@@ -7914,6 +7934,9 @@ fn render_treasury_funding_target_response(response: &TreasuryFundingTargetRespo
         format!("spark_address: {}", response.spark_address),
         format!("bitcoin_address: {}", response.bitcoin_address),
     ];
+    if let Some(invoice) = response.spark_invoice.as_deref() {
+        lines.push(format!("spark_invoice: {invoice}"));
+    }
     if let Some(invoice) = response.bolt11_invoice.as_deref() {
         lines.push(format!("bolt11_invoice: {invoice}"));
     }
@@ -8382,6 +8405,7 @@ fn treasury_wallet_config(config: &TreasuryConfig, storage_dir: PathBuf) -> Resu
         deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
         background_processing: false,
         real_time_sync_enabled: config.wallet_real_time_sync_enabled,
+        prefer_spark_over_lightning: true,
     })
 }
 
@@ -9170,6 +9194,16 @@ mod tests {
                 .expect("wallet config");
 
         assert!(wallet_config.real_time_sync_enabled);
+    }
+
+    #[test]
+    fn treasury_wallet_config_prefers_spark_for_hosted_funding() {
+        let config = test_treasury_config();
+        let wallet_config =
+            super::treasury_wallet_config(&config, config.wallet_storage_dir.clone())
+                .expect("wallet config");
+
+        assert!(wallet_config.prefer_spark_over_lightning);
     }
 
     #[test]
@@ -13920,6 +13954,7 @@ mod tests {
                 Ok(TreasuryFundingMaterial {
                     spark_address: "spark:treasury".to_string(),
                     bitcoin_address: "bc1qtreasury".to_string(),
+                    spark_invoice: Some("sparkinvoice210fund".to_string()),
                     bolt11_invoice: Some("lnbc210fund".to_string()),
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
