@@ -207,6 +207,10 @@ pub struct SparkWallet {
 }
 
 impl SparkWallet {
+    pub fn is_direct_spark_address(payment_request: &str) -> bool {
+        DirectSparkAddress::from_str(payment_request.trim()).is_ok()
+    }
+
     pub async fn new(signer: SparkSigner, config: WalletConfig) -> Result<Self, SparkError> {
         let seed = Seed::Mnemonic {
             mnemonic: signer.mnemonic().to_string(),
@@ -858,6 +862,15 @@ mod tests {
             direct_config.service_provider_config.user_agent.as_deref(),
             Some("openagents-spark-transfer-lookup")
         );
+    }
+
+    #[test]
+    fn direct_spark_address_detection_accepts_addresses_not_invoices_or_legacy_test_values() {
+        assert!(super::SparkWallet::is_direct_spark_address(
+            "spark1pgss8efs2mlgm83j4cs3xdxazk8em99mms9elqlk8rwumn4vdut0ly2wvj9hc5"
+        ));
+        assert!(!super::SparkWallet::is_direct_spark_address("spark:alice"));
+        assert!(!super::SparkWallet::is_direct_spark_address(""));
     }
 
     #[test]

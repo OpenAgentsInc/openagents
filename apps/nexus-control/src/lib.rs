@@ -17778,20 +17778,6 @@ async fn create_treasury_funding_target(
         }
     };
     let now = now_unix_ms();
-    {
-        let mut store = state.store.write().map_err(|_| ApiError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            error: "internal_error",
-            reason: "session_store_poisoned".to_string(),
-        })?;
-        let treasury_receipts = store
-            .treasury
-            .apply_wallet_snapshot(&material.wallet_snapshot, now);
-        store
-            .treasury
-            .refresh_public_snapshot(&state.config.treasury, now);
-        record_treasury_receipt_events(&mut store, treasury_receipts, now);
-    }
     let _ = force_refresh_public_stats_cache(&state, now);
     Ok(Json(TreasuryFundingTargetResponse {
         authority: "openagents-hosted-nexus".to_string(),
