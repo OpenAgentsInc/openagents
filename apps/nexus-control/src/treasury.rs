@@ -2479,7 +2479,7 @@ impl TreasuryState {
                 .max(TREASURY_CONTINUITY_ALERT_THRESHOLD_MS)
     }
 
-    fn inactive_legacy_availability_confirmation_record(
+    fn inactive_availability_confirmation_record(
         &self,
         record: &TreasuryPayoutRecord,
         policy: &TreasuryRuntimePolicy,
@@ -2489,7 +2489,6 @@ impl TreasuryState {
                 == TreasuryPayoutClass::PlaceholderLiveness
             && matches!(record.status.as_str(), "dispatching" | "dispatched")
             && record.payment_id.is_some()
-            && Self::legacy_identity_scoped_availability_scope(record).is_some()
     }
 
     fn legacy_availability_confirmation_attention_rows(
@@ -3699,7 +3698,7 @@ impl TreasuryState {
         let mut legacy_availability_confirmation_attention_count = 0u64;
         let policy = self.active_policy(config);
         for record in self.payout_records_by_key.values() {
-            if self.inactive_legacy_availability_confirmation_record(record, &policy) {
+            if self.inactive_availability_confirmation_record(record, &policy) {
                 legacy_availability_confirmation_attention_count =
                     legacy_availability_confirmation_attention_count.saturating_add(1);
                 continue;
@@ -12978,7 +12977,7 @@ mod tests {
     }
 
     #[test]
-    fn disabled_placeholder_payouts_hide_legacy_availability_confirmations_from_backlog() {
+    fn disabled_placeholder_payouts_hide_availability_confirmations_from_backlog() {
         let mut state = TreasuryState::default();
         let mut config = test_treasury_config();
         config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
@@ -13014,11 +13013,41 @@ mod tests {
             },
         );
 
+        state.payout_records_by_key.insert(
+            "1770001:availability-beneficiary:host:sha256:newer-stipend".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "1770001:availability-beneficiary:host:sha256:newer-stipend"
+                    .to_string(),
+                nostr_pubkey_hex: "newer-presence-pubkey".to_string(),
+                payout_target: "spark:newer-presence".to_string(),
+                amount_sats: 25,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("newer-presence-payment".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                created_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
+                updated_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_basis: Some("presence_only".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
         let stats = state.public_stats(&config, now_unix_ms);
 
         assert_eq!(stats.pending_confirmation_count, 0);
         assert_eq!(stats.tracked_payment_backlog_count, 0);
-        assert_eq!(stats.legacy_availability_confirmation_attention_count, 1);
+        assert_eq!(stats.legacy_availability_confirmation_attention_count, 2);
         assert_eq!(stats.degraded_reason, None);
     }
 
