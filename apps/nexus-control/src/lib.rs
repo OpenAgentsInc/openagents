@@ -27453,7 +27453,7 @@ fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSna
         });
     }
 
-    if health.accepted_work_attention_payout_count > 0 || health.payouts_failed_24h > 0 {
+    if health.accepted_work_attention_payout_count > 0 {
         alerts.push(PublicTrainingLaunchAlert {
             alert_id: "payout_lag".to_string(),
             severity: "critical".to_string(),
@@ -27463,6 +27463,16 @@ fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSna
                 health.accepted_work_attention_payout_count,
                 health.payouts_failed_24h,
                 health.payouts_skipped_24h
+            ),
+        });
+    } else if health.payouts_failed_24h > 0 {
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "payout_recent_failures".to_string(),
+            severity: "warning".to_string(),
+            title: "Recent payout retry activity".to_string(),
+            detail: format!(
+                "No accepted-work payout needs attention; failed 24h {} // skipped 24h {}.",
+                health.payouts_failed_24h, health.payouts_skipped_24h
             ),
         });
     } else if health.accepted_work_pending_payout_count > 0 {
@@ -34972,6 +34982,30 @@ mod tests {
                 .iter()
                 .any(|alert| alert.alert_id == "payout_lag")
         );
+    }
+
+    #[test]
+    fn launch_health_keeps_recent_retryable_failures_below_critical_without_attention() {
+        let mut health = crate::economy::PublicTrainingLaunchHealthSnapshot {
+            payouts_failed_24h: 1,
+            payouts_skipped_24h: 5,
+            accepted_work_attention_payout_count: 0,
+            ..crate::economy::PublicTrainingLaunchHealthSnapshot::default()
+        };
+
+        super::sync_training_launch_health_alerts(&mut health);
+
+        assert_eq!(health.overall_status, "warn");
+        assert_eq!(health.critical_alert_count, 0);
+        assert!(
+            !health
+                .alerts
+                .iter()
+                .any(|alert| alert.alert_id == "payout_lag")
+        );
+        assert!(health.alerts.iter().any(|alert| {
+            alert.alert_id == "payout_recent_failures" && alert.severity == "warning"
+        }));
     }
 
     #[tokio::test]
