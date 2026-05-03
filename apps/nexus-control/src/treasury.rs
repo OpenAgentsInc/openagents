@@ -2358,6 +2358,17 @@ fn failed_payout_reason_is_retryable(reason: &str) -> bool {
         || reason.starts_with("wallet_send_retryable:")
 }
 
+fn failed_accepted_work_payout_is_retryable_pending(record: &TreasuryPayoutRecord) -> bool {
+    record.status == "failed"
+        && record.payment_id.is_none()
+        && record.classification.accepted_work()
+        && !record.payout_target.trim().is_empty()
+        && record
+            .reason
+            .as_deref()
+            .is_some_and(failed_payout_reason_is_retryable)
+}
+
 fn wallet_send_failure_is_leaf_selection(reason: &str) -> bool {
     reason.starts_with("wallet_send_retryable:leaf_selection:")
 }
@@ -3774,7 +3785,11 @@ impl TreasuryState {
                 .last_wallet_recovery_report
                 .as_ref()
                 .is_some_and(|summary| {
-                    summary.validation_passed && summary.major_divergence_detected
+                    summary.validation_passed
+                        && summary.major_divergence_detected
+                        && summary
+                            .rebuilt_minus_current_balance_sats
+                            .map_or(true, |delta| delta > 0)
                 })
         {
             let delta = self
@@ -4286,13 +4301,20 @@ impl TreasuryState {
                     }
                 }
                 "failed" => {
-                    summary.failed_payout_count = summary.failed_payout_count.saturating_add(1);
-                    summary.attention_payout_count =
-                        summary.attention_payout_count.saturating_add(1);
-                    if record.classification.accepted_work() {
-                        summary.accepted_work_attention_payout_count = summary
-                            .accepted_work_attention_payout_count
-                            .saturating_add(1);
+                    if failed_accepted_work_payout_is_retryable_pending(record) {
+                        summary.pending_payout_count =
+                            summary.pending_payout_count.saturating_add(1);
+                        summary.accepted_work_pending_payout_count =
+                            summary.accepted_work_pending_payout_count.saturating_add(1);
+                    } else {
+                        summary.failed_payout_count = summary.failed_payout_count.saturating_add(1);
+                        summary.attention_payout_count =
+                            summary.attention_payout_count.saturating_add(1);
+                        if record.classification.accepted_work() {
+                            summary.accepted_work_attention_payout_count = summary
+                                .accepted_work_attention_payout_count
+                                .saturating_add(1);
+                        }
                     }
                 }
                 "skipped" => {
@@ -11447,6 +11469,42 @@ mod tests {
     }
 
     #[test]
+    fn negative_wallet_recovery_delta_does_not_degrade_live_storage() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 1_000_000;
+        state.wallet_runtime_status = Some("connected".to_string());
+        state.wallet_balance_sats = 116_825;
+        state.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        state.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        state.last_wallet_recovery_report = Some(super::TreasuryWalletRecoveryReportSummary {
+            generated_at_unix_ms: now_unix_ms,
+            report_path: "/tmp/recovery-report.json".to_string(),
+            current_storage_dir: "/tmp/current".to_string(),
+            rebuilt_storage_dir: "/tmp/rebuilt".to_string(),
+            current_balance_sats: Some(116_825),
+            rebuilt_balance_sats: Some(0),
+            rebuilt_minus_current_balance_sats: Some(-116_825),
+            major_divergence_detected: true,
+            validation_passed: true,
+        });
+
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(stats.degraded_reason, None);
+
+        state
+            .last_wallet_recovery_report
+            .as_mut()
+            .expect("recovery summary")
+            .rebuilt_minus_current_balance_sats = Some(1);
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(
+            stats.degraded_reason.as_deref(),
+            Some("wallet_storage_diverges_from_rebuild:1")
+        );
+    }
+
+    #[test]
     fn wallet_snapshot_stale_respects_refresh_budget() {
         let mut state = TreasuryState::default();
         let mut config = test_treasury_config();
@@ -12100,6 +12158,45 @@ mod tests {
                 .map(|record| (record.status.as_str(), record.reason.as_deref())),
             Some(("queued", Some("placeholder_payouts_disabled")))
         );
+    }
+
+    #[test]
+    fn retryable_failed_accepted_work_counts_as_pending_in_training_summary() {
+        let mut state = TreasuryState::default();
+        state.payout_records_by_key.insert(
+            "accepted-work:retryable".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "accepted-work:retryable".to_string(),
+                nostr_pubkey_hex: "pubkey-retryable".to_string(),
+                payout_target: "spark:retryable".to_string(),
+                amount_sats: 25,
+                status: "failed".to_string(),
+                reason: Some("wallet_send_timeout:60000".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: 100,
+                updated_at_unix_ms: 200,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("accepted.retryable".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let summary = state.training_payout_ledger_summary();
+        assert_eq!(summary.pending_payout_count, 1);
+        assert_eq!(summary.accepted_work_pending_payout_count, 1);
+        assert_eq!(summary.failed_payout_count, 0);
+        assert_eq!(summary.accepted_work_attention_payout_count, 0);
+        assert_eq!(summary.reconciliation_status, "pending");
     }
 
     #[test]
