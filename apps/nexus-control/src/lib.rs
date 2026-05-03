@@ -12807,19 +12807,14 @@ async fn record_provider_presence_heartbeat(
             stale_after_ms: state.config.provider_presence_stale_after_ms,
         }));
     }
-    let (session_id, nostr_pubkey_hex, recorded) = match state.store.try_write() {
+    let (session_id, nostr_pubkey_hex) = match state.store.write() {
         Ok(mut store) => {
             let record = store
                 .provider_presence
                 .record_heartbeat(normalized_request, now);
-            (record.session_id, record.nostr_pubkey_hex, true)
+            (record.session_id, record.nostr_pubkey_hex)
         }
-        Err(TryLockError::WouldBlock) => (
-            normalized_request.session_id.clone(),
-            normalized_request.nostr_pubkey_hex.clone(),
-            false,
-        ),
-        Err(TryLockError::Poisoned(_)) => {
+        Err(_) => {
             return Err(ApiError {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
                 error: "internal_error",
@@ -12827,9 +12822,7 @@ async fn record_provider_presence_heartbeat(
             });
         }
     };
-    if recorded {
-        throttle_public_stats_cache_invalidation(&state, now);
-    }
+    throttle_public_stats_cache_invalidation(&state, now);
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
         session_id,
