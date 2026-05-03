@@ -2566,19 +2566,39 @@ struct OpenAgentsPylonRuntimeDiagnostics {
 struct OpenAgentsPylonCapability {
     key: String,
     status: String,
+    #[serde(default, alias = "displayLabel")]
     display_label: String,
+    #[serde(default, alias = "authState")]
     auth_state: String,
+    #[serde(default, alias = "runnerKind")]
     runner_kind: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "runnerVersion",
+        skip_serializing_if = "Option::is_none"
+    )]
     runner_version: Option<String>,
+    #[serde(default, alias = "transportKind")]
     transport_kind: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        alias = "supportedActions",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     supported_actions: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        alias = "requiredConfirmations",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     required_confirmations: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        alias = "workspaceRoots",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     workspace_roots: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, alias = "blockerCodes", skip_serializing_if = "Vec::is_empty")]
     blocker_codes: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     metadata: BTreeMap<String, Value>,
@@ -2648,6 +2668,8 @@ struct OpenAgentsPylonCodexWorkspaceScope {
     project_repository_id: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     workspace_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project_label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     repository_label: Option<String>,
 }
@@ -26012,6 +26034,7 @@ fn pylon_codex_workspace_scope_candidates(
     let mut candidates = Vec::new();
     for value in [
         scope.repository_label.as_deref(),
+        scope.project_label.as_deref(),
         scope.workspace_label.as_deref(),
     ]
     .into_iter()
@@ -26238,6 +26261,7 @@ fn pylon_codex_refusal_result(
     }
 }
 
+#[allow(dead_code)]
 fn run_pylon_codex_workload_with_runner_events(
     config: &PylonConfig,
     health: &CodexAgentHealthReport,
@@ -27109,6 +27133,7 @@ async fn complete_openagents_account_link(
             reqwest::header::AUTHORIZATION,
             proof.authorization_header.as_str(),
         )
+        .header(reqwest::header::ACCEPT, "application/json")
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(body)
         .send()
@@ -27124,9 +27149,14 @@ async fn complete_openagents_account_link(
             http_error_message(detail.as_str())
         );
     }
-    response
-        .json::<OpenAgentsPylonLinkCompletionResponse>()
+    let detail = response
+        .text()
         .await
+        .with_context(|| format!("failed to read OpenAgents account-link response from {url}"))?;
+    if detail.trim().is_empty() {
+        bail!("OpenAgents account link failed: empty JSON response from {url}");
+    }
+    serde_json::from_str::<OpenAgentsPylonLinkCompletionResponse>(detail.as_str())
         .with_context(|| format!("failed to decode OpenAgents account-link response from {url}"))
         .map(|response| (response, proof))
 }
@@ -45213,6 +45243,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 ],
                 "workspace_scope": {
                     "workspace_label": "Team",
+                    "project_label": "Autopilot",
                     "repository_label": "OpenAgents",
                     "project_repository_id": "repo-42"
                 }
@@ -45642,6 +45673,67 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             }))?;
 
         assert!(response.observed_pylon.capabilities.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn account_link_response_accepts_website_camel_case_capabilities()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let response =
+            serde_json::from_value::<super::OpenAgentsPylonLinkCompletionResponse>(json!({
+                "linked": true,
+                "observedPylon": {
+                    "id": 41,
+                    "identityKey": "11111111...22222222",
+                    "publicKeyHex": "aa",
+                    "npub": "npub1test",
+                    "nodeLabel": "desk-pylon",
+                    "runtimeState": "online",
+                    "readyModel": null,
+                    "eligibleProductCount": 0,
+                    "products": [],
+                    "capabilities": [
+                        {
+                            "key": "codex_agent",
+                            "status": "ready",
+                            "displayLabel": "Codex on desk-pylon",
+                            "authState": "ready",
+                            "runnerKind": "codex_cli",
+                            "runnerVersion": "codex-cli 0.128.0",
+                            "transportKind": "pylon_workload_poll",
+                            "supportedActions": ["chat"],
+                            "requiredConfirmations": ["shell"],
+                            "workspaceRoots": [],
+                            "metadata": {"schema_version": "openagents.pylon.capability.v1"}
+                        }
+                    ]
+                },
+                "accountLink": {
+                    "id": 91,
+                    "userId": 7,
+                    "observedPylonId": 41,
+                    "state": "active",
+                    "method": "cli_token"
+                }
+            }))?;
+
+        let capability = response
+            .observed_pylon
+            .capabilities
+            .first()
+            .ok_or_else(|| std::io::Error::other("missing decoded capability"))?;
+
+        assert_eq!(capability.key, "codex_agent");
+        assert_eq!(capability.display_label, "Codex on desk-pylon");
+        assert_eq!(capability.auth_state, "ready");
+        assert_eq!(capability.runner_kind, "codex_cli");
+        assert_eq!(
+            capability.runner_version.as_deref(),
+            Some("codex-cli 0.128.0")
+        );
+        assert_eq!(capability.transport_kind, "pylon_workload_poll");
+        assert_eq!(capability.supported_actions, vec!["chat"]);
+        assert_eq!(capability.required_confirmations, vec!["shell"]);
         Ok(())
     }
 
