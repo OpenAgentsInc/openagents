@@ -244,13 +244,16 @@ Optional account visibility now also has an explicit headless lane:
 
 ```bash
 cargo pylon-headless account link --base-url https://openagents.com --token <one_time_token>
+cargo pylon-headless account refresh --base-url https://openagents.com
 ```
 
-That command is optional. It is meant for operators who choose to connect a
-local Pylon to a signed-in OpenAgents account so the web dashboard can show the
-node. It does not run during install, bootstrap, or local bring-up by default.
-The completion request also carries a NIP-98 signed proof tied to the local
-node identity; see `docs/pylon/PYLON_ACCOUNT_LINKING_NIP98.md` for the server
+Those commands are optional. `account link` connects a local Pylon to a
+signed-in OpenAgents account so the web dashboard can show the node. `account
+refresh` updates an already-linked node's dashboard snapshot and Codex
+capability state without consuming a new one-time token. Neither command runs
+during install, bootstrap, or local bring-up by default. The completion and
+refresh requests also carry a NIP-98 signed proof tied to the local node
+identity; see `docs/pylon/PYLON_ACCOUNT_LINKING_NIP98.md` for the server
 verification contract.
 
 ## Optional OpenAgents Dashboard Linking
@@ -267,7 +270,7 @@ Current dashboard flow:
 
 1. Sign in at `https://openagents.com/login` only if you want the web
    dashboard.
-2. Open the signed-in dashboard at `https://openagents.com/dashboard`.
+2. Open the signed-in Pylon page at `https://openagents.com/pylon`.
 3. In the optional linking section, use `Link a Pylon`, then `Generate link command`.
 4. Run the generated `pylon account link --base-url https://openagents.com --token <one_time_token>`
    command in the shell where that local Pylon is installed.
@@ -278,7 +281,7 @@ Current dashboard flow:
 cargo pylon-headless account link --base-url https://openagents.com --token <one_time_token>
 ```
 
-6. After the command succeeds, refresh `https://openagents.com/dashboard` or
+6. After the command succeeds, refresh `https://openagents.com/pylon` or
    use the dashboard's `Refresh after linking` action.
 7. The linked node should then appear in `My Pylons` with its current label,
    identity, runtime state, ready model, eligible product summary, and any
@@ -287,6 +290,15 @@ cargo pylon-headless account link --base-url https://openagents.com --token <one
    `codex_agent` capability when it can inspect the local Codex runner surface,
    using normalized states such as `ready`, `needs_auth`, or `not_installed`
    without uploading local credential paths or tokens.
+8. If the linked-node page later shows stale runtime or Codex readiness, run:
+
+```bash
+cargo pylon-headless account refresh --base-url https://openagents.com --json
+```
+
+That refresh posts the current runtime and capability snapshot with the same
+node-held NIP-98 identity proof. It does not create or transfer account
+ownership, and it does not require a fresh link token.
 
 For local diagnostics, `pylon doctor --json` includes a `codex_agent` health
 report with the runner kind, optional runner version, status, auth state,
@@ -331,9 +343,10 @@ For a bounded operator poll, run:
 cargo pylon-headless codex workload once --base-url https://openagents.com --json
 ```
 
-That command claims at most one pending `pylon_codex` assignment for the active
-linked identity, posts signed workload events, posts terminal completion when
-the broker has not already made the assignment terminal, and then exits.
+That command first refreshes the linked-node runtime and capability snapshot,
+then claims at most one pending `pylon_codex` assignment for the active linked
+identity, posts signed workload events, posts terminal completion when the
+broker has not already made the assignment terminal, and then exits.
 
 The account-link request is signed by the node-held identity key and carries
 the local runtime diagnostic snapshot. If the local admin endpoint is stale or
