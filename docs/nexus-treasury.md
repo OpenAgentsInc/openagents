@@ -80,6 +80,14 @@ That timeout is an operator funding-target failure, not by itself proof that the
 payout wallet is unusable. It must not overwrite a usable cached wallet balance
 or poison post-deploy payout smoke as `wallet_runtime_status=error`; the wallet
 refresh and payout dispatch loops own payout-wallet health.
+
+When Nexus is served through the durable relay shell, the relay's embedded
+Nexus-control proxy timeout must be longer than the funding-target wallet
+timeout. Use `NEXUS_RELAY_AUTHORITY_HTTP_TIMEOUT_MS` for that proxy budget; the
+default is `180000` ms. If this relay timeout is too short, operators see a
+generic relay `502` before Nexus-control can return the real funding-target
+status.
+
 Do not retry production funding-target calls as a debugging loop; reproduce the
 wallet/funding behavior locally or in the private treasury runner first, then
 use hosted Nexus only as the live confirmation surface.

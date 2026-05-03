@@ -46,6 +46,12 @@ available for normal Lightning payers, but a paid Bolt11 invoice is not by
 itself proof that the wallet now has Spark leaves available for Spark-address
 payouts.
 
+The durable relay shell proxies this request into embedded Nexus-control. Keep
+`NEXUS_RELAY_AUTHORITY_HTTP_TIMEOUT_MS` longer than
+`NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS`; the default relay budget is
+`180000` ms. A shorter relay budget can turn a real Nexus-control funding
+timeout into an unhelpful relay `502`.
+
 If the payer needs a different amount, change only `amount_sats`,
 `description`, and `expiry_seconds`. Keep `amount_sats` positive. A request
 without a positive amount may return receive addresses without amount-specific
