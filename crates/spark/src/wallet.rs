@@ -12,9 +12,9 @@ use breez_sdk_spark::{
 };
 use spark_wallet::{
     DefaultSigner as DirectSparkSigner, ListTransfersRequest as DirectListTransfersRequest,
-    Network as DirectSparkNetwork, SparkWallet as DirectSparkWallet,
-    SparkWalletConfig as DirectSparkWalletConfig, TransferId as DirectTransferId,
-    WalletBuilder as DirectSparkWalletBuilder,
+    Network as DirectSparkNetwork, SparkAddress as DirectSparkAddress,
+    SparkWallet as DirectSparkWallet, SparkWalletConfig as DirectSparkWalletConfig,
+    TransferId as DirectTransferId, WalletBuilder as DirectSparkWalletBuilder,
 };
 
 use crate::{SparkError, SparkSigner};
@@ -409,6 +409,36 @@ impl SparkWallet {
         Ok(response.payment.id)
     }
 
+    pub async fn send_spark_address_direct(
+        &self,
+        spark_address: &str,
+        amount_sats: u64,
+    ) -> Result<String, SparkError> {
+        let request = spark_address.trim();
+        if request.is_empty() {
+            return Err(SparkError::InvalidPaymentRequest(
+                "Spark address cannot be empty".to_string(),
+            ));
+        }
+        if amount_sats == 0 {
+            return Err(SparkError::InvalidPaymentRequest(
+                "Spark transfer amount must be greater than zero".to_string(),
+            ));
+        }
+
+        let receiver_address = DirectSparkAddress::from_str(request)
+            .map_err(|error| SparkError::InvalidPaymentRequest(error.to_string()))?;
+        let wallet = self
+            .build_direct_wallet("openagents-spark-direct-transfer")
+            .await?;
+        let transfer = wallet
+            .transfer(amount_sats, &receiver_address, None)
+            .await
+            .map_err(|error| SparkError::Wallet(error.to_string()))?;
+
+        Ok(transfer.id.to_string())
+    }
+
     pub async fn list_payments(
         &self,
         limit: Option<u32>,
@@ -485,7 +515,9 @@ impl SparkWallet {
             return Ok(None);
         };
 
-        let wallet = self.build_direct_transfer_lookup_wallet().await?;
+        let wallet = self
+            .build_direct_wallet("openagents-spark-transfer-lookup")
+            .await?;
         let response = wallet
             .list_transfers(DirectListTransfersRequest {
                 transfer_ids: vec![transfer_id],
@@ -553,7 +585,7 @@ impl SparkWallet {
             .map_err(|error| SparkError::Wallet(error.to_string()))
     }
 
-    async fn build_direct_transfer_lookup_wallet(&self) -> Result<DirectSparkWallet, SparkError> {
+    async fn build_direct_wallet(&self, user_agent: &str) -> Result<DirectSparkWallet, SparkError> {
         let parsed_mnemonic = bip39::Mnemonic::parse(self.signer.mnemonic())
             .map_err(|error| SparkError::InvalidMnemonic(error.to_string()))?;
         let seed = parsed_mnemonic.to_seed(self.signer.passphrase());
@@ -561,7 +593,7 @@ impl SparkWallet {
             DirectSparkSigner::new(seed.as_ref(), self.config.network.to_direct_network()?)
                 .map_err(|error| SparkError::KeyDerivation(error.to_string()))?,
         );
-        let direct_config = direct_wallet_config_for_lookup(&self.config)?;
+        let direct_config = direct_wallet_config(&self.config, user_agent)?;
         DirectSparkWalletBuilder::new(direct_config, signer)
             .with_background_processing(false)
             .build()
@@ -586,13 +618,13 @@ fn sdk_config_for_wallet(config: &WalletConfig) -> Result<SdkConfig, SparkError>
     Ok(sdk_config)
 }
 
-fn direct_wallet_config_for_lookup(
+fn direct_wallet_config(
     config: &WalletConfig,
+    user_agent: &str,
 ) -> Result<DirectSparkWalletConfig, SparkError> {
     let mut wallet_config =
         DirectSparkWalletConfig::default_config(config.network.to_direct_network()?);
-    wallet_config.service_provider_config.user_agent =
-        Some("openagents-spark-transfer-lookup".to_string());
+    wallet_config.service_provider_config.user_agent = Some(user_agent.to_string());
     Ok(wallet_config)
 }
 
@@ -750,8 +782,8 @@ fn payment_status_detail(status: PaymentStatus, htlc_status: Option<&str>) -> Op
 mod tests {
     use super::{
         Balance, DepositClaimFeePolicy, DirectSparkNetwork, Network, PaymentSummary, PaymentType,
-        SdkNetwork, UnclaimedDeposit, WalletConfig, direct_wallet_config_for_lookup,
-        payment_direction_label, payment_summary_from_sdk_payment, sdk_config_for_wallet,
+        SdkNetwork, UnclaimedDeposit, WalletConfig, direct_wallet_config, payment_direction_label,
+        payment_summary_from_sdk_payment, sdk_config_for_wallet,
         unclaimed_deposit_from_sdk_deposit,
     };
     use crate::SparkError;
@@ -813,7 +845,8 @@ mod tests {
             background_processing: false,
             real_time_sync_enabled: false,
         };
-        let direct_config = direct_wallet_config_for_lookup(&config).expect("direct config");
+        let direct_config = direct_wallet_config(&config, "openagents-spark-transfer-lookup")
+            .expect("direct config");
 
         assert_eq!(
             direct_config.service_provider_config.user_agent.as_deref(),

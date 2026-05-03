@@ -15,8 +15,8 @@ use bip39::{Language, Mnemonic};
 use futures::stream::{self, StreamExt};
 use openagents_provider_substrate::verify_provider_payout_target_registration_signature;
 use openagents_spark::{
-    DepositClaimFeePolicy, Network as SparkNetwork, PaymentSummary, SparkSigner, SparkWallet,
-    WalletConfig,
+    DepositClaimFeePolicy, Network as SparkNetwork, PaymentSummary, SparkError, SparkSigner,
+    SparkWallet, WalletConfig,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -6400,12 +6400,7 @@ async fn dispatch_live_payout_batch(
             async move {
                 let outcome =
                     dispatch_outcome_from_send_future(plan.clone(), send_timeout_ms, async move {
-                        wallet
-                            .send_payment_simple(
-                                plan.payment_request.as_str(),
-                                Some(plan.amount_sats),
-                            )
-                            .await
+                        send_treasury_payout(wallet.as_ref(), &plan).await
                     })
                     .await;
                 (index, outcome)
@@ -6414,6 +6409,26 @@ async fn dispatch_live_payout_batch(
         .buffer_unordered(max_concurrent_sends)
         .collect::<Vec<_>>()
         .await
+}
+
+async fn send_treasury_payout(
+    wallet: &SparkWallet,
+    plan: &TreasuryDispatchPlan,
+) -> std::result::Result<String, SparkError> {
+    let payment_request = plan.payment_request.trim();
+    if payment_request_is_raw_spark_address(payment_request) {
+        return wallet
+            .send_spark_address_direct(payment_request, plan.amount_sats)
+            .await;
+    }
+
+    wallet
+        .send_payment_simple(payment_request, Some(plan.amount_sats))
+        .await
+}
+
+fn payment_request_is_raw_spark_address(payment_request: &str) -> bool {
+    payment_request.trim().starts_with("spark1")
 }
 
 fn classify_wallet_send_failure(reason: &str) -> String {
@@ -14120,6 +14135,18 @@ mod tests {
             super::classify_wallet_send_failure("some permanent failure"),
             "wallet_send_failed:unknown:some permanent failure"
         );
+    }
+
+    #[test]
+    fn raw_spark_address_payouts_use_direct_transfer_path() {
+        assert!(super::payment_request_is_raw_spark_address(
+            "spark1pgssx8svpepmx7l6gm9ssulhumqstwmx"
+        ));
+        assert!(super::payment_request_is_raw_spark_address(
+            "  spark1pgssx8svpepmx7l6gm9ssulhumqstwmx  "
+        ));
+        assert!(!super::payment_request_is_raw_spark_address("spark:alice"));
+        assert!(!super::payment_request_is_raw_spark_address("lnbc1invoice"));
     }
 
     #[test]
