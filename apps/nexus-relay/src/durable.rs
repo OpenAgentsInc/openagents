@@ -33,12 +33,14 @@ const ENV_ENABLE_NIP42_AUTH: &str = "NEXUS_RELAY_ENABLE_NIP42_AUTH";
 const ENV_MAX_WEBSOCKETS: &str = "NEXUS_RELAY_MAX_WEBSOCKETS";
 const ENV_AUTHORITY_MAX_IN_FLIGHT: &str = "NEXUS_RELAY_AUTHORITY_MAX_IN_FLIGHT";
 const ENV_AUTHORITY_TOKIO_WORKER_THREADS: &str = "NEXUS_RELAY_AUTHORITY_TOKIO_WORKER_THREADS";
+const ENV_AUTHORITY_HTTP_TIMEOUT_MS: &str = "NEXUS_RELAY_AUTHORITY_HTTP_TIMEOUT_MS";
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42110";
 const DEFAULT_UPSTREAM_LISTEN_ADDR: &str = "127.0.0.1:42111";
 const DEFAULT_DATA_DIR: &str = ".nexus-relay-data";
 const DEFAULT_MAX_WEBSOCKETS: usize = 512;
 const DEFAULT_AUTHORITY_MAX_IN_FLIGHT: usize = 256;
 const DEFAULT_AUTHORITY_TOKIO_WORKER_THREADS: usize = 4;
+const DEFAULT_AUTHORITY_HTTP_TIMEOUT_MS: u64 = 180_000;
 const MAX_PROXY_REQUEST_BYTES: usize = 8 * 1024 * 1024;
 const HOT_AUTHORITY_CACHE_REFRESH_INTERVAL: Duration = Duration::from_secs(10);
 const HOT_AUTHORITY_CACHE_MAX_STALE: Duration = Duration::from_secs(300);
@@ -62,6 +64,7 @@ pub struct DurableRelayConfig {
     pub max_websockets: usize,
     pub authority_max_in_flight: usize,
     pub authority_tokio_worker_threads: usize,
+    pub authority_http_timeout: Duration,
 }
 
 impl DurableRelayConfig {
@@ -106,6 +109,10 @@ impl DurableRelayConfig {
             DEFAULT_AUTHORITY_TOKIO_WORKER_THREADS,
         )?
         .max(1);
+        let authority_http_timeout = Duration::from_millis(parse_u64_env(
+            ENV_AUTHORITY_HTTP_TIMEOUT_MS,
+            DEFAULT_AUTHORITY_HTTP_TIMEOUT_MS,
+        )?);
 
         Ok(Self {
             listen_addr,
@@ -117,6 +124,7 @@ impl DurableRelayConfig {
             max_websockets,
             authority_max_in_flight,
             authority_tokio_worker_threads,
+            authority_http_timeout,
         })
     }
 
@@ -186,6 +194,7 @@ pub struct HealthResponse {
 struct AppState {
     config: DurableRelayConfig,
     http_client: reqwest::Client,
+    authority_http_client: reqwest::Client,
     websocket_slots: Arc<Semaphore>,
     authority_slots: Arc<Semaphore>,
     authority_http_base_url: Url,
@@ -289,8 +298,19 @@ fn build_router(config: DurableRelayConfig, authority_http_base_url: Url) -> Rou
             );
             reqwest::Client::new()
         });
+    let authority_http_client = reqwest::Client::builder()
+        .timeout(config.authority_http_timeout)
+        .build()
+        .unwrap_or_else(|error| {
+            tracing::error!(
+                error = %error,
+                "failed to build Nexus authority HTTP client; using default client"
+            );
+            reqwest::Client::new()
+        });
     let state = AppState {
         http_client,
+        authority_http_client,
         websocket_slots: Arc::new(Semaphore::new(config.max_websockets)),
         authority_slots: Arc::new(Semaphore::new(config.authority_max_in_flight)),
         authority_http_base_url,
@@ -430,10 +450,10 @@ async fn proxy_authority_http_request(state: &AppState, request: Request) -> Res
         return provider_presence_dry_run_response(request).await;
     }
     let cache_key = authority_hot_cache_key(&method, uri.path());
-    if let Some(cache_key) = cache_key.as_deref()
-        && let Some(response) = try_cached_authority_response(state, cache_key)
-    {
-        return response;
+    if let Some(cache_key) = cache_key.as_deref() {
+        if let Some(response) = try_cached_authority_response(state, cache_key) {
+            return response;
+        }
     }
     let _permit = match state.authority_slots.clone().try_acquire_owned() {
         Ok(permit) => permit,
@@ -470,7 +490,7 @@ async fn proxy_authority_http_request(state: &AppState, request: Request) -> Res
         }
     };
 
-    let mut authority_request = state.http_client.request(method, target);
+    let mut authority_request = state.authority_http_client.request(method, target);
     for (name, value) in &headers {
         if should_skip_proxy_request_header(name) {
             continue;
@@ -886,6 +906,23 @@ fn parse_usize_env(name: &str, default: usize) -> Result<usize, String> {
     Ok(parsed)
 }
 
+fn parse_u64_env(name: &str, default: u64) -> Result<u64, String> {
+    let Some(raw) = std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(default);
+    };
+    let parsed = raw
+        .parse::<u64>()
+        .map_err(|error| format!("invalid {name}: {error}"))?;
+    if parsed == 0 {
+        return Err(format!("invalid {name}: expected value greater than zero"));
+    }
+    Ok(parsed)
+}
+
 fn now_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -983,6 +1020,7 @@ mod tests {
             max_websockets: super::DEFAULT_MAX_WEBSOCKETS,
             authority_max_in_flight: super::DEFAULT_AUTHORITY_MAX_IN_FLIGHT,
             authority_tokio_worker_threads: super::DEFAULT_AUTHORITY_TOKIO_WORKER_THREADS,
+            authority_http_timeout: Duration::from_millis(super::DEFAULT_AUTHORITY_HTTP_TIMEOUT_MS),
         })
     }
 
