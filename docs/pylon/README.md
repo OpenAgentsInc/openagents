@@ -256,6 +256,10 @@ refresh requests also carry a NIP-98 signed proof tied to the local node
 identity; see `docs/pylon/PYLON_ACCOUNT_LINKING_NIP98.md` for the server
 verification contract.
 
+For the full operator and product process, including initial link completion,
+signed refresh, dashboard visibility, and Codex capability snapshots, see
+`docs/pylon/PYLON_ACCOUNT_LINKING_PROCESS.md`.
+
 ## Optional OpenAgents Dashboard Linking
 
 Local bring-up is complete even if you never sign in to OpenAgents and never
