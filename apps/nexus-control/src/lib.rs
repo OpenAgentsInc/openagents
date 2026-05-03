@@ -23082,12 +23082,19 @@ async fn dispatch_live_payouts_isolated(
     config: &TreasuryConfig,
     plans: &[TreasuryDispatchPlan],
 ) -> TreasuryDispatchBatchResult {
-    let timeout_ms = config
-        .dispatch_result_timeout_ms(config.payout_interval_ms())
-        .saturating_add(10_000);
+    let payout_interval_ms = config.payout_interval_ms();
+    let send_timeout_ms = config.dispatch_result_timeout_ms(payout_interval_ms);
+    let timeout_ms =
+        payout_interval_ms.max(send_timeout_ms.saturating_mul(2).saturating_add(30_000));
     let config = config.clone();
     let plans = plans.to_vec();
     let fallback_plans = plans.clone();
+    tracing::info!(
+        payout_count = fallback_plans.len(),
+        send_timeout_ms,
+        timeout_ms,
+        "starting isolated treasury payout dispatch"
+    );
     let dispatch = tokio::task::spawn_blocking(move || {
         let runtime = build_isolated_treasury_runtime()?;
         Ok::<TreasuryDispatchBatchResult, String>(
