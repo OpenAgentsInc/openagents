@@ -190,10 +190,12 @@ does not mean account linking failed.
 
 For a live web chat experience, run the long-lived `poll` form under the same
 service manager that keeps the local Pylon online. The web app only queues a
-broker assignment. A local Pylon poller must claim it, stream signed events
-back, and complete it. If no poller claims the assignment, the browser stream
-times out after its web deadline even though the linked Pylon can still show a
-ready Codex capability.
+broker assignment. A local Pylon poller must claim it, POST each signed Codex
+event as it is produced, and complete it. The poller is assignment intake, not
+the browser stream transport; openagents.com broadcasts accepted events to the
+browser. If no poller claims the assignment, the browser stream times out after
+its web deadline even though the linked Pylon can still show a ready Codex
+capability.
 
 ## What The Web Page Shows
 
