@@ -23095,22 +23095,28 @@ async fn dispatch_live_payouts_isolated(
     config: &TreasuryConfig,
     plans: &[TreasuryDispatchPlan],
 ) -> TreasuryDispatchBatchResult {
+    let timeout_ms = config
+        .dispatch_result_timeout_ms(config.payout_interval_ms())
+        .saturating_add(10_000);
     let config = config.clone();
     let plans = plans.to_vec();
     let fallback_plans = plans.clone();
-    match tokio::task::spawn_blocking(move || {
+    let dispatch = tokio::task::spawn_blocking(move || {
         let runtime = build_isolated_treasury_runtime()?;
         Ok::<TreasuryDispatchBatchResult, String>(
             runtime.block_on(dispatch_live_payouts(&config, plans.as_slice())),
         )
-    })
-    .await
-    {
-        Ok(Ok(batch)) => batch,
-        Ok(Err(error)) => treasury_dispatch_isolation_failure_batch(fallback_plans, error),
-        Err(error) => treasury_dispatch_isolation_failure_batch(
+    });
+    match tokio::time::timeout(Duration::from_millis(timeout_ms), dispatch).await {
+        Ok(Ok(Ok(batch))) => batch,
+        Ok(Ok(Err(error))) => treasury_dispatch_isolation_failure_batch(fallback_plans, error),
+        Ok(Err(error)) => treasury_dispatch_isolation_failure_batch(
             fallback_plans,
             format!("treasury_isolated_dispatch_join_failed:{error}"),
+        ),
+        Err(_) => treasury_dispatch_isolation_failure_batch(
+            fallback_plans,
+            format!("treasury_isolated_dispatch_timeout:{timeout_ms}"),
         ),
     }
 }
