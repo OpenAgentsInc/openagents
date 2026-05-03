@@ -2333,10 +2333,7 @@ fn recovered_treasury_state_from_payload(
     state
 }
 
-fn retryable_failed_payout_is_due(
-    record: &TreasuryPayoutRecord,
-    now_unix_ms: u64,
-) -> bool {
+fn retryable_failed_payout_is_due(record: &TreasuryPayoutRecord, now_unix_ms: u64) -> bool {
     record.status == "failed"
         && record.payment_id.is_none()
         && !record.payout_target.trim().is_empty()
@@ -4303,9 +4300,8 @@ impl TreasuryState {
                         summary.pending_payout_count =
                             summary.pending_payout_count.saturating_add(1);
                         if record.classification.accepted_work() {
-                            summary.accepted_work_pending_payout_count = summary
-                                .accepted_work_pending_payout_count
-                                .saturating_add(1);
+                            summary.accepted_work_pending_payout_count =
+                                summary.accepted_work_pending_payout_count.saturating_add(1);
                         }
                     } else {
                         summary.failed_payout_count = summary.failed_payout_count.saturating_add(1);
@@ -4949,6 +4945,7 @@ impl TreasuryState {
 
     fn claim_queued_payouts_for_dispatch(
         &mut self,
+        config: &TreasuryConfig,
         policy: &TreasuryRuntimePolicy,
         now_unix_ms: u64,
         reserved_wallet_sats: &mut u64,
@@ -4958,8 +4955,7 @@ impl TreasuryState {
             .payout_records_by_key
             .values()
             .filter(|record| {
-                record.status == "queued"
-                    || retryable_failed_payout_is_due(record, now_unix_ms)
+                record.status == "queued" || retryable_failed_payout_is_due(record, now_unix_ms)
             })
             .map(|record| {
                 (
@@ -4979,6 +4975,9 @@ impl TreasuryState {
 
         let mut dispatch_plans = Vec::new();
         let mut changed = false;
+        let mut accepted_work_claimed = 0usize;
+        let mut availability_claimed = 0usize;
+        let mut beta_bonus_claimed = 0usize;
         for (_, _, _, _, payout_key) in queued {
             let Some(record) = self.payout_records_by_key.get_mut(payout_key.as_str()) else {
                 continue;
@@ -5013,6 +5012,17 @@ impl TreasuryState {
                 }
                 continue;
             };
+            let payout_class = record.classification.effective_payout_class();
+            let claim_limit =
+                config.max_concurrent_send_operations_for_class(usize::MAX, payout_class);
+            let claimed_for_class = match payout_class {
+                TreasuryPayoutClass::AcceptedWork => &mut accepted_work_claimed,
+                TreasuryPayoutClass::PlaceholderLiveness => &mut availability_claimed,
+                TreasuryPayoutClass::BetaBonus => &mut beta_bonus_claimed,
+            };
+            if *claimed_for_class >= claim_limit {
+                continue;
+            }
             if record.amount_sats
                 > self
                     .wallet_balance_sats
@@ -5025,7 +5035,6 @@ impl TreasuryState {
                 }
                 continue;
             }
-            let payout_class = record.classification.effective_payout_class();
             let daily_budget_cap_sats = policy.daily_budget_cap_sats_for_class(payout_class);
             if daily_budget_cap_sats > 0
                 && committed_daily_budget_totals
@@ -5042,6 +5051,7 @@ impl TreasuryState {
             }
             *reserved_wallet_sats = reserved_wallet_sats.saturating_add(record.amount_sats);
             committed_daily_budget_totals.add_amount(payout_class, record.amount_sats);
+            *claimed_for_class = claimed_for_class.saturating_add(1);
             record.payout_target = target.spark_address.clone();
             record.status = "dispatching".to_string();
             record.reason = None;
@@ -5097,6 +5107,7 @@ impl TreasuryState {
         let mut committed_daily_budget_totals =
             self.committed_daily_budget_sats_last_24h(now_unix_ms);
         let (mut dispatch_plans, queued_claim_changed) = self.claim_queued_payouts_for_dispatch(
+            config,
             &policy,
             now_unix_ms,
             &mut reserved_wallet_sats,
@@ -8916,7 +8927,8 @@ pub(crate) fn set_test_wallet_send_hook(hook: Option<TestWalletSendHook>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        OnlinePylonIdentity, TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS,
+        OnlinePylonIdentity, TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS,
+        TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS,
         TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
         TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES,
         TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial, TreasuryFundingReceive,
@@ -12250,6 +12262,73 @@ mod tests {
     }
 
     #[test]
+    fn retryable_failed_availability_dispatch_is_capped_per_cycle() {
+        let mut state = TreasuryState::default();
+        state.wallet_balance_sats = 1_000;
+        let mut config = test_treasury_config();
+        config.availability_max_concurrent_sends = 2;
+        let now_unix_ms = 100 + TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS + 1;
+
+        for index in 0..3 {
+            let pubkey = format!("pubkey-{index}");
+            state.payout_targets_by_identity.insert(
+                pubkey.clone(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: pubkey.clone(),
+                    source_session_id: format!("session-{index}"),
+                    spark_address: format!("spark:target-{index}"),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+            state.payout_records_by_key.insert(
+                format!("availability:retryable:{index}"),
+                TreasuryPayoutRecord {
+                    payout_key: format!("availability:retryable:{index}"),
+                    nostr_pubkey_hex: pubkey,
+                    payout_target: format!("spark:target-{index}"),
+                    amount_sats: 25,
+                    status: "failed".to_string(),
+                    reason: Some("wallet_send_timeout:60000".to_string()),
+                    payment_id: None,
+                    window_started_at_unix_ms: 50,
+                    window_ends_at_unix_ms: 60,
+                    created_at_unix_ms: 100,
+                    updated_at_unix_ms: 100,
+                    sellable_at_window_open: true,
+                    dispatch_receipt_recorded: false,
+                    confirm_receipt_recorded: false,
+                    fail_receipt_recorded: true,
+                    skip_receipt_recorded: false,
+                    counted_in_paid_total: false,
+                    classification: TreasuryPayoutClassification::default(),
+                },
+            );
+        }
+
+        let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms);
+
+        assert_eq!(prepared.dispatch_plans.len(), 2);
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .values()
+                .filter(|record| record.status == "dispatching")
+                .count(),
+            2
+        );
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .values()
+                .filter(|record| record.status == "failed")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
     fn reason_metrics_break_out_skip_and_fail_reasons() {
         let mut state = TreasuryState::default();
         state.payout_records_by_key.insert(
@@ -12903,8 +12982,8 @@ mod tests {
             .expect("queued payout record");
         record.status = "failed".to_string();
         record.reason = Some("wallet_send_retryable:leaf_selection:test".to_string());
-        record.updated_at_unix_ms = completed_at_unix_ms
-            .saturating_sub(super::TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS);
+        record.updated_at_unix_ms =
+            completed_at_unix_ms.saturating_sub(super::TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS);
         assert!(!state.dispatch_cycle_due(
             &config,
             completed_at_unix_ms.saturating_add(1),
