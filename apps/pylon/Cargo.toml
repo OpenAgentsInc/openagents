@@ -16,6 +16,7 @@ axum = "0.8"
 bip39 = "2.2.0"
 codex-client = { path = "../../crates/codex-client" }
 hex = { workspace = true }
+hmac = "0.12.1"
 jsonwebtoken = "9"
 libc = "0.2"
 nostr = { path = "../../crates/nostr/core" }
