@@ -26,8 +26,13 @@ HTTP:
 - `POST /v1/admin/homework/cs336-a1/dispatch`
 
 `treasury funding-target` uses the repo-owned Spark integration and returns the
-current treasury Spark receive address, Bitcoin receive address, and an optional
-Bolt11 invoice when an amount is requested.
+current treasury Spark receive address, Bitcoin receive address, and optional
+amount-specific Spark and Bolt11 invoices when an amount is requested. Hosted
+Nexus pays Pylons to Spark addresses, so the Spark invoice or Spark address is
+the preferred funding target for payout liquidity. The Bolt11 invoice remains a
+compatibility target for Lightning payers, but Lightning invoice payment alone
+is not proof that the wallet has Spark leaves available for Spark-address
+payouts.
 
 `POST /v1/admin/treasury/refresh` is the operator-safe manual refresh surface.
 It requires the normal Nexus admin bearer token, runs one forced wallet refresh
@@ -35,7 +40,7 @@ without creating a wallet implicitly, and returns the same status payload as
 `GET /v1/treasury/status`. Use it when payout confirmation visibility matters
 now and waiting for the background refresh loop is not acceptable.
 
-To create a live Lightning invoice for operator funding, call:
+To create live operator funding material, call:
 
 ```bash
 curl -fsS -X POST "https://nexus.openagents.com/v1/treasury/funding-target" \
@@ -45,18 +50,20 @@ curl -fsS -X POST "https://nexus.openagents.com/v1/treasury/funding-target" \
     "description": "OpenAgents Nexus treasury funding",
     "expiry_seconds": 3600
   }' |
-  jq -r '.bolt11_invoice // empty'
+  jq '{spark_invoice, spark_address, bolt11_invoice, bitcoin_address}'
 ```
 
-Only a positive `amount_sats` produces a Bolt11 invoice. A no-amount request is
-useful for receive addresses, not for a Lightning payer. The returned invoice is
-the payment request to give the operator. It is not proof of payment.
+Only a positive `amount_sats` produces amount-specific invoices. A no-amount
+request is useful for receive addresses, not for invoice payment. For Nexus
+payout liquidity, prefer `spark_invoice` or `spark_address`. Use
+`bolt11_invoice` only when the payer cannot send Spark yet. The returned invoice
+is the payment request to give the operator. It is not proof of payment.
 
 After the payer sends funds, verify the result with `/v1/treasury/status`.
 Treat the invoice as paid only after the status surface shows the receive in
-wallet state, a higher spendable balance, or subsequent accepted-work payout
-dispatch/confirmation. Do not mistake funding-target creation, an HTTP `504`,
-or an unrelated cached-balance refresh for payment confirmation.
+wallet state and subsequent accepted-work payout dispatch/confirmation. Do not
+mistake funding-target creation, an HTTP `504`, a generic account balance
+increase, or an unrelated cached-balance refresh for Spark payout liquidity.
 
 If accepted-work payouts are queued with `wallet_balance_insufficient`, the
 wallet refresh loop must keep reconciling even when no payout has dispatched
@@ -300,6 +307,12 @@ Why this rule exists:
   funds still exist in the wallet
 - upstream tags carry the current Spark/Breez wallet fixes; stale forks can lag
   behind wallet hydration, tree-selection, and parser changes
+
+Hosted Nexus configures Breez with `prefer_spark_over_lightning=true` for the
+treasury wallet. This keeps newly generated Bolt11 invoices Spark-preferred for
+Spark-capable payers while preserving the standard Bolt11 compatibility path.
+Payouts still require spendable Spark leaves because provider payout targets are
+Spark addresses.
 
 If a copied treasury wallet still reports suspiciously low or zero balance on
 the current upstream tag, treat that as stale local wallet state or an upstream

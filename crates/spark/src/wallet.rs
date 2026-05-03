@@ -53,6 +53,7 @@ pub struct WalletConfig {
     pub deposit_claim_fee_policy: DepositClaimFeePolicy,
     pub background_processing: bool,
     pub real_time_sync_enabled: bool,
+    pub prefer_spark_over_lightning: bool,
 }
 
 impl Default for WalletConfig {
@@ -69,6 +70,7 @@ impl Default for WalletConfig {
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
             background_processing: true,
             real_time_sync_enabled: true,
+            prefer_spark_over_lightning: false,
         }
     }
 }
@@ -614,6 +616,7 @@ fn sdk_config_for_wallet(config: &WalletConfig) -> Result<SdkConfig, SparkError>
     if !config.real_time_sync_enabled {
         sdk_config.real_time_sync_server_url = None;
     }
+    sdk_config.prefer_spark_over_lightning = config.prefer_spark_over_lightning;
     sdk_config.max_deposit_claim_fee = config
         .deposit_claim_fee_policy
         .to_sdk_max_fee(config.network);
@@ -846,6 +849,7 @@ mod tests {
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
             background_processing: false,
             real_time_sync_enabled: false,
+            prefer_spark_over_lightning: false,
         };
         let direct_config = direct_wallet_config(&config, "openagents-spark-transfer-lookup")
             .expect("direct config");
@@ -906,6 +910,7 @@ mod tests {
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
             background_processing: false,
             real_time_sync_enabled: true,
+            prefer_spark_over_lightning: false,
         };
         let sdk_config = sdk_config_for_wallet(&config).expect("sdk config");
 
@@ -922,11 +927,28 @@ mod tests {
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
             background_processing: false,
             real_time_sync_enabled: false,
+            prefer_spark_over_lightning: false,
         };
         let sdk_config = sdk_config_for_wallet(&config).expect("sdk config");
 
         assert_eq!(sdk_config.api_key.as_deref(), Some("test-api-key"));
         assert_eq!(sdk_config.real_time_sync_server_url, None);
+    }
+
+    #[test]
+    fn sdk_config_can_prefer_spark_over_lightning() {
+        let config = WalletConfig {
+            network: Network::Mainnet,
+            api_key: Some("test-api-key".to_string()),
+            storage_dir: PathBuf::from("/tmp/openagents-spark-test"),
+            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
+            background_processing: false,
+            real_time_sync_enabled: false,
+            prefer_spark_over_lightning: true,
+        };
+        let sdk_config = sdk_config_for_wallet(&config).expect("sdk config");
+
+        assert!(sdk_config.prefer_spark_over_lightning);
     }
 
     #[test]
