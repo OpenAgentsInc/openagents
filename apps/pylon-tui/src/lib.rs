@@ -2815,41 +2815,48 @@ impl AppShell {
             .split(vertical[1]);
         frame.render_widget(self.header_panel(), vertical[0]);
 
+        let homework_lines = self.homework_lines();
+        let operator_lines = self.operator_lines();
+        let payment_feed_lines = self.payment_feed_lines();
+        let wallet_card_lines = self.wallet_card_lines();
+        let summary_lines = self.summary_lines();
+        let rank_lines = self.rank_lines();
+
         let left = Layout::vertical([
-            Constraint::Length((self.homework_lines().len() as u16 + 2).clamp(10, 16)),
+            Constraint::Length((homework_lines.len() as u16 + 2).clamp(10, 16)),
             Constraint::Min(8),
         ])
         .split(columns[0]);
         let compact_right_column = columns[1].height < 24;
         let right = if compact_right_column {
             Layout::vertical([
-                Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(4, 5)),
-                Constraint::Length((self.payment_feed_lines().len() as u16 + 2).clamp(4, 5)),
-                Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(4, 5)),
-                Constraint::Min((self.rank_lines().len() as u16 + 2).clamp(4, 6)),
+                Constraint::Length((operator_lines.len() as u16 + 2).clamp(4, 5)),
+                Constraint::Length((payment_feed_lines.len() as u16 + 2).clamp(4, 5)),
+                Constraint::Length((wallet_card_lines.len() as u16 + 2).clamp(4, 5)),
+                Constraint::Min((rank_lines.len() as u16 + 2).clamp(4, 6)),
             ])
             .split(columns[1])
         } else {
             Layout::vertical([
-                Constraint::Length((self.operator_lines().len() as u16 + 2).clamp(6, 8)),
-                Constraint::Length((self.payment_feed_lines().len() as u16 + 2).clamp(6, 9)),
-                Constraint::Length((self.wallet_card_lines().len() as u16 + 2).clamp(6, 8)),
-                Constraint::Length((self.summary_lines().len() as u16 + 2).clamp(5, 7)),
-                Constraint::Min((self.rank_lines().len() as u16 + 2).clamp(7, 9)),
+                Constraint::Length((operator_lines.len() as u16 + 2).clamp(6, 8)),
+                Constraint::Length((payment_feed_lines.len() as u16 + 2).clamp(6, 9)),
+                Constraint::Length((wallet_card_lines.len() as u16 + 2).clamp(6, 8)),
+                Constraint::Length((summary_lines.len() as u16 + 2).clamp(5, 7)),
+                Constraint::Min((rank_lines.len() as u16 + 2).clamp(7, 9)),
             ])
             .split(columns[1])
         };
 
-        frame.render_widget(self.homework_panel(), left[0]);
+        frame.render_widget(panel("Homework Run", Text::from(homework_lines)), left[0]);
         frame.render_widget(self.activity_panel(), left[1]);
-        frame.render_widget(self.operator_panel(), right[0]);
-        frame.render_widget(self.payment_feed_panel(), right[1]);
-        frame.render_widget(self.wallet_card_panel(), right[2]);
+        frame.render_widget(panel("Earnings", Text::from(operator_lines)), right[0]);
+        frame.render_widget(panel("Payment History", Text::from(payment_feed_lines)), right[1]);
+        frame.render_widget(panel("Wallet", Text::from(wallet_card_lines)), right[2]);
         if compact_right_column {
-            frame.render_widget(self.rank_panel(), right[3]);
+            frame.render_widget(panel("Stacker Rank", Text::from(rank_lines)), right[3]);
         } else {
-            frame.render_widget(self.summary_panel(), right[3]);
-            frame.render_widget(self.rank_panel(), right[4]);
+            frame.render_widget(panel("Node", Text::from(summary_lines)), right[3]);
+            frame.render_widget(panel("Stacker Rank", Text::from(rank_lines)), right[4]);
         }
         frame.render_widget(self.footer_panel(), vertical[2]);
     }
