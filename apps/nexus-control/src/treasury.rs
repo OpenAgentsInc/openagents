@@ -15,8 +15,8 @@ use bip39::{Language, Mnemonic};
 use futures::stream::{self, StreamExt};
 use openagents_provider_substrate::verify_provider_payout_target_registration_signature;
 use openagents_spark::{
-    DepositClaimFeePolicy, Network as SparkNetwork, PaymentSummary, SparkSigner, SparkWallet,
-    WalletConfig,
+    DepositClaimFeePolicy, Network as SparkNetwork, PaymentSummary, SparkError, SparkSigner,
+    SparkWallet, WalletConfig,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -108,8 +108,8 @@ const TREASURY_PUBLIC_STATS_WINDOW_MS: u64 = 86_400_000;
 const TREASURY_PAYOUT_TARGET_DOMAIN: &str = "openagents:nexus-treasury-payout-target:v1";
 const TREASURY_POLICY_SCHEMA_VERSION: u32 = 3;
 const TREASURY_STATE_RETENTION_WINDOW_MS: u64 = 30 * 86_400_000;
-const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 60_000;
-const TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS: u64 = TREASURY_DISPATCH_RESULT_TIMEOUT_MS;
+const TREASURY_DISPATCH_RESULT_TIMEOUT_MS: u64 = 180_000;
+const TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS: u64 = 60_000;
 const TREASURY_TARGET_LIMIT: usize = 8_192;
 const TREASURY_PAYOUT_LIMIT: usize = 262_144;
 const TREASURY_PLACEHOLDER_PAYOUT_RECORD_LIMIT: usize = 1_024;
@@ -476,8 +476,8 @@ impl TreasuryConfig {
 
     pub fn dispatch_result_timeout_ms(&self, payout_interval_ms: u64) -> u64 {
         let _ = payout_interval_ms;
+        let _ = self.wallet_status_refresh_seconds;
         TREASURY_DISPATCH_RESULT_TIMEOUT_MS
-            .max(self.wallet_status_refresh_seconds.saturating_mul(2_000))
     }
 
     pub fn max_concurrent_send_operations(&self, plan_count: usize) -> usize {
@@ -592,6 +592,8 @@ pub struct TreasuryFundingTargetResponse {
     pub wallet_balance_updated_at_unix_ms: u64,
     pub spark_address: String,
     pub bitcoin_address: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spark_invoice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bolt11_invoice: Option<String>,
 }
@@ -2243,6 +2245,7 @@ pub struct TreasuryWalletRefreshResult {
 pub struct TreasuryFundingMaterial {
     pub spark_address: String,
     pub bitcoin_address: String,
+    pub spark_invoice: Option<String>,
     pub bolt11_invoice: Option<String>,
     pub wallet_snapshot: TreasuryWalletSnapshot,
 }
@@ -2333,13 +2336,9 @@ fn recovered_treasury_state_from_payload(
     state
 }
 
-fn retryable_failed_accepted_work_payout_is_due(
-    record: &TreasuryPayoutRecord,
-    now_unix_ms: u64,
-) -> bool {
+fn retryable_failed_payout_is_due(record: &TreasuryPayoutRecord, now_unix_ms: u64) -> bool {
     record.status == "failed"
         && record.payment_id.is_none()
-        && record.classification.accepted_work()
         && !record.payout_target.trim().is_empty()
         && record
             .reason
@@ -2348,13 +2347,26 @@ fn retryable_failed_accepted_work_payout_is_due(
         && now_unix_ms
             >= record
                 .updated_at_unix_ms
-                .saturating_add(TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS)
+                .saturating_add(TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS)
 }
 
 fn failed_payout_reason_is_retryable(reason: &str) -> bool {
     reason == "dispatch_outcome_timeout"
+        || reason == "insufficient_funds"
+        || reason == "wallet_balance_insufficient"
+        || reason.starts_with("wallet_open_timeout:")
         || reason.starts_with("wallet_send_timeout:")
         || reason.starts_with("wallet_send_retryable:")
+}
+
+fn failed_payout_is_retryable_pending(record: &TreasuryPayoutRecord) -> bool {
+    record.status == "failed"
+        && record.payment_id.is_none()
+        && !record.payout_target.trim().is_empty()
+        && record
+            .reason
+            .as_deref()
+            .is_some_and(failed_payout_reason_is_retryable)
 }
 
 fn wallet_send_failure_is_leaf_selection(reason: &str) -> bool {
@@ -2404,6 +2416,32 @@ fn placeholder_liveness_record_can_compact(record: &TreasuryPayoutRecord) -> boo
 }
 
 impl TreasuryState {
+    fn validated_recovery_report_balance(&self, now_unix_ms: u64, max_age_ms: u64) -> Option<u64> {
+        let summary = self.last_wallet_recovery_report.as_ref()?;
+        if !summary.validation_passed || summary.major_divergence_detected {
+            return None;
+        }
+        if now_unix_ms.saturating_sub(summary.generated_at_unix_ms) >= max_age_ms {
+            return None;
+        }
+        summary.current_balance_sats.filter(|balance| *balance > 0)
+    }
+
+    fn wallet_error_covered_by_recovery_report(
+        &self,
+        detail: &str,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> bool {
+        detail.starts_with("wallet_hydration_zero_balance_after_")
+            && self
+                .validated_recovery_report_balance(
+                    now_unix_ms,
+                    config.wallet_snapshot_stale_after_ms(),
+                )
+                .is_some()
+    }
+
     fn legacy_identity_scoped_availability_scope<'a>(
         record: &'a TreasuryPayoutRecord,
     ) -> Option<&'a str> {
@@ -2444,6 +2482,18 @@ impl TreasuryState {
             >= config
                 .reconciliation_horizon_ms()
                 .max(TREASURY_CONTINUITY_ALERT_THRESHOLD_MS)
+    }
+
+    fn inactive_availability_confirmation_record(
+        &self,
+        record: &TreasuryPayoutRecord,
+        policy: &TreasuryRuntimePolicy,
+    ) -> bool {
+        policy.placeholder_payout_mode == TreasuryPlaceholderPayoutMode::Disabled
+            && record.classification.effective_payout_class()
+                == TreasuryPayoutClass::PlaceholderLiveness
+            && matches!(record.status.as_str(), "dispatching" | "dispatched")
+            && record.payment_id.is_some()
     }
 
     fn legacy_availability_confirmation_attention_rows(
@@ -2840,6 +2890,10 @@ impl TreasuryState {
                 && record.payment_id.is_some()
         }) || self.payout_records_by_key.values().any(|record| {
             record.status == "queued"
+                && record.reason.as_deref() == Some("wallet_balance_insufficient")
+        }) || self.payout_records_by_key.values().any(|record| {
+            record.status == "failed"
+                && record.payment_id.is_none()
                 && record.reason.as_deref() == Some("wallet_balance_insufficient")
         }) || self.payout_records_by_key.values().any(|record| {
             record.status == "failed"
@@ -3598,11 +3652,23 @@ impl TreasuryState {
     }
 
     fn latest_wallet_activity_at_unix_ms(&self) -> Option<u64> {
+        let validated_recovery_activity_at =
+            self.last_wallet_recovery_report
+                .as_ref()
+                .and_then(|summary| {
+                    (summary.validation_passed
+                        && !summary.major_divergence_detected
+                        && summary
+                            .current_balance_sats
+                            .is_some_and(|balance| balance > 0))
+                    .then_some(summary.generated_at_unix_ms)
+                });
         [
             self.last_wallet_sync_at_unix_ms,
             self.wallet_balance_updated_at_unix_ms,
             self.last_dispatch_at_unix_ms,
             self.last_confirmed_payout_at_unix_ms,
+            validated_recovery_activity_at,
         ]
         .into_iter()
         .flatten()
@@ -3641,6 +3707,11 @@ impl TreasuryState {
         let mut legacy_availability_confirmation_attention_count = 0u64;
         let policy = self.active_policy(config);
         for record in self.payout_records_by_key.values() {
+            if self.inactive_availability_confirmation_record(record, &policy) {
+                legacy_availability_confirmation_attention_count =
+                    legacy_availability_confirmation_attention_count.saturating_add(1);
+                continue;
+            }
             if self.legacy_availability_confirmation_attention_record(
                 record,
                 config,
@@ -3726,6 +3797,13 @@ impl TreasuryState {
             }
             return (None, None);
         }
+        if matches!(self.wallet_runtime_status.as_deref(), Some("error"))
+            && self.wallet_last_error.as_deref().is_some_and(|detail| {
+                self.wallet_error_covered_by_recovery_report(detail, config, now_unix_ms)
+            })
+        {
+            return (Some("connected".to_string()), None);
+        }
         (
             self.wallet_runtime_status.clone(),
             self.wallet_last_error.clone(),
@@ -3773,7 +3851,11 @@ impl TreasuryState {
                 .last_wallet_recovery_report
                 .as_ref()
                 .is_some_and(|summary| {
-                    summary.validation_passed && summary.major_divergence_detected
+                    summary.validation_passed
+                        && summary.major_divergence_detected
+                        && summary
+                            .rebuilt_minus_current_balance_sats
+                            .map_or(true, |delta| delta > 0)
                 })
         {
             let delta = self
@@ -4285,13 +4367,22 @@ impl TreasuryState {
                     }
                 }
                 "failed" => {
-                    summary.failed_payout_count = summary.failed_payout_count.saturating_add(1);
-                    summary.attention_payout_count =
-                        summary.attention_payout_count.saturating_add(1);
-                    if record.classification.accepted_work() {
-                        summary.accepted_work_attention_payout_count = summary
-                            .accepted_work_attention_payout_count
-                            .saturating_add(1);
+                    if failed_payout_is_retryable_pending(record) {
+                        summary.pending_payout_count =
+                            summary.pending_payout_count.saturating_add(1);
+                        if record.classification.accepted_work() {
+                            summary.accepted_work_pending_payout_count =
+                                summary.accepted_work_pending_payout_count.saturating_add(1);
+                        }
+                    } else {
+                        summary.failed_payout_count = summary.failed_payout_count.saturating_add(1);
+                        summary.attention_payout_count =
+                            summary.attention_payout_count.saturating_add(1);
+                        if record.classification.accepted_work() {
+                            summary.accepted_work_attention_payout_count = summary
+                                .accepted_work_attention_payout_count
+                                .saturating_add(1);
+                        }
                     }
                 }
                 "skipped" => {
@@ -4635,6 +4726,32 @@ impl TreasuryState {
             major_divergence_detected: report.comparison.major_divergence_detected,
             validation_passed: report.comparison.validation_passed,
         });
+        if report.comparison.validation_passed
+            && !report.comparison.major_divergence_detected
+            && matches!(
+                report.current_storage.runtime_status.as_deref(),
+                Some("synced" | "connected")
+            )
+            && report
+                .current_storage
+                .balance_sats
+                .is_some_and(|balance| balance > 0)
+        {
+            let balance = report.current_storage.balance_sats.unwrap_or_default();
+            self.wallet_runtime_status = Some("connected".to_string());
+            self.wallet_last_error = None;
+            self.wallet_balance_sats = balance;
+            self.wallet_balance_updated_at_unix_ms = Some(
+                self.wallet_balance_updated_at_unix_ms
+                    .unwrap_or(report.generated_at_unix_ms)
+                    .max(report.generated_at_unix_ms),
+            );
+            self.last_wallet_sync_at_unix_ms = Some(
+                self.last_wallet_sync_at_unix_ms
+                    .unwrap_or(report.generated_at_unix_ms)
+                    .max(report.generated_at_unix_ms),
+            );
+        }
     }
 
     pub fn note_wallet_activity(&mut self, now_unix_ms: u64) {
@@ -4766,7 +4883,7 @@ impl TreasuryState {
         let retryable_failed_work_due = self
             .payout_records_by_key
             .values()
-            .any(|record| retryable_failed_accepted_work_payout_is_due(record, now_unix_ms));
+            .any(|record| retryable_failed_payout_is_due(record, now_unix_ms));
         if retryable_failed_work_due {
             return last_cycle_at
                 .map(|last_cycle_at| now_unix_ms.saturating_sub(last_cycle_at) >= idle_interval_ms)
@@ -4925,6 +5042,7 @@ impl TreasuryState {
 
     fn claim_queued_payouts_for_dispatch(
         &mut self,
+        config: &TreasuryConfig,
         policy: &TreasuryRuntimePolicy,
         now_unix_ms: u64,
         reserved_wallet_sats: &mut u64,
@@ -4934,8 +5052,7 @@ impl TreasuryState {
             .payout_records_by_key
             .values()
             .filter(|record| {
-                record.status == "queued"
-                    || retryable_failed_accepted_work_payout_is_due(record, now_unix_ms)
+                record.status == "queued" || retryable_failed_payout_is_due(record, now_unix_ms)
             })
             .map(|record| {
                 (
@@ -4955,6 +5072,9 @@ impl TreasuryState {
 
         let mut dispatch_plans = Vec::new();
         let mut changed = false;
+        let mut accepted_work_claimed = 0usize;
+        let mut availability_claimed = 0usize;
+        let mut beta_bonus_claimed = 0usize;
         for (_, _, _, _, payout_key) in queued {
             let Some(record) = self.payout_records_by_key.get_mut(payout_key.as_str()) else {
                 continue;
@@ -4989,6 +5109,17 @@ impl TreasuryState {
                 }
                 continue;
             };
+            let payout_class = record.classification.effective_payout_class();
+            let claim_limit =
+                config.max_concurrent_send_operations_for_class(usize::MAX, payout_class);
+            let claimed_for_class = match payout_class {
+                TreasuryPayoutClass::AcceptedWork => &mut accepted_work_claimed,
+                TreasuryPayoutClass::PlaceholderLiveness => &mut availability_claimed,
+                TreasuryPayoutClass::BetaBonus => &mut beta_bonus_claimed,
+            };
+            if *claimed_for_class >= claim_limit {
+                continue;
+            }
             if record.amount_sats
                 > self
                     .wallet_balance_sats
@@ -5001,7 +5132,6 @@ impl TreasuryState {
                 }
                 continue;
             }
-            let payout_class = record.classification.effective_payout_class();
             let daily_budget_cap_sats = policy.daily_budget_cap_sats_for_class(payout_class);
             if daily_budget_cap_sats > 0
                 && committed_daily_budget_totals
@@ -5018,6 +5148,7 @@ impl TreasuryState {
             }
             *reserved_wallet_sats = reserved_wallet_sats.saturating_add(record.amount_sats);
             committed_daily_budget_totals.add_amount(payout_class, record.amount_sats);
+            *claimed_for_class = claimed_for_class.saturating_add(1);
             record.payout_target = target.spark_address.clone();
             record.status = "dispatching".to_string();
             record.reason = None;
@@ -5073,6 +5204,7 @@ impl TreasuryState {
         let mut committed_daily_budget_totals =
             self.committed_daily_budget_sats_last_24h(now_unix_ms);
         let (mut dispatch_plans, queued_claim_changed) = self.claim_queued_payouts_for_dispatch(
+            config,
             &policy,
             now_unix_ms,
             &mut reserved_wallet_sats,
@@ -5412,14 +5544,33 @@ impl TreasuryState {
         now_unix_ms: u64,
     ) -> Vec<TreasuryReceiptEvent> {
         let mut persist_needed = self.normalize_legacy_payout_classes();
-        self.wallet_runtime_status = Some(snapshot.runtime_status.clone());
-        self.wallet_last_error = snapshot.runtime_detail.clone();
-        self.wallet_hydration_mode = snapshot.wallet_hydration_mode.clone();
-        self.wallet_payment_scan_mode = snapshot.wallet_payment_scan_mode.clone();
+        let next_wallet_runtime_status = Some(snapshot.runtime_status.clone());
+        let next_wallet_last_error = snapshot.runtime_detail.clone();
+        let next_wallet_hydration_mode = snapshot.wallet_hydration_mode.clone();
+        let next_wallet_payment_scan_mode = snapshot.wallet_payment_scan_mode.clone();
+        let next_wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        let next_last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        let next_last_wallet_refresh_attempt_at_unix_ms = Some(now_unix_ms);
+        if self.wallet_runtime_status != next_wallet_runtime_status
+            || self.wallet_last_error != next_wallet_last_error
+            || self.wallet_hydration_mode != next_wallet_hydration_mode
+            || self.wallet_payment_scan_mode != next_wallet_payment_scan_mode
+            || self.wallet_balance_sats != snapshot.balance_sats
+            || self.wallet_balance_updated_at_unix_ms != next_wallet_balance_updated_at_unix_ms
+            || self.last_wallet_sync_at_unix_ms != next_last_wallet_sync_at_unix_ms
+            || self.last_wallet_refresh_attempt_at_unix_ms
+                != next_last_wallet_refresh_attempt_at_unix_ms
+        {
+            persist_needed = true;
+        }
+        self.wallet_runtime_status = next_wallet_runtime_status;
+        self.wallet_last_error = next_wallet_last_error;
+        self.wallet_hydration_mode = next_wallet_hydration_mode;
+        self.wallet_payment_scan_mode = next_wallet_payment_scan_mode;
         self.wallet_balance_sats = snapshot.balance_sats;
-        self.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
-        self.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
-        self.last_wallet_refresh_attempt_at_unix_ms = Some(now_unix_ms);
+        self.wallet_balance_updated_at_unix_ms = next_wallet_balance_updated_at_unix_ms;
+        self.last_wallet_sync_at_unix_ms = next_last_wallet_sync_at_unix_ms;
+        self.last_wallet_refresh_attempt_at_unix_ms = next_last_wallet_refresh_attempt_at_unix_ms;
 
         let mut receipt_events = Vec::new();
         let mut last_confirmed_payout_at_unix_ms = self.last_confirmed_payout_at_unix_ms;
@@ -5980,6 +6131,7 @@ fn simulated_funding_target(
     TreasuryFundingMaterial {
         spark_address: "spark:simulated-treasury-proof-wallet".to_string(),
         bitcoin_address: "bcrt1qsimulatedtreasuryproofwallet".to_string(),
+        spark_invoice: (amount > 0).then(|| format!("sparkinvoice{amount}simulatedproofwallet")),
         bolt11_invoice: (amount > 0).then(|| format!("lnbc{amount}simulatedproofwallet")),
         wallet_snapshot: simulated_wallet_snapshot(config, Vec::new()),
     }
@@ -6034,17 +6186,38 @@ pub async fn create_live_funding_target(
             .get_bitcoin_address()
             .await
             .context("failed to create treasury Bitcoin receive address")?;
-        let bolt11_invoice = match request.amount_sats {
+        let spark_invoice = match request.amount_sats {
             Some(amount_sats) if amount_sats > 0 => Some(
                 wallet
-                    .create_bolt11_invoice(
+                    .create_invoice(
                         amount_sats,
                         request.description.clone(),
-                        request.expiry_seconds,
+                        request.expiry_seconds.map(u64::from),
                     )
                     .await
-                    .context("failed to create treasury Bolt11 invoice")?,
+                    .context("failed to create treasury Spark invoice")?,
             ),
+            Some(_) => bail!("treasury funding amount must be greater than 0"),
+            None => None,
+        };
+        let bolt11_invoice = match request.amount_sats {
+            Some(amount_sats) if amount_sats > 0 => match wallet
+                .create_bolt11_invoice(
+                    amount_sats,
+                    request.description.clone(),
+                    request.expiry_seconds,
+                )
+                .await
+            {
+                Ok(invoice) => Some(invoice),
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "treasury Bolt11 invoice creation failed after Spark invoice creation"
+                    );
+                    None
+                }
+            },
             Some(_) => bail!("treasury funding amount must be greater than 0"),
             None => None,
         };
@@ -6053,6 +6226,7 @@ pub async fn create_live_funding_target(
         Ok(TreasuryFundingMaterial {
             spark_address,
             bitcoin_address,
+            spark_invoice,
             bolt11_invoice,
             wallet_snapshot,
         })
@@ -6149,9 +6323,15 @@ pub async fn dispatch_live_payouts(
     let operation_lock = live_wallet_operation_lock();
     let _operation_guard = operation_lock.lock().await;
 
-    let wallet = match open_wallet(config, false).await {
-        Ok(wallet) => wallet,
-        Err(error) => {
+    let send_timeout_ms = config.dispatch_result_timeout_ms(config.payout_interval_ms());
+    let wallet = match tokio::time::timeout(
+        Duration::from_millis(send_timeout_ms),
+        open_wallet(config, false),
+    )
+    .await
+    {
+        Ok(Ok(wallet)) => wallet,
+        Ok(Err(error)) => {
             return TreasuryDispatchBatchResult {
                 outcomes: plans
                     .iter()
@@ -6164,9 +6344,21 @@ pub async fn dispatch_live_payouts(
                 wallet_error: Some(error.to_string()),
             };
         }
+        Err(_) => {
+            let reason = format!("wallet_open_timeout:{send_timeout_ms}");
+            return TreasuryDispatchBatchResult {
+                outcomes: plans
+                    .iter()
+                    .map(|plan| TreasuryDispatchOutcome::Failed {
+                        payout_key: plan.payout_key.clone(),
+                        reason: reason.clone(),
+                    })
+                    .collect(),
+                wallet_snapshot: None,
+                wallet_error: Some(reason),
+            };
+        }
     };
-
-    let send_timeout_ms = config.dispatch_result_timeout_ms(config.payout_interval_ms());
 
     // Keep the wallet-operation lock held for a bounded window even when the
     // upstream Spark send path stalls or many Pylons become due together.
@@ -6240,12 +6432,7 @@ async fn dispatch_live_payout_batch(
             async move {
                 let outcome =
                     dispatch_outcome_from_send_future(plan.clone(), send_timeout_ms, async move {
-                        wallet
-                            .send_payment_simple(
-                                plan.payment_request.as_str(),
-                                Some(plan.amount_sats),
-                            )
-                            .await
+                        send_treasury_payout(wallet.as_ref(), &plan).await
                     })
                     .await;
                 (index, outcome)
@@ -6253,6 +6440,22 @@ async fn dispatch_live_payout_batch(
         })
         .buffer_unordered(max_concurrent_sends)
         .collect::<Vec<_>>()
+        .await
+}
+
+async fn send_treasury_payout(
+    wallet: &SparkWallet,
+    plan: &TreasuryDispatchPlan,
+) -> std::result::Result<String, SparkError> {
+    let payment_request = plan.payment_request.trim();
+    if SparkWallet::is_direct_spark_address(payment_request) {
+        return wallet
+            .send_spark_address_direct(payment_request, plan.amount_sats)
+            .await;
+    }
+
+    wallet
+        .send_payment_simple(payment_request, Some(plan.amount_sats))
         .await
 }
 
@@ -6486,6 +6689,7 @@ pub async fn run_treasury_command(
                 wallet_balance_updated_at_unix_ms: now_unix_ms(),
                 spark_address: material.spark_address,
                 bitcoin_address: material.bitcoin_address,
+                spark_invoice: material.spark_invoice,
                 bolt11_invoice: material.bolt11_invoice,
             };
             if *json {
@@ -7387,6 +7591,7 @@ fn treasury_payout_reconciliation_status(record: &TreasuryPayoutRecord) -> &'sta
         "confirmed" => "settled",
         "queued" => "pending_dispatch",
         "dispatching" | "dispatched" => "pending_confirmation",
+        "failed" if failed_payout_is_retryable_pending(record) => "pending_retry",
         "failed" => "attention_required",
         "skipped" => {
             if record.reason.as_deref() == Some("missing_payout_target") {
@@ -7748,6 +7953,9 @@ fn render_treasury_funding_target_response(response: &TreasuryFundingTargetRespo
         format!("spark_address: {}", response.spark_address),
         format!("bitcoin_address: {}", response.bitcoin_address),
     ];
+    if let Some(invoice) = response.spark_invoice.as_deref() {
+        lines.push(format!("spark_invoice: {invoice}"));
+    }
     if let Some(invoice) = response.bolt11_invoice.as_deref() {
         lines.push(format!("bolt11_invoice: {invoice}"));
     }
@@ -8216,6 +8424,7 @@ fn treasury_wallet_config(config: &TreasuryConfig, storage_dir: PathBuf) -> Resu
         deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
         background_processing: false,
         real_time_sync_enabled: config.wallet_real_time_sync_enabled,
+        prefer_spark_over_lightning: true,
     })
 }
 
@@ -8873,7 +9082,8 @@ pub(crate) fn set_test_wallet_send_hook(hook: Option<TestWalletSendHook>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        OnlinePylonIdentity, TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS,
+        OnlinePylonIdentity, TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS,
+        TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS,
         TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
         TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES,
         TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial, TreasuryFundingReceive,
@@ -9003,6 +9213,16 @@ mod tests {
                 .expect("wallet config");
 
         assert!(wallet_config.real_time_sync_enabled);
+    }
+
+    #[test]
+    fn treasury_wallet_config_prefers_spark_for_hosted_funding() {
+        let config = test_treasury_config();
+        let wallet_config =
+            super::treasury_wallet_config(&config, config.wallet_storage_dir.clone())
+                .expect("wallet config");
+
+        assert!(wallet_config.prefer_spark_over_lightning);
     }
 
     #[test]
@@ -9614,14 +9834,20 @@ mod tests {
     }
 
     #[test]
-    fn wallet_snapshot_without_ledger_changes_does_not_rewrite_treasury_state() {
+    fn wallet_snapshot_without_ledger_changes_persists_wallet_status() {
         let path = unique_treasury_state_path("wallet-refresh-noop");
         let mut state = TreasuryState::default();
         state.next_challenge_nonce = 1;
+        state.wallet_runtime_status = Some("error".to_string());
+        state.wallet_last_error = Some("treasury_isolated_dispatch_timeout:70000".to_string());
+        state.wallet_balance_sats = 12;
+        state.wallet_balance_updated_at_unix_ms = Some(1_776_027_000_000u64);
+        state.last_wallet_refresh_attempt_at_unix_ms = Some(1_776_027_000_000u64);
         state.state_path = Some(path.clone());
         state.persist();
 
         let before = std::fs::read_to_string(path.as_path()).expect("read persisted state");
+        let now_unix_ms = 1_776_028_000_000u64;
         let receipts = state.apply_wallet_snapshot(
             &TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
@@ -9631,13 +9857,36 @@ mod tests {
                 balance_sats: 321,
                 payments: Vec::new(),
             },
-            1_776_028_000_000u64,
+            now_unix_ms,
         );
 
         assert!(receipts.is_empty());
+        let after = std::fs::read_to_string(path.as_path()).expect("read persisted state");
+        assert_ne!(after, before);
+
+        let persisted = TreasuryState::new(path.clone());
         assert_eq!(
-            std::fs::read_to_string(path.as_path()).expect("read persisted state"),
-            before
+            persisted.wallet_runtime_status.as_deref(),
+            Some("connected")
+        );
+        assert_eq!(persisted.wallet_last_error, None);
+        assert_eq!(
+            persisted.wallet_hydration_mode.as_deref(),
+            Some("sync_wallet_then_cached_balance")
+        );
+        assert_eq!(
+            persisted.wallet_payment_scan_mode.as_deref(),
+            Some("recent_only")
+        );
+        assert_eq!(persisted.wallet_balance_sats, 321);
+        assert_eq!(
+            persisted.wallet_balance_updated_at_unix_ms,
+            Some(now_unix_ms)
+        );
+        assert_eq!(persisted.last_wallet_sync_at_unix_ms, Some(now_unix_ms));
+        assert_eq!(
+            persisted.last_wallet_refresh_attempt_at_unix_ms,
+            Some(now_unix_ms)
         );
 
         let _ = std::fs::remove_file(path);
@@ -11428,6 +11677,125 @@ mod tests {
     }
 
     #[test]
+    fn negative_wallet_recovery_delta_does_not_degrade_live_storage() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 1_000_000;
+        state.wallet_runtime_status = Some("connected".to_string());
+        state.wallet_balance_sats = 116_825;
+        state.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        state.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        state.last_wallet_recovery_report = Some(super::TreasuryWalletRecoveryReportSummary {
+            generated_at_unix_ms: now_unix_ms,
+            report_path: "/tmp/recovery-report.json".to_string(),
+            current_storage_dir: "/tmp/current".to_string(),
+            rebuilt_storage_dir: "/tmp/rebuilt".to_string(),
+            current_balance_sats: Some(116_825),
+            rebuilt_balance_sats: Some(0),
+            rebuilt_minus_current_balance_sats: Some(-116_825),
+            major_divergence_detected: true,
+            validation_passed: true,
+        });
+
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(stats.degraded_reason, None);
+
+        state
+            .last_wallet_recovery_report
+            .as_mut()
+            .expect("recovery summary")
+            .rebuilt_minus_current_balance_sats = Some(1);
+        let stats = state.public_stats(&config, now_unix_ms);
+        assert_eq!(
+            stats.degraded_reason.as_deref(),
+            Some("wallet_storage_diverges_from_rebuild:1")
+        );
+    }
+
+    #[test]
+    fn validated_wallet_recovery_report_covers_zero_hydration_error() {
+        let mut state = TreasuryState::default();
+        let config = test_treasury_config();
+        let now_unix_ms = 1_000_000;
+        state.wallet_runtime_status = Some("error".to_string());
+        state.wallet_last_error = Some(
+            "wallet_hydration_zero_balance_after_sync_wallet_then_cached_balance:2500:100"
+                .to_string(),
+        );
+        state.wallet_balance_sats = 91_475;
+        state.last_wallet_recovery_report = Some(super::TreasuryWalletRecoveryReportSummary {
+            generated_at_unix_ms: now_unix_ms,
+            report_path: "/tmp/recovery-report.json".to_string(),
+            current_storage_dir: "/tmp/current".to_string(),
+            rebuilt_storage_dir: "/tmp/rebuilt".to_string(),
+            current_balance_sats: Some(91_475),
+            rebuilt_balance_sats: Some(91_475),
+            rebuilt_minus_current_balance_sats: Some(0),
+            major_divergence_detected: false,
+            validation_passed: true,
+        });
+
+        let stats = state.public_stats(&config, now_unix_ms);
+
+        assert_eq!(stats.wallet_runtime_status.as_deref(), Some("connected"));
+        assert_eq!(stats.wallet_last_error, None);
+        assert_eq!(stats.degraded_reason, None);
+        assert_eq!(stats.wallet_sync_lag_ms, Some(0));
+    }
+
+    #[test]
+    fn wallet_recovery_report_persists_connected_snapshot_when_current_storage_is_synced() {
+        let mut state = TreasuryState::default();
+        state.wallet_runtime_status = Some("error".to_string());
+        state.wallet_last_error = Some("wallet_hydration_zero_balance_after_cached".to_string());
+
+        let report = TreasuryWalletRecoveryReport {
+            authority: "openagents-hosted-nexus".to_string(),
+            generated_at_unix_ms: 1_000_000,
+            source_wallet_storage_dir: "/tmp/current".to_string(),
+            backup_root_dir: "/tmp/backup".to_string(),
+            current_storage_backup_dir: "/tmp/backup/current-storage".to_string(),
+            rebuilt_storage_dir: "/tmp/rebuilt".to_string(),
+            report_path: "/tmp/recovery-report.json".to_string(),
+            mnemonic_backup_path: "/tmp/backup/treasury.mnemonic".to_string(),
+            state_backup_path: None,
+            current_storage: TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/backup/current-storage".to_string(),
+                runtime_status: Some("synced".to_string()),
+                balance_sats: Some(91_475),
+                ..TreasuryWalletInspection::default()
+            },
+            rebuilt_storage: TreasuryWalletInspection {
+                wallet_identity_pubkey: "identity".to_string(),
+                inspected_storage_dir: "/tmp/rebuilt".to_string(),
+                runtime_status: Some("cached_after_sync_timeout".to_string()),
+                balance_sats: Some(91_475),
+                ..TreasuryWalletInspection::default()
+            },
+            comparison: TreasuryWalletRecoveryComparison {
+                wallet_identity_pubkey_match: true,
+                rebuilt_minus_current_balance_sats: Some(0),
+                current_zero_with_receive_history: false,
+                major_divergence_detected: false,
+                validation_passed: true,
+                recommended_action: "no_cutover_needed_sync_timeout_cached".to_string(),
+            },
+            cutover_active_storage_dir: None,
+            cutover_rollback_storage_dir: None,
+            cutover_completed_at_unix_ms: None,
+        };
+
+        state.note_wallet_recovery_report(&report);
+
+        assert_eq!(state.wallet_runtime_status.as_deref(), Some("connected"));
+        assert_eq!(state.wallet_last_error, None);
+        assert_eq!(state.wallet_balance_sats, 91_475);
+        assert_eq!(state.wallet_balance_updated_at_unix_ms, Some(1_000_000));
+        assert_eq!(state.last_wallet_sync_at_unix_ms, Some(1_000_000));
+    }
+
+    #[test]
     fn wallet_snapshot_stale_respects_refresh_budget() {
         let mut state = TreasuryState::default();
         let mut config = test_treasury_config();
@@ -11544,6 +11912,15 @@ mod tests {
                 },
             },
         );
+
+        assert!(state.due_wallet_refresh_requires_reconciliation());
+
+        let record = state
+            .payout_records_by_key
+            .get_mut(payout_key.as_str())
+            .expect("queued payout");
+        record.status = "failed".to_string();
+        record.reason = Some("wallet_balance_insufficient".to_string());
 
         assert!(state.due_wallet_refresh_requires_reconciliation());
 
@@ -11946,7 +12323,7 @@ mod tests {
         state.wallet_balance_sats = 4;
         let now_unix_ms = super::now_unix_ms();
         let retry_due_updated_at = now_unix_ms
-            .saturating_sub(super::TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS)
+            .saturating_sub(super::TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS)
             .saturating_sub(1);
 
         for (pubkey, target) in [
@@ -12022,6 +12399,33 @@ mod tests {
             },
         );
         state.payout_records_by_key.insert(
+            "accepted-work:balance-recovered".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "accepted-work:balance-recovered".to_string(),
+                nostr_pubkey_hex: "pubkey-one".to_string(),
+                payout_target: "spark:one".to_string(),
+                amount_sats: 1,
+                status: "failed".to_string(),
+                reason: Some("wallet_balance_insufficient".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: retry_due_updated_at.saturating_sub(75),
+                updated_at_unix_ms: retry_due_updated_at,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("accepted.balance-recovered".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+        state.payout_records_by_key.insert(
             "placeholder:old".to_string(),
             TreasuryPayoutRecord {
                 payout_key: "placeholder:old".to_string(),
@@ -12046,7 +12450,7 @@ mod tests {
         );
 
         assert!(state.treasury_enabled(&config));
-        assert!(super::retryable_failed_accepted_work_payout_is_due(
+        assert!(super::retryable_failed_payout_is_due(
             state
                 .payout_records_by_key
                 .get("accepted-work:one")
@@ -12056,14 +12460,33 @@ mod tests {
 
         let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms);
 
-        assert_eq!(prepared.dispatch_plans.len(), 1);
-        assert_eq!(prepared.dispatch_plans[0].payout_key, "accepted-work:one");
-        assert_eq!(prepared.dispatch_plans[0].amount_sats, 1);
-        assert_eq!(prepared.dispatch_plans[0].payment_request, "spark:one");
+        assert_eq!(prepared.dispatch_plans.len(), 2);
+        let dispatch_keys = prepared
+            .dispatch_plans
+            .iter()
+            .map(|plan| plan.payout_key.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            dispatch_keys,
+            vec!["accepted-work:balance-recovered", "accepted-work:one"]
+        );
+        assert!(
+            prepared
+                .dispatch_plans
+                .iter()
+                .all(|plan| plan.amount_sats == 1 && plan.payment_request == "spark:one")
+        );
         assert_eq!(
             state
                 .payout_records_by_key
                 .get("accepted-work:one")
+                .map(|record| (record.status.as_str(), record.reason.as_deref())),
+            Some(("dispatching", None))
+        );
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .get("accepted-work:balance-recovered")
                 .map(|record| (record.status.as_str(), record.reason.as_deref())),
             Some(("dispatching", None))
         );
@@ -12079,7 +12502,161 @@ mod tests {
                 .payout_records_by_key
                 .get("placeholder:old")
                 .map(|record| (record.status.as_str(), record.reason.as_deref())),
-            Some(("queued", Some("placeholder_payouts_disabled")))
+            Some(("skipped", Some("placeholder_payouts_disabled")))
+        );
+    }
+
+    #[test]
+    fn retryable_failed_accepted_work_counts_as_pending_in_training_summary() {
+        let mut state = TreasuryState::default();
+        state.payout_records_by_key.insert(
+            "accepted-work:retryable".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "accepted-work:retryable".to_string(),
+                nostr_pubkey_hex: "pubkey-retryable".to_string(),
+                payout_target: "spark:retryable".to_string(),
+                amount_sats: 25,
+                status: "failed".to_string(),
+                reason: Some("wallet_send_timeout:60000".to_string()),
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: 100,
+                updated_at_unix_ms: 200,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_class: TreasuryPayoutClass::AcceptedWork,
+                    accepted_outcome_id: Some("accepted.retryable".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let summary = state.training_payout_ledger_summary();
+        assert_eq!(summary.pending_payout_count, 1);
+        assert_eq!(summary.accepted_work_pending_payout_count, 1);
+        assert_eq!(summary.failed_payout_count, 0);
+        assert_eq!(summary.accepted_work_attention_payout_count, 0);
+        assert_eq!(summary.reconciliation_status, "pending");
+    }
+
+    #[test]
+    fn retryable_failed_availability_payout_counts_as_pending_not_attention() {
+        let mut state = TreasuryState::default();
+        state.payout_records_by_key.insert(
+            "availability:retryable".to_string(),
+            TreasuryPayoutRecord {
+                payout_key: "availability:retryable".to_string(),
+                nostr_pubkey_hex: "pubkey-retryable".to_string(),
+                payout_target: "spark:retryable".to_string(),
+                amount_sats: 25,
+                status: "failed".to_string(),
+                reason: Some(
+                    "wallet_send_retryable:isolated_runtime:treasury_isolated_dispatch_timeout:70000"
+                        .to_string(),
+                ),
+                payment_id: None,
+                window_started_at_unix_ms: 100,
+                window_ends_at_unix_ms: 200,
+                created_at_unix_ms: 100,
+                updated_at_unix_ms: 200,
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: false,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: true,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        let summary = state.training_payout_ledger_summary();
+        assert_eq!(summary.pending_payout_count, 1);
+        assert_eq!(summary.accepted_work_pending_payout_count, 0);
+        assert_eq!(summary.failed_payout_count, 0);
+        assert_eq!(summary.attention_payout_count, 0);
+        assert_eq!(summary.accepted_work_attention_payout_count, 0);
+        assert_eq!(summary.reconciliation_status, "clean");
+        assert_eq!(
+            super::treasury_payout_reconciliation_status(
+                state
+                    .payout_records_by_key
+                    .get("availability:retryable")
+                    .expect("retryable availability record")
+            ),
+            "pending_retry"
+        );
+    }
+
+    #[test]
+    fn retryable_failed_availability_dispatch_is_capped_per_cycle() {
+        let mut state = TreasuryState::default();
+        state.wallet_balance_sats = 1_000;
+        let mut config = test_treasury_config();
+        config.availability_max_concurrent_sends = 2;
+        let now_unix_ms = 100 + TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS + 1;
+
+        for index in 0..3 {
+            let pubkey = format!("pubkey-{index}");
+            state.payout_targets_by_identity.insert(
+                pubkey.clone(),
+                super::RegisteredPayoutTarget {
+                    nostr_pubkey_hex: pubkey.clone(),
+                    source_session_id: format!("session-{index}"),
+                    spark_address: format!("spark:target-{index}"),
+                    bitcoin_address: None,
+                    registered_at_unix_ms: 10,
+                    last_verified_at_unix_ms: 10,
+                },
+            );
+            state.payout_records_by_key.insert(
+                format!("availability:retryable:{index}"),
+                TreasuryPayoutRecord {
+                    payout_key: format!("availability:retryable:{index}"),
+                    nostr_pubkey_hex: pubkey,
+                    payout_target: format!("spark:target-{index}"),
+                    amount_sats: 25,
+                    status: "failed".to_string(),
+                    reason: Some("wallet_send_timeout:60000".to_string()),
+                    payment_id: None,
+                    window_started_at_unix_ms: 50,
+                    window_ends_at_unix_ms: 60,
+                    created_at_unix_ms: 100,
+                    updated_at_unix_ms: 100,
+                    sellable_at_window_open: true,
+                    dispatch_receipt_recorded: false,
+                    confirm_receipt_recorded: false,
+                    fail_receipt_recorded: true,
+                    skip_receipt_recorded: false,
+                    counted_in_paid_total: false,
+                    classification: TreasuryPayoutClassification::default(),
+                },
+            );
+        }
+
+        let prepared = state.prepare_due_payouts(&config, &[], now_unix_ms);
+
+        assert_eq!(prepared.dispatch_plans.len(), 2);
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .values()
+                .filter(|record| record.status == "dispatching")
+                .count(),
+            2
+        );
+        assert_eq!(
+            state
+                .payout_records_by_key
+                .values()
+                .filter(|record| record.status == "failed")
+                .count(),
+            1
         );
     }
 
@@ -12378,6 +12955,10 @@ mod tests {
         let mut config = test_treasury_config();
         config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
         let now_unix_ms = 2_000_000u64;
+        state.wallet_runtime_status = Some("connected".to_string());
+        state.wallet_balance_sats = 10_000;
+        state.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        state.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
 
         state.payout_records_by_key.insert(
             "legacy-placeholder-dispatched".to_string(),
@@ -12506,6 +13087,81 @@ mod tests {
             }),
             "accepted-work backlog must still raise a critical continuity alert"
         );
+    }
+
+    #[test]
+    fn disabled_placeholder_payouts_hide_availability_confirmations_from_backlog() {
+        let mut state = TreasuryState::default();
+        let mut config = test_treasury_config();
+        config.placeholder_payout_mode = TreasuryPlaceholderPayoutMode::Disabled;
+        let now_unix_ms = 2_000_000u64;
+        state.wallet_runtime_status = Some("connected".to_string());
+        state.wallet_balance_sats = 10_000;
+        state.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        state.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+
+        state.payout_records_by_key.insert(
+            "1770000:legacy-identity-pubkey".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "1770000:legacy-identity-pubkey".to_string(),
+                nostr_pubkey_hex: "legacy-identity-pubkey".to_string(),
+                payout_target: "spark:legacy".to_string(),
+                amount_sats: 2,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("legacy-presence-payment".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                created_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
+                updated_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification::default(),
+            },
+        );
+
+        state.payout_records_by_key.insert(
+            "1770001:availability-beneficiary:host:sha256:newer-stipend".to_string(),
+            super::TreasuryPayoutRecord {
+                payout_key: "1770001:availability-beneficiary:host:sha256:newer-stipend"
+                    .to_string(),
+                nostr_pubkey_hex: "newer-presence-pubkey".to_string(),
+                payout_target: "spark:newer-presence".to_string(),
+                amount_sats: 25,
+                status: "dispatched".to_string(),
+                reason: None,
+                payment_id: Some("newer-presence-payment".to_string()),
+                window_started_at_unix_ms: now_unix_ms.saturating_sub(120_000),
+                window_ends_at_unix_ms: now_unix_ms.saturating_sub(60_000),
+                created_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
+                updated_at_unix_ms: now_unix_ms
+                    .saturating_sub(super::TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS + 10_000),
+                sellable_at_window_open: true,
+                dispatch_receipt_recorded: true,
+                confirm_receipt_recorded: false,
+                fail_receipt_recorded: false,
+                skip_receipt_recorded: false,
+                counted_in_paid_total: false,
+                classification: TreasuryPayoutClassification {
+                    payout_basis: Some("presence_only".to_string()),
+                    ..TreasuryPayoutClassification::default()
+                },
+            },
+        );
+
+        let stats = state.public_stats(&config, now_unix_ms);
+
+        assert_eq!(stats.pending_confirmation_count, 0);
+        assert_eq!(stats.tracked_payment_backlog_count, 0);
+        assert_eq!(stats.legacy_availability_confirmation_attention_count, 2);
+        assert_eq!(stats.degraded_reason, None);
     }
 
     #[test]
@@ -12737,8 +13393,8 @@ mod tests {
             .expect("queued payout record");
         record.status = "failed".to_string();
         record.reason = Some("wallet_send_retryable:leaf_selection:test".to_string());
-        record.updated_at_unix_ms = completed_at_unix_ms
-            .saturating_sub(super::TREASURY_FAILED_ACCEPTED_WORK_RETRY_AFTER_MS);
+        record.updated_at_unix_ms =
+            completed_at_unix_ms.saturating_sub(super::TREASURY_FAILED_PAYOUT_RETRY_AFTER_MS);
         assert!(!state.dispatch_cycle_due(
             &config,
             completed_at_unix_ms.saturating_add(1),
@@ -13353,6 +14009,13 @@ mod tests {
             config.dispatch_result_timeout_ms(config.payout_interval_ms()),
             60_000
         );
+
+        config.wallet_status_refresh_seconds = 300;
+
+        assert_eq!(
+            config.dispatch_result_timeout_ms(config.payout_interval_ms()),
+            60_000
+        );
     }
 
     #[tokio::test]
@@ -13365,6 +14028,7 @@ mod tests {
                 Ok(TreasuryFundingMaterial {
                     spark_address: "spark:treasury".to_string(),
                     bitcoin_address: "bc1qtreasury".to_string(),
+                    spark_invoice: Some("sparkinvoice210fund".to_string()),
                     bolt11_invoice: Some("lnbc210fund".to_string()),
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
@@ -13521,6 +14185,13 @@ mod tests {
             outcome,
             TreasuryDispatchOutcome::Failed { ref reason, .. }
                 if reason == "wallet_send_timeout:5"
+        ));
+    }
+
+    #[test]
+    fn wallet_open_timeout_remains_retryable_for_accepted_work() {
+        assert!(super::failed_payout_reason_is_retryable(
+            "wallet_open_timeout:60000"
         ));
     }
 

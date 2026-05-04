@@ -12807,19 +12807,14 @@ async fn record_provider_presence_heartbeat(
             stale_after_ms: state.config.provider_presence_stale_after_ms,
         }));
     }
-    let (session_id, nostr_pubkey_hex, recorded) = match state.store.try_write() {
+    let (session_id, nostr_pubkey_hex) = match state.store.write() {
         Ok(mut store) => {
             let record = store
                 .provider_presence
                 .record_heartbeat(normalized_request, now);
-            (record.session_id, record.nostr_pubkey_hex, true)
+            (record.session_id, record.nostr_pubkey_hex)
         }
-        Err(TryLockError::WouldBlock) => (
-            normalized_request.session_id.clone(),
-            normalized_request.nostr_pubkey_hex.clone(),
-            false,
-        ),
-        Err(TryLockError::Poisoned(_)) => {
+        Err(_) => {
             return Err(ApiError {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
                 error: "internal_error",
@@ -12827,9 +12822,7 @@ async fn record_provider_presence_heartbeat(
             });
         }
     };
-    if recorded {
-        throttle_public_stats_cache_invalidation(&state, now);
-    }
+    throttle_public_stats_cache_invalidation(&state, now);
     Ok(Json(ProviderPresenceResponse {
         authority: "openagents-hosted-nexus".to_string(),
         session_id,
@@ -17785,20 +17778,6 @@ async fn create_treasury_funding_target(
         }
     };
     let now = now_unix_ms();
-    {
-        let mut store = state.store.write().map_err(|_| ApiError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            error: "internal_error",
-            reason: "session_store_poisoned".to_string(),
-        })?;
-        let treasury_receipts = store
-            .treasury
-            .apply_wallet_snapshot(&material.wallet_snapshot, now);
-        store
-            .treasury
-            .refresh_public_snapshot(&state.config.treasury, now);
-        record_treasury_receipt_events(&mut store, treasury_receipts, now);
-    }
     let _ = force_refresh_public_stats_cache(&state, now);
     Ok(Json(TreasuryFundingTargetResponse {
         authority: "openagents-hosted-nexus".to_string(),
@@ -17810,6 +17789,7 @@ async fn create_treasury_funding_target(
         wallet_balance_updated_at_unix_ms: now,
         spark_address: material.spark_address,
         bitcoin_address: material.bitcoin_address,
+        spark_invoice: material.spark_invoice,
         bolt11_invoice: material.bolt11_invoice,
     }))
 }
@@ -23102,22 +23082,35 @@ async fn dispatch_live_payouts_isolated(
     config: &TreasuryConfig,
     plans: &[TreasuryDispatchPlan],
 ) -> TreasuryDispatchBatchResult {
+    let payout_interval_ms = config.payout_interval_ms();
+    let send_timeout_ms = config.dispatch_result_timeout_ms(payout_interval_ms);
+    let timeout_ms =
+        payout_interval_ms.max(send_timeout_ms.saturating_mul(2).saturating_add(30_000));
     let config = config.clone();
     let plans = plans.to_vec();
     let fallback_plans = plans.clone();
-    match tokio::task::spawn_blocking(move || {
+    tracing::info!(
+        payout_count = fallback_plans.len(),
+        send_timeout_ms,
+        timeout_ms,
+        "starting isolated treasury payout dispatch"
+    );
+    let dispatch = tokio::task::spawn_blocking(move || {
         let runtime = build_isolated_treasury_runtime()?;
         Ok::<TreasuryDispatchBatchResult, String>(
             runtime.block_on(dispatch_live_payouts(&config, plans.as_slice())),
         )
-    })
-    .await
-    {
-        Ok(Ok(batch)) => batch,
-        Ok(Err(error)) => treasury_dispatch_isolation_failure_batch(fallback_plans, error),
-        Err(error) => treasury_dispatch_isolation_failure_batch(
+    });
+    match tokio::time::timeout(Duration::from_millis(timeout_ms), dispatch).await {
+        Ok(Ok(Ok(batch))) => batch,
+        Ok(Ok(Err(error))) => treasury_dispatch_isolation_failure_batch(fallback_plans, error),
+        Ok(Err(error)) => treasury_dispatch_isolation_failure_batch(
             fallback_plans,
             format!("treasury_isolated_dispatch_join_failed:{error}"),
+        ),
+        Err(_) => treasury_dispatch_isolation_failure_batch(
+            fallback_plans,
+            format!("treasury_isolated_dispatch_timeout:{timeout_ms}"),
         ),
     }
 }
@@ -23140,7 +23133,7 @@ fn treasury_dispatch_isolation_failure_batch(
             })
             .collect(),
         wallet_snapshot: None,
-        wallet_error: Some(reason),
+        wallet_error: None,
     }
 }
 
@@ -27454,7 +27447,7 @@ fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSna
         });
     }
 
-    if health.accepted_work_attention_payout_count > 0 || health.payouts_failed_24h > 0 {
+    if health.accepted_work_attention_payout_count > 0 {
         alerts.push(PublicTrainingLaunchAlert {
             alert_id: "payout_lag".to_string(),
             severity: "critical".to_string(),
@@ -27464,6 +27457,16 @@ fn sync_training_launch_health_alerts(health: &mut PublicTrainingLaunchHealthSna
                 health.accepted_work_attention_payout_count,
                 health.payouts_failed_24h,
                 health.payouts_skipped_24h
+            ),
+        });
+    } else if health.payouts_failed_24h > 0 {
+        alerts.push(PublicTrainingLaunchAlert {
+            alert_id: "payout_recent_failures".to_string(),
+            severity: "warning".to_string(),
+            title: "Recent payout retry activity".to_string(),
+            detail: format!(
+                "No accepted-work payout needs attention; failed 24h {} // skipped 24h {}.",
+                health.payouts_failed_24h, health.payouts_skipped_24h
             ),
         });
     } else if health.accepted_work_pending_payout_count > 0 {
@@ -34161,6 +34164,7 @@ mod tests {
                 Ok(TreasuryFundingMaterial {
                     spark_address: "spark:treasury".to_string(),
                     bitcoin_address: "bc1qtreasury".to_string(),
+                    spark_invoice: Some("sparkinvoice210fund".to_string()),
                     bolt11_invoice: Some("lnbc210fund".to_string()),
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
@@ -34193,6 +34197,10 @@ mod tests {
         assert_eq!(funding_response.status(), StatusCode::OK);
         let funding: TreasuryFundingTargetResponse = response_json(funding_response).await?;
         assert_eq!(funding.spark_address, "spark:treasury");
+        assert_eq!(
+            funding.spark_invoice.as_deref(),
+            Some("sparkinvoice210fund")
+        );
         assert_eq!(funding.bolt11_invoice.as_deref(), Some("lnbc210fund"));
 
         let stats_response = app
@@ -34250,6 +34258,7 @@ mod tests {
                 Ok(TreasuryFundingMaterial {
                     spark_address: "spark:treasury".to_string(),
                     bitcoin_address: "bc1qtreasury".to_string(),
+                    spark_invoice: None,
                     bolt11_invoice: None,
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
@@ -34321,6 +34330,7 @@ mod tests {
                 Ok(TreasuryFundingMaterial {
                     spark_address: "spark:treasury".to_string(),
                     bitcoin_address: "bc1qtreasury".to_string(),
+                    spark_invoice: None,
                     bolt11_invoice: None,
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
@@ -34973,6 +34983,30 @@ mod tests {
                 .iter()
                 .any(|alert| alert.alert_id == "payout_lag")
         );
+    }
+
+    #[test]
+    fn launch_health_keeps_recent_retryable_failures_below_critical_without_attention() {
+        let mut health = crate::economy::PublicTrainingLaunchHealthSnapshot {
+            payouts_failed_24h: 1,
+            payouts_skipped_24h: 5,
+            accepted_work_attention_payout_count: 0,
+            ..crate::economy::PublicTrainingLaunchHealthSnapshot::default()
+        };
+
+        super::sync_training_launch_health_alerts(&mut health);
+
+        assert_eq!(health.overall_status, "warn");
+        assert_eq!(health.critical_alert_count, 0);
+        assert!(
+            !health
+                .alerts
+                .iter()
+                .any(|alert| alert.alert_id == "payout_lag")
+        );
+        assert!(health.alerts.iter().any(|alert| {
+            alert.alert_id == "payout_recent_failures" && alert.severity == "warning"
+        }));
     }
 
     #[tokio::test]

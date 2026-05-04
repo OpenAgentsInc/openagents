@@ -125,8 +125,12 @@ pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPa
     let overview_bounds = Bounds::new(origin_x, origin_y, usable_width, OVERVIEW_HEIGHT);
 
     let utility_section_y = overview_bounds.max_y() + 18.0;
-    let utility_section_bounds =
-        Bounds::new(origin_x, utility_section_y, usable_width, UTILITY_SECTION_HEIGHT);
+    let utility_section_bounds = Bounds::new(
+        origin_x,
+        utility_section_y,
+        usable_width,
+        UTILITY_SECTION_HEIGHT,
+    );
     let utility_content_x = utility_section_bounds.origin.x + FLOW_SECTION_INSET;
     let utility_width = (usable_width * 0.24).clamp(138.0, 186.0);
     let controls_y = utility_section_bounds.origin.y + 52.0;
@@ -143,10 +147,19 @@ pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPa
 
     let receive_y = receive_section_y + SECTION_HEADER_HEIGHT + SECTION_HEADER_TO_CONTROLS_GAP;
     let action_button_width = (receive_content_width * 0.40).clamp(180.0, 300.0);
-    let spark_address_button = Bounds::new(receive_content_x, receive_y, action_button_width, CONTROL_HEIGHT);
+    let spark_address_button = Bounds::new(
+        receive_content_x,
+        receive_y,
+        action_button_width,
+        CONTROL_HEIGHT,
+    );
     let spark_value_y = spark_address_button.max_y() + value_gap;
-    let spark_address_value =
-        Bounds::new(receive_content_x, spark_value_y, value_width, value_row_height);
+    let spark_address_value = Bounds::new(
+        receive_content_x,
+        spark_value_y,
+        value_width,
+        value_row_height,
+    );
     let copy_spark_address_button = Bounds::new(
         spark_address_value.max_x() + GAP,
         spark_value_y + ((value_row_height - copy_button_size).max(0.0) * 0.5),
@@ -162,8 +175,12 @@ pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPa
         CONTROL_HEIGHT,
     );
     let bitcoin_value_y = bitcoin_address_button.max_y() + value_gap;
-    let bitcoin_address_value =
-        Bounds::new(receive_content_x, bitcoin_value_y, value_width, value_row_height);
+    let bitcoin_address_value = Bounds::new(
+        receive_content_x,
+        bitcoin_value_y,
+        value_width,
+        value_row_height,
+    );
     let copy_bitcoin_address_button = Bounds::new(
         bitcoin_address_value.max_x() + GAP,
         bitcoin_value_y + ((value_row_height - copy_button_size).max(0.0) * 0.5),
@@ -173,8 +190,12 @@ pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPa
 
     let invoice_row_y = bitcoin_address_value.max_y() + spark_row_gap;
     let invoice_input_width = (receive_content_width * 0.22).clamp(104.0, 168.0);
-    let invoice_amount_input =
-        Bounds::new(receive_content_x, invoice_row_y, invoice_input_width, CONTROL_HEIGHT);
+    let invoice_amount_input = Bounds::new(
+        receive_content_x,
+        invoice_row_y,
+        invoice_input_width,
+        CONTROL_HEIGHT,
+    );
     let create_invoice_width = (receive_content_width - invoice_input_width - GAP).max(140.0);
     let create_invoice_button = Bounds::new(
         invoice_amount_input.origin.x + invoice_amount_input.size.width + GAP,
@@ -195,12 +216,18 @@ pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPa
         copy_button_size,
         copy_button_size,
     );
-    let receive_section_height = invoice_value.max_y() - receive_section_y + FLOW_SECTION_BOTTOM_PADDING;
-    let receive_section_bounds =
-        Bounds::new(origin_x, receive_section_y, usable_width, receive_section_height.max(120.0));
+    let receive_section_height =
+        invoice_value.max_y() - receive_section_y + FLOW_SECTION_BOTTOM_PADDING;
+    let receive_section_bounds = Bounds::new(
+        origin_x,
+        receive_section_y,
+        usable_width,
+        receive_section_height.max(120.0),
+    );
 
     let send_section_y = receive_section_bounds.max_y() + SECTION_TO_SECTION_GAP;
-    let send_section_controls_top = send_section_y + SECTION_HEADER_HEIGHT + SECTION_HEADER_TO_CONTROLS_GAP;
+    let send_section_controls_top =
+        send_section_y + SECTION_HEADER_HEIGHT + SECTION_HEADER_TO_CONTROLS_GAP;
     let send_section_height = SECTION_HEADER_HEIGHT
         + SECTION_HEADER_TO_CONTROLS_GAP
         + CONTROL_HEIGHT
@@ -210,16 +237,23 @@ pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPa
     let send_section_bounds =
         Bounds::new(origin_x, send_section_y, usable_width, send_section_height);
     let send_content_x = send_section_bounds.origin.x + FLOW_SECTION_INSET;
-    let send_content_width =
-        (send_section_bounds.size.width - FLOW_SECTION_INSET * 2.0).max(180.0);
+    let send_content_width = (send_section_bounds.size.width - FLOW_SECTION_INSET * 2.0).max(180.0);
     let send_request_y = send_section_controls_top;
-    let send_request_input =
-        Bounds::new(send_content_x, send_request_y, send_content_width, CONTROL_HEIGHT);
+    let send_request_input = Bounds::new(
+        send_content_x,
+        send_request_y,
+        send_content_width,
+        CONTROL_HEIGHT,
+    );
 
     let send_row_y = send_request_y + CONTROL_HEIGHT + GAP;
     let send_amount_width = (send_content_width * 0.28).clamp(110.0, 180.0);
-    let send_amount_input =
-        Bounds::new(send_content_x, send_row_y, send_amount_width, CONTROL_HEIGHT);
+    let send_amount_input = Bounds::new(
+        send_content_x,
+        send_row_y,
+        send_amount_width,
+        CONTROL_HEIGHT,
+    );
     let send_payment_button = Bounds::new(
         send_amount_input.origin.x + send_amount_input.size.width + GAP,
         send_row_y,
@@ -229,9 +263,16 @@ pub fn layout_with_scroll(content_bounds: Bounds, scroll_offset: f32) -> SparkPa
 
     let details_section_y = send_section_bounds.max_y() + SECTION_TO_SECTION_GAP;
     let details_section_height = (content_bounds.max_y() - details_section_y - PAD).max(92.0);
-    let details_section_bounds =
-        Bounds::new(origin_x, details_section_y, usable_width, details_section_height);
-    let details_origin = Point::new(origin_x + 12.0, details_section_y + SUPPORTING_SECTION_HEADER_HEIGHT);
+    let details_section_bounds = Bounds::new(
+        origin_x,
+        details_section_y,
+        usable_width,
+        details_section_height,
+    );
+    let details_origin = Point::new(
+        origin_x + 12.0,
+        details_section_y + SUPPORTING_SECTION_HEADER_HEIGHT,
+    );
 
     SparkPaneLayout {
         overview_bounds,

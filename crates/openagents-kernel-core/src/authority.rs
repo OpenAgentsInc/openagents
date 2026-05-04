@@ -2399,7 +2399,9 @@ impl KernelAuthority for HttpKernelAuthorityClient {
     }
 
     async fn get_data_market_snapshot(&self) -> Result<DataMarketSnapshot> {
-        Err(retired_data_market_authority_error("get_data_market_snapshot"))
+        Err(retired_data_market_authority_error(
+            "get_data_market_snapshot",
+        ))
     }
 
     async fn register_data_asset(
@@ -2668,5 +2670,4 @@ mod tests {
             "unexpected error: {error}"
         );
     }
-
 }

@@ -244,14 +244,21 @@ Optional account visibility now also has an explicit headless lane:
 
 ```bash
 cargo pylon-headless account link --base-url https://openagents.com --token <one_time_token>
+cargo pylon-headless account refresh --base-url https://openagents.com
 ```
 
-That command is optional. It is meant for operators who choose to connect a
-local Pylon to a signed-in OpenAgents account so the web dashboard can show the
-node. It does not run during install, bootstrap, or local bring-up by default.
-The completion request also carries a NIP-98 signed proof tied to the local
-node identity; see `docs/pylon/PYLON_ACCOUNT_LINKING_NIP98.md` for the server
+Those commands are optional. `account link` connects a local Pylon to a
+signed-in OpenAgents account so the web dashboard can show the node. `account
+refresh` updates an already-linked node's dashboard snapshot and Codex
+capability state without consuming a new one-time token. Neither command runs
+during install, bootstrap, or local bring-up by default. The completion and
+refresh requests also carry a NIP-98 signed proof tied to the local node
+identity; see `docs/pylon/PYLON_ACCOUNT_LINKING_NIP98.md` for the server
 verification contract.
+
+For the full operator and product process, including initial link completion,
+signed refresh, dashboard visibility, and Codex capability snapshots, see
+`docs/pylon/PYLON_ACCOUNT_LINKING_PROCESS.md`.
 
 ## Optional OpenAgents Dashboard Linking
 
@@ -267,7 +274,7 @@ Current dashboard flow:
 
 1. Sign in at `https://openagents.com/login` only if you want the web
    dashboard.
-2. Open the signed-in dashboard at `https://openagents.com/dashboard`.
+2. Open the signed-in Pylon page at `https://openagents.com/pylon`.
 3. In the optional linking section, use `Link a Pylon`, then `Generate link command`.
 4. Run the generated `pylon account link --base-url https://openagents.com --token <one_time_token>`
    command in the shell where that local Pylon is installed.
@@ -278,10 +285,94 @@ Current dashboard flow:
 cargo pylon-headless account link --base-url https://openagents.com --token <one_time_token>
 ```
 
-6. After the command succeeds, refresh `https://openagents.com/dashboard` or
+6. After the command succeeds, refresh `https://openagents.com/pylon` or
    use the dashboard's `Refresh after linking` action.
 7. The linked node should then appear in `My Pylons` with its current label,
-   identity, runtime state, ready model, and eligible product summary.
+   identity, runtime state, ready model, eligible product summary, and any
+   runtime diagnostic blocker reported by the local Pylon. The signed payload
+   also includes a web-safe `capabilities` array. Today Pylon advertises a
+   `codex_agent` capability when it can inspect the local Codex runner surface,
+   using normalized states such as `ready`, `needs_auth`, or `not_installed`
+   without uploading local credential paths or tokens.
+8. If the linked-node page later shows stale runtime or Codex readiness, run:
+
+```bash
+cargo pylon-headless account refresh --base-url https://openagents.com --json
+```
+
+That refresh posts the current runtime and capability snapshot with the same
+node-held NIP-98 identity proof. It does not create or transfer account
+ownership, and it does not require a fresh link token.
+
+For local diagnostics, `pylon doctor --json` includes a `codex_agent` health
+report with the runner kind, optional runner version, status, auth state,
+supported actions, required confirmations, and blocker codes. It deliberately
+omits raw auth tokens, credential file paths, and local workspace paths from
+the JSON output.
+
+Linked Pylons can now run the first conservative brokered Codex chat workload
+shape used by `openagents.com` admin chat. The assignment is accepted only when
+the requested `workspace_scope` maps to an operator-configured
+`codex_workspaces` entry in the local Pylon config:
+
+```json
+{
+  "codex_workspaces": [
+    {
+      "id": "repo-42",
+      "label": "OpenAgents",
+      "root": "/Users/alice/work/openagents"
+    }
+  ]
+}
+```
+
+The brokered runner starts Codex in read-only mode with approval requests
+rejected. Pylon projects each local Codex notification into a web-safe workload
+event such as `run.status`, `assistant.delta`, `tool.start`, `tool.end`,
+`patch.preview`, and `pylon.error`, then immediately POSTs that signed event to
+openagents.com while the local run is still active. The final completion status
+is sent separately after the terminal event.
+Runs are bounded by `codex_workload_timeout_seconds` and poll the broker every
+`codex_workload_cancel_poll_seconds` while active. Browser cancellation is
+acknowledged with `pylon.cancelled` / `run.status: cancelled`; local timeout is
+reported as `pylon.timeout` / `run.status: timed_out` and completed as a failed
+web completion with a timeout error code because the current web completion API
+does not accept `timed_out` as a completion status. Late Codex output after
+cancellation or timeout is not forwarded as normal assistant text.
+Raw local Codex tokens, browser/WorkOS cookies, and local workspace roots are
+not included in the web event payloads.
+
+For a bounded diagnostic poll, run:
+
+```bash
+cargo pylon-headless codex workload once --base-url https://openagents.com --json
+```
+
+That command first refreshes the linked-node runtime and capability snapshot,
+then claims at most one pending `pylon_codex` assignment for the active linked
+identity, posts signed workload events as they are produced, posts terminal
+completion when the broker has not already made the assignment terminal, and
+then exits.
+
+For a live web chat experience, run the long-lived broker poller under the
+same service manager that keeps Pylon online:
+
+```bash
+cargo pylon-headless codex workload poll --base-url https://openagents.com --interval-seconds 2
+```
+
+The web app only queues the assignment. The local poller is assignment intake,
+not browser streaming; browser streaming comes from openagents.com after it
+accepts each signed event and broadcasts it over Reverb. If the poller is not
+running, the web stream will time out waiting for local events even when the
+linked-node page shows Codex capability as ready.
+
+The account-link request is signed by the node-held identity key and carries
+the local runtime diagnostic snapshot. If the local admin endpoint is stale or
+does not explicitly report the same Pylon public key as the signing identity,
+the command falls back to a freshly detected local status before completing the
+link.
 
 Keep the product posture explicit:
 

@@ -1,7 +1,7 @@
 # Nexus Treasury Funding Invoice Runbook
 
 Use this when Nexus needs more spendable sats for accepted-work payouts.
-This runbook is for hosted production treasury funding invoices only. It is
+This runbook is for hosted production treasury funding material only. It is
 not a Pylon user wallet invoice flow and it is not payout proof by itself.
 
 ## Preconditions
@@ -15,7 +15,7 @@ not a Pylon user wallet invoice flow and it is not payout proof by itself.
   hand to the payer, but do not commit it, paste it into issue comments after
   use, or treat it as a secret-bearing receipt.
 
-## Create The Invoice
+## Create The Funding Material
 
 Preserve `PATH` before sourcing the secret file because the secret file is not
 a complete shell profile:
@@ -39,12 +39,25 @@ curl -fsS -X POST https://nexus.openagents.com/v1/treasury/funding-target \
   }' | jq .
 ```
 
-The response field to give the payer is `bolt11_invoice`.
+The preferred response field to give a Spark-capable payer is `spark_invoice`
+or `spark_address`. Hosted Nexus pays Pylons to Spark addresses, so Spark
+funding is the direct payout-liquidity path. The `bolt11_invoice` field remains
+available for normal Lightning payers, but a paid Bolt11 invoice is not by
+itself proof that the wallet now has Spark leaves available for Spark-address
+payouts.
+Hosted Nexus should return the Spark invoice even if compatibility Bolt11
+invoice creation fails.
+
+The durable relay shell proxies this request into embedded Nexus-control. Keep
+`NEXUS_RELAY_AUTHORITY_HTTP_TIMEOUT_MS` longer than
+`NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS`; the default relay budget is
+`180000` ms. A shorter relay budget can turn a real Nexus-control funding
+timeout into an unhelpful relay `502`.
 
 If the payer needs a different amount, change only `amount_sats`,
 `description`, and `expiry_seconds`. Keep `amount_sats` positive. A request
-without a positive amount may return receive addresses without a Bolt11
-invoice.
+without a positive amount may return receive addresses without amount-specific
+invoices.
 
 ## Confirm Payment
 
@@ -77,17 +90,17 @@ curl -fsS -H "Authorization: Bearer ${token}" \
   }'
 ```
 
-Acceptable funding proof is one of:
+Acceptable payout-liquidity proof is one of:
 
-- `wallet_balance_sats` increases enough to cover the queued accepted-work
-  payouts.
 - Accepted-work payouts move from `queued` or `dispatching` to `confirmed` and
   `reconciliation_status=settled`.
 - A later wallet/payment scan shows the receive in wallet history.
 
-Do not use a small cached balance change by itself as proof. Do not redeploy or
-roll back images to solve an underfunded-wallet error; fund the wallet, verify
-status, then rerun the same deploy gate if the image was otherwise correct.
+Do not use invoice creation, a generic cached balance change, or a Lightning
+receive record by itself as proof that Spark-address payouts can drain. Do not
+redeploy or roll back images to solve an underfunded-wallet error; fund the
+wallet with Spark-spendable liquidity, verify status, then rerun the same
+deploy gate if the image was otherwise correct.
 
 ## Closeout Notes
 

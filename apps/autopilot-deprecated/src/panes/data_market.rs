@@ -74,10 +74,16 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataMarketPaneState, paint: &m
             "last action",
             "",
         );
-        for line in split_text_for_display(action, status_chunk_len).into_iter().take(2) {
+        for line in split_text_for_display(action, status_chunk_len)
+            .into_iter()
+            .take(2)
+        {
             paint.scene.draw_text(paint.text.layout(
                 line.as_str(),
-                Point::new(content_bounds.origin.x + PADDING + 72.0, status_end_y - 15.0),
+                Point::new(
+                    content_bounds.origin.x + PADDING + 72.0,
+                    status_end_y - 15.0,
+                ),
                 11.0,
                 theme::text::SECONDARY,
             ));
@@ -87,7 +93,10 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataMarketPaneState, paint: &m
         status_end_y = status_y;
     }
     if let Some(error) = pane_state.last_error.as_deref() {
-        for line in split_text_for_display(error, status_chunk_len).into_iter().take(2) {
+        for line in split_text_for_display(error, status_chunk_len)
+            .into_iter()
+            .take(2)
+        {
             paint.scene.draw_text(paint.text.layout(
                 line.as_str(),
                 Point::new(content_bounds.origin.x + PADDING, status_end_y),
@@ -107,7 +116,13 @@ pub fn paint(content_bounds: Bounds, pane_state: &DataMarketPaneState, paint: &m
     let scroll_offset = pane_state.scroll_offset_px.min(max_scroll);
     paint.scene.push_clip(viewport);
     paint_metric_cards(content_bounds, pane_state, metric_top, scroll_offset, paint);
-    paint_lifecycle_panel(content_bounds, pane_state, lifecycle_top, scroll_offset, paint);
+    paint_lifecycle_panel(
+        content_bounds,
+        pane_state,
+        lifecycle_top,
+        scroll_offset,
+        paint,
+    );
     paint_panels(content_bounds, pane_state, panels_top, scroll_offset, paint);
     paint.scene.pop_clip();
     paint_scrollbar(viewport, content_height, scroll_offset, paint);
@@ -125,14 +140,15 @@ pub fn compute_metric_top(content_bounds: Bounds, pane_state: &DataMarketPaneSta
     status_end_y += 15.0; // last refresh
     if pane_state.last_action.is_some() {
         status_end_y += 15.0; // last action label row
-        status_end_y += 14.0 * pane_state.last_action.as_ref().map_or(0.0, |action| {
-            split_text_for_display(
-                action,
-                ((content_bounds.size.width - PADDING * 2.0) / 7.0).max(22.0) as usize,
-            )
-            .len()
-            .min(2) as f32
-        });
+        status_end_y += 14.0
+            * pane_state.last_action.as_ref().map_or(0.0, |action| {
+                split_text_for_display(
+                    action,
+                    ((content_bounds.size.width - PADDING * 2.0) / 7.0).max(22.0) as usize,
+                )
+                .len()
+                .min(2) as f32
+            });
     }
     if let Some(error) = pane_state.last_error.as_ref() {
         status_end_y += 14.0
@@ -156,7 +172,8 @@ pub fn scroll_viewport_bounds(content_bounds: Bounds, metric_top: f32) -> Bounds
 }
 
 fn content_height(content_bounds: Bounds, metric_top: f32, panels_top: f32) -> f32 {
-    let panel_height = ((content_bounds.max_y() - panels_top - PADDING - PANEL_GAP) / 2.0).max(120.0);
+    let panel_height =
+        ((content_bounds.max_y() - panels_top - PADDING - PANEL_GAP) / 2.0).max(120.0);
     let bottom_y = panels_top + panel_height * 2.0 + PANEL_GAP;
     (bottom_y - (metric_top - 8.0) + PADDING).max(0.0)
 }
@@ -212,7 +229,8 @@ fn paint_panels(
     paint: &mut PaintContext,
 ) {
     let panel_width = ((content_bounds.size.width - PADDING * 2.0 - PANEL_GAP) / 2.0).max(180.0);
-    let panel_height = ((content_bounds.max_y() - panels_top - PADDING - PANEL_GAP) / 2.0).max(120.0);
+    let panel_height =
+        ((content_bounds.max_y() - panels_top - PADDING - PANEL_GAP) / 2.0).max(120.0);
     let left_x = content_bounds.origin.x + PADDING;
     let right_x = left_x + panel_width + PANEL_GAP;
     let top_y = panels_top - scroll_offset;
@@ -345,7 +363,10 @@ fn paint_lifecycle_panel(
         {
             paint.scene.draw_text(paint.text.layout_mono(
                 line.as_str(),
-                Point::new(bounds.origin.x + 10.0, row_y + 12.0 + line_idx as f32 * 10.0),
+                Point::new(
+                    bounds.origin.x + 10.0,
+                    row_y + 12.0 + line_idx as f32 * 10.0,
+                ),
                 10.0,
                 theme::text::MUTED,
             ));
@@ -354,25 +375,40 @@ fn paint_lifecycle_panel(
     paint.scene.pop_clip();
 }
 
-fn paint_scrollbar(viewport: Bounds, content_height: f32, scroll_offset: f32, paint: &mut PaintContext) {
+fn paint_scrollbar(
+    viewport: Bounds,
+    content_height: f32,
+    scroll_offset: f32,
+    paint: &mut PaintContext,
+) {
     if viewport.size.height <= 0.0 || content_height <= viewport.size.height + 0.5 {
         return;
     }
     let max_offset = (content_height - viewport.size.height).max(0.0);
-    let track_bounds = Bounds::new(viewport.max_x() - 2.0, viewport.origin.y, 2.0, viewport.size.height);
+    let track_bounds = Bounds::new(
+        viewport.max_x() - 2.0,
+        viewport.origin.y,
+        2.0,
+        viewport.size.height,
+    );
     let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
         .clamp(16.0, viewport.size.height.max(0.0));
-    let thumb_y =
-        viewport.origin.y + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
+    let thumb_y = viewport.origin.y
+        + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
     paint.scene.draw_quad(
         Quad::new(track_bounds)
             .with_background(theme::border::DEFAULT.with_alpha(0.45))
             .with_corner_radius(1.0),
     );
     paint.scene.draw_quad(
-        Quad::new(Bounds::new(track_bounds.origin.x, thumb_y, track_bounds.size.width, thumb_height))
-            .with_background(theme::text::MUTED.with_alpha(0.75))
-            .with_corner_radius(1.0),
+        Quad::new(Bounds::new(
+            track_bounds.origin.x,
+            thumb_y,
+            track_bounds.size.width,
+            thumb_height,
+        ))
+        .with_background(theme::text::MUTED.with_alpha(0.75))
+        .with_corner_radius(1.0),
     );
 }
 
@@ -450,7 +486,10 @@ fn paint_panel(
         {
             paint.scene.draw_text(paint.text.layout_mono(
                 line.as_str(),
-                Point::new(bounds.origin.x + 10.0, row_y + 16.0 + line_idx as f32 * 10.0),
+                Point::new(
+                    bounds.origin.x + 10.0,
+                    row_y + 16.0 + line_idx as f32 * 10.0,
+                ),
                 10.0,
                 theme::text::MUTED,
             ));
@@ -754,7 +793,11 @@ fn relay_activity_row_summaries(pane_state: &DataMarketPaneState) -> Vec<(String
             ),
         ));
     }
-    for contract in pane_state.relay_access_contracts.iter().take(MAX_LIFECYCLE_ROWS) {
+    for contract in pane_state
+        .relay_access_contracts
+        .iter()
+        .take(MAX_LIFECYCLE_ROWS)
+    {
         rows.push((
             contract.created_at_seconds,
             compact_text(

@@ -9,7 +9,7 @@
 //! It intentionally stops at the canonical listing / offer layer. The optional
 //! DS-DVM request/result profile remains separate work.
 
-use crate::nip01::{is_addressable_kind, Event, EventTemplate};
+use crate::nip01::{Event, EventTemplate, is_addressable_kind};
 use crate::nip99::Price;
 use crate::tag_parsing::{
     collect_tag_values, find_tag_value, parse_tag_value, tag_field, tag_name,

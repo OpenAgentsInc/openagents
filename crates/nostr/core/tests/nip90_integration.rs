@@ -851,5 +851,8 @@ fn test_data_vending_profile_request_result_and_feedback_roundtrip() {
         parsed_feedback.status_extra.as_deref(),
         Some("provider refused export")
     );
-    assert_eq!(parsed_feedback.asset_id.as_deref(), Some("asset.repo-alpha"));
+    assert_eq!(
+        parsed_feedback.asset_id.as_deref(),
+        Some("asset.repo-alpha")
+    );
 }

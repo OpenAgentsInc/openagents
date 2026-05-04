@@ -1851,8 +1851,9 @@ fn connect_or_autostart_local_daemon_transport(
 
 fn connect_hosted_tcp_transport(address: &str) -> Result<ProbeTransport, String> {
     let address = normalize_hosted_tcp_address(address)?;
-    let stream = TcpStream::connect(address.as_str())
-        .map_err(|error| format!("failed to connect to hosted Probe transport at {address}: {error}"))?;
+    let stream = TcpStream::connect(address.as_str()).map_err(|error| {
+        format!("failed to connect to hosted Probe transport at {address}: {error}")
+    })?;
     let writer = stream
         .try_clone()
         .map_err(|error| format!("failed to clone hosted Probe transport stream: {error}"))?;
@@ -2106,7 +2107,10 @@ mod tests {
     #[test]
     fn hosted_tcp_address_env_reads_and_normalizes_value() {
         unsafe {
-            std::env::set_var("OPENAGENTS_PROBE_HOSTED_TCP_ADDRESS", "tcp://127.0.0.1:17777");
+            std::env::set_var(
+                "OPENAGENTS_PROBE_HOSTED_TCP_ADDRESS",
+                "tcp://127.0.0.1:17777",
+            );
         }
         assert_eq!(
             probe_hosted_tcp_address_from_env(),

@@ -4,11 +4,11 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use psionic_train::{
-    canonical_gemma_e4b_cuda_adapter_target_set, canonical_gemma_e4b_finetune_eval_pack_binding,
-    canonical_gemma_e4b_finetuning_mvp_contract,
-    canonical_gemma_e4b_promoted_checkpoint_vibe_packet, decide_gemma_e4b_checkpoint_promotion,
-    run_gemma_e4b_baseline_sweep, GemmaE4bAssistantMaskKind, GemmaE4bBaselineCandidate,
-    GemmaE4bBaselineSweepOutcome, GemmaE4bBaselineSweepRequest, GemmaE4bBenchmarkOverlapCheck,
+    GEMMA_E4B_BASELINE_SWEEP_REQUEST_SCHEMA_VERSION,
+    GEMMA_E4B_FINETUNE_DATASET_CONTRACT_SCHEMA_VERSION,
+    GEMMA_E4B_FINETUNE_EVAL_RECEIPT_SCHEMA_VERSION, GEMMA_E4B_OPERATOR_REVIEW_SCHEMA_VERSION,
+    GemmaE4bAssistantMaskKind, GemmaE4bBaselineCandidate, GemmaE4bBaselineSweepOutcome,
+    GemmaE4bBaselineSweepRequest, GemmaE4bBenchmarkOverlapCheck,
     GemmaE4bCheckpointPromotionDecision, GemmaE4bCudaAdapterCheckpoint,
     GemmaE4bCudaAdapterExportRequest, GemmaE4bCudaAdapterExportedArtifact,
     GemmaE4bCudaAdapterSftConfig, GemmaE4bCudaAdapterSftTrainer, GemmaE4bCudaAdapterTargetSet,
@@ -18,9 +18,10 @@ use psionic_train::{
     GemmaE4bOperatorReviewState, GemmaE4bPromotedCheckpointVibePacket,
     GemmaE4bPromotionDecisionState, GemmaE4bReviewVerdictStatus, GemmaE4bServedBaseModelBinding,
     TrainingLoopBudget, TrainingOptimizerConfig, TrainingOptimizerResidencyPolicy,
-    GEMMA_E4B_BASELINE_SWEEP_REQUEST_SCHEMA_VERSION,
-    GEMMA_E4B_FINETUNE_DATASET_CONTRACT_SCHEMA_VERSION,
-    GEMMA_E4B_FINETUNE_EVAL_RECEIPT_SCHEMA_VERSION, GEMMA_E4B_OPERATOR_REVIEW_SCHEMA_VERSION,
+    canonical_gemma_e4b_cuda_adapter_target_set, canonical_gemma_e4b_finetune_eval_pack_binding,
+    canonical_gemma_e4b_finetuning_mvp_contract,
+    canonical_gemma_e4b_promoted_checkpoint_vibe_packet, decide_gemma_e4b_checkpoint_promotion,
+    run_gemma_e4b_baseline_sweep,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -2550,11 +2551,7 @@ fn normalized_tenant_id(raw: Option<&str>) -> String {
 }
 
 fn normalized_quota_limit(value: usize, default_value: usize) -> usize {
-    if value == 0 {
-        default_value
-    } else {
-        value
-    }
+    if value == 0 { default_value } else { value }
 }
 
 fn generate_api_key() -> Result<String, String> {
@@ -3152,10 +3149,12 @@ mod tests {
             .expect("create project");
         assert_eq!(project.tenant_id, DEFAULT_TENANT_ID);
         assert_eq!(project.lane_binding.model_id, "gemma4:e4b");
-        assert!(project
-            .lane_binding
-            .eval_pack_storage_key
-            .contains("benchmark://psionic/gemma4/e4b/finetune_eval"));
+        assert!(
+            project
+                .lane_binding
+                .eval_pack_storage_key
+                .contains("benchmark://psionic/gemma4/e4b/finetune_eval")
+        );
         assert!(storage.exists());
         let _ = fs::remove_file(storage);
     }
@@ -3196,8 +3195,8 @@ mod tests {
     }
 
     #[test]
-    fn promote_checkpoint_records_model_ref_when_decision_is_promote(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn promote_checkpoint_records_model_ref_when_decision_is_promote()
+    -> Result<(), Box<dyn std::error::Error>> {
         let storage = temp_path("promotion-state");
         let train = temp_path("promotion-train");
         let validation = temp_path("promotion-validation");

@@ -5,13 +5,13 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crate::state::job_inbox::JobExecutionParam;
 use openagents_kernel_core::ids::sha256_prefixed_text;
-use psionic_runtime::{
-    BackendRuntimeResources, BatchExecutionPosture, CacheInvalidationTrigger, CompilePathEvidence,
-    CompilePathTemperature, DeviceInventoryQualifiers, LocalRuntimeObservability, QueueDiscipline,
-};
 use psionic_models::{
     GptOssHarmonyParseOptions, PromptMessage, PromptMessageRole, parse_gpt_oss_harmony_text,
     render_gpt_oss_harmony_prompt,
+};
+use psionic_runtime::{
+    BackendRuntimeResources, BatchExecutionPosture, CacheInvalidationTrigger, CompilePathEvidence,
+    CompilePathTemperature, DeviceInventoryQualifiers, LocalRuntimeObservability, QueueDiscipline,
 };
 use psionic_serve::{
     CpuGgufGptOssTextGenerationService, CpuReferenceTextGenerationService,
@@ -547,8 +547,7 @@ impl PsionicRuntimeAdapter {
 
     fn handle_generate(&mut self, job: LocalInferenceGenerateJob) {
         let normalized_prompt = normalize_prompt(job.prompt.as_str());
-        let rendered_harmony_prompt = match render_harmony_user_prompt(normalized_prompt.as_str())
-        {
+        let rendered_harmony_prompt = match render_harmony_user_prompt(normalized_prompt.as_str()) {
             Ok(value) => value,
             Err(error) => {
                 self.push_failure(job.request_id, error);
@@ -1328,8 +1327,7 @@ impl GptOssRuntimeWorker {
 
     fn handle_generate(&mut self, job: LocalInferenceGenerateJob) {
         let normalized_prompt = normalize_prompt(job.prompt.as_str());
-        let rendered_harmony_prompt = match render_harmony_user_prompt(normalized_prompt.as_str())
-        {
+        let rendered_harmony_prompt = match render_harmony_user_prompt(normalized_prompt.as_str()) {
             Ok(value) => value,
             Err(error) => {
                 self.push_failure(job.request_id, error);

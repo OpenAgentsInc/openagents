@@ -818,6 +818,7 @@ async fn open_wallet(context: &WalletRuntimeContext) -> Result<SparkWallet> {
             deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
             background_processing: true,
             real_time_sync_enabled: true,
+            prefer_spark_over_lightning: false,
         },
     )
     .await

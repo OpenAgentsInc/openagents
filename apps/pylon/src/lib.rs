@@ -5,6 +5,7 @@ mod training_trn_mapping;
 mod wallet_runtime;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -22,6 +23,8 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use bip39::{Language, Mnemonic};
+use codex_client::CodexInstallationProbe;
+use hmac::{Hmac, Mac};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use nostr::{
     Event, EventTemplate, NostrIdentity, derive_keypair, finalize_event, load_identity_from_path,
@@ -116,6 +119,8 @@ use tokio::{
     task::JoinHandle,
 };
 
+type HmacSha256 = Hmac<Sha256>;
+
 pub use ledger::{
     PylonLedger, PylonLedgerAnnouncement, PylonLedgerJob, PylonLedgerPayout, PylonLedgerSummary,
     PylonRelayActivity, PylonRelayConfigSnapshot, PylonRelayState, PylonSettlementRecord,
@@ -156,6 +161,8 @@ pub const ENV_TRAINING_GCS_BEARER_TOKEN: &str = "OPENAGENTS_PYLON_TRAINING_GCS_B
 pub const ENV_GOOGLE_APPLICATION_CREDENTIALS: &str = "GOOGLE_APPLICATION_CREDENTIALS";
 const DEFAULT_PROVIDER_PRESENCE_HEARTBEAT_INTERVAL_MS: u64 = 30_000;
 const DEFAULT_PROVIDER_AUTO_RUN_INTERVAL_MS: u64 = 10_000;
+const DEFAULT_CODEX_WORKLOAD_TIMEOUT_SECONDS: u64 = 600;
+const DEFAULT_CODEX_WORKLOAD_CANCEL_POLL_SECONDS: u64 = 2;
 const DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS: u64 = 30_000;
 const DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS: u64 = 1;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
@@ -181,6 +188,31 @@ const PYLON_TRAINING_MINIMUM_APPLE_MEMORY_GB: u32 = 32;
 const TRN_TRAINING_NODE_RECORD_KIND: u16 = 39_501;
 const TRN_TRAINING_RECEIPT_KIND: u16 = 39_511;
 const TRN_TRAINING_ARTIFACT_LOCATOR_KIND: u16 = 39_520;
+const CODEX_AGENT_CAPABILITY_KEY: &str = "codex_agent";
+const CODEX_AGENT_RUNNER_KIND: &str = "codex_cli";
+const CODEX_AGENT_TRANSPORT_KIND: &str = "pylon_workload_poll";
+const CODEX_AGENT_WEB_MODE: &str = "pylon_codex";
+const CODEX_AGENT_SUPPORTED_ACTIONS: [&str; 3] = ["chat", "repo_read", "patch_preview"];
+const CODEX_AGENT_REQUIRED_CONFIRMATIONS: [&str; 3] = ["shell", "file_write", "pull_request"];
+const PROBE_AGENT_CAPABILITY_KEY: &str = "probe_agent";
+const PROBE_AGENT_RUNNER_KIND: &str = "probe_cli";
+const PROBE_AGENT_TRANSPORT_KIND: &str = "pylon_probe_signed_bridge";
+const PROBE_AGENT_WEB_MODE: &str = "pylon_probe";
+const PROBE_AGENT_BRIDGE_PURPOSE: &str = "probe-admin-chat-bridge-v1";
+const PROBE_AGENT_DEFAULT_BACKEND_PROFILE: &str = "openai-codex-subscription";
+const PROBE_AGENT_DEFAULT_SECRET_ENV: &str = "PROBE_ADMIN_CHAT_BRIDGE_SECRET";
+const PROBE_AGENT_SUPPORTED_ACTIONS: [&str; 6] = [
+    "chat",
+    "repo_read",
+    "patch_preview",
+    "tool_approval",
+    "child_session",
+    "artifact_ref",
+];
+const PROBE_AGENT_REQUIRED_CONFIRMATIONS: [&str; 4] =
+    ["shell", "file_write", "network", "pull_request"];
+const DEFAULT_PROBE_WORKLOAD_TIMEOUT_SECONDS: u64 = 900;
+const DEFAULT_PROBE_WORKLOAD_CANCEL_POLL_SECONDS: u64 = 2;
 const STARTUP_THREAD_LIMIT_ENV_VARS: [&str; 7] = [
     "RAYON_NUM_THREADS",
     "OPENBLAS_NUM_THREADS",
@@ -286,6 +318,42 @@ impl Default for PylonTrainingConfig {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonCodexWorkspaceConfig {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    pub root: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PylonProbeConfig {
+    #[serde(default = "default_probe_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_probe_bin")]
+    pub probe_bin: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_home: Option<PathBuf>,
+    #[serde(default = "default_probe_bridge_secret_env")]
+    pub bridge_secret_env: String,
+    #[serde(default = "default_probe_backend_profile")]
+    pub backend_profile: String,
+    #[serde(default = "default_probe_provider_mode")]
+    pub provider_mode: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workspaces: Vec<PylonCodexWorkspaceConfig>,
+    #[serde(default = "default_probe_workload_timeout_seconds")]
+    pub workload_timeout_seconds: u64,
+    #[serde(default = "default_probe_workload_cancel_poll_seconds")]
+    pub workload_cancel_poll_seconds: u64,
+}
+
+impl Default for PylonProbeConfig {
+    fn default() -> Self {
+        default_probe_config()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PylonConfig {
     pub schema_version: u32,
     pub node_label: String,
@@ -315,6 +383,14 @@ pub struct PylonConfig {
     pub apple_fm_base_url: Option<String>,
     pub inventory_controls: ProviderInventoryControls,
     pub declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub codex_workspaces: Vec<PylonCodexWorkspaceConfig>,
+    #[serde(default)]
+    pub probe: PylonProbeConfig,
+    #[serde(default = "default_codex_workload_timeout_seconds")]
+    pub codex_workload_timeout_seconds: u64,
+    #[serde(default = "default_codex_workload_cancel_poll_seconds")]
+    pub codex_workload_cancel_poll_seconds: u64,
     #[serde(default)]
     pub training: PylonTrainingConfig,
 }
@@ -362,6 +438,8 @@ struct PylonPublicConfig {
     local_gemma_preferred_model: Option<String>,
     inventory_controls: PylonPublicInventoryControls,
     declared_sandbox_profiles: Vec<ProviderSandboxProfileSpec>,
+    codex_workspaces: Vec<PylonCodexWorkspaceConfig>,
+    probe: PylonProbeConfig,
     training: PylonTrainingConfig,
 }
 
@@ -386,6 +464,8 @@ impl From<&PylonConfig> for PylonPublicConfig {
             local_gemma_preferred_model: value.local_gemma_preferred_model.clone(),
             inventory_controls: PylonPublicInventoryControls::from(&value.inventory_controls),
             declared_sandbox_profiles: value.declared_sandbox_profiles.clone(),
+            codex_workspaces: value.codex_workspaces.clone(),
+            probe: value.probe.clone(),
             training: value.training.clone(),
         }
     }
@@ -2142,6 +2222,9 @@ pub enum Command {
     Account {
         command: AccountCommand,
     },
+    Codex {
+        command: CodexCommand,
+    },
     Status {
         json: bool,
     },
@@ -2261,6 +2344,23 @@ pub enum AccountCommand {
     Link {
         base_url: String,
         token: String,
+        json: bool,
+    },
+    Refresh {
+        base_url: String,
+        json: bool,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CodexCommand {
+    WorkloadOnce {
+        base_url: String,
+        json: bool,
+    },
+    WorkloadPoll {
+        base_url: String,
+        interval_seconds: u64,
         json: bool,
     },
 }
@@ -2423,6 +2523,8 @@ struct DoctorReport {
     identity: ProviderIdentityMetadata,
     availability: ProviderAvailability,
     products: Vec<ProductEntry>,
+    codex_agent: CodexAgentHealthReport,
+    probe_agent: ProbeAgentHealthReport,
     training: TrainingDoctorStatus,
     nexus_treasury: Option<NexusTreasuryHealthSnapshot>,
 }
@@ -2464,9 +2566,12 @@ struct AccountLinkReport {
     npub: String,
     node_label: String,
     runtime_state: String,
+    runtime: Option<OpenAgentsPylonRuntimeDiagnostics>,
     ready_model: Option<String>,
     eligible_product_count: u64,
     products: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    capabilities: Vec<OpenAgentsPylonCapability>,
     observed_pylon_id: u64,
     account_link_id: u64,
     user_id: u64,
@@ -2492,9 +2597,416 @@ struct OpenAgentsPylonLinkCompletionRequest {
     npub: String,
     node_label: Option<String>,
     runtime_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime: Option<OpenAgentsPylonRuntimeDiagnostics>,
     ready_model: Option<String>,
     eligible_product_count: u64,
     products: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    capabilities: Vec<OpenAgentsPylonCapability>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OpenAgentsPylonLinkRefreshRequest {
+    public_key_hex: String,
+    npub: String,
+    node_label: Option<String>,
+    runtime_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime: Option<OpenAgentsPylonRuntimeDiagnostics>,
+    ready_model: Option<String>,
+    eligible_product_count: u64,
+    products: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    capabilities: Vec<OpenAgentsPylonCapability>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct OpenAgentsPylonRuntimeDiagnostics {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
+    #[serde(default, alias = "lastAction", skip_serializing_if = "Option::is_none")]
+    last_action: Option<String>,
+    #[serde(default, alias = "lastError", skip_serializing_if = "Option::is_none")]
+    last_error: Option<String>,
+    #[serde(
+        default,
+        alias = "degradedReasonCode",
+        skip_serializing_if = "Option::is_none"
+    )]
+    degraded_reason_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    authoritative_status: Option<String>,
+    #[serde(default, alias = "errorClass", skip_serializing_if = "Option::is_none")]
+    authoritative_error_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    execution_backend_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    provider_blocker_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    raw: Option<Value>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct OpenAgentsPylonCapability {
+    key: String,
+    status: String,
+    #[serde(default, alias = "displayLabel")]
+    display_label: String,
+    #[serde(default, alias = "authState")]
+    auth_state: String,
+    #[serde(default, alias = "runnerKind")]
+    runner_kind: String,
+    #[serde(
+        default,
+        alias = "runnerVersion",
+        skip_serializing_if = "Option::is_none"
+    )]
+    runner_version: Option<String>,
+    #[serde(default, alias = "transportKind")]
+    transport_kind: String,
+    #[serde(
+        default,
+        alias = "supportedActions",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    supported_actions: Vec<String>,
+    #[serde(
+        default,
+        alias = "requiredConfirmations",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    required_confirmations: Vec<String>,
+    #[serde(
+        default,
+        alias = "workspaceRoots",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    workspace_roots: Vec<String>,
+    #[serde(default, alias = "blockerCodes", skip_serializing_if = "Vec::is_empty")]
+    blocker_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    metadata: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct CodexAgentHealthReport {
+    runner_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runner_version: Option<String>,
+    status: String,
+    auth_state: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    blocker_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    supported_actions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    required_confirmations: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct ProbeAgentHealthReport {
+    runner_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runner_version: Option<String>,
+    status: String,
+    auth_state: String,
+    bridge_state: String,
+    backend_state: String,
+    workspace_state: String,
+    backend_profile: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    blocker_codes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    supported_actions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    required_confirmations: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CodexAuthInspection {
+    auth_state: String,
+    blocker_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ProbeInstallationProbe {
+    available: bool,
+    version: Option<String>,
+    bridge_supported: bool,
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ProbeBridgeSecretInspection {
+    auth_state: String,
+    blocker_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenAgentsPylonWorkloadEnvelope {
+    assignment_uuid: String,
+    capability_key: String,
+    status: String,
+    nonce: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    expires_at: Option<String>,
+    #[serde(default)]
+    request: OpenAgentsPylonCodexWorkloadRequest,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct OpenAgentsPylonCodexWorkloadRequest {
+    #[serde(default)]
+    mode: String,
+    #[serde(default)]
+    prompt: String,
+    #[serde(default)]
+    messages: Vec<OpenAgentsPylonCodexMessage>,
+    #[serde(default)]
+    workspace_scope: OpenAgentsPylonCodexWorkspaceScope,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    metadata: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct OpenAgentsPylonCodexMessage {
+    #[serde(default)]
+    role: String,
+    #[serde(default)]
+    content: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+struct OpenAgentsPylonCodexWorkspaceScope {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    organization_id: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project_id: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project_repository_id: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workspace_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    repository_label: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PreparedPylonCodexWorkload {
+    assignment_uuid: String,
+    assignment_nonce: String,
+    prompt: String,
+    messages: Vec<OpenAgentsPylonCodexMessage>,
+    workspace: PylonCodexWorkspaceConfig,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PreparedPylonProbeWorkload {
+    assignment_uuid: String,
+    assignment_nonce: String,
+    prompt: String,
+    messages: Vec<OpenAgentsPylonCodexMessage>,
+    workspace: PylonCodexWorkspaceConfig,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PylonCodexWorkloadRefusal {
+    code: String,
+    message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PylonCodexRunnerEvent {
+    RunStatus { status: String },
+    AssistantTextDelta { delta: String },
+    ToolStarted { tool: String, label: String },
+    ToolOutputSummary { tool: String, summary: String },
+    PatchPreview { diff: String },
+    Error { code: String, message: String },
+    Cancelled { code: String, message: String },
+    TimedOut { code: String, message: String },
+    Completed { usage: Option<Value> },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct PylonCodexWorkloadEvent {
+    sequence: u64,
+    event_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    actor_type: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    payload: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct PylonCodexWorkloadCompletion {
+    status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    usage: Option<Value>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PylonCodexWorkloadRunResult {
+    events: Vec<PylonCodexWorkloadEvent>,
+    completion: PylonCodexWorkloadCompletion,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatBridgeSignedRequest {
+    auth: PylonProbeAdminChatBridgeAuth,
+    request: PylonProbeAdminChatBridgeRequest,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatBridgeAuth {
+    key_id: String,
+    issued_at_ms: u64,
+    expires_at_ms: u64,
+    nonce: String,
+    signature: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatBridgeRequest {
+    request_id: String,
+    workspace: String,
+    web_user_id: u64,
+    web_user_email: String,
+    conversation_id: String,
+    run_id: String,
+    prompt: String,
+    messages: Vec<PylonProbeAdminChatBridgeMessage>,
+    provider: PylonProbeAdminChatProviderSelection,
+    tool_policy: PylonProbeAdminChatToolPolicy,
+    metadata: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatBridgeMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatProviderSelection {
+    key: String,
+    mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeAdminChatToolPolicy {
+    mode: String,
+    allowed_tools: Vec<String>,
+    approval_required: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeBridgeCliJsonOutput {
+    accepted: PylonProbeBridgeAcceptedResponse,
+    #[serde(default)]
+    events: Vec<Value>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PylonProbeBridgeAcceptedResponse {
+    request_id: String,
+    run_id: String,
+    probe_session_id: String,
+    probe_turn_id: String,
+    provider: Value,
+    transcript_ref: String,
+    correlation: Value,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum PylonProbeBridgeRunOutcome {
+    Accepted(PylonProbeBridgeCliJsonOutput),
+    Stopped(PylonCodexWorkloadStopReason),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OpenAgentsPylonWorkloadEventSubmission {
+    public_key_hex: String,
+    assignment_nonce: String,
+    sequence: u64,
+    event_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    actor_type: Option<String>,
+    payload: BTreeMap<String, Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    occurred_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OpenAgentsPylonWorkloadCompletionSubmission {
+    public_key_hex: String,
+    assignment_nonce: String,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    usage: Option<Value>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+struct OpenAgentsPylonWorkloadNextResponse {
+    #[serde(default)]
+    assignment: Option<OpenAgentsPylonWorkloadEnvelope>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+struct OpenAgentsPylonWorkloadStatusResponse {
+    assignment: OpenAgentsPylonWorkloadStatus,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenAgentsPylonWorkloadStatus {
+    assignment_uuid: String,
+    capability_key: String,
+    status: String,
+    #[serde(default)]
+    terminal: bool,
+    #[serde(default)]
+    cancellation_requested: bool,
+    #[serde(default)]
+    error_code: Option<String>,
+    #[serde(default)]
+    error_message: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct PylonCodexWorkloadOnceReport {
+    claimed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    assignment_uuid: Option<String>,
+    events_sent: u64,
+    completion_status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_message: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -2514,10 +3026,14 @@ struct OpenAgentsObservedPylonSummary {
     npub: String,
     node_label: Option<String>,
     runtime_state: Option<String>,
+    #[serde(default)]
+    runtime_diagnostics: Option<OpenAgentsPylonRuntimeDiagnostics>,
     ready_model: Option<String>,
     eligible_product_count: Option<u64>,
     #[serde(default)]
     products: Vec<String>,
+    #[serde(default)]
+    capabilities: Vec<OpenAgentsPylonCapability>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -7350,6 +7866,8 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                 identity: identity_metadata(&identity, config.node_label.as_str()),
                 availability,
                 products,
+                codex_agent: run_codex_agent_health_check(),
+                probe_agent: run_probe_agent_health_check(&config),
                 training,
                 nexus_treasury,
             })?))
@@ -7374,6 +7892,39 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
                     return Ok(Some(serde_json::to_string_pretty(&report)?));
                 }
                 Ok(Some(render_account_link_report(&report)))
+            }
+            AccountCommand::Refresh { base_url, json } => {
+                let report =
+                    run_account_refresh_command(cli.config_path.as_path(), &base_url).await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_account_link_report(&report)))
+            }
+        },
+        Command::Codex { command } => match command {
+            CodexCommand::WorkloadOnce { base_url, json } => {
+                let report =
+                    run_pylon_codex_workload_once(cli.config_path.as_path(), base_url.as_str())
+                        .await?;
+                if json {
+                    return Ok(Some(serde_json::to_string_pretty(&report)?));
+                }
+                Ok(Some(render_pylon_codex_workload_once_report(&report)))
+            }
+            CodexCommand::WorkloadPoll {
+                base_url,
+                interval_seconds,
+                json,
+            } => {
+                run_pylon_codex_workload_poll(
+                    cli.config_path.as_path(),
+                    base_url.as_str(),
+                    interval_seconds,
+                    json,
+                )
+                .await?;
+                Ok(None)
             }
         },
         Command::Status { json } => {
@@ -7774,6 +8325,9 @@ Commands:\n\
   proof doctor [--namespace <ns>] [--json]\n\
   serve\n\
   account link --base-url <url> --token <one_time_token> [--json]\n\
+  account refresh --base-url <url> [--json]\n\
+  codex workload once --base-url <url> [--json]\n\
+  codex workload poll --base-url <url> [--interval-seconds <n>] [--json]\n\
   status [--json]\n\
   backends [--json]\n\
   inventory [--json] [--limit <n>]\n\
@@ -7852,6 +8406,9 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
         }
         "account" => Ok(Command::Account {
             command: parse_account_command(args, start_index + 1)?,
+        }),
+        "codex" => Ok(Command::Codex {
+            command: parse_codex_command(args, start_index + 1)?,
         }),
         "status" => {
             let json = match args.get(start_index + 1) {
@@ -8142,9 +8699,106 @@ fn parse_account_command(args: &[String], start_index: usize) -> Result<AccountC
                 json,
             })
         }
+        Some("refresh") => {
+            let (base_url, json) = parse_account_refresh_command(args, start_index + 1)?;
+            Ok(AccountCommand::Refresh { base_url, json })
+        }
         Some(other) => bail!("unknown account command: {other}"),
         None => bail!("missing account subcommand"),
     }
+}
+
+fn parse_codex_command(args: &[String], start_index: usize) -> Result<CodexCommand> {
+    match args.get(start_index).map(String::as_str) {
+        Some("workload") => match args.get(start_index + 1).map(String::as_str) {
+            Some("once") => {
+                let (base_url, json) = parse_codex_workload_once_command(args, start_index + 2)?;
+                Ok(CodexCommand::WorkloadOnce { base_url, json })
+            }
+            Some("poll") => {
+                let (base_url, interval_seconds, json) =
+                    parse_codex_workload_poll_command(args, start_index + 2)?;
+                Ok(CodexCommand::WorkloadPoll {
+                    base_url,
+                    interval_seconds,
+                    json,
+                })
+            }
+            Some(other) => bail!("unknown codex workload command: {other}"),
+            None => bail!("missing codex workload command"),
+        },
+        Some(other) => bail!("unknown codex command: {other}"),
+        None => bail!("missing codex subcommand"),
+    }
+}
+
+fn parse_codex_workload_once_command(args: &[String], mut index: usize) -> Result<(String, bool)> {
+    let mut base_url = None;
+    let mut json = false;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--base-url" => {
+                index += 1;
+                base_url = Some(
+                    args.get(index)
+                        .ok_or_else(|| anyhow!("missing value for --base-url"))?
+                        .clone(),
+                );
+            }
+            "--json" => json = true,
+            other => bail!("unexpected argument for codex workload once: {other}"),
+        }
+        index += 1;
+    }
+
+    Ok((
+        base_url.ok_or_else(|| anyhow!("missing --base-url for codex workload once"))?,
+        json,
+    ))
+}
+
+fn parse_codex_workload_poll_command(
+    args: &[String],
+    mut index: usize,
+) -> Result<(String, u64, bool)> {
+    let mut base_url = None;
+    let mut interval_seconds = 2u64;
+    let mut json = false;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--base-url" => {
+                index += 1;
+                base_url = Some(
+                    args.get(index)
+                        .ok_or_else(|| anyhow!("missing value for --base-url"))?
+                        .clone(),
+                );
+            }
+            "--interval-seconds" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --interval-seconds"))?;
+                interval_seconds = value.parse::<u64>().with_context(|| {
+                    format!("invalid --interval-seconds value `{value}` for codex workload poll")
+                })?;
+                if interval_seconds == 0 {
+                    bail!("--interval-seconds must be at least 1");
+                }
+            }
+            "--json" => json = true,
+            other => bail!("unexpected argument for codex workload poll: {other}"),
+        }
+        index += 1;
+    }
+
+    Ok((
+        base_url.ok_or_else(|| anyhow!("missing --base-url for codex workload poll"))?,
+        interval_seconds,
+        json,
+    ))
 }
 
 fn parse_training_command(args: &[String], start_index: usize) -> Result<TrainingCommand> {
@@ -8285,6 +8939,32 @@ fn parse_account_link_command(args: &[String], mut index: usize) -> Result<(Stri
     Ok((
         base_url.ok_or_else(|| anyhow!("missing --base-url for account link"))?,
         token.ok_or_else(|| anyhow!("missing --token for account link"))?,
+        json,
+    ))
+}
+
+fn parse_account_refresh_command(args: &[String], mut index: usize) -> Result<(String, bool)> {
+    let mut base_url = None::<String>;
+    let mut json = false;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--base-url" => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --base-url"))?;
+                base_url = Some(value.clone());
+                index += 1;
+            }
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            other => bail!("unexpected argument for account refresh: {other}"),
+        }
+    }
+    Ok((
+        base_url.ok_or_else(|| anyhow!("missing --base-url for account refresh"))?,
         json,
     ))
 }
@@ -9043,7 +9723,30 @@ fn render_public_config_json(config: &PylonConfig) -> Result<String> {
 }
 
 fn validate_pylon_config(config: &PylonConfig) -> Result<()> {
+    validate_pylon_probe_config(&config.probe)?;
     validate_pylon_training_config(&config.training)
+}
+
+fn validate_pylon_probe_config(config: &PylonProbeConfig) -> Result<()> {
+    if config.enabled && config.probe_bin.as_os_str().is_empty() {
+        bail!("probe.probe_bin must not be empty when Probe support is enabled");
+    }
+    if config.bridge_secret_env.trim().is_empty() {
+        bail!("probe.bridge_secret_env must not be empty");
+    }
+    if config.backend_profile.trim().is_empty() {
+        bail!("probe.backend_profile must not be empty");
+    }
+    if config.provider_mode.trim().is_empty() {
+        bail!("probe.provider_mode must not be empty");
+    }
+    if config.workload_timeout_seconds == 0 {
+        bail!("probe.workload_timeout_seconds must be at least 1");
+    }
+    if config.workload_cancel_poll_seconds == 0 {
+        bail!("probe.workload_cancel_poll_seconds must be at least 1");
+    }
+    Ok(())
 }
 
 fn validate_pylon_training_config(config: &PylonTrainingConfig) -> Result<()> {
@@ -21056,8 +21759,62 @@ fn default_config(base_dir: &Path) -> PylonConfig {
         apple_fm_base_url: None,
         inventory_controls,
         declared_sandbox_profiles: Vec::new(),
+        codex_workspaces: Vec::new(),
+        probe: default_probe_config(),
+        codex_workload_timeout_seconds: default_codex_workload_timeout_seconds(),
+        codex_workload_cancel_poll_seconds: default_codex_workload_cancel_poll_seconds(),
         training: default_training_config(base_dir),
     }
+}
+
+fn default_probe_config() -> PylonProbeConfig {
+    PylonProbeConfig {
+        enabled: default_probe_enabled(),
+        probe_bin: default_probe_bin(),
+        probe_home: None,
+        bridge_secret_env: default_probe_bridge_secret_env(),
+        backend_profile: default_probe_backend_profile(),
+        provider_mode: default_probe_provider_mode(),
+        workspaces: Vec::new(),
+        workload_timeout_seconds: default_probe_workload_timeout_seconds(),
+        workload_cancel_poll_seconds: default_probe_workload_cancel_poll_seconds(),
+    }
+}
+
+const fn default_probe_enabled() -> bool {
+    true
+}
+
+fn default_probe_bin() -> PathBuf {
+    PathBuf::from("probe")
+}
+
+fn default_probe_bridge_secret_env() -> String {
+    PROBE_AGENT_DEFAULT_SECRET_ENV.to_string()
+}
+
+fn default_probe_backend_profile() -> String {
+    PROBE_AGENT_DEFAULT_BACKEND_PROFILE.to_string()
+}
+
+fn default_probe_provider_mode() -> String {
+    "chatgpt_subscription".to_string()
+}
+
+fn default_probe_workload_timeout_seconds() -> u64 {
+    DEFAULT_PROBE_WORKLOAD_TIMEOUT_SECONDS
+}
+
+fn default_probe_workload_cancel_poll_seconds() -> u64 {
+    DEFAULT_PROBE_WORKLOAD_CANCEL_POLL_SECONDS
+}
+
+fn default_codex_workload_timeout_seconds() -> u64 {
+    DEFAULT_CODEX_WORKLOAD_TIMEOUT_SECONDS
+}
+
+fn default_codex_workload_cancel_poll_seconds() -> u64 {
+    DEFAULT_CODEX_WORKLOAD_CANCEL_POLL_SECONDS
 }
 
 fn default_relay_urls() -> Vec<String> {
@@ -24536,7 +25293,7 @@ fn comma_or_none(values: &[String]) -> String {
 }
 
 fn render_account_link_report(report: &AccountLinkReport) -> String {
-    [
+    let mut lines = vec![
         format!("linked: {}", report.linked),
         format!("base_url: {}", report.base_url),
         format!("identity_key: {}", report.identity_key),
@@ -24544,12 +25301,43 @@ fn render_account_link_report(report: &AccountLinkReport) -> String {
         format!("npub: {}", report.npub),
         format!("public_key_hex: {}", report.public_key_hex),
         format!("runtime_state: {}", report.runtime_state),
+    ];
+    if let Some(runtime) = report.runtime.as_ref() {
+        if let Some(mode) = runtime.mode.as_deref() {
+            lines.push(format!("runtime_mode: {mode}"));
+        }
+        if let Some(reason) = runtime.degraded_reason_code.as_deref() {
+            lines.push(format!("runtime_degraded_reason_code: {reason}"));
+        }
+        if let Some(class) = runtime.authoritative_error_class.as_deref() {
+            lines.push(format!("runtime_error_class: {class}"));
+        }
+        if let Some(action) = runtime.last_action.as_deref() {
+            lines.push(format!("runtime_last_action: {action}"));
+        }
+        if let Some(error) = runtime.last_error.as_deref() {
+            lines.push(format!("runtime_last_error: {error}"));
+        }
+    }
+    lines.extend([
         format!(
             "ready_model: {}",
             report.ready_model.as_deref().unwrap_or("none")
         ),
         format!("eligible_product_count: {}", report.eligible_product_count),
         format!("products: {}", comma_or_none(report.products.as_slice())),
+        format!(
+            "capabilities: {}",
+            report
+                .capabilities
+                .iter()
+                .map(|capability| format!(
+                    "{}:{}:{}",
+                    capability.key, capability.status, capability.auth_state
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         format!("account_link_id: {}", report.account_link_id),
         format!("observed_pylon_id: {}", report.observed_pylon_id),
         format!("user_id: {}", report.user_id),
@@ -24558,8 +25346,26 @@ fn render_account_link_report(report: &AccountLinkReport) -> String {
         format!("proof_scheme: {}", report.proof_scheme),
         format!("proof_event_id: {}", report.proof_event_id),
         format!("proof_payload_hash: {}", report.proof_payload_hash),
-    ]
-    .join("\n")
+    ]);
+    lines.join("\n")
+}
+
+fn render_pylon_codex_workload_once_report(report: &PylonCodexWorkloadOnceReport) -> String {
+    let mut lines = vec![
+        format!("claimed: {}", report.claimed),
+        format!("completion_status: {}", report.completion_status),
+        format!("events_sent: {}", report.events_sent),
+    ];
+    if let Some(assignment_uuid) = report.assignment_uuid.as_deref() {
+        lines.push(format!("assignment_uuid: {assignment_uuid}"));
+    }
+    if let Some(error_code) = report.error_code.as_deref() {
+        lines.push(format!("error_code: {error_code}"));
+    }
+    if let Some(error_message) = report.error_message.as_deref() {
+        lines.push(format!("error_message: {error_message}"));
+    }
+    lines.join("\n")
 }
 
 #[derive(Debug, Serialize)]
@@ -25256,6 +26062,58 @@ fn openagents_account_link_url(base_url: &str) -> Result<reqwest::Url> {
     })
 }
 
+fn openagents_account_refresh_url(base_url: &str) -> Result<reqwest::Url> {
+    let parsed = reqwest::Url::parse(base_url)
+        .with_context(|| format!("invalid OpenAgents base URL: {base_url}"))?;
+    parsed.join("/api/pylon-links/refresh").with_context(|| {
+        format!("failed to build OpenAgents account-refresh endpoint from {base_url}")
+    })
+}
+
+fn openagents_pylon_workload_url(base_url: &str, path: &str) -> Result<reqwest::Url> {
+    let parsed = reqwest::Url::parse(base_url)
+        .with_context(|| format!("invalid OpenAgents base URL: {base_url}"))?;
+    parsed
+        .join(path)
+        .with_context(|| format!("failed to build OpenAgents Pylon workload endpoint {path}"))
+}
+
+fn status_snapshot_identity_matches(
+    status: &ProviderStatusResponse,
+    identity: &NostrIdentity,
+) -> bool {
+    match status
+        .snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.identity.as_ref())
+        .and_then(|metadata| metadata.public_key_hex.as_deref())
+    {
+        Some(public_key_hex) => public_key_hex
+            .trim()
+            .eq_ignore_ascii_case(identity.public_key_hex.as_str()),
+        None => false,
+    }
+}
+
+async fn load_account_link_status(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+) -> Result<ProviderStatusResponse> {
+    if let Some(status) = try_live_status(config).await? {
+        if status_snapshot_identity_matches(&status, identity) {
+            return Ok(status);
+        }
+    }
+
+    let admin_config = provider_admin_config(config)?;
+    let store = if config.admin_db_path.exists() {
+        Some(ProviderPersistenceStore::open(&admin_config).map_err(anyhow::Error::msg)?)
+    } else {
+        None
+    };
+    load_status_with_store(config, store.as_ref(), None).await
+}
+
 fn decode_private_key_hex(private_key_hex: &str) -> Result<[u8; 32]> {
     let key_bytes = hex::decode(private_key_hex.trim())
         .with_context(|| format!("invalid identity private_key_hex: {private_key_hex}"))?;
@@ -25266,6 +26124,2301 @@ fn decode_private_key_hex(private_key_hex: &str) -> Result<[u8; 32]> {
             key_length
         )
     })
+}
+
+fn openagents_account_link_runtime_diagnostics(
+    status: &ProviderStatusResponse,
+) -> Option<OpenAgentsPylonRuntimeDiagnostics> {
+    status.snapshot.as_ref().map(|snapshot| {
+        let runtime = &snapshot.runtime;
+        OpenAgentsPylonRuntimeDiagnostics {
+            mode: Some(runtime.mode.label().to_string()),
+            last_action: runtime.last_action.clone(),
+            last_error: runtime.last_error.clone(),
+            degraded_reason_code: runtime.degraded_reason_code.clone(),
+            authoritative_status: runtime
+                .authoritative_status
+                .clone()
+                .or_else(|| Some(runtime.mode.label().to_string())),
+            authoritative_error_class: runtime
+                .authoritative_error_class
+                .map(|failure_class| failure_class.label().to_string()),
+            execution_backend_label: if runtime.execution_backend_label.trim().is_empty() {
+                None
+            } else {
+                Some(runtime.execution_backend_label.clone())
+            },
+            provider_blocker_codes: runtime.provider_blocker_codes.clone(),
+            raw: None,
+        }
+    })
+}
+
+fn codex_auth_file_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(value) = std::env::var("CODEX_HOME") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            candidates.push(PathBuf::from(trimmed).join("auth.json"));
+        }
+    }
+    if let Ok(value) = std::env::var("HOME") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            candidates.push(PathBuf::from(trimmed).join(".codex").join("auth.json"));
+        }
+    }
+    candidates
+}
+
+fn codex_auth_payload_has_login_marker(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    object.iter().any(|(key, value)| {
+        matches!(
+            key.as_str(),
+            "access_token"
+                | "api_key"
+                | "auth_token"
+                | "id_token"
+                | "openai_api_key"
+                | "refresh_token"
+                | "tokens"
+        ) && !value.is_null()
+            && value.as_str().is_none_or(|text| !text.trim().is_empty())
+    })
+}
+
+fn inspect_codex_auth_state() -> CodexAuthInspection {
+    for candidate in codex_auth_file_candidates() {
+        if !candidate.exists() {
+            continue;
+        }
+        let payload = match std::fs::read_to_string(candidate.as_path()) {
+            Ok(payload) => payload,
+            Err(_) => {
+                return CodexAuthInspection {
+                    auth_state: "unknown".to_string(),
+                    blocker_code: Some("CODEX_AUTH_EXPIRED".to_string()),
+                };
+            }
+        };
+        if payload.trim().is_empty() {
+            return CodexAuthInspection {
+                auth_state: "needs_login".to_string(),
+                blocker_code: Some("CODEX_AUTH_MISSING".to_string()),
+            };
+        }
+        let Ok(value) = serde_json::from_str::<Value>(payload.as_str()) else {
+            return CodexAuthInspection {
+                auth_state: "unknown".to_string(),
+                blocker_code: Some("CODEX_AUTH_EXPIRED".to_string()),
+            };
+        };
+        if codex_auth_payload_has_login_marker(&value) {
+            return CodexAuthInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            };
+        }
+        return CodexAuthInspection {
+            auth_state: "needs_login".to_string(),
+            blocker_code: Some("CODEX_AUTH_MISSING".to_string()),
+        };
+    }
+
+    CodexAuthInspection {
+        auth_state: "needs_login".to_string(),
+        blocker_code: Some("CODEX_AUTH_MISSING".to_string()),
+    }
+}
+
+fn codex_agent_health_report_from_probe(probe: CodexInstallationProbe) -> CodexAgentHealthReport {
+    codex_agent_health_report_from_parts(probe, inspect_codex_auth_state())
+}
+
+fn codex_agent_health_report_from_parts(
+    probe: CodexInstallationProbe,
+    auth: CodexAuthInspection,
+) -> CodexAgentHealthReport {
+    let mut blocker_codes = Vec::new();
+    let status = if !probe.available {
+        blocker_codes.push("CODEX_NOT_INSTALLED".to_string());
+        "not_installed"
+    } else if codex_runner_version_is_unsupported(probe.version.as_deref()) {
+        blocker_codes.push("CODEX_UNSUPPORTED_VERSION".to_string());
+        "unsupported"
+    } else {
+        match auth.auth_state.as_str() {
+            "ready" => "ready",
+            "needs_login" | "expired" => "needs_auth",
+            "unknown" => "degraded",
+            _ => "degraded",
+        }
+    };
+
+    if let Some(blocker) = auth.blocker_code {
+        if !blocker_codes.iter().any(|value| value == &blocker) {
+            blocker_codes.push(blocker);
+        }
+    }
+    if probe.error.is_some() && probe.available {
+        blocker_codes.push("CODEX_HEALTH_CHECK_FAILED".to_string());
+    }
+
+    CodexAgentHealthReport {
+        runner_kind: CODEX_AGENT_RUNNER_KIND.to_string(),
+        runner_version: probe.version,
+        status: status.to_string(),
+        auth_state: auth.auth_state,
+        blocker_codes,
+        supported_actions: CODEX_AGENT_SUPPORTED_ACTIONS
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        required_confirmations: CODEX_AGENT_REQUIRED_CONFIRMATIONS
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+    }
+}
+
+fn codex_runner_version_is_unsupported(version: Option<&str>) -> bool {
+    version
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            !normalized.is_empty() && !normalized.contains("codex")
+        })
+        .unwrap_or(false)
+}
+
+fn run_codex_agent_health_check() -> CodexAgentHealthReport {
+    codex_agent_health_report_from_probe(codex_client::probe_codex_installation())
+}
+
+fn codex_agent_capability_from_health(
+    node_label: &str,
+    health: &CodexAgentHealthReport,
+) -> OpenAgentsPylonCapability {
+    OpenAgentsPylonCapability {
+        key: CODEX_AGENT_CAPABILITY_KEY.to_string(),
+        status: health.status.clone(),
+        display_label: format!("Codex on {node_label}"),
+        auth_state: health.auth_state.clone(),
+        runner_kind: health.runner_kind.clone(),
+        runner_version: health.runner_version.clone(),
+        transport_kind: CODEX_AGENT_TRANSPORT_KIND.to_string(),
+        supported_actions: health.supported_actions.clone(),
+        required_confirmations: health.required_confirmations.clone(),
+        workspace_roots: Vec::new(),
+        blocker_codes: health.blocker_codes.clone(),
+        metadata: BTreeMap::from([(
+            "schema_version".to_string(),
+            json!("openagents.pylon.capability.v1"),
+        )]),
+    }
+}
+
+fn detect_codex_agent_capability(config: &PylonConfig) -> OpenAgentsPylonCapability {
+    codex_agent_capability_from_health(config.node_label.as_str(), &run_codex_agent_health_check())
+}
+
+fn probe_installation_probe(config: &PylonConfig) -> ProbeInstallationProbe {
+    if !config.probe.enabled {
+        return ProbeInstallationProbe {
+            available: false,
+            version: None,
+            bridge_supported: false,
+            error: Some("Probe support is disabled in local Pylon config.".to_string()),
+        };
+    }
+
+    let version_output = StdCommand::new(&config.probe.probe_bin)
+        .arg("--version")
+        .output();
+    let (available, version, error) = match version_output {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(output.stdout.as_slice())
+                .trim()
+                .to_string();
+            let stderr = String::from_utf8_lossy(output.stderr.as_slice())
+                .trim()
+                .to_string();
+            let version = if stdout.is_empty() { stderr } else { stdout };
+            (true, (!version.is_empty()).then_some(version), None)
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(output.stderr.as_slice())
+                .trim()
+                .to_string();
+            (
+                false,
+                None,
+                Some(if stderr.is_empty() {
+                    "probe --version failed".to_string()
+                } else {
+                    stderr
+                }),
+            )
+        }
+        Err(error) => (false, None, Some(error.to_string())),
+    };
+
+    let bridge_supported = if available {
+        StdCommand::new(&config.probe.probe_bin)
+            .args(["admin-chat-bridge", "signed", "--help"])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    ProbeInstallationProbe {
+        available,
+        version,
+        bridge_supported,
+        error,
+    }
+}
+
+fn inspect_probe_bridge_secret_state(config: &PylonConfig) -> ProbeBridgeSecretInspection {
+    match std::env::var(config.probe.bridge_secret_env.as_str()) {
+        Ok(secret) if secret.as_bytes().len() >= 32 => ProbeBridgeSecretInspection {
+            auth_state: "ready".to_string(),
+            blocker_code: None,
+        },
+        Ok(_) => ProbeBridgeSecretInspection {
+            auth_state: "needs_secret".to_string(),
+            blocker_code: Some("PROBE_BRIDGE_SECRET_TOO_SHORT".to_string()),
+        },
+        Err(_) => ProbeBridgeSecretInspection {
+            auth_state: "needs_secret".to_string(),
+            blocker_code: Some("PROBE_BRIDGE_SECRET_MISSING".to_string()),
+        },
+    }
+}
+
+fn probe_backend_profile_supported(profile: &str) -> bool {
+    matches!(
+        profile.trim(),
+        "openai-codex-subscription"
+            | "psionic-inference-mesh"
+            | "psionic-apple-fm-bridge"
+            | "psionic-apple-fm-oracle"
+            | "psionic-qwen35-2b-q8-registry"
+            | "psionic-qwen35-2b-q8-oracle"
+            | "psionic-qwen35-2b-q8-long-context"
+    )
+}
+
+fn probe_workspace_mappings(config: &PylonConfig) -> Vec<PylonCodexWorkspaceConfig> {
+    if !config.probe.workspaces.is_empty() {
+        return config.probe.workspaces.clone();
+    }
+    config.codex_workspaces.clone()
+}
+
+fn probe_agent_health_report_from_parts(
+    config: &PylonConfig,
+    probe: ProbeInstallationProbe,
+    secret: ProbeBridgeSecretInspection,
+) -> ProbeAgentHealthReport {
+    let mut blocker_codes = Vec::new();
+    if !config.probe.enabled {
+        blocker_codes.push("PROBE_AGENT_DISABLED".to_string());
+    }
+    if !probe.available {
+        blocker_codes.push("PROBE_NOT_INSTALLED".to_string());
+    }
+    if probe.available && !probe.bridge_supported {
+        blocker_codes.push("PROBE_SIGNED_BRIDGE_UNAVAILABLE".to_string());
+    }
+    if let Some(blocker) = secret.blocker_code {
+        blocker_codes.push(blocker);
+    }
+    if !probe_backend_profile_supported(config.probe.backend_profile.as_str()) {
+        blocker_codes.push("PROBE_BACKEND_PROFILE_UNKNOWN".to_string());
+    }
+    if probe_workspace_mappings(config).is_empty() {
+        blocker_codes.push("NO_ALLOWED_WORKSPACE".to_string());
+    }
+    if probe.error.is_some() && probe.available {
+        blocker_codes.push("PROBE_HEALTH_CHECK_FAILED".to_string());
+    }
+    blocker_codes.sort();
+    blocker_codes.dedup();
+
+    let bridge_state = if probe.bridge_supported {
+        "ready"
+    } else if probe.available {
+        "unsupported"
+    } else {
+        "unavailable"
+    };
+    let backend_state = if probe_backend_profile_supported(config.probe.backend_profile.as_str()) {
+        "ready"
+    } else {
+        "unsupported"
+    };
+    let workspace_state = if probe_workspace_mappings(config).is_empty() {
+        "missing"
+    } else {
+        "ready"
+    };
+    let status = if !config.probe.enabled {
+        "disabled"
+    } else if !probe.available {
+        "not_installed"
+    } else if !probe.bridge_supported || backend_state != "ready" {
+        "unsupported"
+    } else if secret.auth_state != "ready" {
+        "needs_auth"
+    } else if workspace_state != "ready" {
+        "blocked"
+    } else if probe.error.is_some() {
+        "degraded"
+    } else {
+        "ready"
+    };
+
+    ProbeAgentHealthReport {
+        runner_kind: PROBE_AGENT_RUNNER_KIND.to_string(),
+        runner_version: probe.version,
+        status: status.to_string(),
+        auth_state: secret.auth_state,
+        bridge_state: bridge_state.to_string(),
+        backend_state: backend_state.to_string(),
+        workspace_state: workspace_state.to_string(),
+        backend_profile: config.probe.backend_profile.clone(),
+        blocker_codes,
+        supported_actions: PROBE_AGENT_SUPPORTED_ACTIONS
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        required_confirmations: PROBE_AGENT_REQUIRED_CONFIRMATIONS
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+    }
+}
+
+fn run_probe_agent_health_check(config: &PylonConfig) -> ProbeAgentHealthReport {
+    probe_agent_health_report_from_parts(
+        config,
+        probe_installation_probe(config),
+        inspect_probe_bridge_secret_state(config),
+    )
+}
+
+fn probe_agent_capability_from_health(
+    node_label: &str,
+    health: &ProbeAgentHealthReport,
+    workspace_count: usize,
+) -> OpenAgentsPylonCapability {
+    OpenAgentsPylonCapability {
+        key: PROBE_AGENT_CAPABILITY_KEY.to_string(),
+        status: health.status.clone(),
+        display_label: format!("Probe on {node_label}"),
+        auth_state: health.auth_state.clone(),
+        runner_kind: health.runner_kind.clone(),
+        runner_version: health.runner_version.clone(),
+        transport_kind: PROBE_AGENT_TRANSPORT_KIND.to_string(),
+        supported_actions: health.supported_actions.clone(),
+        required_confirmations: health.required_confirmations.clone(),
+        workspace_roots: Vec::new(),
+        blocker_codes: health.blocker_codes.clone(),
+        metadata: BTreeMap::from([
+            (
+                "schema_version".to_string(),
+                json!("openagents.pylon.capability.v1"),
+            ),
+            (
+                "probe_bridge_schema".to_string(),
+                json!("probe.admin_chat_bridge.signed.v1"),
+            ),
+            (
+                "backend_profile".to_string(),
+                json!(health.backend_profile.clone()),
+            ),
+            (
+                "bridge_state".to_string(),
+                json!(health.bridge_state.clone()),
+            ),
+            (
+                "backend_state".to_string(),
+                json!(health.backend_state.clone()),
+            ),
+            (
+                "workspace_state".to_string(),
+                json!(health.workspace_state.clone()),
+            ),
+            ("workspace_count".to_string(), json!(workspace_count)),
+        ]),
+    }
+}
+
+fn detect_probe_agent_capability(config: &PylonConfig) -> OpenAgentsPylonCapability {
+    let health = run_probe_agent_health_check(config);
+    probe_agent_capability_from_health(
+        config.node_label.as_str(),
+        &health,
+        probe_workspace_mappings(config).len(),
+    )
+}
+
+fn detect_openagents_pylon_capabilities(config: &PylonConfig) -> Vec<OpenAgentsPylonCapability> {
+    vec![
+        detect_probe_agent_capability(config),
+        detect_codex_agent_capability(config),
+    ]
+}
+
+impl PylonCodexWorkloadRefusal {
+    fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+}
+
+fn prepare_pylon_codex_workload_assignment(
+    config: &PylonConfig,
+    health: &CodexAgentHealthReport,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> std::result::Result<PreparedPylonCodexWorkload, PylonCodexWorkloadRefusal> {
+    if assignment.capability_key != CODEX_AGENT_CAPABILITY_KEY {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "unsupported_capability",
+            format!(
+                "Pylon cannot run capability `{}` with the local Codex adapter.",
+                assignment.capability_key
+            ),
+        ));
+    }
+
+    if !assignment.request.mode.is_empty() && assignment.request.mode != CODEX_AGENT_WEB_MODE {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "unsupported_mode",
+            format!(
+                "Pylon cannot run Codex assignment mode `{}`.",
+                assignment.request.mode
+            ),
+        ));
+    }
+
+    if health.status != "ready" {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "codex_agent_not_ready",
+            "Local Codex is not ready on this Pylon.",
+        ));
+    }
+
+    let prompt = pylon_codex_assignment_prompt(&assignment.request).ok_or_else(|| {
+        PylonCodexWorkloadRefusal::new(
+            "malformed_assignment",
+            "Pylon Codex assignment is missing a prompt.",
+        )
+    })?;
+
+    let workspace = resolve_pylon_codex_workspace(config, &assignment.request.workspace_scope)
+        .ok_or_else(|| {
+            PylonCodexWorkloadRefusal::new(
+                "no_allowed_workspace",
+                "Pylon Codex assignment did not map to a configured local workspace.",
+            )
+        })?;
+
+    Ok(PreparedPylonCodexWorkload {
+        assignment_uuid: assignment.assignment_uuid.clone(),
+        assignment_nonce: assignment.nonce.clone(),
+        prompt,
+        messages: assignment.request.messages.clone(),
+        workspace,
+    })
+}
+
+fn pylon_codex_assignment_prompt(request: &OpenAgentsPylonCodexWorkloadRequest) -> Option<String> {
+    let prompt = request.prompt.trim();
+    if !prompt.is_empty() {
+        return Some(prompt.to_string());
+    }
+
+    request
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "user" && !message.content.trim().is_empty())
+        .map(|message| message.content.trim().to_string())
+}
+
+fn resolve_pylon_codex_workspace(
+    config: &PylonConfig,
+    scope: &OpenAgentsPylonCodexWorkspaceScope,
+) -> Option<PylonCodexWorkspaceConfig> {
+    let requested = pylon_codex_workspace_scope_candidates(scope);
+
+    config
+        .codex_workspaces
+        .iter()
+        .find(|workspace| {
+            requested.iter().any(|candidate| {
+                workspace.id == *candidate
+                    || workspace
+                        .label
+                        .as_deref()
+                        .is_some_and(|label| label == candidate)
+            })
+        })
+        .cloned()
+}
+
+fn prepare_pylon_probe_workload_assignment(
+    config: &PylonConfig,
+    health: &ProbeAgentHealthReport,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> std::result::Result<PreparedPylonProbeWorkload, PylonCodexWorkloadRefusal> {
+    if assignment.capability_key != PROBE_AGENT_CAPABILITY_KEY {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "unsupported_capability",
+            format!(
+                "Pylon cannot run capability `{}` with the local Probe adapter.",
+                assignment.capability_key
+            ),
+        ));
+    }
+
+    if !assignment.request.mode.is_empty() && assignment.request.mode != PROBE_AGENT_WEB_MODE {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "unsupported_mode",
+            format!(
+                "Pylon cannot run Probe assignment mode `{}`.",
+                assignment.request.mode
+            ),
+        ));
+    }
+
+    if health.status != "ready" {
+        return Err(PylonCodexWorkloadRefusal::new(
+            "probe_agent_not_ready",
+            "Local Probe is not ready on this Pylon.",
+        ));
+    }
+
+    let prompt = pylon_codex_assignment_prompt(&assignment.request).ok_or_else(|| {
+        PylonCodexWorkloadRefusal::new(
+            "malformed_assignment",
+            "Pylon Probe assignment is missing a prompt.",
+        )
+    })?;
+
+    let workspace = resolve_pylon_probe_workspace(config, &assignment.request.workspace_scope)
+        .ok_or_else(|| {
+            PylonCodexWorkloadRefusal::new(
+                "no_allowed_workspace",
+                "Pylon Probe assignment did not map to a configured local workspace.",
+            )
+        })?;
+
+    Ok(PreparedPylonProbeWorkload {
+        assignment_uuid: assignment.assignment_uuid.clone(),
+        assignment_nonce: assignment.nonce.clone(),
+        prompt,
+        messages: assignment.request.messages.clone(),
+        workspace,
+    })
+}
+
+fn resolve_pylon_probe_workspace(
+    config: &PylonConfig,
+    scope: &OpenAgentsPylonCodexWorkspaceScope,
+) -> Option<PylonCodexWorkspaceConfig> {
+    let requested = pylon_codex_workspace_scope_candidates(scope);
+    probe_workspace_mappings(config)
+        .into_iter()
+        .find(|workspace| {
+            requested.iter().any(|candidate| {
+                workspace.id == *candidate
+                    || workspace
+                        .label
+                        .as_deref()
+                        .is_some_and(|label| label == candidate)
+            })
+        })
+}
+
+fn pylon_codex_workspace_scope_candidates(
+    scope: &OpenAgentsPylonCodexWorkspaceScope,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+    for value in [
+        scope.repository_label.as_deref(),
+        scope.project_label.as_deref(),
+        scope.workspace_label.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            candidates.push(trimmed.to_string());
+        }
+    }
+
+    for value in [
+        scope.project_repository_id.as_ref(),
+        scope.project_id.as_ref(),
+        scope.organization_id.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(candidate) = pylon_codex_workspace_scope_value(value) {
+            candidates.push(candidate);
+        }
+    }
+
+    candidates.sort();
+    candidates.dedup();
+    candidates
+}
+
+fn pylon_codex_workspace_scope_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(raw) => {
+            let trimmed = raw.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        }
+        Value::Number(number) => Some(number.to_string()),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PylonCodexWorkloadStopKind {
+    Cancelled,
+    TimedOut,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PylonCodexWorkloadStopReason {
+    kind: PylonCodexWorkloadStopKind,
+    code: String,
+    message: String,
+}
+
+impl PylonCodexWorkloadStopReason {
+    fn cancelled(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: PylonCodexWorkloadStopKind::Cancelled,
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    fn timed_out(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: PylonCodexWorkloadStopKind::TimedOut,
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    fn into_runner_event(self) -> PylonCodexRunnerEvent {
+        match self.kind {
+            PylonCodexWorkloadStopKind::Cancelled => PylonCodexRunnerEvent::Cancelled {
+                code: self.code,
+                message: self.message,
+            },
+            PylonCodexWorkloadStopKind::TimedOut => PylonCodexRunnerEvent::TimedOut {
+                code: self.code,
+                message: self.message,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PylonCodexBrokerCancellationProbe<'a> {
+    client: &'a reqwest::Client,
+    base_url: &'a str,
+    identity: &'a NostrIdentity,
+    assignment: &'a OpenAgentsPylonWorkloadEnvelope,
+}
+
+struct PylonCodexWorkloadRunControl<'a> {
+    timeout: Duration,
+    cancel_poll_interval: Duration,
+    broker: Option<PylonCodexBrokerCancellationProbe<'a>>,
+}
+
+impl Default for PylonCodexWorkloadRunControl<'_> {
+    fn default() -> Self {
+        Self {
+            timeout: Duration::from_secs(DEFAULT_CODEX_WORKLOAD_TIMEOUT_SECONDS),
+            cancel_poll_interval: Duration::from_secs(DEFAULT_CODEX_WORKLOAD_CANCEL_POLL_SECONDS),
+            broker: None,
+        }
+    }
+}
+
+impl<'a> PylonCodexWorkloadRunControl<'a> {
+    fn from_config(config: &PylonConfig) -> Self {
+        Self {
+            timeout: Duration::from_secs(config.codex_workload_timeout_seconds.max(1)),
+            cancel_poll_interval: Duration::from_secs(
+                config.codex_workload_cancel_poll_seconds.max(1),
+            ),
+            broker: None,
+        }
+    }
+
+    fn probe_from_config(config: &PylonConfig) -> Self {
+        Self {
+            timeout: Duration::from_secs(config.probe.workload_timeout_seconds.max(1)),
+            cancel_poll_interval: Duration::from_secs(
+                config.probe.workload_cancel_poll_seconds.max(1),
+            ),
+            broker: None,
+        }
+    }
+
+    async fn stop_reason(&self) -> Result<Option<PylonCodexWorkloadStopReason>> {
+        let Some(broker) = self.broker else {
+            return Ok(None);
+        };
+        let status = get_openagents_pylon_workload_status(
+            broker.client,
+            broker.base_url,
+            broker.identity,
+            broker.assignment.assignment_uuid.as_str(),
+        )
+        .await?;
+        Ok(pylon_codex_stop_reason_from_assignment_status(&status))
+    }
+
+    fn timeout_reason(&self) -> PylonCodexWorkloadStopReason {
+        PylonCodexWorkloadStopReason::timed_out(
+            "local_codex_timeout",
+            format!(
+                "Local Codex run exceeded the configured {} second timeout.",
+                self.timeout.as_secs()
+            ),
+        )
+    }
+
+    fn probe_timeout_reason(&self) -> PylonCodexWorkloadStopReason {
+        PylonCodexWorkloadStopReason::timed_out(
+            "local_probe_timeout",
+            format!(
+                "Local Probe run exceeded the configured {} second timeout.",
+                self.timeout.as_secs()
+            ),
+        )
+    }
+}
+
+fn pylon_codex_stop_reason_from_assignment_status(
+    status: &OpenAgentsPylonWorkloadStatus,
+) -> Option<PylonCodexWorkloadStopReason> {
+    if status.cancellation_requested || status.status == "cancelled" {
+        return Some(PylonCodexWorkloadStopReason::cancelled(
+            "broker_cancelled",
+            status.error_message.clone().unwrap_or_else(|| {
+                "OpenAgents broker cancelled the Pylon Codex assignment.".to_string()
+            }),
+        ));
+    }
+
+    if status.status == "timed_out" {
+        return Some(PylonCodexWorkloadStopReason::timed_out(
+            "broker_timed_out",
+            status.error_message.clone().unwrap_or_else(|| {
+                "OpenAgents broker timed out the Pylon Codex assignment.".to_string()
+            }),
+        ));
+    }
+
+    if status.status == "expired" {
+        return Some(PylonCodexWorkloadStopReason::timed_out(
+            "broker_expired",
+            status.error_message.clone().unwrap_or_else(|| {
+                "OpenAgents broker expired the Pylon Codex assignment.".to_string()
+            }),
+        ));
+    }
+
+    if status.terminal && status.status != "succeeded" {
+        return Some(PylonCodexWorkloadStopReason::cancelled(
+            "broker_terminal",
+            status.error_message.clone().unwrap_or_else(|| {
+                format!(
+                    "OpenAgents broker marked the Pylon Codex assignment terminal with status `{}`.",
+                    status.status
+                )
+            }),
+        ));
+    }
+
+    None
+}
+
+fn pylon_codex_refusal_result(
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    refusal: PylonCodexWorkloadRefusal,
+) -> PylonCodexWorkloadRunResult {
+    let mut builder = PylonCodexEventBuilder::default();
+    builder.push(
+        "pylon.error",
+        Some("pylon"),
+        BTreeMap::from([
+            ("code".to_string(), json!(refusal.code)),
+            ("message".to_string(), json!(refusal.message.clone())),
+            (
+                "assignment_uuid".to_string(),
+                json!(assignment.assignment_uuid),
+            ),
+        ]),
+    );
+    builder.push(
+        "run.status",
+        Some("pylon"),
+        BTreeMap::from([
+            ("status".to_string(), json!("failed")),
+            ("error_code".to_string(), json!("assignment_refused")),
+        ]),
+    );
+
+    PylonCodexWorkloadRunResult {
+        events: builder.events,
+        completion: PylonCodexWorkloadCompletion {
+            status: "failed".to_string(),
+            error_code: Some("assignment_refused".to_string()),
+            error_message: Some(refusal.message),
+            usage: None,
+        },
+    }
+}
+
+fn pylon_probe_refusal_result(
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    refusal: PylonCodexWorkloadRefusal,
+) -> PylonCodexWorkloadRunResult {
+    let mut result = pylon_codex_refusal_result(assignment, refusal);
+    for event in &mut result.events {
+        if event.event_type == "pylon.error" {
+            event
+                .payload
+                .insert("runner_kind".to_string(), json!(PROBE_AGENT_RUNNER_KIND));
+        }
+    }
+    result
+}
+
+fn pylon_probe_metadata_string(
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    keys: &[&str],
+) -> Option<String> {
+    keys.iter()
+        .find_map(|key| match assignment.request.metadata.get(*key) {
+            Some(Value::String(value)) if !value.trim().is_empty() => Some(value.clone()),
+            Some(Value::Number(number)) => Some(number.to_string()),
+            _ => None,
+        })
+}
+
+fn pylon_probe_metadata_u64(
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    keys: &[&str],
+) -> Option<u64> {
+    keys.iter()
+        .find_map(|key| match assignment.request.metadata.get(*key) {
+            Some(Value::Number(number)) => number.as_u64(),
+            Some(Value::String(value)) => value.trim().parse::<u64>().ok(),
+            _ => None,
+        })
+}
+
+fn build_pylon_probe_bridge_request(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    prepared: &PreparedPylonProbeWorkload,
+) -> PylonProbeAdminChatBridgeRequest {
+    let workspace = prepared
+        .workspace
+        .label
+        .clone()
+        .unwrap_or_else(|| prepared.workspace.id.clone());
+    let mut metadata = assignment.request.metadata.clone();
+    metadata.insert(
+        "backendProfile".to_string(),
+        Value::String(config.probe.backend_profile.clone()),
+    );
+    metadata.insert(
+        "assignmentUuid".to_string(),
+        Value::String(assignment.assignment_uuid.clone()),
+    );
+    metadata.insert(
+        "capabilityKey".to_string(),
+        Value::String(PROBE_AGENT_CAPABILITY_KEY.to_string()),
+    );
+    metadata.insert(
+        "transportKind".to_string(),
+        Value::String(PROBE_AGENT_TRANSPORT_KIND.to_string()),
+    );
+
+    PylonProbeAdminChatBridgeRequest {
+        request_id: pylon_probe_metadata_string(assignment, &["requestId", "request_id"])
+            .unwrap_or_else(|| assignment.assignment_uuid.clone()),
+        workspace,
+        web_user_id: pylon_probe_metadata_u64(assignment, &["webUserId", "web_user_id"])
+            .unwrap_or(0),
+        web_user_email: pylon_probe_metadata_string(
+            assignment,
+            &["webUserEmail", "web_user_email"],
+        )
+        .unwrap_or_else(|| "pylon@openagents.local".to_string()),
+        conversation_id: pylon_probe_metadata_string(
+            assignment,
+            &["conversationId", "conversation_id"],
+        )
+        .unwrap_or_else(|| format!("pylon.assignment.{}", assignment.assignment_uuid)),
+        run_id: pylon_probe_metadata_string(assignment, &["runId", "run_id"])
+            .unwrap_or_else(|| assignment.assignment_uuid.clone()),
+        prompt: prepared.prompt.clone(),
+        messages: prepared
+            .messages
+            .iter()
+            .map(|message| PylonProbeAdminChatBridgeMessage {
+                role: message.role.clone(),
+                content: message.content.clone(),
+            })
+            .collect(),
+        provider: PylonProbeAdminChatProviderSelection {
+            key: "openai".to_string(),
+            mode: config.probe.provider_mode.clone(),
+            account_ref: pylon_probe_metadata_string(
+                assignment,
+                &["providerAccountRef", "provider_account_ref"],
+            ),
+            label: Some("Pylon Probe bridge".to_string()),
+        },
+        tool_policy: PylonProbeAdminChatToolPolicy {
+            mode: "admin_chat".to_string(),
+            allowed_tools: Vec::new(),
+            approval_required: true,
+        },
+        metadata,
+    }
+}
+
+fn sign_pylon_probe_bridge_request(
+    request: PylonProbeAdminChatBridgeRequest,
+    key_id: &str,
+    secret: &str,
+) -> Result<PylonProbeAdminChatBridgeSignedRequest> {
+    ensure!(
+        secret.as_bytes().len() >= 32,
+        "Probe bridge shared secret must be at least 32 bytes"
+    );
+    let issued_at_ms = u64::try_from(now_epoch_ms().max(0)).unwrap_or(0);
+    let expires_at_ms = issued_at_ms.saturating_add(60_000);
+    let nonce = format!("pylon-{}-{}", issued_at_ms, random_token());
+    let mut auth = PylonProbeAdminChatBridgeAuth {
+        key_id: key_id.to_string(),
+        issued_at_ms,
+        expires_at_ms,
+        nonce,
+        signature: String::new(),
+    };
+    let request_json =
+        serde_json::to_string(&request).context("failed to serialize Probe bridge request")?;
+    let canonical = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        PROBE_AGENT_BRIDGE_PURPOSE,
+        auth.key_id,
+        auth.issued_at_ms,
+        auth.expires_at_ms,
+        auth.nonce,
+        request_json
+    );
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| anyhow!("failed to initialize Probe bridge HMAC"))?;
+    mac.update(canonical.as_bytes());
+    auth.signature = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+
+    Ok(PylonProbeAdminChatBridgeSignedRequest { auth, request })
+}
+
+fn pylon_probe_bridge_request_path(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> PathBuf {
+    config
+        .admin_db_path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_home_dir)
+        .join("probe-bridge")
+        .join("requests")
+        .join(format!(
+            "{}-{}.json",
+            training_safe_path_segment(assignment.assignment_uuid.as_str(), "assignment"),
+            random_token()
+        ))
+}
+
+fn write_pylon_probe_signed_request(
+    path: &Path,
+    signed: &PylonProbeAdminChatBridgeSignedRequest,
+) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create Probe bridge request dir {}",
+                parent.display()
+            )
+        })?;
+    }
+    let payload = serde_json::to_vec_pretty(signed)
+        .context("failed to serialize signed Probe bridge request")?;
+    fs::write(path, payload)
+        .with_context(|| format!("failed to write Probe bridge request {}", path.display()))
+}
+
+fn project_pylon_probe_bridge_output(
+    prepared: &PreparedPylonProbeWorkload,
+    output: PylonProbeBridgeCliJsonOutput,
+) -> PylonCodexWorkloadRunResult {
+    let mut builder = PylonCodexEventBuilder::default();
+    builder.push(
+        "run.status",
+        Some("pylon"),
+        BTreeMap::from([
+            ("status".to_string(), json!("running")),
+            (
+                "assignment_uuid".to_string(),
+                json!(prepared.assignment_uuid.clone()),
+            ),
+            (
+                "runner_kind".to_string(),
+                json!(PROBE_AGENT_RUNNER_KIND.to_string()),
+            ),
+        ]),
+    );
+    builder.push(
+        "probe.session.accepted",
+        Some("probe"),
+        BTreeMap::from([
+            (
+                "probe_session_id".to_string(),
+                json!(output.accepted.probe_session_id.clone()),
+            ),
+            (
+                "probe_turn_id".to_string(),
+                json!(output.accepted.probe_turn_id.clone()),
+            ),
+            (
+                "transcript_ref".to_string(),
+                json!(output.accepted.transcript_ref.clone()),
+            ),
+            ("provider".to_string(), output.accepted.provider.clone()),
+            (
+                "correlation".to_string(),
+                output.accepted.correlation.clone(),
+            ),
+        ]),
+    );
+
+    let mut usage = None;
+    let mut failure = None;
+    for event in output.events {
+        let event_type = event
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("probe_event")
+            .to_string();
+        match event_type.as_str() {
+            "text_delta" => {
+                if let Some(delta) = event.get("delta").and_then(Value::as_str) {
+                    builder.push(
+                        "assistant.delta",
+                        Some("assistant"),
+                        BTreeMap::from([("delta".to_string(), json!(delta))]),
+                    );
+                }
+            }
+            "run_completed" => {
+                usage = event.get("usage").cloned();
+                builder.push(
+                    "run.status",
+                    Some("probe"),
+                    BTreeMap::from([
+                        ("status".to_string(), json!("succeeded")),
+                        ("probe_event".to_string(), event),
+                    ]),
+                );
+            }
+            "run_failed" => {
+                let message = event
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Probe bridge run failed.")
+                    .to_string();
+                let code = event
+                    .get("errorCode")
+                    .or_else(|| event.get("error_code"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("probe_bridge_failed")
+                    .to_string();
+                failure = Some((code.clone(), message.clone()));
+                builder.push(
+                    "pylon.error",
+                    Some("probe"),
+                    BTreeMap::from([
+                        ("code".to_string(), json!(code)),
+                        ("message".to_string(), json!(message)),
+                        ("probe_event".to_string(), event),
+                    ]),
+                );
+            }
+            _ => builder.push(
+                "probe.event",
+                Some("probe"),
+                BTreeMap::from([
+                    ("probe_event_type".to_string(), json!(event_type)),
+                    ("probe_event".to_string(), event),
+                ]),
+            ),
+        }
+    }
+
+    if failure.is_none()
+        && !builder.events.iter().any(|event| {
+            event.event_type == "run.status"
+                && event
+                    .payload
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .is_some_and(|status| status == "succeeded")
+        })
+    {
+        builder.push(
+            "run.status",
+            Some("probe"),
+            BTreeMap::from([("status".to_string(), json!("succeeded"))]),
+        );
+    }
+
+    PylonCodexWorkloadRunResult {
+        events: builder.events,
+        completion: PylonCodexWorkloadCompletion {
+            status: if failure.is_some() {
+                "failed".to_string()
+            } else {
+                "succeeded".to_string()
+            },
+            error_code: failure.as_ref().map(|(code, _)| code.clone()),
+            error_message: failure.map(|(_, message)| message),
+            usage,
+        },
+    }
+}
+
+fn prepared_probe_as_codex(prepared: &PreparedPylonProbeWorkload) -> PreparedPylonCodexWorkload {
+    PreparedPylonCodexWorkload {
+        assignment_uuid: prepared.assignment_uuid.clone(),
+        assignment_nonce: prepared.assignment_nonce.clone(),
+        prompt: prepared.prompt.clone(),
+        messages: prepared.messages.clone(),
+        workspace: prepared.workspace.clone(),
+    }
+}
+
+fn project_pylon_probe_runner_events(
+    prepared: &PreparedPylonProbeWorkload,
+    runner_events: Vec<PylonCodexRunnerEvent>,
+) -> PylonCodexWorkloadRunResult {
+    let codex_prepared = prepared_probe_as_codex(prepared);
+    let mut result = project_pylon_codex_runner_events(&codex_prepared, runner_events);
+    for event in &mut result.events {
+        if event.event_type == "run.status" {
+            event
+                .payload
+                .entry("runner_kind".to_string())
+                .or_insert_with(|| json!(PROBE_AGENT_RUNNER_KIND));
+        }
+    }
+    if result.completion.error_code.as_deref() == Some("local_codex_error") {
+        result.completion.error_code = Some("local_probe_error".to_string());
+    }
+    result
+}
+
+#[allow(dead_code)]
+fn run_pylon_codex_workload_with_runner_events(
+    config: &PylonConfig,
+    health: &CodexAgentHealthReport,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    runner_events: Vec<PylonCodexRunnerEvent>,
+) -> PylonCodexWorkloadRunResult {
+    let prepared = match prepare_pylon_codex_workload_assignment(config, health, assignment) {
+        Ok(prepared) => prepared,
+        Err(refusal) => return pylon_codex_refusal_result(assignment, refusal),
+    };
+
+    project_pylon_codex_runner_events(&prepared, runner_events)
+}
+
+fn project_pylon_codex_runner_events(
+    prepared: &PreparedPylonCodexWorkload,
+    runner_events: Vec<PylonCodexRunnerEvent>,
+) -> PylonCodexWorkloadRunResult {
+    let mut builder = PylonCodexEventBuilder::default();
+    builder.push(
+        "run.status",
+        Some("pylon"),
+        BTreeMap::from([
+            ("status".to_string(), json!("running")),
+            (
+                "assignment_uuid".to_string(),
+                json!(prepared.assignment_uuid),
+            ),
+        ]),
+    );
+
+    let mut completion = PylonCodexWorkloadCompletion {
+        status: "succeeded".to_string(),
+        error_code: None,
+        error_message: None,
+        usage: None,
+    };
+    let mut saw_terminal = false;
+
+    for runner_event in runner_events {
+        match runner_event {
+            PylonCodexRunnerEvent::RunStatus { status } => {
+                builder.push(
+                    "run.status",
+                    Some("pylon"),
+                    BTreeMap::from([("status".to_string(), json!(status))]),
+                );
+            }
+            PylonCodexRunnerEvent::AssistantTextDelta { delta } if !delta.is_empty() => {
+                builder.push(
+                    "assistant.delta",
+                    Some("assistant"),
+                    BTreeMap::from([("delta".to_string(), json!(delta))]),
+                );
+            }
+            PylonCodexRunnerEvent::AssistantTextDelta { .. } => {}
+            PylonCodexRunnerEvent::ToolStarted { tool, label } => {
+                builder.push(
+                    "tool.start",
+                    Some("tool"),
+                    BTreeMap::from([
+                        ("tool".to_string(), json!(tool)),
+                        ("label".to_string(), json!(label)),
+                    ]),
+                );
+            }
+            PylonCodexRunnerEvent::ToolOutputSummary { tool, summary } => {
+                builder.push(
+                    "tool.end",
+                    Some("tool"),
+                    BTreeMap::from([
+                        ("tool".to_string(), json!(tool)),
+                        ("summary".to_string(), json!(summary)),
+                    ]),
+                );
+            }
+            PylonCodexRunnerEvent::PatchPreview { diff } => {
+                builder.push(
+                    "patch.preview",
+                    Some("assistant"),
+                    BTreeMap::from([("diff".to_string(), json!(diff))]),
+                );
+            }
+            PylonCodexRunnerEvent::Error { code, message } => {
+                builder.push(
+                    "pylon.error",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("code".to_string(), json!(code.clone())),
+                        ("message".to_string(), json!(message.clone())),
+                    ]),
+                );
+                builder.push(
+                    "run.status",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("status".to_string(), json!("failed")),
+                        ("error_code".to_string(), json!(code)),
+                    ]),
+                );
+                completion = PylonCodexWorkloadCompletion {
+                    status: "failed".to_string(),
+                    error_code: Some("local_codex_error".to_string()),
+                    error_message: Some(message),
+                    usage: None,
+                };
+                saw_terminal = true;
+                break;
+            }
+            PylonCodexRunnerEvent::Cancelled { code, message } => {
+                builder.push(
+                    "pylon.cancelled",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("code".to_string(), json!(code.clone())),
+                        ("message".to_string(), json!(message.clone())),
+                    ]),
+                );
+                builder.push(
+                    "run.status",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("status".to_string(), json!("cancelled")),
+                        ("error_code".to_string(), json!(code.clone())),
+                    ]),
+                );
+                completion = PylonCodexWorkloadCompletion {
+                    status: "cancelled".to_string(),
+                    error_code: Some(code),
+                    error_message: Some(message),
+                    usage: None,
+                };
+                saw_terminal = true;
+                break;
+            }
+            PylonCodexRunnerEvent::TimedOut { code, message } => {
+                builder.push(
+                    "pylon.timeout",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("code".to_string(), json!(code.clone())),
+                        ("message".to_string(), json!(message.clone())),
+                    ]),
+                );
+                builder.push(
+                    "run.status",
+                    Some("pylon"),
+                    BTreeMap::from([
+                        ("status".to_string(), json!("timed_out")),
+                        ("error_code".to_string(), json!(code.clone())),
+                    ]),
+                );
+                completion = PylonCodexWorkloadCompletion {
+                    // The current openagents.com completion API accepts succeeded, failed, and
+                    // cancelled. The event stream carries the precise timed_out state.
+                    status: "failed".to_string(),
+                    error_code: Some(code),
+                    error_message: Some(message),
+                    usage: None,
+                };
+                saw_terminal = true;
+                break;
+            }
+            PylonCodexRunnerEvent::Completed { usage } => {
+                builder.push(
+                    "run.status",
+                    Some("pylon"),
+                    BTreeMap::from([("status".to_string(), json!("succeeded"))]),
+                );
+                completion.usage = usage;
+                saw_terminal = true;
+                break;
+            }
+        }
+    }
+
+    if !saw_terminal {
+        builder.push(
+            "pylon.error",
+            Some("pylon"),
+            BTreeMap::from([
+                ("code".to_string(), json!("codex_runner_incomplete")),
+                (
+                    "message".to_string(),
+                    json!("Local Codex runner ended without a terminal event."),
+                ),
+            ]),
+        );
+        builder.push(
+            "run.status",
+            Some("pylon"),
+            BTreeMap::from([
+                ("status".to_string(), json!("failed")),
+                ("error_code".to_string(), json!("codex_runner_incomplete")),
+            ]),
+        );
+        completion = PylonCodexWorkloadCompletion {
+            status: "failed".to_string(),
+            error_code: Some("codex_runner_incomplete".to_string()),
+            error_message: Some("Local Codex runner ended without a terminal event.".to_string()),
+            usage: None,
+        };
+    }
+
+    PylonCodexWorkloadRunResult {
+        events: builder.events,
+        completion,
+    }
+}
+
+fn project_pylon_codex_runner_event_for_streaming(
+    prepared: &PreparedPylonCodexWorkload,
+    builder: &mut PylonCodexEventBuilder,
+    completion: &mut PylonCodexWorkloadCompletion,
+    saw_terminal: &mut bool,
+    runner_event: PylonCodexRunnerEvent,
+) {
+    if *saw_terminal {
+        return;
+    }
+
+    match runner_event {
+        PylonCodexRunnerEvent::RunStatus { status } => {
+            let mut payload = BTreeMap::from([("status".to_string(), json!(status))]);
+            if payload
+                .get("status")
+                .and_then(Value::as_str)
+                .is_some_and(|status| status == "running")
+            {
+                payload.insert(
+                    "assignment_uuid".to_string(),
+                    json!(prepared.assignment_uuid),
+                );
+            }
+            builder.push("run.status", Some("pylon"), payload);
+        }
+        PylonCodexRunnerEvent::AssistantTextDelta { delta } if !delta.is_empty() => {
+            builder.push(
+                "assistant.delta",
+                Some("assistant"),
+                BTreeMap::from([("delta".to_string(), json!(delta))]),
+            );
+        }
+        PylonCodexRunnerEvent::AssistantTextDelta { .. } => {}
+        PylonCodexRunnerEvent::ToolStarted { tool, label } => {
+            builder.push(
+                "tool.start",
+                Some("tool"),
+                BTreeMap::from([
+                    ("tool".to_string(), json!(tool)),
+                    ("label".to_string(), json!(label)),
+                ]),
+            );
+        }
+        PylonCodexRunnerEvent::ToolOutputSummary { tool, summary } => {
+            builder.push(
+                "tool.end",
+                Some("tool"),
+                BTreeMap::from([
+                    ("tool".to_string(), json!(tool)),
+                    ("summary".to_string(), json!(summary)),
+                ]),
+            );
+        }
+        PylonCodexRunnerEvent::PatchPreview { diff } => {
+            builder.push(
+                "patch.preview",
+                Some("assistant"),
+                BTreeMap::from([("diff".to_string(), json!(diff))]),
+            );
+        }
+        PylonCodexRunnerEvent::Error { code, message } => {
+            builder.push(
+                "pylon.error",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("code".to_string(), json!(code.clone())),
+                    ("message".to_string(), json!(message.clone())),
+                ]),
+            );
+            builder.push(
+                "run.status",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("status".to_string(), json!("failed")),
+                    ("error_code".to_string(), json!(code)),
+                ]),
+            );
+            *completion = PylonCodexWorkloadCompletion {
+                status: "failed".to_string(),
+                error_code: Some("local_codex_error".to_string()),
+                error_message: Some(message),
+                usage: None,
+            };
+            *saw_terminal = true;
+        }
+        PylonCodexRunnerEvent::Cancelled { code, message } => {
+            builder.push(
+                "pylon.cancelled",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("code".to_string(), json!(code.clone())),
+                    ("message".to_string(), json!(message.clone())),
+                ]),
+            );
+            builder.push(
+                "run.status",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("status".to_string(), json!("cancelled")),
+                    ("error_code".to_string(), json!(code.clone())),
+                ]),
+            );
+            *completion = PylonCodexWorkloadCompletion {
+                status: "cancelled".to_string(),
+                error_code: Some(code),
+                error_message: Some(message),
+                usage: None,
+            };
+            *saw_terminal = true;
+        }
+        PylonCodexRunnerEvent::TimedOut { code, message } => {
+            builder.push(
+                "pylon.timeout",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("code".to_string(), json!(code.clone())),
+                    ("message".to_string(), json!(message.clone())),
+                ]),
+            );
+            builder.push(
+                "run.status",
+                Some("pylon"),
+                BTreeMap::from([
+                    ("status".to_string(), json!("timed_out")),
+                    ("error_code".to_string(), json!(code.clone())),
+                ]),
+            );
+            *completion = PylonCodexWorkloadCompletion {
+                status: "failed".to_string(),
+                error_code: Some(code),
+                error_message: Some(message),
+                usage: None,
+            };
+            *saw_terminal = true;
+        }
+        PylonCodexRunnerEvent::Completed { usage } => {
+            builder.push(
+                "run.status",
+                Some("pylon"),
+                BTreeMap::from([("status".to_string(), json!("succeeded"))]),
+            );
+            completion.status = "succeeded".to_string();
+            completion.error_code = None;
+            completion.error_message = None;
+            completion.usage = usage;
+            *saw_terminal = true;
+        }
+    }
+}
+
+fn default_pylon_codex_workload_completion() -> PylonCodexWorkloadCompletion {
+    PylonCodexWorkloadCompletion {
+        status: "succeeded".to_string(),
+        error_code: None,
+        error_message: None,
+        usage: None,
+    }
+}
+
+#[derive(Default)]
+struct PylonCodexEventBuilder {
+    events: Vec<PylonCodexWorkloadEvent>,
+}
+
+impl PylonCodexEventBuilder {
+    fn push(
+        &mut self,
+        event_type: impl Into<String>,
+        actor_type: Option<&str>,
+        payload: BTreeMap<String, Value>,
+    ) {
+        let sequence = self.events.len() as u64 + 1;
+        self.events.push(PylonCodexWorkloadEvent {
+            sequence,
+            event_type: event_type.into(),
+            actor_type: actor_type.map(ToString::to_string),
+            payload,
+        });
+    }
+}
+
+fn build_openagents_pylon_workload_event_submission(
+    public_key_hex: &str,
+    assignment_nonce: &str,
+    event: &PylonCodexWorkloadEvent,
+) -> OpenAgentsPylonWorkloadEventSubmission {
+    OpenAgentsPylonWorkloadEventSubmission {
+        public_key_hex: public_key_hex.to_string(),
+        assignment_nonce: assignment_nonce.to_string(),
+        sequence: event.sequence,
+        event_type: event.event_type.clone(),
+        actor_type: event.actor_type.clone(),
+        payload: event.payload.clone(),
+        occurred_at: None,
+    }
+}
+
+fn build_openagents_pylon_workload_completion_submission(
+    public_key_hex: &str,
+    assignment_nonce: &str,
+    completion: &PylonCodexWorkloadCompletion,
+) -> OpenAgentsPylonWorkloadCompletionSubmission {
+    OpenAgentsPylonWorkloadCompletionSubmission {
+        public_key_hex: public_key_hex.to_string(),
+        assignment_nonce: assignment_nonce.to_string(),
+        status: completion.status.clone(),
+        error_code: completion.error_code.clone(),
+        error_message: completion.error_message.clone(),
+        usage: completion.usage.clone(),
+    }
+}
+
+#[allow(dead_code)]
+async fn run_local_pylon_codex_workload(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> PylonCodexWorkloadRunResult {
+    let control = PylonCodexWorkloadRunControl::from_config(config);
+    run_local_pylon_codex_workload_with_control(config, assignment, control).await
+}
+
+#[allow(dead_code)]
+async fn run_local_pylon_codex_workload_with_control(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    control: PylonCodexWorkloadRunControl<'_>,
+) -> PylonCodexWorkloadRunResult {
+    let health = run_codex_agent_health_check();
+    let prepared = match prepare_pylon_codex_workload_assignment(config, &health, assignment) {
+        Ok(prepared) => prepared,
+        Err(refusal) => return pylon_codex_refusal_result(assignment, refusal),
+    };
+
+    match run_prepared_local_pylon_codex_workload_with_control(&prepared, &control).await {
+        Ok(events) => project_pylon_codex_runner_events(&prepared, events),
+        Err(error) => project_pylon_codex_runner_events(
+            &prepared,
+            vec![PylonCodexRunnerEvent::Error {
+                code: "local_codex_runner_failed".to_string(),
+                message: safe_pylon_codex_error_message(&error.to_string()),
+            }],
+        ),
+    }
+}
+
+#[allow(dead_code)]
+async fn run_prepared_local_pylon_codex_workload(
+    prepared: &PreparedPylonCodexWorkload,
+) -> Result<Vec<PylonCodexRunnerEvent>> {
+    let control = PylonCodexWorkloadRunControl::default();
+    run_prepared_local_pylon_codex_workload_with_control(prepared, &control).await
+}
+
+#[allow(dead_code)]
+async fn run_prepared_local_pylon_codex_workload_with_control(
+    prepared: &PreparedPylonCodexWorkload,
+    control: &PylonCodexWorkloadRunControl<'_>,
+) -> Result<Vec<PylonCodexRunnerEvent>> {
+    run_prepared_local_pylon_codex_workload_with_control_and_observer(prepared, control, None).await
+}
+
+async fn run_prepared_local_pylon_codex_workload_with_control_and_observer(
+    prepared: &PreparedPylonCodexWorkload,
+    control: &PylonCodexWorkloadRunControl<'_>,
+    event_observer: Option<tokio::sync::mpsc::UnboundedSender<PylonCodexRunnerEvent>>,
+) -> Result<Vec<PylonCodexRunnerEvent>> {
+    if let Some(reason) = control.stop_reason().await? {
+        let mut events = Vec::new();
+        push_pylon_codex_runner_event(&mut events, reason.into_runner_event(), &event_observer);
+
+        return Ok(events);
+    }
+
+    let (client, mut channels) =
+        codex_client::AppServerClient::spawn(codex_client::AppServerConfig {
+            cwd: Some(prepared.workspace.root.clone()),
+            wire_log: None,
+            env: Vec::new(),
+        })
+        .await
+        .context("failed to spawn local Codex app-server")?;
+
+    if let Err(error) = client
+        .initialize(codex_client::InitializeParams {
+            client_info: codex_client::ClientInfo {
+                name: "openagents-pylon-codex-workload".to_string(),
+                title: Some("OpenAgents Pylon Codex Workload".to_string()),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            capabilities: Some(codex_client::InitializeCapabilities {
+                experimental_api: true,
+                opt_out_notification_methods: Some(
+                    codex_client::legacy_codex_event_opt_out_notification_methods()
+                        .iter()
+                        .map(|method| (*method).to_string())
+                        .collect(),
+                ),
+            }),
+        })
+        .await
+    {
+        let _ = client.shutdown().await;
+        return Err(error).context("failed to initialize local Codex app-server");
+    }
+
+    let approval_policy = codex_client::AskForApproval::Reject {
+        sandbox_approval: true,
+        rules: true,
+        mcp_elicitations: true,
+    };
+    let thread = match client
+        .thread_start(codex_client::ThreadStartParams {
+            model: None,
+            model_provider: None,
+            service_tier: None,
+            cwd: Some(prepared.workspace.root.display().to_string()),
+            approval_policy: Some(approval_policy),
+            sandbox: Some(codex_client::SandboxMode::ReadOnly),
+            personality: Some(codex_client::Personality::Pragmatic),
+            ephemeral: Some(true),
+            dynamic_tools: None,
+        })
+        .await
+    {
+        Ok(thread) => thread,
+        Err(error) => {
+            let _ = client.shutdown().await;
+            return Err(error).context("failed to start local Codex thread");
+        }
+    };
+    let thread_id = thread.thread.id;
+
+    let turn = match client
+        .turn_start(codex_client::TurnStartParams {
+            thread_id: thread_id.clone(),
+            input: vec![codex_client::UserInput::Text {
+                text: prepared.prompt.clone(),
+                text_elements: Vec::new(),
+            }],
+            cwd: Some(prepared.workspace.root.clone()),
+            approval_policy: Some(approval_policy),
+            sandbox_policy: Some(codex_client::SandboxPolicy::ReadOnly),
+            model: None,
+            service_tier: None,
+            effort: None,
+            summary: None,
+            personality: Some(codex_client::Personality::Pragmatic),
+            output_schema: None,
+            collaboration_mode: None,
+        })
+        .await
+    {
+        Ok(turn) => turn,
+        Err(error) => {
+            let _ = client.shutdown().await;
+            return Err(error).context("failed to start local Codex turn");
+        }
+    };
+    let turn_id = turn.turn.id;
+
+    let mut events = Vec::new();
+    push_pylon_codex_runner_event(
+        &mut events,
+        PylonCodexRunnerEvent::RunStatus {
+            status: "running".to_string(),
+        },
+        &event_observer,
+    );
+    let timeout = tokio::time::sleep(control.timeout);
+    tokio::pin!(timeout);
+    let mut cancel_poll = tokio::time::interval(control.cancel_poll_interval);
+    cancel_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        tokio::select! {
+            _ = &mut timeout => {
+                interrupt_pylon_codex_turn(&client, thread_id.as_str(), turn_id.as_str()).await;
+                push_pylon_codex_runner_event(
+                    &mut events,
+                    control.timeout_reason().into_runner_event(),
+                    &event_observer,
+                );
+                break;
+            }
+            _ = cancel_poll.tick(), if control.broker.is_some() => {
+                if let Some(reason) = control.stop_reason().await? {
+                    interrupt_pylon_codex_turn(&client, thread_id.as_str(), turn_id.as_str()).await;
+                    push_pylon_codex_runner_event(
+                        &mut events,
+                        reason.into_runner_event(),
+                        &event_observer,
+                    );
+                    break;
+                }
+            }
+            maybe_notification = channels.notifications.recv() => {
+                let Some(notification) = maybe_notification else {
+                    break;
+                };
+                if let Some(event) = pylon_codex_runner_event_from_notification(
+                    notification,
+                    thread_id.as_str(),
+                    turn_id.as_str(),
+                ) {
+                    let terminal = matches!(
+                        event,
+                        PylonCodexRunnerEvent::Completed { .. }
+                            | PylonCodexRunnerEvent::Error { .. }
+                            | PylonCodexRunnerEvent::Cancelled { .. }
+                            | PylonCodexRunnerEvent::TimedOut { .. }
+                    );
+                    push_pylon_codex_runner_event(&mut events, event, &event_observer);
+                    if terminal {
+                        break;
+                    }
+                }
+            }
+            maybe_request = channels.requests.recv() => {
+                let Some(request) = maybe_request else {
+                    break;
+                };
+                if let Some(event) = handle_pylon_codex_server_request(&client, request).await? {
+                    let terminal = matches!(
+                        event,
+                        PylonCodexRunnerEvent::Error { .. }
+                            | PylonCodexRunnerEvent::Cancelled { .. }
+                            | PylonCodexRunnerEvent::TimedOut { .. }
+                    );
+                    push_pylon_codex_runner_event(&mut events, event, &event_observer);
+                    if terminal {
+                        interrupt_pylon_codex_turn(&client, thread_id.as_str(), turn_id.as_str()).await;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    let _ = client.shutdown().await;
+    Ok(events)
+}
+
+#[allow(dead_code)]
+async fn run_local_pylon_probe_workload(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> PylonCodexWorkloadRunResult {
+    let control = PylonCodexWorkloadRunControl::probe_from_config(config);
+    run_local_pylon_probe_workload_with_control(config, assignment, control).await
+}
+
+async fn run_local_pylon_probe_workload_with_control(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    control: PylonCodexWorkloadRunControl<'_>,
+) -> PylonCodexWorkloadRunResult {
+    let health = run_probe_agent_health_check(config);
+    let prepared = match prepare_pylon_probe_workload_assignment(config, &health, assignment) {
+        Ok(prepared) => prepared,
+        Err(refusal) => return pylon_probe_refusal_result(assignment, refusal),
+    };
+
+    match run_prepared_local_pylon_probe_bridge_with_control(
+        config, assignment, &prepared, &control,
+    )
+    .await
+    {
+        Ok(PylonProbeBridgeRunOutcome::Accepted(output)) => {
+            project_pylon_probe_bridge_output(&prepared, output)
+        }
+        Ok(PylonProbeBridgeRunOutcome::Stopped(reason)) => {
+            project_pylon_probe_runner_events(&prepared, vec![reason.into_runner_event()])
+        }
+        Err(error) => project_pylon_probe_runner_events(
+            &prepared,
+            vec![PylonCodexRunnerEvent::Error {
+                code: "local_probe_bridge_failed".to_string(),
+                message: safe_pylon_codex_error_message(&error.to_string()),
+            }],
+        ),
+    }
+}
+
+async fn run_prepared_local_pylon_probe_bridge_with_control(
+    config: &PylonConfig,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    prepared: &PreparedPylonProbeWorkload,
+    control: &PylonCodexWorkloadRunControl<'_>,
+) -> Result<PylonProbeBridgeRunOutcome> {
+    if let Some(reason) = control.stop_reason().await? {
+        return Ok(PylonProbeBridgeRunOutcome::Stopped(reason));
+    }
+
+    let secret = std::env::var(config.probe.bridge_secret_env.as_str()).with_context(|| {
+        format!(
+            "missing Probe bridge shared secret env {}",
+            config.probe.bridge_secret_env
+        )
+    })?;
+    let request = build_pylon_probe_bridge_request(config, assignment, prepared);
+    let signed = sign_pylon_probe_bridge_request(request, "openagents-pylon", secret.as_str())?;
+    let request_path = pylon_probe_bridge_request_path(config, assignment);
+    write_pylon_probe_signed_request(request_path.as_path(), &signed)?;
+
+    let mut command = TokioCommand::new(&config.probe.probe_bin);
+    command
+        .arg("admin-chat-bridge")
+        .arg("signed")
+        .arg("--request")
+        .arg(request_path.as_os_str())
+        .arg("--secret-env")
+        .arg(config.probe.bridge_secret_env.as_str())
+        .arg("--cwd")
+        .arg(prepared.workspace.root.as_os_str())
+        .arg("--format")
+        .arg("json")
+        .env(config.probe.bridge_secret_env.as_str(), secret.as_str())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(probe_home) = config.probe.probe_home.as_ref() {
+        command.arg("--probe-home").arg(probe_home);
+    }
+
+    let output_future = command.output();
+    tokio::pin!(output_future);
+    let timeout = tokio::time::sleep(control.timeout);
+    tokio::pin!(timeout);
+    let mut cancel_poll = tokio::time::interval(control.cancel_poll_interval);
+    cancel_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    let output = loop {
+        tokio::select! {
+            result = &mut output_future => {
+                break result.context("failed to run local Probe bridge")?;
+            }
+            _ = &mut timeout => {
+                let _ = tokio::fs::remove_file(request_path.as_path()).await;
+                return Ok(PylonProbeBridgeRunOutcome::Stopped(control.probe_timeout_reason()));
+            }
+            _ = cancel_poll.tick(), if control.broker.is_some() => {
+                if let Some(reason) = control.stop_reason().await? {
+                    let _ = tokio::fs::remove_file(request_path.as_path()).await;
+                    return Ok(PylonProbeBridgeRunOutcome::Stopped(reason));
+                }
+            }
+        }
+    };
+
+    let _ = tokio::fs::remove_file(request_path.as_path()).await;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(output.stderr.as_slice())
+            .trim()
+            .to_string();
+        bail!(
+            "Probe bridge exited with {}: {}",
+            output.status,
+            if stderr.is_empty() {
+                "no stderr detail".to_string()
+            } else {
+                safe_pylon_codex_error_message(stderr.as_str())
+            }
+        );
+    }
+
+    let decoded = serde_json::from_slice::<PylonProbeBridgeCliJsonOutput>(output.stdout.as_slice())
+        .context("failed to decode Probe bridge JSON output")?;
+    Ok(PylonProbeBridgeRunOutcome::Accepted(decoded))
+}
+
+fn push_pylon_codex_runner_event(
+    events: &mut Vec<PylonCodexRunnerEvent>,
+    event: PylonCodexRunnerEvent,
+    observer: &Option<tokio::sync::mpsc::UnboundedSender<PylonCodexRunnerEvent>>,
+) {
+    if let Some(observer) = observer {
+        let _ = observer.send(event.clone());
+    }
+    events.push(event);
+}
+
+#[allow(dead_code)]
+async fn interrupt_pylon_codex_turn(
+    client: &codex_client::AppServerClient,
+    thread_id: &str,
+    turn_id: &str,
+) {
+    let _ = client
+        .turn_interrupt(codex_client::TurnInterruptParams {
+            thread_id: thread_id.to_string(),
+            turn_id: turn_id.to_string(),
+        })
+        .await;
+}
+
+#[allow(dead_code)]
+fn pylon_codex_runner_event_from_notification(
+    notification: codex_client::AppServerNotification,
+    expected_thread_id: &str,
+    expected_turn_id: &str,
+) -> Option<PylonCodexRunnerEvent> {
+    let method = codex_client::canonical_notification_method(notification.method.as_str());
+    let params = notification.params?;
+    if !pylon_codex_matches_turn(&params, expected_thread_id, expected_turn_id) {
+        return None;
+    }
+
+    match method {
+        "agent_message_delta" => pylon_codex_string_field(&params, &["delta"])
+            .or_else(|| {
+                params
+                    .get("msg")
+                    .and_then(|value| pylon_codex_string_field(value, &["delta"]))
+            })
+            .map(|delta| PylonCodexRunnerEvent::AssistantTextDelta { delta }),
+        "item/started" => {
+            let item = params.get("item").unwrap_or(&params);
+            let kind = pylon_codex_string_field(item, &["type", "kind", "name"])
+                .unwrap_or_else(|| "codex_tool".to_string());
+            if kind.contains("command") || kind.contains("tool") || kind.contains("file") {
+                Some(PylonCodexRunnerEvent::ToolStarted {
+                    tool: kind,
+                    label: pylon_codex_safe_tool_label(item),
+                })
+            } else {
+                None
+            }
+        }
+        "item/commandExecution/outputDelta" | "command/exec/outputDelta" => {
+            pylon_codex_string_field(&params, &["delta", "output"]).map(|summary| {
+                PylonCodexRunnerEvent::ToolOutputSummary {
+                    tool: "command_execution".to_string(),
+                    summary: summarize_pylon_codex_tool_output(summary.as_str()),
+                }
+            })
+        }
+        "turn/diff/updated" => pylon_codex_string_field(&params, &["diff"])
+            .filter(|diff| !diff.trim().is_empty())
+            .map(|diff| PylonCodexRunnerEvent::PatchPreview { diff }),
+        "turn/completed" | "task_complete" => {
+            let status = params
+                .get("turn")
+                .and_then(|value| pylon_codex_string_field(value, &["status"]))
+                .or_else(|| pylon_codex_string_field(&params, &["status"]));
+            let error = params
+                .get("turn")
+                .and_then(|value| value.get("error"))
+                .and_then(|value| pylon_codex_string_field(value, &["message"]))
+                .or_else(|| {
+                    params
+                        .get("error")
+                        .and_then(|value| pylon_codex_string_field(value, &["message"]))
+                });
+            if matches!(status.as_deref(), Some("failed" | "cancelled")) || error.is_some() {
+                Some(PylonCodexRunnerEvent::Error {
+                    code: "local_codex_turn_failed".to_string(),
+                    message: safe_pylon_codex_error_message(
+                        error
+                            .unwrap_or_else(|| "Local Codex turn failed.".to_string())
+                            .as_str(),
+                    ),
+                })
+            } else {
+                Some(PylonCodexRunnerEvent::Completed {
+                    usage: pylon_codex_usage_payload(&params),
+                })
+            }
+        }
+        "turn/error" | "task_failed" => Some(PylonCodexRunnerEvent::Error {
+            code: "local_codex_turn_failed".to_string(),
+            message: safe_pylon_codex_error_message(
+                pylon_codex_string_field(&params, &["message"])
+                    .or_else(|| {
+                        params
+                            .get("error")
+                            .and_then(|value| pylon_codex_string_field(value, &["message"]))
+                    })
+                    .unwrap_or_else(|| "Local Codex turn failed.".to_string())
+                    .as_str(),
+            ),
+        }),
+        _ => None,
+    }
+}
+
+#[allow(dead_code)]
+async fn handle_pylon_codex_server_request(
+    client: &codex_client::AppServerClient,
+    request: codex_client::AppServerRequest,
+) -> Result<Option<PylonCodexRunnerEvent>> {
+    match request.method.as_str() {
+        "item/commandExecution/requestApproval" => {
+            client
+                .respond(
+                    request.id,
+                    &codex_client::CommandExecutionRequestApprovalResponse {
+                        decision: codex_client::ApprovalDecision::Decline,
+                    },
+                )
+                .await
+                .context("failed to decline local Codex command approval request")?;
+            Ok(Some(PylonCodexRunnerEvent::ToolOutputSummary {
+                tool: "command_execution".to_string(),
+                summary: "Declined by Pylon broker policy.".to_string(),
+            }))
+        }
+        "item/fileChange/requestApproval" => {
+            client
+                .respond(
+                    request.id,
+                    &codex_client::FileChangeRequestApprovalResponse {
+                        decision: codex_client::ApprovalDecision::Decline,
+                    },
+                )
+                .await
+                .context("failed to decline local Codex file-change request")?;
+            Ok(Some(PylonCodexRunnerEvent::ToolOutputSummary {
+                tool: "file_change".to_string(),
+                summary: "Declined by Pylon broker policy.".to_string(),
+            }))
+        }
+        "item/tool/requestUserInput" => {
+            client
+                .respond(
+                    request.id,
+                    &codex_client::ToolRequestUserInputResponse {
+                        answers: std::collections::HashMap::new(),
+                    },
+                )
+                .await
+                .context("failed to reject local Codex user-input request")?;
+            Ok(Some(PylonCodexRunnerEvent::Error {
+                code: "interactive_request_blocked".to_string(),
+                message: "Local Codex requested interactive input, which is disabled for web brokered runs."
+                    .to_string(),
+            }))
+        }
+        "item/tool/call" => {
+            client
+                .respond(
+                    request.id,
+                    &codex_client::DynamicToolCallResponse {
+                        content_items: Vec::new(),
+                        success: false,
+                    },
+                )
+                .await
+                .context("failed to reject local Codex dynamic tool call")?;
+            Ok(Some(PylonCodexRunnerEvent::Error {
+                code: "dynamic_tool_blocked".to_string(),
+                message: "Local Codex requested a dynamic tool call, which is disabled for web brokered runs."
+                    .to_string(),
+            }))
+        }
+        "account/chatgptAuthTokens/refresh" => Ok(Some(PylonCodexRunnerEvent::Error {
+            code: "codex_auth_refresh_required".to_string(),
+            message:
+                "Local Codex requested a ChatGPT token refresh. Sign in locally before retrying."
+                    .to_string(),
+        })),
+        other => Ok(Some(PylonCodexRunnerEvent::Error {
+            code: "unsupported_codex_request".to_string(),
+            message: format!("Local Codex requested unsupported broker interaction `{other}`."),
+        })),
+    }
+}
+
+#[allow(dead_code)]
+fn pylon_codex_matches_turn(
+    params: &Value,
+    expected_thread_id: &str,
+    expected_turn_id: &str,
+) -> bool {
+    let thread_id = pylon_codex_string_field(params, &["threadId", "thread_id"]).or_else(|| {
+        params
+            .get("thread")
+            .and_then(|value| pylon_codex_string_field(value, &["id"]))
+    });
+    if thread_id
+        .as_deref()
+        .is_some_and(|value| value != expected_thread_id)
+    {
+        return false;
+    }
+
+    let turn_id = pylon_codex_string_field(params, &["turnId", "turn_id"]).or_else(|| {
+        params
+            .get("turn")
+            .and_then(|value| pylon_codex_string_field(value, &["id"]))
+    });
+    if turn_id
+        .as_deref()
+        .is_some_and(|value| value != expected_turn_id)
+    {
+        return false;
+    }
+
+    true
+}
+
+#[allow(dead_code)]
+fn pylon_codex_string_field(value: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(Value::as_str))
+        .map(ToString::to_string)
+}
+
+#[allow(dead_code)]
+fn pylon_codex_safe_tool_label(item: &Value) -> String {
+    pylon_codex_string_field(item, &["label", "title", "name", "kind", "type"])
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "Local Codex tool".to_string())
+}
+
+#[allow(dead_code)]
+fn summarize_pylon_codex_tool_output(output: &str) -> String {
+    const MAX_SUMMARY_CHARS: usize = 512;
+    let mut summary = output
+        .trim()
+        .chars()
+        .take(MAX_SUMMARY_CHARS)
+        .collect::<String>();
+    if output.trim().chars().count() > MAX_SUMMARY_CHARS {
+        summary.push_str("...");
+    }
+    summary
+}
+
+#[allow(dead_code)]
+fn safe_pylon_codex_error_message(message: &str) -> String {
+    let mut safe = message.trim().chars().take(1024).collect::<String>();
+    if safe.is_empty() {
+        safe = "Local Codex run failed.".to_string();
+    }
+    safe
+}
+
+#[allow(dead_code)]
+fn pylon_codex_usage_payload(params: &Value) -> Option<Value> {
+    params
+        .get("usage")
+        .cloned()
+        .or_else(|| params.get("tokenUsage").cloned())
+        .or_else(|| {
+            params
+                .get("turn")
+                .and_then(|turn| turn.get("usage"))
+                .cloned()
+        })
 }
 
 fn build_openagents_account_link_request(
@@ -25291,9 +28444,31 @@ fn build_openagents_account_link_request(
         npub: identity.npub.clone(),
         node_label: Some(config.node_label.clone()),
         runtime_state: Some(provider_runtime_state_label(status)),
+        runtime: openagents_account_link_runtime_diagnostics(status),
         ready_model,
         eligible_product_count: products.len() as u64,
         products,
+        capabilities: detect_openagents_pylon_capabilities(config),
+    }
+}
+
+fn build_openagents_account_refresh_request(
+    config: &PylonConfig,
+    identity: &NostrIdentity,
+    status: &ProviderStatusResponse,
+) -> OpenAgentsPylonLinkRefreshRequest {
+    let link_request = build_openagents_account_link_request(config, identity, status, "");
+
+    OpenAgentsPylonLinkRefreshRequest {
+        public_key_hex: link_request.public_key_hex,
+        npub: link_request.npub,
+        node_label: link_request.node_label,
+        runtime_state: link_request.runtime_state,
+        runtime: link_request.runtime,
+        ready_model: link_request.ready_model,
+        eligible_product_count: link_request.eligible_product_count,
+        products: link_request.products,
+        capabilities: link_request.capabilities,
     }
 }
 
@@ -25303,14 +28478,29 @@ fn build_openagents_account_link_body(
     serde_json::to_vec(payload).context("failed to serialize Pylon account-link payload")
 }
 
+fn build_openagents_account_refresh_body(
+    payload: &OpenAgentsPylonLinkRefreshRequest,
+) -> Result<Vec<u8>> {
+    serde_json::to_vec(payload).context("failed to serialize Pylon account-refresh payload")
+}
+
 fn build_openagents_account_link_proof(
     identity: &NostrIdentity,
     url: &reqwest::Url,
     body: &[u8],
 ) -> Result<OpenAgentsAccountLinkProof> {
+    build_openagents_http_proof(identity, url, HttpMethod::Post, body)
+}
+
+fn build_openagents_http_proof(
+    identity: &NostrIdentity,
+    url: &reqwest::Url,
+    method: HttpMethod,
+    body: &[u8],
+) -> Result<OpenAgentsAccountLinkProof> {
     let payload_hash = hash_payload(body);
-    let auth = HttpAuth::new(url.as_str().to_string(), HttpMethod::Post)
-        .with_payload_hash(payload_hash.clone());
+    let auth =
+        HttpAuth::new(url.as_str().to_string(), method).with_payload_hash(payload_hash.clone());
     let secret_key = decode_private_key_hex(identity.private_key_hex.as_str())?;
     let created_at = nostr::nip01::unix_now_secs().map_err(anyhow::Error::msg)?;
     let event =
@@ -25339,6 +28529,7 @@ fn build_account_link_report(
         account_link,
     } = response;
     let products = observed_pylon.products;
+    let capabilities = observed_pylon.capabilities;
     AccountLinkReport {
         linked,
         base_url: base_url.trim_end_matches('/').to_string(),
@@ -25351,11 +28542,13 @@ fn build_account_link_report(
         runtime_state: observed_pylon
             .runtime_state
             .unwrap_or_else(|| "unknown".to_string()),
+        runtime: observed_pylon.runtime_diagnostics,
         ready_model: observed_pylon.ready_model,
         eligible_product_count: observed_pylon
             .eligible_product_count
             .unwrap_or(products.len() as u64),
         products,
+        capabilities,
         observed_pylon_id: observed_pylon.id,
         account_link_id: account_link.id,
         user_id: account_link.user_id,
@@ -25385,6 +28578,7 @@ async fn complete_openagents_account_link(
             reqwest::header::AUTHORIZATION,
             proof.authorization_header.as_str(),
         )
+        .header(reqwest::header::ACCEPT, "application/json")
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(body)
         .send()
@@ -25400,10 +28594,60 @@ async fn complete_openagents_account_link(
             http_error_message(detail.as_str())
         );
     }
-    response
-        .json::<OpenAgentsPylonLinkCompletionResponse>()
+    let detail = response
+        .text()
         .await
+        .with_context(|| format!("failed to read OpenAgents account-link response from {url}"))?;
+    if detail.trim().is_empty() {
+        bail!("OpenAgents account link failed: empty JSON response from {url}");
+    }
+    serde_json::from_str::<OpenAgentsPylonLinkCompletionResponse>(detail.as_str())
         .with_context(|| format!("failed to decode OpenAgents account-link response from {url}"))
+        .map(|response| (response, proof))
+}
+
+async fn refresh_openagents_account_link(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    payload: &OpenAgentsPylonLinkRefreshRequest,
+) -> Result<(
+    OpenAgentsPylonLinkCompletionResponse,
+    OpenAgentsAccountLinkProof,
+)> {
+    let url = openagents_account_refresh_url(base_url)?;
+    let body = build_openagents_account_refresh_body(payload)?;
+    let proof = build_openagents_account_link_proof(identity, &url, body.as_slice())?;
+    let response = client
+        .post(url.clone())
+        .header(
+            reqwest::header::AUTHORIZATION,
+            proof.authorization_header.as_str(),
+        )
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(body)
+        .send()
+        .await
+        .with_context(|| format!("failed to post Pylon account refresh to {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode OpenAgents account-refresh error".to_string());
+        bail!(
+            "OpenAgents account refresh failed: {}",
+            http_error_message(detail.as_str())
+        );
+    }
+    let detail = response.text().await.with_context(|| {
+        format!("failed to read OpenAgents account-refresh response from {url}")
+    })?;
+    if detail.trim().is_empty() {
+        bail!("OpenAgents account refresh failed: empty JSON response from {url}");
+    }
+    serde_json::from_str::<OpenAgentsPylonLinkCompletionResponse>(detail.as_str())
+        .with_context(|| format!("failed to decode OpenAgents account-refresh response from {url}"))
         .map(|response| (response, proof))
 }
 
@@ -25414,12 +28658,551 @@ async fn run_account_link_command(
 ) -> Result<AccountLinkReport> {
     let config = ensure_local_setup(config_path)?;
     let identity = ensure_identity(config.identity_path.as_path())?;
-    let status = load_status_or_detect(config_path).await?;
+    let status = load_account_link_status(&config, &identity).await?;
     let payload = build_openagents_account_link_request(&config, &identity, &status, token);
     let client = openagents_account_link_client()?;
     let (response, proof) =
         complete_openagents_account_link(&client, base_url, &identity, &payload).await?;
     Ok(build_account_link_report(base_url, response, &proof))
+}
+
+async fn run_account_refresh_command(
+    config_path: &Path,
+    base_url: &str,
+) -> Result<AccountLinkReport> {
+    let config = ensure_local_setup(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let status = load_account_link_status(&config, &identity).await?;
+    let payload = build_openagents_account_refresh_request(&config, &identity, &status);
+    let client = openagents_account_link_client()?;
+    let (response, proof) =
+        refresh_openagents_account_link(&client, base_url, &identity, &payload).await?;
+    Ok(build_account_link_report(base_url, response, &proof))
+}
+
+async fn run_and_stream_pylon_codex_workload(
+    config: &PylonConfig,
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    control: PylonCodexWorkloadRunControl<'_>,
+) -> Result<(PylonCodexWorkloadCompletion, u64)> {
+    let health = run_codex_agent_health_check();
+    let prepared = match prepare_pylon_codex_workload_assignment(config, &health, assignment) {
+        Ok(prepared) => prepared,
+        Err(refusal) => {
+            let result = pylon_codex_refusal_result(assignment, refusal);
+            let events_sent = post_pylon_codex_workload_result_events(
+                client, base_url, identity, assignment, &result,
+            )
+            .await?;
+            complete_openagents_pylon_workload(
+                client,
+                base_url,
+                identity,
+                assignment,
+                &result.completion,
+            )
+            .await?;
+
+            return Ok((result.completion, events_sent));
+        }
+    };
+
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let run_future = run_prepared_local_pylon_codex_workload_with_control_and_observer(
+        &prepared,
+        &control,
+        Some(event_tx),
+    );
+    tokio::pin!(run_future);
+
+    let mut builder = PylonCodexEventBuilder::default();
+    let mut completion = default_pylon_codex_workload_completion();
+    let mut saw_terminal = false;
+    let mut events_sent = 0u64;
+    let runner_result = loop {
+        tokio::select! {
+            maybe_event = event_rx.recv() => {
+                if let Some(event) = maybe_event {
+                    project_and_post_pylon_codex_runner_event(
+                        &prepared,
+                        &mut builder,
+                        &mut completion,
+                        &mut saw_terminal,
+                        client,
+                        base_url,
+                        identity,
+                        assignment,
+                        &mut events_sent,
+                        event,
+                    )
+                    .await?;
+                }
+            }
+            result = &mut run_future => {
+                break result;
+            }
+        }
+    };
+
+    while let Ok(event) = event_rx.try_recv() {
+        project_and_post_pylon_codex_runner_event(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            client,
+            base_url,
+            identity,
+            assignment,
+            &mut events_sent,
+            event,
+        )
+        .await?;
+    }
+
+    if let Err(error) = runner_result {
+        project_and_post_pylon_codex_runner_event(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            client,
+            base_url,
+            identity,
+            assignment,
+            &mut events_sent,
+            PylonCodexRunnerEvent::Error {
+                code: "local_codex_runner_failed".to_string(),
+                message: safe_pylon_codex_error_message(&error.to_string()),
+            },
+        )
+        .await?;
+    }
+
+    if !saw_terminal {
+        project_and_post_pylon_codex_runner_event(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            client,
+            base_url,
+            identity,
+            assignment,
+            &mut events_sent,
+            PylonCodexRunnerEvent::Error {
+                code: "codex_runner_incomplete".to_string(),
+                message: "Local Codex runner ended without a terminal event.".to_string(),
+            },
+        )
+        .await?;
+    }
+
+    if !pylon_codex_completion_reflects_broker_terminal(&completion) {
+        complete_openagents_pylon_workload(client, base_url, identity, assignment, &completion)
+            .await?;
+    }
+
+    Ok((completion, events_sent))
+}
+
+async fn run_and_stream_pylon_probe_workload(
+    config: &PylonConfig,
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    control: PylonCodexWorkloadRunControl<'_>,
+) -> Result<(PylonCodexWorkloadCompletion, u64)> {
+    let result = run_local_pylon_probe_workload_with_control(config, assignment, control).await;
+    let events_sent =
+        post_pylon_codex_workload_result_events(client, base_url, identity, assignment, &result)
+            .await?;
+    if !pylon_codex_completion_reflects_broker_terminal(&result.completion) {
+        complete_openagents_pylon_workload(
+            client,
+            base_url,
+            identity,
+            assignment,
+            &result.completion,
+        )
+        .await?;
+    }
+    Ok((result.completion, events_sent))
+}
+
+async fn run_and_stream_openagents_pylon_workload(
+    config: &PylonConfig,
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+) -> Result<(PylonCodexWorkloadCompletion, u64)> {
+    if assignment.capability_key == PROBE_AGENT_CAPABILITY_KEY {
+        let mut control = PylonCodexWorkloadRunControl::probe_from_config(config);
+        control.broker = Some(PylonCodexBrokerCancellationProbe {
+            client,
+            base_url,
+            identity,
+            assignment,
+        });
+        return run_and_stream_pylon_probe_workload(
+            config, client, base_url, identity, assignment, control,
+        )
+        .await;
+    }
+
+    let mut control = PylonCodexWorkloadRunControl::from_config(config);
+    control.broker = Some(PylonCodexBrokerCancellationProbe {
+        client,
+        base_url,
+        identity,
+        assignment,
+    });
+    run_and_stream_pylon_codex_workload(config, client, base_url, identity, assignment, control)
+        .await
+}
+
+async fn project_and_post_pylon_codex_runner_event(
+    prepared: &PreparedPylonCodexWorkload,
+    builder: &mut PylonCodexEventBuilder,
+    completion: &mut PylonCodexWorkloadCompletion,
+    saw_terminal: &mut bool,
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    events_sent: &mut u64,
+    runner_event: PylonCodexRunnerEvent,
+) -> Result<()> {
+    let previous_event_count = builder.events.len();
+    project_pylon_codex_runner_event_for_streaming(
+        prepared,
+        builder,
+        completion,
+        saw_terminal,
+        runner_event,
+    );
+
+    let broker_terminal_completion = pylon_codex_completion_reflects_broker_terminal(completion);
+    for event in builder.events[previous_event_count..].iter() {
+        if broker_terminal_completion && !pylon_codex_event_is_broker_cancel_ack(event, completion)
+        {
+            continue;
+        }
+        post_openagents_pylon_workload_event(client, base_url, identity, assignment, event).await?;
+        *events_sent += 1;
+    }
+
+    Ok(())
+}
+
+async fn post_pylon_codex_workload_result_events(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    result: &PylonCodexWorkloadRunResult,
+) -> Result<u64> {
+    let broker_terminal_completion =
+        pylon_codex_completion_reflects_broker_terminal(&result.completion);
+    let mut events_sent = 0u64;
+    for event in &result.events {
+        if broker_terminal_completion
+            && !pylon_codex_event_is_broker_cancel_ack(event, &result.completion)
+        {
+            continue;
+        }
+        post_openagents_pylon_workload_event(client, base_url, identity, assignment, event).await?;
+        events_sent += 1;
+    }
+
+    Ok(events_sent)
+}
+
+async fn run_pylon_codex_workload_once(
+    config_path: &Path,
+    base_url: &str,
+) -> Result<PylonCodexWorkloadOnceReport> {
+    let config = ensure_local_setup(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let status = load_account_link_status(&config, &identity).await?;
+    let refresh_payload = build_openagents_account_refresh_request(&config, &identity, &status);
+    let client = openagents_account_link_client()?;
+    refresh_openagents_account_link(&client, base_url, &identity, &refresh_payload).await?;
+    let Some(assignment) =
+        claim_next_openagents_pylon_workload(&client, base_url, &identity).await?
+    else {
+        return Ok(PylonCodexWorkloadOnceReport {
+            claimed: false,
+            assignment_uuid: None,
+            events_sent: 0,
+            completion_status: "idle".to_string(),
+            error_code: None,
+            error_message: None,
+        });
+    };
+
+    let (completion, events_sent) = run_and_stream_openagents_pylon_workload(
+        &config,
+        &client,
+        base_url,
+        &identity,
+        &assignment,
+    )
+    .await?;
+
+    Ok(PylonCodexWorkloadOnceReport {
+        claimed: true,
+        assignment_uuid: Some(assignment.assignment_uuid),
+        events_sent,
+        completion_status: completion.status,
+        error_code: completion.error_code,
+        error_message: completion.error_message,
+    })
+}
+
+async fn run_pylon_codex_workload_poll(
+    config_path: &Path,
+    base_url: &str,
+    interval_seconds: u64,
+    json_output: bool,
+) -> Result<()> {
+    let interval = Duration::from_secs(interval_seconds.max(1));
+    eprintln!(
+        "pylon: polling OpenAgents Codex workloads from {} every {}s",
+        base_url.trim_end_matches('/'),
+        interval.as_secs()
+    );
+
+    loop {
+        match run_pylon_codex_workload_once(config_path, base_url).await {
+            Ok(report) if report.claimed => {
+                if json_output {
+                    println!("{}", serde_json::to_string(&report)?);
+                } else {
+                    println!("{}", render_pylon_codex_workload_once_report(&report));
+                }
+                std::io::stdout()
+                    .flush()
+                    .context("failed to flush codex workload poll output")?;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                if json_output {
+                    println!(
+                        "{}",
+                        serde_json::to_string(&json!({
+                            "type": "error",
+                            "message": format_anyhow_error_chain(&error),
+                        }))?
+                    );
+                    std::io::stdout()
+                        .flush()
+                        .context("failed to flush codex workload poll error")?;
+                } else {
+                    eprintln!(
+                        "warning: pylon codex workload poll failed: {}",
+                        format_anyhow_error_chain(&error)
+                    );
+                }
+            }
+        }
+
+        tokio::select! {
+            result = tokio::signal::ctrl_c() => {
+                result.context("failed waiting for ctrl-c")?;
+                break;
+            }
+            () = tokio::time::sleep(interval) => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn pylon_codex_completion_reflects_broker_terminal(
+    completion: &PylonCodexWorkloadCompletion,
+) -> bool {
+    matches!(
+        completion.error_code.as_deref(),
+        Some("broker_cancelled" | "broker_timed_out" | "broker_expired" | "broker_terminal")
+    )
+}
+
+fn pylon_codex_event_is_broker_cancel_ack(
+    event: &PylonCodexWorkloadEvent,
+    completion: &PylonCodexWorkloadCompletion,
+) -> bool {
+    if completion.error_code.as_deref() != Some("broker_cancelled") {
+        return false;
+    }
+
+    if event.event_type == "pylon.cancelled" {
+        return true;
+    }
+
+    event.event_type == "run.status"
+        && event
+            .payload
+            .get("status")
+            .and_then(Value::as_str)
+            .is_some_and(|status| status == "cancelled" || status == "canceled")
+}
+
+async fn claim_next_openagents_pylon_workload(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+) -> Result<Option<OpenAgentsPylonWorkloadEnvelope>> {
+    let mut url = openagents_pylon_workload_url(base_url, "/api/pylon/workloads/next")?;
+    url.query_pairs_mut()
+        .append_pair("public_key_hex", identity.public_key_hex.as_str());
+    let proof = build_openagents_http_proof(identity, &url, HttpMethod::Get, b"")?;
+    let response = client
+        .get(url.clone())
+        .header(
+            reqwest::header::AUTHORIZATION,
+            proof.authorization_header.as_str(),
+        )
+        .send()
+        .await
+        .with_context(|| format!("failed to claim next Pylon workload from {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode OpenAgents workload claim error".to_string());
+        bail!(
+            "OpenAgents Pylon workload claim failed: {}",
+            http_error_message(detail.as_str())
+        );
+    }
+
+    response
+        .json::<OpenAgentsPylonWorkloadNextResponse>()
+        .await
+        .with_context(|| format!("failed to decode OpenAgents Pylon workload claim from {url}"))
+        .map(|response| response.assignment)
+}
+
+async fn get_openagents_pylon_workload_status(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment_uuid: &str,
+) -> Result<OpenAgentsPylonWorkloadStatus> {
+    let path = format!("/api/pylon/workloads/{assignment_uuid}");
+    let mut url = openagents_pylon_workload_url(base_url, path.as_str())?;
+    url.query_pairs_mut()
+        .append_pair("public_key_hex", identity.public_key_hex.as_str());
+    let proof = build_openagents_http_proof(identity, &url, HttpMethod::Get, b"")?;
+    let response = client
+        .get(url.clone())
+        .header(
+            reqwest::header::AUTHORIZATION,
+            proof.authorization_header.as_str(),
+        )
+        .send()
+        .await
+        .with_context(|| format!("failed to fetch Pylon workload status from {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "failed to decode OpenAgents workload status error".to_string());
+        bail!(
+            "OpenAgents Pylon workload status failed: {}",
+            http_error_message(detail.as_str())
+        );
+    }
+
+    response
+        .json::<OpenAgentsPylonWorkloadStatusResponse>()
+        .await
+        .with_context(|| format!("failed to decode OpenAgents Pylon workload status from {url}"))
+        .map(|response| response.assignment)
+}
+
+async fn post_openagents_pylon_workload_event(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    event: &PylonCodexWorkloadEvent,
+) -> Result<()> {
+    let path = format!("/api/pylon/workloads/{}/events", assignment.assignment_uuid);
+    let url = openagents_pylon_workload_url(base_url, path.as_str())?;
+    let payload = build_openagents_pylon_workload_event_submission(
+        identity.public_key_hex.as_str(),
+        assignment.nonce.as_str(),
+        event,
+    );
+    post_signed_openagents_json(client, &url, identity, &payload, "Pylon workload event").await
+}
+
+async fn complete_openagents_pylon_workload(
+    client: &reqwest::Client,
+    base_url: &str,
+    identity: &NostrIdentity,
+    assignment: &OpenAgentsPylonWorkloadEnvelope,
+    completion: &PylonCodexWorkloadCompletion,
+) -> Result<()> {
+    let path = format!(
+        "/api/pylon/workloads/{}/complete",
+        assignment.assignment_uuid
+    );
+    let url = openagents_pylon_workload_url(base_url, path.as_str())?;
+    let payload = build_openagents_pylon_workload_completion_submission(
+        identity.public_key_hex.as_str(),
+        assignment.nonce.as_str(),
+        completion,
+    );
+    post_signed_openagents_json(
+        client,
+        &url,
+        identity,
+        &payload,
+        "Pylon workload completion",
+    )
+    .await
+}
+
+async fn post_signed_openagents_json<T: Serialize>(
+    client: &reqwest::Client,
+    url: &reqwest::Url,
+    identity: &NostrIdentity,
+    payload: &T,
+    label: &str,
+) -> Result<()> {
+    let body =
+        serde_json::to_vec(payload).with_context(|| format!("failed to serialize {label}"))?;
+    let proof = build_openagents_http_proof(identity, url, HttpMethod::Post, body.as_slice())?;
+    let response = client
+        .post(url.clone())
+        .header(
+            reqwest::header::AUTHORIZATION,
+            proof.authorization_header.as_str(),
+        )
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(body)
+        .send()
+        .await
+        .with_context(|| format!("failed to post {label} to {url}"))?;
+    if !response.status().is_success() {
+        let detail = response
+            .text()
+            .await
+            .unwrap_or_else(|_| format!("failed to decode {label} error"));
+        bail!(
+            "OpenAgents {label} failed: {}",
+            http_error_message(detail.as_str())
+        );
+    }
+    Ok(())
 }
 
 async fn try_live_status(config: &PylonConfig) -> Result<Option<ProviderStatusResponse>> {
@@ -26456,6 +30239,40 @@ fn apply_config_set(config: &mut PylonConfig, key: &str, value: &str) -> Result<
         "backend.adapter_training_contributor_enabled" => {
             next.inventory_controls.adapter_training_contributor_enabled = parse_bool(value)?;
         }
+        "probe.enabled" => {
+            next.probe.enabled = parse_bool(value)?;
+        }
+        "probe.probe_bin" => {
+            next.probe.probe_bin = PathBuf::from(value.trim());
+        }
+        "probe.probe_home" => {
+            next.probe.probe_home = if value.trim().is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(value.trim()))
+            };
+        }
+        "probe.bridge_secret_env" => {
+            next.probe.bridge_secret_env = value.trim().to_string();
+        }
+        "probe.backend_profile" => {
+            next.probe.backend_profile = value.trim().to_string();
+        }
+        "probe.provider_mode" => {
+            next.probe.provider_mode = value.trim().to_string();
+        }
+        "probe.workload_timeout_seconds" => {
+            next.probe.workload_timeout_seconds = value
+                .trim()
+                .parse::<u64>()
+                .with_context(|| format!("invalid probe.workload_timeout_seconds: {value}"))?;
+        }
+        "probe.workload_cancel_poll_seconds" => {
+            next.probe.workload_cancel_poll_seconds = value
+                .trim()
+                .parse::<u64>()
+                .with_context(|| format!("invalid probe.workload_cancel_poll_seconds: {value}"))?;
+        }
         "training.allowed_networks" => {
             next.training.allowed_networks = parse_csv_list(value);
         }
@@ -26554,13 +30371,14 @@ fn set_test_payout_pay_hook(hook: Option<TestPayoutPayHook>) {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
     use std::process::Command as StdCommand;
     use std::sync::{Arc, Barrier, Mutex, OnceLock};
     use std::time::{Duration, Instant};
 
     use super::{
-        AccountCommand, AnnouncementAction, BuyerJobSubmitRequest, Cli, Command,
+        AccountCommand, AnnouncementAction, BuyerJobSubmitRequest, Cli, CodexCommand, Command,
         DEFAULT_GEMMA_BENCH_PROMPT, DEFAULT_GEMMA_DIAGNOSTIC_ID,
         ENV_GOOGLE_APPLICATION_CREDENTIALS, ENV_TRAINING_GCS_BEARER_TOKEN,
         ENV_TRAINING_GCS_ENDPOINT, GemmaBenchExecutionMode, GemmaBenchmarkMode,
@@ -28775,6 +32593,74 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     },
                 },
             "account link should parse base URL, token, and json flags",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_account_refresh_command() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "account".to_string(),
+                "refresh".to_string(),
+                "--base-url".to_string(),
+                "https://openagents.com".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Account {
+                    command: AccountCommand::Refresh {
+                        base_url: "https://openagents.com".to_string(),
+                        json: true,
+                    },
+                },
+            "account refresh should parse base URL and json flags",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_codex_workload_once_command() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "codex".to_string(),
+                "workload".to_string(),
+                "once".to_string(),
+                "--base-url".to_string(),
+                "https://openagents.com".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Codex {
+                    command: CodexCommand::WorkloadOnce {
+                        base_url: "https://openagents.com".to_string(),
+                        json: true,
+                    },
+                },
+            "codex workload once should parse base URL and json flags",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_codex_workload_poll_command() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec![
+                "codex".to_string(),
+                "workload".to_string(),
+                "poll".to_string(),
+                "--base-url".to_string(),
+                "https://openagents.com".to_string(),
+                "--interval-seconds".to_string(),
+                "3".to_string(),
+                "--json".to_string(),
+            ])?
+            .command
+                == Command::Codex {
+                    command: CodexCommand::WorkloadPoll {
+                        base_url: "https://openagents.com".to_string(),
+                        interval_seconds: 3,
+                        json: true,
+                    },
+                },
+            "codex workload poll should parse base URL, interval, and json flags",
         )
     }
 
@@ -43046,6 +46932,918 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         assert_eq!(provider_control_plane_runtime_error(None, None), None);
     }
 
+    fn codex_probe(
+        available: bool,
+        version: Option<&str>,
+        error: Option<&str>,
+    ) -> codex_client::CodexInstallationProbe {
+        codex_client::CodexInstallationProbe {
+            available,
+            invocation: available.then(|| "codex app-server".to_string()),
+            resolved_program: None,
+            version: version.map(ToString::to_string),
+            error: error.map(ToString::to_string),
+        }
+    }
+
+    #[test]
+    fn codex_agent_health_reports_ready_and_feeds_capability() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("codex 5.4.0"), None),
+            super::CodexAuthInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            },
+        );
+        let capability = super::codex_agent_capability_from_health("desk-pylon", &health);
+
+        assert_eq!(capability.key, "codex_agent");
+        assert_eq!(health.status, "ready");
+        assert_eq!(capability.status, "ready");
+        assert_eq!(capability.display_label, "Codex on desk-pylon");
+        assert_eq!(capability.auth_state, "ready");
+        assert_eq!(capability.runner_kind, "codex_cli");
+        assert_eq!(capability.runner_version.as_deref(), Some("codex 5.4.0"));
+        assert_eq!(capability.transport_kind, "pylon_workload_poll");
+        assert!(
+            capability
+                .supported_actions
+                .iter()
+                .any(|value| value == "chat")
+        );
+        assert!(capability.workspace_roots.is_empty());
+
+        let serialized = serde_json::to_value(&capability).expect("serialize capability");
+        assert!(serialized.get("runner_path").is_none());
+        assert!(serialized.get("credential_path").is_none());
+        assert!(serialized.to_string().contains("codex 5.4.0"));
+    }
+
+    #[test]
+    fn codex_agent_health_reports_not_installed() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(false, None, Some("missing codex binary")),
+            super::CodexAuthInspection {
+                auth_state: "needs_login".to_string(),
+                blocker_code: Some("CODEX_AUTH_MISSING".to_string()),
+            },
+        );
+
+        assert_eq!(health.status, "not_installed");
+        assert!(
+            health
+                .blocker_codes
+                .iter()
+                .any(|value| value == "CODEX_NOT_INSTALLED")
+        );
+    }
+
+    #[test]
+    fn codex_agent_health_reports_needs_auth() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("codex 5.4.0"), None),
+            super::CodexAuthInspection {
+                auth_state: "needs_login".to_string(),
+                blocker_code: Some("CODEX_AUTH_MISSING".to_string()),
+            },
+        );
+
+        assert_eq!(health.status, "needs_auth");
+        assert_eq!(health.auth_state, "needs_login");
+        assert!(
+            health
+                .blocker_codes
+                .iter()
+                .any(|value| value == "CODEX_AUTH_MISSING")
+        );
+    }
+
+    #[test]
+    fn codex_agent_health_reports_degraded_health_check() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("codex 5.4.0"), Some("version probe failed")),
+            super::CodexAuthInspection {
+                auth_state: "unknown".to_string(),
+                blocker_code: Some("CODEX_AUTH_EXPIRED".to_string()),
+            },
+        );
+
+        assert_eq!(health.status, "degraded");
+        assert!(
+            health
+                .blocker_codes
+                .iter()
+                .any(|value| value == "CODEX_HEALTH_CHECK_FAILED")
+        );
+    }
+
+    #[test]
+    fn codex_agent_health_reports_unsupported_runner_output() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("node v24.0.0"), None),
+            super::CodexAuthInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            },
+        );
+
+        assert_eq!(health.status, "unsupported");
+        assert!(
+            health
+                .blocker_codes
+                .iter()
+                .any(|value| value == "CODEX_UNSUPPORTED_VERSION")
+        );
+    }
+
+    #[test]
+    fn codex_agent_health_serializes_without_secrets_or_local_paths() {
+        let health = super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("codex 5.4.0"), None),
+            super::CodexAuthInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            },
+        );
+        let serialized = serde_json::to_value(&health).expect("serialize health");
+
+        assert!(serialized.get("runner_path").is_none());
+        assert!(serialized.get("credential_path").is_none());
+        assert!(serialized.get("auth_file").is_none());
+        assert!(!serialized.to_string().contains("access_token"));
+    }
+
+    fn ready_codex_health() -> super::CodexAgentHealthReport {
+        super::codex_agent_health_report_from_parts(
+            codex_probe(true, Some("codex 5.4.0"), None),
+            super::CodexAuthInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            },
+        )
+    }
+
+    fn pylon_codex_test_config() -> PylonConfig {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-codex-test"));
+        config.codex_workspaces = vec![super::PylonCodexWorkspaceConfig {
+            id: "repo-42".to_string(),
+            label: Some("OpenAgents".to_string()),
+            root: PathBuf::from("/tmp/openagents-local"),
+        }];
+        config
+    }
+
+    fn pylon_probe_test_config() -> PylonConfig {
+        let mut config = default_config(std::path::Path::new("/tmp/pylon-probe-test"));
+        config.probe.workspaces = vec![super::PylonCodexWorkspaceConfig {
+            id: "repo-42".to_string(),
+            label: Some("OpenAgents".to_string()),
+            root: PathBuf::from("/tmp/openagents-local"),
+        }];
+        config
+    }
+
+    fn ready_probe_health(config: &PylonConfig) -> super::ProbeAgentHealthReport {
+        super::probe_agent_health_report_from_parts(
+            config,
+            super::ProbeInstallationProbe {
+                available: true,
+                version: Some("probe 0.1.0".to_string()),
+                bridge_supported: true,
+                error: None,
+            },
+            super::ProbeBridgeSecretInspection {
+                auth_state: "ready".to_string(),
+                blocker_code: None,
+            },
+        )
+    }
+
+    fn pylon_codex_assignment() -> super::OpenAgentsPylonWorkloadEnvelope {
+        serde_json::from_value(json!({
+            "assignmentUuid": "workload-001",
+            "capabilityKey": "codex_agent",
+            "status": "claimed",
+            "nonce": "nonce-001",
+            "expiresAt": "2026-05-02T21:00:00Z",
+            "request": {
+                "mode": "pylon_codex",
+                "prompt": "Inspect the local repo.",
+                "messages": [
+                    {"role": "user", "content": "Inspect the local repo."}
+                ],
+                "workspace_scope": {
+                    "workspace_label": "Team",
+                    "project_label": "Autopilot",
+                    "repository_label": "OpenAgents",
+                    "project_repository_id": "repo-42"
+                }
+            }
+        }))
+        .expect("valid pylon codex assignment")
+    }
+
+    fn pylon_probe_assignment() -> super::OpenAgentsPylonWorkloadEnvelope {
+        serde_json::from_value(json!({
+            "assignmentUuid": "workload-probe-001",
+            "capabilityKey": "probe_agent",
+            "status": "claimed",
+            "nonce": "nonce-probe-001",
+            "request": {
+                "mode": "pylon_probe",
+                "prompt": "Inspect the local repo through Probe.",
+                "messages": [
+                    {"role": "user", "content": "Inspect the local repo through Probe."}
+                ],
+                "workspace_scope": {
+                    "repository_label": "OpenAgents",
+                    "project_repository_id": "repo-42"
+                },
+                "metadata": {
+                    "webUserId": 7,
+                    "webUserEmail": "admin@example.com",
+                    "conversationId": "conversation-001",
+                    "runId": "run-001",
+                    "scheduleId": "schedule-001"
+                }
+            }
+        }))
+        .expect("valid pylon probe assignment")
+    }
+
+    #[test]
+    fn probe_agent_health_reports_ready_and_feeds_capability() {
+        let config = pylon_probe_test_config();
+        let health = ready_probe_health(&config);
+        let capability = super::probe_agent_capability_from_health(
+            "desk-pylon",
+            &health,
+            super::probe_workspace_mappings(&config).len(),
+        );
+
+        assert_eq!(health.status, "ready");
+        assert_eq!(capability.key, "probe_agent");
+        assert_eq!(capability.status, "ready");
+        assert_eq!(capability.display_label, "Probe on desk-pylon");
+        assert_eq!(capability.auth_state, "ready");
+        assert_eq!(capability.runner_kind, "probe_cli");
+        assert_eq!(capability.runner_version.as_deref(), Some("probe 0.1.0"));
+        assert_eq!(capability.transport_kind, "pylon_probe_signed_bridge");
+        assert!(
+            capability
+                .supported_actions
+                .iter()
+                .any(|value| value == "child_session")
+        );
+        assert!(capability.workspace_roots.is_empty());
+
+        let serialized = serde_json::to_value(&capability).expect("serialize capability");
+        assert!(serialized.get("runner_path").is_none());
+        assert!(serialized.get("credential_path").is_none());
+        assert!(!serialized.to_string().contains("/tmp/openagents-local"));
+    }
+
+    #[test]
+    fn pylon_probe_assignment_builds_signed_request_without_secret_leak() {
+        let config = pylon_probe_test_config();
+        let assignment = pylon_probe_assignment();
+        let prepared = super::prepare_pylon_probe_workload_assignment(
+            &config,
+            &ready_probe_health(&config),
+            &assignment,
+        )
+        .expect("prepared probe workload");
+        let request = super::build_pylon_probe_bridge_request(&config, &assignment, &prepared);
+        let signed = super::sign_pylon_probe_bridge_request(
+            request,
+            "openagents-pylon",
+            "abcdefghijklmnopqrstuvwxyz0123456789",
+        )
+        .expect("signed request");
+        let serialized = serde_json::to_value(&signed).expect("serialize signed request");
+
+        assert_eq!(serialized["request"]["runId"], json!("run-001"));
+        assert_eq!(
+            serialized["request"]["metadata"]["backendProfile"],
+            json!("openai-codex-subscription")
+        );
+        assert!(
+            serialized["auth"]["signature"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("sha256="))
+        );
+        assert!(
+            !serialized
+                .to_string()
+                .contains("abcdefghijklmnopqrstuvwxyz0123456789")
+        );
+    }
+
+    #[test]
+    fn pylon_probe_bridge_output_projects_session_metadata_events() {
+        let config = pylon_probe_test_config();
+        let assignment = pylon_probe_assignment();
+        let prepared = super::prepare_pylon_probe_workload_assignment(
+            &config,
+            &ready_probe_health(&config),
+            &assignment,
+        )
+        .expect("prepared probe workload");
+        let result = super::project_pylon_probe_bridge_output(
+            &prepared,
+            super::PylonProbeBridgeCliJsonOutput {
+                accepted: super::PylonProbeBridgeAcceptedResponse {
+                    request_id: "request-001".to_string(),
+                    run_id: "run-001".to_string(),
+                    probe_session_id: "session-001".to_string(),
+                    probe_turn_id: "turn-001".to_string(),
+                    provider: json!({"backendProfile": "openai-codex-subscription"}),
+                    transcript_ref: "probe://sessions/session-001/transcript".to_string(),
+                    correlation: json!({"scheduleId": "schedule-001"}),
+                },
+                events: vec![
+                    json!({"type": "run_started", "runId": "run-001"}),
+                    json!({"type": "text_delta", "runId": "run-001", "delta": "Probe accepted"}),
+                    json!({"type": "run_completed", "runId": "run-001", "status": "accepted"}),
+                ],
+            },
+        );
+
+        assert_eq!(result.completion.status, "succeeded");
+        assert!(result.events.iter().any(|event| {
+            event.event_type == "probe.session.accepted"
+                && event.payload.get("probe_session_id") == Some(&json!("session-001"))
+                && event.payload.get("transcript_ref")
+                    == Some(&json!("probe://sessions/session-001/transcript"))
+        }));
+        assert!(result.events.iter().any(|event| {
+            event.event_type == "assistant.delta"
+                && event.payload.get("delta") == Some(&json!("Probe accepted"))
+        }));
+    }
+
+    #[test]
+    fn pylon_codex_workload_projects_runner_events_in_stable_order() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![
+                super::PylonCodexRunnerEvent::RunStatus {
+                    status: "started".to_string(),
+                },
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "Local ".to_string(),
+                },
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "Codex".to_string(),
+                },
+                super::PylonCodexRunnerEvent::ToolStarted {
+                    tool: "repo_read".to_string(),
+                    label: "Inspect repo".to_string(),
+                },
+                super::PylonCodexRunnerEvent::ToolOutputSummary {
+                    tool: "repo_read".to_string(),
+                    summary: "Read-only inspection complete.".to_string(),
+                },
+                super::PylonCodexRunnerEvent::PatchPreview {
+                    diff: "diff --git a/README.md b/README.md".to_string(),
+                },
+                super::PylonCodexRunnerEvent::Completed {
+                    usage: Some(json!({"output_tokens": 12})),
+                },
+            ],
+        );
+
+        assert_eq!(result.completion.status, "succeeded");
+        assert_eq!(result.completion.usage, Some(json!({"output_tokens": 12})));
+        assert_eq!(
+            result
+                .events
+                .iter()
+                .map(|event| (event.sequence, event.event_type.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (1, "run.status"),
+                (2, "run.status"),
+                (3, "assistant.delta"),
+                (4, "assistant.delta"),
+                (5, "tool.start"),
+                (6, "tool.end"),
+                (7, "patch.preview"),
+                (8, "run.status"),
+            ]
+        );
+        assert_eq!(
+            result.events[2].payload.get("delta"),
+            Some(&json!("Local "))
+        );
+        assert_eq!(
+            result.events[7].payload.get("status"),
+            Some(&json!("succeeded"))
+        );
+    }
+
+    #[test]
+    fn pylon_codex_streaming_projection_emits_events_before_completion() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let prepared = super::prepare_pylon_codex_workload_assignment(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+        )
+        .expect("prepared workload");
+        let mut builder = super::PylonCodexEventBuilder::default();
+        let mut completion = super::default_pylon_codex_workload_completion();
+        let mut saw_terminal = false;
+
+        super::project_pylon_codex_runner_event_for_streaming(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            super::PylonCodexRunnerEvent::RunStatus {
+                status: "running".to_string(),
+            },
+        );
+
+        assert_eq!(builder.events.len(), 1);
+        assert_eq!(builder.events[0].sequence, 1);
+        assert_eq!(builder.events[0].event_type, "run.status");
+        assert_eq!(
+            builder.events[0].payload.get("status"),
+            Some(&json!("running"))
+        );
+        assert_eq!(
+            builder.events[0].payload.get("assignment_uuid"),
+            Some(&json!("workload-001"))
+        );
+        assert!(!saw_terminal);
+
+        super::project_pylon_codex_runner_event_for_streaming(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            super::PylonCodexRunnerEvent::AssistantTextDelta {
+                delta: "streamed before terminal".to_string(),
+            },
+        );
+
+        assert_eq!(builder.events.len(), 2);
+        assert_eq!(builder.events[1].sequence, 2);
+        assert_eq!(builder.events[1].event_type, "assistant.delta");
+        assert_eq!(
+            builder.events[1].payload.get("delta"),
+            Some(&json!("streamed before terminal"))
+        );
+        assert_eq!(completion.status, "succeeded");
+        assert!(!saw_terminal);
+
+        super::project_pylon_codex_runner_event_for_streaming(
+            &prepared,
+            &mut builder,
+            &mut completion,
+            &mut saw_terminal,
+            super::PylonCodexRunnerEvent::Completed {
+                usage: Some(json!({"output_tokens": 3})),
+            },
+        );
+
+        assert!(saw_terminal);
+        assert_eq!(builder.events.len(), 3);
+        assert_eq!(builder.events[2].sequence, 3);
+        assert_eq!(
+            builder.events[2].payload.get("status"),
+            Some(&json!("succeeded"))
+        );
+        assert_eq!(completion.usage, Some(json!({"output_tokens": 3})));
+    }
+
+    #[test]
+    fn pylon_codex_workload_refuses_unsupported_capability() {
+        let config = pylon_codex_test_config();
+        let mut assignment = pylon_codex_assignment();
+        assignment.capability_key = "local_gemma".to_string();
+
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![super::PylonCodexRunnerEvent::Completed { usage: None }],
+        );
+
+        assert_eq!(result.completion.status, "failed");
+        assert_eq!(
+            result.completion.error_code.as_deref(),
+            Some("assignment_refused")
+        );
+        assert_eq!(result.events[0].event_type, "pylon.error");
+        assert!(
+            result.events[0]
+                .payload
+                .get("message")
+                .and_then(Value::as_str)
+                .is_some_and(|message| message.contains("local_gemma"))
+        );
+    }
+
+    #[test]
+    fn pylon_codex_workload_refuses_missing_workspace_mapping() {
+        let config = default_config(std::path::Path::new("/tmp/pylon-codex-test"));
+        let assignment = pylon_codex_assignment();
+
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![super::PylonCodexRunnerEvent::Completed { usage: None }],
+        );
+
+        assert_eq!(result.completion.status, "failed");
+        assert!(result.events.iter().any(|event| {
+            event.event_type == "pylon.error"
+                && event
+                    .payload
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .is_some_and(|message| message.contains("configured local workspace"))
+        }));
+    }
+
+    #[test]
+    fn pylon_codex_workload_maps_runner_failure_to_safe_events() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![super::PylonCodexRunnerEvent::Error {
+                code: "codex_auth_expired".to_string(),
+                message: "Local Codex auth expired.".to_string(),
+            }],
+        );
+
+        assert_eq!(result.completion.status, "failed");
+        assert_eq!(
+            result.completion.error_message.as_deref(),
+            Some("Local Codex auth expired.")
+        );
+        assert_eq!(
+            result
+                .events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["run.status", "pylon.error", "run.status"]
+        );
+        assert_eq!(
+            result.events[2].payload.get("status"),
+            Some(&json!("failed"))
+        );
+    }
+
+    #[test]
+    fn pylon_codex_workload_refuses_malformed_prompt() {
+        let config = pylon_codex_test_config();
+        let mut assignment = pylon_codex_assignment();
+        assignment.request.prompt.clear();
+        assignment.request.messages.clear();
+
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![super::PylonCodexRunnerEvent::Completed { usage: None }],
+        );
+
+        assert_eq!(result.completion.status, "failed");
+        assert!(
+            result
+                .events
+                .first()
+                .and_then(|event| event.payload.get("message"))
+                .and_then(Value::as_str)
+                .is_some_and(|message| message.contains("missing a prompt"))
+        );
+    }
+
+    #[test]
+    fn pylon_codex_workload_event_submissions_are_web_safe() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "Hello".to_string(),
+                },
+                super::PylonCodexRunnerEvent::Completed { usage: None },
+            ],
+        );
+        let submission = super::build_openagents_pylon_workload_event_submission(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            assignment.nonce.as_str(),
+            &result.events[1],
+        );
+        let completion = super::build_openagents_pylon_workload_completion_submission(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            assignment.nonce.as_str(),
+            &result.completion,
+        );
+        let serialized = serde_json::to_value(&submission).expect("serialize event submission");
+        let serialized_completion =
+            serde_json::to_value(&completion).expect("serialize completion submission");
+
+        assert_eq!(
+            serialized.get("public_key_hex").and_then(Value::as_str),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+        assert_eq!(
+            serialized.get("assignment_nonce").and_then(Value::as_str),
+            Some("nonce-001")
+        );
+        assert_eq!(
+            serialized.get("event_type").and_then(Value::as_str),
+            Some("assistant.delta")
+        );
+        assert_eq!(
+            serialized_completion.get("status").and_then(Value::as_str),
+            Some("succeeded")
+        );
+
+        let combined = format!("{serialized}{serialized_completion}");
+        assert!(!combined.contains("/tmp/openagents-local"));
+        assert!(!combined.contains("access_token"));
+        assert!(!combined.contains("credential"));
+    }
+
+    #[test]
+    fn pylon_codex_workload_timeout_stops_late_output() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "before timeout".to_string(),
+                },
+                super::PylonCodexRunnerEvent::TimedOut {
+                    code: "local_codex_timeout".to_string(),
+                    message: "Local Codex run exceeded the configured timeout.".to_string(),
+                },
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "late output".to_string(),
+                },
+                super::PylonCodexRunnerEvent::Completed { usage: None },
+            ],
+        );
+
+        assert_eq!(result.completion.status, "failed");
+        assert_eq!(
+            result.completion.error_code.as_deref(),
+            Some("local_codex_timeout")
+        );
+        assert!(result.events.iter().any(|event| {
+            event.event_type == "run.status"
+                && event.payload.get("status") == Some(&json!("timed_out"))
+        }));
+        assert!(!result.events.iter().any(|event| {
+            event
+                .payload
+                .get("delta")
+                .and_then(Value::as_str)
+                .is_some_and(|delta| delta.contains("late output"))
+        }));
+    }
+
+    #[test]
+    fn pylon_codex_workload_cancellation_before_start_projects_terminal_ack() {
+        let config = pylon_codex_test_config();
+        let assignment = pylon_codex_assignment();
+        let result = super::run_pylon_codex_workload_with_runner_events(
+            &config,
+            &ready_codex_health(),
+            &assignment,
+            vec![
+                super::PylonCodexRunnerEvent::Cancelled {
+                    code: "broker_cancelled".to_string(),
+                    message: "Browser cancelled the run.".to_string(),
+                },
+                super::PylonCodexRunnerEvent::AssistantTextDelta {
+                    delta: "late output".to_string(),
+                },
+            ],
+        );
+
+        assert_eq!(result.completion.status, "cancelled");
+        assert_eq!(
+            result.completion.error_code.as_deref(),
+            Some("broker_cancelled")
+        );
+        assert_eq!(
+            result
+                .events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["run.status", "pylon.cancelled", "run.status"]
+        );
+        assert_eq!(
+            result.events[2].payload.get("status"),
+            Some(&json!("cancelled"))
+        );
+        assert!(!result.events.iter().any(|event| {
+            event
+                .payload
+                .get("delta")
+                .and_then(Value::as_str)
+                .is_some_and(|delta| delta.contains("late output"))
+        }));
+    }
+
+    #[test]
+    fn pylon_codex_broker_status_maps_to_stop_reasons() {
+        let cancelled = super::OpenAgentsPylonWorkloadStatus {
+            assignment_uuid: "assignment-1".to_string(),
+            capability_key: "codex_agent".to_string(),
+            status: "cancelled".to_string(),
+            terminal: true,
+            cancellation_requested: true,
+            error_code: Some("browser_cancelled".to_string()),
+            error_message: Some("Browser cancelled the run.".to_string()),
+        };
+        let timed_out = super::OpenAgentsPylonWorkloadStatus {
+            assignment_uuid: "assignment-2".to_string(),
+            capability_key: "codex_agent".to_string(),
+            status: "timed_out".to_string(),
+            terminal: true,
+            cancellation_requested: false,
+            error_code: Some("claimed_timeout".to_string()),
+            error_message: Some("Broker timeout.".to_string()),
+        };
+        let running = super::OpenAgentsPylonWorkloadStatus {
+            assignment_uuid: "assignment-3".to_string(),
+            capability_key: "codex_agent".to_string(),
+            status: "running".to_string(),
+            terminal: false,
+            cancellation_requested: false,
+            error_code: None,
+            error_message: None,
+        };
+
+        assert_eq!(
+            super::pylon_codex_stop_reason_from_assignment_status(&cancelled)
+                .map(|reason| (reason.kind, reason.code)),
+            Some((
+                super::PylonCodexWorkloadStopKind::Cancelled,
+                "broker_cancelled".to_string()
+            ))
+        );
+        assert_eq!(
+            super::pylon_codex_stop_reason_from_assignment_status(&timed_out)
+                .map(|reason| (reason.kind, reason.code)),
+            Some((
+                super::PylonCodexWorkloadStopKind::TimedOut,
+                "broker_timed_out".to_string()
+            ))
+        );
+        assert!(super::pylon_codex_stop_reason_from_assignment_status(&running).is_none());
+    }
+
+    #[test]
+    fn pylon_codex_broker_cancel_ack_filters_late_events() {
+        let completion = super::PylonCodexWorkloadCompletion {
+            status: "cancelled".to_string(),
+            error_code: Some("broker_cancelled".to_string()),
+            error_message: Some("Browser cancelled the run.".to_string()),
+            usage: None,
+        };
+        let cancel_event = super::PylonCodexWorkloadEvent {
+            sequence: 1,
+            event_type: "pylon.cancelled".to_string(),
+            actor_type: Some("pylon".to_string()),
+            payload: BTreeMap::new(),
+        };
+        let late_delta = super::PylonCodexWorkloadEvent {
+            sequence: 2,
+            event_type: "assistant.delta".to_string(),
+            actor_type: Some("assistant".to_string()),
+            payload: BTreeMap::from([("delta".to_string(), json!("late"))]),
+        };
+
+        assert!(super::pylon_codex_completion_reflects_broker_terminal(
+            &completion
+        ));
+        assert!(super::pylon_codex_event_is_broker_cancel_ack(
+            &cancel_event,
+            &completion
+        ));
+        assert!(!super::pylon_codex_event_is_broker_cancel_ack(
+            &late_delta,
+            &completion
+        ));
+    }
+
+    #[test]
+    fn account_link_response_remains_backward_compatible_without_capabilities()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let response =
+            serde_json::from_value::<super::OpenAgentsPylonLinkCompletionResponse>(json!({
+                "linked": true,
+                "observedPylon": {
+                    "id": 41,
+                    "identityKey": "11111111...22222222",
+                    "publicKeyHex": "aa",
+                    "npub": "npub1test",
+                    "nodeLabel": "legacy-pylon",
+                    "runtimeState": "online",
+                    "readyModel": null,
+                    "eligibleProductCount": 0,
+                    "products": []
+                },
+                "accountLink": {
+                    "id": 91,
+                    "userId": 7,
+                    "observedPylonId": 41,
+                    "state": "active",
+                    "method": "cli_token"
+                }
+            }))?;
+
+        assert!(response.observed_pylon.capabilities.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn account_link_response_accepts_website_camel_case_capabilities()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let response =
+            serde_json::from_value::<super::OpenAgentsPylonLinkCompletionResponse>(json!({
+                "linked": true,
+                "observedPylon": {
+                    "id": 41,
+                    "identityKey": "11111111...22222222",
+                    "publicKeyHex": "aa",
+                    "npub": "npub1test",
+                    "nodeLabel": "desk-pylon",
+                    "runtimeState": "online",
+                    "readyModel": null,
+                    "eligibleProductCount": 0,
+                    "products": [],
+                    "capabilities": [
+                        {
+                            "key": "codex_agent",
+                            "status": "ready",
+                            "displayLabel": "Codex on desk-pylon",
+                            "authState": "ready",
+                            "runnerKind": "codex_cli",
+                            "runnerVersion": "codex-cli 0.128.0",
+                            "transportKind": "pylon_workload_poll",
+                            "supportedActions": ["chat"],
+                            "requiredConfirmations": ["shell"],
+                            "workspaceRoots": [],
+                            "metadata": {"schema_version": "openagents.pylon.capability.v1"}
+                        }
+                    ]
+                },
+                "accountLink": {
+                    "id": 91,
+                    "userId": 7,
+                    "observedPylonId": 41,
+                    "state": "active",
+                    "method": "cli_token"
+                }
+            }))?;
+
+        let capability = response
+            .observed_pylon
+            .capabilities
+            .first()
+            .ok_or_else(|| std::io::Error::other("missing decoded capability"))?;
+
+        assert_eq!(capability.key, "codex_agent");
+        assert_eq!(capability.display_label, "Codex on desk-pylon");
+        assert_eq!(capability.auth_state, "ready");
+        assert_eq!(capability.runner_kind, "codex_cli");
+        assert_eq!(
+            capability.runner_version.as_deref(),
+            Some("codex-cli 0.128.0")
+        );
+        assert_eq!(capability.transport_kind, "pylon_workload_poll");
+        assert_eq!(capability.supported_actions, vec!["chat"]);
+        assert_eq!(capability.required_confirmations, vec!["shell"]);
+        Ok(())
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn account_link_command_posts_local_identity_and_snapshot_to_openagents()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -43071,9 +47869,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                             "npub": payload["npub"],
                             "nodeLabel": payload["node_label"],
                             "runtimeState": payload["runtime_state"],
+                            "runtimeDiagnostics": payload["runtime"],
                             "readyModel": payload["ready_model"],
                             "eligibleProductCount": payload["eligible_product_count"],
-                            "products": payload["products"]
+                            "products": payload["products"],
+                            "capabilities": payload["capabilities"]
                         },
                         "accountLink": {
                             "id": 91,
@@ -43141,15 +47941,45 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "account link report should echo the local identity and runtime state",
         )?;
         ensure(
+            report["runtime"]["mode"] == json!("online")
+                && report["runtime"]["last_action"]
+                    .as_str()
+                    .is_some_and(|value| value.contains("pylon is online"))
+                && report["runtime"]["authoritative_status"] == json!("online"),
+            "account link report should echo the runtime diagnostic summary from the website",
+        )?;
+        ensure(
             report["ready_model"] == json!("gemma4:e4b")
-                && report["eligible_product_count"] == json!(2),
+                && report["eligible_product_count"] == json!(3),
             "account link report should include the ready model and eligible product count",
         )?;
         ensure(
             report["products"]
                 .as_array()
-                .is_some_and(|products| products.len() == 2),
+                .is_some_and(|products| products.len() == 3),
             "account link report should retain the eligible product ids for automation",
+        )?;
+        ensure(
+            report["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities.iter().any(|capability| {
+                        capability["key"] == json!("codex_agent")
+                            && capability["transport_kind"] == json!("pylon_workload_poll")
+                            && capability["supported_actions"]
+                                .as_array()
+                                .is_some_and(|actions| {
+                                    actions.iter().any(|action| action.as_str() == Some("chat"))
+                                        && actions
+                                            .iter()
+                                            .any(|action| action.as_str() == Some("repo_read"))
+                                        && actions
+                                            .iter()
+                                            .any(|action| action.as_str() == Some("patch_preview"))
+                                })
+                    })
+                }),
+            "account link report should echo the local Codex capability advertisement",
         )?;
         ensure(
             report["account_link_id"] == json!(91)
@@ -43187,12 +48017,33 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         ensure(
             completion_request.1["node_label"] == json!("linked-pylon-alpha")
                 && completion_request.1["runtime_state"] == json!("online")
+                && completion_request.1["runtime"]["mode"] == json!("online")
+                && completion_request.1["runtime"]["last_action"]
+                    .as_str()
+                    .is_some_and(|value| value.contains("pylon is online"))
+                && completion_request.1["runtime"]["authoritative_status"] == json!("online")
+                && completion_request.1["runtime"]["execution_backend_label"]
+                    == json!("local Gemma runtime")
                 && completion_request.1["ready_model"] == json!("gemma4:e4b"),
             "account link request should include the current local node label and runtime summary",
         )?;
         ensure(
-            completion_request.1["eligible_product_count"] == json!(2),
+            completion_request.1["eligible_product_count"] == json!(3),
             "account link request should include the count of eligible products",
+        )?;
+        ensure(
+            completion_request.1["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities.iter().any(|capability| {
+                        capability["key"] == json!("codex_agent")
+                            && capability["runner_kind"] == json!("codex_cli")
+                            && capability["transport_kind"] == json!("pylon_workload_poll")
+                            && capability.get("runner_path").is_none()
+                            && capability.get("credential_path").is_none()
+                    })
+                }),
+            "account link request should include a web-safe Codex capability without local secret paths",
         )?;
         let product_ids = completion_request.1["products"]
             .as_array()
@@ -43203,11 +48054,209 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 .any(|value| value.as_str() == Some("psionic.local.inference.gemma.single_node"))
                 && product_ids.iter().any(|value| {
                     value.as_str()
+                        == Some("psionic.cluster.training.adapter_contributor.cluster_attached")
+                })
+                && product_ids.iter().any(|value| {
+                    value.as_str()
                         == Some(
                             "psionic.remote_sandbox.sandbox_execution.python_exec.sandbox_isolated",
                         )
                 }),
             "account link request should send the canonical eligible product ids",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn account_refresh_command_posts_current_snapshot_without_a_token()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let recorded_requests = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+        let recorded_requests_for_server = Arc::clone(&recorded_requests);
+        let openagents_base_url = start_mock_http_server(move |method, path, body| {
+            let payload = serde_json::from_str::<Value>(body.as_str())
+                .unwrap_or_else(|_| json!({"raw_body": body}));
+            recorded_requests_for_server
+                .lock()
+                .expect("account-refresh request log")
+                .push((format!("{method} {path}"), payload.clone()));
+            match (method.as_str(), path.as_str()) {
+                ("POST", "/api/pylon-links/refresh") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "linked": true,
+                        "observedPylon": {
+                            "id": 41,
+                            "identityKey": "11111111...22222222",
+                            "publicKeyHex": payload["public_key_hex"],
+                            "npub": payload["npub"],
+                            "nodeLabel": payload["node_label"],
+                            "runtimeState": payload["runtime_state"],
+                            "runtimeDiagnostics": payload["runtime"],
+                            "readyModel": payload["ready_model"],
+                            "eligibleProductCount": payload["eligible_product_count"],
+                            "products": payload["products"],
+                            "capabilities": payload["capabilities"]
+                        },
+                        "accountLink": {
+                            "id": 91,
+                            "userId": 7,
+                            "observedPylonId": 41,
+                            "state": "active",
+                            "method": "cli_token"
+                        }
+                    })
+                    .to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+        let local_gemma_base_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/api/tags") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "models": [
+                            {"name": "gemma4:e4b"}
+                        ]
+                    })
+                    .to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = seed_observability_snapshot(config_path.as_path())?;
+        config.node_label = "refresh-pylon-alpha".to_string();
+        config.local_gemma_base_url = local_gemma_base_url;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let output = run_cli(Cli {
+            command: Command::Account {
+                command: AccountCommand::Refresh {
+                    base_url: openagents_base_url.clone(),
+                    json: true,
+                },
+            },
+            config_path: config_path.clone(),
+        })
+        .await?
+        .ok_or_else(|| std::io::Error::other("missing account-refresh output"))?;
+        let report = serde_json::from_str::<Value>(output.as_str())?;
+
+        ensure(
+            report["linked"] == json!(true)
+                && report["base_url"] == json!(openagents_base_url)
+                && report["node_label"] == json!("refresh-pylon-alpha")
+                && report["public_key_hex"] == json!(identity.public_key_hex),
+            "account refresh report should confirm the refreshed linked Pylon",
+        )?;
+
+        let requests = recorded_requests
+            .lock()
+            .expect("account-refresh request log")
+            .clone();
+        let refresh_request = requests
+            .iter()
+            .find(|(route, _)| route == "POST /api/pylon-links/refresh")
+            .ok_or_else(|| std::io::Error::other("missing account-refresh request"))?;
+
+        ensure(
+            refresh_request.1.get("token").is_none()
+                && refresh_request.1["public_key_hex"] == json!(identity.public_key_hex)
+                && refresh_request.1["npub"] == json!(identity.npub)
+                && refresh_request.1["node_label"] == json!("refresh-pylon-alpha"),
+            "account refresh request should publish identity state without a one-time token",
+        )?;
+        ensure(
+            refresh_request.1["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities.iter().any(|capability| {
+                        capability["key"] == json!("codex_agent")
+                            && capability["transport_kind"] == json!("pylon_workload_poll")
+                    })
+                }),
+            "account refresh request should publish the current Codex capability snapshot",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn account_link_status_ignores_live_admin_status_for_a_different_identity()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let local_gemma_base_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/api/tags") => (
+                    200,
+                    "application/json",
+                    json!({
+                        "models": [
+                            {"name": "gemma4:e4b"}
+                        ]
+                    })
+                    .to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        let mut config = seed_observability_snapshot(config_path.as_path())?;
+        config.local_gemma_base_url = local_gemma_base_url;
+        save_config(config_path.as_path(), &config)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+
+        let local_status = load_status_or_detect(config_path.as_path()).await?;
+        let mut mismatched_live_status = serde_json::to_value(&local_status)?;
+        mismatched_live_status["snapshot"]["identity"]["public_key_hex"] = json!("cd".repeat(32));
+        mismatched_live_status["snapshot"]["identity"]["npub"] =
+            json!("npub1staleadminstatusstaleadminstatusstaleadminstatus");
+        mismatched_live_status["snapshot"]["runtime"]["authoritative_status"] = json!("error");
+        mismatched_live_status["snapshot"]["runtime"]["mode"] = json!("degraded");
+        mismatched_live_status["snapshot"]["runtime"]["last_error"] =
+            json!("stale live admin status from a different Pylon identity");
+        let mismatched_live_status_for_server = mismatched_live_status.clone();
+        let admin_status_url = start_mock_http_server(move |method, path, _body| {
+            match (method.as_str(), path.as_str()) {
+                ("GET", "/v1/status") => (
+                    200,
+                    "application/json",
+                    mismatched_live_status_for_server.to_string(),
+                ),
+                _ => (500, "text/plain", "unexpected request".to_string()),
+            }
+        })
+        .await?;
+
+        config.admin_listen_addr = admin_status_url
+            .strip_prefix("http://")
+            .unwrap_or(admin_status_url.as_str())
+            .to_string();
+        save_config(config_path.as_path(), &config)?;
+
+        let status = super::load_account_link_status(&config, &identity).await?;
+        let snapshot = status
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("missing account-link status snapshot"))?;
+
+        ensure(
+            snapshot
+                .identity
+                .as_ref()
+                .and_then(|metadata| metadata.public_key_hex.as_deref())
+                == Some(identity.public_key_hex.as_str())
+                && provider_runtime_state_label(&status) == "online"
+                && snapshot.runtime.last_error.as_deref()
+                    != Some("stale live admin status from a different Pylon identity"),
+            "account linking should not publish stale live status from another node identity",
         )
     }
 
@@ -47694,6 +52743,20 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 product.get("backend").and_then(Value::as_str) != Some("apple_foundation_models")
             }),
             "doctor should hide the legacy Apple FM-only surface from standalone Pylon onboarding",
+        )?;
+        ensure(
+            json.get("codex_agent")
+                .and_then(Value::as_object)
+                .is_some_and(|report| {
+                    report
+                        .get("runner_kind")
+                        .and_then(Value::as_str)
+                        .is_some_and(|value| value == "codex_cli")
+                        && report.get("runner_path").is_none()
+                        && report.get("credential_path").is_none()
+                        && report.get("auth_file").is_none()
+                }),
+            "doctor should include a local Codex readiness report without credential paths",
         )
     }
 

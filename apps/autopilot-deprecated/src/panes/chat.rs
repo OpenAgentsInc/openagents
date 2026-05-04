@@ -16,8 +16,6 @@ use crate::app_state::{
     AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
     AutopilotReviewArtifact, AutopilotRole, AutopilotTerminalSession, ChatBrowseMode,
     ChatHeaderMenuKind, ChatPaneInputs, ChatTranscriptSelectionState,
-    current_forge_local_operator_display_name, forge_shared_session_controller_label,
-    forge_shared_session_local_role_label,
     DirectMessageMessageProjection, DirectMessageRoomProjection, ForgeBountyClaim,
     ForgeBountyContract, ForgeCampaign, ForgeDelegatedChildSessionCard, ForgeDeliveryCiWatch,
     ForgeDeliveryReceipt, ForgeEvidenceBundle, ForgeHostedAuditBundle, ForgeKnowledgePack,
@@ -25,6 +23,8 @@ use crate::app_state::{
     ForgeWorkspaceRestoreManifest, ForgeWorkspaceSnapshot, ManagedChatChannelProjection,
     ManagedChatDeliveryState, ManagedChatGroupProjection, ManagedChatMessageProjection,
     ManagedChatRelayState, PaneKind, ProbeTurnAttachmentRef, RenderState,
+    current_forge_local_operator_display_name, forge_shared_session_controller_label,
+    forge_shared_session_local_role_label,
 };
 use crate::hotbar::{HOTBAR_SLOT_NOSTR_IDENTITY, activate_hotbar_slot};
 use crate::labor_orchestrator::CodexLaborBinding;
@@ -417,8 +417,7 @@ struct ManagedChatTranscriptLayoutCacheEntry {
 
 #[derive(Default)]
 struct ManagedChatTranscriptLayoutCache {
-    entries:
-        BTreeMap<ManagedChatTranscriptLayoutCacheKey, ManagedChatTranscriptLayoutCacheEntry>,
+    entries: BTreeMap<ManagedChatTranscriptLayoutCacheKey, ManagedChatTranscriptLayoutCacheEntry>,
     lru: VecDeque<ManagedChatTranscriptLayoutCacheKey>,
 }
 
@@ -2888,10 +2887,7 @@ fn active_shared_session_meta_line(session: &ForgeSharedSession) -> String {
 
 fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String {
     let controller_label = forge_shared_session_controller_label(session);
-    let mut lines = vec![format!(
-        "- **current controller:** {}",
-        controller_label
-    )];
+    let mut lines = vec![format!("- **current controller:** {}", controller_label)];
     lines.push(format!(
         "- **control posture:** {}",
         session.control_owner.display_label()
@@ -3200,10 +3196,7 @@ fn active_shared_session_markdown_source(session: &ForgeSharedSession) -> String
             .clone()
             .unwrap_or_else(|| handoff.to_owner.display_label().to_string());
         lines.push(String::new());
-        lines.push(format!(
-            "**Last handoff:** {} -> {}",
-            from_label, to_label
-        ));
+        lines.push(format!("**Last handoff:** {} -> {}", from_label, to_label));
         lines.push(String::new());
         lines.push(handoff.summary.clone());
         lines.push(String::new());

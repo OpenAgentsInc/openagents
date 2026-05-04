@@ -460,7 +460,12 @@ fn paint_ledger_rows(
     }
 
     if ledger_view.rows.len() > visible_rows {
-        let track_bounds = Bounds::new(bounds.max_x() - 5.0, bounds.origin.y, 3.0, bounds.size.height);
+        let track_bounds = Bounds::new(
+            bounds.max_x() - 5.0,
+            bounds.origin.y,
+            3.0,
+            bounds.size.height,
+        );
         paint.scene.draw_quad(
             Quad::new(track_bounds)
                 .with_background(theme::bg::ELEVATED.with_alpha(0.45))
@@ -476,7 +481,12 @@ fn paint_ledger_rows(
             let progress = start_index as f32 / max_offset as f32;
             bounds.origin.y + (bounds.size.height - thumb_height) * progress
         };
-        let thumb_bounds = Bounds::new(track_bounds.origin.x, thumb_y, track_bounds.size.width, thumb_height);
+        let thumb_bounds = Bounds::new(
+            track_bounds.origin.x,
+            thumb_y,
+            track_bounds.size.width,
+            thumb_height,
+        );
         paint.scene.draw_quad(
             Quad::new(thumb_bounds)
                 .with_background(Hsla::from_hex(0x2aa7e0).with_alpha(0.88))
@@ -599,14 +609,12 @@ fn paint_ledger_row(
         bounds.size.width - 20.0,
         5.4,
     );
-    paint.scene.draw_text(
-        paint.text.layout_mono(
-            identity_line.as_str(),
-            Point::new(bounds.origin.x + 10.0, bounds.origin.y + 63.0),
-            8.8,
-            theme::text::MUTED,
-        ),
-    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        identity_line.as_str(),
+        Point::new(bounds.origin.x + 10.0, bounds.origin.y + 63.0),
+        8.8,
+        theme::text::MUTED,
+    ));
 }
 
 fn paint_ledger_detail(
