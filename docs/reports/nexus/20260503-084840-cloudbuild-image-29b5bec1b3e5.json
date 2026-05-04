@@ -1,0 +1,122 @@
+{
+  "generated_at": "20260503-084840",
+  "kind": "nexus_cloudbuild_image",
+  "git_sha": "29b5bec1b3e51d4b5cef6ca40bc92d51f49c6f37",
+  "git_short_sha": "29b5bec1b3e5",
+  "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:29b5bec1b3e5",
+  "cache_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:buildcache-fast-release",
+  "build_profile": "fast-release",
+  "machine_type": "e2-highcpu-32",
+  "disk_size_gb": 200,
+  "sccache_enabled": false,
+  "sccache_bucket": null,
+  "sccache_key_prefix": null,
+  "context": {
+    "file_count": 377,
+    "size_human": "9.1M"
+  },
+  "timing": {
+    "started_unix_ms": 1777798127971,
+    "finished_unix_ms": 1777798495448,
+    "total_duration_ms": 367477
+  },
+  "cloud_build": {
+    "createTime": "2026-05-03T08:48:50.459860384Z",
+    "finishTime": "2026-05-03T08:54:50.666202Z",
+    "id": "a5628136-7a77-4c5c-a46b-b6eeebfadb97",
+    "logUrl": "https://console.cloud.google.com/cloud-build/builds/a5628136-7a77-4c5c-a46b-b6eeebfadb97?project=157437760789",
+    "logsBucket": "gs://157437760789.cloudbuild-logs.googleusercontent.com",
+    "name": "projects/157437760789/locations/global/builds/a5628136-7a77-4c5c-a46b-b6eeebfadb97",
+    "options": {
+      "diskSizeGb": "200",
+      "logging": "LEGACY",
+      "machineType": "E2_HIGHCPU_32",
+      "pool": {}
+    },
+    "projectId": "openagentsgemini",
+    "queueTtl": "3600s",
+    "results": {
+      "buildStepImages": [
+        "sha256:26b8fc76be1fbbf478fff90fd3ea11557ee5016339bc8931180d8576cc365c5d"
+      ],
+      "buildStepOutputs": [
+        ""
+      ]
+    },
+    "serviceAccount": "projects/openagentsgemini/serviceAccounts/157437760789-compute@developer.gserviceaccount.com",
+    "source": {
+      "storageSource": {
+        "bucket": "openagentsgemini_cloudbuild",
+        "generation": "1777798129983675",
+        "object": "source/1777798128.197429-1986742544a344728195af9a9f946b1a.tgz"
+      }
+    },
+    "sourceProvenance": {
+      "fileHashes": {
+        "gs://openagentsgemini_cloudbuild/source/1777798128.197429-1986742544a344728195af9a9f946b1a.tgz#1777798129983675": {
+          "fileHash": [
+            {
+              "type": "MD5",
+              "value": "Y6HxHx5Ab5_kkhVS-HTwLw=="
+            },
+            {
+              "type": "SHA256",
+              "value": "qc7r4596bJYeUP4VHlgwC68j-83W5NH3ZflHyvoU7B8="
+            }
+          ]
+        }
+      },
+      "resolvedStorageSource": {
+        "bucket": "openagentsgemini_cloudbuild",
+        "generation": "1777798129983675",
+        "object": "source/1777798128.197429-1986742544a344728195af9a9f946b1a.tgz"
+      }
+    },
+    "startTime": "2026-05-03T08:49:43.789565480Z",
+    "status": "SUCCESS",
+    "steps": [
+      {
+        "args": [
+          "-lc",
+          "set -euo pipefail\ndocker buildx create --name nexus-cloudbuilder --driver docker-container --use\ndocker buildx inspect --bootstrap\ndocker buildx build \\\n  --builder nexus-cloudbuilder \\\n  --platform linux/amd64 \\\n  --build-arg BUILD_PROFILE=fast-release \\\n  --build-arg SCCACHE_GCS_BUCKET= \\\n  --build-arg SCCACHE_GCS_KEY_PREFIX= \\\n  --cache-from type=registry,ref=us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:buildcache-fast-release \\\n  --cache-to type=registry,ref=us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:buildcache-fast-release,mode=max \\\n  -f apps/nexus-relay/Dockerfile \\\n  -t us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:29b5bec1b3e5 \\\n  --push \\\n  .\n"
+        ],
+        "entrypoint": "bash",
+        "env": [
+          "DOCKER_BUILDKIT=1"
+        ],
+        "name": "gcr.io/cloud-builders/docker",
+        "pullTiming": {
+          "endTime": "2026-05-03T08:49:49.831381814Z",
+          "startTime": "2026-05-03T08:49:49.824310284Z"
+        },
+        "status": "SUCCESS",
+        "timing": {
+          "endTime": "2026-05-03T08:54:48.617102987Z",
+          "startTime": "2026-05-03T08:49:49.824310284Z"
+        }
+      }
+    ],
+    "substitutions": {
+      "_BUILD_PROFILE": "fast-release",
+      "_CACHE_IMAGE": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:buildcache-fast-release",
+      "_IMAGE": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:29b5bec1b3e5",
+      "_SCCACHE_BUCKET": "",
+      "_SCCACHE_KEY_PREFIX": ""
+    },
+    "timeout": "7200s",
+    "timing": {
+      "BUILD": {
+        "endTime": "2026-05-03T08:54:48.617160700Z",
+        "startTime": "2026-05-03T08:49:49.320907891Z"
+      },
+      "FETCHSOURCE": {
+        "endTime": "2026-05-03T08:49:49.319963745Z",
+        "startTime": "2026-05-03T08:49:47.035810312Z"
+      },
+      "STORAGE_SOURCE": {
+        "endTime": "2026-05-03T08:49:49.319963745Z",
+        "startTime": "2026-05-03T08:49:47.035810312Z"
+      }
+    }
+  }
+}

@@ -61,4 +61,3 @@ where
         self.as_ref().run(input)
     }
 }
-

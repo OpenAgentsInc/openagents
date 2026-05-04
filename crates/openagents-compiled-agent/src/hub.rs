@@ -68,7 +68,11 @@ impl<S: Signature> ModuleFamilyHub<S> {
     }
 
     /// Insert a named candidate artifact.
-    pub fn insert_candidate(&mut self, label: impl Into<String>, candidate: Arc<dyn TypedModule<S>>) {
+    pub fn insert_candidate(
+        &mut self,
+        label: impl Into<String>,
+        candidate: Arc<dyn TypedModule<S>>,
+    ) {
         self.candidates
             .insert(label.into(), ModuleVariant::new(candidate));
     }
@@ -147,8 +151,7 @@ impl FirstGraphModuleHub {
     #[must_use]
     pub fn shadow_graph(&self, mode: &ShadowMode) -> Option<SelectedGraph> {
         match mode {
-            ShadowMode::EvaluateCandidate { label }
-            | ShadowMode::CandidateAuthority { label } => {
+            ShadowMode::EvaluateCandidate { label } | ShadowMode::CandidateAuthority { label } => {
                 Some(self.select_graph(GraphAuthority::Candidate, Some(label.as_str())))
             }
             ShadowMode::Disabled => None,
@@ -167,4 +170,3 @@ impl FirstGraphModuleHub {
         }
     }
 }
-

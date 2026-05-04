@@ -724,9 +724,7 @@ fn project_relay_catalog(
                         .map(|reference| reference.coordinate.to_string());
                     let linked_grant_id = offer_coordinate
                         .as_deref()
-                        .and_then(|value| {
-                            link_hints.linked_grant_id_for_offer_coordinate(value)
-                        });
+                        .and_then(|value| link_hints.linked_grant_id_for_offer_coordinate(value));
                     let linked_asset_id = link_hints
                         .linked_asset_id_for_listing_coordinate(listing_coordinate.as_str())
                         .or_else(|| {

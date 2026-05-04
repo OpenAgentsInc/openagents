@@ -1549,7 +1549,8 @@ fn rebuild_managed_chat_projection(
             let channel_ids = ordered_group_channel_ids
                 .remove(&group_id)
                 .unwrap_or_default();
-            let system_channel_id = super::DefaultNip28ChannelConfig::from_env_or_default().channel_id;
+            let system_channel_id =
+                super::DefaultNip28ChannelConfig::from_env_or_default().channel_id;
             let unread_count = channel_ids
                 .iter()
                 .filter(|channel_id| **channel_id != system_channel_id)
@@ -1749,9 +1750,7 @@ fn unread_and_mention_counts(
         }
         unread += 1;
         if let Some(pk) = local_pubkey {
-            if message.author_pubkey != pk
-                && message.mention_pubkeys.iter().any(|c| c == pk)
-            {
+            if message.author_pubkey != pk && message.mention_pubkeys.iter().any(|c| c == pk) {
                 mentions += 1;
             }
         }

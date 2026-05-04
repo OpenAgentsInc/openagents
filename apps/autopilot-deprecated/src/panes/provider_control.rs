@@ -1,6 +1,4 @@
-use wgpui::{
-    Bounds, PaintContext, Point, Quad, RiveFitMode, RiveHandle, RiveSurface, theme,
-};
+use wgpui::{Bounds, PaintContext, Point, Quad, RiveFitMode, RiveHandle, RiveSurface, theme};
 
 use crate::app_state::{
     MissionControlLocalRuntimeLane, ProviderBlocker, ProviderControlHudRuntimeState,
@@ -184,7 +182,10 @@ pub fn paint_provider_control_pane(
 
     let viewport = provider_control_scroll_viewport_bounds(content_bounds);
     let mut detail_rows = vec![
-        ("Mode".to_string(), provider_runtime.mode.label().to_string()),
+        (
+            "Mode".to_string(),
+            provider_runtime.mode.label().to_string(),
+        ),
         ("Model".to_string(), runtime_view.model_label.clone()),
         ("Backend".to_string(), runtime_view.backend_label.clone()),
         ("Load".to_string(), runtime_view.load_label.clone()),
@@ -206,7 +207,10 @@ pub fn paint_provider_control_pane(
     if provider_runtime.mode != crate::app_state::ProviderMode::Offline {
         detail_rows.push((
             "Uptime".to_string(),
-            format!("{}s", provider_runtime.uptime_seconds(std::time::Instant::now())),
+            format!(
+                "{}s",
+                provider_runtime.uptime_seconds(std::time::Instant::now())
+            ),
         ));
     }
 
@@ -221,14 +225,20 @@ pub fn paint_provider_control_pane(
         ));
     }
     if let Some(action) = provider_control.last_action.as_deref() {
-        detail_notes.push((format!("Last action: {action}"), mission_control_text_color()));
+        detail_notes.push((
+            format!("Last action: {action}"),
+            mission_control_text_color(),
+        ));
     }
     if let Some(error) = provider_control.last_error.as_deref() {
         detail_notes.push((format!("Error: {error}"), theme::status::ERROR));
     }
     if !provider_control.local_fm_summary_text.trim().is_empty() {
         detail_notes.push((
-            format!("Local FM summary: {}", provider_control.local_fm_summary_text.trim()),
+            format!(
+                "Local FM summary: {}",
+                provider_control.local_fm_summary_text.trim()
+            ),
             mission_control_text_color(),
         ));
     }
@@ -252,18 +262,17 @@ pub fn paint_provider_control_pane(
     let detail_notes_height = if detail_notes.is_empty() {
         0.0
     } else {
-        20.0
-            + detail_notes
-                .iter()
-                .enumerate()
-                .map(|(index, (text, _))| {
-                    provider_control_note_block_height(
-                        text,
-                        detail_note_chunk_len,
-                        index + 1 != detail_notes.len(),
-                    )
-                })
-                .sum::<f32>()
+        20.0 + detail_notes
+            .iter()
+            .enumerate()
+            .map(|(index, (text, _))| {
+                provider_control_note_block_height(
+                    text,
+                    detail_note_chunk_len,
+                    index + 1 != detail_notes.len(),
+                )
+            })
+            .sum::<f32>()
     };
     let details_panel_height = (PROVIDER_CONTROL_SECTION_CONTENT_TOP
         + detail_rows_height
@@ -339,8 +348,7 @@ fn provider_control_actions_panel_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.x,
         content_bounds.origin.y,
         content_bounds.size.width.max(0.0),
-        (last_button.max_y() - content_bounds.origin.y + ui_style::spacing::PANEL_PADDING)
-            .max(0.0),
+        (last_button.max_y() - content_bounds.origin.y + ui_style::spacing::PANEL_PADDING).max(0.0),
     )
 }
 
@@ -633,12 +641,7 @@ fn paint_provider_control_hud_overlay(
         chip_x = chip_bounds.max_x() + 8.0;
     }
 
-    let summary_bounds = Bounds::new(
-        body.origin.x,
-        chip_y + 32.0,
-        body.size.width.max(0.0),
-        64.0,
-    );
+    let summary_bounds = Bounds::new(body.origin.x, chip_y + 32.0, body.size.width.max(0.0), 64.0);
     paint.scene.draw_quad(
         Quad::new(summary_bounds)
             .with_background(mission_control_panel_header_color().with_alpha(0.42))
@@ -650,19 +653,28 @@ fn paint_provider_control_hud_overlay(
     );
     paint.scene.draw_text(paint.text.layout_mono(
         runtime_view.model_label.as_str(),
-        Point::new(summary_bounds.origin.x + 12.0, summary_bounds.origin.y + 12.0),
+        Point::new(
+            summary_bounds.origin.x + 12.0,
+            summary_bounds.origin.y + 12.0,
+        ),
         16.0,
         mission_control_text_color(),
     ));
     paint.scene.draw_text(paint.text.layout_mono(
         runtime_view.backend_label.as_str(),
-        Point::new(summary_bounds.origin.x + 12.0, summary_bounds.origin.y + 32.0),
+        Point::new(
+            summary_bounds.origin.x + 12.0,
+            summary_bounds.origin.y + 32.0,
+        ),
         10.0,
         mission_control_muted_color(),
     ));
     paint.scene.draw_text(paint.text.layout_mono(
         format!("control {control_label}").as_str(),
-        Point::new(summary_bounds.origin.x + 12.0, summary_bounds.origin.y + 48.0),
+        Point::new(
+            summary_bounds.origin.x + 12.0,
+            summary_bounds.origin.y + 48.0,
+        ),
         9.0,
         mission_control_cyan_color(),
     ));

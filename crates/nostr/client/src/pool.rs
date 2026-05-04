@@ -228,7 +228,9 @@ mod tests {
         pool.add_relay(missing_relay_url.as_str())
             .await
             .expect("add missing relay");
-        pool.connect_all().await.expect("connect at least one relay");
+        pool.connect_all()
+            .await
+            .expect("connect at least one relay");
         pool.subscribe(Subscription::new(
             "test-subscription".to_string(),
             vec![json!({"kinds": [1]})],

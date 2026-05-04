@@ -142,7 +142,10 @@ mod tests {
     #[test]
     fn kind41_is_system_notice() {
         assert_eq!(
-            classify(&make_event(KIND_CHANNEL_METADATA, r#"{"name":"ops-channel"}"#)),
+            classify(&make_event(
+                KIND_CHANNEL_METADATA,
+                r#"{"name":"ops-channel"}"#
+            )),
             ChatMessageClass::SystemNotice
         );
     }

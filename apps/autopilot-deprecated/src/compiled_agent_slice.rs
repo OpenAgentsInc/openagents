@@ -3,8 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use openagents_compiled_agent::{
     AgentRoute, CompiledAgentExecutor, CompiledAgentRun, CompiledModuleManifest,
-    ConfidenceFallbackPolicy, FirstGraphModuleHub, GroundedAnswerInput, GroundedAnswerOutput,
-    GraphAuthority, GroundedAnswerSignature, IntentRouteInput, IntentRouteOutput,
+    ConfidenceFallbackPolicy, FirstGraphModuleHub, GraphAuthority, GroundedAnswerInput,
+    GroundedAnswerOutput, GroundedAnswerSignature, IntentRouteInput, IntentRouteOutput,
     IntentRouteSignature, ModuleFamilyHub, ModulePromotionState, ModuleRun, PublicOutcomeKind,
     ShadowMode, ToolArgumentsInput, ToolArgumentsOutput, ToolArgumentsSignature, ToolCall,
     ToolExecutor, ToolPolicyInput, ToolPolicyOutput, ToolPolicySignature, ToolResult, ToolSpec,
@@ -504,7 +504,9 @@ fn classify_authority_path(run: &CompiledAgentRun) -> CompiledAgentAuthorityPath
     }
 }
 
-fn phase_telemetry_from_entry(entry: &openagents_compiled_agent::PhaseTraceEntry) -> CompiledAgentArtifactTelemetry {
+fn phase_telemetry_from_entry(
+    entry: &openagents_compiled_agent::PhaseTraceEntry,
+) -> CompiledAgentArtifactTelemetry {
     CompiledAgentArtifactTelemetry {
         phase: entry.phase.clone(),
         authority: entry.authority,
@@ -521,7 +523,8 @@ fn phase_telemetry_from_entry(entry: &openagents_compiled_agent::PhaseTraceEntry
 }
 
 fn revision_for_phase(entry: &openagents_compiled_agent::PhaseTraceEntry) -> String {
-    entry.trace
+    entry
+        .trace
         .get("revision_id")
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
@@ -959,8 +962,8 @@ mod tests {
     use openagents_compiled_agent::ShadowMode;
 
     use super::{
-        CompiledAgentAuthorityPath, CompiledAgentFeedbackSignal,
-        CompiledAgentReceiptEvidenceClass, CompiledAgentSliceState, run_compiled_agent_slice,
+        CompiledAgentAuthorityPath, CompiledAgentFeedbackSignal, CompiledAgentReceiptEvidenceClass,
+        CompiledAgentSliceState, run_compiled_agent_slice,
     };
 
     #[test]
@@ -1065,11 +1068,13 @@ mod tests {
             receipt.run.public_response.response,
             "The wallet contains 1200 sats.".to_string()
         );
-        assert!(receipt
-            .telemetry
-            .shadow_disagreements
-            .iter()
-            .any(|entry| entry.phase == "grounded_answer" && entry.review_required));
+        assert!(
+            receipt
+                .telemetry
+                .shadow_disagreements
+                .iter()
+                .any(|entry| entry.phase == "grounded_answer" && entry.review_required)
+        );
     }
 
     #[test]
@@ -1107,7 +1112,9 @@ mod tests {
         )
         .with_feedback(CompiledAgentFeedbackSignal {
             disagreed: true,
-            correction_text: Some("Use the wallet balance plus recent earnings phrasing.".to_string()),
+            correction_text: Some(
+                "Use the wallet balance plus recent earnings phrasing.".to_string(),
+            ),
             reason_code: Some("grounded_synthesis_drift".to_string()),
             operator_note: Some("Retain this for governed runtime ingestion.".to_string()),
         });

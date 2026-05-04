@@ -2796,12 +2796,7 @@ pub fn coding_project_chat_composer_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn coding_project_chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
     let composer = coding_project_chat_composer_bounds(content_bounds);
-    Bounds::new(
-        composer.max_x() + 6.0,
-        composer.origin.y + 2.0,
-        24.0,
-        24.0,
-    )
+    Bounds::new(composer.max_x() + 6.0, composer.origin.y + 2.0, 24.0, 24.0)
 }
 
 pub fn coding_project_task_card_bounds(

@@ -2,10 +2,10 @@ use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, OnceLock};
+use std::sync::{OnceLock, mpsc};
 
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::Level;
 use wgpui::components::sections::TerminalStream;
 
@@ -716,12 +716,12 @@ mod tests {
     use std::ffi::OsString;
     use std::path::PathBuf;
 
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use tempfile::tempdir;
 
     use super::{
-        current_timestamp_ms, domain_projection, prune_old_session_logs_at, resolve_log_dir_from,
-        session_log_writer_for_tests, SessionLogConfig, DEFAULT_MAX_SESSION_FILES,
+        DEFAULT_MAX_SESSION_FILES, SessionLogConfig, current_timestamp_ms, domain_projection,
+        prune_old_session_logs_at, resolve_log_dir_from, session_log_writer_for_tests,
     };
 
     #[test]
