@@ -375,7 +375,7 @@ pub enum ProviderAdminUpdate {
 }
 
 enum ProviderAdminCommand {
-    SyncSnapshot(Box<ProviderPersistedSnapshot>),
+    SyncSnapshot(Arc<ProviderPersistedSnapshot>),
     SetDesiredMode(ProviderDesiredMode),
     Shutdown,
 }
@@ -424,9 +424,9 @@ impl ProviderAdminRuntime {
         self.db_path.as_path()
     }
 
-    pub fn sync_snapshot(&self, snapshot: ProviderPersistedSnapshot) -> Result<(), String> {
+    pub fn sync_snapshot(&self, snapshot: Arc<ProviderPersistedSnapshot>) -> Result<(), String> {
         self.command_tx
-            .send(ProviderAdminCommand::SyncSnapshot(Box::new(snapshot)))
+            .send(ProviderAdminCommand::SyncSnapshot(snapshot))
             .map_err(|error| format!("Provider admin runtime offline: {error}"))
     }
 
@@ -1412,6 +1412,8 @@ fn transition_api_error(error: ProviderTransitionError) -> (StatusCode, Json<Pro
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::{
         ProviderAdminConfig, ProviderAdminRuntime, ProviderControlAction, ProviderDesiredMode,
         ProviderEarningsSummary, ProviderHealthEvent, ProviderIdentityMetadata, ProviderJsonEntry,
@@ -1766,7 +1768,7 @@ mod tests {
         let db_path = temp_dir.path().join("provider-admin-http.sqlite");
         let config = sample_config(db_path);
         let mut runtime = ProviderAdminRuntime::spawn(config)?;
-        runtime.sync_snapshot(sample_snapshot())?;
+        runtime.sync_snapshot(Arc::new(sample_snapshot()))?;
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(2))

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use openagents_provider_substrate::{
@@ -125,7 +126,7 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
             elapsed_ms: build_started_at.elapsed().as_secs_f32() * 1_000.0,
         });
     let sync_started_at = Instant::now();
-    if let Err(error) = runtime.sync_snapshot(snapshot) {
+    if let Err(error) = runtime.sync_snapshot(Arc::new(snapshot)) {
         state
             .frame_debugger
             .record_snapshot_timing_sample(SnapshotTimingSample {
