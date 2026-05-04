@@ -21997,7 +21997,7 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
     let mut provider_presence_online = false;
     let mut provider_presence_error = None::<String>;
     let mut provider_payout_target_error = None::<String>;
-    let mut previous_snapshot = None::<ProviderPersistedSnapshot>;
+    let mut previous_snapshot = None::<Arc<ProviderPersistedSnapshot>>;
     let mut training_supervisor_process = None::<PylonTrainingSupervisorProcess>;
     let mut needs_sync = true;
     loop {
@@ -22027,10 +22027,10 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
                         &config,
                         Some(&identity),
                         desired_mode,
-                        previous_snapshot.as_ref(),
+                        previous_snapshot.as_deref(),
                         error.clone(),
                     );
-                    let _ = runtime.sync_snapshot(snapshot);
+                    let _ = runtime.sync_snapshot(Arc::new(snapshot));
                     return Err(anyhow!("provider admin runtime error: {error}"));
                 }
             }
@@ -22095,7 +22095,7 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
                 &config,
                 &identity,
                 desired_mode,
-                previous_snapshot.as_ref(),
+                previous_snapshot.as_deref(),
                 provider_control_plane_runtime_error(
                     provider_presence_error.as_deref(),
                     provider_payout_target_error.as_deref(),
@@ -22123,13 +22123,14 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
                     return Err(error);
                 }
             };
+            let snapshot = Arc::new(snapshot);
             runtime
-                .sync_snapshot(snapshot.clone())
+                .sync_snapshot(Arc::clone(&snapshot))
                 .map_err(anyhow::Error::msg)?;
             previous_snapshot = Some(snapshot);
             needs_sync = false;
 
-            if let Some(snapshot) = previous_snapshot.as_ref()
+            if let Some(snapshot) = previous_snapshot.as_deref()
                 && let Err(error) =
                     sync_live_announcement(config_path, desired_mode, snapshot).await
             {
@@ -22137,7 +22138,7 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
             }
         }
 
-        if let Some(snapshot) = previous_snapshot.as_ref() {
+        if let Some(snapshot) = previous_snapshot.as_deref() {
             if desired_mode == ProviderDesiredMode::Online
                 && snapshot.runtime.authoritative_status.as_deref() == Some("online")
                 && Instant::now() >= next_provider_auto_run_at
