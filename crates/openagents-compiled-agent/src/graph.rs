@@ -50,10 +50,7 @@ where
     }
 
     /// Run the grounded answer phase.
-    pub fn grounded_answer(
-        &self,
-        input: &GroundedAnswerInput,
-    ) -> ModuleRun<GroundedAnswerOutput> {
+    pub fn grounded_answer(&self, input: &GroundedAnswerInput) -> ModuleRun<GroundedAnswerOutput> {
         self.grounded_answer.run(input)
     }
 
@@ -62,4 +59,3 @@ where
         self.verify.run(input)
     }
 }
-

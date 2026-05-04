@@ -6,8 +6,8 @@ use std::time::Duration;
 use codex_client::{ThreadResumeParams, ThreadStartParams, TurnStartParams, UserInput};
 use nostr::nip_ds::{
     AddressableEventCoordinate, AddressableEventReference, DatasetAccessContract,
-    DatasetAccessContractStatus, DatasetListing, DatasetOffer, DatasetOfferStatus,
-    EventReference, PaymentMethod, PublicKeyReference,
+    DatasetAccessContractStatus, DatasetListing, DatasetOffer, DatasetOfferStatus, EventReference,
+    PaymentMethod, PublicKeyReference,
 };
 use nostr::nip15::{MarketplaceProduct, MarketplaceStall};
 use nostr::nip90::{
@@ -375,13 +375,17 @@ fn publish_event_to_relays(
             let _ = pool.disconnect_all().await;
             return Err(format!("Cannot publish {label}: {fallback}"));
         }
-        let verified_relays =
-            match verify_published_event_on_relays(&pool, accepted_relays.as_slice(), &event.id, label)
-                .await
-            {
-                Ok(verified_relays) => verified_relays,
-                Err(_) => normalize_relay_urls(&accepted_relays),
-            };
+        let verified_relays = match verify_published_event_on_relays(
+            &pool,
+            accepted_relays.as_slice(),
+            &event.id,
+            label,
+        )
+        .await
+        {
+            Ok(verified_relays) => verified_relays,
+            Err(_) => normalize_relay_urls(&accepted_relays),
+        };
         let _ = pool.disconnect_all().await;
         Ok(verified_relays)
     })
@@ -1044,7 +1048,9 @@ fn local_dataset_access_result_projection(
         buyer_pubkey: request_buyer_pubkey_hex(request)?,
         relay_url,
         request_event_id: request.request_id.clone(),
-        listing_coordinate: request_listing_ref_for_event(request)?.coordinate.to_string(),
+        listing_coordinate: request_listing_ref_for_event(request)?
+            .coordinate
+            .to_string(),
         offer_coordinate: request_offer_ref_for_event(request)?
             .map(|reference| reference.coordinate.to_string()),
         asset_ref: request_asset_ref_for_event(request)?,
@@ -1066,15 +1072,12 @@ fn local_dataset_access_result_projection(
             .or((request.price_sats > 0).then_some(request.price_sats))
             .map(|amount_sats| amount_sats.saturating_mul(1000)),
         bolt11: request.pending_bolt11.clone(),
-        payment_hash: request
-            .settlement_payment_hash
-            .clone()
-            .or_else(|| {
-                request
-                    .pending_bolt11
-                    .as_deref()
-                    .and_then(decode_lightning_invoice_payment_hash)
-            }),
+        payment_hash: request.settlement_payment_hash.clone().or_else(|| {
+            request
+                .pending_bolt11
+                .as_deref()
+                .and_then(decode_lightning_invoice_payment_hash)
+        }),
         created_at_seconds,
         linked_asset_id: request.matched_asset_id.clone(),
         linked_grant_id: request.matched_grant_id.clone(),
@@ -1133,10 +1136,9 @@ fn publish_data_seller_access_contract(
         .request_by_id(request_id)
         .cloned()
         .ok_or_else(|| format!("Unknown data-access request {request_id}"))?;
-    let identity = state
-        .nostr_identity
-        .clone()
-        .ok_or_else(|| "Cannot publish DS access contract: Nostr identity unavailable.".to_string())?;
+    let identity = state.nostr_identity.clone().ok_or_else(|| {
+        "Cannot publish DS access contract: Nostr identity unavailable.".to_string()
+    })?;
     let contract = build_data_seller_access_contract(
         &request,
         identity.public_key_hex.as_str(),
@@ -1178,18 +1180,16 @@ fn relay_only_delivery_bundle_for_request(
         .matched_asset_id
         .as_deref()
         .ok_or_else(|| format!("Request {} is missing a matched asset.", request.request_id))?;
-    Ok(
-        build_issue_delivery_bundle_request(
-            request,
-            grant_id,
-            asset_id,
-            provider_id,
-            consumer_id,
-            None,
-            created_at_ms,
-        )
-        .delivery_bundle,
+    Ok(build_issue_delivery_bundle_request(
+        request,
+        grant_id,
+        asset_id,
+        provider_id,
+        consumer_id,
+        None,
+        created_at_ms,
     )
+    .delivery_bundle)
 }
 
 fn relay_only_revocation_receipt_for_request(
@@ -1213,21 +1213,19 @@ fn relay_only_revocation_receipt_for_request(
         .iter()
         .cloned()
         .collect::<Vec<_>>();
-    Ok(
-        build_revoke_access_grant_request(
-            request,
-            grant_id,
-            asset_id,
-            provider_id,
-            consumer_id,
-            revoked_delivery_bundle_ids,
-            action,
-            reason_code,
-            None,
-            created_at_ms,
-        )
-        .revocation,
+    Ok(build_revoke_access_grant_request(
+        request,
+        grant_id,
+        asset_id,
+        provider_id,
+        consumer_id,
+        revoked_delivery_bundle_ids,
+        action,
+        reason_code,
+        None,
+        created_at_ms,
     )
+    .revocation)
 }
 
 fn reconcile_request_from_relay_catalog(
@@ -1254,8 +1252,7 @@ fn reconcile_request_from_relay_catalog(
             .filter(|value| !value.trim().is_empty())
         {
             reconciled.pending_bolt11 = Some(bolt11.to_string());
-            reconciled.pending_bolt11_created_at_epoch_seconds =
-                Some(contract.created_at_seconds);
+            reconciled.pending_bolt11_created_at_epoch_seconds = Some(contract.created_at_seconds);
             reconciled.settlement_payment_hash = contract
                 .payment_hash
                 .clone()
@@ -3081,7 +3078,9 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
     ) {
         Ok(delivery) => delivery,
         Err(error) => {
-            state.data_seller.note_delivery_issue_failed(request_id, error);
+            state
+                .data_seller
+                .note_delivery_issue_failed(request_id, error);
             return true;
         }
     };
@@ -3090,7 +3089,9 @@ pub(crate) fn issue_data_seller_delivery(state: &mut RenderState, request_id: &s
             .data_seller
             .note_delivery_bundle_issued(request_id, delivery.clone(), None)
     {
-        state.data_seller.note_delivery_issue_failed(request_id, error);
+        state
+            .data_seller
+            .note_delivery_issue_failed(request_id, error);
         return true;
     }
     state
@@ -3274,14 +3275,12 @@ pub(crate) fn revoke_data_seller_access(
         })
         .cloned()
         .unwrap_or_else(|| AccessGrant {
-            grant_id: request
-                .matched_grant_id
-                .clone()
-                .unwrap_or_else(|| format!("grant.{}", canonical_component(request.request_id.as_str()))),
-            asset_id: request
-                .matched_asset_id
-                .clone()
-                .unwrap_or_else(|| format!("asset.{}", canonical_component(request.request_id.as_str()))),
+            grant_id: request.matched_grant_id.clone().unwrap_or_else(|| {
+                format!("grant.{}", canonical_component(request.request_id.as_str()))
+            }),
+            asset_id: request.matched_asset_id.clone().unwrap_or_else(|| {
+                format!("asset.{}", canonical_component(request.request_id.as_str()))
+            }),
             provider_id: identity.public_key_hex.clone(),
             consumer_id: Some(consumer_id.clone()),
             permission_policy: openagents_kernel_core::data::PermissionPolicy {
@@ -3316,10 +3315,12 @@ pub(crate) fn revoke_data_seller_access(
                 DataSellerRevocationAction::Expire => AccessGrantStatus::Expired,
             },
             nostr_publications: openagents_kernel_core::data::AccessGrantNostrPublications {
-                ds_offer: request.matched_offer_coordinate.as_ref().map(|coordinate| NostrPublicationRef {
-                    coordinate: Some(coordinate.clone()),
-                    event_id: None,
-                    relay_url: request.source_relay_url.clone(),
+                ds_offer: request.matched_offer_coordinate.as_ref().map(|coordinate| {
+                    NostrPublicationRef {
+                        coordinate: Some(coordinate.clone()),
+                        event_id: None,
+                        relay_url: request.source_relay_url.clone(),
+                    }
                 }),
                 ds_access_request: None,
                 ds_access_result: None,
@@ -3716,7 +3717,10 @@ pub(crate) fn apply_data_seller_publish_outcome(
                     .nostr_identity
                     .as_ref()
                     .map(|identity| identity.public_key_hex.clone());
-                let request = state.data_seller.request_by_id(outcome.request_id.as_str()).cloned();
+                let request = state
+                    .data_seller
+                    .request_by_id(outcome.request_id.as_str())
+                    .cloned();
                 if let (Some(seller_pubkey), Some(request)) = (seller_pubkey, request) {
                     match local_dataset_access_result_projection(
                         seller_pubkey.as_str(),
@@ -3726,7 +3730,8 @@ pub(crate) fn apply_data_seller_publish_outcome(
                         current_epoch_seconds(),
                     ) {
                         Ok(projection) => {
-                            if let Err(error) = record_local_access_result_projection(state, projection)
+                            if let Err(error) =
+                                record_local_access_result_projection(state, projection)
                             {
                                 state.data_seller.last_error = Some(format!(
                                     "Published delivery result for request {} but failed to persist the local relay result projection: {}",
@@ -3909,10 +3914,8 @@ pub(crate) fn publish_data_seller_asset(state: &mut RenderState) -> bool {
             published_asset.asset_id, warning
         );
     } else {
-        state.data_seller.status_line = format!(
-            "Published asset {} to DS relays.",
-            published_asset.asset_id
-        );
+        state.data_seller.status_line =
+            format!("Published asset {} to DS relays.", published_asset.asset_id);
     }
     sync_data_seller_nip90_profile(state);
     true
@@ -4085,10 +4088,8 @@ pub(crate) fn publish_data_seller_grant(state: &mut RenderState) -> bool {
             published_grant.grant_id, warning
         );
     } else {
-        state.data_seller.status_line = format!(
-            "Published grant {} to DS relays.",
-            published_grant.grant_id
-        );
+        state.data_seller.status_line =
+            format!("Published grant {} to DS relays.", published_grant.grant_id);
     }
     sync_data_seller_nip90_profile(state);
     true
@@ -4099,8 +4100,7 @@ mod tests {
     use super::*;
     use crate::app_state::{
         DataMarketPaneState, DataSellerDeliveryDraft, DataSellerDeliveryState,
-        DataSellerPaymentState, DataSellerRequestEvaluationDisposition,
-        DataSellerRevocationState,
+        DataSellerPaymentState, DataSellerRequestEvaluationDisposition, DataSellerRevocationState,
     };
     use nostr::nip90::{DataVendingFeedback, DataVendingResult};
     use openagents_kernel_core::data::PermissionPolicy;
@@ -4262,12 +4262,16 @@ mod tests {
             listing_coordinate: format!("30404:{SELLER_PUBKEY}:data_asset.example.corpus.001"),
             offer_coordinate: Some(format!("30406:{SELLER_PUBKEY}:grant.example.corpus.001")),
             request_event_id: REQUEST_EVENT_ID.to_string(),
-            result_event_id: Some("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string()),
+            result_event_id: Some(
+                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string(),
+            ),
             status: status.to_string(),
             payment_method: Some("ln".to_string()),
             amount_msats: Some(5_000),
             bolt11: Some("lnbc50n1pexample".to_string()),
-            payment_hash: Some("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string()),
+            payment_hash: Some(
+                "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string(),
+            ),
             payment_evidence_event_ids: Vec::new(),
             delivery_mode: Some("encrypted_pointer".to_string()),
             delivery_ref: Some("oa://deliveries/example-001".to_string()),
@@ -4283,7 +4287,8 @@ mod tests {
 
     fn fixture_result_projection() -> crate::app_state::RelayDatasetAccessResultProjection {
         crate::app_state::RelayDatasetAccessResultProjection {
-            event_id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string(),
+            event_id: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                .to_string(),
             seller_pubkey: SELLER_PUBKEY.to_string(),
             buyer_pubkey: BUYER_PUBKEY.to_string(),
             relay_url: Some("wss://relay.example".to_string()),
@@ -4300,7 +4305,9 @@ mod tests {
             delivery_digest: Some(format!("sha256:{DIGEST}")),
             amount_msats: Some(5_000),
             bolt11: Some("lnbc50n1pexample".to_string()),
-            payment_hash: Some("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string()),
+            payment_hash: Some(
+                "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string(),
+            ),
             created_at_seconds: 1_774_080_041,
             linked_asset_id: Some("data_asset.example.corpus.001".to_string()),
             linked_grant_id: Some("grant.example.corpus.001".to_string()),
@@ -4310,7 +4317,8 @@ mod tests {
     fn fixture_settlement_match() -> crate::app_state::RelayDatasetSettlementMatchProjection {
         crate::app_state::RelayDatasetSettlementMatchProjection {
             payment_pointer: "spark-payment-001".to_string(),
-            payment_hash: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string(),
+            payment_hash: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                .to_string(),
             direction: "receive".to_string(),
             status: "settled".to_string(),
             amount_sats: 5,
@@ -4838,10 +4846,15 @@ mod tests {
                 .as_ref()
                 .map(|reference| reference.coordinate.to_string())
                 .as_deref(),
-            Some("30406:1111111111111111111111111111111111111111111111111111111111111111:grant.example.corpus.001")
+            Some(
+                "30406:1111111111111111111111111111111111111111111111111111111111111111:grant.example.corpus.001"
+            )
         );
         assert_eq!(contract.amount_msats, Some(5_000));
-        assert_eq!(contract.delivery_ref.as_deref(), Some("oa://deliveries/example-001"));
+        assert_eq!(
+            contract.delivery_ref.as_deref(),
+            Some("oa://deliveries/example-001")
+        );
         assert_eq!(contract.delivery_digest.as_deref(), Some(DIGEST));
         assert_eq!(
             contract
@@ -4877,13 +4890,19 @@ mod tests {
 
         let reconciled = reconcile_request_from_relay_catalog(&request, &market);
         assert_eq!(reconciled.payment_state, DataSellerPaymentState::Paid);
-        assert_eq!(reconciled.payment_pointer.as_deref(), Some("spark-payment-001"));
+        assert_eq!(
+            reconciled.payment_pointer.as_deref(),
+            Some("spark-payment-001")
+        );
         assert_eq!(reconciled.payment_amount_sats, Some(5));
         assert_eq!(
             reconciled.payment_observed_at_epoch_seconds,
             Some(1_774_080_042)
         );
-        assert_eq!(reconciled.delivery_state, DataSellerDeliveryState::Delivered);
+        assert_eq!(
+            reconciled.delivery_state,
+            DataSellerDeliveryState::Delivered
+        );
         assert_eq!(
             reconciled.delivery_bundle_id.as_deref(),
             Some("delivery_bundle.example.001")
@@ -4917,14 +4936,19 @@ mod tests {
         let reconciled = reconcile_request_from_relay_catalog(&request, &market);
         assert_eq!(reconciled.payment_state, DataSellerPaymentState::Paid);
         assert_eq!(reconciled.delivery_state, DataSellerDeliveryState::Revoked);
-        assert_eq!(reconciled.revocation_state, DataSellerRevocationState::Revoked);
+        assert_eq!(
+            reconciled.revocation_state,
+            DataSellerRevocationState::Revoked
+        );
         assert_eq!(
             reconciled.revocation_reason_code.as_deref(),
             Some("seller_revoked_access")
         );
         assert_eq!(
             reconciled.revocation_id.as_deref(),
-            Some("30407:1111111111111111111111111111111111111111111111111111111111111111:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            Some(
+                "30407:1111111111111111111111111111111111111111111111111111111111111111:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            )
         );
     }
 
@@ -4951,7 +4975,10 @@ mod tests {
         let reconciled = reconcile_request_from_relay_catalog(&request, &market);
         assert_eq!(reconciled.payment_state, DataSellerPaymentState::Paid);
         assert_eq!(reconciled.delivery_state, DataSellerDeliveryState::Expired);
-        assert_eq!(reconciled.revocation_state, DataSellerRevocationState::Expired);
+        assert_eq!(
+            reconciled.revocation_state,
+            DataSellerRevocationState::Expired
+        );
         assert_eq!(
             reconciled.revocation_reason_code.as_deref(),
             Some("access_window_expired")

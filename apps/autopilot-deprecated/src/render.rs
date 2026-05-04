@@ -563,7 +563,11 @@ pub fn init_state(
             .create_surface(window.clone())
             .context("failed to create surface")?;
 
-        for (index, probe) in instance.enumerate_adapters(wgpu::Backends::all()).into_iter().enumerate() {
+        for (index, probe) in instance
+            .enumerate_adapters(wgpu::Backends::all())
+            .into_iter()
+            .enumerate()
+        {
             let info = probe.get_info();
             let surface_supported = probe.is_surface_supported(&surface);
             tracing::info!(

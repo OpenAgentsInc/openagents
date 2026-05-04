@@ -116,15 +116,24 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
     }
 
     let now = current_epoch_ms();
-    let repo_remote_url = git_output(local_workspace_root.as_path(), &["remote", "get-url", "origin"])
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    let git_branch = git_output(local_workspace_root.as_path(), &["rev-parse", "--abbrev-ref", "HEAD"])
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    let session_title = format!("Forge Hosted Proof {}", git_branch.as_deref().unwrap_or("main"));
+    let repo_remote_url = git_output(
+        local_workspace_root.as_path(),
+        &["remote", "get-url", "origin"],
+    )
+    .ok()
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty());
+    let git_branch = git_output(
+        local_workspace_root.as_path(),
+        &["rev-parse", "--abbrev-ref", "HEAD"],
+    )
+    .ok()
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty());
+    let session_title = format!(
+        "Forge Hosted Proof {}",
+        git_branch.as_deref().unwrap_or("main")
+    );
 
     let mut chat = AutopilotChatState::from_artifact_projection_path(projection_path.clone());
     chat.set_thread_entries(vec![AutopilotThreadListEntry {
@@ -144,7 +153,12 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
         metadata.git_branch = git_branch.clone();
         metadata.git_dirty = Some(false);
     }
-    chat.set_probe_thread_projection_state(thread_id.as_str(), Some(String::from("idle")), false, true);
+    chat.set_probe_thread_projection_state(
+        thread_id.as_str(),
+        Some(String::from("idle")),
+        false,
+        true,
+    );
     chat.ensure_probe_shared_session_for_thread(thread_id.as_str(), now)
         .ok_or_else(|| anyhow!("failed to create Forge shared session"))?;
 
@@ -163,7 +177,9 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
             thread_id.as_str(),
             crate::app_state::ForgeKnowledgePackKind::RepoRunbook,
             "Forge hosted dogfood runbook",
-            vec![String::from("docs/codex/FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md")],
+            vec![String::from(
+                "docs/codex/FORGE_HOSTED_GCP_DOGFOOD_RUNBOOK.md",
+            )],
             "harness:repo_runbook",
             now + 2,
         )
@@ -261,8 +277,10 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
         ),
     )
     .context("read hosted proof file")?;
-    let proof_content = extract_read_file_content(&read_outcome, proof_file.as_str())
-        .ok_or_else(|| anyhow!("Probe did not return a read_file tool result for `{proof_file}`"))?;
+    let proof_content =
+        extract_read_file_content(&read_outcome, proof_file.as_str()).ok_or_else(|| {
+            anyhow!("Probe did not return a read_file tool result for `{proof_file}`")
+        })?;
 
     let final_snapshot = client
         .inspect_session(&session_id)
@@ -305,7 +323,9 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
             None
         }
         Err(error) => {
-            return Err(anyhow!("record accepted patch summary knowledge pack: {error}"));
+            return Err(anyhow!(
+                "record accepted patch summary knowledge pack: {error}"
+            ));
         }
     };
     let campaign_artifact_kind = if patch_pack_id.is_some() {
@@ -411,7 +431,9 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
     chat.record_probe_bounty_claim_for_thread(
         thread_id.as_str(),
         "probe",
-        Some(String::from("Hosted Probe agent completed the remote proof artifact.")),
+        Some(String::from(
+            "Hosted Probe agent completed the remote proof artifact.",
+        )),
         "harness:bounty_claim",
         now + 23,
     )
@@ -466,7 +488,9 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
         "hosted-proof-case-1",
         ForgeCampaignArtifactKind::EvidenceBundle,
         "active",
-        Some(String::from("Retain the evidence bundle for the first live hosted GCP proof.")),
+        Some(String::from(
+            "Retain the evidence bundle for the first live hosted GCP proof.",
+        )),
         now + 30,
     )
     .context("record campaign retained case")?;
@@ -474,7 +498,9 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
         thread_id.as_str(),
         ForgeCampaignArtifactKind::EvidenceBundle,
         "active",
-        Some(String::from("Verification reference for the hosted proof evidence bundle.")),
+        Some(String::from(
+            "Verification reference for the hosted proof evidence bundle.",
+        )),
         now + 31,
     )
     .context("record campaign verification reference")?;
@@ -483,7 +509,9 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
         ForgeCampaignArtifactKind::DeliveryReceipt,
         "active",
         "operator",
-        Some(String::from("Shadow the hosted proof delivery receipt as the candidate revision.")),
+        Some(String::from(
+            "Shadow the hosted proof delivery receipt as the candidate revision.",
+        )),
         "harness:promote_shadow",
         now + 32,
     )
@@ -491,7 +519,9 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
     chat.record_probe_promotion_promote_for_thread(
         thread_id.as_str(),
         "operator",
-        Some(String::from("Promote the hosted proof delivery receipt into the retained ledger.")),
+        Some(String::from(
+            "Promote the hosted proof delivery receipt into the retained ledger.",
+        )),
         "harness:promote",
         now + 33,
     )
@@ -607,7 +637,9 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
         ForgeEvidenceProductArtifactKind::Other,
         "hosted_coding_audit",
         coding_audit_markdown_path.display().to_string(),
-        Some(String::from("Rendered hosted coding closeout audit bundle.")),
+        Some(String::from(
+            "Rendered hosted coding closeout audit bundle.",
+        )),
         now + 45,
     )
     .context("record coding audit product artifact")?;
@@ -616,7 +648,9 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
         ForgeEvidenceProductArtifactKind::Other,
         "hosted_bookkeeping_audit",
         bookkeeping_audit_markdown_path.display().to_string(),
-        Some(String::from("Rendered hosted bookkeeping rehearsal audit bundle.")),
+        Some(String::from(
+            "Rendered hosted bookkeeping rehearsal audit bundle.",
+        )),
         now + 46,
     )
     .context("record bookkeeping audit product artifact")?;
@@ -647,17 +681,32 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
             .collect(),
         accepted_patch_summary_available: patch_pack_id.is_some(),
         mounted_pack_ids: shared_session.knowledge_mounts.mounted_pack_ids.clone(),
-        branch_ref: final_snapshot.branch_state.as_ref().map(|state| state.head_ref.clone()),
+        branch_ref: final_snapshot
+            .branch_state
+            .as_ref()
+            .map(|state| state.head_ref.clone()),
         head_commit: final_snapshot
             .branch_state
             .as_ref()
             .map(|state| state.head_commit.clone()),
-        delivery_status: chat.active_delivery_receipt().map(|receipt| receipt.status.label().to_string()),
-        evidence_status: chat.active_evidence_bundle().map(|bundle| bundle.reviewer_status().label().to_string()),
-        bounty_status: chat.active_bounty_contract().map(|contract| contract.lifecycle_status.label().to_string()),
-        campaign_status: chat.active_campaign().map(|campaign| campaign.status.label().to_string()),
-        promotion_status: chat.active_promotion_ledger().map(|ledger| ledger.status.label().to_string()),
-        settlement_status: chat.active_settlement_receipt().map(|receipt| receipt.status.label().to_string()),
+        delivery_status: chat
+            .active_delivery_receipt()
+            .map(|receipt| receipt.status.label().to_string()),
+        evidence_status: chat
+            .active_evidence_bundle()
+            .map(|bundle| bundle.reviewer_status().label().to_string()),
+        bounty_status: chat
+            .active_bounty_contract()
+            .map(|contract| contract.lifecycle_status.label().to_string()),
+        campaign_status: chat
+            .active_campaign()
+            .map(|campaign| campaign.status.label().to_string()),
+        promotion_status: chat
+            .active_promotion_ledger()
+            .map(|ledger| ledger.status.label().to_string()),
+        settlement_status: chat
+            .active_settlement_receipt()
+            .map(|receipt| receipt.status.label().to_string()),
         final_snapshot,
     };
 
@@ -668,17 +717,17 @@ pub fn run(cli: ForgeHostedHarnessCli) -> Result<()> {
         serde_json::to_string_pretty(&summary).context("encode hosted summary json")?,
     )
     .with_context(|| format!("write {}", summary_json_path.display()))?;
-    fs::write(
-        &summary_markdown_path,
-        render_summary_markdown(&summary),
-    )
-    .with_context(|| format!("write {}", summary_markdown_path.display()))?;
+    fs::write(&summary_markdown_path, render_summary_markdown(&summary))
+        .with_context(|| format!("write {}", summary_markdown_path.display()))?;
 
     println!("session_id={}", summary.session_id);
     println!("summary_markdown={}", summary_markdown_path.display());
     println!("summary_json={}", summary_json_path.display());
     println!("coding_audit={}", summary.coding_audit_markdown_path);
-    println!("bookkeeping_audit={}", summary.bookkeeping_audit_markdown_path);
+    println!(
+        "bookkeeping_audit={}",
+        summary.bookkeeping_audit_markdown_path
+    );
     println!("preflight_report={}", summary.preflight_markdown_path);
     Ok(())
 }
@@ -726,7 +775,10 @@ fn read_tool_loop() -> ToolLoopConfig {
     tool_loop
 }
 
-fn extract_read_file_content(outcome: &PlainTextExecOutcome, expected_path: &str) -> Option<String> {
+fn extract_read_file_content(
+    outcome: &PlainTextExecOutcome,
+    expected_path: &str,
+) -> Option<String> {
     outcome.tool_results.iter().find_map(|result| {
         if result.name != "read_file" {
             return None;
@@ -828,7 +880,10 @@ fn build_preflight_report(
 ) -> ForgeHostedPreflightReport {
     let mut checks = Vec::new();
 
-    match git_output(workspace_root, &["ls-remote", "--exit-code", "origin", "HEAD"]) {
+    match git_output(
+        workspace_root,
+        &["ls-remote", "--exit-code", "origin", "HEAD"],
+    ) {
         Ok(_) => checks.push(preflight_check(
             "repo access",
             ForgeHostedPreflightCheckStatus::Ok,
@@ -858,7 +913,12 @@ fn build_preflight_report(
         )),
     }
 
-    match gcloud_output(&["auth", "list", "--filter=status:ACTIVE", "--format=value(account)"]) {
+    match gcloud_output(&[
+        "auth",
+        "list",
+        "--filter=status:ACTIVE",
+        "--format=value(account)",
+    ]) {
         Ok(account) if !account.is_empty() => checks.push(preflight_check(
             "gcp auth",
             ForgeHostedPreflightCheckStatus::Ok,
@@ -930,7 +990,10 @@ fn build_preflight_report(
         )),
     }
 
-    match worker_baseline.clone().filter(|value| !value.trim().is_empty()) {
+    match worker_baseline
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+    {
         Some(baseline) => checks.push(preflight_check(
             "worker baseline",
             ForgeHostedPreflightCheckStatus::Ok,
@@ -1010,7 +1073,9 @@ fn short_ref(value: &str) -> String {
 
 fn summary_artifact_kind(artifact: &SessionSummaryArtifact) -> String {
     match artifact {
-        SessionSummaryArtifact::RetainedSessionSummary(_) => String::from("retained_session_summary"),
+        SessionSummaryArtifact::RetainedSessionSummary(_) => {
+            String::from("retained_session_summary")
+        }
         SessionSummaryArtifact::AcceptedPatchSummary(_) => String::from("accepted_patch_summary"),
     }
 }

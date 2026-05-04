@@ -9,9 +9,7 @@ use crate::app_state::{
     RelayDatasetListingProjection, RelayDatasetOfferProjection,
     RelayDatasetSettlementMatchProjection,
 };
-use crate::pane_renderer::{
-    paint_action_button, paint_label_line, split_text_for_display,
-};
+use crate::pane_renderer::{paint_action_button, paint_label_line, split_text_for_display};
 use crate::pane_system::{
     data_buyer_next_asset_button_bounds, data_buyer_previous_asset_button_bounds,
     data_buyer_publish_button_bounds, data_buyer_refresh_button_bounds,
@@ -94,7 +92,10 @@ pub fn paint(
     );
     let status_chunk_len = ((content_bounds.size.width - PADDING * 2.0) / 7.0).max(24.0) as usize;
     if let Some(action) = pane_state.last_action.as_deref() {
-        for line in split_text_for_display(action, status_chunk_len).into_iter().take(2) {
+        for line in split_text_for_display(action, status_chunk_len)
+            .into_iter()
+            .take(2)
+        {
             paint.scene.draw_text(paint.text.layout(
                 line.as_str(),
                 Point::new(content_bounds.origin.x + PADDING, status_end_y),
@@ -105,7 +106,10 @@ pub fn paint(
         }
     }
     if let Some(error) = pane_state.last_error.as_deref() {
-        for line in split_text_for_display(error, status_chunk_len).into_iter().take(2) {
+        for line in split_text_for_display(error, status_chunk_len)
+            .into_iter()
+            .take(2)
+        {
             paint.scene.draw_text(paint.text.layout(
                 line.as_str(),
                 Point::new(content_bounds.origin.x + PADDING, status_end_y),
@@ -376,7 +380,13 @@ fn paint_asset_card(
         );
     }
     if let Some(grant) = grant {
-        row_y = paint_row(bounds, row_y, "bridge_grant", grant.grant_id.as_str(), paint);
+        row_y = paint_row(
+            bounds,
+            row_y,
+            "bridge_grant",
+            grant.grant_id.as_str(),
+            paint,
+        );
         row_y = paint_row(
             bounds,
             row_y,
@@ -668,7 +678,10 @@ fn paint_card(bounds: Bounds, title: &str, subtitle: &str, paint: &mut PaintCont
     ));
     let chunk_len = ((bounds.size.width - 20.0) / 7.0).max(16.0) as usize;
     let mut subtitle_y = bounds.origin.y + 21.0;
-    for line in split_text_for_display(subtitle, chunk_len).into_iter().take(2) {
+    for line in split_text_for_display(subtitle, chunk_len)
+        .into_iter()
+        .take(2)
+    {
         paint.scene.draw_text(paint.text.layout(
             line.as_str(),
             Point::new(bounds.origin.x + 10.0, subtitle_y),
@@ -686,8 +699,8 @@ fn paint_row(
     value: &str,
     paint: &mut PaintContext,
 ) -> f32 {
-    let value_chunk_len = ((bounds.max_x() - (bounds.origin.x + 128.0) - 10.0) / 7.0).max(14.0)
-        as usize;
+    let value_chunk_len =
+        ((bounds.max_x() - (bounds.origin.x + 128.0) - 10.0) / 7.0).max(14.0) as usize;
     paint.scene.draw_text(paint.text.layout_mono(
         label,
         Point::new(bounds.origin.x + 10.0, row_y),
@@ -695,7 +708,10 @@ fn paint_row(
         theme::text::MUTED,
     ));
     let mut y = row_y;
-    for line in split_text_for_display(value, value_chunk_len).into_iter().take(2) {
+    for line in split_text_for_display(value, value_chunk_len)
+        .into_iter()
+        .take(2)
+    {
         paint.scene.draw_text(paint.text.layout(
             line.as_str(),
             Point::new(bounds.origin.x + 128.0, y),
@@ -707,25 +723,40 @@ fn paint_row(
     y + 6.0
 }
 
-fn paint_scrollbar(viewport: Bounds, content_height: f32, scroll_offset: f32, paint: &mut PaintContext) {
+fn paint_scrollbar(
+    viewport: Bounds,
+    content_height: f32,
+    scroll_offset: f32,
+    paint: &mut PaintContext,
+) {
     if viewport.size.height <= 0.0 || content_height <= viewport.size.height + 0.5 {
         return;
     }
     let max_offset = (content_height - viewport.size.height).max(0.0);
-    let track_bounds = Bounds::new(viewport.max_x() - 2.0, viewport.origin.y, 2.0, viewport.size.height);
+    let track_bounds = Bounds::new(
+        viewport.max_x() - 2.0,
+        viewport.origin.y,
+        2.0,
+        viewport.size.height,
+    );
     let thumb_height = ((viewport.size.height / content_height) * viewport.size.height)
         .clamp(16.0, viewport.size.height.max(0.0));
-    let thumb_y =
-        viewport.origin.y + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
+    let thumb_y = viewport.origin.y
+        + ((scroll_offset / max_offset.max(1.0)) * (viewport.size.height - thumb_height));
     paint.scene.draw_quad(
         Quad::new(track_bounds)
             .with_background(theme::border::DEFAULT.with_alpha(0.45))
             .with_corner_radius(1.0),
     );
     paint.scene.draw_quad(
-        Quad::new(Bounds::new(track_bounds.origin.x, thumb_y, track_bounds.size.width, thumb_height))
-            .with_background(theme::text::MUTED.with_alpha(0.75))
-            .with_corner_radius(1.0),
+        Quad::new(Bounds::new(
+            track_bounds.origin.x,
+            thumb_y,
+            track_bounds.size.width,
+            thumb_height,
+        ))
+        .with_background(theme::text::MUTED.with_alpha(0.75))
+        .with_corner_radius(1.0),
     );
 }
 

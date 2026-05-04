@@ -416,8 +416,7 @@ impl CommandPalette {
             visible_count as f32 * self.item_height
                 + visible_count.saturating_sub(1) as f32 * self.item_gap()
         };
-        let palette_height =
-            header_height + padding + list_height + padding + self.footer_height();
+        let palette_height = header_height + padding + list_height + padding + self.footer_height();
 
         Bounds::new(
             bounds.origin.x + (bounds.size.width - palette_width) / 2.0,
@@ -538,11 +537,8 @@ impl Component for CommandPalette {
                     .with_corner_radius(self.corner_radius()),
             );
             let label_width = if self.mono {
-                cx.text.measure_styled_mono(
-                    label,
-                    theme::font_size::XS,
-                    FontStyle::default(),
-                )
+                cx.text
+                    .measure_styled_mono(label, theme::font_size::XS, FontStyle::default())
             } else {
                 cx.text
                     .measure_styled(label, theme::font_size::XS, FontStyle::default())
@@ -590,11 +586,8 @@ impl Component for CommandPalette {
                                 FontStyle::default(),
                             )
                         } else {
-                            cx.text.measure_styled(
-                                keys,
-                                theme::font_size::XS,
-                                FontStyle::default(),
-                            )
+                            cx.text
+                                .measure_styled(keys, theme::font_size::XS, FontStyle::default())
                         }
                     })
                     .unwrap_or(0.0);
@@ -603,10 +596,8 @@ impl Component for CommandPalette {
                 } else {
                     0.0
                 };
-                let text_max_width = (item_bounds.size.width
-                    - theme::spacing::MD * 2.0
-                    - reserved_right)
-                    .max(0.0);
+                let text_max_width =
+                    (item_bounds.size.width - theme::spacing::MD * 2.0 - reserved_right).max(0.0);
                 let label_text = self.truncate_description(
                     cx,
                     &command.label,
@@ -617,7 +608,7 @@ impl Component for CommandPalette {
                 if is_selected {
                     cx.scene.draw_quad(
                         Quad::new(item_bounds)
-                    .with_background(self.selected_fill_color())
+                            .with_background(self.selected_fill_color())
                             .with_corner_radius(4.0),
                     );
                 } else {

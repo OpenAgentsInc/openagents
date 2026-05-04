@@ -11,8 +11,7 @@ const XTRAIN_EXPLORER_REFRESH_INTERVAL_MS: u64 = 15_000;
 
 pub const OPENAGENTS_XTRAIN_EXPLORER_SOURCE_ROOT_ENV: &str =
     "OPENAGENTS_XTRAIN_EXPLORER_SOURCE_ROOT";
-pub const OPENAGENTS_XTRAIN_EXPLORER_INDEX_PATH_ENV: &str =
-    "OPENAGENTS_XTRAIN_EXPLORER_INDEX_PATH";
+pub const OPENAGENTS_XTRAIN_EXPLORER_INDEX_PATH_ENV: &str = "OPENAGENTS_XTRAIN_EXPLORER_INDEX_PATH";
 
 struct LoadedXtrainExplorer {
     source_root: Option<PathBuf>,
@@ -160,10 +159,12 @@ fn load_xtrain_explorer(
         )
     })?;
 
-    let entry =
-        selected_snapshot_entry(&index, selected_snapshot_id).ok_or_else(|| {
-            format!("XTRAIN explorer index {} has no entries", index_path.display())
-        })?;
+    let entry = selected_snapshot_entry(&index, selected_snapshot_id).ok_or_else(|| {
+        format!(
+            "XTRAIN explorer index {} has no entries",
+            index_path.display()
+        )
+    })?;
     let snapshot_path = resolve_snapshot_path(
         source_root.as_deref(),
         index_path.as_path(),
@@ -232,7 +233,12 @@ fn selected_snapshot_entry<'a>(
                 .iter()
                 .find(|entry| entry.snapshot_id == selected)
         })
-        .or_else(|| index.entries.iter().max_by_key(|entry| entry.generated_at_ms))
+        .or_else(|| {
+            index
+                .entries
+                .iter()
+                .max_by_key(|entry| entry.generated_at_ms)
+        })
 }
 
 fn next_selected_participant_id(
@@ -246,7 +252,11 @@ fn next_selected_participant_id(
                 .find(|participant| participant.participant_id == selected)
                 .map(|participant| participant.participant_id.clone())
         })
-        .or_else(|| participants.first().map(|participant| participant.participant_id.clone()))
+        .or_else(|| {
+            participants
+                .first()
+                .map(|participant| participant.participant_id.clone())
+        })
 }
 
 fn resolve_snapshot_path(

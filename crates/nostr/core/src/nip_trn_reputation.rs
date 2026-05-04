@@ -124,9 +124,12 @@ pub fn pylon_training_observed_labels_from_event(
         let Some(namespace) = namespace else {
             continue;
         };
-        let Some(projection) =
-            pylon_training_reputation_projection(namespace, label_value, event.created_at, now_unix)
-        else {
+        let Some(projection) = pylon_training_reputation_projection(
+            namespace,
+            label_value,
+            event.created_at,
+            now_unix,
+        ) else {
             continue;
         };
         observed.push(PylonTrainingObservedLabel {
@@ -149,8 +152,7 @@ mod tests {
     use crate::nip32::{KIND_LABEL, Label, LabelEvent, LabelTarget};
     use openagents_kernel_core::pylon_training::{
         PylonTrainingReputationLabel, PylonTrainingReputationNamespace,
-        PylonTrainingReputationRecord, PylonTrainingSchedulerEffect,
-        scheduler_effect_for_label,
+        PylonTrainingReputationRecord, PylonTrainingSchedulerEffect, scheduler_effect_for_label,
     };
     use std::collections::BTreeSet;
 
@@ -197,10 +199,16 @@ mod tests {
             1_700_000_000 + (31 * 86_400),
         )
         .expect("projection should resolve");
-        assert_eq!(projected.namespace, PylonTrainingReputationNamespace::Checkpoint);
+        assert_eq!(
+            projected.namespace,
+            PylonTrainingReputationNamespace::Checkpoint
+        );
         assert_eq!(projected.label, PylonTrainingReputationLabel::Warning);
         assert_eq!(projected.age_days, 31);
-        assert_eq!(projected.scheduler_effect, PylonTrainingSchedulerEffect::Ignored);
+        assert_eq!(
+            projected.scheduler_effect,
+            PylonTrainingSchedulerEffect::Ignored
+        );
         assert!(!projected.hard_gate);
     }
 
@@ -212,10 +220,7 @@ mod tests {
             vec![
                 LabelTarget::pubkey(subject_pubkey.clone(), None::<String>),
                 LabelTarget::event("event.alpha".to_string(), None::<String>),
-                LabelTarget::address(
-                    "39512:22:challenge.alpha".to_string(),
-                    None::<String>,
-                ),
+                LabelTarget::address("39512:22:challenge.alpha".to_string(), None::<String>),
             ],
         );
         label_event.set_content("validator drift");
@@ -251,7 +256,10 @@ mod tests {
             PylonTrainingSchedulerEffect::SoftNegative
         );
         assert!(!observed[0].projection.hard_gate);
-        assert_eq!(observed[0].subject_pubkey.as_deref(), Some(subject_pubkey.as_str()));
+        assert_eq!(
+            observed[0].subject_pubkey.as_deref(),
+            Some(subject_pubkey.as_str())
+        );
         assert_eq!(observed[0].event_ref.as_deref(), Some("event.alpha"));
         assert_eq!(
             observed[0].address_ref.as_deref(),

@@ -1,0 +1,2843 @@
+{
+  "generated_at": "2026-05-03T19:07:13Z",
+  "vm": "nexus-mainnet-1",
+  "instance_status": "RUNNING",
+  "service_status": "active",
+  "deploy_mode": "image",
+  "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:573a56794bb9",
+  "release_path": "/opt/nexus-relay/releases/dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+  "release_metadata": {
+    "built_at": "20260428-214605",
+    "builder_hostname": "nexus-builder-1",
+    "builder_user": "nexus-builder",
+    "git_sha": "dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+    "git_short_sha": "dfed9ed687fb",
+    "git_ref": "main",
+    "build_profile": "fast-release",
+    "clear_caches": false,
+    "source_archive_sha256": "147a14e78a742e58b2b75f211b504f46e5c2264d832f4e3ad0ad09dd49366d9d",
+    "source_archive_size_bytes": 1326592,
+    "source_root": "/mnt/disks/nexus-builder-cache/sources/dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+    "artifact_root": "/mnt/disks/nexus-builder-cache/artifacts/dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+    "binary_path": "/mnt/disks/nexus-builder-cache/artifacts/dfed9ed687fb8bd23001dec5de6cedb98eda9786/nexus-relay",
+    "binary_sha256": "d370e49cf1c8ee23fc88b32a536a2800a4bb76523b02b1c6a3d1ef48783901f1",
+    "binary_size_bytes": 478918280,
+    "timing": {
+      "build_started_unix_ms": 1777412623213,
+      "build_finished_unix_ms": 1777412765933,
+      "total_duration_ms": 142720,
+      "fetch_started_unix_ms": 1777412623229,
+      "fetch_finished_unix_ms": 1777412623880,
+      "fetch_duration_ms": 651,
+      "compile_started_unix_ms": 1777412623881,
+      "compile_finished_unix_ms": 1777412764128,
+      "compile_duration_ms": 140247
+    },
+    "cache_layout": {
+      "cargo_home": "/mnt/disks/nexus-builder-cache/cargo-home",
+      "rustup_home": "/mnt/disks/nexus-builder-cache/rustup-home",
+      "cargo_target_dir": "/mnt/disks/nexus-builder-cache/target",
+      "sccache_dir": "/mnt/disks/nexus-builder-cache/sccache"
+    },
+    "tool_versions": {
+      "rustc": "rustc 1.88.0 (6b00bc388 2025-06-23)",
+      "cargo": "cargo 1.88.0 (873a06493 2025-05-10)",
+      "sccache": "sccache 0.8.2"
+    }
+  },
+  "public_checks_enabled": true,
+  "expected_release_git_sha": "573a56794bb9",
+  "a1_minimal_record_gates_enabled": false,
+  "a1_minimal_record_gate_policy": {
+    "training_run_id": "a1_minimal_distributed_lm_001",
+    "min_admitted_workers": 2,
+    "require_launch_health_good": false,
+    "require_participant_gate": false,
+    "require_model_progress_gate": false
+  },
+  "health": {
+    "ok": true,
+    "service": "nexus-relay",
+    "relay_backend": "durable-upstream",
+    "upstream_ws_url": "ws://127.0.0.1:42111/",
+    "authority_mode": "in-process",
+    "managed_groups_mode": "deferred",
+    "data_directory": "/var/lib/nexus-relay"
+  },
+  "stats": {
+    "service": "nexus-control",
+    "authority": "openagents-hosted-nexus",
+    "hosted_nexus_relay_url": "wss://nexus.openagents.com/",
+    "as_of_unix_ms": 1777835206229,
+    "window_started_at_unix_ms": 1777748806229,
+    "receipt_count": 8192,
+    "receipt_persistence_enabled": true,
+    "pylons_online_now": 59,
+    "pylons_seen_24h": 59,
+    "pylon_sessions_online_now": 64,
+    "sellable_pylons_online_now": 59,
+    "inference_ready_pylons_online_now": 57,
+    "inference_ready_pylon_sessions_online_now": 62,
+    "pylon_reported_hosts_online_now": 18,
+    "pylon_sessions_missing_host_fingerprint_online_now": 0,
+    "likely_same_host_pylon_sessions_online_now": 46,
+    "likely_same_host_pylons_online_now": 41,
+    "pylon_presence_stale_after_ms": 120000,
+    "sessions_active": 0,
+    "sessions_issued_24h": 0,
+    "sync_tokens_active": 0,
+    "sync_tokens_issued_24h": 0,
+    "starter_demand_budget_cap_sats": 5000,
+    "starter_demand_budget_allocated_sats": 0,
+    "starter_offers_waiting_ack": 0,
+    "starter_offers_running": 0,
+    "starter_offers_dispatched_24h": 0,
+    "starter_offers_started_24h": 0,
+    "starter_offer_heartbeats_24h": 0,
+    "starter_offers_completed_24h": 0,
+    "starter_offers_released_24h": 0,
+    "starter_offers_expired_24h": 0,
+    "starter_demand_ineligible_polls_24h": 0,
+    "starter_offer_start_rate_24h": 0.0,
+    "starter_offer_completion_rate_24h": 0.0,
+    "starter_offer_loss_rate_24h": 0.0,
+    "starter_demand_paid_sats_24h": 0,
+    "starter_demand_released_sats_24h": 0,
+    "nexus_wallet_runtime_status": "connected",
+    "nexus_wallet_last_error": "funding target returned without full wallet sync; refresh loop owns reconciliation",
+    "nexus_wallet_storage_runtime_mode": "original",
+    "nexus_wallet_balance_sats": 0,
+    "nexus_wallet_balance_updated_at_unix_ms": 1777832352677,
+    "nexus_treasury_snapshot_generated_at_unix_ms": 1777835206229,
+    "nexus_treasury_snapshot_age_ms": 0,
+    "nexus_wallet_sync_lag_ms": 2853552,
+    "nexus_payout_loop_health": "idle",
+    "nexus_treasury_degraded_reason": "wallet_balance_zero_with_receive_history:1761581:1541332",
+    "nexus_treasury_enabled": true,
+    "nexus_treasury_payout_sats_per_window": 25,
+    "nexus_treasury_payout_interval_seconds": 60,
+    "nexus_treasury_require_sellable": false,
+    "nexus_treasury_daily_budget_cap_sats": 1000000,
+    "nexus_placeholder_payout_mode": "disabled",
+    "nexus_registered_payout_identities": 2019,
+    "nexus_payout_sats_paid_total": 1541332,
+    "nexus_payout_sats_paid_24h": 50,
+    "nexus_accepted_work_payout_sats_paid_total": 3372,
+    "nexus_accepted_work_payout_sats_paid_24h": 25,
+    "nexus_availability_stipend_payout_sats_paid_total": 749015,
+    "nexus_availability_stipend_payout_sats_paid_24h": 25,
+    "nexus_placeholder_payout_sats_paid_total": 749015,
+    "nexus_placeholder_payout_sats_paid_24h": 25,
+    "nexus_beta_bonus_payout_sats_paid_total": 0,
+    "nexus_beta_bonus_payout_sats_paid_24h": 0,
+    "nexus_weak_device_accepted_work_payout_sats_paid_total": 105,
+    "nexus_weak_device_accepted_work_payout_sats_paid_24h": 0,
+    "nexus_strong_lane_accepted_work_payout_sats_paid_total": 3267,
+    "nexus_strong_lane_accepted_work_payout_sats_paid_24h": 25,
+    "nexus_payouts_dispatched_24h": 0,
+    "nexus_payouts_confirmed_24h": 2,
+    "nexus_payouts_failed_24h": 1,
+    "nexus_payouts_skipped_24h": 1023,
+    "nexus_availability_online_identities_now": 0,
+    "nexus_availability_online_host_clusters_now": 0,
+    "nexus_availability_stipend_eligible_beneficiaries_now": 0,
+    "nexus_placeholder_payout_eligible_online_targets": 0,
+    "nexus_inference_ready_online_payout_targets": 0,
+    "nexus_duplicate_host_placeholder_blocked_online_targets": 0,
+    "nexus_duplicate_host_blocked_beneficiaries_now": 0,
+    "nexus_duplicate_payout_target_blocked_beneficiaries_now": 0,
+    "nexus_missing_payout_target_blocked_beneficiaries_now": 0,
+    "nexus_version_floor_blocked_beneficiaries_now": 0,
+    "nexus_readiness_blocked_beneficiaries_now": 0,
+    "training_nodes_admitted": 264,
+    "training_admitted_contributors": 264,
+    "training_assigned_contributors": 85,
+    "training_accepted_contributors": 27,
+    "training_model_progress_contributors": 27,
+    "training_weak_device_assigned_contributors": 85,
+    "training_weak_device_accepted_contributors": 27,
+    "training_nodes_online": 8,
+    "training_admitted_nodes_online": 8,
+    "homework_worker_eligible_pylons_online_now": 5,
+    "training_runs_active": 685,
+    "training_windows_active": 460,
+    "training_windows_pending_validation": 458,
+    "training_validator_challenges_open": 537,
+    "training_validator_challenges_queued": 474,
+    "training_nodes_contributing_to_accepted_progress": 27,
+    "training_runs_with_accepted_progress": 149,
+    "training_windows_advanced_checkpoint_lineage": 647,
+    "training_accepted_closeouts": 151,
+    "training_checkpoint_max_age_ms": 1596447008,
+    "training_artifact_failures_open": 0,
+    "training_payout_eligible_closeouts": 148,
+    "training_public_state": {
+      "generated_at_unix_ms": 1777835206229,
+      "default_run_id": "run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c",
+      "default_network_id": "trainnet.cs336.a1.4368proof4",
+      "active_run_id": "run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c",
+      "active_window_id": "window.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c.0001",
+      "default_work_class": "small_model_local_training",
+      "default_progress_class": "model_update",
+      "default_replica_type": "single_node",
+      "latest_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c/step-000004",
+      "latest_checkpoint_age_ms": 783105229,
+      "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c/step-000004",
+      "latest_window_status": "scored",
+      "latest_closeout_status": "rewarded",
+      "queue_pressure": {
+        "state": "pending_validation",
+        "active_windows": 460,
+        "pending_validation_windows": 458,
+        "validator_challenges_open": 537,
+        "validator_challenges_queued": 474
+      },
+      "launch_health": {
+        "generated_at_unix_ms": 1777835206845,
+        "overall_status": "bad",
+        "public_snapshot_source": "cached",
+        "public_stats_age_ms": 616,
+        "public_state_drift_from_kernel_ms": 616,
+        "active_runs": 685,
+        "run_backlog_slots": 42,
+        "pending_validation_windows": 458,
+        "validator_challenges_open": 537,
+        "validator_challenges_queued": 474,
+        "accepted_work_pending_payout_count": 0,
+        "accepted_work_attention_payout_count": 1,
+        "payouts_failed_24h": 1,
+        "payouts_skipped_24h": 1023,
+        "resolver_lookup_latency_p95_ms": 1,
+        "resolver_lookup_sample_count": 4,
+        "signed_access_latency_p95_ms": 205,
+        "signed_access_sample_count": 4,
+        "active_alert_count": 3,
+        "critical_alert_count": 1,
+        "alerts": [
+          {
+            "alert_id": "run_backlog",
+            "severity": "warning",
+            "title": "Run backlog",
+            "detail": "42 worker slots remain unfilled across 685 active run(s)."
+          },
+          {
+            "alert_id": "validator_backlog",
+            "severity": "warning",
+            "title": "Validator backlog",
+            "detail": "458 pending window(s) // 537 open challenge(s) // 474 queued challenge(s)."
+          },
+          {
+            "alert_id": "payout_lag",
+            "severity": "critical",
+            "title": "Payout attention required",
+            "detail": "1 accepted-work payout(s) need attention // failed 24h 1 // skipped 24h 1023."
+          }
+        ]
+      },
+      "work_classes": [
+        {
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "run_count": 690,
+          "active_run_count": 685,
+          "accepted_closeouts": 151,
+          "payout_eligible_closeouts": 148,
+          "weak_device_bearing_closeouts": 5,
+          "progress_bearing_closeouts": 151,
+          "participation_only_closeouts": 0
+        }
+      ],
+      "runs": [
+        {
+          "training_run_id": "run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c",
+          "display_name": "CS336 A1 Homework Dispatch 20260424173225 #0001",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 1,
+          "weak_device_accepted_contributors": 1,
+          "model_progress_contributors": 1,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 0,
+          "validator_challenges_queued": 0,
+          "latest_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c/step-000004",
+          "latest_checkpoint_age_ms": 783105229,
+          "latest_window_id": "window.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c.0001",
+          "latest_window_status": "scored",
+          "latest_closeout_status": "rewarded",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.allcurrent.20260417004713",
+          "display_name": "CS336 A1 allcurrent 20260417004713",
+          "network_id": "trainnet.cs336.a1.demo",
+          "run_status": "running",
+          "scheduler_window_state": "active",
+          "current_window_id": "window.cs336.a1.allcurrent.20260417004713.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 0,
+          "weak_device_assigned_contributors": 0,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 0,
+          "pending_validation_window_count": 0,
+          "validator_challenges_open": 0,
+          "validator_challenges_queued": 0,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 1430322663
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.4368proof4] 20260425181051 #0001",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 2,
+          "weak_device_assigned_contributors": 2,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694554779,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.4368proof4] 20260425181051 #0002",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 2,
+          "weak_device_assigned_contributors": 2,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694537060,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.4368proof4] 20260425181051 #0003",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694528242,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.demo] 20260425181051 #0001",
+          "network_id": "trainnet.cs336.a1.demo",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694519526,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.demo] 20260425181051 #0002",
+          "network_id": "trainnet.cs336.a1.demo",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694513553,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.demo] 20260425181051 #0003",
+          "network_id": "trainnet.cs336.a1.demo",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694496374,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d/step-000004"
+        }
+      ],
+      "windows": [
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140663829,
+          "activated_at_ms": 1777140663829,
+          "sealed_at_ms": 1777145756969
+        },
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140674045,
+          "activated_at_ms": 1777140674045,
+          "sealed_at_ms": 1777145572660
+        },
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140680394,
+          "activated_at_ms": 1777140680394,
+          "sealed_at_ms": 1777141079672
+        },
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28",
+          "network_id": "trainnet.cs336.a1.demo",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140689371,
+          "activated_at_ms": 1777140689371,
+          "sealed_at_ms": 1777140995940
+        },
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca",
+          "network_id": "trainnet.cs336.a1.demo",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140704707,
+          "activated_at_ms": 1777140704707,
+          "sealed_at_ms": 1777140930266
+        },
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d",
+          "network_id": "trainnet.cs336.a1.demo",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140719029,
+          "activated_at_ms": 1777140719029,
+          "sealed_at_ms": 1777140865256
+        },
+        {
+          "window_id": "window.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c.0001",
+          "training_run_id": "run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "status": "scored",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 1,
+          "replay_required_contributions": 0,
+          "validator_challenges_open": 0,
+          "validator_challenges_queued": 0,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c/step-000004",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c.0001",
+          "closeout_status": "rewarded",
+          "payout_eligible": true,
+          "weak_device_bearing": true,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777051950752,
+          "activated_at_ms": 1777051950752,
+          "sealed_at_ms": 1777051985833
+        }
+      ]
+    },
+    "compute_products_active": 0,
+    "compute_capacity_lots_open": 0,
+    "compute_capacity_lots_delivering": 0,
+    "compute_instruments_active": 0,
+    "compute_inventory_quantity_open": 0,
+    "compute_inventory_quantity_reserved": 0,
+    "compute_inventory_quantity_delivering": 0,
+    "compute_delivery_proofs_24h": 0,
+    "compute_delivery_quantity_24h": 0,
+    "compute_delivery_rejections_24h": 0,
+    "compute_delivery_variances_24h": 0,
+    "compute_validator_challenges_open": 537,
+    "compute_validator_challenges_queued": 474,
+    "compute_validator_challenges_verified_24h": 2,
+    "compute_validator_challenges_rejected_24h": 0,
+    "compute_validator_challenges_timed_out_24h": 0,
+    "compute_delivery_accept_rate_24h": 0.0,
+    "compute_fill_ratio_24h": 0.0,
+    "compute_priced_instruments_24h": 0,
+    "compute_indices_published_24h": 0,
+    "compute_index_corrections_24h": 0,
+    "compute_index_thin_windows_24h": 0,
+    "compute_index_settlement_eligible_24h": 0,
+    "compute_index_quality_score_24h": 0.0,
+    "compute_active_provider_count": 0,
+    "compute_provider_concentration_hhi": 0.0,
+    "compute_forward_physical_instruments_active": 0,
+    "compute_forward_physical_open_quantity": 0,
+    "compute_forward_physical_defaults_24h": 0,
+    "compute_future_cash_instruments_active": 0,
+    "compute_future_cash_open_interest": 0,
+    "compute_future_cash_cash_settlements_24h": 0,
+    "compute_future_cash_cash_flow_24h": 0,
+    "compute_future_cash_defaults_24h": 0,
+    "compute_future_cash_collateral_shortfall_24h": 0,
+    "compute_structured_instruments_active": 0,
+    "compute_structured_instruments_closed_24h": 0,
+    "compute_max_buyer_concentration_share": 0.0,
+    "compute_paper_to_physical_ratio": 0.0,
+    "compute_deliverable_coverage_ratio": 0.0,
+    "compute_breakers_tripped": 2,
+    "compute_breakers_guarded": 0,
+    "compute_breaker_states": [
+      {
+        "breaker_id": "future_cash.paper_to_physical",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 2.0,
+        "observed_value": 0.0,
+        "action": "halt new future cash issuance when paper exposure outruns deliverable depth"
+      },
+      {
+        "breaker_id": "future_cash.deliverable_coverage",
+        "state": "tripped",
+        "reason": "observed value 0.0000 fell below threshold 0.5000",
+        "threshold": 0.5,
+        "observed_value": 0.0,
+        "action": "narrow or halt future cash issuance until physical coverage recovers"
+      },
+      {
+        "breaker_id": "future_cash.index_quality",
+        "state": "tripped",
+        "reason": "observed value 0.0000 fell below threshold 0.5000",
+        "threshold": 0.5,
+        "observed_value": 0.0,
+        "action": "disable settlement-sensitive issuance until governed indices improve"
+      },
+      {
+        "breaker_id": "future_cash.buyer_concentration",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.8,
+        "observed_value": 0.0,
+        "action": "cap marginal hedge issuance to concentrated buyers"
+      },
+      {
+        "breaker_id": "provider_concentration",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.6,
+        "observed_value": 0.0,
+        "action": "review provider concentration before widening launch products"
+      },
+      {
+        "breaker_id": "delivery_rejection_rate",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.25,
+        "observed_value": 0.0,
+        "action": "pause advanced compute issuance while delivery integrity degrades"
+      }
+    ],
+    "compute_rollout_gates": [
+      {
+        "gate_id": "forward_physical",
+        "enabled": true,
+        "stage": "phase_5",
+        "description": "Forward physical capacity sales"
+      },
+      {
+        "gate_id": "future_cash",
+        "enabled": true,
+        "stage": "phase_7",
+        "description": "Cash-settled hedge issuance and settlement"
+      },
+      {
+        "gate_id": "structured_products",
+        "enabled": true,
+        "stage": "phase_8",
+        "description": "Reservation rights, swaps, and strips"
+      },
+      {
+        "gate_id": "reconciliation_diagnostics",
+        "enabled": true,
+        "stage": "migration",
+        "description": "Legacy, transitional, and canonical truth diagnostics"
+      }
+    ],
+    "compute_truth_labels": [
+      {
+        "truth_label": "legacy",
+        "count_24h": 0
+      },
+      {
+        "truth_label": "transitional",
+        "count_24h": 0
+      },
+      {
+        "truth_label": "canonical",
+        "count_24h": 0
+      }
+    ],
+    "compute_reconciliation_gap_24h": 0,
+    "compute_policy_bundle_id": "policy.compute.market.default",
+    "compute_policy_version": "1",
+    "liquidity_quotes_active": 0,
+    "liquidity_route_plans_active": 0,
+    "liquidity_envelopes_open": 0,
+    "liquidity_settlements_24h": 0,
+    "liquidity_reserve_partitions_active": 0,
+    "liquidity_value_moved_24h": 0,
+    "risk_coverage_offers_open": 0,
+    "risk_coverage_bindings_active": 0,
+    "risk_prediction_positions_open": 0,
+    "risk_claims_open": 0,
+    "risk_signals_active": 0,
+    "risk_implied_fail_probability_bps": 0,
+    "risk_calibration_score": 0.0,
+    "risk_coverage_concentration_hhi": 0.0,
+    "recent_pylons": [
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "2086dff7…be55b53e",
+        "last_seen_at_unix_ms": 1777835205902,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "516c596f…a083cfc7",
+        "last_seen_at_unix_ms": 1777835205587,
+        "client_version": "pylon/0.1.16",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 2,
+        "products": [
+          "psionic.cluster.training.adapter_contributor.cluster_attached",
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e4b",
+        "runtime_state": "online",
+        "inference_ready": true,
+        "training_capability_envelope_v2": {
+          "schema_version": "provider.training_capability_envelope.v2",
+          "tier_profile": {
+            "tier": "tier2_trainer",
+            "backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "accelerator_inventory": [
+              {
+                "backend_family": "metal",
+                "model": "Apple M1",
+                "vendor": "sppci_vendor_Apple",
+                "accelerator_count": 1
+              }
+            ],
+            "available_memory_gb": 8,
+            "throughput_band": "low",
+            "lease_reliability": "steady",
+            "replay_capability": "short_window",
+            "artifact_upload_latency_class": "unknown"
+          },
+          "runtime_surface_detected": true,
+          "contributor_supported": true,
+          "benchmark_lane_available": true,
+          "eligible_work_classes": [
+            {
+              "work_class": "validation_replay",
+              "minimum_tier": "tier1_validation",
+              "replica_types": [
+                "single_node"
+              ],
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ],
+              "required_throughput_band": "unknown",
+              "required_replay_capability": "short_window",
+              "benchmark_lane_required": true
+            },
+            {
+              "work_class": "evaluation",
+              "minimum_tier": "tier1_validation",
+              "replica_types": [
+                "single_node"
+              ],
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ],
+              "required_throughput_band": "unknown",
+              "required_replay_capability": "short_window",
+              "benchmark_lane_required": true
+            },
+            {
+              "work_class": "adapter_training",
+              "minimum_tier": "tier2_trainer",
+              "replica_types": [
+                "single_node"
+              ],
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ],
+              "required_throughput_band": "unknown",
+              "required_replay_capability": "none",
+              "benchmark_lane_required": true
+            },
+            {
+              "work_class": "small_model_local_training",
+              "minimum_tier": "tier2_trainer",
+              "replica_types": [
+                "single_node"
+              ],
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ],
+              "required_throughput_band": "unknown",
+              "required_replay_capability": "none",
+              "benchmark_lane_required": false
+            },
+            {
+              "work_class": "grouped_replica_stage_execution",
+              "minimum_tier": "tier2_trainer",
+              "replica_types": [
+                "grouped_replica"
+              ],
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ],
+              "required_throughput_band": "unknown",
+              "required_replay_capability": "none",
+              "benchmark_lane_required": true
+            }
+          ],
+          "eligible_replica_types": [
+            {
+              "replica_type": "single_node",
+              "minimum_tier": "tier1_validation",
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ]
+            },
+            {
+              "replica_type": "grouped_replica",
+              "minimum_tier": "tier2_trainer",
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "477c70ef…6505bb93",
+        "last_seen_at_unix_ms": 1777835205586,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "9c8a3294…39456379",
+        "last_seen_at_unix_ms": 1777835201726,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "ff7f60fa…29e787c9",
+        "last_seen_at_unix_ms": 1777835201726,
+        "client_version": "pylon/0.1.12",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:latest",
+        "runtime_state": "error",
+        "inference_ready": true,
+        "training_capability_envelope_v2": {
+          "schema_version": "provider.training_capability_envelope.v2",
+          "tier_profile": {
+            "tier": "tier1_validation",
+            "backend_families": [
+              "cuda"
+            ],
+            "accelerator_inventory": [
+              {
+                "backend_family": "cuda",
+                "model": "NVIDIA GeForce RTX 4090",
+                "accelerator_count": 1,
+                "memory_per_accelerator_gb": 24
+              }
+            ],
+            "available_memory_gb": 63,
+            "throughput_band": "high",
+            "lease_reliability": "steady",
+            "replay_capability": "full_window",
+            "artifact_upload_latency_class": "unknown"
+          },
+          "runtime_surface_detected": false,
+          "contributor_supported": false,
+          "benchmark_lane_available": false
+        }
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "836edcc0…5500d4de",
+        "last_seen_at_unix_ms": 1777835201725,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "938127c3…fc5fee2d",
+        "last_seen_at_unix_ms": 1777835201725,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "562d6791…6976a458",
+        "last_seen_at_unix_ms": 1777835201725,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      }
+    ],
+    "pylon_client_version_counts": [
+      {
+        "client_version": "pylon/0.1.1",
+        "online_sessions": 51,
+        "online_pylons": 51
+      },
+      {
+        "client_version": "pylon/0.1.16",
+        "online_sessions": 9,
+        "online_pylons": 5
+      },
+      {
+        "client_version": "pylon/0.1.12",
+        "online_sessions": 3,
+        "online_pylons": 2
+      },
+      {
+        "client_version": "pylon/0.1.15",
+        "online_sessions": 1,
+        "online_pylons": 1
+      }
+    ],
+    "homework_worker_eligible_pylon_version_counts": [
+      {
+        "client_version": "0.1.16",
+        "online_sessions": 5,
+        "online_pylons": 5
+      }
+    ],
+    "homework_worker_presence_only_blocker_counts": [
+      {
+        "client_version": "pylon/0.1.1",
+        "reason": "homework_worker_training_capability_missing",
+        "online_sessions": 49,
+        "online_pylons": 49
+      },
+      {
+        "client_version": "pylon/0.1.12",
+        "reason": "homework_worker_training_capability_missing",
+        "online_sessions": 3,
+        "online_pylons": 2
+      },
+      {
+        "client_version": "pylon/0.1.1",
+        "reason": "homework_worker_admission_missing",
+        "online_sessions": 2,
+        "online_pylons": 2
+      },
+      {
+        "client_version": "pylon/0.1.15",
+        "reason": "homework_worker_version_too_low",
+        "online_sessions": 1,
+        "online_pylons": 1
+      }
+    ],
+    "recent_pylon_diagnostics": [
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "516c596f…a083cfc7",
+        "last_seen_at_unix_ms": 1777835205587,
+        "diagnostic_id": "openagents.pylon.first_run.v1",
+        "model_id": "gemma-4-e4b",
+        "runtime_backend": "local_runtime",
+        "status": "completed",
+        "measured_at_unix_ms": 1776923185694,
+        "load_s": 6.4244633753333344,
+        "mean_total_s": 10.910978180666667,
+        "mean_ttft_s": 10.890341021,
+        "mean_decode_tok_s": 13.14410127761538,
+        "repeats": 3
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "ff7f60fa…29e787c9",
+        "last_seen_at_unix_ms": 1777835201726,
+        "diagnostic_id": "openagents.pylon.first_run.v1",
+        "model_id": "gemma-4-e4b",
+        "runtime_backend": "local_runtime",
+        "status": "skipped",
+        "reason": "gemma-4-e4b is not loaded in the local runtime; downloaded GGUF files alone do not make supply eligible",
+        "measured_at_unix_ms": 1775586249733,
+        "repeats": 3
+      }
+    ],
+    "recent_receipts": [
+      {
+        "receipt_id": "nexus-receipt-01874879",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835201725,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:f3f930038d92328e6b64ef8a384913846c702c01bd38c64ffed6f4588b315853",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874878",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835197171,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:d137a6a4a0e48ff60af476224e5683dbdc690ee2ed2c0824de21be977e4fba88",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874877",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835187005,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:becec6c514686b9d436d07dbf7bfa701466f7e612949b76f2c1b248c4b60c95f",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874876",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835182482,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:4e6e4cee070c49982a4358f1935c39453fbc4d3373eafd1cedf97d8310e9ae69",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874875",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835130059,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:23756cf1d4fc7fcebf60518111e2e4ad1f4905dfb7c993678f8b9faa89790388",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874874",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835130587,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:f2e53fa0d6908b6272ef148ca247871cb8c19438f72b3f8aaab80a931ad409a0",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874873",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835118667,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:3ec4e026158970e1524c5d178c7a3e157b636a1ba681fa25d28af7d8af9c4e97",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874872",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835113551,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:64875eec6435d4bb8fff452a99dc589313c2f534bcb7712a1c19b10c4c2bb10d",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874871",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835102404,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:bc3131d37082f18dc234f911791b698637be9e3843d495f0758d1af5d0989cdb",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874870",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835097063,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:eef6dce43d44d448a611d3b5edbef6a8fa6ef7697f6ec6a18ae003668d2927a9",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874869",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835086673,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:b178c4b557f86b49191936d7fd0d50b326b2ae20d0ef2e6c0539a8402ff566b1",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874868",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835078113,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:161d13986dc3202e4596a5a1772a095be7858eee810e38cfa269b844c53738ae",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874867",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835073039,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:aea288ebea07feabecc6927ce4e3402e393983b92b09e7b76609ee1dbda05696",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874866",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835059859,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:2ae07693b707f7e296223887d2b1c62fc260fd89faaba7d4e2d0991b9620820a",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874865",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835052624,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:735b8ae2250249bd164721a2beb62d349036ef92f75bdf3629e4bd073d6baf67",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874864",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835047818,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:4d3745e586e6cdf9bad054fa332523a0408e1a463db42272e0c88101fe5732c6",
+        "status": "recorded"
+      }
+    ]
+  },
+  "training_rollout": {
+    "revision": 0,
+    "updated_at_unix_ms": 0,
+    "pause_new_leases": false,
+    "default_channel": "broad",
+    "gates": [],
+    "cohorts": [],
+    "blocked_release_ids": [],
+    "blocked_build_digests": [],
+    "abuse_controls": {
+      "enabled": false,
+      "max_active_leases_per_settlement_destination": 0,
+      "max_recent_expired_leases_per_node": 0,
+      "max_recent_non_useful_contributions_per_node": 0,
+      "payout_hold_after_non_useful_contributions": 0,
+      "lookback_window_ms": 86400000
+    },
+    "abuse_summary": {
+      "enabled": false,
+      "lookback_window_ms": 86400000,
+      "settlement_destinations_with_multiple_nodes": 0,
+      "nodes_over_active_lease_limit": 0,
+      "nodes_over_recent_expired_lease_limit": 0,
+      "nodes_over_recent_non_useful_limit": 0,
+      "payout_hold_nodes": 0
+    },
+    "channels": [
+      {
+        "channel": "canary",
+        "nodes_total": 0,
+        "nodes_online": 0,
+        "nodes_eligible": 0
+      },
+      {
+        "channel": "beta",
+        "nodes_total": 0,
+        "nodes_online": 0,
+        "nodes_eligible": 0
+      },
+      {
+        "channel": "broad",
+        "nodes_total": 264,
+        "nodes_online": 8,
+        "nodes_eligible": 264
+      }
+    ]
+  },
+  "training_summary": null,
+  "a1_minimal_claim_gates": null,
+  "public_stats": {
+    "service": "nexus-control",
+    "authority": "openagents-hosted-nexus",
+    "hosted_nexus_relay_url": "wss://nexus.openagents.com/",
+    "as_of_unix_ms": 1777835222565,
+    "window_started_at_unix_ms": 1777748822565,
+    "receipt_count": 8192,
+    "receipt_persistence_enabled": true,
+    "pylons_online_now": 61,
+    "pylons_seen_24h": 61,
+    "pylon_sessions_online_now": 67,
+    "sellable_pylons_online_now": 61,
+    "inference_ready_pylons_online_now": 59,
+    "inference_ready_pylon_sessions_online_now": 65,
+    "pylon_reported_hosts_online_now": 20,
+    "pylon_sessions_missing_host_fingerprint_online_now": 0,
+    "likely_same_host_pylon_sessions_online_now": 47,
+    "likely_same_host_pylons_online_now": 41,
+    "pylon_presence_stale_after_ms": 120000,
+    "sessions_active": 0,
+    "sessions_issued_24h": 0,
+    "sync_tokens_active": 0,
+    "sync_tokens_issued_24h": 0,
+    "starter_demand_budget_cap_sats": 5000,
+    "starter_demand_budget_allocated_sats": 0,
+    "starter_offers_waiting_ack": 0,
+    "starter_offers_running": 0,
+    "starter_offers_dispatched_24h": 0,
+    "starter_offers_started_24h": 0,
+    "starter_offer_heartbeats_24h": 0,
+    "starter_offers_completed_24h": 0,
+    "starter_offers_released_24h": 0,
+    "starter_offers_expired_24h": 0,
+    "starter_demand_ineligible_polls_24h": 0,
+    "starter_offer_start_rate_24h": 0.0,
+    "starter_offer_completion_rate_24h": 0.0,
+    "starter_offer_loss_rate_24h": 0.0,
+    "starter_demand_paid_sats_24h": 0,
+    "starter_demand_released_sats_24h": 0,
+    "nexus_wallet_runtime_status": "connected",
+    "nexus_wallet_last_error": "funding target returned without full wallet sync; refresh loop owns reconciliation",
+    "nexus_wallet_storage_runtime_mode": "original",
+    "nexus_wallet_balance_sats": 0,
+    "nexus_wallet_balance_updated_at_unix_ms": 1777832352677,
+    "nexus_treasury_snapshot_generated_at_unix_ms": 1777835222565,
+    "nexus_treasury_snapshot_age_ms": 0,
+    "nexus_wallet_sync_lag_ms": 2869888,
+    "nexus_payout_loop_health": "idle",
+    "nexus_treasury_degraded_reason": "wallet_balance_zero_with_receive_history:1761581:1541332",
+    "nexus_treasury_enabled": true,
+    "nexus_treasury_payout_sats_per_window": 25,
+    "nexus_treasury_payout_interval_seconds": 60,
+    "nexus_treasury_require_sellable": false,
+    "nexus_treasury_daily_budget_cap_sats": 1000000,
+    "nexus_placeholder_payout_mode": "disabled",
+    "nexus_registered_payout_identities": 2019,
+    "nexus_payout_sats_paid_total": 1541332,
+    "nexus_payout_sats_paid_24h": 50,
+    "nexus_accepted_work_payout_sats_paid_total": 3372,
+    "nexus_accepted_work_payout_sats_paid_24h": 25,
+    "nexus_availability_stipend_payout_sats_paid_total": 749015,
+    "nexus_availability_stipend_payout_sats_paid_24h": 25,
+    "nexus_placeholder_payout_sats_paid_total": 749015,
+    "nexus_placeholder_payout_sats_paid_24h": 25,
+    "nexus_beta_bonus_payout_sats_paid_total": 0,
+    "nexus_beta_bonus_payout_sats_paid_24h": 0,
+    "nexus_weak_device_accepted_work_payout_sats_paid_total": 105,
+    "nexus_weak_device_accepted_work_payout_sats_paid_24h": 0,
+    "nexus_strong_lane_accepted_work_payout_sats_paid_total": 3267,
+    "nexus_strong_lane_accepted_work_payout_sats_paid_24h": 25,
+    "nexus_payouts_dispatched_24h": 0,
+    "nexus_payouts_confirmed_24h": 2,
+    "nexus_payouts_failed_24h": 1,
+    "nexus_payouts_skipped_24h": 1023,
+    "nexus_availability_online_identities_now": 0,
+    "nexus_availability_online_host_clusters_now": 0,
+    "nexus_availability_stipend_eligible_beneficiaries_now": 0,
+    "nexus_placeholder_payout_eligible_online_targets": 0,
+    "nexus_inference_ready_online_payout_targets": 0,
+    "nexus_duplicate_host_placeholder_blocked_online_targets": 0,
+    "nexus_duplicate_host_blocked_beneficiaries_now": 0,
+    "nexus_duplicate_payout_target_blocked_beneficiaries_now": 0,
+    "nexus_missing_payout_target_blocked_beneficiaries_now": 0,
+    "nexus_version_floor_blocked_beneficiaries_now": 0,
+    "nexus_readiness_blocked_beneficiaries_now": 0,
+    "training_nodes_admitted": 264,
+    "training_admitted_contributors": 264,
+    "training_assigned_contributors": 85,
+    "training_accepted_contributors": 27,
+    "training_model_progress_contributors": 27,
+    "training_weak_device_assigned_contributors": 85,
+    "training_weak_device_accepted_contributors": 27,
+    "training_nodes_online": 8,
+    "training_admitted_nodes_online": 8,
+    "homework_worker_eligible_pylons_online_now": 5,
+    "training_runs_active": 685,
+    "training_windows_active": 460,
+    "training_windows_pending_validation": 458,
+    "training_validator_challenges_open": 537,
+    "training_validator_challenges_queued": 474,
+    "training_nodes_contributing_to_accepted_progress": 27,
+    "training_runs_with_accepted_progress": 149,
+    "training_windows_advanced_checkpoint_lineage": 647,
+    "training_accepted_closeouts": 151,
+    "training_checkpoint_max_age_ms": 1596463344,
+    "training_artifact_failures_open": 0,
+    "training_payout_eligible_closeouts": 148,
+    "training_public_state": {
+      "generated_at_unix_ms": 1777835222565,
+      "default_run_id": "run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c",
+      "default_network_id": "trainnet.cs336.a1.4368proof4",
+      "active_run_id": "run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c",
+      "active_window_id": "window.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c.0001",
+      "default_work_class": "small_model_local_training",
+      "default_progress_class": "model_update",
+      "default_replica_type": "single_node",
+      "latest_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c/step-000004",
+      "latest_checkpoint_age_ms": 783121565,
+      "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c/step-000004",
+      "latest_window_status": "scored",
+      "latest_closeout_status": "rewarded",
+      "queue_pressure": {
+        "state": "pending_validation",
+        "active_windows": 460,
+        "pending_validation_windows": 458,
+        "validator_challenges_open": 537,
+        "validator_challenges_queued": 474
+      },
+      "launch_health": {
+        "generated_at_unix_ms": 1777835222879,
+        "overall_status": "bad",
+        "public_snapshot_source": "cached",
+        "public_stats_age_ms": 314,
+        "public_state_drift_from_kernel_ms": 314,
+        "active_runs": 685,
+        "run_backlog_slots": 42,
+        "pending_validation_windows": 458,
+        "validator_challenges_open": 537,
+        "validator_challenges_queued": 474,
+        "accepted_work_pending_payout_count": 0,
+        "accepted_work_attention_payout_count": 1,
+        "payouts_failed_24h": 1,
+        "payouts_skipped_24h": 1023,
+        "resolver_lookup_latency_p95_ms": 42,
+        "resolver_lookup_sample_count": 7,
+        "signed_access_latency_p95_ms": 250,
+        "signed_access_sample_count": 7,
+        "active_alert_count": 3,
+        "critical_alert_count": 1,
+        "alerts": [
+          {
+            "alert_id": "run_backlog",
+            "severity": "warning",
+            "title": "Run backlog",
+            "detail": "42 worker slots remain unfilled across 685 active run(s)."
+          },
+          {
+            "alert_id": "validator_backlog",
+            "severity": "warning",
+            "title": "Validator backlog",
+            "detail": "458 pending window(s) // 537 open challenge(s) // 474 queued challenge(s)."
+          },
+          {
+            "alert_id": "payout_lag",
+            "severity": "critical",
+            "title": "Payout attention required",
+            "detail": "1 accepted-work payout(s) need attention // failed 24h 1 // skipped 24h 1023."
+          }
+        ]
+      },
+      "work_classes": [
+        {
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "run_count": 690,
+          "active_run_count": 685,
+          "accepted_closeouts": 151,
+          "payout_eligible_closeouts": 148,
+          "weak_device_bearing_closeouts": 5,
+          "progress_bearing_closeouts": 151,
+          "participation_only_closeouts": 0
+        }
+      ],
+      "runs": [
+        {
+          "training_run_id": "run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c",
+          "display_name": "CS336 A1 Homework Dispatch 20260424173225 #0001",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 1,
+          "weak_device_accepted_contributors": 1,
+          "model_progress_contributors": 1,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 0,
+          "validator_challenges_queued": 0,
+          "latest_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c/step-000004",
+          "latest_checkpoint_age_ms": 783121565,
+          "latest_window_id": "window.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c.0001",
+          "latest_window_status": "scored",
+          "latest_closeout_status": "rewarded",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.allcurrent.20260417004713",
+          "display_name": "CS336 A1 allcurrent 20260417004713",
+          "network_id": "trainnet.cs336.a1.demo",
+          "run_status": "running",
+          "scheduler_window_state": "active",
+          "current_window_id": "window.cs336.a1.allcurrent.20260417004713.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 0,
+          "weak_device_assigned_contributors": 0,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 0,
+          "pending_validation_window_count": 0,
+          "validator_challenges_open": 0,
+          "validator_challenges_queued": 0,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 1430338999
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.4368proof4] 20260425181051 #0001",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 2,
+          "weak_device_assigned_contributors": 2,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694571115,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.4368proof4] 20260425181051 #0002",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 2,
+          "weak_device_assigned_contributors": 2,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694553396,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.4368proof4] 20260425181051 #0003",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694544578,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.demo] 20260425181051 #0001",
+          "network_id": "trainnet.cs336.a1.demo",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694535862,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.demo] 20260425181051 #0002",
+          "network_id": "trainnet.cs336.a1.demo",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694529889,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca/step-000004"
+        },
+        {
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d",
+          "display_name": "Codex audit broad online wave [trainnet.cs336.a1.demo] 20260425181051 #0003",
+          "network_id": "trainnet.cs336.a1.demo",
+          "run_status": "running",
+          "scheduler_window_state": "validating",
+          "current_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d.0001",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "assigned_contributors": 1,
+          "weak_device_assigned_contributors": 1,
+          "accepted_contributors": 0,
+          "weak_device_accepted_contributors": 0,
+          "model_progress_contributors": 0,
+          "active_window_count": 1,
+          "pending_validation_window_count": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "latest_checkpoint_ref": "checkpoint://decoder/base",
+          "latest_checkpoint_age_ms": 694512710,
+          "latest_window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d.0001",
+          "latest_window_status": "sealed",
+          "latest_promoted_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d/step-000004"
+        }
+      ],
+      "windows": [
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0001.20260425181051.37f1d175/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140663829,
+          "activated_at_ms": 1777140663829,
+          "sealed_at_ms": 1777145756969
+        },
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0002.20260425181109.ae854a3b/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140674045,
+          "activated_at_ms": 1777140674045,
+          "sealed_at_ms": 1777145572660
+        },
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_4368proof4_20260425181051_3c3ff7b2_0003.20260425181117.e45fb59d/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140680394,
+          "activated_at_ms": 1777140680394,
+          "sealed_at_ms": 1777141079672
+        },
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28",
+          "network_id": "trainnet.cs336.a1.demo",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0001.20260425181126.ab680e28/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140689371,
+          "activated_at_ms": 1777140689371,
+          "sealed_at_ms": 1777140995940
+        },
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca",
+          "network_id": "trainnet.cs336.a1.demo",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0002.20260425181132.467762ca/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140704707,
+          "activated_at_ms": 1777140704707,
+          "sealed_at_ms": 1777140930266
+        },
+        {
+          "window_id": "window.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d.0001",
+          "training_run_id": "run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d",
+          "network_id": "trainnet.cs336.a1.demo",
+          "status": "sealed",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 0,
+          "replay_required_contributions": 1,
+          "validator_challenges_open": 1,
+          "validator_challenges_queued": 1,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.audit_broad_20260425181049_trainnet_cs336_a1_demo_20260425181051_3c3ff7b2_0003.20260425181149.b6a8a85d/step-000004",
+          "payout_eligible": false,
+          "weak_device_bearing": false,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777140719029,
+          "activated_at_ms": 1777140719029,
+          "sealed_at_ms": 1777140865256
+        },
+        {
+          "window_id": "window.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c.0001",
+          "training_run_id": "run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c",
+          "network_id": "trainnet.cs336.a1.4368proof4",
+          "status": "scored",
+          "stage_id": "stage.cs336.a1.homework_dispatch",
+          "work_class": "small_model_local_training",
+          "progress_class": "model_update",
+          "replica_type": "single_node",
+          "round_index": 1,
+          "base_checkpoint_ref": "checkpoint://decoder/base",
+          "planned_local_step_count": 64,
+          "total_contributions": 1,
+          "admitted_contributions": 1,
+          "accepted_contributions": 1,
+          "replay_required_contributions": 0,
+          "validator_challenges_open": 0,
+          "validator_challenges_queued": 0,
+          "output_checkpoint_ref": "checkpoint://psion/cs336_a1_demo/run.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c/step-000004",
+          "accepted_outcome_id": "accepted.training_window.window.cs336.a1.waveproof4_20260424173223_20260424173225_e155b567_0001.20260424173225.f7568e8c.0001",
+          "closeout_status": "rewarded",
+          "payout_eligible": true,
+          "weak_device_bearing": true,
+          "lineage_advanced": true,
+          "planned_at_ms": 1777051950752,
+          "activated_at_ms": 1777051950752,
+          "sealed_at_ms": 1777051985833
+        }
+      ]
+    },
+    "compute_products_active": 0,
+    "compute_capacity_lots_open": 0,
+    "compute_capacity_lots_delivering": 0,
+    "compute_instruments_active": 0,
+    "compute_inventory_quantity_open": 0,
+    "compute_inventory_quantity_reserved": 0,
+    "compute_inventory_quantity_delivering": 0,
+    "compute_delivery_proofs_24h": 0,
+    "compute_delivery_quantity_24h": 0,
+    "compute_delivery_rejections_24h": 0,
+    "compute_delivery_variances_24h": 0,
+    "compute_validator_challenges_open": 537,
+    "compute_validator_challenges_queued": 474,
+    "compute_validator_challenges_verified_24h": 2,
+    "compute_validator_challenges_rejected_24h": 0,
+    "compute_validator_challenges_timed_out_24h": 0,
+    "compute_delivery_accept_rate_24h": 0.0,
+    "compute_fill_ratio_24h": 0.0,
+    "compute_priced_instruments_24h": 0,
+    "compute_indices_published_24h": 0,
+    "compute_index_corrections_24h": 0,
+    "compute_index_thin_windows_24h": 0,
+    "compute_index_settlement_eligible_24h": 0,
+    "compute_index_quality_score_24h": 0.0,
+    "compute_active_provider_count": 0,
+    "compute_provider_concentration_hhi": 0.0,
+    "compute_forward_physical_instruments_active": 0,
+    "compute_forward_physical_open_quantity": 0,
+    "compute_forward_physical_defaults_24h": 0,
+    "compute_future_cash_instruments_active": 0,
+    "compute_future_cash_open_interest": 0,
+    "compute_future_cash_cash_settlements_24h": 0,
+    "compute_future_cash_cash_flow_24h": 0,
+    "compute_future_cash_defaults_24h": 0,
+    "compute_future_cash_collateral_shortfall_24h": 0,
+    "compute_structured_instruments_active": 0,
+    "compute_structured_instruments_closed_24h": 0,
+    "compute_max_buyer_concentration_share": 0.0,
+    "compute_paper_to_physical_ratio": 0.0,
+    "compute_deliverable_coverage_ratio": 0.0,
+    "compute_breakers_tripped": 2,
+    "compute_breakers_guarded": 0,
+    "compute_breaker_states": [
+      {
+        "breaker_id": "future_cash.paper_to_physical",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 2.0,
+        "observed_value": 0.0,
+        "action": "halt new future cash issuance when paper exposure outruns deliverable depth"
+      },
+      {
+        "breaker_id": "future_cash.deliverable_coverage",
+        "state": "tripped",
+        "reason": "observed value 0.0000 fell below threshold 0.5000",
+        "threshold": 0.5,
+        "observed_value": 0.0,
+        "action": "narrow or halt future cash issuance until physical coverage recovers"
+      },
+      {
+        "breaker_id": "future_cash.index_quality",
+        "state": "tripped",
+        "reason": "observed value 0.0000 fell below threshold 0.5000",
+        "threshold": 0.5,
+        "observed_value": 0.0,
+        "action": "disable settlement-sensitive issuance until governed indices improve"
+      },
+      {
+        "breaker_id": "future_cash.buyer_concentration",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.8,
+        "observed_value": 0.0,
+        "action": "cap marginal hedge issuance to concentrated buyers"
+      },
+      {
+        "breaker_id": "provider_concentration",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.6,
+        "observed_value": 0.0,
+        "action": "review provider concentration before widening launch products"
+      },
+      {
+        "breaker_id": "delivery_rejection_rate",
+        "state": "clear",
+        "reason": "observed value 0.0000 is within policy",
+        "threshold": 0.25,
+        "observed_value": 0.0,
+        "action": "pause advanced compute issuance while delivery integrity degrades"
+      }
+    ],
+    "compute_rollout_gates": [
+      {
+        "gate_id": "forward_physical",
+        "enabled": true,
+        "stage": "phase_5",
+        "description": "Forward physical capacity sales"
+      },
+      {
+        "gate_id": "future_cash",
+        "enabled": true,
+        "stage": "phase_7",
+        "description": "Cash-settled hedge issuance and settlement"
+      },
+      {
+        "gate_id": "structured_products",
+        "enabled": true,
+        "stage": "phase_8",
+        "description": "Reservation rights, swaps, and strips"
+      },
+      {
+        "gate_id": "reconciliation_diagnostics",
+        "enabled": true,
+        "stage": "migration",
+        "description": "Legacy, transitional, and canonical truth diagnostics"
+      }
+    ],
+    "compute_truth_labels": [
+      {
+        "truth_label": "legacy",
+        "count_24h": 0
+      },
+      {
+        "truth_label": "transitional",
+        "count_24h": 0
+      },
+      {
+        "truth_label": "canonical",
+        "count_24h": 0
+      }
+    ],
+    "compute_reconciliation_gap_24h": 0,
+    "compute_policy_bundle_id": "policy.compute.market.default",
+    "compute_policy_version": "1",
+    "liquidity_quotes_active": 0,
+    "liquidity_route_plans_active": 0,
+    "liquidity_envelopes_open": 0,
+    "liquidity_settlements_24h": 0,
+    "liquidity_reserve_partitions_active": 0,
+    "liquidity_value_moved_24h": 0,
+    "risk_coverage_offers_open": 0,
+    "risk_coverage_bindings_active": 0,
+    "risk_prediction_positions_open": 0,
+    "risk_claims_open": 0,
+    "risk_signals_active": 0,
+    "risk_implied_fail_probability_bps": 0,
+    "risk_calibration_score": 0.0,
+    "risk_coverage_concentration_hhi": 0.0,
+    "recent_pylons": [
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "5c9747db…fd93c559",
+        "last_seen_at_unix_ms": 1777835222564,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "931bb414…76e5688a",
+        "last_seen_at_unix_ms": 1777835222564,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "516c596f…a083cfc7",
+        "last_seen_at_unix_ms": 1777835222564,
+        "client_version": "pylon/0.1.16",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 2,
+        "products": [
+          "psionic.cluster.training.adapter_contributor.cluster_attached",
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e4b",
+        "runtime_state": "online",
+        "inference_ready": true,
+        "training_capability_envelope_v2": {
+          "schema_version": "provider.training_capability_envelope.v2",
+          "tier_profile": {
+            "tier": "tier2_trainer",
+            "backend_families": [
+              "cpu",
+              "metal"
+            ],
+            "accelerator_inventory": [
+              {
+                "backend_family": "metal",
+                "model": "Apple M1",
+                "vendor": "sppci_vendor_Apple",
+                "accelerator_count": 1
+              }
+            ],
+            "available_memory_gb": 8,
+            "throughput_band": "low",
+            "lease_reliability": "steady",
+            "replay_capability": "short_window",
+            "artifact_upload_latency_class": "unknown"
+          },
+          "runtime_surface_detected": true,
+          "contributor_supported": true,
+          "benchmark_lane_available": true,
+          "eligible_work_classes": [
+            {
+              "work_class": "validation_replay",
+              "minimum_tier": "tier1_validation",
+              "replica_types": [
+                "single_node"
+              ],
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ],
+              "required_throughput_band": "unknown",
+              "required_replay_capability": "short_window",
+              "benchmark_lane_required": true
+            },
+            {
+              "work_class": "evaluation",
+              "minimum_tier": "tier1_validation",
+              "replica_types": [
+                "single_node"
+              ],
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ],
+              "required_throughput_band": "unknown",
+              "required_replay_capability": "short_window",
+              "benchmark_lane_required": true
+            },
+            {
+              "work_class": "adapter_training",
+              "minimum_tier": "tier2_trainer",
+              "replica_types": [
+                "single_node"
+              ],
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ],
+              "required_throughput_band": "unknown",
+              "required_replay_capability": "none",
+              "benchmark_lane_required": true
+            },
+            {
+              "work_class": "small_model_local_training",
+              "minimum_tier": "tier2_trainer",
+              "replica_types": [
+                "single_node"
+              ],
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ],
+              "required_throughput_band": "unknown",
+              "required_replay_capability": "none",
+              "benchmark_lane_required": false
+            },
+            {
+              "work_class": "grouped_replica_stage_execution",
+              "minimum_tier": "tier2_trainer",
+              "replica_types": [
+                "grouped_replica"
+              ],
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ],
+              "required_throughput_band": "unknown",
+              "required_replay_capability": "none",
+              "benchmark_lane_required": true
+            }
+          ],
+          "eligible_replica_types": [
+            {
+              "replica_type": "single_node",
+              "minimum_tier": "tier1_validation",
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ]
+            },
+            {
+              "replica_type": "grouped_replica",
+              "minimum_tier": "tier2_trainer",
+              "required_backend_families": [
+                "cpu",
+                "metal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "node_label": "pylon-gcp-5",
+        "nostr_pubkey_short": "61032577…f2103d1d",
+        "last_seen_at_unix_ms": 1777835222564,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "938127c3…fc5fee2d",
+        "last_seen_at_unix_ms": 1777835222564,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "5dd1f8dc…d4591829",
+        "last_seen_at_unix_ms": 1777835222563,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "4199e3ab…98cd67cb",
+        "last_seen_at_unix_ms": 1777835222563,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      },
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "03eb993c…80cc6101",
+        "last_seen_at_unix_ms": 1777835222563,
+        "client_version": "pylon/0.1.1",
+        "relay_urls": [
+          "wss://nexus.openagents.com",
+          "wss://nos.lol",
+          "wss://relay.damus.io"
+        ],
+        "eligible_product_count": 1,
+        "products": [
+          "psionic.local.inference.gemma.single_node"
+        ],
+        "ready_model": "gemma4:e2b",
+        "runtime_state": "online",
+        "inference_ready": true
+      }
+    ],
+    "pylon_client_version_counts": [
+      {
+        "client_version": "pylon/0.1.1",
+        "online_sessions": 54,
+        "online_pylons": 54
+      },
+      {
+        "client_version": "pylon/0.1.16",
+        "online_sessions": 9,
+        "online_pylons": 5
+      },
+      {
+        "client_version": "pylon/0.1.12",
+        "online_sessions": 3,
+        "online_pylons": 2
+      },
+      {
+        "client_version": "pylon/0.1.15",
+        "online_sessions": 1,
+        "online_pylons": 1
+      }
+    ],
+    "homework_worker_eligible_pylon_version_counts": [
+      {
+        "client_version": "0.1.16",
+        "online_sessions": 5,
+        "online_pylons": 5
+      }
+    ],
+    "homework_worker_presence_only_blocker_counts": [
+      {
+        "client_version": "pylon/0.1.1",
+        "reason": "homework_worker_training_capability_missing",
+        "online_sessions": 52,
+        "online_pylons": 52
+      },
+      {
+        "client_version": "pylon/0.1.12",
+        "reason": "homework_worker_training_capability_missing",
+        "online_sessions": 3,
+        "online_pylons": 2
+      },
+      {
+        "client_version": "pylon/0.1.1",
+        "reason": "homework_worker_admission_missing",
+        "online_sessions": 2,
+        "online_pylons": 2
+      },
+      {
+        "client_version": "pylon/0.1.15",
+        "reason": "homework_worker_version_too_low",
+        "online_sessions": 1,
+        "online_pylons": 1
+      }
+    ],
+    "recent_pylon_diagnostics": [
+      {
+        "node_label": "pylon",
+        "nostr_pubkey_short": "516c596f…a083cfc7",
+        "last_seen_at_unix_ms": 1777835222564,
+        "diagnostic_id": "openagents.pylon.first_run.v1",
+        "model_id": "gemma-4-e4b",
+        "runtime_backend": "local_runtime",
+        "status": "completed",
+        "measured_at_unix_ms": 1776923185694,
+        "load_s": 6.4244633753333344,
+        "mean_total_s": 10.910978180666667,
+        "mean_ttft_s": 10.890341021,
+        "mean_decode_tok_s": 13.14410127761538,
+        "repeats": 3
+      }
+    ],
+    "recent_receipts": [
+      {
+        "receipt_id": "nexus-receipt-01874881",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835217462,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:f1c45e4fe868c2955e1db6b4a70974b295c4aa8638c391bdf969c478574bcb3c",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874880",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835212209,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:61310333ab5aaa19773deab7330713a2830d4a7ef8e9fa3b6fde41be1fd1c858",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874879",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835201725,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:f3f930038d92328e6b64ef8a384913846c702c01bd38c64ffed6f4588b315853",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874878",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835197171,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:d137a6a4a0e48ff60af476224e5683dbdc690ee2ed2c0824de21be977e4fba88",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874877",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835187005,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:becec6c514686b9d436d07dbf7bfa701466f7e612949b76f2c1b248c4b60c95f",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874876",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835182482,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:4e6e4cee070c49982a4358f1935c39453fbc4d3373eafd1cedf97d8310e9ae69",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874875",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835130059,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:23756cf1d4fc7fcebf60518111e2e4ad1f4905dfb7c993678f8b9faa89790388",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874874",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835130587,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:f2e53fa0d6908b6272ef148ca247871cb8c19438f72b3f8aaab80a931ad409a0",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874873",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835118667,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:3ec4e026158970e1524c5d178c7a3e157b636a1ba681fa25d28af7d8af9c4e97",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874872",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835113551,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:64875eec6435d4bb8fff452a99dc589313c2f534bcb7712a1c19b10c4c2bb10d",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874871",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835102404,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:bc3131d37082f18dc234f911791b698637be9e3843d495f0758d1af5d0989cdb",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874870",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835097063,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:eef6dce43d44d448a611d3b5edbef6a8fa6ef7697f6ec6a18ae003668d2927a9",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874869",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835086673,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:b178c4b557f86b49191936d7fd0d50b326b2ae20d0ef2e6c0539a8402ff566b1",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874868",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835078113,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:161d13986dc3202e4596a5a1772a095be7858eee810e38cfa269b844c53738ae",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874867",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835073039,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:aea288ebea07feabecc6927ce4e3402e393983b92b09e7b76609ee1dbda05696",
+        "status": "recorded"
+      },
+      {
+        "receipt_id": "nexus-receipt-01874866",
+        "receipt_type": "kernel.training_node.admission.recorded",
+        "recorded_at_unix_ms": 1777835059859,
+        "request_id": "receipt.kernel.compute.training_node.admission.record:sha256:2ae07693b707f7e296223887d2b1c62fc260fd89faaba7d4e2d0991b9620820a",
+        "status": "recorded"
+      }
+    ]
+  },
+  "public_provider_presence": {
+    "authority": "openagents-hosted-nexus",
+    "session_id": "deploy-verify-heartbeat",
+    "nostr_pubkey_hex": "0000000000000000000000000000000000000000000000000000000000004254",
+    "status": "online",
+    "recorded_at_unix_ms": 1777835224552,
+    "heartbeat_interval_ms": 5000,
+    "stale_after_ms": 120000
+  },
+  "treasury": null,
+  "verify_timing": {
+    "started_unix_ms": 1777835202832,
+    "finished_unix_ms": 1777835233246,
+    "total_duration_ms": 30414
+  },
+  "endpoint_latency_ms": {
+    "healthz": 14,
+    "stats": 13,
+    "training_rollout": 13,
+    "training_summary": 0,
+    "a1_minimal_claim_gates": 0,
+    "public_stats": 195,
+    "public_provider_presence": 181,
+    "treasury_status": 0
+  },
+  "tail_latency_ms": {
+    "sample_count": 40,
+    "healthz": {
+      "min": 13,
+      "p50": 14,
+      "p95": 18,
+      "p99": 19,
+      "max": 19
+    },
+    "stats": {
+      "min": 13,
+      "p50": 15,
+      "p95": 16,
+      "p99": 17,
+      "max": 17
+    },
+    "provider_presence_heartbeat": {
+      "min": 13,
+      "p50": 13,
+      "p95": 15,
+      "p99": 15,
+      "max": 15
+    }
+  },
+  "tail_latency_samples_ms": {
+    "healthz": [
+      18,
+      18,
+      18,
+      18,
+      18,
+      18,
+      18,
+      18,
+      18,
+      19,
+      18,
+      18,
+      18,
+      18,
+      18,
+      18,
+      18,
+      13,
+      13,
+      15,
+      14,
+      13,
+      14,
+      14,
+      13,
+      13,
+      13,
+      13,
+      14,
+      15,
+      14,
+      13,
+      13,
+      14,
+      13,
+      14,
+      13,
+      14,
+      14,
+      13
+    ],
+    "stats": [
+      15,
+      14,
+      15,
+      14,
+      13,
+      14,
+      14,
+      14,
+      15,
+      14,
+      15,
+      15,
+      15,
+      14,
+      16,
+      17,
+      15,
+      14,
+      15,
+      15,
+      15,
+      15,
+      14,
+      16,
+      14,
+      15,
+      16,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      16,
+      15,
+      14,
+      16,
+      15,
+      14,
+      15
+    ],
+    "provider_presence_heartbeat": [
+      13,
+      13,
+      13,
+      13,
+      13,
+      14,
+      14,
+      14,
+      13,
+      14,
+      13,
+      14,
+      13,
+      13,
+      13,
+      15,
+      15,
+      15,
+      13,
+      13,
+      13,
+      13,
+      13,
+      13,
+      13,
+      13,
+      13,
+      15,
+      14,
+      13,
+      13,
+      13,
+      13,
+      13,
+      14,
+      14,
+      13,
+      13,
+      13,
+      14
+    ]
+  },
+  "treasury_policy_env": null,
+  "treasury_policy_status": null,
+  "treasury_recent_payout_activity": null,
+  "treasury_freshness": null,
+  "treasury_active_alerts": [],
+  "data_mount": "/dev/sdb on /var/lib/nexus-relay type ext4 (rw,relatime)",
+  "gates": [
+    {
+      "gate_id": "instance_running",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "instance_status": "RUNNING"
+      }
+    },
+    {
+      "gate_id": "service_active",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "service_status": "active"
+      }
+    },
+    {
+      "gate_id": "binary_release_metadata",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "deploy_mode": "image",
+        "release_path": "/opt/nexus-relay/releases/dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+        "git_sha": "dfed9ed687fb8bd23001dec5de6cedb98eda9786"
+      }
+    },
+    {
+      "gate_id": "expected_release_git_sha",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "expected_git_sha": "573a56794bb9",
+        "observed_git_sha": "dfed9ed687fb8bd23001dec5de6cedb98eda9786",
+        "observed_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents-nexus/nexus-relay:573a56794bb9"
+      }
+    },
+    {
+      "gate_id": "health_endpoint",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "latency_ms": 14,
+        "max_latency_ms": 1000,
+        "body": {
+          "ok": true,
+          "service": "nexus-relay",
+          "relay_backend": "durable-upstream",
+          "upstream_ws_url": "ws://127.0.0.1:42111/",
+          "authority_mode": "in-process",
+          "managed_groups_mode": "deferred",
+          "data_directory": "/var/lib/nexus-relay"
+        }
+      }
+    },
+    {
+      "gate_id": "stats_endpoint",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "latency_ms": 13,
+        "max_latency_ms": 1000
+      }
+    },
+    {
+      "gate_id": "training_rollout_endpoint",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "latency_ms": 13,
+        "max_latency_ms": 1000,
+        "revision": 0,
+        "pause_new_leases": false,
+        "gate_count": 0,
+        "cohort_count": 0,
+        "blocked_release_ids": [],
+        "blocked_build_digests": []
+      }
+    },
+    {
+      "gate_id": "health_endpoint_tail_latency",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "sample_count": 40,
+        "latency_ms": {
+          "min": 13,
+          "p50": 14,
+          "p95": 18,
+          "p99": 19,
+          "max": 19
+        },
+        "max_p95_latency_ms": 1000,
+        "max_p99_latency_ms": 2000
+      }
+    },
+    {
+      "gate_id": "stats_endpoint_tail_latency",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "sample_count": 40,
+        "latency_ms": {
+          "min": 13,
+          "p50": 15,
+          "p95": 16,
+          "p99": 17,
+          "max": 17
+        },
+        "max_p95_latency_ms": 1000,
+        "max_p99_latency_ms": 2000
+      }
+    },
+    {
+      "gate_id": "provider_presence_heartbeat_tail_latency",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "sample_count": 40,
+        "latency_ms": {
+          "min": 13,
+          "p50": 13,
+          "p95": 15,
+          "p99": 15,
+          "max": 15
+        },
+        "max_p95_latency_ms": 1000,
+        "max_p99_latency_ms": 2000
+      }
+    },
+    {
+      "gate_id": "public_stats_endpoint",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "latency_ms": 195,
+        "max_latency_ms": 2000
+      }
+    },
+    {
+      "gate_id": "public_provider_presence_heartbeat",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "latency_ms": 181,
+        "max_latency_ms": 2000
+      }
+    },
+    {
+      "gate_id": "treasury_status",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "skipped": true
+      }
+    },
+    {
+      "gate_id": "a1_minimal_claim_gate_endpoint",
+      "passed": true,
+      "reason": null,
+      "observed": {
+        "skipped": true
+      }
+    }
+  ],
+  "gate_summary": {
+    "failed_gate_ids": [],
+    "passed": true
+  }
+}

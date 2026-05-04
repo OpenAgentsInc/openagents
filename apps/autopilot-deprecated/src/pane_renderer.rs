@@ -5062,10 +5062,7 @@ fn mission_control_earnings_panel_accent(load_state: PaneLoadState) -> Hsla {
 /// from a healthy "no earnings yet" zero. The amount string itself is left to
 /// `earnings_scoreboard_amount_display`, whose Loading-vs-Ready/Error contract
 /// is preserved by PR #4266 and its existing test.
-fn mission_control_earnings_amount_color(
-    load_state: PaneLoadState,
-    default_color: Hsla,
-) -> Hsla {
+fn mission_control_earnings_amount_color(load_state: PaneLoadState, default_color: Hsla) -> Hsla {
     if load_state == PaneLoadState::Error {
         mission_control_amber_color()
     } else {

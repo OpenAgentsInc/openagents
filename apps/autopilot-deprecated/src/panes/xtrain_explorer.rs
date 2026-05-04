@@ -152,18 +152,20 @@ fn paint_snapshots_panel(
             10.0,
             title_color,
         ));
-        paint.scene.draw_text(paint.text.layout(
-            format!(
-                "{} participants | {} held | {} settlements",
-                entry.participant_count,
-                entry.held_checkpoint_count,
-                entry.published_settlement_count
-            )
-            .as_str(),
-            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 23.0),
-            10.0,
-            theme::text::PRIMARY,
-        ));
+        paint.scene.draw_text(
+            paint.text.layout(
+                format!(
+                    "{} participants | {} held | {} settlements",
+                    entry.participant_count,
+                    entry.held_checkpoint_count,
+                    entry.published_settlement_count
+                )
+                .as_str(),
+                Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 23.0),
+                10.0,
+                theme::text::PRIMARY,
+            ),
+        );
         let summary = split_text_for_display(entry.semantic_summary.as_str(), 44)
             .into_iter()
             .next()
@@ -184,22 +186,29 @@ fn paint_graph_panel(
     paint: &mut PaintContext,
 ) {
     let Some(snapshot) = pane.snapshot.as_ref() else {
-        paint_empty_panel_state(panel_body_bounds(panel), pane, "No explorer snapshot loaded.", paint);
+        paint_empty_panel_state(
+            panel_body_bounds(panel),
+            pane,
+            "No explorer snapshot loaded.",
+            paint,
+        );
         return;
     };
     let body = panel_body_bounds(panel);
-    paint.scene.draw_text(paint.text.layout_mono(
-        format!(
-            "{} | epoch {} | window {}",
-            compact_identifier(snapshot.network_id.as_str(), 24),
-            compact_identifier(snapshot.current_epoch_id.as_str(), 18),
-            compact_identifier(snapshot.active_window_id.as_str(), 16)
-        )
-        .as_str(),
-        Point::new(body.origin.x, body.origin.y),
-        10.0,
-        theme::text::MUTED,
-    ));
+    paint.scene.draw_text(
+        paint.text.layout_mono(
+            format!(
+                "{} | epoch {} | window {}",
+                compact_identifier(snapshot.network_id.as_str(), 24),
+                compact_identifier(snapshot.current_epoch_id.as_str(), 18),
+                compact_identifier(snapshot.active_window_id.as_str(), 16)
+            )
+            .as_str(),
+            Point::new(body.origin.x, body.origin.y),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
 
     let graph_bounds = Bounds::new(
         body.origin.x,
@@ -227,7 +236,12 @@ fn paint_graph_panel(
 
 fn paint_window_panel(panel: Bounds, pane: &XtrainExplorerPaneState, paint: &mut PaintContext) {
     let Some(snapshot) = pane.snapshot.as_ref() else {
-        paint_empty_panel_state(panel_body_bounds(panel), pane, "No active window loaded.", paint);
+        paint_empty_panel_state(
+            panel_body_bounds(panel),
+            pane,
+            "No active window loaded.",
+            paint,
+        );
         return;
     };
     let body = panel_body_bounds(panel);
@@ -314,7 +328,12 @@ fn paint_detail_panel(
     paint: &mut PaintContext,
 ) {
     let Some(snapshot) = pane.snapshot.as_ref() else {
-        paint_empty_panel_state(panel_body_bounds(panel), pane, "No explorer detail loaded.", paint);
+        paint_empty_panel_state(
+            panel_body_bounds(panel),
+            pane,
+            "No explorer detail loaded.",
+            paint,
+        );
         return;
     };
     let body = panel_body_bounds(panel);
@@ -340,7 +359,8 @@ fn paint_detail_panel(
         .enumerate()
     {
         let row_bounds = xtrain_explorer_participant_row_bounds(content_bounds, row_index);
-        let selected = pane.selected_participant_id.as_deref() == Some(participant.participant_id.as_str());
+        let selected =
+            pane.selected_participant_id.as_deref() == Some(participant.participant_id.as_str());
         paint_selectable_row_background(paint, row_bounds, selected);
         paint.scene.draw_text(paint.text.layout_mono(
             compact_participant_label(participant).as_str(),
@@ -352,17 +372,19 @@ fn paint_detail_panel(
                 theme::text::PRIMARY
             },
         ));
-        paint.scene.draw_text(paint.text.layout(
-            format!(
-                "{} | {}",
-                compact_enum(format!("{:?}", participant.participant_state).as_str()),
-                compact_enum(format!("{:?}", participant.availability_status).as_str())
-            )
-            .as_str(),
-            Point::new(row_bounds.origin.x + 150.0, row_bounds.origin.y + 8.0),
-            9.0,
-            participant_state_color(participant.participant_state),
-        ));
+        paint.scene.draw_text(
+            paint.text.layout(
+                format!(
+                    "{} | {}",
+                    compact_enum(format!("{:?}", participant.participant_state).as_str()),
+                    compact_enum(format!("{:?}", participant.availability_status).as_str())
+                )
+                .as_str(),
+                Point::new(row_bounds.origin.x + 150.0, row_bounds.origin.y + 8.0),
+                9.0,
+                participant_state_color(participant.participant_state),
+            ),
+        );
     }
 }
 
@@ -373,7 +395,12 @@ fn paint_events_panel(
     paint: &mut PaintContext,
 ) {
     let Some(snapshot) = pane.snapshot.as_ref() else {
-        paint_empty_panel_state(panel_body_bounds(panel), pane, "No explorer events loaded.", paint);
+        paint_empty_panel_state(
+            panel_body_bounds(panel),
+            pane,
+            "No explorer events loaded.",
+            paint,
+        );
         return;
     };
     let body = panel_body_bounds(panel);
@@ -475,7 +502,10 @@ fn overview_lines(
             theme::text::MUTED,
         ),
         (
-            format!("linked bounded run lanes={}", snapshot.run_surface_links.len()),
+            format!(
+                "linked bounded run lanes={}",
+                snapshot.run_surface_links.len()
+            ),
             viz_theme::track::XTRAIN,
         ),
     ];
@@ -506,7 +536,10 @@ fn participant_lines(
             participant_state_color(participant.participant_state),
         ),
         (
-            format!("node {}", compact_identifier(participant.node_id.as_str(), 26)),
+            format!(
+                "node {}",
+                compact_identifier(participant.node_id.as_str(), 26)
+            ),
             theme::text::PRIMARY,
         ),
         (
@@ -521,23 +554,29 @@ fn participant_lines(
             theme::text::PRIMARY,
         ),
         (
-            format!("roles {}", join_compact_debug(participant.role_classes.len(), "roles")),
+            format!(
+                "roles {}",
+                join_compact_debug(participant.role_classes.len(), "roles")
+            ),
             theme::text::MUTED,
         ),
-        (
-            participant.detail.clone(),
-            theme::text::PRIMARY,
-        ),
+        (participant.detail.clone(), theme::text::PRIMARY),
     ]
 }
 
 fn window_lines(snapshot: &XtrainExplorerSnapshot) -> Vec<(String, Hsla)> {
     let Some(window) = selected_window(snapshot) else {
-        return vec![("Snapshot has no active window.".to_string(), theme::text::MUTED)];
+        return vec![(
+            "Snapshot has no active window.".to_string(),
+            theme::text::MUTED,
+        )];
     };
     vec![
         (
-            format!("window {}", compact_identifier(window.window_id.as_str(), 20)),
+            format!(
+                "window {}",
+                compact_identifier(window.window_id.as_str(), 20)
+            ),
             viz_theme::series::RUNTIME,
         ),
         (
@@ -567,7 +606,10 @@ fn window_lines(snapshot: &XtrainExplorerSnapshot) -> Vec<(String, Hsla)> {
 
 fn checkpoint_lines(snapshot: &XtrainExplorerSnapshot) -> Vec<(String, Hsla)> {
     let Some(checkpoint) = snapshot.checkpoints.first() else {
-        return vec![("Snapshot has no retained checkpoints.".to_string(), theme::text::MUTED)];
+        return vec![(
+            "Snapshot has no retained checkpoints.".to_string(),
+            theme::text::MUTED,
+        )];
     };
     vec![
         (
@@ -628,7 +670,10 @@ fn evidence_lines(snapshot: &XtrainExplorerSnapshot) -> Vec<(String, Hsla)> {
         lines.push((link.detail.clone(), theme::text::PRIMARY));
     }
     if lines.is_empty() {
-        lines.push(("Snapshot has no retained evidence links.".to_string(), theme::text::MUTED));
+        lines.push((
+            "Snapshot has no retained evidence links.".to_string(),
+            theme::text::MUTED,
+        ));
     }
     lines
 }
@@ -724,7 +769,10 @@ fn summary_line(pane: &XtrainExplorerPaneState) -> String {
 }
 
 fn participant_positions(count: usize, bounds: Bounds) -> Vec<Point> {
-    let center = Point::new(bounds.origin.x + bounds.size.width * 0.5, bounds.origin.y + bounds.size.height * 0.48);
+    let center = Point::new(
+        bounds.origin.x + bounds.size.width * 0.5,
+        bounds.origin.y + bounds.size.height * 0.48,
+    );
     let dx = bounds.size.width * 0.29;
     let dy = bounds.size.height * 0.28;
     let pattern = [
@@ -755,7 +803,8 @@ fn paint_graph_edge(
     let (Some(source_index), Some(target_index)) = (source_index, target_index) else {
         return;
     };
-    let (Some(source), Some(target)) = (positions.get(source_index), positions.get(target_index)) else {
+    let (Some(source), Some(target)) = (positions.get(source_index), positions.get(target_index))
+    else {
         return;
     };
     let color = edge_color(edge.edge_kind);
@@ -797,7 +846,8 @@ fn paint_graph_node(
     phase: f32,
     paint: &mut PaintContext,
 ) {
-    let selected = pane.selected_participant_id.as_deref() == Some(participant.participant_id.as_str());
+    let selected =
+        pane.selected_participant_id.as_deref() == Some(participant.participant_id.as_str());
     let state = participant_node_state(participant.participant_state);
     let color = node_state_color(state);
     let pulse = if selected { 0.08 + phase * 0.08 } else { 0.0 };
@@ -897,7 +947,10 @@ fn compact_identifier(value: &str, limit: usize) -> String {
     }
     format!(
         "{}…",
-        trimmed.chars().take(limit.saturating_sub(1)).collect::<String>()
+        trimmed
+            .chars()
+            .take(limit.saturating_sub(1))
+            .collect::<String>()
     )
 }
 

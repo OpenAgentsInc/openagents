@@ -2,11 +2,10 @@ use super::{
     JobFeedback, JobInput, JobParam, JobRequest, JobResult, JobStatus, Nip90Error,
     create_job_feedback_event, create_job_request_event, create_job_result_event, get_request_kind,
 };
-use crate::nip01::{Event, EventTemplate};
 use crate::nip_ds::{
-    AddressableEventCoordinate, AddressableEventReference, KIND_DATASET_LISTING,
-    KIND_DATASET_OFFER,
+    AddressableEventCoordinate, AddressableEventReference, KIND_DATASET_LISTING, KIND_DATASET_OFFER,
 };
+use crate::nip01::{Event, EventTemplate};
 use crate::tag_parsing::find_tag_value;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -544,10 +543,9 @@ impl DataVendingResult {
 
     pub fn to_event_template(&self) -> Result<EventTemplate, Nip90Error> {
         let mut template = create_job_result_event(&self.to_job_result()?);
-        template.tags.push(vec![
-            TAG_PROFILE.to_string(),
-            self.profile_id.clone(),
-        ]);
+        template
+            .tags
+            .push(vec![TAG_PROFILE.to_string(), self.profile_id.clone()]);
         let listing_ref = self
             .listing_ref
             .as_ref()
@@ -776,10 +774,9 @@ impl DataVendingFeedback {
 
     pub fn to_event_template(&self) -> Result<EventTemplate, Nip90Error> {
         let mut template = create_job_feedback_event(&self.to_job_feedback()?);
-        template.tags.push(vec![
-            TAG_PROFILE.to_string(),
-            self.profile_id.clone(),
-        ]);
+        template
+            .tags
+            .push(vec![TAG_PROFILE.to_string(), self.profile_id.clone()]);
         let listing_ref = self
             .listing_ref
             .as_ref()
@@ -884,7 +881,9 @@ fn parse_ds_reference(
     expected_kind: u16,
 ) -> Result<AddressableEventReference, Nip90Error> {
     let coordinate = AddressableEventCoordinate::parse(coordinate).map_err(|error| {
-        Nip90Error::Serialization(format!("invalid dataset coordinate `{coordinate}`: {error}"))
+        Nip90Error::Serialization(format!(
+            "invalid dataset coordinate `{coordinate}`: {error}"
+        ))
     })?;
     if coordinate.kind != expected_kind {
         return Err(Nip90Error::Serialization(format!(

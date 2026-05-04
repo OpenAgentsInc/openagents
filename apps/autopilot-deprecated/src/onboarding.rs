@@ -3,11 +3,11 @@ use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tiny_skia::{FilterQuality, IntSize, Pixmap, PixmapPaint, Transform};
 use wgpui::tools::load_image_from_path;
 use wgpui::{
-    theme, Bounds, Hsla, ImageData, ImageQuad, ImageSource, PaintContext, Point, Quad, SvgQuad,
+    Bounds, Hsla, ImageData, ImageQuad, ImageSource, PaintContext, Point, Quad, SvgQuad, theme,
 };
 use winit::keyboard::{Key as WinitLogicalKey, NamedKey as WinitNamedKey};
 use winit::window::CursorIcon;
@@ -16,9 +16,9 @@ use openagents_spark::NetworkStatus;
 
 use crate::app_state::{PaneLoadState, RelayConnectionStatus, RenderState, SyncRecoveryPhase};
 use crate::pane_registry::{
-    pane_spec_for_hotbar_slot, HOTBAR_COMMAND_PALETTE_SHORTCUT, HOTBAR_COMMAND_PALETTE_TOOLTIP,
-    HOTBAR_SLOT_EARNINGS_JOBS, HOTBAR_SLOT_LOG_STREAM, HOTBAR_SLOT_NOSTR_IDENTITY,
-    HOTBAR_SLOT_PROVIDER_CONTROL, HOTBAR_SLOT_SPARK_WALLET,
+    HOTBAR_COMMAND_PALETTE_SHORTCUT, HOTBAR_COMMAND_PALETTE_TOOLTIP, HOTBAR_SLOT_EARNINGS_JOBS,
+    HOTBAR_SLOT_LOG_STREAM, HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_PROVIDER_CONTROL,
+    HOTBAR_SLOT_SPARK_WALLET, pane_spec_for_hotbar_slot,
 };
 use crate::pane_renderer::{
     mission_control_cyan_color, mission_control_green_color, mission_control_panel_border_color,
@@ -1948,9 +1948,9 @@ fn default_file_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        hotkeys_target_bounds, setup_progress_from_runtime, setup_row_statuses,
-        tour_sell_compute_layout, OnboardingLottiePlayer, OnboardingPhase, OnboardingState,
-        SetupRowStatus, SetupRuntimeSnapshot,
+        OnboardingLottiePlayer, OnboardingPhase, OnboardingState, SetupRowStatus,
+        SetupRuntimeSnapshot, hotkeys_target_bounds, setup_progress_from_runtime,
+        setup_row_statuses, tour_sell_compute_layout,
     };
     use wgpui::{Bounds, ImageSource};
 
@@ -2087,10 +2087,12 @@ mod tests {
             Some(super::SetupStepId::EstablishingConnection)
         );
         assert!(!progress.cta_enabled);
-        assert!(progress
-            .detail_lines
-            .iter()
-            .any(|line| line.contains("Sync session error")));
+        assert!(
+            progress
+                .detail_lines
+                .iter()
+                .any(|line| line.contains("Sync session error"))
+        );
     }
 
     #[test]

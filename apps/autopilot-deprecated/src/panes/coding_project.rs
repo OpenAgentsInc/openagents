@@ -38,7 +38,13 @@ pub fn paint_coding_project_pane(
 
     paint_overview_panel(content_bounds, coding_project, paint);
     paint_board_panel(content_bounds, coding_project, paint);
-    paint_chat_panel(content_bounds, autopilot_chat, coding_project, chat_inputs, paint);
+    paint_chat_panel(
+        content_bounds,
+        autopilot_chat,
+        coding_project,
+        chat_inputs,
+        paint,
+    );
 
     if coding_project.task_detail_open {
         paint_task_detail_overlay(content_bounds, coding_project, coding_project_inputs, paint);
@@ -111,7 +117,9 @@ pub fn dispatch_scroll_event(
     if overview.contains(cursor_position) {
         let viewport = overview_inner_clip(overview);
         let max_scroll = (overview_content_height(state, overview) - viewport.size.height).max(0.0);
-        return state.coding_project.scroll_overview_by(scroll_dy, max_scroll);
+        return state
+            .coding_project
+            .scroll_overview_by(scroll_dy, max_scroll);
     }
 
     let board = coding_project_board_bounds(content_bounds);
@@ -146,7 +154,13 @@ fn paint_overview_panel(
 ) {
     let bounds = coding_project_overview_panel_bounds(content_bounds);
     let overview_orange = Hsla::from_hex(0xFFA122);
-    paint_panel(bounds, "Overview", overview_orange, Some(overview_orange), paint);
+    paint_panel(
+        bounds,
+        "Overview",
+        overview_orange,
+        Some(overview_orange),
+        paint,
+    );
 
     let helper = ui_style::app_text_style(AppTextRole::Helper);
     let body = ui_style::app_text_style(AppTextRole::Supporting);
@@ -223,7 +237,13 @@ fn paint_board_panel(
 ) {
     let bounds = coding_project_board_bounds(content_bounds);
     let board_green = Hsla::from_hex(0x53D08C);
-    paint_panel(bounds, "Project Board", board_green, Some(board_green), paint);
+    paint_panel(
+        bounds,
+        "Project Board",
+        board_green,
+        Some(board_green),
+        paint,
+    );
 
     let columns = [
         ("Backlog", CodingProjectTaskStatus::Backlog),
@@ -261,7 +281,8 @@ fn paint_board_panel(
         ) else {
             continue;
         };
-        let selected = coding_project.selected_task_index == Some(index) && coding_project.task_detail_open;
+        let selected =
+            coding_project.selected_task_index == Some(index) && coding_project.task_detail_open;
         paint.scene.draw_quad(
             Quad::new(card)
                 .with_background(if selected {
@@ -388,7 +409,11 @@ fn paint_chat_panel(
     );
     chat_inputs.composer.set_max_width(composer.size.width);
     chat_inputs.composer.paint(composer, paint);
-    paint_primary_button(coding_project_chat_send_button_bounds(content_bounds), ">", paint);
+    paint_primary_button(
+        coding_project_chat_send_button_bounds(content_bounds),
+        ">",
+        paint,
+    );
 }
 
 fn paint_task_detail_overlay(
@@ -397,9 +422,9 @@ fn paint_task_detail_overlay(
     coding_project_inputs: &mut CodingProjectPaneInputs,
     paint: &mut PaintContext,
 ) {
-    paint.scene.draw_quad(
-        Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.86)),
-    );
+    paint
+        .scene
+        .draw_quad(Quad::new(content_bounds).with_background(theme::bg::APP.with_alpha(0.86)));
 
     let popup = coding_project_task_detail_popup_bounds(content_bounds);
     paint.scene.draw_quad(
@@ -414,7 +439,8 @@ fn paint_task_detail_overlay(
     };
     let popup_content = popup_content_clip(popup);
     let popup_wrap_chars = wrap_chars_for_width(popup_content.size.width, 7.4, 18);
-    let popup_bullet_wrap_chars = wrap_chars_for_width((popup_content.size.width - 12.0).max(64.0), 7.4, 14);
+    let popup_bullet_wrap_chars =
+        wrap_chars_for_width((popup_content.size.width - 12.0).max(64.0), 7.4, 14);
 
     paint.scene.draw_text(paint.text.layout_mono(
         "Task Detail",
@@ -522,7 +548,9 @@ fn paint_task_detail_overlay(
     paint.scene.pop_clip();
 
     let note_input = coding_project_task_detail_note_input_bounds(content_bounds);
-    coding_project_inputs.task_note.set_max_width(note_input.size.width);
+    coding_project_inputs
+        .task_note
+        .set_max_width(note_input.size.width);
     coding_project_inputs.task_note.paint(note_input, paint);
     paint_primary_button(
         coding_project_task_detail_add_note_button_bounds(content_bounds),
@@ -553,7 +581,9 @@ fn paint_panel(
         (bounds.size.width - 2.0).max(0.0),
         PANEL_HEADER_HEIGHT,
     );
-    paint.scene.draw_quad(Quad::new(header).with_background(accent.with_alpha(0.10)));
+    paint
+        .scene
+        .draw_quad(Quad::new(header).with_background(accent.with_alpha(0.10)));
     paint.scene.draw_quad(
         Quad::new(Bounds::new(
             bounds.origin.x + 1.0,
@@ -639,7 +669,9 @@ fn board_max_scroll(content_bounds: Bounds, state: &RenderState) -> f32 {
     }
     let max_cards = backlog.max(progress).max(review).max(done) as f32;
     let content_height = 24.0 + max_cards * (BOARD_CARD_HEIGHT + BOARD_CARD_GAP) + 16.0;
-    let viewport_height = coding_project_board_column_bounds(content_bounds, 0).size.height;
+    let viewport_height = coding_project_board_column_bounds(content_bounds, 0)
+        .size
+        .height;
     (content_height - viewport_height).max(0.0)
 }
 
