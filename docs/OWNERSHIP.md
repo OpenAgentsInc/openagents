@@ -2,6 +2,11 @@
 
 This document defines what each active surface in this pruned repo owns, and what it must not own.
 
+Scope note: this file covers the `openagents` repo. The web product deployed
+at `autopilot.openagents.com` lives in the separate private `autopilot` repo.
+Blueprint owns durable CRM, CEO, Voice, Memory, Program, Action, Source
+Authority, evidence, and receipt truth consumed by that web product.
+
 ## Purpose
 
 - Keep the MVP codebase understandable.
@@ -22,6 +27,10 @@ Owns:
 
 Must not own:
 
+- The `autopilot.openagents.com` web application, CRM/CEO/Voice/Memory HUD
+  surfaces, or web BFF behavior owned by the sibling `autopilot` repo.
+- Blueprint Program Type, Module Version, Program Run, Action Submission,
+  Source Authority, evidence, or receipt truth.
 - Coding-runtime truth that belongs in `probe`.
 - Work lifecycle truth that belongs in `forge`.
 - Execution substrate truth that belongs in `psionic`.

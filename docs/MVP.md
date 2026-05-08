@@ -1,5 +1,10 @@
 # Autopilot MVP Spec
 
+Scope note: this spec is for the OpenAgents Desktop / earn MVP in the
+`openagents` repo. The web app at `autopilot.openagents.com` lives in the
+separate private `autopilot` repo and consumes Blueprint for CRM, CEO, Voice,
+Memory, Program, Action, Source Authority, evidence, and receipt truth.
+
 ## 1) Product promise
 
 **Autopilot** is your personal agent that lives on your computer, plugs into your real environment (files, GPU, local tools), and can both **work for you** and **pay you**.

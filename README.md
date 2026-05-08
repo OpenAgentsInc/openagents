@@ -19,7 +19,7 @@ The OpenAgents marketplace has five interlocking markets:
 
 This repo also owns several key shipped and planned product surfaces:
 
-- the `Autopilot` desktop product
+- the `Autopilot` desktop product and market-facing runtime surfaces
 - the Tauri `Autopilot` shell scaffold at `apps/autopilot`
 - the `Pylon` provider connector
 - the `Nexus` hosted coordination and authority slice
@@ -52,6 +52,12 @@ In parallel, the repo now also ships a starter Data Market slice: a dedicated `D
 The market is still called the OpenAgents Compute Market. At launch, the first live compute product families are `inference` and `embeddings`. That is an umbrella compute market with standardized launch products inside it, not a claim that raw accelerator spot or futures trading is already live.
 
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast, hardware-accelerated desktop experience with a game-like HUD feel.
+
+The web product deployed at `autopilot.openagents.com` is not owned here. It
+lives in the sibling private `autopilot` repo and consumes Blueprint for CRM,
+CEO, Voice, Memory, Action, Program, evidence, and receipt authority. This
+repo remains the home for native/desktop, market-facing, kernel-facing, Nexus,
+Pylon, WGPUI, and compute/data-market work.
 
 The next Tauri implementation now lives in this monorepo:
 
