@@ -19,8 +19,8 @@ bitcoin = { workspace = true, features = ["serde"] }
 thiserror = { workspace = true }
 hex = { workspace = true }
 dirs = "6.0.0"
-breez-sdk-spark = { git = "https://github.com/breez/spark-sdk", tag = "0.13.6" }
-spark-wallet = { git = "https://github.com/breez/spark-sdk", tag = "0.13.6" }
+breez-sdk-spark = { git = "https://github.com/breez/spark-sdk", tag = "0.13.10" }
+spark-wallet = { git = "https://github.com/breez/spark-sdk", tag = "0.13.10" }
 
 [dev-dependencies]
-spark-sdk-internal = { package = "spark", git = "https://github.com/breez/spark-sdk", tag = "0.13.6" }
+spark-sdk-internal = { package = "spark", git = "https://github.com/breez/spark-sdk", tag = "0.13.10" }
