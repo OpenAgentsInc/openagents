@@ -6449,14 +6449,41 @@ async fn send_treasury_payout(
 ) -> std::result::Result<String, SparkError> {
     let payment_request = plan.payment_request.trim();
     if SparkWallet::is_direct_spark_address(payment_request) {
-        return wallet
-            .send_spark_address_direct(payment_request, plan.amount_sats)
-            .await;
+        return match wallet
+            .send_payment_simple(payment_request, Some(plan.amount_sats))
+            .await
+        {
+            Ok(payment_id) => Ok(payment_id),
+            Err(simple_error) => {
+                if !spark_address_sdk_send_failure_should_fallback(
+                    simple_error.to_string().as_str(),
+                ) {
+                    return Err(simple_error);
+                }
+                wallet
+                    .send_spark_address_direct(payment_request, plan.amount_sats)
+                    .await
+                    .map_err(|direct_error| {
+                        SparkError::Wallet(format!(
+                            "spark_address_sdk_send_failed:{simple_error}; direct_transfer_failed:{direct_error}"
+                        ))
+                    })
+            }
+        };
     }
 
     wallet
         .send_payment_simple(payment_request, Some(plan.amount_sats))
         .await
+}
+
+fn spark_address_sdk_send_failure_should_fallback(reason: &str) -> bool {
+    let lowered = reason.trim().to_ascii_lowercase();
+    lowered.contains("invalid payment request")
+        || lowered.contains("unsupported")
+        || lowered.contains("failed to parse")
+        || lowered.contains("unable to parse")
+        || lowered.contains("unknown payment request")
 }
 
 fn classify_wallet_send_failure(reason: &str) -> String {
@@ -14234,6 +14261,22 @@ mod tests {
             super::classify_wallet_send_failure("some permanent failure"),
             "wallet_send_failed:unknown:some permanent failure"
         );
+    }
+
+    #[test]
+    fn spark_address_sdk_send_fallback_is_limited_to_request_shape_failures() {
+        assert!(super::spark_address_sdk_send_failure_should_fallback(
+            "invalid payment request: unsupported spark address"
+        ));
+        assert!(super::spark_address_sdk_send_failure_should_fallback(
+            "unable to parse payment request"
+        ));
+        assert!(!super::spark_address_sdk_send_failure_should_fallback(
+            "wallet operation failed: TreeServiceError(InsufficientFunds)"
+        ));
+        assert!(!super::spark_address_sdk_send_failure_should_fallback(
+            "wallet operation failed: service connection error"
+        ));
     }
 
     #[test]
