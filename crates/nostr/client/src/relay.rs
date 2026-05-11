@@ -306,11 +306,14 @@ impl RelayConnection {
 
     /// Register and send subscription request.
     pub async fn subscribe(&self, subscription: Subscription) -> Result<()> {
-        self.send_json(&build_req_payload(&subscription)).await?;
         self.subscriptions
             .lock()
             .await
-            .insert(subscription.id.clone(), subscription);
+            .insert(subscription.id.clone(), subscription.clone());
+        if let Err(error) = self.send_json(&build_req_payload(&subscription)).await {
+            self.subscriptions.lock().await.remove(&subscription.id);
+            return Err(error);
+        }
         Ok(())
     }
 

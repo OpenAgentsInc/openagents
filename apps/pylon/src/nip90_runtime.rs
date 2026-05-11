@@ -12,6 +12,7 @@ use nostr::nip90::{
 use nostr::{Event, EventTemplate, finalize_event};
 use nostr_client::{PoolConfig, RelayConfig, RelayMessage, RelayPool};
 use openagents_provider_substrate::ProviderAdvertisedProduct;
+use tokio::sync::mpsc;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
@@ -125,10 +126,76 @@ struct ObservedProviderRequest {
 
 #[derive(Clone, Debug)]
 struct ProviderRequestCollection {
+    seconds: u64,
     provider_pubkey: String,
     desired_mode: openagents_provider_substrate::ProviderDesiredMode,
     spec: Option<AnnouncementSpec>,
     observed: Vec<ObservedProviderRequest>,
+}
+
+pub struct ProviderOnlineIntake {
+    pool: RelayPool,
+    subscription_id: String,
+    provider_pubkey: String,
+    desired_mode: openagents_provider_substrate::ProviderDesiredMode,
+    spec: Option<AnnouncementSpec>,
+    event_rx: mpsc::Receiver<ObservedProviderRequest>,
+    relay_tasks: Vec<tokio::task::JoinHandle<()>>,
+}
+
+impl ProviderOnlineIntake {
+    pub fn provider_pubkey(&self) -> &str {
+        self.provider_pubkey.as_str()
+    }
+
+    pub async fn shutdown(mut self) {
+        let _ = self.pool.unsubscribe(self.subscription_id.as_str()).await;
+        for task in self.relay_tasks.drain(..) {
+            task.abort();
+        }
+        let _ = self.pool.disconnect_all().await;
+    }
+
+    async fn collect_available(&mut self) -> ProviderRequestCollection {
+        let deadline = std::time::Instant::now() + Duration::from_millis(250);
+        let poll_step = Duration::from_millis(25);
+        let mut observed = BTreeMap::<String, ObservedProviderRequest>::new();
+        while let Ok(request) = self.event_rx.try_recv() {
+            observed
+                .entry(request.entry.request_event_id.clone())
+                .or_insert(request);
+        }
+        while std::time::Instant::now() < deadline {
+            let mut received_any = false;
+            for relay in self.pool.relays().await {
+                let Ok(Ok(Some(RelayMessage::Event(_, event)))) =
+                    tokio::time::timeout(poll_step, relay.recv()).await
+                else {
+                    continue;
+                };
+                received_any = true;
+                let entry = classify_provider_request(
+                    relay.url(),
+                    self.provider_pubkey.as_str(),
+                    self.spec.as_ref(),
+                    &event,
+                );
+                observed
+                    .entry(entry.request_event_id.clone())
+                    .or_insert(ObservedProviderRequest { event, entry });
+            }
+            if !received_any {
+                break;
+            }
+        }
+        ProviderRequestCollection {
+            seconds: 0,
+            provider_pubkey: self.provider_pubkey.clone(),
+            desired_mode: self.desired_mode,
+            spec: self.spec.clone(),
+            observed: observed.into_values().collect(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -517,8 +584,88 @@ pub fn render_provider_intake_report(report: &ProviderIntakeReport) -> String {
     lines.join("\n")
 }
 
+pub async fn start_provider_online_intake(config_path: &Path) -> Result<ProviderOnlineIntake> {
+    let config = crate::ensure_local_setup(config_path)?;
+    let identity = ensure_identity(config.identity_path.as_path())?;
+    let (_, status) = load_config_and_status(config_path).await?;
+    let spec = announcement_spec(&config, &status);
+    let pool = build_relay_pool(&config, &identity).await?;
+    let subscription_id = format!("pylon-provider-online-{}", crate::now_epoch_ms());
+    let (event_tx, event_rx) = mpsc::channel(1000);
+    pool.subscribe_filters(
+        subscription_id.as_str(),
+        vec![json!({
+            "kinds": [ANNOUNCEMENT_KIND_TEXT_GENERATION],
+        })],
+    )
+    .await
+    .context("failed to subscribe persistent provider intake")?;
+    let mut relay_tasks = Vec::new();
+    for relay in pool.relays().await {
+        let relay_url = relay.url().to_string();
+        let provider_pubkey = identity.public_key_hex.clone();
+        let spec = spec.clone();
+        let event_tx = event_tx.clone();
+        relay_tasks.push(tokio::spawn(async move {
+            loop {
+                match relay.recv().await {
+                    Ok(Some(RelayMessage::Event(_, event))) => {
+                        let entry = classify_provider_request(
+                            relay_url.as_str(),
+                            provider_pubkey.as_str(),
+                            spec.as_ref(),
+                            &event,
+                        );
+                        if event_tx
+                            .send(ObservedProviderRequest { event, entry })
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Ok(Some(_)) => {}
+                    Ok(None) | Err(_) => break,
+                }
+            }
+        }));
+    }
+    drop(event_tx);
+
+    Ok(ProviderOnlineIntake {
+        pool,
+        subscription_id,
+        provider_pubkey: identity.public_key_hex,
+        desired_mode: status.desired_mode,
+        spec,
+        event_rx,
+        relay_tasks,
+    })
+}
+
+pub async fn run_provider_online_intake_once(
+    config_path: &Path,
+    intake: &mut ProviderOnlineIntake,
+) -> Result<Option<ProviderRunReport>> {
+    let collected = intake.collect_available().await;
+    if collected.observed.is_empty() {
+        return Ok(None);
+    }
+    run_provider_request_collection(config_path, collected, Some(&intake.pool))
+        .await
+        .map(Some)
+}
+
 pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<ProviderRunReport> {
     let collected = collect_provider_requests(config_path, seconds).await?;
+    run_provider_request_collection(config_path, collected, None).await
+}
+
+async fn run_provider_request_collection(
+    config_path: &Path,
+    collected: ProviderRequestCollection,
+    publish_pool_ref: Option<&RelayPool>,
+) -> Result<ProviderRunReport> {
     let local_target = collected.spec.as_ref().map(spec_to_local_target);
     let price_msats = collected.spec.as_ref().and_then(|spec| spec.price_msats);
     let config = crate::ensure_local_setup(config_path)?;
@@ -946,12 +1093,15 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
                         continue;
                     }
                 };
-                let pool = match publish_pool.as_ref() {
+                let pool = match publish_pool_ref {
                     Some(pool) => pool,
-                    None => {
-                        publish_pool = Some(build_relay_pool(&config, &identity).await?);
-                        publish_pool.as_ref().expect("publish pool should exist")
-                    }
+                    None => match publish_pool.as_ref() {
+                        Some(pool) => pool,
+                        None => {
+                            publish_pool = Some(build_relay_pool(&config, &identity).await?);
+                            publish_pool.as_ref().expect("publish pool should exist")
+                        }
+                    },
                 };
                 let payment_event = match publish_payment_required_feedback(
                     pool,
@@ -1046,12 +1196,15 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
             None,
             None,
         )?;
-        let pool = match publish_pool.as_ref() {
+        let pool = match publish_pool_ref {
             Some(pool) => pool,
-            None => {
-                publish_pool = Some(build_relay_pool(&config, &identity).await?);
-                publish_pool.as_ref().expect("publish pool should exist")
-            }
+            None => match publish_pool.as_ref() {
+                Some(pool) => pool,
+                None => {
+                    publish_pool = Some(build_relay_pool(&config, &identity).await?);
+                    publish_pool.as_ref().expect("publish pool should exist")
+                }
+            },
         };
         let processing_event = match publish_processing_feedback(
             pool,
@@ -1307,7 +1460,7 @@ pub async fn run_provider_requests(config_path: &Path, seconds: u64) -> Result<P
     }
 
     Ok(ProviderRunReport {
-        seconds,
+        seconds: collected.seconds,
         provider_pubkey: collected.provider_pubkey,
         local_model: local_target.map(|target| target.model),
         accepted_count,
@@ -2424,6 +2577,7 @@ async fn collect_provider_requests(
     let _ = pool.unsubscribe(subscription_id.as_str()).await;
 
     Ok(ProviderRequestCollection {
+        seconds,
         provider_pubkey: identity.public_key_hex,
         desired_mode: status.desired_mode,
         spec,
