@@ -167,6 +167,8 @@ const DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS: u64 = 30_000;
 const DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS: u64 = 1;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
+const TRAINING_ADMIN_STATUS_TIMEOUT_MS: u64 = 5_000;
+const TRAINING_STATUS_DIAGNOSTIC_SCAN_LIMIT: usize = 20_000;
 const DEFAULT_TRAINING_COORDINATION_RETRY_ATTEMPTS: usize = 3;
 const DEFAULT_TRAINING_COORDINATION_RETRY_BASE_DELAY_MS: u64 = 50;
 #[allow(dead_code)]
@@ -1763,6 +1765,8 @@ pub struct TrainingOperatorStatusReport {
     closeout_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     last_authority_sync_at_ms: Option<i64>,
+    #[serde(default)]
+    status_diagnostics: TrainingOperatorStatusDiagnostics,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     current_run_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1792,6 +1796,26 @@ pub struct TrainingOperatorStatusReport {
     recent_closeout_progress: Vec<TrainingOperatorCloseoutProgressStatus>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     recent_closeout_journal: Vec<TrainingOperatorCloseoutJournalStatus>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorStatusDiagnostics {
+    generation_elapsed_ms: u64,
+    retained_state_total_bytes: u64,
+    retained_state_files: Vec<TrainingOperatorStatusFileDiagnostic>,
+    run_directory_count: usize,
+    run_json_file_count: usize,
+    scan_limit_reached: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TrainingOperatorStatusFileDiagnostic {
+    label: String,
+    path: String,
+    exists: bool,
+    size_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    modified_at_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -9838,6 +9862,138 @@ fn training_authority_sync_cache_state_path(config: &PylonConfig) -> PathBuf {
     training_state_dir(config).join("authority-sync-state.json")
 }
 
+fn system_time_to_epoch_ms_u64(value: SystemTime) -> Option<u64> {
+    value
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+}
+
+fn elapsed_millis_u64(started_at: Instant) -> u64 {
+    u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+fn training_status_file_diagnostic(
+    label: &str,
+    path: PathBuf,
+) -> TrainingOperatorStatusFileDiagnostic {
+    match fs::metadata(path.as_path()) {
+        Ok(metadata) => TrainingOperatorStatusFileDiagnostic {
+            label: label.to_string(),
+            path: path.display().to_string(),
+            exists: true,
+            size_bytes: metadata.len(),
+            modified_at_ms: metadata
+                .modified()
+                .ok()
+                .and_then(system_time_to_epoch_ms_u64),
+        },
+        Err(_) => TrainingOperatorStatusFileDiagnostic {
+            label: label.to_string(),
+            path: path.display().to_string(),
+            exists: false,
+            size_bytes: 0,
+            modified_at_ms: None,
+        },
+    }
+}
+
+fn count_training_run_directories_bounded(runs_root: &Path) -> (usize, bool) {
+    let Ok(entries) = fs::read_dir(runs_root) else {
+        return (0, false);
+    };
+    let mut count = 0usize;
+    for entry in entries.flatten() {
+        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            count = count.saturating_add(1);
+            if count >= TRAINING_STATUS_DIAGNOSTIC_SCAN_LIMIT {
+                return (count, true);
+            }
+        }
+    }
+    (count, false)
+}
+
+fn count_training_json_files_bounded(root: &Path) -> (usize, bool) {
+    let mut count = 0usize;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(path) = stack.pop() {
+        let Ok(entries) = fs::read_dir(path.as_path()) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                stack.push(entry.path());
+            } else if file_type.is_file()
+                && entry.path().extension().and_then(|value| value.to_str()) == Some("json")
+            {
+                count = count.saturating_add(1);
+                if count >= TRAINING_STATUS_DIAGNOSTIC_SCAN_LIMIT {
+                    return (count, true);
+                }
+            }
+        }
+    }
+    (count, false)
+}
+
+fn training_status_diagnostics_with_elapsed(
+    config: &PylonConfig,
+    generation_elapsed_ms: u64,
+) -> TrainingOperatorStatusDiagnostics {
+    let retained_state_files = vec![
+        training_status_file_diagnostic("runtime_state", training_runtime_state_path(config)),
+        training_status_file_diagnostic(
+            "execution_state",
+            training_execution_cache_state_path(config),
+        ),
+        training_status_file_diagnostic(
+            "artifact_state",
+            training_artifact_cache_state_path(config),
+        ),
+        training_status_file_diagnostic(
+            "authority_sync_state",
+            training_authority_sync_cache_state_path(config),
+        ),
+    ];
+    let retained_state_total_bytes = retained_state_files
+        .iter()
+        .map(|file| file.size_bytes)
+        .sum::<u64>();
+    let runs_root = training_runs_root(config);
+    let (run_directory_count, run_directory_limit_reached) =
+        count_training_run_directories_bounded(runs_root.as_path());
+    let (run_json_file_count, json_file_limit_reached) =
+        count_training_json_files_bounded(runs_root.as_path());
+    TrainingOperatorStatusDiagnostics {
+        generation_elapsed_ms,
+        retained_state_total_bytes,
+        retained_state_files,
+        run_directory_count,
+        run_json_file_count,
+        scan_limit_reached: run_directory_limit_reached || json_file_limit_reached,
+    }
+}
+
+fn training_status_timeout_diagnostics(config_path: &Path) -> Value {
+    let config = load_or_create_config(config_path).ok();
+    match config.as_ref() {
+        Some(config) => json!({
+            "config_path": config_path.display().to_string(),
+            "training_root": training_run_root(config).display().to_string(),
+            "status_diagnostics": training_status_diagnostics_with_elapsed(config, TRAINING_ADMIN_STATUS_TIMEOUT_MS),
+            "hint": "status generation is spending too long loading retained training state or inspecting local run artifacts"
+        }),
+        None => json!({
+            "config_path": config_path.display().to_string(),
+            "hint": "status generation timed out and the local pylon config could not be loaded for diagnostics"
+        }),
+    }
+}
+
 fn load_or_create_training_runtime_state(
     config: &PylonConfig,
 ) -> Result<PylonTrainingRuntimeState> {
@@ -13659,15 +13815,29 @@ async fn load_training_status_report(config_path: &Path) -> Result<TrainingOpera
 
 fn load_training_status_report_local(config_path: &Path) -> Result<TrainingOperatorStatusReport> {
     let config = load_or_create_config(config_path)?;
-    load_training_status_report_with_config(config_path, &config)
+    load_training_status_report_with_config(config_path, &config, true)
+}
+
+fn load_training_status_report_local_admin(
+    config_path: &Path,
+) -> Result<TrainingOperatorStatusReport> {
+    let config = load_or_create_config(config_path)?;
+    load_training_status_report_with_config(config_path, &config, false)
 }
 
 fn load_training_status_report_with_config(
     config_path: &Path,
     config: &PylonConfig,
+    refresh_host_telemetry: bool,
 ) -> Result<TrainingOperatorStatusReport> {
+    let generated_at = now_epoch_ms();
+    let report_started_at = Instant::now();
     let state = load_or_create_training_runtime_state(config)?;
-    let host = load_cached_provider_host_telemetry(config_path);
+    let host = if refresh_host_telemetry {
+        load_cached_provider_host_telemetry(config_path)
+    } else {
+        load_cached_or_minimal_provider_host_telemetry(config_path)
+    };
     let runtime_surface_inspection = inspect_psionic_train_runtime_surface_detailed();
     let runtime_surface = runtime_surface_inspection.surface.clone();
     let contributor_availability =
@@ -13862,8 +14032,11 @@ fn load_training_status_report_with_config(
     });
     pending_closeout_objects.truncate(16);
 
+    let status_diagnostics =
+        training_status_diagnostics_with_elapsed(config, elapsed_millis_u64(report_started_at));
+
     Ok(TrainingOperatorStatusReport {
-        generated_at_ms: now_epoch_ms(),
+        generated_at_ms: generated_at,
         node_label: config.node_label.clone(),
         provider_pubkey,
         checkpoint_serve_url: training_checkpoint_serve_url(config),
@@ -13886,6 +14059,7 @@ fn load_training_status_report_with_config(
         contribution_outcome_count: state.contribution_outcomes.len(),
         closeout_count: state.closeout_cache.len(),
         last_authority_sync_at_ms: state.last_authority_sync_at_ms,
+        status_diagnostics,
         current_run_id,
         active_window_id,
         blocked_label_keys,
@@ -14623,9 +14797,34 @@ fn build_pylon_training_admin_router(config_path: PathBuf) -> Router {
 async fn training_admin_status_handler(
     state: Arc<PylonTrainingAdminRouteState>,
 ) -> Result<Json<TrainingOperatorStatusReport>, (StatusCode, Json<Value>)> {
-    load_training_status_report_local(state.config_path.as_path())
-        .map(Json)
-        .map_err(training_admin_api_error)
+    let config_path = state.config_path.clone();
+    let timeout_ms = TRAINING_ADMIN_STATUS_TIMEOUT_MS;
+    let started_at = Instant::now();
+    let status_task = tokio::task::spawn_blocking(move || {
+        load_training_status_report_local_admin(config_path.as_path())
+    });
+    match tokio::time::timeout(Duration::from_millis(timeout_ms), status_task).await {
+        Ok(Ok(Ok(report))) => Ok(Json(report)),
+        Ok(Ok(Err(error))) => Err(training_admin_api_error(error)),
+        Ok(Err(error)) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "code": "training_status_worker_join_failed",
+                "error": error.to_string(),
+                "elapsed_ms": elapsed_millis_u64(started_at),
+            })),
+        )),
+        Err(_) => Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "code": "training_status_timeout",
+                "error": "training status report generation timed out",
+                "elapsed_ms": elapsed_millis_u64(started_at),
+                "timeout_ms": timeout_ms,
+                "diagnostics": training_status_timeout_diagnostics(state.config_path.as_path()),
+            })),
+        )),
+    }
 }
 
 async fn training_admin_sync_handler(
@@ -20336,6 +20535,19 @@ fn render_training_status_report(report: &TrainingOperatorStatusReport) -> Strin
         format!("tracked TRN records: {}", report.publication_record_count),
         format!("pending TRN retries: {}", report.pending_publication_count),
         format!("tracked closeouts: {}", report.closeout_count),
+        format!(
+            "status generated in ms: {}",
+            report.status_diagnostics.generation_elapsed_ms
+        ),
+        format!(
+            "retained state bytes: {}",
+            report.status_diagnostics.retained_state_total_bytes
+        ),
+        format!(
+            "local run/json counts: {}/{}",
+            report.status_diagnostics.run_directory_count,
+            report.status_diagnostics.run_json_file_count
+        ),
     ];
     if let Some(psionic_repo_root) = report.psionic_repo_root.as_deref() {
         lines.push(format!("psionic repo root: {psionic_repo_root}"));
@@ -22572,9 +22784,11 @@ fn build_snapshot_from_availability(
                     value: json!(config.local_gemma_preferred_model),
                 },
             ];
-            if let Ok(training_status) =
-                load_training_status_report_with_config(config.admin_db_path.as_path(), config)
-            {
+            if let Ok(training_status) = load_training_status_report_with_config(
+                config.admin_db_path.as_path(),
+                config,
+                false,
+            ) {
                 entries.push(ProviderJsonEntry {
                     key: "training_operator_status".to_string(),
                     value: serde_json::to_value(training_status).unwrap_or(Value::Null),
@@ -25521,17 +25735,12 @@ fn eligible_product_ids(snapshot: &ProviderPersistedSnapshot) -> Vec<String> {
 }
 
 fn load_cached_provider_host_telemetry(config_path: &Path) -> ProviderHostTelemetrySnapshot {
+    if let Some(snapshot) = cached_provider_host_telemetry_if_fresh(config_path) {
+        return snapshot;
+    }
     let now = Instant::now();
     let cache = PROVIDER_HOST_TELEMETRY_CACHE.get_or_init(|| Mutex::new(None));
     let mut guard = cache.lock().expect("provider host telemetry cache");
-    if let Some(entry) = guard.as_ref() {
-        let cache_is_fresh = entry.config_path == config_path
-            && now.duration_since(entry.refreshed_at)
-                < Duration::from_millis(DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS);
-        if cache_is_fresh {
-            return entry.snapshot.clone();
-        }
-    }
     let snapshot = collect_provider_host_telemetry(config_path);
     *guard = Some(ProviderHostTelemetryCacheEntry {
         config_path: config_path.to_path_buf(),
@@ -25539,6 +25748,37 @@ fn load_cached_provider_host_telemetry(config_path: &Path) -> ProviderHostTeleme
         snapshot: snapshot.clone(),
     });
     snapshot
+}
+
+fn cached_provider_host_telemetry_if_fresh(
+    config_path: &Path,
+) -> Option<ProviderHostTelemetrySnapshot> {
+    let now = Instant::now();
+    let cache = PROVIDER_HOST_TELEMETRY_CACHE.get_or_init(|| Mutex::new(None));
+    let guard = cache.lock().expect("provider host telemetry cache");
+    let entry = guard.as_ref()?;
+    let cache_is_fresh = entry.config_path == config_path
+        && now.duration_since(entry.refreshed_at)
+            < Duration::from_millis(DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS);
+    cache_is_fresh.then(|| entry.snapshot.clone())
+}
+
+fn load_cached_or_minimal_provider_host_telemetry(
+    config_path: &Path,
+) -> ProviderHostTelemetrySnapshot {
+    cached_provider_host_telemetry_if_fresh(config_path).unwrap_or_else(|| {
+        ProviderHostTelemetrySnapshot {
+            captured_at_unix_ms: u64::try_from(now_epoch_ms()).unwrap_or(0),
+            host_name: normalize_provider_host_optional_string(System::host_name()),
+            os_version: normalize_provider_host_optional_string(System::long_os_version()),
+            kernel_version: normalize_provider_host_optional_string(Some(
+                System::kernel_long_version(),
+            )),
+            cpu_arch: normalize_provider_host_optional_string(Some(System::cpu_arch())),
+            physical_cpu_count: System::physical_core_count().map(|count| count as u64),
+            ..ProviderHostTelemetrySnapshot::default()
+        }
+    })
 }
 
 fn collect_provider_host_telemetry(config_path: &Path) -> ProviderHostTelemetrySnapshot {

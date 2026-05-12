@@ -47287,13 +47287,17 @@ mod tests {
         );
         assert_eq!(launch.matched_pylons.len(), 2);
         assert_eq!(launch.assigned_pylons.len(), 2);
-        assert!(
-            launch.assigned_pylons.iter().all(|assignment| assignment
+        let minimum_pylon_version =
+            semver::Version::parse(super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION)
+                .expect("valid minimum");
+        assert!(launch.assigned_pylons.iter().all(|assignment| {
+            assignment
                 .node
                 .build_version
                 .as_deref()
-                == Some(super::MINIMUM_PUBLIC_PYLON_EARNING_VERSION))
-        );
+                .and_then(|version| semver::Version::parse(version).ok())
+                .is_some_and(|version| version >= minimum_pylon_version)
+        }));
         assert!(launch.training_run_id.starts_with("run.cs336.a1.auto_10m_"));
 
         {
