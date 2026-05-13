@@ -100,6 +100,7 @@ use psionic_train::{
     PSION_CS336_A1_DEMO_LANE_ID, PSIONIC_TRAIN_ACTUAL_PRETRAINING_ENVIRONMENT_REF,
     PSIONIC_TRAIN_INVOCATION_MANIFEST_SCHEMA_VERSION, PSIONIC_TRAIN_RUNTIME_SURFACE_ID,
     PsionicTrainAdmissionIdentity, PsionicTrainArtifactBinding, PsionicTrainArtifactRef,
+    PsionicTrainContributionArtifactManifest, PsionicTrainContributionReceipt,
     PsionicTrainCoordinationContext, PsionicTrainInvocationManifest, PsionicTrainLaneContract,
     PsionicTrainMinimumMachineClass, PsionicTrainOperation, PsionicTrainRole,
     PsionicTrainWorkClass, admitted_environment_ref_for_lane, admitted_release_id_for_lane,
@@ -6109,7 +6110,141 @@ fn training_validator_cached_target_artifacts_are_current(
         run_root,
         manifest_path,
         "validator contribution artifact manifest",
-    )?)
+    )? && training_validator_cached_retained_artifacts_are_current(run_root, lease)?)
+}
+
+fn training_validator_rebased_materialized_path(
+    run_root: &Path,
+    raw_path: &str,
+) -> Option<PathBuf> {
+    let candidate = PathBuf::from(raw_path.trim());
+    if candidate.as_os_str().is_empty() {
+        return None;
+    }
+    if !candidate.is_absolute() {
+        return Some(run_root.join(candidate));
+    }
+    if candidate.starts_with(run_root) {
+        return Some(candidate);
+    }
+    let run_id = run_root.file_name()?.to_str()?;
+    let marker = format!("/training/runs/{run_id}/");
+    let (_, suffix) = candidate.to_str()?.split_once(marker.as_str())?;
+    Some(run_root.join(suffix))
+}
+
+fn psionic_train_resolved_artifact_cache_key(artifact_id: &str) -> String {
+    let mut sanitized = artifact_id
+        .chars()
+        .map(|value| {
+            if value.is_ascii_alphanumeric() {
+                value.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    while sanitized.contains("__") {
+        sanitized = sanitized.replace("__", "_");
+    }
+    let sanitized = sanitized.trim_matches('_');
+    if sanitized.is_empty() {
+        String::from("artifact")
+    } else {
+        sanitized.to_string()
+    }
+}
+
+fn training_validator_artifact_binding_candidates(
+    run_root: &Path,
+    binding: &Value,
+) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(path) = binding.get("materialized_path").and_then(Value::as_str)
+        && let Some(rebased) = training_validator_rebased_materialized_path(run_root, path)
+    {
+        candidates.push(rebased);
+    }
+    if let Some(artifact_id) = binding
+        .get("artifact_ref")
+        .and_then(|value| value.get("artifact_id"))
+        .and_then(Value::as_str)
+    {
+        let cache_key = psionic_train_resolved_artifact_cache_key(artifact_id);
+        let cache_root = run_root.join("artifacts").join("resolved");
+        candidates.push(cache_root.join(format!("{cache_key}.json")));
+        candidates.push(cache_root.join(cache_key));
+    }
+    candidates
+}
+
+fn training_validator_artifact_binding_file_matches(
+    binding: &Value,
+    candidate: &Path,
+) -> Result<bool> {
+    let bytes = match std::fs::read(candidate) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to read {}", candidate.display()));
+        }
+    };
+    let artifact_ref = binding.get("artifact_ref").unwrap_or(&Value::Null);
+    if let Some(expected_bytes) = artifact_ref.get("artifact_bytes").and_then(Value::as_u64) {
+        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) != expected_bytes {
+            return Ok(false);
+        }
+    }
+    if let Some(expected_digest) = artifact_ref
+        .get("artifact_digest")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if training_raw_sha256_hex(bytes.as_slice()) != expected_digest {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn training_validator_cached_retained_artifacts_are_current(
+    run_root: &Path,
+    lease: &PylonTrainingLeaseCacheEntry,
+) -> Result<bool> {
+    let Some(manifest_path) = lease
+        .validator_target_contribution_artifact_manifest_path
+        .as_deref()
+        .map(Path::new)
+    else {
+        return Ok(false);
+    };
+    let Some(manifest) = load_training_json_artifact_value(
+        manifest_path,
+        "validator contribution artifact manifest",
+    )?
+    else {
+        return Ok(false);
+    };
+    let Some(artifacts) = manifest.get("artifacts").and_then(Value::as_array) else {
+        return Ok(true);
+    };
+    for artifact in artifacts {
+        let Some(binding) = artifact.get("binding") else {
+            return Ok(false);
+        };
+        let mut matched = false;
+        for candidate in training_validator_artifact_binding_candidates(run_root, binding) {
+            if training_validator_artifact_binding_file_matches(binding, candidate.as_path())? {
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn training_validator_cached_target_work_class_is_current(
@@ -6497,6 +6632,552 @@ async fn materialize_training_validator_target_json_artifact(
     Ok(Some(value))
 }
 
+fn training_validator_retained_artifact_source_value<'a>(
+    source: &'a Value,
+    artifact_kind: &str,
+) -> Option<&'a Value> {
+    let candidates: &[&str] = match artifact_kind {
+        "checkpoint_manifest" => &["checkpoint_manifest"],
+        "checkpoint_pointer" => &[
+            "latest_accepted_checkpoint_pointer",
+            "latest_checkpoint_pointer",
+            "checkpoint_pointer",
+        ],
+        "checkpoint_surface" => &["checkpoint_surface"],
+        "current_status" => &["current_status", "run_status_packet"],
+        "final_closeout_bundle" => &["closeout_bundle", "final_closeout_bundle"],
+        "invocation_manifest" => &["invocation_manifest"],
+        "launch_manifest" => &["launch_manifest"],
+        "launcher_log" => &["launcher_log"],
+        "membership_revision" => &["membership_revision"],
+        "retained_summary" => &["retained_summary"],
+        value => return source.get(value),
+    };
+    candidates.iter().find_map(|key| source.get(*key))
+}
+
+fn training_validator_retained_artifact_source_path_keys(
+    artifact_kind: &str,
+) -> &'static [&'static str] {
+    match artifact_kind {
+        "checkpoint_manifest" => &["checkpoint_manifest_path"],
+        "checkpoint_pointer" => &[
+            "latest_accepted_checkpoint_pointer_path",
+            "latest_checkpoint_pointer_path",
+            "checkpoint_pointer_path",
+        ],
+        "checkpoint_surface" => &["checkpoint_surface_path"],
+        "current_status" => &["current_status_path", "run_status_packet_path"],
+        "final_closeout_bundle" => &["closeout_bundle_path", "final_closeout_bundle_path"],
+        "invocation_manifest" => &["invocation_manifest_path"],
+        "launch_manifest" => &["launch_manifest_path"],
+        "launcher_log" => &["launcher_log_path"],
+        "membership_revision" => &["membership_revision_path"],
+        "retained_summary" => &["retained_summary_path"],
+        _ => &[],
+    }
+}
+
+fn training_validator_retained_artifact_payload(
+    artifact_kind: &str,
+    value: &Value,
+) -> Result<Vec<u8>> {
+    if artifact_kind.contains("log")
+        && let Some(text) = value.as_str()
+    {
+        return Ok(text.as_bytes().to_vec());
+    }
+    serde_json::to_vec_pretty(value)
+        .with_context(|| format!("failed to encode retained artifact {artifact_kind}"))
+}
+
+fn training_validator_retained_artifact_payload_matches_binding(
+    binding: &Value,
+    payload: &[u8],
+) -> bool {
+    let artifact_ref = binding.get("artifact_ref").unwrap_or(&Value::Null);
+    if let Some(expected_bytes) = artifact_ref.get("artifact_bytes").and_then(Value::as_u64) {
+        if u64::try_from(payload.len()).unwrap_or(u64::MAX) != expected_bytes {
+            return false;
+        }
+    }
+    if let Some(expected_digest) = artifact_ref
+        .get("artifact_digest")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return training_raw_sha256_hex(payload) == expected_digest;
+    }
+    true
+}
+
+fn training_validator_payload_matches_binding(binding: &Value, payload: &[u8]) -> bool {
+    training_validator_retained_artifact_payload_matches_binding(binding, payload)
+}
+
+fn training_validator_read_matching_artifact_payload(
+    binding: &Value,
+    candidate: &Path,
+) -> Result<Option<Vec<u8>>> {
+    let bytes = match std::fs::read(candidate) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to read {}", candidate.display()));
+        }
+    };
+    if training_validator_payload_matches_binding(binding, bytes.as_slice()) {
+        Ok(Some(bytes))
+    } else {
+        Ok(None)
+    }
+}
+
+fn training_validator_source_run_root_from_path(
+    run_root: &Path,
+    raw_path: &str,
+) -> Option<PathBuf> {
+    let run_id = run_root.file_name()?.to_str()?;
+    let marker = format!("/training/runs/{run_id}");
+    let raw_path = raw_path.trim();
+    let index = raw_path.find(marker.as_str())?;
+    Some(PathBuf::from(&raw_path[..index + marker.len()]))
+}
+
+fn training_validator_source_run_root(
+    run_root: &Path,
+    binding: &Value,
+    proof_bundle_source: &Value,
+) -> Option<PathBuf> {
+    binding
+        .get("materialized_path")
+        .and_then(Value::as_str)
+        .and_then(|path| training_validator_source_run_root_from_path(run_root, path))
+        .or_else(|| {
+            proof_bundle_source
+                .as_object()
+                .into_iter()
+                .flat_map(|object| object.values())
+                .filter_map(Value::as_str)
+                .find_map(|path| training_validator_source_run_root_from_path(run_root, path))
+        })
+}
+
+fn training_validator_rebased_source_path_candidate(
+    run_root: &Path,
+    proof_bundle_source: &Value,
+    key: &str,
+) -> Option<PathBuf> {
+    proof_bundle_source
+        .get(key)
+        .and_then(Value::as_str)
+        .and_then(|path| training_validator_rebased_materialized_path(run_root, path))
+}
+
+fn training_validator_known_retained_artifact_candidates(
+    run_root: &Path,
+    proof_bundle_source: &Value,
+    artifact_kind: &str,
+) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    for key in training_validator_retained_artifact_source_path_keys(artifact_kind) {
+        if let Some(path) =
+            training_validator_rebased_source_path_candidate(run_root, proof_bundle_source, key)
+        {
+            candidates.push(path);
+        }
+    }
+    match artifact_kind {
+        "checkpoint_manifest" => {
+            candidates
+                .push(run_root.join("checkpoints/manifests/checkpoint_manifest_step-000004.json"));
+        }
+        "checkpoint_pointer" => {
+            candidates.push(run_root.join("checkpoints/latest_accepted_checkpoint_pointer.json"));
+        }
+        "checkpoint_surface" => {
+            candidates.push(run_root.join("status/checkpoint_surface.json"));
+        }
+        "current_status" => {
+            candidates.push(run_root.join("status/current_run_status.json"));
+        }
+        "final_closeout_bundle" => {
+            candidates.push(run_root.join("closeout/closeout_bundle.json"));
+        }
+        "invocation_manifest" => {
+            candidates.push(run_root.join("manifests/invocation_manifest.json"));
+        }
+        "launch_manifest" => {
+            candidates.push(run_root.join("manifests/launch_manifest.json"));
+        }
+        "launcher_log" => {
+            candidates.push(run_root.join("logs/launcher.log"));
+        }
+        "membership_revision" => {
+            candidates.push(run_root.join("status/membership_revision_receipt.json"));
+        }
+        "retained_summary" => {
+            candidates.push(run_root.join("status/retained_summary.json"));
+        }
+        _ => {}
+    }
+    candidates
+}
+
+fn training_validator_closeout_bundle_source(proof_bundle_source: &Value) -> Option<&Value> {
+    proof_bundle_source
+        .get("closeout_bundle")
+        .or_else(|| proof_bundle_source.get("final_closeout_bundle"))
+}
+
+fn training_validator_closeout_float(value: &Value, key: &str) -> Option<f64> {
+    value.get(key).and_then(Value::as_f64)
+}
+
+fn training_validator_closeout_u64(value: &Value, key: &str) -> Option<u64> {
+    value.get(key).and_then(Value::as_u64)
+}
+
+fn synthesize_training_validator_current_status(closeout: &Value) -> Option<Value> {
+    Some(json!({
+        "schema_version": "psion.cs336_a1_demo_current_run_status.v1",
+        "lane_id": closeout.get("lane_id")?.clone(),
+        "run_id": closeout.get("run_id")?.clone(),
+        "phase": if closeout.get("outcome").and_then(Value::as_str) == Some("accepted") {
+            Value::String(String::from("completed"))
+        } else {
+            closeout.get("outcome").cloned().unwrap_or_else(|| Value::String(String::from("unknown")))
+        },
+        "completed_steps": closeout.get("training_step_count")?.clone(),
+        "total_steps": closeout.get("training_step_count")?.clone(),
+        "latest_loss": closeout.get("final_loss")?.clone(),
+        "checkpoint_ref": closeout.get("checkpoint_ref")?.clone(),
+        "detail": "Bounded CS336 A1 demo lane completed with one accepted checkpoint and one closeout bundle.",
+    }))
+}
+
+fn synthesize_training_validator_retained_summary(
+    run_root: &Path,
+    binding: &Value,
+    proof_bundle_source: &Value,
+    closeout: &Value,
+) -> Option<Value> {
+    let launch_manifest = closeout.get("launch_manifest")?;
+    let checkpoint_payload_path = launch_manifest
+        .get("retained_paths")
+        .and_then(|value| value.get("checkpoint_payload_path"))
+        .and_then(Value::as_str)?;
+    let source_run_root =
+        training_validator_source_run_root(run_root, binding, proof_bundle_source)
+            .unwrap_or_else(|| run_root.to_path_buf());
+    let latest_checkpoint_path = source_run_root.join(checkpoint_payload_path);
+    Some(json!({
+        "schema_version": "psion.cs336_a1_demo_retained_summary.v1",
+        "lane_id": closeout.get("lane_id")?.clone(),
+        "run_id": closeout.get("run_id")?.clone(),
+        "claim_boundary": closeout.get("claim_boundary")?.clone(),
+        "corpus_fixture_path": closeout.get("corpus_fixture_path")?.clone(),
+        "training_config": launch_manifest.get("training_config")?.clone(),
+        "total_steps": closeout.get("training_step_count")?.clone(),
+        "initial_loss": closeout.get("initial_loss")?.clone(),
+        "final_loss": closeout.get("final_loss")?.clone(),
+        "latest_checkpoint_label": closeout.get("checkpoint_label")?.clone(),
+        "latest_checkpoint_ref": closeout.get("checkpoint_ref")?.clone(),
+        "latest_checkpoint_path": latest_checkpoint_path.display().to_string(),
+        "model_state_digest": closeout.get("model_state_digest")?.clone(),
+        "optimizer_state_digest": closeout.get("optimizer_state_digest")?.clone(),
+        "checkpoint_digest": closeout.get("checkpoint_digest")?.clone(),
+        "detail": "Packaged bounded A1 lane completed and retained one accepted checkpoint and closeout bundle for shared Pylon ingestion.",
+    }))
+}
+
+fn synthesize_training_validator_launcher_log(closeout: &Value) -> Option<Vec<u8>> {
+    let run_id = closeout.get("run_id")?.as_str()?;
+    let surface_id = closeout
+        .get("launch_manifest")
+        .and_then(|value| value.get("surface_id"))
+        .and_then(Value::as_str)?;
+    let mut log = String::new();
+    log.push_str(
+        format!("phase=launch_manifest_written run_id={run_id} surface_id={surface_id}\n").as_str(),
+    );
+    log.push_str(
+        format!(
+            "phase=training_started run_id={run_id} initial_loss={:.6}\n",
+            training_validator_closeout_float(closeout, "initial_loss")?
+        )
+        .as_str(),
+    );
+    for step in closeout.get("step_reports")?.as_array()? {
+        log.push_str(
+            format!(
+                "phase=step_complete step={} loss_before={:.6} loss_after={:.6}\n",
+                training_validator_closeout_u64(step, "step_number")?,
+                training_validator_closeout_float(step, "loss_before")?,
+                training_validator_closeout_float(step, "loss_after")?
+            )
+            .as_str(),
+        );
+    }
+    log.push_str(
+        format!(
+            "phase=complete run_id={run_id} final_loss={:.6} checkpoint_digest={}\n",
+            training_validator_closeout_float(closeout, "final_loss")?,
+            closeout.get("checkpoint_digest")?.as_str()?
+        )
+        .as_str(),
+    );
+    Some(log.into_bytes())
+}
+
+fn synthesize_training_validator_retained_artifact_payload(
+    run_root: &Path,
+    binding: &Value,
+    proof_bundle_source: &Value,
+    artifact_kind: &str,
+) -> Result<Option<Vec<u8>>> {
+    let Some(closeout) = training_validator_closeout_bundle_source(proof_bundle_source) else {
+        return Ok(None);
+    };
+    let payload = match artifact_kind {
+        "current_status" => synthesize_training_validator_current_status(closeout)
+            .map(|value| training_validator_retained_artifact_payload(artifact_kind, &value))
+            .transpose()?,
+        "launch_manifest" => closeout
+            .get("launch_manifest")
+            .map(|value| training_validator_retained_artifact_payload(artifact_kind, value))
+            .transpose()?,
+        "launcher_log" => synthesize_training_validator_launcher_log(closeout),
+        "retained_summary" => synthesize_training_validator_retained_summary(
+            run_root,
+            binding,
+            proof_bundle_source,
+            closeout,
+        )
+        .map(|value| training_validator_retained_artifact_payload(artifact_kind, &value))
+        .transpose()?,
+        _ => None,
+    };
+    Ok(payload
+        .filter(|payload| training_validator_payload_matches_binding(binding, payload.as_slice())))
+}
+
+fn training_validator_retained_artifact_payload_from_bridge(
+    run_root: &Path,
+    binding: &Value,
+    proof_bundle_source: &Value,
+    artifact_kind: &str,
+) -> Result<Option<Vec<u8>>> {
+    if let Some(source_value) =
+        training_validator_retained_artifact_source_value(proof_bundle_source, artifact_kind)
+    {
+        let payload = training_validator_retained_artifact_payload(artifact_kind, source_value)?;
+        if training_validator_payload_matches_binding(binding, payload.as_slice()) {
+            return Ok(Some(payload));
+        }
+        training_trace(&format!(
+            "validator retained artifact {artifact_kind} source payload did not match contribution artifact binding; trying path and closeout fallbacks"
+        ));
+    }
+
+    for candidate in training_validator_artifact_binding_candidates(run_root, binding)
+        .into_iter()
+        .chain(training_validator_known_retained_artifact_candidates(
+            run_root,
+            proof_bundle_source,
+            artifact_kind,
+        ))
+    {
+        if let Some(payload) =
+            training_validator_read_matching_artifact_payload(binding, candidate.as_path())?
+        {
+            return Ok(Some(payload));
+        }
+    }
+
+    synthesize_training_validator_retained_artifact_payload(
+        run_root,
+        binding,
+        proof_bundle_source,
+        artifact_kind,
+    )
+}
+
+fn write_training_validator_retained_artifact_payload(
+    run_root: &Path,
+    binding: &Value,
+    artifact_kind: &str,
+    payload: &[u8],
+) -> Result<()> {
+    let mut destinations = training_validator_artifact_binding_candidates(run_root, binding);
+    destinations.dedup();
+    for destination in destinations {
+        write_training_artifact_destination(destination.as_path(), payload).with_context(|| {
+            format!(
+                "failed to write validator retained artifact {artifact_kind} to {}",
+                destination.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn materialize_training_validator_retained_artifacts_from_bridge_source(
+    run_root: &Path,
+    artifact_manifest: &Value,
+    proof_bundle_source: &Value,
+) -> Result<BTreeSet<String>> {
+    let mut materialized_artifact_kinds = BTreeSet::new();
+    let Some(artifacts) = artifact_manifest.get("artifacts").and_then(Value::as_array) else {
+        return Ok(materialized_artifact_kinds);
+    };
+    for artifact in artifacts {
+        let artifact_kind = artifact
+            .get("artifact_kind")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let Some(binding) = artifact.get("binding") else {
+            continue;
+        };
+        match training_validator_retained_artifact_payload_from_bridge(
+            run_root,
+            binding,
+            proof_bundle_source,
+            artifact_kind,
+        )? {
+            Some(payload) => {
+                write_training_validator_retained_artifact_payload(
+                    run_root,
+                    binding,
+                    artifact_kind,
+                    payload.as_slice(),
+                )?;
+                materialized_artifact_kinds.insert(artifact_kind.to_string());
+            }
+            None => {
+                training_trace(&format!(
+                    "validator retained artifact {artifact_kind} is unavailable in bridge payload, rebased local paths, and closeout-derived fallbacks"
+                ));
+            }
+        }
+    }
+    Ok(materialized_artifact_kinds)
+}
+
+fn training_validator_artifact_manifest_entry_is_available(
+    run_root: &Path,
+    artifact: &psionic_train::PsionicTrainContributionArtifact,
+) -> Result<bool> {
+    let binding = serde_json::to_value(&artifact.binding)
+        .context("failed to encode validator contribution artifact binding")?;
+    for candidate in training_validator_artifact_binding_candidates(run_root, &binding) {
+        if training_validator_artifact_binding_file_matches(&binding, candidate.as_path())? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn rewrite_training_validator_recoverable_artifact_family(
+    run_root: &Path,
+    contribution_receipt_path: &Path,
+    artifact_manifest_path: &Path,
+) -> Result<Value> {
+    let manifest_payload = std::fs::read(artifact_manifest_path).with_context(|| {
+        format!(
+            "failed to read validator contribution artifact manifest {}",
+            artifact_manifest_path.display()
+        )
+    })?;
+    let mut artifact_manifest: PsionicTrainContributionArtifactManifest =
+        match serde_json::from_slice(manifest_payload.as_slice()) {
+            Ok(value) => value,
+            Err(error) => {
+                training_trace(&format!(
+                    "validator contribution artifact manifest {} is not a full psionic manifest; skipping legacy artifact-family rewrite: {error}",
+                    artifact_manifest_path.display()
+                ));
+                return serde_json::from_slice(manifest_payload.as_slice()).with_context(|| {
+                    format!(
+                        "failed to decode validator contribution artifact manifest {}",
+                        artifact_manifest_path.display()
+                    )
+                });
+            }
+        };
+
+    let original_artifact_count = artifact_manifest.artifacts.len();
+    let mut kept_artifacts = Vec::with_capacity(original_artifact_count);
+    let mut dropped_artifacts = Vec::new();
+    for artifact in std::mem::take(&mut artifact_manifest.artifacts).into_iter() {
+        if training_validator_artifact_manifest_entry_is_available(run_root, &artifact)? {
+            kept_artifacts.push(artifact);
+        } else {
+            dropped_artifacts.push(artifact.artifact_kind);
+        }
+    }
+    artifact_manifest.artifacts = kept_artifacts;
+    if dropped_artifacts.is_empty() {
+        return serde_json::to_value(artifact_manifest)
+            .context("failed to encode validator contribution artifact manifest");
+    }
+    ensure!(
+        artifact_manifest
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.artifact_kind == "checkpoint_surface"),
+        "validator bridge bundle is missing checkpoint_surface after retained artifact recovery"
+    );
+
+    training_trace(&format!(
+        "rewriting validator-local contribution artifact manifest to drop unrecoverable legacy retained artifacts: {}",
+        dropped_artifacts.join(",")
+    ));
+    artifact_manifest.artifact_count = artifact_manifest.artifacts.len();
+    artifact_manifest.artifact_manifest_digest =
+        artifact_manifest.stable_artifact_manifest_digest();
+    let artifact_manifest_payload = serde_json::to_vec_pretty(&artifact_manifest)
+        .context("failed to encode rewritten validator contribution artifact manifest")?;
+    write_training_artifact_destination(
+        artifact_manifest_path,
+        artifact_manifest_payload.as_slice(),
+    )?;
+
+    let contribution_receipt_payload =
+        std::fs::read(contribution_receipt_path).with_context(|| {
+            format!(
+                "failed to read validator contribution receipt {}",
+                contribution_receipt_path.display()
+            )
+        })?;
+    let mut contribution_receipt: PsionicTrainContributionReceipt =
+        serde_json::from_slice(contribution_receipt_payload.as_slice()).with_context(|| {
+            format!(
+                "failed to decode validator contribution receipt {}",
+                contribution_receipt_path.display()
+            )
+        })?;
+    contribution_receipt.artifact_manifest = build_psionic_train_artifact_binding_from_path(
+        "contribution_artifact_manifest",
+        artifact_manifest_path,
+    )
+    .map_err(anyhow::Error::msg)?;
+    contribution_receipt.artifact_manifest_digest =
+        artifact_manifest.artifact_manifest_digest.clone();
+    contribution_receipt.artifact_count = artifact_manifest.artifact_count;
+    contribution_receipt.contribution_digest = contribution_receipt.stable_contribution_digest();
+    let contribution_receipt_payload = serde_json::to_vec_pretty(&contribution_receipt)
+        .context("failed to encode rewritten validator contribution receipt")?;
+    write_training_artifact_destination(
+        contribution_receipt_path,
+        contribution_receipt_payload.as_slice(),
+    )?;
+
+    serde_json::to_value(artifact_manifest)
+        .context("failed to encode rewritten validator contribution artifact manifest")
+}
+
 async fn ensure_training_validator_challenge_materialized(
     config: &PylonConfig,
     state: &mut PylonTrainingRuntimeState,
@@ -6641,7 +7322,7 @@ async fn ensure_training_validator_challenge_materialized(
         )?;
         bridge_contribution_receipt.clone()
     };
-    let _artifact_manifest = if let Some(binding) =
+    let artifact_manifest = if let Some(binding) =
         training_validator_target_artifact(target, "contribution_artifact_manifest")
     {
         match materialize_training_validator_target_json_artifact(
@@ -6682,6 +7363,21 @@ async fn ensure_training_validator_challenge_materialized(
             "validator contribution artifact manifest",
         )?;
         bridge_artifact_manifest.clone()
+    };
+    let _artifact_manifest = if let Some(proof_bundle_source) = proof_bundle.get("source") {
+        let _materialized_artifact_kinds =
+            materialize_training_validator_retained_artifacts_from_bridge_source(
+                run_root,
+                &artifact_manifest,
+                proof_bundle_source,
+            )?;
+        rewrite_training_validator_recoverable_artifact_family(
+            run_root,
+            contribution_receipt_path.as_path(),
+            artifact_manifest_path.as_path(),
+        )?
+    } else {
+        artifact_manifest
     };
     if let Some(sealed_window_bundle) = proof_bundle
         .get("source")
