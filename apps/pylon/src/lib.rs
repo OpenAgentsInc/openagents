@@ -133,13 +133,14 @@ pub use nip90_runtime::{
     AnnouncementAction, AnnouncementReport, BuyerJobHistoryReport, BuyerJobPaymentReport,
     BuyerJobReplayReport, BuyerJobSubmitReport, BuyerJobSubmitRequest, BuyerJobWatchEntry,
     BuyerJobWatchReport, BuyerPaymentPolicyMode, BuyerPaymentPolicyReport, ProviderIntakeReport,
-    ProviderRunReport, apply_buyer_payment_policy, approve_buyer_job_payment,
+    ProviderOnlineIntake, ProviderRunReport, apply_buyer_payment_policy, approve_buyer_job_payment,
     deny_buyer_job_payment, load_announcement_report, load_buyer_job_history,
     load_buyer_job_replay, publish_announcement_report, render_announcement_report,
     render_buyer_job_history_report, render_buyer_job_payment_report,
     render_buyer_job_replay_report, render_buyer_job_submit_report, render_buyer_job_watch_report,
     render_buyer_payment_policy_report, render_provider_intake_report, render_provider_run_report,
-    run_provider_requests, scan_provider_requests, submit_buyer_job, watch_buyer_jobs,
+    run_provider_online_intake_once, run_provider_requests, scan_provider_requests,
+    start_provider_online_intake, submit_buyer_job, watch_buyer_jobs,
 };
 pub use wallet_runtime::{
     WalletAddressReport, WalletBalanceSnapshot, WalletCreditSummaryReport, WalletHistoryReport,
@@ -165,7 +166,6 @@ const DEFAULT_PROVIDER_AUTO_RUN_INTERVAL_MS: u64 = 10_000;
 const DEFAULT_CODEX_WORKLOAD_TIMEOUT_SECONDS: u64 = 600;
 const DEFAULT_CODEX_WORKLOAD_CANCEL_POLL_SECONDS: u64 = 2;
 const DEFAULT_TRAINING_ASSIGNMENT_INTAKE_INTERVAL_MS: u64 = 30_000;
-const DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS: u64 = 1;
 const DEFAULT_PROVIDER_PAYOUT_TARGET_SYNC_INTERVAL_MS: u64 = 300_000;
 const DEFAULT_PROVIDER_HOST_TELEMETRY_REFRESH_INTERVAL_MS: u64 = 30_000;
 const TRAINING_ADMIN_STATUS_TIMEOUT_MS: u64 = 5_000;
@@ -23369,17 +23369,16 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
     let identity = ensure_identity(config.identity_path.as_path())?;
     let provider_presence_session_id = new_provider_presence_session_id();
     let provider_presence_heartbeat_interval = provider_presence_heartbeat_interval();
-    let provider_auto_run_interval = provider_auto_run_interval();
     let training_assignment_intake_interval = training_assignment_intake_interval();
     let provider_payout_target_sync_interval = provider_payout_target_sync_interval();
     let mut next_provider_presence_heartbeat_at = Instant::now();
-    let mut next_provider_auto_run_at = Instant::now();
     let mut next_training_assignment_intake_at = Instant::now();
     let mut next_provider_payout_target_sync_at = Instant::now();
     let mut provider_presence_online = false;
     let mut provider_presence_error = None::<String>;
     let mut provider_payout_target_error = None::<String>;
     let mut previous_snapshot = None::<Arc<ProviderPersistedSnapshot>>;
+    let mut provider_online_intake = None::<ProviderOnlineIntake>;
     let mut training_supervisor_process = None::<PylonTrainingSupervisorProcess>;
     let mut needs_sync = true;
     loop {
@@ -23446,6 +23445,9 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
         }
 
         if desired_mode != ProviderDesiredMode::Online && provider_presence_online {
+            if let Some(intake) = provider_online_intake.take() {
+                intake.shutdown().await;
+            }
             if let Err(error) = report_provider_presence_offline(
                 &presence_client,
                 &config,
@@ -23461,7 +23463,6 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
             }
             provider_presence_online = false;
             next_provider_presence_heartbeat_at = Instant::now();
-            next_provider_auto_run_at = Instant::now();
             next_training_assignment_intake_at = Instant::now();
             next_provider_payout_target_sync_at = Instant::now();
             if update_provider_control_plane_error(&mut provider_presence_error, None) {
@@ -23523,15 +23524,45 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
         if let Some(snapshot) = previous_snapshot.as_deref() {
             if desired_mode == ProviderDesiredMode::Online
                 && snapshot.runtime.authoritative_status.as_deref() == Some("online")
-                && Instant::now() >= next_provider_auto_run_at
             {
-                if let Err(error) =
-                    run_provider_requests(config_path, DEFAULT_PROVIDER_AUTO_RUN_WINDOW_SECONDS)
-                        .await
-                {
-                    eprintln!("warning: automatic pylon provider intake pass failed: {error}");
+                if provider_online_intake.is_none() {
+                    match start_provider_online_intake(config_path).await {
+                        Ok(intake) => {
+                            eprintln!(
+                                "pylon: provider NIP-90 intake connected for {}",
+                                intake.provider_pubkey()
+                            );
+                            provider_online_intake = Some(intake);
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "warning: failed to start persistent pylon provider intake: {error}"
+                            );
+                        }
+                    }
                 }
-                next_provider_auto_run_at = Instant::now() + provider_auto_run_interval;
+                if let Some(intake) = provider_online_intake.as_mut() {
+                    match run_provider_online_intake_once(config_path, intake).await {
+                        Ok(Some(report)) => eprintln!(
+                            "pylon: provider intake processed {} entries (completed={}, failed={}, dropped={})",
+                            report.entries.len(),
+                            report.completed_count,
+                            report.failed_count,
+                            report.dropped_count
+                        ),
+                        Ok(None) => {}
+                        Err(error) => {
+                            eprintln!(
+                                "warning: automatic pylon provider intake pass failed: {error}"
+                            );
+                            if let Some(intake) = provider_online_intake.take() {
+                                intake.shutdown().await;
+                            }
+                        }
+                    }
+                }
+            } else if let Some(intake) = provider_online_intake.take() {
+                intake.shutdown().await;
             }
             if desired_mode == ProviderDesiredMode::Online
                 && Instant::now() >= next_training_assignment_intake_at
@@ -23637,6 +23668,9 @@ async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
         tokio::select! {
             result = tokio::signal::ctrl_c() => {
                 result.context("failed waiting for ctrl-c")?;
+                if let Some(intake) = provider_online_intake.take() {
+                    intake.shutdown().await;
+                }
                 if provider_presence_online {
                     if let Err(error) = report_provider_presence_offline(
                         &presence_client,
@@ -52056,7 +52090,11 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                         continue;
                     };
                     if !request_sent && payload.contains("\"REQ\"") {
-                        let matching = json!(["EVENT", "run", {
+                        let req_frame: serde_json::Value =
+                            serde_json::from_str(payload.as_str()).expect("parse req frame");
+                        let subscription_id =
+                            req_frame[1].as_str().expect("subscription id").to_string();
+                        let matching = json!(["EVENT", subscription_id, {
                             "id": "run-job-auto-001",
                             "pubkey": "buyer-pubkey-auto-001",
                             "created_at": 1_760_000_210u64,
@@ -52073,7 +52111,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                             .await
                             .expect("send matching request");
                         request_sent = true;
-                        break;
+                        continue;
                     }
                     if !payload.contains("\"EVENT\"") {
                         continue;
@@ -52090,7 +52128,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                     if value[1]["kind"] == 7000 || value[1]["kind"] == 6050 {
                         published.push(value[1].clone());
                     } else {
-                        break;
+                        continue;
                     }
                     if published.len() == 2 {
                         return published;
