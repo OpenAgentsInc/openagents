@@ -6459,7 +6459,12 @@ async fn materialize_training_validator_target_json_artifact(
                         source_path.display()
                     ));
                     if binding.resolver.is_none() {
-                        return Ok(None);
+                        training_trace(&format!(
+                            "validator challenge {label} using authoritative local target despite stale binding digest for {}",
+                            source_path.display()
+                        ));
+                        write_training_json_value(local_path, &value, label)?;
+                        return Ok(Some(value));
                     }
                 } else {
                     write_training_json_value(local_path, &value, label)?;
@@ -6813,6 +6818,325 @@ fn training_validator_challenge_claim_error_is_nonfatal(error: &str) -> bool {
     error.contains("training_validator_challenge_unavailable")
 }
 
+fn training_validator_materialization_error_is_terminalizable(error: &anyhow::Error) -> bool {
+    let normalized = format!("{error:#}").to_ascii_lowercase();
+    normalized.contains("artifact_incomplete") || normalized.contains("artifact_digest_mismatch")
+}
+
+fn training_validator_materialization_finalized_error_is_nonfatal(error: &str) -> bool {
+    error.contains("training_validator_challenge_materialization_finalized")
+}
+
+fn training_retained_assignment_materialization_error_is_retirable(error: &anyhow::Error) -> bool {
+    let normalized = format!("{error:#}").to_ascii_lowercase();
+    normalized.contains("artifact_incomplete")
+        && (normalized.contains("status 404")
+            || normalized.contains("status=404")
+            || normalized.contains("nosuchkey")
+            || normalized.contains("specified key does not exist")
+            || normalized.contains("no such object"))
+}
+
+fn training_validator_materialization_failure_detail(error: &anyhow::Error) -> String {
+    let mut detail = format!("{error:#}")
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("; ");
+    const MAX_DETAIL_CHARS: usize = 1_200;
+    if detail.len() > MAX_DETAIL_CHARS {
+        detail.truncate(MAX_DETAIL_CHARS);
+        detail.push_str("...");
+    }
+    detail
+}
+
+async fn finalize_training_validator_challenge_materialization_failure(
+    identity: &NostrIdentity,
+    state: &mut PylonTrainingRuntimeState,
+    client: &PylonTrainingCoordinatorClient,
+    lease_id: &str,
+    response: &PylonTrainingValidatorChallengeCoordinatorResponse,
+    error: &anyhow::Error,
+) -> Result<bool> {
+    if !training_validator_materialization_error_is_terminalizable(error) {
+        return Ok(false);
+    }
+    let Some(cached_lease) = state.lease_cache.get(lease_id).cloned() else {
+        bail!("missing cached training lease `{lease_id}`");
+    };
+    let Some(challenge_lease) = response
+        .lease
+        .clone()
+        .or_else(|| response.challenge.active_lease.clone())
+    else {
+        return Ok(false);
+    };
+    let Some(target) = response.target_bindings.first() else {
+        return Ok(false);
+    };
+    let finalized_at_ms = now_epoch_ms().max(0) as u64;
+    let failure_detail = training_validator_materialization_failure_detail(error);
+    let detail = format!("validator target artifact unavailable: {failure_detail}");
+    let result_digest = sha256_prefixed_text(
+        format!(
+            "validator_materialization_failure::{}::{}::{detail}",
+            response.challenge_id, challenge_lease.attempt
+        )
+        .as_str(),
+    );
+    let result = ComputeValidatorChallengeResult {
+        challenge_id: response.challenge_id.clone(),
+        proof_bundle_digest: response
+            .challenge
+            .request
+            .context
+            .proof_bundle_digest
+            .clone(),
+        protocol_id: response.challenge.request.protocol.label().to_string(),
+        attempt: challenge_lease.attempt,
+        status: ComputeValidatorChallengeStatus::Rejected,
+        verdict: openagents_kernel_core::compute::ComputeValidatorChallengeVerdict::Rejected,
+        reason_code: Some(
+            openagents_kernel_core::compute::ComputeValidatorChallengeFailureCode::RetryBudgetExhausted,
+        ),
+        detail,
+        created_at_ms: response.challenge.request.context.created_at_ms,
+        finalized_at_ms,
+        challenge_seed_digest: None,
+        verified_row_count: None,
+        result_digest: result_digest.clone(),
+        challenge_result_ref: format!("validator_challenge_result:{result_digest}"),
+    };
+    let request = PylonFinalizeTrainingValidatorChallengeRequest {
+        idempotency_key: format!(
+            "training.validator_challenge.materialization_failure.{}.{}",
+            response.challenge_id, challenge_lease.attempt
+        ),
+        recorded_at_ms: finalized_at_ms as i64,
+        node_pubkey_hex: identity.public_key_hex.clone(),
+        lease: challenge_lease,
+        result,
+        training_disposition: Some(ComputeAdapterContributionDisposition::Rejected),
+    };
+    let receipt_key =
+        training_authority_receipt_key("validator_finalize", response.challenge_id.as_str());
+    let checkpoint_ref = cached_lease.checkpoint_ref.clone();
+    let mut changed = record_training_closeout_progress_stage(
+        state,
+        target.assignment_id.as_str(),
+        response.training_run_id.as_str(),
+        response.window_id.as_str(),
+        PylonTrainingRoleClaim::Validator,
+        PylonTrainingCloseoutStage::ValidatorClaimed,
+        Some(response.challenge_id.as_str()),
+        checkpoint_ref.clone(),
+        None,
+        None,
+        None,
+        Some(failure_detail.clone()),
+    );
+    changed |= update_training_closeout_progress_observation(
+        state,
+        target.assignment_id.as_str(),
+        Some(response.challenge_id.as_str()),
+        Some(target.contribution_id.clone()),
+        state
+            .lease_cache
+            .get(lease_id)
+            .map(|lease| lease.state.clone()),
+        None,
+    );
+    match client
+        .finalize_validator_challenge(response.challenge_id.as_str(), &request)
+        .await
+    {
+        Ok(finalized) => {
+            record_training_authority_receipt_attempt_success(
+                state,
+                receipt_key.as_str(),
+                "validator_finalize",
+                response.challenge_id.as_str(),
+                finalized.ack.authority_state.as_str(),
+                finalized
+                    .window
+                    .as_ref()
+                    .map(|window| window.status.label())
+                    .unwrap_or("validation_failed"),
+                request.recorded_at_ms,
+            );
+            if let Some(window) = finalized.window.as_ref() {
+                state.window_cache.insert(
+                    window.window_id.clone(),
+                    PylonTrainingWindowCacheEntry {
+                        window_id: window.window_id.clone(),
+                        training_run_id: window.training_run_id.clone(),
+                        state: window.status.label().to_string(),
+                        manifest_digest: Some(target.manifest_digest.clone()),
+                        updated_at_ms: now_epoch_ms(),
+                    },
+                );
+            }
+            changed |= record_training_closeout_progress_stage(
+                state,
+                target.assignment_id.as_str(),
+                response.training_run_id.as_str(),
+                response.window_id.as_str(),
+                PylonTrainingRoleClaim::Validator,
+                PylonTrainingCloseoutStage::ValidatorFinalized,
+                Some(response.challenge_id.as_str()),
+                checkpoint_ref,
+                Some(finalized.ack.authority_state),
+                None,
+                None,
+                Some(failure_detail),
+            );
+            changed |= update_training_closeout_progress_observation(
+                state,
+                target.assignment_id.as_str(),
+                Some(response.challenge_id.as_str()),
+                Some(target.contribution_id.clone()),
+                Some("failed".to_string()),
+                finalized
+                    .window
+                    .as_ref()
+                    .map(|window| window.status.label().to_string()),
+            );
+            update_cached_training_lease_state(state, lease_id, "failed", now_epoch_ms());
+            if state
+                .active_runtime
+                .as_ref()
+                .is_some_and(|active| active.lease_id == lease_id)
+            {
+                state.active_runtime = None;
+            }
+            training_trace(&format!(
+                "finalized validator challenge {} after materialization failure changed={changed}",
+                response.challenge_id
+            ));
+            Ok(true)
+        }
+        Err(finalize_error) => {
+            record_training_authority_receipt_attempt_failure(
+                state,
+                receipt_key.as_str(),
+                "validator_finalize",
+                response.challenge_id.as_str(),
+                &finalize_error,
+            );
+            Err(finalize_error).with_context(|| {
+                format!(
+                    "failed to finalize validator challenge {} after materialization failure",
+                    response.challenge_id
+                )
+            })
+        }
+    }
+}
+
+async fn report_training_assignment_materialization_failure(
+    identity: &NostrIdentity,
+    state: &mut PylonTrainingRuntimeState,
+    client: &PylonTrainingCoordinatorClient,
+    lease: &PylonTrainingLeaseCacheEntry,
+    error: &anyhow::Error,
+) -> Result<bool> {
+    if !training_retained_assignment_materialization_error_is_retirable(error) {
+        return Ok(false);
+    }
+    let failure_reason = training_validator_materialization_failure_detail(error);
+    let receipt_key =
+        training_authority_receipt_key("failure_notice", lease.assignment_id.as_str());
+    let mut changed = record_training_closeout_progress_stage(
+        state,
+        lease.assignment_id.as_str(),
+        lease.training_run_id.as_str(),
+        lease.window_id.as_str(),
+        lease.role,
+        PylonTrainingCloseoutStage::TerminalFailed,
+        lease.challenge_id.as_deref(),
+        lease.checkpoint_ref.clone(),
+        None,
+        None,
+        None,
+        Some(failure_reason.clone()),
+    );
+    if training_authority_receipt_needs_attempt(state, receipt_key.as_str()) {
+        let request = PylonTrainingFailureNoticeRequest {
+            idempotency_key: format!(
+                "training.materialization_failure.{}.{}",
+                lease.training_run_id, lease.assignment_id
+            ),
+            reported_at_ms: now_epoch_ms(),
+            node_pubkey_hex: identity.public_key_hex.clone(),
+            training_run_id: lease.training_run_id.clone(),
+            window_id: lease.window_id.clone(),
+            assignment_id: lease.assignment_id.clone(),
+            lease_id: lease.lease_id.clone(),
+            failure_reason: failure_reason.clone(),
+            exit_code: None,
+            failure_receipt_path: None,
+        };
+        match client.report_failure_notice(&request).await {
+            Ok(response) => {
+                record_training_authority_receipt_attempt_success(
+                    state,
+                    receipt_key.as_str(),
+                    "failure_notice",
+                    lease.assignment_id.as_str(),
+                    response.ack.authority_state.as_str(),
+                    response.failure_state.as_str(),
+                    response.ack.recorded_at_ms,
+                );
+                changed = true;
+            }
+            Err(notice_error)
+                if training_retained_assignment_authority_error_is_stale(
+                    notice_error.to_string().as_str(),
+                ) =>
+            {
+                record_training_authority_receipt_attempt_failure(
+                    state,
+                    receipt_key.as_str(),
+                    "failure_notice",
+                    lease.assignment_id.as_str(),
+                    &notice_error,
+                );
+                changed = true;
+            }
+            Err(notice_error) => {
+                record_training_authority_receipt_attempt_failure(
+                    state,
+                    receipt_key.as_str(),
+                    "failure_notice",
+                    lease.assignment_id.as_str(),
+                    &notice_error,
+                );
+                return Err(notice_error).with_context(|| {
+                    format!(
+                        "failed to report materialization failure for assignment {}",
+                        lease.assignment_id
+                    )
+                });
+            }
+        }
+    }
+    update_cached_training_lease_state(state, lease.lease_id.as_str(), "failed", now_epoch_ms());
+    if state
+        .active_runtime
+        .as_ref()
+        .is_some_and(|active| active.lease_id == lease.lease_id)
+    {
+        state.active_runtime = None;
+    }
+    training_trace(&format!(
+        "reported materialization failure for assignment {} changed={changed}",
+        lease.assignment_id
+    ));
+    Ok(true)
+}
+
 async fn claim_training_validator_challenge_without_run_lease(
     config: &PylonConfig,
     identity: &NostrIdentity,
@@ -6909,7 +7233,7 @@ async fn claim_training_validator_challenge_without_run_lease(
             updated_at_ms: now,
         },
     );
-    ensure_training_validator_challenge_materialized(
+    match ensure_training_validator_challenge_materialized(
         config,
         state,
         client,
@@ -6917,7 +7241,25 @@ async fn claim_training_validator_challenge_without_run_lease(
         run_root.as_path(),
         &response,
     )
-    .await?;
+    .await
+    {
+        Ok(()) => {}
+        Err(error) => {
+            if finalize_training_validator_challenge_materialization_failure(
+                identity,
+                state,
+                client,
+                lease_id.as_str(),
+                &response,
+                &error,
+            )
+            .await?
+            {
+                return Ok(false);
+            }
+            return Err(error);
+        }
+    }
     training_trace(&format!(
         "materialized validator challenge {} into {}",
         response.challenge_id,
@@ -7312,14 +7654,46 @@ async fn ensure_training_assignment_runtime_manifest(
             .await?
     };
     if !training_assignment_runtime_artifacts_materialized(&training_run, run_root.as_path())? {
-        ensure_training_assignment_runtime_artifacts(
+        match ensure_training_assignment_runtime_artifacts(
             config,
             client,
             &training_run,
             &initial_lease,
             run_root.as_path(),
         )
-        .await?;
+        .await
+        {
+            Ok(()) => {}
+            Err(error) => {
+                if initial_lease.role == PylonTrainingRoleClaim::Validator
+                    && training_validator_materialization_error_is_terminalizable(&error)
+                {
+                    let response = if let Some(challenge_id) = initial_lease.challenge_id.as_deref()
+                    {
+                        load_training_validator_claim_record(
+                            run_root.as_path(),
+                            initial_lease.window_id.as_str(),
+                            challenge_id,
+                        )?
+                    } else {
+                        None
+                    };
+                    if let Some(response) = response {
+                        if finalize_training_validator_challenge_materialization_failure(
+                            identity, state, client, lease_id, &response, &error,
+                        )
+                        .await?
+                        {
+                            bail!(
+                                "training_validator_challenge_materialization_finalized: {}",
+                                training_validator_materialization_failure_detail(&error)
+                            );
+                        }
+                    }
+                }
+                return Err(error);
+            }
+        }
     }
     if initial_lease.role == PylonTrainingRoleClaim::Validator && !validator_inputs_materialized {
         let response = if let Some(challenge_id) = initial_lease.challenge_id.as_deref() {
@@ -7348,7 +7722,7 @@ async fn ensure_training_assignment_runtime_manifest(
                 })
                 .await?
         };
-        ensure_training_validator_challenge_materialized(
+        match ensure_training_validator_challenge_materialized(
             config,
             state,
             client,
@@ -7356,7 +7730,23 @@ async fn ensure_training_assignment_runtime_manifest(
             run_root.as_path(),
             &response,
         )
-        .await?;
+        .await
+        {
+            Ok(()) => {}
+            Err(error) => {
+                if finalize_training_validator_challenge_materialization_failure(
+                    identity, state, client, lease_id, &response, &error,
+                )
+                .await?
+                {
+                    bail!(
+                        "training_validator_challenge_materialization_finalized: {}",
+                        training_validator_materialization_failure_detail(&error)
+                    );
+                }
+                return Err(error);
+            }
+        }
     }
     let Some(lease) = state.lease_cache.get(lease_id).cloned() else {
         bail!("missing cached training lease `{lease_id}` after materialization");
@@ -11871,6 +12261,35 @@ async fn run_training_assignment_intake_once_with_context_for_run(
                         reason.as_str(),
                     );
                 }
+                Err(error)
+                    if training_retained_assignment_materialization_error_is_retirable(&error) =>
+                {
+                    let reason = training_validator_materialization_failure_detail(&error);
+                    let _ = report_training_assignment_materialization_failure(
+                        identity,
+                        state,
+                        &client,
+                        &existing_lease,
+                        &error,
+                    )
+                    .await?;
+                    let _ = retire_stale_retained_training_assignment(
+                        state,
+                        existing_lease.lease_id.as_str(),
+                        existing_lease.window_id.as_str(),
+                        reason.as_str(),
+                    );
+                }
+                Err(error)
+                    if training_validator_materialization_finalized_error_is_nonfatal(
+                        &error.to_string(),
+                    ) =>
+                {
+                    training_trace(&format!(
+                        "retired cached validator lease {} after terminal materialization failure: {}",
+                        existing_lease.lease_id, error
+                    ));
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -12016,7 +12435,7 @@ async fn run_training_assignment_intake_once_with_context_for_run(
                         "materializing runtime manifest for leased assignment {}",
                         lease.assignment_id
                     ));
-                    let materialized = ensure_training_assignment_runtime_manifest(
+                    let materialized = match ensure_training_assignment_runtime_manifest(
                         config,
                         identity,
                         state,
@@ -12024,7 +12443,62 @@ async fn run_training_assignment_intake_once_with_context_for_run(
                         runtime_surface,
                         lease.lease_id.as_str(),
                     )
-                    .await?;
+                    .await
+                    {
+                        Ok(materialized) => materialized,
+                        Err(error)
+                            if training_retained_assignment_materialization_error_is_retirable(
+                                &error,
+                            ) =>
+                        {
+                            let cached_lease = state
+                                .lease_cache
+                                .get(lease.lease_id.as_str())
+                                .cloned()
+                                .unwrap_or_else(|| PylonTrainingLeaseCacheEntry {
+                                    lease_id: lease.lease_id.clone(),
+                                    assignment_id: lease.assignment_id.clone(),
+                                    training_run_id: lease.training_run_id.clone(),
+                                    window_id: lease.window_id.clone(),
+                                    membership_revision: lease
+                                        .membership_revision
+                                        .clone()
+                                        .unwrap_or_else(|| "members.unknown".to_string()),
+                                    role: lease.role,
+                                    state: lease
+                                        .assignment_state
+                                        .clone()
+                                        .unwrap_or_else(|| "leased".to_string()),
+                                    manifest_digest: lease.manifest_digest.clone(),
+                                    checkpoint_ref: lease.checkpoint_ref.clone(),
+                                    expires_at_ms: Some(lease.expires_at_ms),
+                                    network_id: lease.network_id.clone(),
+                                    challenge_id: None,
+                                    peer_node_pubkey: None,
+                                    peer_checkpoint_handoff_receipt_path: None,
+                                    validator_target_contribution_receipt_path: None,
+                                    validator_target_contribution_artifact_manifest_path: None,
+                                    validator_target_work_class: None,
+                                    grouped_stage_input_transport_path: None,
+                                    runtime_manifest_path: None,
+                                    runtime_manifest_digest: None,
+                                    runtime_lane_id: None,
+                                    runtime_operation: None,
+                                    runtime_work_class: None,
+                                    updated_at_ms: now_epoch_ms(),
+                                });
+                            report_training_assignment_materialization_failure(
+                                identity,
+                                state,
+                                &client,
+                                &cached_lease,
+                                &error,
+                            )
+                            .await?;
+                            continue;
+                        }
+                        Err(error) => return Err(error),
+                    };
                     let acked_at_ms = now_epoch_ms();
                     training_trace(&format!("acking lease {}", lease.lease_id));
                     let ack = client

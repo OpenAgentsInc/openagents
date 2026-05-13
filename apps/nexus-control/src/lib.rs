@@ -1657,6 +1657,7 @@ enum TrainingSchedulerRunAvailability {
 }
 
 const TRAINING_SCHEDULER_STATE_SCHEMA_VERSION: u32 = 1;
+const TRAINING_SCHEDULER_ASSIGNMENT_MAX_ATTEMPTS: u32 = 3;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -4549,6 +4550,11 @@ impl ScheduledTrainingRun {
                             | TrainingAssignmentState::Failed
                             | TrainingAssignmentState::Drained
                     ) =>
+                {
+                    continue;
+                }
+                Some(assignment)
+                    if assignment.attempt >= TRAINING_SCHEDULER_ASSIGNMENT_MAX_ATTEMPTS =>
                 {
                     continue;
                 }
@@ -38884,6 +38890,106 @@ mod tests {
                     && assignment.node_pubkey_hex.as_deref() == Some("node-beta")
             }),
             "replacement lease should allocate a new assignment attempt to the new node",
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn training_scheduler_stops_replacing_worker_slot_after_attempt_budget() -> Result<()> {
+        let state = build_app_state(test_config()?);
+        let app = build_api_router_with_state(state.clone());
+        let created_at_ms = now_unix_ms().saturating_sub(10_000);
+        let training_run_id = "run.scheduler.attempt_budget";
+        let network_id = "trainnet.alpha";
+        let node_pubkey_hex = "node-attempt-budget";
+        let build_digest = "sha256:build-attempt-budget";
+
+        seed_training_scheduler_run(
+            &state,
+            created_at_ms,
+            training_run_id,
+            "window.0001",
+            node_pubkey_hex,
+            build_digest,
+        );
+
+        let first_claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.attempt_budget.initial",
+                            created_at_ms as i64 + 1_000,
+                            node_pubkey_hex,
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_claim_response.status(), StatusCode::OK);
+        let first_lease =
+            response_json::<RecordTrainingRunLeaseResponse>(first_claim_response).await?;
+
+        {
+            let mut store = state.store.write().expect("write store");
+            let scheduled_run = store
+                .training_scheduler
+                .runs_by_training_run_id
+                .get_mut(training_run_id)
+                .expect("scheduled run");
+            let assignment = scheduled_run
+                .assignments
+                .iter_mut()
+                .find(|assignment| assignment.assignment_id == first_lease.assignment_id)
+                .expect("initial assignment");
+            assignment.state = TrainingAssignmentState::Failed;
+            assignment.attempt = super::TRAINING_SCHEDULER_ASSIGNMENT_MAX_ATTEMPTS;
+        }
+
+        let exhausted_claim_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/training/leases/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &training_run_lease_request(
+                            "idemp.training.lease.attempt_budget.exhausted",
+                            created_at_ms as i64 + 2_000,
+                            node_pubkey_hex,
+                            training_run_id,
+                            network_id,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(exhausted_claim_response.status(), StatusCode::BAD_REQUEST);
+        let error = response_json::<serde_json::Value>(exhausted_claim_response).await?;
+        assert_eq!(
+            error.get("reason").and_then(serde_json::Value::as_str),
+            Some("training_scheduler_assignment_unavailable")
+        );
+
+        let store = state.store.read().expect("read store");
+        let scheduled_run = store
+            .training_scheduler
+            .runs_by_training_run_id
+            .get(training_run_id)
+            .expect("scheduled run");
+        assert_eq!(
+            scheduled_run
+                .assignments
+                .iter()
+                .filter(|assignment| assignment.role == TrainingNodeRoleClaim::Worker)
+                .count(),
+            1,
+            "exhausted worker slots must not grow unbounded replacement assignments",
         );
         Ok(())
     }
