@@ -5385,10 +5385,7 @@ fn authority_environment(
     relay_ws_url: Option<&str>,
     artifact_store_base_url: &str,
 ) -> BTreeMap<String, String> {
-    let authority_base_port = match mode {
-        ProofAuthorityMode::ProdShaped => ports.relay_http,
-        ProofAuthorityMode::DebugAuthority => ports.control_http,
-    };
+    let authority_base_port = ports.control_http;
     let mut env = BTreeMap::from([
         (
             "NEXUS_CONTROL_ADMIN_BEARER_TOKEN".to_string(),
@@ -6429,6 +6426,43 @@ mod tests {
                 load_error: None,
             }),
         }
+    }
+
+    #[test]
+    fn prod_shaped_authority_environment_keeps_relay_and_control_ports_separate() -> Result<()> {
+        let temp = tempdir()?;
+        let config_path = temp.path().join("config.json");
+        let layout = super::proof_layout(config_path.as_path(), "proof.env.port-test");
+        let ports = super::ProofNamespacePorts {
+            relay_http: 41_000,
+            relay_upstream: 41_001,
+            control_http: 41_002,
+            artifact_store: 41_003,
+        };
+
+        let env = super::authority_environment(
+            super::ProofAuthorityMode::ProdShaped,
+            &ports,
+            &layout,
+            "proof_admin_test",
+            Some("ws://127.0.0.1:41000/"),
+            "http://127.0.0.1:41003/upload",
+        );
+
+        assert_eq!(
+            env.get("NEXUS_CONTROL_LISTEN_ADDR").map(String::as_str),
+            Some("127.0.0.1:41002")
+        );
+        assert_eq!(
+            env.get("NEXUS_RELAY_LISTEN_ADDR").map(String::as_str),
+            Some("127.0.0.1:41000")
+        );
+        assert_eq!(
+            env.get("NEXUS_RELAY_UPSTREAM_LISTEN_ADDR")
+                .map(String::as_str),
+            Some("127.0.0.1:41001")
+        );
+        Ok(())
     }
 
     fn proof_test_completed_observation() -> super::ProofObservedTrainingRunDetail {
