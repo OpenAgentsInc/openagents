@@ -14891,7 +14891,7 @@ async fn refresh_training_node_records_local(
     if contexts.is_empty() {
         bail!("training refresh requires at least one retained run manifest");
     }
-    let relay_urls = dedup_training_relay_urls(&contexts);
+    let relay_urls = training_sync_relay_urls(&config, &contexts);
     let (pool, pool_error) =
         match build_training_relay_pool(&config, &identity, relay_urls.as_slice()).await {
             Ok(pool) => (Some(pool), None),
@@ -14996,7 +14996,7 @@ async fn publish_training_trn_state(
         bail!("training publish requires at least one retained run manifest");
     }
 
-    let relay_urls = dedup_training_relay_urls(&contexts);
+    let relay_urls = training_sync_relay_urls(&config, &contexts);
     let (pool, pool_error) =
         match build_training_relay_pool(&config, &identity, relay_urls.as_slice()).await {
             Ok(pool) => (Some(pool), None),
@@ -45901,47 +45901,17 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         config.admin_listen_addr = "127.0.0.1:0".to_string();
         config.relay_auth_enabled = false;
         config.training.run_root = temp_dir.path().join("training");
+
+        let configured_relay = TestPublishRelay::spawn();
+        let manifest_relay = TestPublishRelay::spawn();
+        config.training.relay_urls = vec![configured_relay.url.clone()];
         save_config(config_path.as_path(), &config)?;
         let identity = ensure_identity(config.identity_path.as_path())?;
-
-        let relay_events = Arc::new(Mutex::new(Vec::<Value>::new()));
-        let relay_events_for_server = Arc::clone(&relay_events);
-        let relay_listener = TcpListener::bind("127.0.0.1:0").await?;
-        let relay_addr = relay_listener.local_addr()?;
-        let relay_url = format!("ws://{relay_addr}");
-        let _relay_server = tokio::spawn(async move {
-            let (stream, _) = relay_listener.accept().await.expect("accept relay client");
-            let mut ws = accept_async(stream).await.expect("upgrade relay websocket");
-            while let Some(message) = ws.next().await {
-                match message {
-                    Ok(Message::Text(payload)) => {
-                        let frame: Value =
-                            serde_json::from_str(payload.as_str()).expect("parse relay frame");
-                        match frame.get(0).and_then(Value::as_str) {
-                            Some("EVENT") => {
-                                relay_events_for_server
-                                    .lock()
-                                    .expect("relay event log")
-                                    .push(frame[1].clone());
-                                ws.send(Message::Text(
-                                    json!(["OK", frame[1]["id"], true, "accepted"]).to_string(),
-                                ))
-                                .await
-                                .expect("send ok");
-                            }
-                            _ => {}
-                        }
-                    }
-                    Ok(Message::Close(_)) | Err(_) => break,
-                    _ => {}
-                }
-            }
-        });
 
         let local_run_root = config.training.run_root.join("runs").join("run.alpha");
         let mut manifest =
             write_training_manifest_and_artifacts(local_run_root.as_path(), "gs://bucket")?;
-        manifest.trn.relay_urls = vec![relay_url.clone()];
+        manifest.trn.relay_urls = vec![manifest_relay.url.clone()];
         manifest.manifest_digest = manifest.canonical_digest()?;
         std::fs::write(
             local_run_root.join("manifests").join("run_manifest.json"),
@@ -45967,7 +45937,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         )?;
 
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(2))
+            .timeout(std::time::Duration::from_secs(5))
             .build()?;
         let status_url = format!("http://{}/v1/training/status", runtime.listen_addr());
         let refresh_url = format!(
@@ -46000,14 +45970,13 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             "training admin refresh should republish the node record and return the refresh report",
         )?;
 
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-        let published = relay_events.lock().expect("relay events snapshot").clone();
+        let published = configured_relay.wait_for_event_count(1, Duration::from_secs(2));
         ensure(
             published.iter().any(|event| {
                 event["kind"] == json!(39501)
                     && first_tag_value(event, "status").as_deref() == Some("online")
             }),
-            "training admin refresh should publish a fresh training node record to the retained relay set",
+            "training admin refresh should publish a fresh training node record to configured fallback relays, not only manifest relays",
         )?;
 
         let refreshed_state = load_or_create_training_runtime_state(&config)?;
