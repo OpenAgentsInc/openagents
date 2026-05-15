@@ -20,6 +20,12 @@ a legacy bridge while the LDK path is proven and cut over.
 - `competition/ldk/repos/ldk-server/ldk-server-grpc/src/proto/events.proto`
 - `competition/ldk/repos/ldk-node/README.md`
 - `competition/ldk/repos/ldk-node/CHANGELOG.md`
+- `competition/ldk/repos/ldk-node/src/builder.rs`
+- `competition/ldk/repos/ldk-garbagecollected/README.md`
+- `competition/ldk/repos/ldk-garbagecollected/ts/package.json`
+- `competition/ldk/repos/ldk-garbagecollected/node-net/README.md`
+- `competition/ldk/repos/ldk-garbagecollected/node-net/net.mts`
+- `competition/ldk/repos/ldk-nodejs/README.md`
 - `competition/ldk/repos/rust-lightning/README.md`
 - `competition/ldk/repos/lightningdevkit.org/docs/index.md`
 - `competition/ldk/repos/lightningdevkit.org/docs/introduction/architecture.md`
@@ -143,6 +149,87 @@ current checked-out `ldk-server` repo documentation is more conservative:
 Therefore, do not couple Nexus business logic directly to `ldk-server` RPC
 shapes. Wrap it behind an internal provider boundary, pin the tested commit,
 and be ready to swap the provider implementation to direct `ldk-node`.
+
+## Autopilot 3 and Web Implementation Boundary
+
+Autopilot 3 should not embed the production LDK node in the browser or in the
+Cloudflare Worker for Nexus v0.2 or Pylon v0.2.
+
+The LDK reference lane gives two different answers:
+
+- `ldk-node` is the right high-level production integration surface, but it is
+  Rust-first with Swift, Kotlin, and Python bindings through UniFFI. Its node
+  model expects an application or service runtime that can own long-lived node
+  state, chain sync, peer networking, event loops, entropy, and durable
+  SQLite/filesystem/custom-KV storage.
+- `ldk-garbagecollected` does ship TypeScript/WASM bindings for lower-level
+  LDK, and the archived `ldk-nodejs` repo points users there. Those TypeScript
+  bindings are functionally complete but beta quality. They require modern
+  browser/runtime primitives such as `FinalizationRegistry`, `WeakRef`, and
+  WASM BigInt. The Node adapter bridges LDK `SocketDescriptor` and
+  `PeerManager` to Node TCP sockets; the browser path explicitly requires us
+  to provide our own bridge from `SocketDescriptor` to a WebSocket proxy.
+
+That means browser LDK is technically possible as an R&D lane, but it is not
+the production payment authority for the v0.2 cutover. A real browser-resident
+Lightning node would still need:
+
+- a WebSocket-to-Lightning-peer proxy with backpressure and reconnect behavior,
+- audited IndexedDB or remote VSS-backed persistence for channel monitors and
+  wallet state,
+- browser key custody and recovery UX,
+- single-writer protection so the same node backup cannot be active in two
+  tabs, devices, or restored sessions,
+- chain data sourcing and route graph handling that do not rely on fragile
+  public infrastructure,
+- watchdog behavior for suspended tabs, mobile browser lifecycle pauses, and
+  interrupted persistence,
+- a clear answer for how user wallets differ from Nexus treasury authority.
+
+Autopilot 3's correct role is the web control plane:
+
+- show Nexus treasury and Pylon settlement status,
+- create funding invoices by calling Nexus server APIs,
+- call authorized admin operations such as pay invoice, pay offer, list
+  payments, list channels, and connect peer,
+- render invoices, offers, payment receipts, channel state, and degraded
+  states,
+- expose token-authenticated API routes that proxy to Nexus with policy and
+  audit receipts,
+- decode or validate payment targets client-side only when that does not imply
+  custody.
+
+Autopilot 3 must not store or own:
+
+- LDK seed material,
+- channel monitor state,
+- `keys_seed`,
+- `ldk_node_data.sqlite`,
+- LDK wallet entropy,
+- spend authority for Nexus funds,
+- user wallet state in Convex.
+
+A Cloudflare Worker route in Autopilot 3 is also not the node host. Workers
+are a good facade for authorization, rate limiting, audit receipts, admin
+tools, and projections, but the core LDK node needs a long-running runtime with
+durable local or explicitly designed remote persistence and real peer
+networking. If Workers participate in v0.2, they should sit in front of Nexus
+or project read models from Nexus. They should not be the single source of
+truth for LDK channel state or treasury spend authority.
+
+The browser/WebAssembly path should stay explicitly out of the critical path
+until after Nexus v0.2 and Pylon v0.2 ship. It can be studied later for:
+
+- signet demos,
+- invoice and offer parsing,
+- user-owned experimental wallets,
+- mobile/web recovery flows backed by VSS,
+- non-custodial browser payment experiences that never touch Nexus treasury
+  funds.
+
+If we want LDK embedded close to the Autopilot product sooner, the better
+target is a native/desktop runtime or a server-side Nexus/Pylon process, not
+the Autopilot 3 browser app.
 
 ## Target Architecture
 
@@ -553,6 +640,11 @@ need enough control to operate the node:
 Every write-side command must require admin authorization, an idempotency key,
 and a durable operation row.
 
+Autopilot 3 routes should remain thin wrappers around these Nexus operations.
+They can enforce WorkOS/API-token identity, shape UI responses, and write audit
+receipts, but Nexus remains the source of truth for LDK operations and spend
+authority.
+
 ## Open Questions
 
 - Which exact `ldk-server` commit should Nexus pin for the first harness?
@@ -566,6 +658,8 @@ and a durable operation row.
 - Do we need LNURL-pay in addition to BOLT12 for practical compatibility?
 - Should Nexus operate its own RGS server later for Pylon/mobile clients?
 - When is VSS mature enough for user-facing wallet recovery in OpenAgents?
+- Should a browser LDK R&D lane exist after v0.2, or should all user-wallet
+  work target native/desktop first?
 
 ## Recommended Next Work
 
@@ -579,7 +673,9 @@ and a durable operation row.
 5. Cut operator funding invoice creation over to LDK.
 6. Add BOLT12 payout target support to Pylon v0.2.
 7. Move accepted-work payouts to LDK for upgraded workers.
-8. Decommission Spark from new treasury and payout operations.
+8. Add Autopilot 3 web/API facades for Nexus treasury status and admin
+   operations without storing LDK custody material in the web app.
+9. Decommission Spark from new treasury and payout operations.
 
 ## Bottom Line
 
