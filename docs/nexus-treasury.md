@@ -1,5 +1,11 @@
 # Nexus Treasury
 
+2026-05-15 transition note: Spark is now the legacy treasury rail. The current
+direction is to move Nexus treasury and Pylon settlement to an LDK-backed
+Lightning provider. See
+[`2026-05-15-ldk-nexus-treasury-transition-audit.md`](2026-05-15-ldk-nexus-treasury-transition-audit.md)
+for the separate LDK audit, target architecture, and immediate roadmap.
+
 `nexus-control` now owns a hosted Spark treasury wallet beside the existing
 provider-presence and receipt infrastructure. Operators can inspect wallet state
 and generate fresh funding targets without touching wallet storage directly.
