@@ -133,6 +133,26 @@ struct ProviderRequestCollection {
     observed: Vec<ObservedProviderRequest>,
 }
 
+struct RelayTaskAbortGuard(Vec<tokio::task::JoinHandle<()>>);
+
+impl RelayTaskAbortGuard {
+    fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    fn push(&mut self, task: tokio::task::JoinHandle<()>) {
+        self.0.push(task);
+    }
+}
+
+impl Drop for RelayTaskAbortGuard {
+    fn drop(&mut self) {
+        for task in self.0.drain(..) {
+            task.abort();
+        }
+    }
+}
+
 pub struct ProviderOnlineIntake {
     pool: RelayPool,
     subscription_id: String,
@@ -166,16 +186,25 @@ impl ProviderOnlineIntake {
                 .or_insert(request);
         }
         while std::time::Instant::now() < deadline {
+            let relays = self.pool.relays().await;
+            let mut relay_polls = Vec::new();
+            for relay in relays {
+                relay_polls.push(tokio::spawn(async move {
+                    let relay_url = relay.url().to_string();
+                    match tokio::time::timeout(poll_step, relay.recv()).await {
+                        Ok(Ok(Some(RelayMessage::Event(_, event)))) => Some((relay_url, event)),
+                        Ok(Ok(Some(_))) | Ok(Ok(None)) | Ok(Err(_)) | Err(_) => None,
+                    }
+                }));
+            }
             let mut received_any = false;
-            for relay in self.pool.relays().await {
-                let Ok(Ok(Some(RelayMessage::Event(_, event)))) =
-                    tokio::time::timeout(poll_step, relay.recv()).await
-                else {
+            for relay_poll in relay_polls {
+                let Ok(Some((relay_url, event))) = relay_poll.await else {
                     continue;
                 };
                 received_any = true;
                 let entry = classify_provider_request(
-                    relay.url(),
+                    relay_url.as_str(),
                     self.provider_pubkey.as_str(),
                     self.spec.as_ref(),
                     &event,
@@ -591,7 +620,7 @@ pub async fn start_provider_online_intake(config_path: &Path) -> Result<Provider
     let spec = announcement_spec(&config, &status);
     let pool = build_relay_pool(&config, &identity).await?;
     let subscription_id = format!("pylon-provider-online-{}", crate::now_epoch_ms());
-    let (event_tx, event_rx) = mpsc::channel(1000);
+    let (_event_tx, event_rx) = mpsc::channel(1000);
     pool.subscribe_filters(
         subscription_id.as_str(),
         vec![json!({
@@ -600,37 +629,7 @@ pub async fn start_provider_online_intake(config_path: &Path) -> Result<Provider
     )
     .await
     .context("failed to subscribe persistent provider intake")?;
-    let mut relay_tasks = Vec::new();
-    for relay in pool.relays().await {
-        let relay_url = relay.url().to_string();
-        let provider_pubkey = identity.public_key_hex.clone();
-        let spec = spec.clone();
-        let event_tx = event_tx.clone();
-        relay_tasks.push(tokio::spawn(async move {
-            loop {
-                match relay.recv().await {
-                    Ok(Some(RelayMessage::Event(_, event))) => {
-                        let entry = classify_provider_request(
-                            relay_url.as_str(),
-                            provider_pubkey.as_str(),
-                            spec.as_ref(),
-                            &event,
-                        );
-                        if event_tx
-                            .send(ObservedProviderRequest { event, entry })
-                            .await
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                    Ok(Some(_)) => {}
-                    Ok(None) | Err(_) => break,
-                }
-            }
-        }));
-    }
-    drop(event_tx);
+    let relay_tasks = Vec::new();
 
     Ok(ProviderOnlineIntake {
         pool,
@@ -1663,78 +1662,93 @@ where
     let mut feedback_count = 0usize;
     let mut result_count = 0usize;
 
+    let (event_tx, mut event_rx) = mpsc::channel::<(String, Event)>(1000);
+    let mut relay_tasks = RelayTaskAbortGuard::new();
+    for relay in pool.relays().await {
+        let relay_url = relay.url().to_string();
+        let event_tx = event_tx.clone();
+        relay_tasks.push(tokio::spawn(async move {
+            loop {
+                match relay.recv().await {
+                    Ok(Some(RelayMessage::Event(_, event))) => {
+                        if event_tx.send((relay_url.clone(), event)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Ok(Some(_)) => {}
+                    Ok(None) | Err(_) => break,
+                }
+            }
+        }));
+    }
+    drop(event_tx);
+
     while std::time::Instant::now() < deadline {
-        let relays = pool.relays().await;
-        for relay in relays {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            let wait = remaining.min(poll_step);
-            let recv = tokio::time::timeout(wait, relay.recv()).await;
-            let message = match recv {
-                Ok(Ok(Some(message))) => message,
-                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => continue,
-            };
-            let RelayMessage::Event(_, event) = message else {
-                continue;
-            };
-            if !seen_event_ids.insert(event.id.clone()) {
-                continue;
-            }
-            let Some(entry) = classify_buyer_job_event(relay.url(), &tracked, &event) else {
-                continue;
-            };
-            persist_buyer_job_event(config_path, &entry)?;
-            if entry.event_kind == "feedback" {
-                feedback_count += 1;
-            } else if entry.event_kind == "result" {
-                result_count += 1;
-            }
-            on_event(entry.clone());
-            entries.push(entry);
-            if auto_pay_enabled
-                && entries.last().is_some_and(|entry| {
-                    entry.event_kind == "feedback" && entry.status == "payment-required"
-                })
-            {
-                let latest = entries.last().cloned().expect("latest entry");
-                match approve_buyer_job_payment(config_path, latest.request_event_id.as_str()).await
-                {
-                    Ok(report) => {
-                        let payment_entry = BuyerJobWatchEntry {
-                            request_event_id: report.request_event_id.clone(),
-                            provider_pubkey: latest.provider_pubkey.clone(),
-                            relay_url: None,
-                            event_id: report
-                                .payment_id
-                                .clone()
-                                .unwrap_or_else(|| format!("payment:{}", report.request_event_id)),
-                            event_kind: "payment".to_string(),
-                            status: report.status.clone(),
-                            amount_msats: report.amount_msats,
-                            bolt11: report.bolt11.clone(),
-                            result_preview: None,
-                            detail: report.detail.clone(),
-                        };
-                        on_event(payment_entry.clone());
-                        entries.push(payment_entry);
-                    }
-                    Err(error) => {
-                        let payment_entry = record_buyer_payment_failure(
-                            config_path,
-                            latest.request_event_id.as_str(),
-                            latest.amount_msats,
-                            latest.bolt11.as_deref(),
-                            error.to_string().as_str(),
-                        )?;
-                        on_event(payment_entry.clone());
-                        entries.push(payment_entry);
-                    }
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        let Some((relay_url, event)) =
+            tokio::time::timeout(remaining.min(poll_step), event_rx.recv())
+                .await
+                .ok()
+                .flatten()
+        else {
+            continue;
+        };
+        if !seen_event_ids.insert(event.id.clone()) {
+            continue;
+        }
+        let Some(entry) = classify_buyer_job_event(relay_url.as_str(), &tracked, &event) else {
+            continue;
+        };
+        persist_buyer_job_event(config_path, &entry)?;
+        if entry.event_kind == "feedback" {
+            feedback_count += 1;
+        } else if entry.event_kind == "result" {
+            result_count += 1;
+        }
+        on_event(entry.clone());
+        entries.push(entry);
+        if auto_pay_enabled
+            && entries.last().is_some_and(|entry| {
+                entry.event_kind == "feedback" && entry.status == "payment-required"
+            })
+            && let Some(latest) = entries.last().cloned()
+        {
+            match approve_buyer_job_payment(config_path, latest.request_event_id.as_str()).await {
+                Ok(report) => {
+                    let payment_entry = BuyerJobWatchEntry {
+                        request_event_id: report.request_event_id.clone(),
+                        provider_pubkey: latest.provider_pubkey.clone(),
+                        relay_url: None,
+                        event_id: report
+                            .payment_id
+                            .clone()
+                            .unwrap_or_else(|| format!("payment:{}", report.request_event_id)),
+                        event_kind: "payment".to_string(),
+                        status: report.status.clone(),
+                        amount_msats: report.amount_msats,
+                        bolt11: report.bolt11.clone(),
+                        result_preview: None,
+                        detail: report.detail.clone(),
+                    };
+                    on_event(payment_entry.clone());
+                    entries.push(payment_entry);
+                }
+                Err(error) => {
+                    let payment_entry = record_buyer_payment_failure(
+                        config_path,
+                        latest.request_event_id.as_str(),
+                        latest.amount_msats,
+                        latest.bolt11.as_deref(),
+                        error.to_string().as_str(),
+                    )?;
+                    on_event(payment_entry.clone());
+                    entries.push(payment_entry);
                 }
             }
         }
-        tokio::time::sleep(Duration::from_millis(30)).await;
     }
     let _ = pool.unsubscribe(subscription_id.as_str()).await;
 
@@ -2513,6 +2527,7 @@ async fn build_relay_pool(
     let pool = RelayPool::new(PoolConfig {
         max_relays: config.relay_urls.len().max(1),
         relay_config,
+        fanout_timeout: Duration::from_secs(config.relay_connect_timeout_seconds.max(1).min(10)),
     });
     for relay in &config.relay_urls {
         pool.add_relay(relay.as_str())

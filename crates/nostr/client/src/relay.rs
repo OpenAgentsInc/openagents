@@ -317,6 +317,11 @@ impl RelayConnection {
         Ok(())
     }
 
+    /// Remove a locally registered subscription without sending a CLOSE frame.
+    pub async fn remove_subscription_local(&self, subscription_id: &str) {
+        self.subscriptions.lock().await.remove(subscription_id);
+    }
+
     /// Subscribe with raw filters.
     pub async fn subscribe_filters(
         &self,

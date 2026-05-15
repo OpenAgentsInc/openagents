@@ -15405,6 +15405,7 @@ async fn build_training_trn_relay_pool(relay_urls: &[String]) -> Result<RelayPoo
     let pool = RelayPool::new(PoolConfig {
         max_relays: relay_urls.len().max(1),
         relay_config,
+        fanout_timeout: Duration::from_secs(10),
     });
     for relay_url in relay_urls {
         pool.add_relay(relay_url.as_str())
