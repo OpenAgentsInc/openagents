@@ -188,6 +188,8 @@ Lightning node would still need:
 
 Autopilot 3's correct role is the web control plane:
 
+- render a read-only, React Three Fiber Lightning and Pylon state
+  visualization before any browser wallet work,
 - show Nexus treasury and Pylon settlement status,
 - create funding invoices by calling Nexus server APIs,
 - call authorized admin operations such as pay invoice, pay offer, list
@@ -230,6 +232,51 @@ until after Nexus v0.2 and Pylon v0.2 ship. It can be studied later for:
 If we want LDK embedded close to the Autopilot product sooner, the better
 target is a native/desktop runtime or a server-side Nexus/Pylon process, not
 the Autopilot 3 browser app.
+
+### First Web Surface: Read-Only Lightning Visualization
+
+The first LDK-related web surface should be visualization, not wallet custody.
+Autopilot 3 should present a read-only canvas that makes OpenAgents' section of
+the Lightning network understandable at a glance. Use React Three Fiber for the
+primary graph, with ordinary HTML panes for exact receipts, filters, and event
+details.
+
+The canvas should show:
+
+- Pylons as nodes, grouped by user, project, machine, and payout domain.
+- Nexus treasury nodes, LSP nodes, and important peers as distinct graph
+  actors.
+- Channels as directional edges with capacity, inbound liquidity, outbound
+  liquidity, channel reserve, and health encoded as width, color, and labels.
+- Animated money flows for invoice creation, payment attempts, successful
+  payments, failed routes, retries, forwards, and reconciled payouts.
+- Pending, settled, failed, and reversed payout states on a time axis.
+- Route failures, stale chain sync, stale gossip/RGS, disconnected peers, and
+  low-liquidity conditions as visible hazard overlays.
+- Pylon earning events linked to the channel or payment path that settled the
+  payout.
+
+The data path should be:
+
+```text
+LDK / Nexus event ingestion
+  -> normalized peer, channel, liquidity, payment, payout, and receipt snapshots
+  -> read-only Nexus projection API
+  -> Autopilot 3 API facade with WorkOS/API-token policy
+  -> React Three Fiber Lightning graph canvas
+```
+
+That projection must be redacted and read-only. It may include ids, aliases,
+balances, capacities, liquidity bands, event timestamps, degraded-state reason
+codes, and receipt references. It must not include seed material, channel
+monitor state, raw `keys_seed`, raw SQLite data, LDK API keys, macaroon-like
+credentials, or spend authority.
+
+This view is valuable before user wallets exist in the browser because it gives
+operators and users a visible model of what the network is doing: which Pylons
+are earning, which channels are constrained, where liquidity is moving, and why
+a payout is blocked. It also gives the LDK cutover an obvious product surface
+that is safer than browser custody.
 
 ## Target Architecture
 
@@ -499,6 +546,35 @@ Success gate:
 - A liquidity issue produces a typed Nexus degraded state, not a generic
   funding-target timeout.
 
+### Phase 3.5: Read-Only Web Liquidity Visualization
+
+This phase is the first web-facing LDK product slice. It should not wait for a
+browser wallet.
+
+- Add read-only Nexus projection endpoints for:
+  - peers
+  - channels
+  - liquidity bands
+  - payment attempts
+  - payment terminal states
+  - payout receipts
+  - Pylon earning events
+  - degraded Lightning states
+- Add stable redaction rules so the projection is safe for Autopilot 3 and
+  future public or semi-public operator surfaces.
+- Build an Autopilot 3 React Three Fiber canvas that renders the OpenAgents
+  Lightning graph with animated payment and payout flows.
+- Add exact side panes for selected channel, payment, Pylon, peer, and receipt
+  objects.
+- Keep all write operations out of the visualization path.
+
+Success gate:
+
+- An operator can see where liquidity is, where payments are flowing, and why a
+  payout is blocked without shelling into the Nexus host.
+- The visualization consumes only read-only projections and cannot initiate a
+  payment, open a channel, close a channel, or expose custody material.
+
 ### Phase 4: Spark Decommission
 
 Start only after BOLT12/BOLT11 Pylon settlement works in production.
@@ -660,6 +736,10 @@ authority.
 - When is VSS mature enough for user-facing wallet recovery in OpenAgents?
 - Should a browser LDK R&D lane exist after v0.2, or should all user-wallet
   work target native/desktop first?
+- Which channel and liquidity facts are safe to expose to ordinary users
+  versus admin-only operator views?
+- What is the minimum event projection needed for the React Three Fiber
+  Lightning graph to be useful before write-side channel tools exist?
 
 ## Recommended Next Work
 
@@ -673,9 +753,13 @@ authority.
 5. Cut operator funding invoice creation over to LDK.
 6. Add BOLT12 payout target support to Pylon v0.2.
 7. Move accepted-work payouts to LDK for upgraded workers.
-8. Add Autopilot 3 web/API facades for Nexus treasury status and admin
-   operations without storing LDK custody material in the web app.
-9. Decommission Spark from new treasury and payout operations.
+8. Add the read-only Nexus projection APIs needed for peer, channel, liquidity,
+   payment, payout, and degraded-state visualization.
+9. Build the Autopilot 3 React Three Fiber Lightning/Pylon graph as the first
+   web-facing LDK surface.
+10. Add Autopilot 3 web/API facades for Nexus treasury status and admin
+    operations without storing LDK custody material in the web app.
+11. Decommission Spark from new treasury and payout operations.
 
 ## Bottom Line
 
@@ -686,4 +770,7 @@ has already forced too many slow sync, stale history, and leaf spendability
 workarounds into Nexus. Nexus v0.2 and Pylon v0.2 should be the releases that
 make LDK the primary payment rail. The transition should begin with an internal
 provider boundary and a local LDK harness, then move operator funding invoices,
-then move Pylon payout targets, and only then remove Spark from new operations.
+then move Pylon payout targets. The first web product slice should be a
+read-only React Three Fiber visualization of Pylons, channels, liquidity, and
+payment flows. Browser wallet custody remains later R&D. Spark should be
+removed from new operations only after LDK receive and payout paths are proven.

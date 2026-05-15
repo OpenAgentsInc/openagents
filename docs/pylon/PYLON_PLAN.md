@@ -48,6 +48,15 @@ network, thermal, power, and GPU state; `Nexus` should retain those structured
 facts on the provider-presence record without promoting the raw device payload
 onto the public website stats projection.
 
+For Pylon v0.2, that telemetry path should also feed the read-only Lightning
+and settlement visualization planned for the web. Pylon should emit
+public-safe earning, payout-target, payout-receipt, node-health, and degraded
+state facts to Nexus. Nexus should join those facts with LDK channel, peer,
+liquidity, and payment projections. The browser should consume only the
+redacted Nexus projection, for example through a React Three Fiber graph of
+Pylons, channels, liquidity, and payment movement. Pylon must not become a
+browser bridge or web wallet runtime.
+
 This document updates the older MVP-only posture that Pylon should not be treated as a separate product surface. That older posture remains correct for current implementation ownership inside `#3116`, but the product plan is now to split out a narrow standalone provider connector as part of the current compute-market execution wave, alongside the remaining open repo issue slate where possible and immediately after it where blocking dependencies require it.
 
 ## Timing And Priority
@@ -93,7 +102,8 @@ Pylon v0 should own exactly these responsibilities:
 4. Inventory publication and truthful provider lifecycle state.
 5. Acceptance and execution of supported compute jobs inside declared backend or sandbox constraints.
 6. Delivery evidence and receipt emission.
-7. Earnings and payout-state tracking.
+7. Earnings and payout-state tracking, including redacted Nexus telemetry for
+   read-only settlement and liquidity visualization.
 8. Local status, recent jobs, and failure visibility.
 
 Pylon is a provider-side resource-plane node. It is not the whole product.

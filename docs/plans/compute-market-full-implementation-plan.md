@@ -403,6 +403,15 @@ The product workstream spans every phase because the compute market has to stay 
 
 At the same time, a full compute market needs additional surfaces. Providers need inventory management, delivery history, price floor controls, future capacity views, and later hedge or commitment views. Buyers need product selection, quote review, trade state, and delivery or settlement history. Operators need market-health dashboards and breaker visibility. These should be additive panes, not replacements for the core loop.
 
+The next web-facing settlement surface should be a read-only network
+visualization, not a browser wallet. The product should expose a React Three
+Fiber canvas that shows OpenAgents' Lightning-adjacent state as a live system:
+Pylons as earning nodes, Nexus as settlement authority, channels and peers as
+edges, inbound and outbound liquidity as visible constraints, and payment or
+payout movement as animated flows. That visualization should consume typed,
+redacted Nexus projections. It should not hold keys, own channel state, or
+perform payment actions.
+
 The major product task is therefore not only "add more screens." It is "introduce more explicit market truth without making the first successful user journey worse." The beginner path should stay simple because the system chooses sane defaults and progressive disclosure, not because the compute market remains hidden.
 
 Product deliverables:
@@ -411,6 +420,9 @@ Product deliverables:
 - Add compute inventory panes for providers.
 - Add buyer procurement panes for spot and forward flows.
 - Add advanced panes for market activity, indices, and later hedges.
+- Add a read-only Lightning/Pylon graph surface that visualizes channel health,
+  liquidity movement, Pylon payouts, failed routes, and settlement receipts
+  from Nexus projections.
 - Add clear state labels for inventory, commitment, delivery, settlement, and market risk.
 - Ensure UI copy is explicit and truthful about what is guaranteed, reserved, delivering, or merely quoted.
 
@@ -424,6 +436,9 @@ Authority deliverables:
 
 - Durable canonical storage for compute objects and receipts.
 - Projection surfaces for current market truth.
+- Projection surfaces for payment, payout, channel, peer, liquidity, and
+  degraded-state facts that the web visualization can consume without custody
+  or write authority.
 - Clear idempotency semantics for all compute mutations.
 - Restart-safe snapshot computation or snapshot persistence.
 - Explicit distinction between authoritative state, coordination state, and UI projections.
@@ -821,11 +836,14 @@ If execution starts now, the first sequence should be:
 5. Productize bounded sandbox execution as a first-class compute family alongside the local lane.
 6. Add proof bundles, validator or challenge services, and challenge-linked settlement hooks for proof-sensitive products.
 7. Bind environments, evals, synthetic-data, benchmark adapters, and streamed data-plane flows into canonical compute-market objects.
-8. Extend `autopilotctl`, desktop control, and MCP-facing operator surfaces to inspect and operate the widened compute substrate.
-9. Add provider inventory UX and buyer-side spot procurement UX.
-10. Automate delivery proofs and explicit compute observability.
-11. Add forward physical capacity sales.
-12. Add compute indices and index governance.
-13. Only then add cash-settled futures, later training-class products, adapterized serving products, and structured derivatives.
+8. Add read-only Nexus projections for payment, payout, channel, peer,
+   liquidity, and degraded-state facts, then build the React Three Fiber
+   Lightning/Pylon graph as the first web-facing settlement surface.
+9. Extend `autopilotctl`, desktop control, and MCP-facing operator surfaces to inspect and operate the widened compute substrate.
+10. Add provider inventory UX and buyer-side spot procurement UX.
+11. Automate delivery proofs and explicit compute observability.
+12. Add forward physical capacity sales.
+13. Add compute indices and index governance.
+14. Only then add cash-settled futures, later training-class products, adapterized serving products, and structured derivatives.
 
 This order preserves the product wedge that already works while turning it into the first defensible layer of a broader compute commodities stack.
