@@ -142,6 +142,32 @@ This plan is additive to the current repo direction, not a reversal of it.
 - `apps/pylon` can be added as a standalone CLI/service binary on top of that substrate.
 - `Autopilot` can embed the same substrate instead of maintaining an incompatible provider stack.
 
+### Pylon v0.2 payment migration
+
+Pylon v0.2 is the provider-side half of the Spark-to-LDK cutover documented in
+`docs/2026-05-15-ldk-nexus-treasury-transition-audit.md`.
+
+The required sequence is:
+
+1. Keep reading existing Spark payout config for legacy workers.
+2. Add standard Lightning payout target variants:
+   - `bolt12_offer`
+   - `bolt11_invoice`
+   - `bip353_name`
+   - optional `lnurl_pay`
+   - legacy `spark_address`
+3. Prefer BOLT12 offers for new durable payout registration.
+4. Advertise payment-rail capability to Nexus so Nexus can select LDK or Spark
+   without inference from client version strings.
+5. Store payout receipts with the exact rail and payment artifact used.
+6. Emit redacted earning and payout state to Nexus for the read-only Lightning
+   visualization.
+7. Stop creating new Spark destinations after Nexus can pay upgraded workers
+   over LDK.
+
+Pylon must remain a provider connector. It should not own Nexus treasury keys,
+run the hosted treasury LDK node, or become a browser wallet/runtime bridge.
+
 This means the right sequence is **canonize first, extract second, package third**, with extraction work starting during the current issue slate rather than being deferred indefinitely.
 
 ## Current Open-Issue Fit

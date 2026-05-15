@@ -112,6 +112,26 @@ This plan should be executed under the following guardrails.
 
 The ownership boundary is straightforward. `apps/autopilot-deprecated` owns compute-market UX, pane orchestration, and user-facing flows. `crates/openagents-kernel-core` owns reusable compute domain types, receipt helpers, validation helpers, and authority client contracts. `apps/nexus-control`, or the durable successor service if that responsibility migrates, owns authoritative state mutation and projection publication. `crates/openagents-kernel-proto` owns the generated wire layer. `crates/spark` continues to own wallet primitives and must not absorb compute-market product logic. `crates/nostr/*` continue to own Nostr transport and protocol primitives, not compute-market business logic.
 
+The payment rail migration is now part of this roadmap. The detailed order
+lives in `docs/2026-05-15-ldk-nexus-treasury-transition-audit.md`, but the
+compute-market dependency is simple:
+
+1. Nexus must gain a rail-neutral treasury provider boundary before new payment
+   rail behavior changes the market state machine.
+2. LDK funding and payout receipts must be proven in local/signet harnesses
+   before production defaults move.
+3. Pylon v0.2 must advertise standard Lightning payout targets, preferably
+   BOLT12, while legacy Spark workers remain explicitly marked as legacy.
+4. Accepted-work receipts must record which rail paid the work, the exact
+   payment artifact, and the terminal payment state.
+5. Spark must stop being the default for new funding, receive, payout, and
+   worker-registration paths after upgraded Pylons and LDK Nexus payouts are
+   proven.
+
+This order matters because compute-market truth depends on settlement truth. A
+compute trade is not complete until the payment rail has produced a durable,
+auditable terminal state.
+
 ## Initial Release Backend Scope
 
 For the initial release, `compute` should be defined as machine-verifiable execution capacity offered under explicit capability and settlement constraints. The market is still the OpenAgents Compute Market. At launch, the first live compute product families inside that umbrella are `inference` and `embeddings`. The launchable provider product is therefore not "arbitrary CPU and GPU capacity," and it is not raw accelerator trading. It is backend-mediated compute capacity exposed through one of two concrete desktop-owned execution backends: `legacy local-runtime lane` and `Apple Foundation Models`. A user should only be able to go online as a compute provider if the local machine is serving one of those backends truthfully and the UI can identify which backend is active, which compute family is being offered, which model family or policy is available, and what constraints apply to the resulting supply.

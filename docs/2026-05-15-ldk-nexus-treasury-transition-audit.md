@@ -412,6 +412,118 @@ invoice request flow. The LDK-first target should be BOLT12.
 | Spark leaf selection block | Insufficient outbound liquidity, failed route, failed precondition, or channel reserve constraint |
 | Recovery wallet rebuild | `keys_seed` + `ldk_node_data.sqlite` restore drill with single-writer guard |
 
+## Authoritative Spark-to-LDK Migration Sequence
+
+The migration should be explicit. Do not interpret "move to LDK" as a single
+flag flip. Nexus and Pylon need a dual-rail transition where Spark remains
+readable and payable for legacy workers while every new v0.2 path moves to
+standard Lightning.
+
+Current state:
+
+- Nexus treasury can create Spark-backed funding targets and optional BOLT11
+  material through the current funding endpoint.
+- Nexus accepted-work payouts currently know how to pay Spark-address workers.
+- Pylon workers historically create or advertise Spark payout destinations.
+- Existing payout receipts and runbooks may contain Spark-specific fields.
+
+Target state:
+
+- Nexus v0.2 owns a rail-neutral treasury operation model.
+- New Nexus funding invoices come from LDK `Bolt11Receive`.
+- New Pylon v0.2 workers advertise standard Lightning payout targets, with
+  BOLT12 offers preferred and BOLT11 used only per payment or compatibility
+  flow.
+- Spark is read-only or explicit legacy fallback, not the default rail for any
+  new funding, receive, payout, or worker registration path.
+
+Migration order:
+
+1. Inventory and freeze Spark touchpoints.
+   - List every Nexus route, admin command, Pylon config field, payout record,
+     receipt field, test, and runbook that creates, stores, reads, or sends to
+     Spark material.
+   - Add a migration note beside each touchpoint: `legacy-read`,
+     `legacy-send`, `dual-write`, `ldk-replace`, or `delete-after-cutover`.
+   - Stop adding new Spark-specific fields to public or internal APIs.
+
+2. Add the Nexus provider boundary before moving funds.
+   - Introduce `TreasuryLightningProvider`.
+   - Put all existing Spark calls behind `SparkTreasuryProvider`.
+   - Add `LdkTreasuryProvider` behind the same interface.
+   - Store treasury operations with rail-neutral fields:
+     `operation_id`, `rail`, `amount_msat`, `target_kind`, `target_hash`,
+     `beneficiary`, `status`, `provider_payment_id`, `receipt_refs`, and
+     timestamps.
+   - Keep historical Spark fields readable through compatibility projection
+     code, not through new business logic.
+
+3. Prove LDK locally and on signet.
+   - Use a two-node LDK harness.
+   - Prove BOLT11 invoice creation, payment, event projection, restart safety,
+     missed-event reconciliation with `ListPayments`, and error normalization.
+   - This gate must pass before any production default changes.
+
+4. Cut Nexus operator funding invoices to LDK first.
+   - Deploy LDK beside Nexus on loopback.
+   - Switch admin funding invoice creation to LDK when
+     `NEXUS_TREASURY_PROVIDER=ldk`.
+   - Keep Spark funding available only as an explicit fallback path.
+   - Record timing around invoice creation and event reconciliation. This is
+     the first production proof that funding no longer depends on Spark sync or
+     Spark wallet history hydration.
+
+5. Ship Pylon v0.2 payout target registration.
+   - Add payout target variants: `bolt12_offer`, `bolt11_invoice`,
+     `bip353_name`, optional `lnurl_pay`, and legacy `spark_address`.
+   - Pylon v0.2 should prefer BOLT12 when available.
+   - Pylon should advertise a capability/version marker so Nexus can choose
+     the payout rail without guessing.
+   - Pylon should continue to show local payout state, but it must not become a
+     broad wallet shell.
+
+6. Run dual-rail payout dispatch.
+   - Upgraded Pylon v0.2 workers get LDK-standard payouts through BOLT12 or
+     per-payment BOLT11.
+   - Legacy workers remain payable through Spark only while explicitly marked
+     legacy.
+   - Every accepted-work receipt must store the rail, payment artifact,
+     provider payment id, terminal event state, and degraded reason if payout
+     failed.
+   - Operators should be able to filter payouts by `rail=spark|ldk`.
+
+7. Add read-only projections and visualization.
+   - Project LDK peer, channel, liquidity, payment, payout, and degraded-state
+     facts through Nexus.
+   - Join those facts with Pylon earning and payout receipt facts.
+   - Feed the Autopilot 3 React Three Fiber graph from those redacted
+     projections only.
+
+8. Disable new Spark creation.
+   - Stop creating new Spark payout destinations in Pylon.
+   - Stop returning Spark receive material from the default Nexus funding
+     target route.
+   - Leave historical reconciliation and legacy payout reads in place.
+
+9. Decommission Spark writes.
+   - Block new Spark sends except for an explicitly approved legacy drain.
+   - Produce a report of any remaining active workers or receipts that still
+     depend on Spark.
+   - Remove Spark from standard runbooks, admin tools, and chat/API defaults.
+
+10. Delete Spark primary-path code after the drain is complete.
+    - Keep only historical readers if needed for old receipts.
+    - Remove Spark leaf-selection backpressure, Spark sync timing workarounds,
+      and Spark funding-target retries from the primary Nexus path.
+
+Cutover rule:
+
+- Do not make LDK the production default until local/signet proof is green.
+- Do not require Pylon v0.2 workers to use LDK until Nexus has production LDK
+  receive and send receipts.
+- Do not delete Spark support until no active worker, admin runbook, or payout
+  path needs Spark for a new operation.
+
 ## Pylon v0.2 Changes Required
 
 Pylon v0.2 cannot remain Spark-address-only.
