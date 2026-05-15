@@ -38,6 +38,18 @@ a legacy bridge while the LDK path is proven and cut over.
 
 Move the hosted Nexus treasury path to an LDK-backed provider now.
 
+This transition should be treated as the defining payment-rail change for
+**Nexus v0.2** and **Pylon v0.2**:
+
+- Nexus v0.2 should make the LDK-backed treasury provider the primary
+  implementation for new funding, receive, payout, receipt, and admin
+  operation paths.
+- Pylon v0.2 should advertise and accept standard Lightning payout targets,
+  with BOLT12 offers as the durable default and BOLT11 as a per-payment
+  compatibility path.
+- Spark should remain only as a legacy v0.1 compatibility bridge until old
+  workers and historical payout records no longer need it.
+
 The fastest responsible path is:
 
 1. Put an LDK provider boundary into Nexus so Spark and LDK are swappable.
@@ -266,9 +278,9 @@ invoice request flow. The LDK-first target should be BOLT12.
 | Spark leaf selection block | Insufficient outbound liquidity, failed route, failed precondition, or channel reserve constraint |
 | Recovery wallet rebuild | `keys_seed` + `ldk_node_data.sqlite` restore drill with single-writer guard |
 
-## Pylon Changes Required
+## Pylon v0.2 Changes Required
 
-Pylon cannot remain Spark-address-only.
+Pylon v0.2 cannot remain Spark-address-only.
 
 Required changes:
 
@@ -293,7 +305,8 @@ Required changes:
 
 ### Phase 0: Provider Boundary and Local Harness
 
-Ship this before any mainnet LDK funds move.
+Ship this before any mainnet LDK funds move. This is the foundation for Nexus
+v0.2 and Pylon v0.2.
 
 - Add a `TreasuryLightningProvider` trait or equivalent internal interface.
 - Move Spark-specific code behind `SparkTreasuryProvider`.
@@ -324,7 +337,8 @@ Ship this before any mainnet LDK funds move.
 
 ### Phase 1: Operator Funding Invoice Cutover
 
-This replaces the slow Spark funding-target path first.
+This replaces the slow Spark funding-target path first and makes Nexus v0.2
+meaningfully LDK-backed even before all Pylons have upgraded.
 
 - Deploy LDK Server beside Nexus on a non-public interface.
 - Use bitcoind in production.
@@ -350,7 +364,8 @@ Success gate:
 
 ### Phase 2: Pylon Receive Target Migration
 
-This moves worker payout identity off Spark addresses.
+This is the Pylon v0.2 cutover. It moves worker payout identity off Spark
+addresses.
 
 - Add Pylon payout target schema variants.
 - Update Pylon registration to advertise BOLT12 support when available.
@@ -562,7 +577,7 @@ and a durable operation row.
 4. Deploy LDK Server on signet or a private mainnet dry-run host with no public
    gRPC exposure.
 5. Cut operator funding invoice creation over to LDK.
-6. Add BOLT12 payout target support to Pylon.
+6. Add BOLT12 payout target support to Pylon v0.2.
 7. Move accepted-work payouts to LDK for upgraded workers.
 8. Decommission Spark from new treasury and payout operations.
 
@@ -572,6 +587,7 @@ LDK is the right immediate direction because it gives OpenAgents a standard
 Lightning substrate with explicit node state, payment events, channel
 operations, BOLT11 compatibility, and BOLT12 reusable receive targets. Spark
 has already forced too many slow sync, stale history, and leaf spendability
-workarounds into Nexus. The transition should begin with an internal provider
-boundary and a local LDK harness, then move operator funding invoices, then
-move Pylon payout targets, and only then remove Spark from new operations.
+workarounds into Nexus. Nexus v0.2 and Pylon v0.2 should be the releases that
+make LDK the primary payment rail. The transition should begin with an internal
+provider boundary and a local LDK harness, then move operator funding invoices,
+then move Pylon payout targets, and only then remove Spark from new operations.
