@@ -506,7 +506,11 @@ the consecutive edge-failure counter. By default the watchdog first activates
 `/healthz` directly, forwards normal HTTP API traffic to the local Nexus shell,
 serves stale cached `/api/stats` and `/api/training/summary` when the local
 shell is slow, and rejects public WebSocket upgrades so a relay reconnect storm
-does not take operator HTTP surfaces down. If
+does not take operator HTTP surfaces down. The recovery proxy upstream timeout
+defaults to `180` seconds because treasury funding-target invoice creation can
+legitimately spend longer than a normal HTTP read in the Spark wallet path; set
+`NEXUS_HTTP_RECOVERY_PROXY_UPSTREAM_TIMEOUT_SECONDS` only for a bounded
+operator override. If
 `NEXUS_PUBLIC_WATCHDOG_RECOVERY_PROXY_ENABLED=false`, the same repeated edge
 failure can trigger the VM reboot escalation without waiting for a later
 systemd timer tick. The watchdog probes the public edge even during startup

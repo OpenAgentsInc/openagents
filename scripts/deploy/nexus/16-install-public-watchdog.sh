@@ -410,6 +410,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import http.client
 import json
+import os
 import socket
 
 HOP_BY_HOP = {
@@ -441,6 +442,9 @@ HEALTH_BODY = (
         }
     ).encode()
     + b"\n"
+)
+UPSTREAM_TIMEOUT_SECONDS = int(
+    os.environ.get("NEXUS_HTTP_RECOVERY_PROXY_UPSTREAM_TIMEOUT_SECONDS", "180")
 )
 
 
@@ -511,7 +515,9 @@ class Handler(BaseHTTPRequestHandler):
             if key.lower() not in HOP_BY_HOP
         }
         headers["Host"] = "127.0.0.1:8080"
-        conn = http.client.HTTPConnection("127.0.0.1", 8080, timeout=12)
+        conn = http.client.HTTPConnection(
+            "127.0.0.1", 8080, timeout=UPSTREAM_TIMEOUT_SECONDS
+        )
         try:
             conn.request(self.command, self.path, body=body, headers=headers)
             response = conn.getresponse()
@@ -566,7 +572,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    socket.setdefaulttimeout(12)
+    socket.setdefaulttimeout(UPSTREAM_TIMEOUT_SECONDS)
     ThreadingHTTPServer(("127.0.0.1", 8081), Handler).serve_forever()
 PROXY
 

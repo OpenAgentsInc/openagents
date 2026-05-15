@@ -54,6 +54,14 @@ The durable relay shell proxies this request into embedded Nexus-control. Keep
 `180000` ms. A shorter relay budget can turn a real Nexus-control funding
 timeout into an unhelpful relay `502`.
 
+If public traffic is temporarily routed through the
+`nexus-http-recovery-proxy` service, keep that proxy's upstream timeout in the
+same budget class. The repo-owned public watchdog installer now defaults
+`NEXUS_HTTP_RECOVERY_PROXY_UPSTREAM_TIMEOUT_SECONDS` to `180` seconds. Restoring
+the older 12 second proxy timeout will make public funding-target requests fail
+with generic recovery-proxy `502` responses while VM-local relay calls can still
+succeed.
+
 If the payer needs a different amount, change only `amount_sats`,
 `description`, and `expiry_seconds`. Keep `amount_sats` positive. A request
 without a positive amount may return receive addresses without amount-specific
