@@ -8,6 +8,104 @@ Nexus treasury and Pylon settlement to LDK immediately. Spark should be treated
 as old state to migrate or read for historical records, not as a concurrent
 active payment rail.
 
+## Target Hosted Architecture
+
+The completed v0.2 topology should keep durable Bitcoin and Lightning
+infrastructure on server infrastructure suited for long-running stateful
+processes. Cloudflare remains the right home for web, API facade, and
+coding-related edge services. Google Cloud is appropriate for the hosted
+Bitcoin and Lightning authority because `bitcoind`, LDK channel state, payment
+event subscriptions, backups, and restore drills need stable disks,
+long-running processes, and explicit operator access.
+
+```mermaid
+flowchart LR
+  subgraph cf["Cloudflare"]
+    website["openagents.com\npublic website"]
+    autopilot3["Autopilot 3 / web app\nWorkers + TanStack Start"]
+    apiFacade["Thin API facade\nAuth, policy, rate limits"]
+    codeServices["Optional coding services\nWorkers, Containers, Queues"]
+    graphUi["Read-only Lightning graph\nReact Three Fiber"]
+  end
+
+  subgraph gcp["Google Cloud"]
+    nexus["Nexus v0.2\nauthority API + admin tools"]
+    projection["Nexus projection API\nread models + redacted telemetry"]
+    receipts["Receipt and operation store\npayments, payouts, jobs"]
+    ldk["LDK Server\nsystemd, gRPC, events, metrics"]
+    bitcoind["bitcoind\nmainnet node + chain truth"]
+    backup["Encrypted backups\nLDK seed + SQLite + receipts"]
+  end
+
+  subgraph providers["Provider machines"]
+    pylon["Pylon v0.2\nprovider connector"]
+    desktop["OpenAgents Desktop\nprovider UX + local control"]
+    localExec["Local execution\nCPU, GPU, tools, models"]
+  end
+
+  subgraph bitcoin["Bitcoin / Lightning network"]
+    chain["Bitcoin mainnet"]
+    peers["Lightning peers\nchannels, routes, liquidity"]
+    lsp["Optional LSP / liquidity partner"]
+  end
+
+  website --> autopilot3
+  autopilot3 --> apiFacade
+  apiFacade --> nexus
+  codeServices --> nexus
+  graphUi --> projection
+  autopilot3 --> graphUi
+
+  pylon --> desktop
+  desktop --> localExec
+  pylon -- "capabilities, BOLT12 offer,\nheartbeat, job receipts" --> nexus
+  nexus -- "work assignment,\npayout state" --> pylon
+
+  nexus --> receipts
+  nexus --> projection
+  nexus -- "funding invoice,\npayout command" --> ldk
+  ldk -- "PaymentReceived,\nPaymentSuccessful,\nchannel events" --> nexus
+  ldk --> bitcoind
+  bitcoind --> chain
+  ldk <--> peers
+  ldk <--> lsp
+  ldk --> backup
+  receipts --> backup
+```
+
+Hosting rules:
+
+- `bitcoind`, LDK Server, Nexus payment authority, receipt storage, and backup
+  jobs belong on Google Cloud or equivalent long-running server
+  infrastructure.
+- Cloudflare Workers should not host the LDK node or Nexus treasury spend
+  authority. Workers can host web pages, API facades, auth, policy checks,
+  read-only projections, queues, and coding-related services.
+- Pylon runs on provider machines. It advertises LDK-compatible payout targets
+  and executes local work, but it does not own Nexus treasury keys.
+- Autopilot 3 can visualize the system and call Nexus APIs, but it should not
+  store custody material or become the Lightning node host.
+
+## Cutover Flow
+
+```mermaid
+flowchart TD
+  a["Freeze Spark writes\nNo new Spark fields or payout targets"]
+  b["Inventory Spark touchpoints\nroutes, configs, receipts, tests, runbooks"]
+  c["Add LDK-first Nexus provider boundary\nSpark only historical-read/final-drain"]
+  d["Prove LDK locally and on signet\nBOLT11 receive, send, events, restart"]
+  e["Deploy LDK Server beside Nexus\nprivate GCP interface"]
+  f["Cut operator funding invoices to LDK\nremove Spark from standard admin flow"]
+  g["Ship Pylon v0.2 payout targets\nBOLT12 preferred, BOLT11 per-payment"]
+  h["Cut payout dispatch to LDK\nSpark-only workers ineligible for new paid work"]
+  i["Publish read-only projections\nchannels, liquidity, payments, Pylon payouts"]
+  j["Build web visualization\nReact Three Fiber over redacted projections"]
+  k["Run migration report\nhistorical reads and final drain only"]
+  l["Delete Spark primary-path code\nkeep old receipt readers only if needed"]
+
+  a --> b --> c --> d --> e --> f --> g --> h --> i --> j --> k --> l
+```
+
 ## Sources Reviewed
 
 - `competition/ldk/README.md`
@@ -60,7 +158,8 @@ This transition should be treated as the defining payment-rail change for
 
 The fastest responsible path is:
 
-1. Put an LDK provider boundary into Nexus so Spark and LDK are swappable.
+1. Put an LDK provider boundary into Nexus so Spark code can be isolated,
+   audited, and removed from the primary path.
 2. Stand up `ldk-server` as the first LDK daemon target because it already
    exposes gRPC, events, metrics, TLS, HMAC auth, systemd hooks, and node
    operations.
@@ -291,10 +390,10 @@ Add a `TreasuryLightningProvider` boundary under Nexus control:
 Nexus API / admin tools
   -> treasury operation store
   -> TreasuryLightningProvider
-       -> Spark provider, legacy only
        -> LDK provider, new default
             -> LDK Server gRPC, phase 1
             -> ldk-node direct daemon/library, fallback or phase 2
+       -> Spark historical reader / final drain, disabled by default
 ```
 
 The provider boundary must own:
@@ -308,9 +407,11 @@ The provider boundary must own:
 - error normalization
 - receipt projection
 
-Nexus-facing code should not know whether a receive target came from Spark,
-BOLT11, BOLT12, or an LSP/JIT receive path. It should know only the durable
-operation id, rail, amount, beneficiary, current state, and receipt facts.
+Nexus-facing code should not know whether an LDK receive target is BOLT11,
+BOLT12, or an LSP/JIT receive path. It should know only the durable operation
+id, rail, amount, beneficiary, current state, and receipt facts. Spark should
+appear only through historical read models or the explicitly disabled final
+drain path.
 
 ### LDK Daemon Placement
 
