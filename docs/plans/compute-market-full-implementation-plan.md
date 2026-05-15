@@ -116,17 +116,19 @@ The payment rail migration is now part of this roadmap. The detailed order
 lives in `docs/2026-05-15-ldk-nexus-treasury-transition-audit.md`, but the
 compute-market dependency is simple:
 
-1. Nexus must gain a rail-neutral treasury provider boundary before new payment
-   rail behavior changes the market state machine.
+1. Nexus must gain an LDK-first treasury provider boundary before new payment
+   behavior changes the market state machine.
 2. LDK funding and payout receipts must be proven in local/signet harnesses
    before production defaults move.
 3. Pylon v0.2 must advertise standard Lightning payout targets, preferably
-   BOLT12, while legacy Spark workers remain explicitly marked as legacy.
+   BOLT12. Workers that only advertise Spark targets are not eligible for new
+   paid work after cutover.
 4. Accepted-work receipts must record which rail paid the work, the exact
    payment artifact, and the terminal payment state.
-5. Spark must stop being the default for new funding, receive, payout, and
+5. Spark must be removed from new funding, receive, payout, and
    worker-registration paths after upgraded Pylons and LDK Nexus payouts are
-   proven.
+   proven. Keep only historical reads and a separately named final-drain path
+   until the migration audit is complete.
 
 This order matters because compute-market truth depends on settlement truth. A
 compute trade is not complete until the payment rail has produced a durable,
