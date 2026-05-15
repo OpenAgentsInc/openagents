@@ -979,6 +979,898 @@ The issue IDs below are planning labels, not existing GitHub issue numbers.
 | LDK-18 | `openagents.com` | 3.5 | Add public/brand links to read-only compute and Lightning status where appropriate | Link or embed approved read-only status surfaces from the public website without exposing admin controls or custody data | LDK-12, LDK-13 | Public page smoke; unauthenticated view only sees approved redacted data |
 | LDK-19 | `openagents` | all | Update runbooks and operator docs after each phase | Exact commands, expected output fields, failure states, rollback conditions, backup/restore steps, and production smoke procedure for every shipped phase | each phase | `git diff --check`; runbook command syntax checks where scripts exist |
 
+### Copy-Ready GitHub Issue Bodies
+
+#### LDK-01 — Freeze and inventory Spark touchpoints
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `pylon`, `spark-migration`, `phase-0`, `docs`
+
+Depends on: none
+
+Body:
+
+We are moving Nexus treasury and Pylon settlement to LDK as a single active
+payment rail. Spark must not remain a concurrent funding or payout rail. Before
+implementation starts, inventory every Spark touchpoint and freeze new Spark
+write behavior.
+
+Scope:
+
+- Find every Nexus route, admin command, worker registration path, Pylon config
+  field, payout target, payout receipt, migration, test, script, and runbook
+  that creates, stores, reads, or sends Spark material.
+- Mark each touchpoint as one of `legacy-read`, `final-drain-only`,
+  `ldk-replace`, or `delete-after-cutover`.
+- Add a checked-in inventory document under `docs/` or `docs/reports/`.
+- Add a code comment or TODO marker beside any code path that must survive only
+  temporarily for historical reads or the final drain.
+- Confirm the normal code path cannot create new Spark payout destinations or
+  new Spark funding targets.
+
+Acceptance criteria:
+
+- The inventory identifies owner module, file path, behavior, migration marker,
+  and deletion condition for every Spark touchpoint found.
+- The standard funding, payout, Pylon registration, admin, API, and chat paths
+  are documented as moving to LDK-only.
+- No new public or internal API fields are added that make Spark a durable
+  active rail.
+- Any final-drain path is explicitly named and disabled by default.
+
+Verification:
+
+- Include the exact `rg` commands used to find Spark touchpoints.
+- Run the relevant unit/test suite available for the touched area.
+- Run `git diff --check`.
+- Comment on the issue with the inventory path and remaining touchpoint counts
+  by migration marker.
+
+Out of scope:
+
+- Do not implement LDK calls in this issue.
+- Do not create a Spark/LDK selector in user-facing product flows.
+
+#### LDK-02 — Add LDK-first Nexus treasury provider boundary
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `treasury`, `phase-0`, `rust`
+
+Depends on: LDK-01
+
+Body:
+
+Introduce the internal Nexus boundary that lets normal treasury behavior become
+LDK-first while quarantining Spark as historical-read/final-drain-only code.
+This boundary should prevent Nexus business logic from depending on
+Spark-specific fields.
+
+Scope:
+
+- Add a `TreasuryLightningProvider` trait or equivalent internal interface.
+- Add an `LdkTreasuryProvider` scaffold with fake/local behavior sufficient for
+  tests.
+- Move existing Spark calls behind a quarantined adapter only long enough to
+  support historical reads and disabled final-drain operations.
+- Add config for:
+  - `NEXUS_TREASURY_PROVIDER=ldk`
+  - `NEXUS_SPARK_FINAL_DRAIN_ENABLED=false`
+  - `NEXUS_LDK_SERVER_URL`
+  - `NEXUS_LDK_API_KEY_PATH`
+  - `NEXUS_LDK_TLS_CERT_PATH`
+  - `NEXUS_LDK_STORAGE_DIR`
+  - `NEXUS_LDK_NETWORK=regtest|signet|bitcoin`
+  - `NEXUS_LDK_CHAIN_BACKEND=bitcoind|electrum|esplora`
+- Do not expose Spark versus LDK as a product or operator rail choice.
+
+Acceptance criteria:
+
+- New treasury logic calls the provider boundary, not direct Spark code.
+- The default config is LDK-first.
+- Spark final drain cannot run unless the explicit final-drain flag is enabled.
+- Provider errors normalize into typed Nexus errors.
+- The implementation is structured so `ldk-server` can later be swapped for a
+  direct `ldk-node` daemon/library without changing Nexus business logic.
+
+Verification:
+
+- Unit tests for config parsing, provider selection, idempotency key handling,
+  disabled Spark final drain, and provider error normalization.
+- Run the relevant Rust test target.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not move mainnet funds.
+- Do not deploy LDK Server.
+
+#### LDK-03 — Add treasury operation and receipt store updates
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `receipts`, `phase-0`, `data-model`
+
+Depends on: LDK-02
+
+Body:
+
+Add durable treasury operation and receipt storage that can represent LDK
+funding invoices, payouts, event projection, reconciliation, and old Spark
+receipt migration without tying new business logic to Spark fields.
+
+Scope:
+
+- Add or extend operation rows for:
+  - funding invoice creation
+  - outbound payout dispatch
+  - payment status lookup
+  - event projection
+  - reconciliation pass
+  - final-drain operation if needed
+- Store operation id, rail metadata, amount msat, target kind, target hash,
+  beneficiary, status, provider payment id, receipt references, degraded
+  reason, created/updated timestamps, and terminal event state.
+- Add migration or compatibility projection for old Spark receipts.
+- Ensure operation rows are idempotent and replay-safe.
+- Ensure receipt projection can rebuild after process restart.
+
+Acceptance criteria:
+
+- New LDK operations can be represented without Spark-specific fields.
+- Old Spark receipts remain queryable for audit.
+- No custody secrets, API keys, seeds, or private channel data are stored in
+  receipt rows.
+- Operation replay produces the same read model.
+
+Verification:
+
+- Migration tests for old receipt shape.
+- Replay/rebuild tests for operation projections.
+- Receipt projection unit tests.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not implement live LDK gRPC calls here unless already provided by LDK-05.
+
+#### LDK-04 — Build local LDK regtest/signet harness
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `test-harness`, `phase-0`, `bitcoin`
+
+Depends on: LDK-02
+
+Body:
+
+Build the local proof harness that lets us test the LDK path before any mainnet
+funds move. This should be the primary debugger for invoice, payment, event,
+restart, and reconciliation behavior.
+
+Scope:
+
+- Add a local regtest or signet harness with two LDK nodes and a bitcoind
+  backend.
+- Start LDK nodes, connect peers, create a BOLT11 invoice, pay it, and observe
+  both receive and send events.
+- Project `PaymentReceived` and `PaymentSuccessful` into Nexus operation rows.
+- Test restart during pending invoice and after received payment.
+- Test missed event recovery by disconnecting the event stream and reconciling
+  with `ListPayments`.
+- Make the harness reproducible through a script or documented command.
+
+Acceptance criteria:
+
+- A developer can run one command or documented command sequence to prove the
+  local flow.
+- The harness produces machine-checkable logs/artifacts for invoice creation,
+  payment, event projection, restart, and reconciliation.
+- The harness does not require mainnet funds.
+
+Verification:
+
+- Include the exact harness command in the issue close comment.
+- Include relevant output paths or log snippets.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not deploy production LDK Server.
+- Do not add public routes.
+
+#### LDK-05 — Wire LDK Server client into Nexus
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `grpc`, `phase-0`, `rust`
+
+Depends on: LDK-04
+
+Body:
+
+Implement the first LDK Server client inside Nexus behind the provider
+boundary. Use private gRPC/TLS/HMAC client behavior and normalize all service
+errors into Nexus operation/degraded states.
+
+Scope:
+
+- Generate or use an LDK Server client for:
+  - `GetNodeInfo`
+  - `GetBalances`
+  - `Bolt11Receive`
+  - `ListPayments`
+  - `GetPayment`
+  - `SubscribeEvents`
+- Add TLS certificate pin loading.
+- Add HMAC metadata construction.
+- Map gRPC errors and LDK payment failures to typed Nexus errors.
+- Project LDK events into treasury operation rows.
+- Reconcile missed events by listing payments.
+
+Acceptance criteria:
+
+- Nexus can create a BOLT11 funding invoice through LDK Server in the local
+  harness.
+- Nexus can observe payment events and reconcile them by payment listing.
+- No raw LDK API key, TLS key, seed, or custody secret is logged.
+- Error states are typed and inspectable.
+
+Verification:
+
+- Integration tests against LDK-04 harness.
+- Unit tests for HMAC metadata and TLS pin loading.
+- Error fixture tests for no-route, insufficient balance, unavailable server,
+  stale event stream, and malformed response.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not add channel-management admin tools yet.
+
+#### LDK-06 — Deploy LDK Server and bitcoind topology on Google Cloud
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `gcp`, `deployment`, `phase-1`
+
+Depends on: LDK-04, LDK-05
+
+Body:
+
+Create the deployment topology for hosted `bitcoind` and LDK Server on Google
+Cloud or equivalent long-running server infrastructure. Cloudflare should not
+host the LDK node or custody authority.
+
+Scope:
+
+- Add runbooks/scripts for:
+  - `bitcoind` host setup
+  - LDK Server installation and pinning
+  - systemd units and restart policy
+  - private interface binding
+  - TLS/API key provisioning
+  - Prometheus metrics
+  - logrotate
+  - backup for LDK seed, SQLite state, and relevant Nexus operation data
+  - restore drill
+- Keep gRPC private and non-public.
+- Document where Google Cloud is the appropriate host and why.
+- Add operator verification commands for node info, balances, sync status, and
+  metrics.
+
+Acceptance criteria:
+
+- A non-public signet or mainnet dry-run host can return read-only node info and
+  balances.
+- Backups exist and a restore drill is documented.
+- The deployment does not expose gRPC publicly.
+- The runbook includes rollback conditions.
+
+Verification:
+
+- Syntax-check scripts where possible.
+- Run read-only smoke against the dry-run host.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not move production funding endpoints until LDK-07.
+
+#### LDK-07 — Cut Nexus operator funding invoices to LDK
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `funding`, `phase-1`, `payments`
+
+Depends on: LDK-05, LDK-06
+
+Body:
+
+Replace the slow Spark funding-target path with LDK `Bolt11Receive` for the
+standard Nexus operator funding invoice flow.
+
+Scope:
+
+- Change the standard funding endpoint and admin/chat/API tool to create
+  invoices through LDK.
+- Remove Spark funding target creation from the standard admin path.
+- Keep Spark sweep/drain behavior only in a separate disabled-by-default final
+  drain command.
+- Record phase timing:
+  - request received
+  - Nexus operation row created
+  - LDK RPC start/end
+  - invoice returned
+  - payment event observed
+  - payment reconciled by `ListPayments`
+- Add or update docs/runbook for the new funding endpoint behavior.
+
+Acceptance criteria:
+
+- Funding invoice creation p95 is under 2 seconds in normal operation.
+- Invoice creation never blocks on Spark wallet history or Spark sync.
+- Paid invoice appears as `PaymentReceived` in Nexus operation history.
+- `ListPayments` reconciliation agrees with the event stream.
+
+Verification:
+
+- Local or signet smoke.
+- One bounded production/dry-run funding invoice smoke when safe.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not implement Pylon payout dispatch in this issue.
+
+#### LDK-08 — Add Pylon v0.2 payment-target registration
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `pylon`, `registration`, `phase-2`
+
+Depends on: LDK-02
+
+Body:
+
+Update Pylon registration so new workers advertise LDK-compatible Lightning
+payout targets instead of Spark destinations.
+
+Scope:
+
+- Add payout target variants:
+  - `bolt12_offer`
+  - `bolt11_invoice`
+  - `bip353_name`
+  - optional `lnurl_pay`
+- Prefer BOLT12 offers for durable payout registration.
+- Add per-payment BOLT11 invoice request support where useful.
+- Add a capability bit or version marker so Nexus can verify LDK-compatible
+  payout support.
+- Stop creating new Spark payout destinations.
+- Read old Spark config only to flag workers that need upgrade.
+
+Acceptance criteria:
+
+- New Pylons can register BOLT12 targets.
+- New Pylons do not create Spark destinations.
+- Spark-only workers are marked not eligible for new paid work after cutover.
+- Registration records include capability/version markers.
+
+Verification:
+
+- Pylon registration smoke.
+- Unit tests for target validation and capability parsing.
+- Grep checklist showing no normal Spark destination creation.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not dispatch live payouts in this issue.
+
+#### LDK-09 — Cut accepted-work payout dispatch to LDK
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `pylon`, `payouts`, `phase-2`
+
+Depends on: LDK-05, LDK-08
+
+Body:
+
+Move accepted-work payouts to LDK for upgraded Pylon v0.2 workers. Spark-only
+workers should not receive new paid work after cutover.
+
+Scope:
+
+- Update payout dispatch to use BOLT12 offers or per-payment BOLT11 targets.
+- Require an LDK-compatible payout target for new paid work.
+- Store payment id, target kind, target hash, rail metadata, terminal event
+  state, and degraded reason in accepted-work receipts.
+- Add idempotency keys for payout sends.
+- Add typed errors for no route, insufficient balance, stale target, and
+  provider unavailable.
+- Update operator/admin surfaces to show payout status clearly.
+
+Acceptance criteria:
+
+- Nexus can pay a controlled BOLT12/BOLT11 target through LDK.
+- Accepted-work receipts include LDK payment id and terminal event state.
+- Retried dispatch with the same idempotency key does not double-pay.
+- Spark-only workers are ineligible for new paid work.
+
+Verification:
+
+- Bounded payout smoke to a controlled target.
+- Receipt projection test.
+- Idempotency test.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not add channel open/close admin tools here.
+
+#### LDK-10 — Add liquidity and channel admin operations
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `admin`, `liquidity`, `phase-3`
+
+Depends on: LDK-05, LDK-07
+
+Body:
+
+Add admin-level APIs and chat tools for operating the LDK node without exposing
+raw LDK internals or custody material.
+
+Scope:
+
+- Add authorized admin operations for:
+  - `treasury.status`
+  - `treasury.listPayments`
+  - `treasury.getPayment`
+  - `treasury.listChannels`
+  - `treasury.openChannel`
+  - `treasury.closeChannel`
+  - `treasury.spliceIn`
+  - `treasury.spliceOut`
+  - `treasury.listPeers`
+  - `treasury.connectPeer`
+  - `treasury.payInvoice`
+  - `treasury.payOffer`
+  - `treasury.decodePaymentTarget`
+  - `treasury.reconcilePayments`
+- Require admin authorization and idempotency keys for every write command.
+- Add operation rows for write-side commands.
+- Return shaped, operator-readable responses instead of raw LDK internals.
+
+Acceptance criteria:
+
+- Admins can diagnose node, channel, peer, and payment state from Nexus
+  surfaces.
+- Write commands create durable operation rows.
+- Unauthorized users cannot execute write commands.
+- No secret material is returned or logged.
+
+Verification:
+
+- Admin smoke against signet/dry-run node.
+- Authorization tests.
+- Idempotency tests.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not build the React Three Fiber visualization here.
+
+#### LDK-11 — Add liquidity alerts and degraded states
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `alerts`, `liquidity`, `phase-3`
+
+Depends on: LDK-10
+
+Body:
+
+Add typed degraded states and alert thresholds so liquidity and payment issues
+are visible before they become generic payout failures.
+
+Scope:
+
+- Define thresholds for:
+  - low inbound liquidity
+  - low outbound liquidity
+  - stale wallet sync
+  - stale event subscriber
+  - stale gossip/RGS
+  - rising failed payment count
+  - no route
+  - insufficient channel balance
+- Project degraded states into Nexus read models.
+- Add alert output suitable for operator dashboards and admin chat/API tools.
+- Ensure degraded states include actionable detail without exposing secrets.
+
+Acceptance criteria:
+
+- Liquidity issues become typed Nexus degraded states.
+- Admin surfaces can explain why a payout cannot route.
+- Alerts are testable with fixture data.
+- Degraded states are available to read-only projections.
+
+Verification:
+
+- Unit tests for threshold evaluation.
+- Integration fixture for no-route/insufficient-liquidity mapping.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not implement public visualization here.
+
+#### LDK-12 — Publish read-only Nexus projection endpoints
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `nexus`, `api`, `projections`, `phase-3.5`
+
+Depends on: LDK-09, LDK-11
+
+Body:
+
+Expose redacted read-only projections for Autopilot 3 visualization and future
+operator surfaces. These endpoints must not expose custody material or allow
+write operations.
+
+Scope:
+
+- Add read-only projection endpoints for:
+  - peers
+  - channels
+  - liquidity bands
+  - payment attempts
+  - payment terminal states
+  - payout receipts
+  - Pylon earning events
+  - degraded Lightning states
+- Add stable redaction rules.
+- Add pagination or time-windowing where needed.
+- Add auth policy for operator-only versus safe public/semi-public data.
+- Document response shapes.
+
+Acceptance criteria:
+
+- Autopilot 3 can consume the projections without needing raw LDK access.
+- No seed, API key, private channel secret, or custody material appears in
+  responses.
+- The endpoints are read-only and cannot initiate payments or channel changes.
+- Projection data joins LDK facts with Pylon earning/payout facts.
+
+Verification:
+
+- Read-only endpoint smoke.
+- Redaction tests.
+- Authorization tests.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not build the Three.js/React Three Fiber canvas in this issue.
+
+#### LDK-13 — Build React Three Fiber Lightning/Pylon visualization
+
+Target repo: `OpenAgentsInc/autopilot3`
+
+Labels: `ldk`, `nexus`, `visualization`, `react-three-fiber`, `phase-3.5`
+
+Depends on: LDK-12
+
+Body:
+
+Build the first web-facing LDK product slice: a read-only React Three Fiber
+visualization of OpenAgents' Lightning/Pylon state.
+
+Scope:
+
+- Consume only the read-only Nexus projection endpoints from LDK-12.
+- Render graph nodes for Nexus, LDK Server, channels, peers, Pylons, payments,
+  liquidity bands, and degraded states.
+- Animate payment and payout flows without exposing write controls.
+- Add side panes for selected channel, peer, payment, Pylon, and receipt
+  objects.
+- Match Autopilot 3 visual style and support dark mode.
+- Add Storybook stories or equivalent component previews if the app convention
+  requires them.
+
+Acceptance criteria:
+
+- The visualization does not expose payment, channel-open, channel-close, or
+  custody actions.
+- It works with mocked projection data locally.
+- It works against deployed read-only projections when available.
+- It clearly shows where services are hosted and where money/liquidity is
+  moving.
+
+Verification:
+
+- Local visual smoke.
+- Deployed smoke if the target environment exists.
+- Screenshot or short recording attached to the issue.
+- Run app lint/build checks.
+
+Out of scope:
+
+- Do not implement Nexus write operations in Autopilot 3.
+
+#### LDK-14 — Add thin Autopilot 3 Nexus API/admin facades
+
+Target repo: `OpenAgentsInc/autopilot3`
+
+Labels: `ldk`, `nexus`, `api`, `admin`, `phase-3.5`
+
+Depends on: LDK-10, LDK-12
+
+Body:
+
+Add Autopilot 3 routes that wrap Nexus treasury/admin APIs without moving
+Nexus authority or LDK custody into Cloudflare.
+
+Scope:
+
+- Add WorkOS/API-token gated routes for:
+  - treasury status
+  - read-only projection access
+  - approved admin operations from LDK-10
+- Proxy write operations to Nexus with idempotency keys.
+- Write audit receipts for user/admin actions where Autopilot 3 owns the UI/API
+  edge.
+- Ensure Cloudflare Worker state never stores LDK seed, node key, API key,
+  private channel material, or treasury spend authority.
+- Add clear unauthorized and insufficient-permission errors.
+
+Acceptance criteria:
+
+- Authorized admin can call approved operations through Autopilot 3.
+- Unauthorized users cannot access write tools.
+- Route logs and responses include Nexus operation ids for writes.
+- No custody material is persisted in Autopilot 3.
+
+Verification:
+
+- API smoke with admin token.
+- Unauthorized-user smoke.
+- Route/unit tests for idempotency and response shaping.
+- Deploy Autopilot 3 if changed.
+
+Out of scope:
+
+- Do not host LDK Server or bitcoind on Cloudflare.
+
+#### LDK-15 — Decommission Spark from new operations
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `spark-migration`, `decommission`, `phase-4`
+
+Depends on: LDK-07, LDK-09
+
+Body:
+
+Remove Spark from every normal funding, payout, worker-registration, admin,
+API, and chat path after LDK receive and payout paths are proven.
+
+Scope:
+
+- Remove standard Spark funding target creation.
+- Remove standard Spark payout dispatch.
+- Remove new Spark payout destination creation in Pylon.
+- Remove Spark from admin/chat/API defaults.
+- Keep only historical read models and a disabled-by-default final-drain path
+  until the migration report closes.
+- Delete Spark leaf-selection backpressure and Spark sync timing workarounds
+  from primary paths.
+
+Acceptance criteria:
+
+- No normal path creates new Spark funding or payout material.
+- No normal path sends Spark payouts.
+- Spark-only workers are not eligible for new paid work.
+- Historical Spark receipts remain readable until migration report signoff.
+
+Verification:
+
+- Grep checklist for Spark creation/send paths.
+- Tests proving Spark final drain is disabled by default.
+- Run relevant test suites.
+- Run `git diff --check`.
+
+Out of scope:
+
+- Do not delete historical receipt readers until LDK-16 says it is safe.
+
+#### LDK-16 — Write final Spark migration and drain report
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `spark-migration`, `docs`, `phase-4`
+
+Depends on: LDK-15
+
+Body:
+
+Write the final migration report that proves Spark is gone from new operations
+and documents any retained historical readers or completed final-drain action.
+
+Scope:
+
+- Report active workers that still advertised Spark targets at cutover.
+- Report old Spark receipts and their retained read path.
+- Report remaining Spark funds, final-drain status, and operator signoff.
+- List deleted Spark primary-path code.
+- List retained historical readers and their deletion condition.
+- Document rollback limits after the LDK cutover.
+- Archive old Spark runbooks as legacy.
+
+Acceptance criteria:
+
+- The report is checked in.
+- It states whether any Spark final drain was performed.
+- It proves no active runbook, admin tool, API, or chat flow requires Spark for
+  a new operation.
+- It records explicit operator signoff criteria.
+
+Verification:
+
+- `git diff --check`.
+- Links to LDK-15 grep/test proof.
+- Manual review of retained Spark references.
+
+Out of scope:
+
+- Do not reintroduce Spark as an active rail.
+
+#### LDK-17 — Decide and implement long-term custody ownership split
+
+Target repo: `OpenAgentsInc/treasury`
+
+Labels: `ldk`, `treasury`, `architecture`, `custody`, `phase-0`
+
+Depends on: LDK-02
+
+Body:
+
+Decide whether hosted LDK payment authority remains in Nexus for v0.2 or moves
+to the closed-source `treasury` service. This issue should produce a decision
+record and, if needed, an implementation/extraction plan.
+
+Scope:
+
+- Review the v0.2 Nexus provider boundary from LDK-02.
+- Decide whether `treasury` owns:
+  - LDK provider implementation
+  - operation store
+  - payment event subscriber
+  - payout dispatch
+  - backup/restore authority
+  - final-drain procedure
+- If `treasury` owns any of these, create the implementation plan and interface
+  contract with Nexus.
+- If Nexus owns v0.2, record `treasury` extraction as a later target and define
+  the handoff boundary.
+
+Acceptance criteria:
+
+- A checked-in decision record exists in the appropriate repo.
+- The decision identifies which service owns custody authority for v0.2.
+- If extraction is chosen, the issue list and API/interface boundary are
+  updated.
+- If extraction is deferred, the non-goal is explicit.
+
+Verification:
+
+- Decision doc committed.
+- Cross-links added from this roadmap.
+- `git diff --check`.
+
+Out of scope:
+
+- Do not block LDK proof in Nexus while waiting for long-term extraction unless
+  the decision explicitly says Nexus must not hold v0.2 custody authority.
+
+#### LDK-18 — Add public/brand links to read-only compute and Lightning status
+
+Target repo: `OpenAgentsInc/openagents.com`
+
+Labels: `ldk`, `website`, `compute`, `status`, `phase-3.5`
+
+Depends on: LDK-12, LDK-13
+
+Body:
+
+Add public website links or embeds for approved read-only compute and Lightning
+status surfaces. This should support brand/product visibility without exposing
+admin controls or custody data.
+
+Scope:
+
+- Identify which read-only projections are safe for unauthenticated public
+  display.
+- Add links or embeds from the public website to approved Autopilot/OpenAgents
+  status surfaces.
+- Ensure no admin controls are visible.
+- Ensure no private channel, custody, seed, API key, or sensitive operational
+  data is exposed.
+- Add copy that accurately describes the status surface as read-only.
+
+Acceptance criteria:
+
+- Public users can reach approved read-only status views.
+- Unauthenticated users cannot access admin or write operations.
+- The page does not imply the public website hosts custody authority.
+
+Verification:
+
+- Public page smoke.
+- Unauthenticated access test.
+- Production build/deploy check for `openagents.com` if changed.
+
+Out of scope:
+
+- Do not implement Nexus or LDK logic in `openagents.com`.
+
+#### LDK-19 — Update runbooks and operator docs after each phase
+
+Target repo: `OpenAgentsInc/openagents`
+
+Labels: `ldk`, `docs`, `runbook`, `ops`, `all-phases`
+
+Depends on: each phase as it lands
+
+Body:
+
+Keep operator documentation accurate as each phase ships. This is a continuing
+issue or repeated issue template that must be closed only when the matching
+implementation phase has updated docs.
+
+Scope:
+
+- Update runbooks for:
+  - LDK Server install and pinning
+  - bitcoind-backed mainnet config
+  - API key and TLS certificate provisioning
+  - systemd unit and restart policy
+  - logrotate
+  - Prometheus scrape and alerts
+  - backup and restore
+  - mainnet funding invoice smoke
+  - BOLT12 Pylon payout smoke
+  - payment event subscriber restart
+  - missed-event reconciliation
+  - Spark historical-read and final-drain procedure
+  - Spark decommission
+- Include exact commands, expected output fields, failure states, rollback
+  conditions, and proof artifacts.
+- Update this roadmap when issue order or ownership changes.
+
+Acceptance criteria:
+
+- Every shipped phase has matching docs.
+- Runbooks do not print or ask agents to print raw API keys, seeds, or bearer
+  tokens.
+- Commands are syntax-checked where scripts exist.
+- Rollback conditions are explicit.
+
+Verification:
+
+- `git diff --check`.
+- Script syntax checks where applicable.
+- Links to implementation proof in each phase close comment.
+
+Out of scope:
+
+- Do not use docs as a substitute for implementation proof.
+
 Repository ownership notes:
 
 - `openagents` owns the current Nexus/Pylon implementation work, deployment
