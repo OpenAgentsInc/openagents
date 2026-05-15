@@ -91,6 +91,29 @@ default is `180000` ms. If this relay timeout is too short, operators see a
 generic relay `502` before Nexus-control can return the real funding-target
 status.
 
+Important 2026-05-15 assessment: raising the public proxy/relay timeout is a
+stopgap, not a product-quality fix. Historical Nexus reports already show
+Spark wallet operations timing out at materially larger budgets:
+
+- `docs/reports/nexus/20260420-090211-treasury-wallet-recovery-report-9273b5cbf537.json`
+  timed out isolated current and rebuilt wallet inspections after `180000 ms`.
+- `docs/reports/nexus/20260508-175455-deploy-receipt.json` recorded
+  `sync_wallet_timeout:600000; using cached balance and bounded payment scan`.
+- `docs/reports/nexus/20260503-190642-deploy-receipt.json` recorded
+  `funding target returned without full wallet sync` and a zero-balance with
+  receive-history degraded state.
+- `docs/reports/nexus/20260423-172434-deploy-receipt.json` recorded
+  `sync_wallet_timeout:20000` with a multi-hour wallet sync lag.
+- `docs/reports/nexus/issue-4368-local-closure-20260420202905/post-deploy-smoke-funding-timeout.json`
+  preserved the `treasury_funding_target_timeout:10000` class.
+
+The current conclusion is that Nexus must stop putting fresh Spark sync,
+invoice creation, and spendable-leaf proof on the critical path of an
+interactive HTTP request. Keep the current longer proxy budget for safety, but
+build toward async funding-target operations with idempotency keys, phase-level
+timing, and typed degraded states such as `spark_wallet_sync_slow` or
+`spark_leaf_selection_blocked`.
+
 Do not retry production funding-target calls as a debugging loop; reproduce the
 wallet/funding behavior locally or in the private treasury runner first, then
 use hosted Nexus only as the live confirmation surface.

@@ -243,6 +243,16 @@ tunnel path first. If the guest network stack itself is broken and the VM
 cannot reach metadata or the public internet, reset the VM immediately instead
 of waiting for the condition to clear on its own.
 
+For treasury funding-target failures, split public routing failures from Spark
+wallet latency. The 2026-05-15 incident looked like Nexus was down because the
+public recovery proxy returned a 502, but the VM-local relay could complete the
+same operation and the proxy simply had a stale 12s upstream timeout. Keep
+`NEXUS_HTTP_RECOVERY_PROXY_UPSTREAM_TIMEOUT_SECONDS` in the same budget class
+as the relay and Nexus-control wallet timeouts. Then inspect wallet-specific
+timing separately; historical receipts show Spark sync and leaf-selection
+paths can take tens or hundreds of seconds and should be moved behind async
+operation records rather than fixed by ever-longer interactive HTTP timeouts.
+
 ### 3.1.1) Redacted health snapshot command
 
 `nexus-control` now has an observation-only health snapshot command for

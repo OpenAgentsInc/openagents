@@ -62,6 +62,15 @@ the older 12 second proxy timeout will make public funding-target requests fail
 with generic recovery-proxy `502` responses while VM-local relay calls can still
 succeed.
 
+Do not treat the 180 second timeout as acceptable product latency. It only
+prevents the public proxy from masking the real wallet result. Historical
+Nexus receipts already show Spark wallet sync, funding-target, and
+leaf-selection classes that can exceed normal chat/API budgets, including
+20s, 180s, and 600s timeout classes. The long-term fix is an async
+funding-target operation with an idempotency key, phase-level wallet timing,
+and explicit degraded reasons such as `spark_wallet_sync_slow` or
+`spark_leaf_selection_blocked`. Keep raw invoices out of logs either way.
+
 If the payer needs a different amount, change only `amount_sats`,
 `description`, and `expiry_seconds`. Keep `amount_sats` positive. A request
 without a positive amount may return receive addresses without amount-specific
