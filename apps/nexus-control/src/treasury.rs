@@ -1171,6 +1171,16 @@ pub struct TreasuryPolicyChangeRecord {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TreasuryStatusResponse {
     pub authority: String,
+    #[serde(default)]
+    pub active_treasury_provider: String,
+    #[serde(default)]
+    pub active_treasury_rail: String,
+    #[serde(default)]
+    pub ldk_network: String,
+    #[serde(default)]
+    pub ldk_chain_backend: String,
+    #[serde(default)]
+    pub ldk_server_configured: bool,
     pub treasury_enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
@@ -1372,6 +1382,17 @@ pub struct TreasuryStatusResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub legacy_availability_confirmation_attention_rows:
         Vec<TreasuryLegacyAvailabilityAttentionRow>,
+}
+
+impl TreasuryStatusResponse {
+    pub fn public_api_view(mut self) -> Self {
+        self.payout_target_identities.clear();
+        self.recent_training_payouts.clear();
+        self.recent_treasury_operations.clear();
+        self.availability_beneficiary_debug_rows.clear();
+        self.legacy_availability_confirmation_attention_rows.clear();
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -1649,6 +1670,11 @@ pub enum TreasuryCommand {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TreasuryPublicStats {
+    pub active_treasury_provider: String,
+    pub active_treasury_rail: String,
+    pub ldk_network: String,
+    pub ldk_chain_backend: String,
+    pub ldk_server_configured: bool,
     pub treasury_enabled: bool,
     pub payout_sats_per_window: u64,
     pub payout_interval_seconds: u64,
@@ -2500,6 +2526,16 @@ fn operation_rail_for_provider(provider: TreasuryLightningProviderKind) -> &'sta
         TreasuryLightningProviderKind::Ldk => "ldk",
         TreasuryLightningProviderKind::SparkFinalDrain => "spark",
     }
+}
+
+fn ldk_server_configured(config: &TreasuryConfig) -> bool {
+    config
+        .lightning_provider
+        .ldk
+        .server_url
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
 }
 
 fn payout_target_kind_for_payment_request(payment_request: &str) -> &'static str {
@@ -5486,6 +5522,17 @@ impl TreasuryState {
         };
 
         TreasuryPublicStats {
+            active_treasury_provider: config.lightning_provider.provider.as_str().to_string(),
+            active_treasury_rail: operation_rail_for_provider(config.lightning_provider.provider)
+                .to_string(),
+            ldk_network: config.lightning_provider.ldk.network.as_str().to_string(),
+            ldk_chain_backend: config
+                .lightning_provider
+                .ldk
+                .chain_backend
+                .as_str()
+                .to_string(),
+            ldk_server_configured: ldk_server_configured(config),
             treasury_enabled: snapshot.treasury_enabled,
             payout_sats_per_window: snapshot.payout_sats_per_window,
             payout_interval_seconds: snapshot.payout_interval_seconds,
@@ -5866,6 +5913,11 @@ impl TreasuryState {
             self.legacy_availability_confirmation_attention_rows(config, now_unix_ms);
         TreasuryStatusResponse {
             authority: "openagents-hosted-nexus".to_string(),
+            active_treasury_provider: stats.active_treasury_provider,
+            active_treasury_rail: stats.active_treasury_rail,
+            ldk_network: stats.ldk_network,
+            ldk_chain_backend: stats.ldk_chain_backend,
+            ldk_server_configured: stats.ldk_server_configured,
             treasury_enabled: stats.treasury_enabled,
             payout_sats_per_window: stats.payout_sats_per_window,
             payout_interval_seconds: stats.payout_interval_seconds,
@@ -7940,12 +7992,6 @@ pub async fn load_live_wallet_refresh_result_with_plan(
             progress: TreasuryWalletRefreshProgress::default(),
         });
     }
-    if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk {
-        return Ok(TreasuryWalletRefreshResult {
-            snapshot: ldk_wallet_snapshot(config, 0, Vec::new()),
-            progress: TreasuryWalletRefreshProgress::default(),
-        });
-    }
 
     #[cfg(test)]
     if let Some(hook) = test_wallet_snapshot_hook()
@@ -7955,6 +8001,13 @@ pub async fn load_live_wallet_refresh_result_with_plan(
     {
         return hook().map(|snapshot| TreasuryWalletRefreshResult {
             snapshot,
+            progress: TreasuryWalletRefreshProgress::default(),
+        });
+    }
+
+    if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk {
+        return Ok(TreasuryWalletRefreshResult {
+            snapshot: ldk_wallet_snapshot(config, 0, Vec::new()),
             progress: TreasuryWalletRefreshProgress::default(),
         });
     }
@@ -12644,23 +12697,26 @@ mod tests {
         let mut config = test_treasury_config();
         config.min_new_accrual_pylon_version = Some("pylon-v0.1.10".to_string());
 
-        for (pubkey, spark_address) in [
-            ("pubkey-a", "spark:shared"),
-            ("pubkey-b", "spark:b"),
-            ("pubkey-c", "spark:shared"),
-            ("pubkey-e", "spark:e"),
-            ("pubkey-f", "spark:f"),
+        for (pubkey, payment_target) in [
+            ("pubkey-a", "lno1shared"),
+            ("pubkey-b", "lno1pubkeyb"),
+            ("pubkey-c", "lno1shared"),
+            ("pubkey-e", "lno1pubkeye"),
+            ("pubkey-f", "lno1pubkeyf"),
         ] {
             state.payout_targets_by_identity.insert(
                 pubkey.to_string(),
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: pubkey.to_string(),
                     source_session_id: format!("session-{pubkey}"),
-                    payment_target_kind: String::new(),
-                    payment_target: String::new(),
-                    payment_target_capabilities: Vec::new(),
-                    pylon_payment_target_version: None,
-                    spark_address: spark_address.to_string(),
+                    payment_target_kind: "bolt12_offer".to_string(),
+                    payment_target: payment_target.to_string(),
+                    payment_target_capabilities: vec![
+                        "ldk_payment_target_v0_2".to_string(),
+                        "bolt12_offer".to_string(),
+                    ],
+                    pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
+                    spark_address: String::new(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
                     last_verified_at_unix_ms: 10,
@@ -12669,11 +12725,7 @@ mod tests {
         }
 
         let now_unix_ms = 1_800_000;
-        config.min_new_accrual_started_at_unix_ms = Some(payout_window_started_at_for_identity(
-            now_unix_ms,
-            config.payout_interval_ms(),
-            "payout_target:spark:shared",
-        ));
+        config.min_new_accrual_started_at_unix_ms = Some(0);
 
         let online = vec![
             OnlinePylonIdentity {

@@ -8,10 +8,11 @@ for the separate LDK audit, target architecture, and immediate roadmap. The
 operator-documentation closeout for the shipped LDK phases is
 [`reports/nexus/2026-05-16-ldk-operator-docs-closeout.md`](reports/nexus/2026-05-16-ldk-operator-docs-closeout.md).
 
-`nexus-control` now owns the treasury-provider boundary beside the existing
-provider-presence and receipt infrastructure. The default provider is the
-LDK-first scaffold (`NEXUS_TREASURY_PROVIDER=ldk`). Legacy Spark wallet code is
-kept only for historical inspection and explicit final-drain/recovery work.
+`nexus-control` owns the treasury-provider boundary beside the existing
+provider-presence and receipt infrastructure. The normal provider is LDK
+(`NEXUS_TREASURY_PROVIDER=ldk`). Normal status, funding, and payout-dispatch
+surfaces describe the active LDK rail and do not expose obsolete payment-target
+details.
 
 ## Operator Surfaces
 
@@ -40,8 +41,18 @@ HTTP:
 With the default `NEXUS_TREASURY_PROVIDER=ldk`, Nexus returns deterministic
 LDK Server local-harness funding invoices in tests and is structured for the
 hosted `ldk-server` transport to replace that harness without changing
-treasury business logic. Legacy Spark funding target creation is disabled
-unless `NEXUS_SPARK_FINAL_DRAIN_ENABLED` is explicitly true.
+treasury business logic. Non-LDK funding target creation is not part of the
+normal runtime path.
+
+`GET /v1/treasury/status` is the normal public treasury status surface. It
+includes active-provider fields such as `active_treasury_provider`,
+`active_treasury_rail`, `ldk_network`, `ldk_chain_backend`, and
+`ldk_server_configured`, plus aggregate policy, wallet, loop-health, payout,
+and continuity fields. It does not return payout-target identities, raw payout
+targets, recent payout rows, operation rows, or beneficiary debug rows.
+
+Use `GET /v1/treasury/projections` with the treasury projection reader token
+when an operator needs hashed peer/operation projections for diagnostics.
 
 `POST /v1/admin/treasury/refresh` is the operator-safe manual refresh surface.
 It requires the normal Nexus admin bearer token, runs one forced wallet refresh
@@ -1313,11 +1324,14 @@ Operator-safe loop health now projects through `GET /v1/treasury/status`:
 - `skip_reason_metrics_24h`
 - `fail_reason_metrics_24h`
 - `active_continuity_alerts`
+- `active_treasury_provider`
+- `active_treasury_rail`
+- `ldk_network`
+- `ldk_chain_backend`
+- `ldk_server_configured`
 - `payout_loop_health`
 - `degraded_reason`
 - `training_payout_ledger_summary`
-- `payout_target_identities`
-- `recent_training_payouts`
 
 `GET /v1/treasury/status` now derives its response from current treasury state
 instead of replaying the last persisted public snapshot verbatim. That keeps
@@ -1447,13 +1461,10 @@ Canonical training payout ledger:
 - `training_payout_ledger_summary` gives operators the current reconciliation
   state for the payout ledger, including pending, attention-required, and
   accepted-work-specific counts
-- `payout_target_identities` projects the currently registered payout targets
-  keyed by node public key together with confirmed payout totals for that
-  identity
-- `recent_training_payouts` projects the recent canonical payout ledger rows,
-  including payout class, weak-device and progress-bearing flags, accepted
-  outcome references, payout target, wallet payment id, and reconciliation
-  status
+- public treasury status intentionally does not include raw payout-target
+  identities or recent payout rows. Operator diagnostics that need row-level
+  visibility should use the authenticated treasury projection or integration
+  export surfaces, which hash sensitive target material where possible.
 
 Deployment gating:
 

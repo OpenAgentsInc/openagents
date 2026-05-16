@@ -17908,7 +17908,7 @@ async fn treasury_status(
         Ok(store) => store,
         Err(error) => {
             if let Some(status) = cached_status {
-                return Ok(Json(status));
+                return Ok(Json(status.public_api_view()));
             }
             return Err(error);
         }
@@ -17916,7 +17916,7 @@ async fn treasury_status(
     let status = store.treasury.status_response(&state.config.treasury, now);
     drop(store);
     replace_treasury_status_cache(&state, status.clone());
-    Ok(Json(status))
+    Ok(Json(status.public_api_view()))
 }
 
 async fn treasury_projections(
@@ -19057,12 +19057,15 @@ async fn create_treasury_funding_target(
         .invoice_returned_at_unix_ms
         .get_or_insert(now);
     if let Ok(mut store) = state.store.write() {
-        let receipt_events = store.treasury.record_funding_invoice_created_operation(
+        let mut receipt_events = store
+            .treasury
+            .apply_wallet_snapshot(&material.wallet_snapshot, now);
+        receipt_events.extend(store.treasury.record_funding_invoice_created_operation(
             &state.config.treasury,
             &normalized_request,
             &material,
             now,
-        );
+        ));
         record_treasury_receipt_events(&mut store, receipt_events, now);
     } else {
         tracing::error!(
@@ -25186,6 +25189,11 @@ fn runtime_snapshot(
         starter_offers_waiting_ack,
         starter_offers_running,
         nexus_wallet_runtime_status: treasury_runtime.wallet_runtime_status.clone(),
+        nexus_treasury_provider: treasury_runtime.active_treasury_provider.clone(),
+        nexus_treasury_rail: treasury_runtime.active_treasury_rail.clone(),
+        nexus_ldk_network: treasury_runtime.ldk_network.clone(),
+        nexus_ldk_chain_backend: treasury_runtime.ldk_chain_backend.clone(),
+        nexus_ldk_server_configured: treasury_runtime.ldk_server_configured,
         nexus_wallet_last_error: treasury_runtime.wallet_last_error.clone(),
         nexus_wallet_storage_runtime_mode: treasury_runtime.wallet_storage_runtime_mode.clone(),
         nexus_wallet_balance_sats: treasury_runtime.wallet_balance_sats,
@@ -35535,6 +35543,10 @@ mod tests {
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(stats.nexus_registered_payout_identities, 1);
         assert_eq!(stats.receipt_count, 1);
+        assert_eq!(stats.nexus_treasury_provider, "ldk");
+        assert_eq!(stats.nexus_treasury_rail, "ldk");
+        assert_eq!(stats.nexus_ldk_network, "regtest");
+        assert_eq!(stats.nexus_ldk_chain_backend, "bitcoind");
 
         let treasury_status_response = app
             .oneshot(
@@ -35545,25 +35557,25 @@ mod tests {
             )
             .await?;
         assert_eq!(treasury_status_response.status(), StatusCode::OK);
-        let treasury_status: TreasuryStatusResponse =
-            response_json(treasury_status_response).await?;
-        assert_eq!(treasury_status.payout_target_identities.len(), 1);
-        assert_eq!(
-            treasury_status.payout_target_identities[0].nostr_pubkey_hex,
-            nostr_pubkey_hex
+        let treasury_status_body = response_text(treasury_status_response).await?;
+        assert!(!treasury_status_body.contains(nostr_pubkey_hex));
+        assert!(!treasury_status_body.contains(payment_target));
+        let treasury_status: TreasuryStatusResponse = serde_json::from_str(&treasury_status_body)?;
+        assert_eq!(treasury_status.active_treasury_provider, "ldk");
+        assert_eq!(treasury_status.active_treasury_rail, "ldk");
+        assert_eq!(treasury_status.ldk_network, "regtest");
+        assert_eq!(treasury_status.ldk_chain_backend, "bitcoind");
+        assert!(treasury_status.payout_target_identities.is_empty());
+        assert!(treasury_status.recent_training_payouts.is_empty());
+        assert!(
+            treasury_status
+                .availability_beneficiary_debug_rows
+                .is_empty()
         );
-        assert_eq!(
-            treasury_status.payout_target_identities[0].payment_target_kind,
-            payment_target_kind
-        );
-        assert_eq!(
-            treasury_status.payout_target_identities[0].payment_target,
-            payment_target
-        );
-        assert!(treasury_status.payout_target_identities[0].ldk_compatible);
-        assert_eq!(
-            treasury_status.payout_target_identities[0].spark_address,
-            ""
+        assert!(
+            treasury_status
+                .legacy_availability_confirmation_attention_rows
+                .is_empty()
         );
         assert_eq!(
             treasury_status
@@ -35733,6 +35745,9 @@ mod tests {
 
     #[tokio::test]
     async fn treasury_funding_target_defaults_to_ldk_with_timing_metadata() -> Result<()> {
+        let _guard = treasury_test_hook_lock()
+            .lock()
+            .expect("treasury hook guard");
         let mut config = test_config()?;
         config.treasury.enabled = true;
         let state = build_app_state(config);

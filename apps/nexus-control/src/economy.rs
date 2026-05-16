@@ -669,6 +669,16 @@ pub struct PublicStatsSnapshot {
     pub starter_demand_released_sats_24h: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nexus_wallet_runtime_status: Option<String>,
+    #[serde(default)]
+    pub nexus_treasury_provider: String,
+    #[serde(default)]
+    pub nexus_treasury_rail: String,
+    #[serde(default)]
+    pub nexus_ldk_network: String,
+    #[serde(default)]
+    pub nexus_ldk_chain_backend: String,
+    #[serde(default)]
+    pub nexus_ldk_server_configured: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nexus_wallet_last_error: Option<String>,
     #[serde(default = "default_wallet_storage_runtime_mode")]
@@ -900,6 +910,11 @@ pub struct PublicRuntimeSnapshot {
     pub starter_offers_waiting_ack: usize,
     pub starter_offers_running: usize,
     pub nexus_wallet_runtime_status: Option<String>,
+    pub nexus_treasury_provider: String,
+    pub nexus_treasury_rail: String,
+    pub nexus_ldk_network: String,
+    pub nexus_ldk_chain_backend: String,
+    pub nexus_ldk_server_configured: bool,
     pub nexus_wallet_last_error: Option<String>,
     pub nexus_wallet_storage_runtime_mode: String,
     pub nexus_wallet_balance_sats: u64,
@@ -1210,6 +1225,11 @@ impl ReceiptLedger {
             starter_demand_paid_sats_24h,
             starter_demand_released_sats_24h,
             nexus_wallet_runtime_status: runtime.nexus_wallet_runtime_status.clone(),
+            nexus_treasury_provider: runtime.nexus_treasury_provider.clone(),
+            nexus_treasury_rail: runtime.nexus_treasury_rail.clone(),
+            nexus_ldk_network: runtime.nexus_ldk_network.clone(),
+            nexus_ldk_chain_backend: runtime.nexus_ldk_chain_backend.clone(),
+            nexus_ldk_server_configured: runtime.nexus_ldk_server_configured,
             nexus_wallet_last_error: runtime.nexus_wallet_last_error.clone(),
             nexus_wallet_storage_runtime_mode: runtime.nexus_wallet_storage_runtime_mode.clone(),
             nexus_wallet_balance_sats: runtime.nexus_wallet_balance_sats,
@@ -1596,6 +1616,11 @@ mod tests {
                 starter_offers_waiting_ack: 0,
                 starter_offers_running: 0,
                 nexus_wallet_runtime_status: None,
+                nexus_treasury_provider: "ldk".to_string(),
+                nexus_treasury_rail: "ldk".to_string(),
+                nexus_ldk_network: "regtest".to_string(),
+                nexus_ldk_chain_backend: "bitcoind".to_string(),
+                nexus_ldk_server_configured: false,
                 nexus_wallet_last_error: None,
                 nexus_wallet_storage_runtime_mode: "original".to_string(),
                 nexus_wallet_balance_sats: 0,
