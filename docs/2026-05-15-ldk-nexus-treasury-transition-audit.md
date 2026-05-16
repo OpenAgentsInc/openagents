@@ -1978,6 +1978,26 @@ Out of scope:
 
 - Do not reintroduce Spark as an active rail.
 
+Implementation status, 2026-05-16:
+
+- Final migration/drain report checked in:
+  `docs/reports/nexus/2026-05-16-spark-migration-final-drain-report.md`.
+- No Spark final drain was performed during this closeout.
+- Public Nexus was returning Cloudflare `530` / `1033` before the report.
+  Serial logs showed the VM guest network could not reach metadata, DNS, or
+  Cloudflare edge. A `nexus-mainnet-1` reset restored public `/healthz`, VM
+  local `/healthz`, metadata lookup, and active `nexus-relay`,
+  `nexus-cloudflared`, and `nexus-http-recovery-proxy` services.
+- Live status after recovery showed old Spark-era payout targets still present
+  as stale/historical records, with no LDK-compatible sampled active payout
+  targets. Those targets are ineligible for new paid work until Pylons register
+  v0.2 LDK-compatible targets.
+- Legacy Spark runbooks were marked as legacy/final-drain-only. Normal operator
+  docs now point to `docs/nexus-treasury.md` and
+  `docs/deploy/NEXUS_LDK_GCP_RUNBOOK.md`.
+- Rollback limits and explicit operator signoff criteria are recorded in the
+  final report.
+
 #### LDK-17 — Decide and implement long-term custody ownership split
 
 Target repo: `OpenAgentsInc/treasury`

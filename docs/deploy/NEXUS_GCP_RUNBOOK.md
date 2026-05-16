@@ -41,10 +41,16 @@ The LDK v0.2 treasury topology is separate from this hotfix lane and is
 documented in:
 
 - `docs/deploy/NEXUS_LDK_GCP_RUNBOOK.md`
+- `docs/reports/nexus/2026-05-16-spark-migration-final-drain-report.md`
 
 Do not treat the LDK Server VM as part of the public Nexus binary deploy path.
 It is a private Lightning/Bitcoin authority host with its own backup and
 restore drill.
+
+Spark-era treasury, funding, and payout sections in this older GCP runbook are
+legacy material only. They remain for recovery and audit context. Do not use
+them as normal funding or payout instructions after the Nexus/Pylon v0.2 LDK
+cutover. Normal operators should use the LDK runbook and `docs/nexus-treasury.md`.
 
 The short version is:
 

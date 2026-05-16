@@ -1,5 +1,12 @@
 # Pylon/Nexus Earning Release Runbook
 
+2026-05-16 LDK v0.2 notice: historical Spark payout-target sections in this
+runbook are legacy context only. Pylon v0.2 registration must use an
+LDK-compatible target (`bolt12_offer`, `bolt11_invoice`, `bip353_name`, or
+`lnurl_pay`). Spark destination creation is disabled by default and exists only
+behind `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true` for explicit recovery
+or final-drain work.
+
 This runbook captures the practical release and proof lessons from the April
 21, 2026 Issue #4413 work. Its purpose is to keep future agents from repeating
 the same build, release, deploy, and proof mistakes when changing the public

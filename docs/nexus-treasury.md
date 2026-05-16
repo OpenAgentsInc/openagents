@@ -177,6 +177,13 @@ Spark is removed from normal new operations. Keep the old Spark code available
 only for historical receipt reads and a disabled-by-default final drain until
 the final migration report is signed off.
 
+The final migration/drain report for LDK-16 is checked in at
+[`reports/nexus/2026-05-16-spark-migration-final-drain-report.md`](reports/nexus/2026-05-16-spark-migration-final-drain-report.md).
+It records that no Spark final drain was performed during closeout, that
+Spark-only worker targets are stale/ineligible for new paid work, and that
+legacy Spark paths remain disabled unless an operator explicitly enables final
+drain/recovery mode.
+
 Current normal behavior:
 
 - New treasury funding targets route through the LDK provider boundary.

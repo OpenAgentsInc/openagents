@@ -1,15 +1,18 @@
-# Nexus Treasury Funding Invoice Runbook
+# Legacy Spark Nexus Treasury Funding Invoice Runbook
 
-2026-05-15 transition note: this runbook describes the legacy Spark-backed
-funding path. New treasury work should prioritize the LDK transition documented
-in
+2026-05-16 legacy notice: this runbook describes the old Spark-backed funding
+path. Do not use it for normal Nexus funding, payout, Pylon registration, API,
+or chat operations. Normal treasury work uses the LDK runbook and treasury
+provider boundary documented in
+[`NEXUS_LDK_GCP_RUNBOOK.md`](NEXUS_LDK_GCP_RUNBOOK.md),
+[`../nexus-treasury.md`](../nexus-treasury.md), and
 [`../2026-05-15-ldk-nexus-treasury-transition-audit.md`](../2026-05-15-ldk-nexus-treasury-transition-audit.md).
-Use this Spark path only when operating existing production compatibility
-surfaces or explicitly testing the legacy fallback.
+Use this Spark path only for an operator-reviewed historical recovery or final
+drain with `NEXUS_TREASURY_PROVIDER=spark_final_drain` and
+`NEXUS_SPARK_FINAL_DRAIN_ENABLED=true`.
 
-Use this when Nexus needs more spendable sats for accepted-work payouts.
-This runbook is for hosted production treasury funding material only. It is
-not a Pylon user wallet invoice flow and it is not payout proof by itself.
+Do not use this when Nexus needs normal spendable sats for accepted-work
+payouts. The default funding path is LDK.
 
 ## Preconditions
 
