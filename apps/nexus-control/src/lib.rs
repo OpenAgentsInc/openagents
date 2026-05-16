@@ -208,6 +208,7 @@ const ENV_TRAINING_TRN_IDENTITY_PATH: &str = "NEXUS_CONTROL_TRAINING_TRN_IDENTIT
 const ENV_TRAINING_TRN_RELAY_URLS: &str = "NEXUS_CONTROL_TRAINING_TRN_RELAY_URLS";
 const ENV_RECEIPT_LOG_PATH: &str = "NEXUS_CONTROL_RECEIPT_LOG_PATH";
 const ENV_KERNEL_STATE_PATH: &str = "NEXUS_CONTROL_KERNEL_STATE_PATH";
+const ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED: &str = "NEXUS_CONTROL_SPARK_FINAL_DRAIN_ENABLED";
 const ENV_COMPUTE_ENABLE_FORWARD_PHYSICAL: &str = "NEXUS_CONTROL_COMPUTE_ENABLE_FORWARD_PHYSICAL";
 const ENV_COMPUTE_ENABLE_FUTURE_CASH: &str = "NEXUS_CONTROL_COMPUTE_ENABLE_FUTURE_CASH";
 const ENV_COMPUTE_ENABLE_STRUCTURED_PRODUCTS: &str =
@@ -12910,6 +12911,15 @@ async fn register_provider_payout_target(
     State(state): State<AppState>,
     Json(request): Json<ProviderPayoutTargetRegistrationRequest>,
 ) -> Result<Json<ProviderPayoutTargetRegistrationResponse>, ApiError> {
+    if !legacy_spark_final_drain_enabled() {
+        return Err(ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable",
+            reason: format!(
+                "legacy Spark payout target registration is disabled; use the LDK payment-target registration path or set {ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED}=true for explicit final-drain/recovery work"
+            ),
+        });
+    }
     let normalized_request = ProviderPayoutTargetRegistrationRequest {
         nostr_pubkey_hex: normalize_required_field(
             request.nostr_pubkey_hex.as_str(),
@@ -27851,6 +27861,26 @@ fn parse_bool_env(key: &str, default: bool) -> Result<bool, String> {
         })
 }
 
+fn legacy_spark_final_drain_enabled() -> bool {
+    cfg!(test)
+        || legacy_spark_final_drain_enabled_from_value(
+            std::env::var(ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED)
+                .ok()
+                .as_deref(),
+        )
+}
+
+fn legacy_spark_final_drain_enabled_from_value(value: Option<&str>) -> bool {
+    value
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 fn parse_usize_env(key: &str, default: usize) -> Result<usize, String> {
     std::env::var(key)
         .ok()
@@ -28307,6 +28337,26 @@ mod tests {
             },
             dir,
         ))
+    }
+
+    #[test]
+    fn legacy_spark_final_drain_route_gate_is_default_off_for_normal_runtime() {
+        assert!(!super::legacy_spark_final_drain_enabled_from_value(None));
+        assert!(!super::legacy_spark_final_drain_enabled_from_value(Some(
+            ""
+        )));
+        assert!(!super::legacy_spark_final_drain_enabled_from_value(Some(
+            "false"
+        )));
+        assert!(!super::legacy_spark_final_drain_enabled_from_value(Some(
+            "0"
+        )));
+        assert!(super::legacy_spark_final_drain_enabled_from_value(Some(
+            "true"
+        )));
+        assert!(super::legacy_spark_final_drain_enabled_from_value(Some(
+            "1"
+        )));
     }
 
     #[test]

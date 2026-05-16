@@ -1,4 +1,8 @@
-//! Spark wallet wrapper for OpenAgents desktop.
+//! Legacy Spark wallet wrapper for OpenAgents desktop.
+//!
+//! TODO(ldk-v0.2): keep this crate available for historical receipt reads and
+//! explicit final-drain/recovery work only. New Nexus/Pylon funding and payout
+//! paths should move to the LDK provider boundary.
 //!
 //! Network contract:
 //! - Supported: `mainnet`, `regtest`

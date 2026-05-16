@@ -25,6 +25,10 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::economy::AuthorityReceiptContext;
 
+// TODO(ldk-v0.2): Spark treasury writes are legacy-only. Keep this module's
+// Spark paths for historical receipt reads and explicit final-drain/recovery
+// operations while new funding and payout operations move behind the LDK
+// treasury provider boundary.
 const DEFAULT_OPENAGENTS_SPARK_API_KEY: &str = "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0=";
 
 const ENV_TREASURY_STATE_PATH: &str = "NEXUS_CONTROL_TREASURY_STATE_PATH";
@@ -76,6 +80,7 @@ const ENV_TREASURY_POLICY_CHANGE_REASON: &str = "NEXUS_CONTROL_TREASURY_POLICY_C
 const ENV_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS";
 const ENV_TREASURY_INTEGRATION_TOKEN: &str = "NEXUS_CONTROL_TREASURY_INTEGRATION_TOKEN";
+const ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED: &str = "NEXUS_CONTROL_SPARK_FINAL_DRAIN_ENABLED";
 
 const DEFAULT_TREASURY_STATE_PATH: &str = "var/nexus-control/treasury-state.json";
 const DEFAULT_TREASURY_ENABLED: bool = false;
@@ -6165,6 +6170,11 @@ pub async fn create_live_funding_target(
     if config.simulated_wallet_enabled {
         return Ok(simulated_funding_target(config, request));
     }
+    if !legacy_spark_final_drain_enabled() {
+        bail!(
+            "legacy Spark funding target creation is disabled; use the LDK treasury provider path or set {ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED}=true for explicit final-drain/recovery work"
+        );
+    }
 
     #[cfg(test)]
     {
@@ -8855,6 +8865,26 @@ fn parse_bool_env(name: &str, default: bool) -> Result<bool, String> {
     }
 }
 
+fn legacy_spark_final_drain_enabled() -> bool {
+    cfg!(test)
+        || legacy_spark_final_drain_enabled_from_value(
+            std::env::var(ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED)
+                .ok()
+                .as_deref(),
+        )
+}
+
+fn legacy_spark_final_drain_enabled_from_value(value: Option<&str>) -> bool {
+    value
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 fn parse_u64_env(name: &str, default: u64) -> Result<u64, String> {
     match std::env::var(name) {
         Ok(value) => value
@@ -9170,6 +9200,26 @@ mod tests {
             registration_challenge_ttl_seconds: 300,
             integration_token: None,
         }
+    }
+
+    #[test]
+    fn legacy_spark_final_drain_gate_is_default_off_for_normal_runtime() {
+        assert!(!super::legacy_spark_final_drain_enabled_from_value(None));
+        assert!(!super::legacy_spark_final_drain_enabled_from_value(Some(
+            ""
+        )));
+        assert!(!super::legacy_spark_final_drain_enabled_from_value(Some(
+            "false"
+        )));
+        assert!(!super::legacy_spark_final_drain_enabled_from_value(Some(
+            "0"
+        )));
+        assert!(super::legacy_spark_final_drain_enabled_from_value(Some(
+            "true"
+        )));
+        assert!(super::legacy_spark_final_drain_enabled_from_value(Some(
+            "1"
+        )));
     }
 
     fn test_online_identity(nostr_pubkey_hex: &str) -> OnlinePylonIdentity {

@@ -10771,10 +10771,35 @@ async fn ensure_default_payout_destination(
     if training_settlement_destination(config).is_some() {
         return Ok(false);
     }
+    if !legacy_spark_write_enabled() {
+        bail!(
+            "legacy Spark payout destination auto-creation is disabled; configure an LDK payment target or set OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true for explicit final-drain/recovery work"
+        );
+    }
     let address_report = create_wallet_address_report(config_path).await?;
     apply_default_payout_destination(config, address_report.spark_address.as_str())?;
     save_config(config_path, config)?;
     Ok(true)
+}
+
+fn legacy_spark_write_enabled() -> bool {
+    cfg!(test)
+        || legacy_spark_write_enabled_from_value(
+            std::env::var("OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED")
+                .ok()
+                .as_deref(),
+        )
+}
+
+fn legacy_spark_write_enabled_from_value(value: Option<&str>) -> bool {
+    value
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn apply_default_payout_destination(config: &mut PylonConfig, spark_address: &str) -> Result<bool> {
@@ -31867,11 +31892,11 @@ mod tests {
         gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
         inspect_psionic_train_runtime_surface_at,
         inspect_psionic_train_runtime_surface_from_candidates,
-        inspect_training_retained_contribution_artifacts, inventory_rows, load_backend_report,
-        load_earnings_report, load_inventory_report, load_jobs_report,
-        load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
-        load_or_create_training_runtime_state, load_product_report, load_receipts_report,
-        load_relay_report, load_sandbox_report, load_status_or_detect,
+        inspect_training_retained_contribution_artifacts, inventory_rows,
+        legacy_spark_write_enabled_from_value, load_backend_report, load_earnings_report,
+        load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
+        load_or_create_config, load_or_create_training_runtime_state, load_product_report,
+        load_receipts_report, load_relay_report, load_sandbox_report, load_status_or_detect,
         load_training_artifact_inspection_report, load_training_status_report_local,
         local_training_release_id, maybe_retire_released_terminal_worker_runtime,
         maybe_start_training_supervisor_from_retained_assignment, merge_ledger_earnings,
@@ -34239,6 +34264,16 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             config.payout_destination.as_deref() == Some("lnurlp:alice"),
             "explicit payout destination should be preserved",
         )
+    }
+
+    #[test]
+    fn legacy_spark_write_gate_is_default_off_for_normal_runtime() {
+        assert!(!legacy_spark_write_enabled_from_value(None));
+        assert!(!legacy_spark_write_enabled_from_value(Some("")));
+        assert!(!legacy_spark_write_enabled_from_value(Some("false")));
+        assert!(!legacy_spark_write_enabled_from_value(Some("0")));
+        assert!(legacy_spark_write_enabled_from_value(Some("true")));
+        assert!(legacy_spark_write_enabled_from_value(Some("1")));
     }
 
     #[test]
