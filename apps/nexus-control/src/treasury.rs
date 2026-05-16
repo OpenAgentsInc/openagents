@@ -149,6 +149,11 @@ const TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS: u64 = 1_000;
 const TREASURY_CONTINUITY_ALERT_THRESHOLD_MS: u64 = 300_000;
 const TREASURY_CONFIRMATION_STALL_ALERT_THRESHOLD_MS: u64 = 15 * 60_000;
 const TREASURY_STALE_SNAPSHOT_ALERT_THRESHOLD_MS: u64 = 15_000;
+const TREASURY_LOW_LIQUIDITY_PAYOUT_MULTIPLIER: u64 = 3;
+const TREASURY_LOW_LIQUIDITY_MIN_SATS: u64 = 1_000;
+const TREASURY_FAILED_PAYMENT_ALERT_COUNT: u64 = 3;
+const TREASURY_STALE_EVENT_SUBSCRIBER_MS: u64 = 60_000;
+const TREASURY_STALE_GOSSIP_ALERT_MS: u64 = 15 * 60_000;
 const TREASURY_MAX_CONCURRENT_SENDS_LIMIT: usize = 64;
 const TREASURY_MAX_CONCURRENT_ACCEPTED_WORK_SENDS: usize = 4;
 const TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS: u64 = 5_000;
@@ -858,6 +863,22 @@ pub struct TreasuryContinuityAlert {
     pub observed_at_unix_ms: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryDegradedState {
+    pub code: String,
+    pub severity: String,
+    pub public_reason: String,
+    pub operator_action: String,
+    pub source: String,
+    pub observed_at_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metric_value: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 struct TreasuryContinuitySignalSnapshot {
     availability_online_identities_now: u64,
@@ -1271,6 +1292,8 @@ pub struct TreasuryStatusResponse {
     pub payout_loop_health: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degraded_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded_states: Vec<TreasuryDegradedState>,
     pub policy_schema_version: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy_checksum: Option<String>,
@@ -1594,6 +1617,8 @@ pub struct TreasuryPublicSnapshot {
     pub active_continuity_alerts: Vec<TreasuryContinuityAlert>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degraded_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded_states: Vec<TreasuryDegradedState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1684,6 +1709,7 @@ pub struct TreasuryPublicStats {
     pub confirm_lag_ms: Option<u64>,
     pub payout_loop_health: String,
     pub degraded_reason: Option<String>,
+    pub degraded_states: Vec<TreasuryDegradedState>,
     pub payout_sats_paid_total: u64,
     pub payout_sats_paid_24h: u64,
     pub payout_sats_in_flight_total: u64,
@@ -2503,6 +2529,54 @@ fn payout_rail_for_payment_request(payment_request: &str) -> &'static str {
         "unknown" => "unknown",
         _ => "ldk",
     }
+}
+
+fn degraded_severity_rank(severity: &str) -> u8 {
+    match severity {
+        "critical" => 3,
+        "warning" => 2,
+        "info" => 1,
+        _ => 0,
+    }
+}
+
+fn push_unique_degraded_state(
+    states: &mut Vec<TreasuryDegradedState>,
+    state: TreasuryDegradedState,
+) {
+    if states.iter().any(|existing| existing.code == state.code) {
+        return;
+    }
+    states.push(state);
+}
+
+fn treasury_reason_indicates_no_route(reason: &str) -> bool {
+    let normalized = reason.to_ascii_lowercase();
+    normalized.contains("no_route")
+        || normalized.contains("no route")
+        || normalized.contains("route not found")
+}
+
+fn treasury_reason_indicates_insufficient_balance(reason: &str) -> bool {
+    let normalized = reason.to_ascii_lowercase();
+    normalized.contains("insufficient_balance")
+        || normalized.contains("insufficient channel")
+        || normalized.contains("insufficient funds")
+        || normalized.contains("wallet_balance_insufficient")
+        || normalized.contains("not enough balance")
+}
+
+fn treasury_reason_indicates_stale_event_stream(reason: &str) -> bool {
+    let normalized = reason.to_ascii_lowercase();
+    normalized.contains("stale_event_stream")
+        || normalized.contains("event stream")
+        || normalized.contains("subscriber")
+}
+
+fn treasury_reason_indicates_stale_gossip(reason: &str) -> bool {
+    let normalized = reason.to_ascii_lowercase();
+    (normalized.contains("stale") || normalized.contains("lagged"))
+        && (normalized.contains("gossip") || normalized.contains("rgs"))
 }
 
 fn payout_dispatch_idempotency_key(payout_key: &str) -> String {
@@ -4887,6 +4961,262 @@ impl TreasuryState {
         None
     }
 
+    pub fn degraded_states(
+        &self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+    ) -> Vec<TreasuryDegradedState> {
+        let mut states = Vec::new();
+        let policy = self.active_policy(config);
+        let continuity = self.continuity_signal_snapshot(config, now_unix_ms);
+
+        for alert in continuity.active_alerts {
+            states.push(TreasuryDegradedState {
+                code: format!("continuity_{}", alert.alert_id),
+                severity: alert.severity,
+                public_reason: alert.reason,
+                operator_action: "inspect treasury continuity and payout backlog".to_string(),
+                source: "continuity_alert".to_string(),
+                observed_at_unix_ms: now_unix_ms,
+                started_at_unix_ms: Some(alert.started_at_unix_ms),
+                metric_value: None,
+                threshold: None,
+            });
+        }
+
+        if policy.treasury_enabled {
+            let payout_floor = policy
+                .accepted_work_default_payout_sats()
+                .max(policy.payout_sats_per_window);
+            if payout_floor > 0 {
+                let threshold = payout_floor
+                    .saturating_mul(TREASURY_LOW_LIQUIDITY_PAYOUT_MULTIPLIER)
+                    .max(TREASURY_LOW_LIQUIDITY_MIN_SATS);
+                if self.wallet_balance_sats < threshold
+                    && (self.backlog_counts().0 > 0
+                        || self.eligible_online_payout_targets > 0
+                        || !self.payout_targets_by_identity.is_empty())
+                {
+                    states.push(TreasuryDegradedState {
+                        code: "low_outbound_liquidity".to_string(),
+                        severity: "warning".to_string(),
+                        public_reason: "outbound liquidity is below the configured payout reserve"
+                            .to_string(),
+                        operator_action:
+                            "fund the LDK wallet or rebalance channels before dispatching payouts"
+                                .to_string(),
+                        source: "treasury_balance_threshold".to_string(),
+                        observed_at_unix_ms: now_unix_ms,
+                        started_at_unix_ms: self.wallet_balance_updated_at_unix_ms,
+                        metric_value: Some(self.wallet_balance_sats),
+                        threshold: Some(threshold),
+                    });
+                }
+            }
+
+            let ldk_target_count = self
+                .payout_targets_by_identity
+                .values()
+                .filter(|target| target.is_ldk_compatible())
+                .count() as u64;
+            let channel_capacity_msat = self
+                .treasury_operations_by_id
+                .values()
+                .filter(|operation| {
+                    operation.rail == "ldk"
+                        && operation.kind == TreasuryOperationKind::LightningAdminCommand
+                        && operation
+                            .rail_metadata
+                            .get("command")
+                            .is_some_and(|command| {
+                                command == "treasury.openChannel" || command == "treasury.spliceIn"
+                            })
+                        && operation.status != TreasuryOperationStatus::Failed
+                })
+                .filter_map(|operation| operation.amount_msat)
+                .fold(0u64, u64::saturating_add);
+            if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk
+                && ldk_target_count > 0
+                && channel_capacity_msat == 0
+            {
+                states.push(TreasuryDegradedState {
+                    code: "low_inbound_liquidity".to_string(),
+                    severity: "warning".to_string(),
+                    public_reason: "no LDK channel capacity has been projected for registered payout targets"
+                        .to_string(),
+                    operator_action: "open or splice into an LDK channel and verify receive capacity"
+                        .to_string(),
+                    source: "ldk_channel_projection".to_string(),
+                    observed_at_unix_ms: now_unix_ms,
+                    started_at_unix_ms: self.last_wallet_sync_at_unix_ms,
+                    metric_value: Some(channel_capacity_msat / 1_000),
+                    threshold: Some(1),
+                });
+            }
+
+            match self.latest_wallet_activity_at_unix_ms() {
+                Some(last_activity_at) => {
+                    let lag_ms = now_unix_ms.saturating_sub(last_activity_at);
+                    let threshold = config.wallet_snapshot_stale_after_ms();
+                    if lag_ms >= threshold {
+                        states.push(TreasuryDegradedState {
+                            code: "stale_wallet_sync".to_string(),
+                            severity: "warning".to_string(),
+                            public_reason: "treasury wallet sync is stale".to_string(),
+                            operator_action:
+                                "refresh the LDK wallet state and rerun payment reconciliation"
+                                    .to_string(),
+                            source: "wallet_sync_threshold".to_string(),
+                            observed_at_unix_ms: now_unix_ms,
+                            started_at_unix_ms: Some(last_activity_at),
+                            metric_value: Some(lag_ms),
+                            threshold: Some(threshold),
+                        });
+                    }
+                }
+                None => {
+                    states.push(TreasuryDegradedState {
+                        code: "stale_wallet_sync".to_string(),
+                        severity: "critical".to_string(),
+                        public_reason: "treasury wallet has not completed a sync".to_string(),
+                        operator_action: "start the LDK node and complete the first wallet sync"
+                            .to_string(),
+                        source: "wallet_sync_threshold".to_string(),
+                        observed_at_unix_ms: now_unix_ms,
+                        started_at_unix_ms: None,
+                        metric_value: None,
+                        threshold: Some(config.wallet_snapshot_stale_after_ms()),
+                    });
+                }
+            }
+        }
+
+        let failed_payment_count = self
+            .treasury_operations_by_id
+            .values()
+            .filter(|operation| operation.rail == "ldk")
+            .filter(|operation| operation.status == TreasuryOperationStatus::Failed)
+            .filter(|operation| {
+                operation.updated_at_unix_ms
+                    >= now_unix_ms.saturating_sub(TREASURY_PUBLIC_STATS_WINDOW_MS)
+            })
+            .count() as u64;
+        if failed_payment_count >= TREASURY_FAILED_PAYMENT_ALERT_COUNT {
+            states.push(TreasuryDegradedState {
+                code: "rising_failed_payment_count".to_string(),
+                severity: "warning".to_string(),
+                public_reason: "LDK payment failures are above the alert threshold".to_string(),
+                operator_action: "inspect recent failed payment operations and route liquidity"
+                    .to_string(),
+                source: "payment_failure_threshold".to_string(),
+                observed_at_unix_ms: now_unix_ms,
+                started_at_unix_ms: None,
+                metric_value: Some(failed_payment_count),
+                threshold: Some(TREASURY_FAILED_PAYMENT_ALERT_COUNT),
+            });
+        }
+
+        for operation in self.treasury_operations_by_id.values() {
+            if operation.rail != "ldk" {
+                continue;
+            }
+            let reason = operation.degraded_reason.as_deref().unwrap_or_default();
+            let terminal = operation
+                .terminal_event_state
+                .as_deref()
+                .unwrap_or_default();
+            if treasury_reason_indicates_no_route(reason) {
+                push_unique_degraded_state(
+                    &mut states,
+                    TreasuryDegradedState {
+                        code: "no_route".to_string(),
+                        severity: "critical".to_string(),
+                        public_reason: "LDK could not find a payment route".to_string(),
+                        operator_action:
+                            "inspect channels, route hints, peer connectivity, and outbound liquidity"
+                                .to_string(),
+                        source: "ldk_payment_error".to_string(),
+                        observed_at_unix_ms: now_unix_ms,
+                        started_at_unix_ms: Some(operation.updated_at_unix_ms),
+                        metric_value: None,
+                        threshold: None,
+                    },
+                );
+            }
+            if treasury_reason_indicates_insufficient_balance(reason) {
+                push_unique_degraded_state(
+                    &mut states,
+                    TreasuryDegradedState {
+                        code: "insufficient_channel_balance".to_string(),
+                        severity: "critical".to_string(),
+                        public_reason: "LDK reported insufficient channel or wallet balance"
+                            .to_string(),
+                        operator_action:
+                            "fund the LDK wallet, open capacity, or rebalance before retrying"
+                                .to_string(),
+                        source: "ldk_payment_error".to_string(),
+                        observed_at_unix_ms: now_unix_ms,
+                        started_at_unix_ms: Some(operation.updated_at_unix_ms),
+                        metric_value: operation.amount_msat.map(|msat| msat / 1_000),
+                        threshold: None,
+                    },
+                );
+            }
+            if treasury_reason_indicates_stale_event_stream(reason)
+                || terminal == "event_stream_disconnected"
+            {
+                let age_ms = now_unix_ms.saturating_sub(operation.updated_at_unix_ms);
+                if age_ms >= TREASURY_STALE_EVENT_SUBSCRIBER_MS {
+                    push_unique_degraded_state(
+                        &mut states,
+                        TreasuryDegradedState {
+                            code: "stale_event_subscriber".to_string(),
+                            severity: "warning".to_string(),
+                            public_reason: "LDK event subscriber is stale or disconnected"
+                                .to_string(),
+                            operator_action:
+                                "restart the event subscriber and replay payment event projection"
+                                    .to_string(),
+                            source: "ldk_event_projection".to_string(),
+                            observed_at_unix_ms: now_unix_ms,
+                            started_at_unix_ms: Some(operation.updated_at_unix_ms),
+                            metric_value: Some(age_ms),
+                            threshold: Some(TREASURY_STALE_EVENT_SUBSCRIBER_MS),
+                        },
+                    );
+                }
+            }
+            if treasury_reason_indicates_stale_gossip(reason) {
+                let age_ms = now_unix_ms.saturating_sub(operation.updated_at_unix_ms);
+                if age_ms >= TREASURY_STALE_GOSSIP_ALERT_MS {
+                    push_unique_degraded_state(
+                        &mut states,
+                        TreasuryDegradedState {
+                            code: "stale_gossip".to_string(),
+                            severity: "warning".to_string(),
+                            public_reason: "LDK gossip or RGS data appears stale".to_string(),
+                            operator_action:
+                                "refresh rapid gossip sync and verify channel graph freshness"
+                                    .to_string(),
+                            source: "ldk_gossip_projection".to_string(),
+                            observed_at_unix_ms: now_unix_ms,
+                            started_at_unix_ms: Some(operation.updated_at_unix_ms),
+                            metric_value: Some(age_ms),
+                            threshold: Some(TREASURY_STALE_GOSSIP_ALERT_MS),
+                        },
+                    );
+                }
+            }
+        }
+
+        states.sort_by(|left, right| {
+            degraded_severity_rank(right.severity.as_str())
+                .cmp(&degraded_severity_rank(left.severity.as_str()))
+                .then_with(|| left.code.cmp(&right.code))
+        });
+        states
+    }
+
     fn build_public_snapshot(
         &self,
         config: &TreasuryConfig,
@@ -5050,6 +5380,7 @@ impl TreasuryState {
             fail_reason_metrics_24h: continuity.fail_reason_metrics_24h,
             active_continuity_alerts: self.active_continuity_alerts.clone(),
             degraded_reason: self.degraded_reason(config, now_unix_ms),
+            degraded_states: self.degraded_states(config, now_unix_ms),
             mode: None,
             health_status: None,
         };
@@ -5147,6 +5478,11 @@ impl TreasuryState {
             self.degraded_reason(config, now_unix_ms)
         } else {
             snapshot.degraded_reason.clone()
+        };
+        let degraded_states = if use_local_continuity_alerts {
+            self.degraded_states(config, now_unix_ms)
+        } else {
+            snapshot.degraded_states.clone()
         };
 
         TreasuryPublicStats {
@@ -5269,6 +5605,7 @@ impl TreasuryState {
             } else {
                 Vec::new()
             },
+            degraded_states,
         }
     }
 
@@ -5609,6 +5946,7 @@ impl TreasuryState {
             confirm_lag_ms: stats.confirm_lag_ms,
             payout_loop_health: stats.payout_loop_health,
             degraded_reason: stats.degraded_reason,
+            degraded_states: stats.degraded_states,
             policy_schema_version: policy.schema_version,
             policy_checksum: Some(policy.checksum.clone()),
             policy_runtime_status: self.policy_runtime_status.clone(),
@@ -9340,6 +9678,12 @@ fn render_treasury_status_response(response: &TreasuryStatusResponse) -> String 
     if let Some(reason) = response.degraded_reason.as_deref() {
         lines.push(format!("degraded_reason: {reason}"));
     }
+    if !response.degraded_states.is_empty() {
+        lines.push(format!(
+            "degraded_states: {}",
+            serde_json::to_string(&response.degraded_states).unwrap_or_else(|_| "[]".to_string())
+        ));
+    }
     if let Some(policy_checksum) = response.policy_checksum.as_deref() {
         lines.push(format!("policy_checksum: {policy_checksum}"));
     }
@@ -10587,7 +10931,7 @@ mod tests {
         verify_provider_payment_target_registration_signature,
     };
     use openagents_spark::PaymentSummary;
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -11443,6 +11787,94 @@ mod tests {
             status.availability_policy.payout_mode,
             TreasuryPlaceholderPayoutMode::InferenceReady
         );
+    }
+
+    #[test]
+    fn degraded_states_surface_low_liquidity_and_stale_sync() {
+        let mut config = test_treasury_config();
+        config.accepted_work_default_payout_sats = 2_000;
+        config.payout_sats_per_window = 500;
+        config.wallet_status_refresh_seconds = 1;
+        let now_unix_ms = 20_000u64;
+        let mut state = TreasuryState::new(unique_treasury_state_path("degraded-low-liquidity"));
+        state.initialize_runtime_policy(&config, 100);
+        state.wallet_balance_sats = 500;
+        state.wallet_balance_updated_at_unix_ms = Some(1_000);
+        state.last_wallet_sync_at_unix_ms = Some(1_000);
+        state.payout_targets_by_identity.insert(
+            "pubkey-ldk".to_string(),
+            super::RegisteredPayoutTarget {
+                nostr_pubkey_hex: "pubkey-ldk".to_string(),
+                source_session_id: "session-ldk".to_string(),
+                payment_target_kind: "bolt11_invoice".to_string(),
+                payment_target: "lnbcrt1test-target".to_string(),
+                payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
+                pylon_payment_target_version: Some("pylon-v0.2.0".to_string()),
+                spark_address: String::new(),
+                bitcoin_address: None,
+                registered_at_unix_ms: 1_000,
+                last_verified_at_unix_ms: 1_000,
+            },
+        );
+
+        let status = state.status_response(&config, now_unix_ms);
+        let codes = status
+            .degraded_states
+            .iter()
+            .map(|state| state.code.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert!(codes.contains("low_outbound_liquidity"));
+        assert!(codes.contains("low_inbound_liquidity"));
+        assert!(codes.contains("stale_wallet_sync"));
+    }
+
+    #[test]
+    fn degraded_states_map_ldk_route_and_balance_failures() {
+        let config = test_treasury_config();
+        let now_unix_ms = 50_000u64;
+        let mut state = TreasuryState::new(unique_treasury_state_path("degraded-route-fixture"));
+        state.initialize_runtime_policy(&config, 100);
+        state.wallet_balance_sats = 10_000;
+        state.wallet_balance_updated_at_unix_ms = Some(now_unix_ms);
+        state.last_wallet_sync_at_unix_ms = Some(now_unix_ms);
+        let metadata = BTreeMap::from([("command".to_string(), "treasury.payInvoice".to_string())]);
+        state.record_treasury_admin_operation(
+            "treasury.payInvoice",
+            "no-route-fixture",
+            metadata.clone(),
+            Some(12_000),
+            "bolt11_invoice",
+            Some("target-hash-a".to_string()),
+            TreasuryOperationStatus::Failed,
+            None,
+            Some("ldk_server_client_error:no_route:route not found".to_string()),
+            Some("payment_failed".to_string()),
+            now_unix_ms.saturating_sub(100),
+        );
+        state.record_treasury_admin_operation(
+            "treasury.payInvoice",
+            "insufficient-fixture",
+            metadata,
+            Some(21_000),
+            "bolt11_invoice",
+            Some("target-hash-b".to_string()),
+            TreasuryOperationStatus::Failed,
+            None,
+            Some("ldk_server_client_error:insufficient_balance:not enough balance".to_string()),
+            Some("payment_failed".to_string()),
+            now_unix_ms.saturating_sub(100),
+        );
+
+        let status = state.status_response(&config, now_unix_ms);
+        let codes = status
+            .degraded_states
+            .iter()
+            .map(|state| state.code.as_str())
+            .collect::<BTreeSet<_>>();
+
+        assert!(codes.contains("no_route"));
+        assert!(codes.contains("insufficient_channel_balance"));
     }
 
     #[test]

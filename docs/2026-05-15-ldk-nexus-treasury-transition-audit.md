@@ -1684,6 +1684,20 @@ Out of scope:
 
 - Do not implement public visualization here.
 
+Implementation note:
+
+- `nexus-control` now exposes typed `degraded_states` in treasury status/public
+  stats. The states cover low inbound/outbound liquidity, stale wallet sync,
+  stale event subscriber hints, stale gossip/RGS hints, rising LDK payment
+  failures, no-route failures, insufficient-balance failures, and existing
+  continuity alerts in the same operator-safe shape.
+- The first projection source is Nexus treasury state and operation rows:
+  wallet balance/freshness, registered LDK-compatible payout targets, LDK admin
+  channel-operation rows, and recent failed LDK payment/admin operations.
+  LDK-12 is the follow-on for dedicated read-only projection endpoints.
+- No raw invoices, provider API keys, seeds, private channel state, or raw
+  payment ids are emitted in degraded-state payloads.
+
 #### LDK-12 — Publish read-only Nexus projection endpoints
 
 Target repo: `OpenAgentsInc/openagents`

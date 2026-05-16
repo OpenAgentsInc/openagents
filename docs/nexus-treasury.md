@@ -250,6 +250,51 @@ confirming the payout and refreshing public stats immediately. The synthetic
 LDK payment timestamp must be current; a zero timestamp is treated as ancient
 wallet history and can be retention-pruned.
 
+## LDK Degraded States
+
+Nexus now projects typed LDK degraded states beside the older continuity-alert
+receipt flow. These states are designed for operator dashboards, admin chat
+tools, and read-only API projections. They are actionable, but they do not
+expose invoices, payment ids, API keys, seeds, or private channel state.
+
+The current degraded-state codes are:
+
+- `low_outbound_liquidity`: wallet balance is below the active payout reserve
+  threshold while there is payout or availability work that may need funds.
+- `low_inbound_liquidity`: LDK-compatible Pylon payout targets exist, but Nexus
+  has no projected open or splice-in channel capacity for those targets.
+- `stale_wallet_sync`: the last wallet activity/sync timestamp exceeds the
+  configured wallet snapshot freshness threshold, or the wallet has not synced
+  yet.
+- `stale_event_subscriber`: LDK operation metadata indicates that event
+  subscription visibility is stale.
+- `stale_gossip`: LDK operation metadata indicates stale gossip/RGS or routing
+  graph freshness.
+- `rising_failed_payment_count`: recent LDK payment failures in the operation
+  log cross the bounded alert threshold.
+- `no_route`: a recent LDK payment/admin operation failed with no route.
+- `insufficient_channel_balance`: a recent LDK operation failed because channel
+  or wallet balance was insufficient.
+- `continuity_*`: existing payout continuity alerts projected into the same
+  read-model shape.
+
+Each degraded state includes `code`, `severity`, `public_reason`,
+`operator_action`, `source`, `observed_at_unix_ms`, optional
+`started_at_unix_ms`, optional `metric_value`, and optional `threshold`.
+
+These states are available in:
+
+- `GET /v1/treasury/status` as `degraded_states`
+- `GET /api/treasury/status` as `degraded_states`
+- `cargo run -p nexus-control -- treasury status`
+- admin chat/API tools that call `treasury.status`
+
+The LDK-11 implementation uses local Nexus operation rows as the initial
+projection source for route failures, insufficient-balance failures, and admin
+channel operations. LDK-12 extends that into dedicated read-only projection
+endpoints for channel, payment, payout, peer, liquidity-band, and degraded-state
+visualization.
+
 ## Local LDK Proof Harness
 
 Before live LDK Server wiring or mainnet funds, use the local proof harness as
