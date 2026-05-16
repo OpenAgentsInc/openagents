@@ -2463,6 +2463,39 @@ fn operation_rail_for_provider(provider: TreasuryLightningProviderKind) -> &'sta
     }
 }
 
+fn payout_target_kind_for_payment_request(payment_request: &str) -> &'static str {
+    let target = payment_request.trim().to_ascii_lowercase();
+    if target.starts_with("lno") {
+        "bolt12_offer"
+    } else if target.starts_with("lnurl") {
+        "lnurl_pay"
+    } else if target.starts_with("lnbc")
+        || target.starts_with("lntb")
+        || target.starts_with("lnbcrt")
+        || target.starts_with("lntbs")
+    {
+        "bolt11_invoice"
+    } else if target.starts_with("spark") {
+        "spark_address"
+    } else if target.contains('@') {
+        "bip353_name"
+    } else {
+        "unknown"
+    }
+}
+
+fn payout_rail_for_payment_request(payment_request: &str) -> &'static str {
+    match payout_target_kind_for_payment_request(payment_request) {
+        "spark_address" => "spark",
+        "unknown" => "unknown",
+        _ => "ldk",
+    }
+}
+
+fn payout_dispatch_idempotency_key(payout_key: &str) -> String {
+    format!("payout:{payout_key}")
+}
+
 fn operation_status_for_payment_status(status: &str) -> TreasuryOperationStatus {
     let lowered = status.trim().to_ascii_lowercase();
     if matches!(
@@ -2492,6 +2525,20 @@ fn payout_dispatch_operation_from_record(
         config.lightning_provider.provider.as_str().to_string(),
     );
     rail_metadata.insert(
+        "payment_target_kind".to_string(),
+        payout_target_kind_for_payment_request(record.payout_target.as_str()).to_string(),
+    );
+    if !record.payout_target.trim().is_empty() {
+        rail_metadata.insert(
+            "payment_target_hash".to_string(),
+            treasury_hash(record.payout_target.as_str()),
+        );
+    }
+    rail_metadata.insert(
+        "idempotency_key".to_string(),
+        payout_dispatch_idempotency_key(record.payout_key.as_str()),
+    );
+    rail_metadata.insert(
         "payout_class".to_string(),
         record
             .classification
@@ -2510,10 +2557,11 @@ fn payout_dispatch_operation_from_record(
         ),
         kind: TreasuryOperationKind::OutboundPayoutDispatch,
         request_id: Some(record.payout_key.clone()),
-        rail: operation_rail_for_provider(config.lightning_provider.provider).to_string(),
+        rail: payout_rail_for_payment_request(record.payout_target.as_str()).to_string(),
         rail_metadata,
         amount_msat: operation_amount_msat(record.amount_sats),
-        target_kind: "payout_target".to_string(),
+        target_kind: payout_target_kind_for_payment_request(record.payout_target.as_str())
+            .to_string(),
         target_hash: (!record.payout_target.trim().is_empty())
             .then(|| treasury_hash(record.payout_target.as_str())),
         beneficiary: Some(record.nostr_pubkey_hex.clone()),
@@ -2556,6 +2604,7 @@ pub enum TreasuryDispatchOutcome {
     Dispatched {
         payout_key: String,
         payment_id: String,
+        terminal_event_state: Option<String>,
     },
     Failed {
         payout_key: String,
@@ -6088,10 +6137,11 @@ impl TreasuryState {
             if *claimed_for_class >= claim_limit {
                 continue;
             }
-            if record.amount_sats
-                > self
-                    .wallet_balance_sats
-                    .saturating_sub(*reserved_wallet_sats)
+            if config.lightning_provider.provider != TreasuryLightningProviderKind::Ldk
+                && record.amount_sats
+                    > self
+                        .wallet_balance_sats
+                        .saturating_sub(*reserved_wallet_sats)
             {
                 if record.reason.as_deref() != Some("wallet_balance_insufficient") {
                     record.reason = Some("wallet_balance_insufficient".to_string());
@@ -6483,7 +6533,11 @@ impl TreasuryState {
             TreasuryDispatchOutcome::Dispatched {
                 payout_key,
                 payment_id,
+                terminal_event_state,
             } => {
+                let terminal_event_state = terminal_event_state
+                    .filter(|state| !state.trim().is_empty())
+                    .unwrap_or_else(|| "dispatched".to_string());
                 self.note_wallet_activity(now_unix_ms);
                 self.last_dispatch_at_unix_ms = Some(
                     self.last_dispatch_at_unix_ms
@@ -6497,7 +6551,11 @@ impl TreasuryState {
                     record.updated_at_unix_ms = now_unix_ms;
                     if !record.dispatch_receipt_recorded {
                         record.dispatch_receipt_recorded = true;
-                        receipt_events.push(dispatched_payout_receipt(record, payment_id.as_str()));
+                        receipt_events.push(dispatched_payout_receipt(
+                            record,
+                            payment_id.as_str(),
+                            terminal_event_state.as_str(),
+                        ));
                     }
                 }
                 self.update_payout_operation_status(
@@ -6505,7 +6563,7 @@ impl TreasuryState {
                     TreasuryOperationStatus::Pending,
                     Some(treasury_hash(payment_id.as_str())),
                     None,
-                    Some("dispatched".to_string()),
+                    Some(terminal_event_state),
                     now_unix_ms,
                 );
                 self.payout_key_by_payment_id.insert(payment_id, payout_key);
@@ -6666,7 +6724,11 @@ impl TreasuryState {
             if recovered_orphan && !record.dispatch_receipt_recorded {
                 record.dispatch_receipt_recorded = true;
                 persist_needed = true;
-                receipt_events.push(dispatched_payout_receipt(record, payment.id.as_str()));
+                receipt_events.push(dispatched_payout_receipt(
+                    record,
+                    payment.id.as_str(),
+                    payment.status.as_str(),
+                ));
             }
             if record.updated_at_unix_ms != payment_updated_at_unix_ms {
                 record.updated_at_unix_ms = payment_updated_at_unix_ms;
@@ -7168,7 +7230,7 @@ fn simulated_payment_summary(plan: &TreasuryDispatchPlan, payment_id: &str) -> P
         amount_sats: plan.amount_sats,
         fees_sats: 0,
         timestamp: now_unix_ms() / 1_000,
-        method: "spark-simulated".to_string(),
+        method: "ldk-simulated".to_string(),
         description: Some(format!("simulated payout for {}", plan.payout_key)),
         invoice: Some(plan.payment_request.clone()),
         destination_pubkey: None,
@@ -7212,6 +7274,7 @@ fn dispatch_with_simulated_wallet(
         outcomes.push(TreasuryDispatchOutcome::Dispatched {
             payout_key: plan.payout_key.clone(),
             payment_id,
+            terminal_event_state: Some("completed".to_string()),
         });
     }
     TreasuryDispatchBatchResult {
@@ -7310,13 +7373,18 @@ async fn dispatch_with_ldk_provider(
     let provider = LdkTreasuryProvider::new(config.lightning_provider.ldk.clone());
     let mut outcomes = Vec::with_capacity(plans.len());
     let mut payments = Vec::new();
+    let dispatch_timestamp_seconds = now_unix_ms() / 1_000;
     for plan in plans {
         match provider
             .dispatch_payout(TreasuryProviderPayoutRequest {
                 payout_key: plan.payout_key.clone(),
+                payment_target_kind: payout_target_kind_for_payment_request(
+                    plan.payment_request.as_str(),
+                )
+                .to_string(),
                 payment_request: plan.payment_request.clone(),
                 amount_sats: plan.amount_sats,
-                idempotency_key: plan.payout_key.clone(),
+                idempotency_key: payout_dispatch_idempotency_key(plan.payout_key.as_str()),
             })
             .await
         {
@@ -7327,7 +7395,7 @@ async fn dispatch_with_ldk_provider(
                     status: "completed".to_string(),
                     amount_sats: plan.amount_sats,
                     fees_sats: 0,
-                    timestamp: 0,
+                    timestamp: dispatch_timestamp_seconds,
                     method: "ldk".to_string(),
                     description: None,
                     invoice: Some(plan.payment_request.clone()),
@@ -7340,6 +7408,7 @@ async fn dispatch_with_ldk_provider(
                 outcomes.push(TreasuryDispatchOutcome::Dispatched {
                     payout_key: plan.payout_key.clone(),
                     payment_id: receipt.payment_id,
+                    terminal_event_state: receipt.terminal_event_state,
                 });
             }
             Err(error) => outcomes.push(TreasuryDispatchOutcome::Failed {
@@ -7762,6 +7831,7 @@ where
         Ok(Ok(payment_id)) => TreasuryDispatchOutcome::Dispatched {
             payout_key: plan.payout_key,
             payment_id,
+            terminal_event_state: Some("submitted".to_string()),
         },
         Ok(Err(error)) => TreasuryDispatchOutcome::Failed {
             payout_key: plan.payout_key,
@@ -9339,9 +9409,18 @@ pub fn verify_payout_target_registration_signature(
 fn dispatched_payout_receipt(
     record: &TreasuryPayoutRecord,
     payment_id: &str,
+    terminal_event_state: &str,
 ) -> TreasuryReceiptEvent {
     let mut attributes = payout_receipt_attributes(record);
     attributes.insert("payment_id".to_string(), payment_id.to_string());
+    attributes.insert(
+        "provider_payment_id_hash".to_string(),
+        treasury_hash(payment_id),
+    );
+    attributes.insert(
+        "terminal_event_state".to_string(),
+        terminal_event_state.to_string(),
+    );
     TreasuryReceiptEvent {
         receipt_type: "treasury.payout.dispatched",
         context: AuthorityReceiptContext {
@@ -9360,6 +9439,11 @@ fn confirmed_payout_receipt(
 ) -> TreasuryReceiptEvent {
     let mut attributes = payout_receipt_attributes(record);
     attributes.insert("payment_id".to_string(), payment_id.to_string());
+    attributes.insert(
+        "provider_payment_id_hash".to_string(),
+        treasury_hash(payment_id),
+    );
+    attributes.insert("terminal_event_state".to_string(), "confirmed".to_string());
     TreasuryReceiptEvent {
         receipt_type: "treasury.payout.confirmed",
         context: AuthorityReceiptContext {
@@ -9466,6 +9550,25 @@ fn payout_receipt_attributes(record: &TreasuryPayoutRecord) -> BTreeMap<String, 
             "payout_target".to_string(),
             truncate_target(record.payout_target.as_str()),
         );
+        attributes.insert(
+            "payout_target_kind".to_string(),
+            payout_target_kind_for_payment_request(record.payout_target.as_str()).to_string(),
+        );
+        attributes.insert(
+            "payout_target_hash".to_string(),
+            treasury_hash(record.payout_target.as_str()),
+        );
+        attributes.insert(
+            "payout_rail".to_string(),
+            payout_rail_for_payment_request(record.payout_target.as_str()).to_string(),
+        );
+    }
+    attributes.insert(
+        "payout_idempotency_key".to_string(),
+        payout_dispatch_idempotency_key(record.payout_key.as_str()),
+    );
+    if let Some(reason) = record.reason.as_deref() {
+        attributes.insert("degraded_reason".to_string(), reason.to_string());
     }
     if let Some(payout_basis) = record.classification.payout_basis.as_deref() {
         attributes.insert("payout_basis".to_string(), payout_basis.to_owned());
@@ -10347,6 +10450,7 @@ fn dispatch_with_test_hooks(
                 Ok(payment_id) => outcomes.push(TreasuryDispatchOutcome::Dispatched {
                     payout_key: plan.payout_key.clone(),
                     payment_id,
+                    terminal_event_state: Some("submitted".to_string()),
                 }),
                 Err(error) => outcomes.push(TreasuryDispatchOutcome::Failed {
                     payout_key: plan.payout_key.clone(),
@@ -10656,6 +10760,57 @@ mod tests {
             counted_in_paid_total: status == "confirmed",
             classification: TreasuryPayoutClassification::default(),
         }
+    }
+
+    #[test]
+    fn ldk_dispatch_receipt_records_target_rail_idempotency_and_terminal_state() {
+        let mut state = TreasuryState::default();
+        let payout_key = "accepted_work:closeout-001:contrib-001:pubkey-a";
+        let mut record = test_payout_record(payout_key, "dispatching");
+        record.payout_target = "lno1pylonalice".to_string();
+        record.payment_id = None;
+        record.dispatch_receipt_recorded = false;
+        state
+            .payout_records_by_key
+            .insert(payout_key.to_string(), record);
+
+        let receipts = state.apply_dispatch_outcome(
+            TreasuryDispatchOutcome::Dispatched {
+                payout_key: payout_key.to_string(),
+                payment_id: "ldk-payment-001".to_string(),
+                terminal_event_state: Some("completed".to_string()),
+            },
+            123,
+        );
+
+        assert_eq!(receipts.len(), 1);
+        let attributes = &receipts[0].context.attributes;
+        assert_eq!(
+            attributes.get("payout_target_kind").map(String::as_str),
+            Some("bolt12_offer")
+        );
+        assert_eq!(
+            attributes.get("payout_rail").map(String::as_str),
+            Some("ldk")
+        );
+        assert_eq!(
+            attributes.get("payout_idempotency_key").map(String::as_str),
+            Some("payout:accepted_work:closeout-001:contrib-001:pubkey-a")
+        );
+        assert_eq!(
+            attributes.get("terminal_event_state").map(String::as_str),
+            Some("completed")
+        );
+        assert!(
+            attributes
+                .get("payout_target_hash")
+                .is_some_and(|hash| hash.starts_with("sha256:"))
+        );
+        assert!(
+            attributes
+                .get("provider_payment_id_hash")
+                .is_some_and(|hash| hash.starts_with("sha256:"))
+        );
     }
 
     #[test]
@@ -13236,6 +13391,7 @@ mod tests {
             TreasuryDispatchOutcome::Dispatched {
                 payout_key: "accepted_work:closeout-001:contrib-001:pubkey-replay".to_string(),
                 payment_id: "payment-replay-001".to_string(),
+                terminal_event_state: Some("completed".to_string()),
             },
             now_unix_ms.saturating_add(2),
         );
@@ -13975,6 +14131,7 @@ mod tests {
             TreasuryDispatchOutcome::Dispatched {
                 payout_key: "window-a:pubkey-a".to_string(),
                 payment_id: "payment-send-001".to_string(),
+                terminal_event_state: Some("completed".to_string()),
             },
             now_unix_ms,
         );

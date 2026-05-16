@@ -162,6 +162,49 @@ Normal Pylon startup does not create Spark destinations; that write path is
 available only when an operator explicitly sets
 `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`.
 
+## LDK Accepted-Work Payout Dispatch
+
+Accepted-work payout dispatch now uses the LDK treasury provider for upgraded
+Pylon v0.2 workers. A worker must have an LDK-compatible payout target before
+Nexus assigns new paid work. Valid target kinds are `bolt12_offer`,
+`bolt11_invoice`, `bip353_name`, and `lnurl_pay`; BOLT12 remains the preferred
+durable target and BOLT11 should be treated as a per-payment compatibility
+target.
+
+Spark-only registrations are retained for historical audit and final-drain
+recovery, but they are stale targets for normal accepted-work dispatch. Nexus
+does not spend to `spark_address` through the LDK provider and records
+`legacy_spark_target_not_ldk_compatible` as the degraded reason if a stale
+target reaches the provider boundary.
+
+Dispatch uses a stable idempotency key of `payout:<payout_key>` for each payout
+send. LDK local proof mode returns a deterministic `ldk-local-payment-*` id for
+that key, and hosted LDK Server must preserve the same idempotency contract so
+retries cannot double-pay.
+
+Accepted-work payout receipts and provider-neutral operation rows now include:
+
+- raw payment id in receipt attributes, plus `provider_payment_id_hash`
+- `payout_target_kind`, `payout_target_hash`, and `payout_rail`
+- `payout_idempotency_key`
+- `terminal_event_state`, such as `submitted`, `completed`, or `confirmed`
+- `degraded_reason` for failed or blocked dispatches
+
+Typed LDK provider errors used by payout dispatch are:
+
+- `no_route`
+- `insufficient_balance`
+- `stale_target`
+- `provider_unavailable`
+- `invalid_request`
+- `failed`
+
+When the local LDK proof provider reports a completed send, Nexus applies the
+dispatch outcome and the returned wallet/payment snapshot in the same cycle,
+confirming the payout and refreshing public stats immediately. The synthetic
+LDK payment timestamp must be current; a zero timestamp is treated as ancient
+wallet history and can be retention-pruned.
+
 ## Local LDK Proof Harness
 
 Before live LDK Server wiring or mainnet funds, use the local proof harness as

@@ -1547,6 +1547,27 @@ Verification:
 - Idempotency test.
 - Run `git diff --check`.
 
+Implementation status, 2026-05-16:
+
+- Accepted-work payout dispatch now routes through the LDK treasury provider
+  when `NEXUS_TREASURY_PROVIDER=ldk`.
+- Queued accepted-work records require an LDK-compatible Pylon v0.2 target:
+  `bolt12_offer`, `bolt11_invoice`, `bip353_name`, or `lnurl_pay`. Spark-only
+  targets are stale and remain ineligible for new paid work.
+- Dispatch plans send the target kind and the stable
+  `payout:<payout_key>` idempotency key to the provider. The local LDK harness
+  returns deterministic `ldk-local-payment-*` ids from that key, and hosted LDK
+  Server must preserve the same no-double-pay contract.
+- Payout dispatch operations and receipts now store the target kind, hashed
+  target, rail, idempotency key, payment id, hashed provider payment id,
+  terminal event state, payout class, and degraded reason.
+- The LDK provider maps payout failures into typed Nexus errors:
+  `no_route`, `insufficient_balance`, `stale_target`,
+  `provider_unavailable`, `invalid_request`, and `failed`.
+- Dispatch application now refreshes the public stats and treasury status
+  caches immediately after applying outcomes, so `/api/stats` reflects
+  confirmed accepted-work payouts in the same cycle.
+
 Out of scope:
 
 - Do not add channel open/close admin tools here.

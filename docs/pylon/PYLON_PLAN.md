@@ -178,6 +178,9 @@ Current implementation status:
   or recovery work.
 - Nexus records old Spark-only targets for audit, but marks them ineligible for
   new paid work with `payout_target_requires_ldk_v0_2`.
+- Nexus accepted-work payout dispatch now uses LDK-compatible Pylon v0.2
+  targets and records the exact rail, target hash, idempotency key, payment id,
+  and terminal event state in the payout receipt.
 
 Pylon must remain a provider connector. It should not own Nexus treasury keys,
 run the hosted treasury LDK node, or become a browser wallet/runtime bridge.

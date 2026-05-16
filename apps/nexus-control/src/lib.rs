@@ -23886,6 +23886,8 @@ async fn apply_treasury_dispatch_batch(state: &AppState, batch: TreasuryDispatch
             .refresh_public_snapshot_in_memory(&state.config.treasury, now);
         record_treasury_receipt_events(&mut store, receipt_events, now);
     }
+    let _ = force_refresh_public_stats_cache(state, now);
+    let _ = force_refresh_treasury_status_cache(state, now);
 }
 
 fn record_treasury_receipt_events(
@@ -33678,6 +33680,7 @@ mod tests {
         let mut config = test_config()?;
         config.treasury.enabled = true;
         config.treasury.payout_sats_per_window = 120;
+        config.treasury.accepted_work_default_payout_sats = 120;
         let state = build_app_state(config);
         {
             let mut store = state.store.write().expect("control store");
@@ -51209,6 +51212,7 @@ mod tests {
         let mut config = test_config()?;
         config.treasury.enabled = true;
         config.treasury.payout_sats_per_window = 120;
+        config.treasury.accepted_work_default_payout_sats = 120;
         let state = build_app_state(config);
         let app = build_api_router_with_state(state.clone());
         let created_at_ms = now_unix_ms().saturating_sub(10_000);
@@ -51236,10 +51240,10 @@ mod tests {
                 RegisteredPayoutTarget {
                     nostr_pubkey_hex: "node-tier2-replay".to_string(),
                     source_session_id: "session-tier2-replay".to_string(),
-                    payment_target_kind: String::new(),
-                    payment_target: String::new(),
-                    payment_target_capabilities: Vec::new(),
-                    pylon_payment_target_version: None,
+                    payment_target_kind: "bolt12_offer".to_string(),
+                    payment_target: "lno1node-tier2-replay".to_string(),
+                    payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
+                    pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
                     spark_address: "spark:node-tier2-replay".to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: created_at_ms + 50,
@@ -51543,7 +51547,7 @@ mod tests {
             .lock()
             .expect("treasury hook guard");
         set_test_wallet_send_hook(Some(Arc::new(|target, amount_sats| {
-            assert_eq!(target, "spark:node-tier2-replay");
+            assert_eq!(target, "lno1node-tier2-replay");
             assert_eq!(amount_sats, 120);
             Ok("payment-send-weak-validation-001".to_string())
         })));
@@ -51558,8 +51562,8 @@ mod tests {
                     record.classification.accepted_outcome_id.as_deref()
                         == Some("accepted.training_window.window.weak.validation.0001")
                 })
-                .expect("dispatched accepted-work payout");
-            assert_eq!(payout.status, "dispatched");
+                .expect("confirmed accepted-work payout");
+            assert_eq!(payout.status, "confirmed");
             let treasury_stats = store
                 .treasury
                 .public_stats(&state.config.treasury, now_unix_ms());
@@ -51600,6 +51604,7 @@ mod tests {
         let mut config = test_config()?;
         config.treasury.enabled = true;
         config.treasury.payout_sats_per_window = 240;
+        config.treasury.accepted_work_default_payout_sats = 240;
         let state = build_app_state(config);
         let app = build_api_router_with_state(state.clone());
         let created_at_ms = now_unix_ms().saturating_sub(10_000);
@@ -51627,10 +51632,10 @@ mod tests {
                 RegisteredPayoutTarget {
                     nostr_pubkey_hex: "node-tier3-island".to_string(),
                     source_session_id: "session-tier3-island".to_string(),
-                    payment_target_kind: String::new(),
-                    payment_target: String::new(),
-                    payment_target_capabilities: Vec::new(),
-                    pylon_payment_target_version: None,
+                    payment_target_kind: "bolt12_offer".to_string(),
+                    payment_target: "lno1node-tier3-island".to_string(),
+                    payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
+                    pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
                     spark_address: "spark:node-tier3-island".to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: created_at_ms + 50,
@@ -51943,7 +51948,7 @@ mod tests {
             .lock()
             .expect("treasury hook guard");
         set_test_wallet_send_hook(Some(Arc::new(|target, amount_sats| {
-            assert_eq!(target, "spark:node-tier3-island");
+            assert_eq!(target, "lno1node-tier3-island");
             assert_eq!(amount_sats, 240);
             Ok("payment-send-strong-full-island-001".to_string())
         })));
@@ -51958,8 +51963,8 @@ mod tests {
                     record.classification.accepted_outcome_id.as_deref()
                         == Some("accepted.training_window.window.strong.full_island.0001")
                 })
-                .expect("dispatched strong-lane accepted-work payout");
-            assert_eq!(payout.status, "dispatched");
+                .expect("confirmed strong-lane accepted-work payout");
+            assert_eq!(payout.status, "confirmed");
             let treasury_stats = store
                 .treasury
                 .public_stats(&state.config.treasury, now_unix_ms());
@@ -52482,10 +52487,10 @@ mod tests {
                     RegisteredPayoutTarget {
                         nostr_pubkey_hex: node_pubkey_hex.clone(),
                         source_session_id: format!("session-{node_pubkey_hex}"),
-                        payment_target_kind: String::new(),
-                        payment_target: String::new(),
-                        payment_target_capabilities: Vec::new(),
-                        pylon_payment_target_version: None,
+                        payment_target_kind: "bolt12_offer".to_string(),
+                        payment_target: format!("lno1{node_pubkey_hex}"),
+                        payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
+                        pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
                         spark_address: format!("spark:{node_pubkey_hex}"),
                         bitcoin_address: None,
                         registered_at_unix_ms: created_at_ms + ordinal as u64 * 10 + 5,

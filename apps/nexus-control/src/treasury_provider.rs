@@ -873,6 +873,7 @@ pub struct TreasuryProviderFundingTarget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreasuryProviderPayoutRequest {
     pub payout_key: String,
+    pub payment_target_kind: String,
     pub payment_request: String,
     pub amount_sats: u64,
     pub idempotency_key: String,
@@ -881,6 +882,7 @@ pub struct TreasuryProviderPayoutRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreasuryProviderPayoutReceipt {
     pub payment_id: String,
+    pub terminal_event_state: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -888,6 +890,10 @@ pub enum TreasuryProviderErrorKind {
     Disabled,
     InvalidConfig,
     InvalidRequest,
+    NoRoute,
+    InsufficientBalance,
+    StaleTarget,
+    ProviderUnavailable,
     Unavailable,
     Failed,
 }
@@ -898,6 +904,10 @@ impl TreasuryProviderErrorKind {
             Self::Disabled => "disabled",
             Self::InvalidConfig => "invalid_config",
             Self::InvalidRequest => "invalid_request",
+            Self::NoRoute => "no_route",
+            Self::InsufficientBalance => "insufficient_balance",
+            Self::StaleTarget => "stale_target",
+            Self::ProviderUnavailable => "provider_unavailable",
             Self::Unavailable => "unavailable",
             Self::Failed => "failed",
         }
@@ -971,11 +981,13 @@ impl LdkTreasuryProvider {
             LdkServerClientErrorKind::InvalidConfig => TreasuryProviderErrorKind::InvalidConfig,
             LdkServerClientErrorKind::InvalidRequest => TreasuryProviderErrorKind::InvalidRequest,
             LdkServerClientErrorKind::Unavailable | LdkServerClientErrorKind::StaleEventStream => {
-                TreasuryProviderErrorKind::Unavailable
+                TreasuryProviderErrorKind::ProviderUnavailable
+            }
+            LdkServerClientErrorKind::NoRoute => TreasuryProviderErrorKind::NoRoute,
+            LdkServerClientErrorKind::InsufficientBalance => {
+                TreasuryProviderErrorKind::InsufficientBalance
             }
             LdkServerClientErrorKind::Auth
-            | LdkServerClientErrorKind::NoRoute
-            | LdkServerClientErrorKind::InsufficientBalance
             | LdkServerClientErrorKind::MalformedResponse
             | LdkServerClientErrorKind::PaymentFailed
             | LdkServerClientErrorKind::Internal => TreasuryProviderErrorKind::Failed,
@@ -986,6 +998,38 @@ impl LdkTreasuryProvider {
             error.normalized_reason(),
         )
     }
+}
+
+fn infer_ldk_payment_target_kind(explicit_kind: &str, payment_request: &str) -> String {
+    let explicit_kind = explicit_kind.trim();
+    if !explicit_kind.is_empty() {
+        return explicit_kind.to_ascii_lowercase();
+    }
+    let target = payment_request.trim().to_ascii_lowercase();
+    if target.starts_with("lno") {
+        "bolt12_offer".to_string()
+    } else if target.starts_with("lnurl") {
+        "lnurl_pay".to_string()
+    } else if target.starts_with("lnbc")
+        || target.starts_with("lntb")
+        || target.starts_with("lnbcrt")
+        || target.starts_with("lntbs")
+    {
+        "bolt11_invoice".to_string()
+    } else if target.starts_with("spark") {
+        "spark_address".to_string()
+    } else if target.contains('@') {
+        "bip353_name".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
+fn is_ldk_payout_target_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "bolt12_offer" | "bolt11_invoice" | "bip353_name" | "lnurl_pay"
+    )
 }
 
 impl TreasuryLightningProvider for LdkTreasuryProvider {
@@ -1059,8 +1103,49 @@ impl TreasuryLightningProvider for LdkTreasuryProvider {
                     "payment_request_missing",
                 ));
             }
+            let payment_target_kind = infer_ldk_payment_target_kind(
+                request.payment_target_kind.as_str(),
+                request.payment_request.as_str(),
+            );
+            if payment_target_kind == "spark_address" {
+                return Err(TreasuryProviderError::new(
+                    TreasuryLightningProviderKind::Ldk,
+                    TreasuryProviderErrorKind::StaleTarget,
+                    "legacy_spark_target_not_ldk_compatible",
+                ));
+            }
+            if !is_ldk_payout_target_kind(payment_target_kind.as_str()) {
+                return Err(TreasuryProviderError::new(
+                    TreasuryLightningProviderKind::Ldk,
+                    TreasuryProviderErrorKind::InvalidRequest,
+                    format!("unsupported_ldk_payment_target_kind:{payment_target_kind}"),
+                ));
+            }
+            let lower_target = request.payment_request.to_ascii_lowercase();
+            if lower_target.contains("no-route-fixture") {
+                return Err(TreasuryProviderError::new(
+                    TreasuryLightningProviderKind::Ldk,
+                    TreasuryProviderErrorKind::NoRoute,
+                    "local_harness_no_route_fixture",
+                ));
+            }
+            if lower_target.contains("insufficient-balance-fixture") {
+                return Err(TreasuryProviderError::new(
+                    TreasuryLightningProviderKind::Ldk,
+                    TreasuryProviderErrorKind::InsufficientBalance,
+                    "local_harness_insufficient_balance_fixture",
+                ));
+            }
+            if lower_target.contains("provider-unavailable-fixture") {
+                return Err(TreasuryProviderError::new(
+                    TreasuryLightningProviderKind::Ldk,
+                    TreasuryProviderErrorKind::ProviderUnavailable,
+                    "local_harness_provider_unavailable_fixture",
+                ));
+            }
             Ok(TreasuryProviderPayoutReceipt {
                 payment_id: format!("ldk-local-payment-{}", short_hash(&request.idempotency_key)),
+                terminal_event_state: Some("completed".to_string()),
             })
         })
     }
@@ -1177,12 +1262,14 @@ mod tests {
 
         let payout = TreasuryProviderPayoutRequest {
             payout_key: "payout-a".to_string(),
+            payment_target_kind: "bolt11_invoice".to_string(),
             payment_request: first.bolt11_invoice.expect("bolt11"),
             amount_sats: 21,
             idempotency_key: "payout-idempotency".to_string(),
         };
         let receipt = provider.dispatch_payout(payout).await.expect("dispatch");
         assert!(receipt.payment_id.starts_with("ldk-local-payment-"));
+        assert_eq!(receipt.terminal_event_state.as_deref(), Some("completed"));
     }
 
     #[tokio::test]
@@ -1193,6 +1280,7 @@ mod tests {
         let error = provider
             .dispatch_payout(TreasuryProviderPayoutRequest {
                 payout_key: "payout-a".to_string(),
+                payment_target_kind: "bolt11_invoice".to_string(),
                 payment_request: String::new(),
                 amount_sats: 1,
                 idempotency_key: "payout-idempotency".to_string(),
@@ -1204,6 +1292,51 @@ mod tests {
         assert_eq!(
             error.normalized_reason(),
             "treasury_provider_error:ldk:invalid_request:payment_request_missing"
+        );
+    }
+
+    #[tokio::test]
+    async fn ldk_scaffold_rejects_stale_spark_targets_and_maps_typed_errors() {
+        let provider = LdkTreasuryProvider::new(LdkTreasuryProviderConfig::local_scaffold(
+            PathBuf::from("/tmp/ldk"),
+        ));
+        let stale_target = provider
+            .dispatch_payout(TreasuryProviderPayoutRequest {
+                payout_key: "payout-a".to_string(),
+                payment_target_kind: "spark_address".to_string(),
+                payment_request: "spark:legacy".to_string(),
+                amount_sats: 1,
+                idempotency_key: "payout-idempotency".to_string(),
+            })
+            .await
+            .expect_err("spark target rejected");
+        assert_eq!(stale_target.kind, TreasuryProviderErrorKind::StaleTarget);
+
+        let no_route = provider
+            .dispatch_payout(TreasuryProviderPayoutRequest {
+                payout_key: "payout-b".to_string(),
+                payment_target_kind: "bolt11_invoice".to_string(),
+                payment_request: "lnbcrt1no-route-fixture".to_string(),
+                amount_sats: 1,
+                idempotency_key: "payout-idempotency-b".to_string(),
+            })
+            .await
+            .expect_err("no route fixture rejected");
+        assert_eq!(no_route.kind, TreasuryProviderErrorKind::NoRoute);
+
+        let insufficient = provider
+            .dispatch_payout(TreasuryProviderPayoutRequest {
+                payout_key: "payout-c".to_string(),
+                payment_target_kind: "bolt11_invoice".to_string(),
+                payment_request: "lnbcrt1insufficient-balance-fixture".to_string(),
+                amount_sats: 1,
+                idempotency_key: "payout-idempotency-c".to_string(),
+            })
+            .await
+            .expect_err("insufficient balance fixture rejected");
+        assert_eq!(
+            insufficient.kind,
+            TreasuryProviderErrorKind::InsufficientBalance
         );
     }
 
