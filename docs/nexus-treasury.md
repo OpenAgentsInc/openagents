@@ -34,10 +34,10 @@ HTTP:
 
 `treasury funding-target` now routes through the configured treasury provider.
 With the default `NEXUS_TREASURY_PROVIDER=ldk`, Nexus returns deterministic
-LDK-local scaffolding in tests and is structured for the `ldk-server` client to
-replace that scaffold without changing treasury business logic. Legacy Spark
-funding target creation is disabled unless `NEXUS_SPARK_FINAL_DRAIN_ENABLED` is
-explicitly true.
+LDK Server local-harness funding invoices in tests and is structured for the
+hosted `ldk-server` transport to replace that harness without changing
+treasury business logic. Legacy Spark funding target creation is disabled
+unless `NEXUS_SPARK_FINAL_DRAIN_ENABLED` is explicitly true.
 
 `POST /v1/admin/treasury/refresh` is the operator-safe manual refresh surface.
 It requires the normal Nexus admin bearer token, runs one forced wallet refresh
@@ -59,19 +59,27 @@ curl -fsS -X POST "https://nexus.openagents.com/v1/treasury/funding-target" \
 ```
 
 Only a positive `amount_sats` produces amount-specific invoices. A no-amount
-request is useful for receive targets, not for invoice payment. During LDK-02,
-the default LDK scaffold returns an LDK provider target and a BOLT11-shaped
-local invoice for tests; production LDK Server invoice creation lands in the
-LDK-05/LDK-07 phases. The returned invoice is the payment request to give the
+request is useful for receive targets, not for invoice payment. The default LDK
+provider now routes funding-target creation through the Nexus-side LDK Server
+client boundary. In local proof mode, that client creates a deterministic
+BOLT11 test invoice, stores a local payment id, exposes `GetNodeInfo`,
+`GetBalances`, `Bolt11Receive`, `ListPayments`, `GetPayment`, and
+`SubscribeEvents` behavior, and can reconcile missed events by listing
+payments. Hosted `ldk-server` gRPC becomes active when the private server URL,
+API key path, and TLS certificate path are configured after the deployment
+topology lands. The returned invoice is the payment request to give the
 operator. It is not proof of payment.
 
 Current treasury-provider environment:
 
 - `NEXUS_TREASURY_PROVIDER=ldk` by default.
 - `NEXUS_SPARK_FINAL_DRAIN_ENABLED=false` by default.
-- `NEXUS_LDK_SERVER_URL` for the future private `ldk-server` endpoint.
-- `NEXUS_LDK_API_KEY_PATH` for future LDK Server HMAC credentials.
-- `NEXUS_LDK_TLS_CERT_PATH` for future LDK Server TLS trust material.
+- `NEXUS_LDK_SERVER_URL` for the private `ldk-server` endpoint, in
+  `host:port` form with no scheme.
+- `NEXUS_LDK_API_KEY_PATH` for LDK Server HMAC credentials. Nexus loads the
+  key from disk and must never log the raw value.
+- `NEXUS_LDK_TLS_CERT_PATH` for LDK Server TLS trust material. Nexus loads the
+  PEM and records only a SHA-256 fingerprint/pin for diagnostics.
 - `NEXUS_LDK_STORAGE_DIR=var/nexus-control/ldk` by default.
 - `NEXUS_LDK_NETWORK=regtest|signet|bitcoin`, default `regtest`.
 - `NEXUS_LDK_CHAIN_BACKEND=bitcoind|electrum|esplora`, default `bitcoind`.
@@ -149,8 +157,61 @@ scripts/nexus/ldk-local-proof-harness.sh
 ```
 
 The harness is deterministic and does not require mainnet funds. Production LDK
-Server gRPC/TLS/HMAC calls land in the LDK-05 phase; this harness is the
-machine-checkable local proof surface that those client tests will target.
+Server gRPC/TLS/HMAC deployment lands after the private topology issue; the
+LDK-05 client boundary already validates remote config, loads TLS pins, builds
+HMAC metadata, and normalizes service errors while using this local harness as
+the machine-checkable proof transport.
+
+## LDK Server Client Boundary
+
+`apps/nexus-control/src/treasury_provider.rs` now contains the first Nexus LDK
+Server client boundary. It intentionally has two modes:
+
+- `local_harness`: deterministic local proof transport used by tests and
+  development before hosted LDK Server is deployed.
+- `remote_grpc`: validates `NEXUS_LDK_SERVER_URL`,
+  `NEXUS_LDK_API_KEY_PATH`, and `NEXUS_LDK_TLS_CERT_PATH`, loads HMAC/TLS
+  material, and returns typed `unavailable` errors until the hosted private
+  server topology is installed.
+
+The boundary covers the required receive-side LDK Server surface:
+
+- `GetNodeInfo`
+- `GetBalances`
+- `Bolt11Receive`
+- `ListPayments`
+- `GetPayment`
+- `SubscribeEvents`
+
+Authentication metadata follows the LDK Server client convention:
+
+```text
+HMAC <unix_timestamp_seconds>:<hmac_sha256_hex>
+```
+
+The HMAC input is the big-endian timestamp bytes and the key material is read
+from `NEXUS_LDK_API_KEY_PATH`. Only the resulting metadata string belongs on
+requests; raw API keys, TLS PEMs, seeds, and custody material must not enter
+logs, receipts, or operation rows.
+
+The typed LDK client error classes are:
+
+- `invalid_config`
+- `invalid_request`
+- `auth`
+- `unavailable`
+- `no_route`
+- `insufficient_balance`
+- `stale_event_stream`
+- `malformed_response`
+- `payment_failed`
+- `internal`
+
+`PaymentReceived`, `PaymentSuccessful`, failed-payment, and stale-event stream
+facts project into provider-neutral treasury operation rows. If the event
+stream disconnects or lags, Nexus should reconcile by listing payments and
+projecting any missed terminal states. That behavior must remain intact when
+the hosted gRPC client replaces the local proof transport.
 
 After the payer sends funds, verify the result with `/v1/treasury/status`.
 Treat the invoice as paid only after the status surface shows the receive in

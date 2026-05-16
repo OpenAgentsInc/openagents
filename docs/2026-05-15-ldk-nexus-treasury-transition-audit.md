@@ -1283,6 +1283,22 @@ Acceptance criteria:
 - No raw LDK API key, TLS key, seed, or custody secret is logged.
 - Error states are typed and inspectable.
 
+Implementation note, 2026-05-16:
+
+- `apps/nexus-control/src/treasury_provider.rs` now has the first LDK Server
+  client boundary and routes the default LDK funding target through it.
+- Local proof mode implements `GetNodeInfo`, `GetBalances`, `Bolt11Receive`,
+  `ListPayments`, `GetPayment`, and `SubscribeEvents` with deterministic
+  local-harness state.
+- Remote mode validates the private `host:port` endpoint, loads API key and
+  TLS certificate paths, computes the LDK Server HMAC metadata format, and
+  records only TLS certificate fingerprints. Hosted gRPC activation still
+  belongs to the LDK Server topology/deployment issues.
+- LDK payment/event facts can be projected into provider-neutral treasury
+  operation rows, and missed events can be reconciled from `ListPayments`.
+- Error fixtures cover `unavailable`, `no_route`, `insufficient_balance`,
+  `stale_event_stream`, and `malformed_response`.
+
 Verification:
 
 - Integration tests against LDK-04 harness.
