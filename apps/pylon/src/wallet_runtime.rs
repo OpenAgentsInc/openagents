@@ -1,22 +1,15 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use anyhow::{Context, Result, anyhow, bail};
-use openagents_spark::{
-    Balance as SparkBalance, DepositClaimFeePolicy, Network as SparkNetwork, PaymentSummary,
-    SparkSigner, SparkWallet, WalletConfig,
-};
+use anyhow::{Result, anyhow, bail};
 use serde::Serialize;
 
 use crate::{
     PylonWalletCreditSummary, PylonWalletInvoiceRecord, PylonWalletPaymentRecord,
-    ensure_local_setup, mutate_ledger, now_epoch_ms,
+    ensure_local_setup, load_ledger, mutate_ledger, now_epoch_ms,
 };
 
-// TODO(ldk-v0.2): this Spark credential fallback is retained only for legacy
-// wallet reads and explicit final-drain/recovery operations. New Pylon v0.2
-// payment-target registration should use the LDK settlement path.
-// Release fallback so standalone Pylon boots without requiring shell env injection.
-const DEFAULT_OPENAGENTS_SPARK_API_KEY: &str = "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0=";
+const LDK_EXTERNAL_WALLET_DETAIL: &str =
+    "Pylon no longer opens a local Spark wallet. Configure an LDK payout destination for earnings.";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WalletSubcommand {
@@ -105,35 +98,9 @@ pub struct WalletCreditSummaryReport {
     pub credits: PylonWalletCreditSummary,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum WalletApiKeySource {
-    ConfigEnv,
-    OpenAgentsEnv,
-    BreezEnv,
-    EmbeddedDefault,
-}
-
-impl WalletApiKeySource {
-    fn label(self, config_env: Option<&str>) -> String {
-        match self {
-            Self::ConfigEnv => format!(
-                "env:{}",
-                config_env.unwrap_or("OPENAGENTS_SPARK_API_KEY").trim()
-            ),
-            Self::OpenAgentsEnv => "env:OPENAGENTS_SPARK_API_KEY".to_string(),
-            Self::BreezEnv => "env:BREEZ_API_KEY".to_string(),
-            Self::EmbeddedDefault => "embedded:openagents-default".to_string(),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 struct WalletRuntimeContext {
     runtime: WalletRuntimeSurface,
-    network: SparkNetwork,
-    identity_path: PathBuf,
-    storage_dir: PathBuf,
-    api_key: Option<String>,
 }
 
 pub async fn run_wallet_command(config_path: &Path, command: &WalletSubcommand) -> Result<String> {
@@ -356,96 +323,44 @@ async fn load_wallet_status_report_internal(
     include_recent_payments: bool,
 ) -> Result<WalletStatusReport> {
     let context = prepare_wallet_context(config_path)?;
-    let runtime = context.runtime.clone();
-    let result: Result<WalletStatusReport> = async {
-        let wallet = open_wallet(&context).await?;
-        let result: Result<_> = async {
-            let network_status = wallet.network_status().await;
-            let balance = wallet
-                .get_balance()
-                .await
-                .context("failed to fetch Spark balance")?;
-            let payments = if include_recent_payments {
-                wallet
-                    .list_payments(Some(10), None)
-                    .await
-                    .context("failed to list Spark payments")?
-            } else {
-                Vec::new()
-            };
-            Ok((network_status, balance, payments))
-        }
-        .await;
-        let (network_status, balance, payments) = finalize_wallet(wallet, result).await?;
-        let report = WalletStatusReport {
-            runtime,
-            runtime_status: network_status_label(&network_status),
-            runtime_detail: network_status.detail.clone(),
-            balance: balance_snapshot(&balance),
-            recent_payments: payments
-                .iter()
-                .map(payment_record_from_summary)
-                .collect::<Vec<_>>(),
-        };
-        sync_wallet_status(
-            config_path,
-            &report.runtime,
-            report.runtime_status.as_str(),
-            report.runtime_detail.clone(),
-            Some(&report.balance),
-            None,
-            None,
-            report.recent_payments.as_slice(),
-        )?;
-        Ok(report)
-    }
-    .await;
-    if let Err(error) = result.as_ref() {
-        sync_wallet_error(config_path, &context.runtime, error.to_string())?;
-    }
-    result
+    let ledger = load_ledger(config_path)?;
+    let balance = WalletBalanceSnapshot {
+        total_sats: ledger.wallet.last_balance_sats.unwrap_or_default(),
+        ..WalletBalanceSnapshot::default()
+    };
+    let recent_payments = if include_recent_payments {
+        ledger.wallet.payments.iter().take(10).cloned().collect()
+    } else {
+        Vec::new()
+    };
+    let report = WalletStatusReport {
+        runtime: context.runtime.clone(),
+        runtime_status: "external_ldk_target".to_string(),
+        runtime_detail: Some(LDK_EXTERNAL_WALLET_DETAIL.to_string()),
+        balance,
+        recent_payments,
+    };
+    sync_wallet_status(
+        config_path,
+        &report.runtime,
+        report.runtime_status.as_str(),
+        report.runtime_detail.clone(),
+        Some(&report.balance),
+        None,
+        None,
+        report.recent_payments.as_slice(),
+    )?;
+    Ok(report)
 }
 
 pub async fn create_wallet_address_report(config_path: &Path) -> Result<WalletAddressReport> {
     let context = prepare_wallet_context(config_path)?;
-    let runtime = context.runtime.clone();
-    let result: Result<WalletAddressReport> = async {
-        let wallet = open_wallet(&context).await?;
-        let result: Result<_> = async {
-            let spark_address = wallet
-                .get_spark_address()
-                .await
-                .context("failed to create Spark receive address")?;
-            let bitcoin_address = wallet
-                .get_bitcoin_address()
-                .await
-                .context("failed to create Bitcoin receive address")?;
-            Ok((spark_address, bitcoin_address))
-        }
-        .await;
-        let (spark_address, bitcoin_address) = finalize_wallet(wallet, result).await?;
-        let report = WalletAddressReport {
-            runtime,
-            spark_address,
-            bitcoin_address,
-        };
-        sync_wallet_status(
-            config_path,
-            &report.runtime,
-            "connected",
-            None,
-            None,
-            Some(report.spark_address.as_str()),
-            Some(report.bitcoin_address.as_str()),
-            &[],
-        )?;
-        Ok(report)
-    }
-    .await;
-    if let Err(error) = result.as_ref() {
-        sync_wallet_error(config_path, &context.runtime, error.to_string())?;
-    }
-    result
+    sync_wallet_error(
+        config_path,
+        &context.runtime,
+        LDK_EXTERNAL_WALLET_DETAIL.to_string(),
+    )?;
+    bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
 }
 
 pub async fn create_wallet_invoice_report(
@@ -455,41 +370,13 @@ pub async fn create_wallet_invoice_report(
     expiry_seconds: Option<u32>,
 ) -> Result<WalletInvoiceReport> {
     let context = prepare_wallet_context(config_path)?;
-    let runtime = context.runtime.clone();
-    let result: Result<WalletInvoiceReport> = async {
-        let invoice_description = description.clone();
-        let wallet = open_wallet(&context).await?;
-        let result: Result<_> = async {
-            wallet
-                .create_bolt11_invoice(amount_sats, invoice_description, expiry_seconds)
-                .await
-                .context("failed to create Bolt11 invoice")
-        }
-        .await;
-        let payment_request = finalize_wallet(wallet, result).await?;
-        let invoice = PylonWalletInvoiceRecord {
-            invoice_id: format!("bolt11-{}", now_epoch_ms()),
-            amount_sats,
-            status: "created".to_string(),
-            payment_request,
-            description,
-            created_at_ms: now_epoch_ms() as u64,
-            updated_at_ms: now_epoch_ms() as u64,
-        };
-        mutate_ledger(config_path, |ledger| {
-            ledger.wallet.runtime_status = Some("connected".to_string());
-            ledger.wallet.last_error = None;
-            ledger.wallet.network = Some(runtime.network.clone());
-            ledger.upsert_wallet_invoice(invoice.clone());
-            Ok(())
-        })?;
-        Ok(WalletInvoiceReport { runtime, invoice })
-    }
-    .await;
-    if let Err(error) = result.as_ref() {
-        sync_wallet_error(config_path, &context.runtime, error.to_string())?;
-    }
-    result
+    let _ = (amount_sats, description, expiry_seconds);
+    sync_wallet_error(
+        config_path,
+        &context.runtime,
+        LDK_EXTERNAL_WALLET_DETAIL.to_string(),
+    )?;
+    bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
 }
 
 pub async fn pay_wallet_invoice_report(
@@ -498,67 +385,13 @@ pub async fn pay_wallet_invoice_report(
     amount_sats: Option<u64>,
 ) -> Result<WalletPayReport> {
     let context = prepare_wallet_context(config_path)?;
-    let runtime = context.runtime.clone();
-    let request = payment_request.trim().to_string();
-    let result: Result<WalletPayReport> = async {
-        let request_for_send = request.clone();
-        let wallet = open_wallet(&context).await?;
-        let result: Result<_> = async {
-            let payment_id = wallet
-                .send_payment_simple(request_for_send.as_str(), amount_sats)
-                .await
-                .context("failed to send Spark payment")?;
-            let balance = wallet
-                .get_balance()
-                .await
-                .context("failed to refresh Spark balance after send")?;
-            let payments = wallet
-                .list_payments(Some(20), None)
-                .await
-                .context("failed to refresh Spark payment history after send")?;
-            Ok((payment_id, balance, payments))
-        }
-        .await;
-        let (payment_id, balance, payments) = finalize_wallet(wallet, result).await?;
-        let payment = payments
-            .iter()
-            .find(|payment| payment.id == payment_id)
-            .map(payment_record_from_summary)
-            .unwrap_or_else(|| PylonWalletPaymentRecord {
-                payment_id: payment_id.clone(),
-                direction: "send".to_string(),
-                status: "submitted".to_string(),
-                amount_sats: amount_sats.unwrap_or(0),
-                fees_sats: 0,
-                method: "spark".to_string(),
-                description: None,
-                invoice: Some(request.clone()),
-                created_at_ms: now_epoch_ms() as u64,
-                updated_at_ms: now_epoch_ms() as u64,
-            });
-        let post_balance = balance_snapshot(&balance);
-        sync_wallet_status(
-            config_path,
-            &runtime,
-            "connected",
-            None,
-            Some(&post_balance),
-            None,
-            None,
-            std::slice::from_ref(&payment),
-        )?;
-        Ok(WalletPayReport {
-            runtime,
-            payment_id,
-            payment,
-            post_balance,
-        })
-    }
-    .await;
-    if let Err(error) = result.as_ref() {
-        sync_wallet_error(config_path, &context.runtime, error.to_string())?;
-    }
-    result
+    let _ = (payment_request, amount_sats);
+    sync_wallet_error(
+        config_path,
+        &context.runtime,
+        LDK_EXTERNAL_WALLET_DETAIL.to_string(),
+    )?;
+    bail!("{LDK_EXTERNAL_WALLET_DETAIL}")
 }
 
 pub async fn load_wallet_history_report(
@@ -566,71 +399,30 @@ pub async fn load_wallet_history_report(
     limit: Option<u32>,
 ) -> Result<WalletHistoryReport> {
     let context = prepare_wallet_context(config_path)?;
-    let runtime = context.runtime.clone();
-    let result: Result<WalletHistoryReport> = async {
-        let wallet = open_wallet(&context).await?;
-        let result: Result<_> = async {
-            wallet
-                .list_payments(limit.or(Some(20)), None)
-                .await
-                .context("failed to list Spark payments")
-        }
-        .await;
-        let payments = finalize_wallet(wallet, result).await?;
-        let records = payments
-            .iter()
-            .map(payment_record_from_summary)
-            .collect::<Vec<_>>();
-        sync_wallet_status(
-            config_path,
-            &runtime,
-            "connected",
-            None,
-            None,
-            None,
-            None,
-            records.as_slice(),
-        )?;
-        Ok(WalletHistoryReport {
-            runtime,
-            payments: records,
-        })
-    }
-    .await;
-    if let Err(error) = result.as_ref() {
-        sync_wallet_error(config_path, &context.runtime, error.to_string())?;
-    }
-    result
+    let limit = limit.unwrap_or(20) as usize;
+    let records = load_ledger(config_path)?
+        .wallet
+        .payments
+        .into_iter()
+        .take(limit)
+        .collect::<Vec<_>>();
+    Ok(WalletHistoryReport {
+        runtime: context.runtime,
+        payments: records,
+    })
 }
 
 pub async fn load_wallet_credit_summary_report(
     config_path: &Path,
 ) -> Result<WalletCreditSummaryReport> {
     let context = prepare_wallet_context(config_path)?;
-    let runtime = context.runtime.clone();
-    let result: Result<WalletCreditSummaryReport> = async {
-        let wallet = open_wallet(&context).await?;
-        let result: Result<_> = async {
-            wallet
-                .list_all_payments()
-                .await
-                .context("failed to list all Spark payments")
-        }
-        .await;
-        let payments = finalize_wallet(wallet, result).await?;
-        let records = payments
-            .iter()
-            .map(payment_record_from_summary)
-            .collect::<Vec<_>>();
-        let credits = compute_wallet_credit_summary(records.as_slice(), now_epoch_ms() as u64);
-        sync_wallet_credit_summary(config_path, &credits)?;
-        Ok(WalletCreditSummaryReport { runtime, credits })
-    }
-    .await;
-    if let Err(error) = result.as_ref() {
-        sync_wallet_error(config_path, &context.runtime, error.to_string())?;
-    }
-    result
+    let records = load_ledger(config_path)?.wallet.payments;
+    let credits = compute_wallet_credit_summary(records.as_slice(), now_epoch_ms() as u64);
+    sync_wallet_credit_summary(config_path, &credits)?;
+    Ok(WalletCreditSummaryReport {
+        runtime: context.runtime,
+        credits,
+    })
 }
 
 pub fn render_wallet_status_report(report: &WalletStatusReport) -> String {
@@ -771,162 +563,16 @@ fn parse_json_only(args: &[String], start_index: usize, label: &str) -> Result<b
 }
 
 fn prepare_wallet_context(config_path: &Path) -> Result<WalletRuntimeContext> {
-    ensure_rustls_crypto_provider()?;
     let config = ensure_local_setup(config_path)?;
-    let network = parse_wallet_network(config.wallet_network.as_str())?;
-    let (api_key, api_key_source) = resolve_wallet_api_key(config.wallet_api_key_env.as_deref());
-    std::fs::create_dir_all(config.wallet_storage_dir.as_path()).with_context(|| {
-        format!(
-            "failed to create wallet storage dir {}",
-            config.wallet_storage_dir.display()
-        )
-    })?;
     Ok(WalletRuntimeContext {
         runtime: WalletRuntimeSurface {
-            network: wallet_network_label(network).to_string(),
+            network: "ldk-external".to_string(),
             identity_path: config.identity_path.display().to_string(),
             storage_dir: config.wallet_storage_dir.display().to_string(),
             api_key_env: config.wallet_api_key_env.clone(),
-            api_key_source: api_key_source.label(config.wallet_api_key_env.as_deref()),
+            api_key_source: "none:ldk-external".to_string(),
         },
-        network,
-        identity_path: config.identity_path.clone(),
-        storage_dir: config.wallet_storage_dir.clone(),
-        api_key,
     })
-}
-
-async fn open_wallet(context: &WalletRuntimeContext) -> Result<SparkWallet> {
-    let mnemonic = std::fs::read_to_string(context.identity_path.as_path()).with_context(|| {
-        format!(
-            "failed to read identity mnemonic {}",
-            context.identity_path.display()
-        )
-    })?;
-    let mnemonic = mnemonic.trim();
-    if mnemonic.is_empty() {
-        bail!(
-            "identity mnemonic is empty at {}",
-            context.identity_path.display()
-        );
-    }
-    let signer = SparkSigner::from_mnemonic(mnemonic, "")
-        .map_err(|error| anyhow!("failed to derive Spark signer: {error}"))?;
-    SparkWallet::new(
-        signer,
-        WalletConfig {
-            network: context.network,
-            api_key: context.api_key.clone(),
-            storage_dir: context.storage_dir.clone(),
-            deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
-            background_processing: true,
-            real_time_sync_enabled: true,
-            prefer_spark_over_lightning: false,
-        },
-    )
-    .await
-    .context("failed to initialize Spark wallet")
-}
-
-async fn finalize_wallet<T>(wallet: SparkWallet, result: Result<T>) -> Result<T> {
-    let disconnect_error = wallet
-        .disconnect()
-        .await
-        .err()
-        .map(|error| anyhow!("failed to disconnect Spark wallet: {error}"));
-    match (result, disconnect_error) {
-        (Ok(value), None) => Ok(value),
-        (Ok(_), Some(error)) => Err(error),
-        (Err(error), None) => Err(error),
-        (Err(error), Some(disconnect_error)) => Err(error.context(disconnect_error.to_string())),
-    }
-}
-
-fn ensure_rustls_crypto_provider() -> Result<()> {
-    if rustls::crypto::CryptoProvider::get_default().is_some() {
-        return Ok(());
-    }
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .map_err(|error| anyhow!("failed to install rustls crypto provider: {error:?}"))
-}
-
-fn parse_wallet_network(raw: &str) -> Result<SparkNetwork> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "mainnet" => Ok(SparkNetwork::Mainnet),
-        "regtest" => Ok(SparkNetwork::Regtest),
-        "testnet" | "signet" => {
-            bail!("unsupported Spark network '{raw}' (supported: mainnet, regtest)")
-        }
-        _ => bail!("invalid wallet_network '{raw}' (supported: mainnet, regtest)"),
-    }
-}
-
-fn wallet_network_label(network: SparkNetwork) -> &'static str {
-    match network {
-        SparkNetwork::Mainnet => "mainnet",
-        SparkNetwork::Regtest => "regtest",
-        SparkNetwork::Testnet => "testnet",
-        SparkNetwork::Signet => "signet",
-    }
-}
-
-fn resolve_wallet_api_key(config_env: Option<&str>) -> (Option<String>, WalletApiKeySource) {
-    if let Some(name) = config_env
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "OPENAGENTS_SPARK_API_KEY")
-        && let Some(value) = read_env_nonempty(name)
-    {
-        return (Some(value), WalletApiKeySource::ConfigEnv);
-    }
-    if let Some(value) = read_env_nonempty("OPENAGENTS_SPARK_API_KEY") {
-        return (Some(value), WalletApiKeySource::OpenAgentsEnv);
-    }
-    if let Some(value) = read_env_nonempty("BREEZ_API_KEY") {
-        return (Some(value), WalletApiKeySource::BreezEnv);
-    }
-    (
-        Some(DEFAULT_OPENAGENTS_SPARK_API_KEY.to_string()),
-        WalletApiKeySource::EmbeddedDefault,
-    )
-}
-
-fn read_env_nonempty(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn network_status_label(report: &openagents_spark::NetworkStatusReport) -> String {
-    match report.status {
-        openagents_spark::NetworkStatus::Connected => "connected".to_string(),
-        openagents_spark::NetworkStatus::Disconnected => "disconnected".to_string(),
-    }
-}
-
-fn balance_snapshot(balance: &SparkBalance) -> WalletBalanceSnapshot {
-    WalletBalanceSnapshot {
-        spark_sats: balance.spark_sats,
-        lightning_sats: balance.lightning_sats,
-        onchain_sats: balance.onchain_sats,
-        total_sats: balance.total_sats(),
-    }
-}
-
-fn payment_record_from_summary(payment: &PaymentSummary) -> PylonWalletPaymentRecord {
-    PylonWalletPaymentRecord {
-        payment_id: payment.id.clone(),
-        direction: payment.direction.clone(),
-        status: payment.status.clone(),
-        amount_sats: payment.amount_sats,
-        fees_sats: payment.fees_sats,
-        method: payment.method.clone(),
-        description: payment.description.clone(),
-        invoice: payment.invoice.clone(),
-        created_at_ms: payment.timestamp.saturating_mul(1000),
-        updated_at_ms: payment.timestamp.saturating_mul(1000),
-    }
 }
 
 fn compute_wallet_credit_summary(
@@ -1024,9 +670,7 @@ fn sync_wallet_error(
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_OPENAGENTS_SPARK_API_KEY, WalletApiKeySource, WalletSubcommand,
-        compute_wallet_credit_summary, parse_wallet_command, parse_wallet_network,
-        resolve_wallet_api_key,
+        WalletSubcommand, compute_wallet_credit_summary, parse_wallet_command,
     };
     use crate::PylonWalletPaymentRecord;
 
@@ -1101,52 +745,6 @@ mod tests {
                 amount_sats: Some(8),
                 json: true,
             }
-        );
-    }
-
-    #[test]
-    fn parse_wallet_network_accepts_retained_values() {
-        assert!(matches!(
-            parse_wallet_network("mainnet"),
-            Ok(openagents_spark::Network::Mainnet)
-        ));
-        assert!(matches!(
-            parse_wallet_network("regtest"),
-            Ok(openagents_spark::Network::Regtest)
-        ));
-        assert!(parse_wallet_network("signet").is_err());
-    }
-
-    #[test]
-    fn resolve_wallet_api_key_prefers_explicit_env_name() {
-        unsafe {
-            std::env::set_var("PYLON_TEST_SPARK_KEY", "abc123");
-            std::env::remove_var("OPENAGENTS_SPARK_API_KEY");
-            std::env::remove_var("BREEZ_API_KEY");
-        }
-        let (api_key, source) = resolve_wallet_api_key(Some("PYLON_TEST_SPARK_KEY"));
-        assert_eq!(api_key.as_deref(), Some("abc123"));
-        assert_eq!(
-            source.label(Some("PYLON_TEST_SPARK_KEY")),
-            "env:PYLON_TEST_SPARK_KEY"
-        );
-        unsafe {
-            std::env::remove_var("PYLON_TEST_SPARK_KEY");
-        }
-    }
-
-    #[test]
-    fn resolve_wallet_api_key_defaults_to_embedded_release_key() {
-        unsafe {
-            std::env::remove_var("OPENAGENTS_SPARK_API_KEY");
-            std::env::remove_var("BREEZ_API_KEY");
-        }
-        let (api_key, source) = resolve_wallet_api_key(Some("OPENAGENTS_SPARK_API_KEY"));
-        assert_eq!(api_key.as_deref(), Some(DEFAULT_OPENAGENTS_SPARK_API_KEY));
-        assert_eq!(source, WalletApiKeySource::EmbeddedDefault);
-        assert_eq!(
-            source.label(Some("OPENAGENTS_SPARK_API_KEY")),
-            "embedded:openagents-default"
         );
     }
 

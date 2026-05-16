@@ -22,7 +22,6 @@ REAL_WORKSPACE_PATHS=(
   "crates/openagents-validator-service"
   "crates/nostr/client"
   "crates/nostr/core"
-  "crates/spark"
   "third_party/nostr-rs-relay"
 )
 
@@ -53,7 +52,6 @@ COPY_PATHS=(
   "crates/openagents-validator-service"
   "crates/nostr/client"
   "crates/nostr/core"
-  "crates/spark"
   "third_party/nostr-rs-relay"
 )
 

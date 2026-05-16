@@ -5839,7 +5839,6 @@ dependencies = [
  "openagents-kernel-core",
  "openagents-kernel-proto",
  "openagents-provider-substrate",
- "openagents-spark",
  "openagents-validator-service",
  "psionic-train-contract",
  "rand 0.9.2",
@@ -6694,7 +6693,6 @@ dependencies = [
  "breez-sdk-spark",
  "dirs 6.0.0",
  "hex",
- "spark",
  "spark-wallet",
  "thiserror 2.0.18",
 ]
@@ -8464,7 +8462,6 @@ dependencies = [
  "nostr-client",
  "openagents-kernel-core",
  "openagents-provider-substrate",
- "openagents-spark",
  "psionic-train",
  "rand 0.9.2",
  "reqwest 0.12.28",

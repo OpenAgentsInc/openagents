@@ -78,7 +78,6 @@ RUN set -eux; \
       -p openagents-kernel-core \
       -p openagents-kernel-proto \
       -p openagents-provider-substrate \
-      -p openagents-spark \
       -p openagents-validator-service \
       -p psionic-train-contract
 

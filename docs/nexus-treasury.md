@@ -1,10 +1,11 @@
 # Nexus Treasury
 
-2026-05-15 transition note: Spark is now the legacy treasury rail. The current
-direction is to move Nexus treasury and Pylon settlement to an LDK-backed
-Lightning provider. See
+2026-05-16 active-runtime note: Nexus treasury and Pylon settlement are
+LDK-only in normal builds. The standard Nexus deploy context excludes the
+Spark crate and the active runtime does not expose a Spark provider, final
+drain flag, or Spark payout registration path. See
 [`2026-05-15-ldk-nexus-treasury-transition-audit.md`](2026-05-15-ldk-nexus-treasury-transition-audit.md)
-for the separate LDK audit, target architecture, and immediate roadmap. The
+for the LDK audit, target architecture, and immediate roadmap. The
 operator-documentation closeout for the shipped LDK phases is
 [`reports/nexus/2026-05-16-ldk-operator-docs-closeout.md`](reports/nexus/2026-05-16-ldk-operator-docs-closeout.md).
 
@@ -167,13 +168,12 @@ returned, and when the operation row was written. The same timing fields are
 copied into the provider-neutral treasury operation metadata and funding
 receipt attributes so operator funding latency can be audited without logging
 raw invoices, payment ids, API keys, TLS material, seeds, or channel state.
-Standard LDK funding responses leave `spark_invoice` empty; Spark invoice
-material is only valid in explicit legacy final-drain/recovery mode.
+Standard LDK funding responses leave obsolete compatibility invoice fields
+empty. The payer-facing value is `bolt11_invoice`.
 
 Current treasury-provider environment:
 
 - `NEXUS_TREASURY_PROVIDER=ldk` by default.
-- `NEXUS_SPARK_FINAL_DRAIN_ENABLED=false` by default.
 - `NEXUS_LDK_SERVER_URL` for the private `ldk-server` endpoint, in
   `host:port` form with no scheme.
 - `NEXUS_LDK_API_KEY_PATH` for LDK Server HMAC credentials. Nexus loads the
@@ -184,18 +184,18 @@ Current treasury-provider environment:
 - `NEXUS_LDK_NETWORK=regtest|signet|bitcoin`, default `regtest`.
 - `NEXUS_LDK_CHAIN_BACKEND=bitcoind|electrum|esplora`, default `bitcoind`.
 
-## Spark Decommission Gate
+## Removed Spark Runtime
 
-Spark is removed from normal new operations. Keep the old Spark code available
-only for historical receipt reads and a disabled-by-default final drain until
-the final migration report is signed off.
+Spark is not part of the active Nexus or Pylon runtime. Do not add Spark
+provider values, final-drain flags, Spark wallet hydration, or Spark payout
+registration back into normal code paths. Historical reports may still mention
+Spark because they describe the incident path that produced the migration, but
+those reports are not operator instructions for the active system.
 
 The final migration/drain report for LDK-16 is checked in at
 [`reports/nexus/2026-05-16-spark-migration-final-drain-report.md`](reports/nexus/2026-05-16-spark-migration-final-drain-report.md).
-It records that no Spark final drain was performed during closeout, that
-Spark-only worker targets are stale/ineligible for new paid work, and that
-legacy Spark paths remain disabled unless an operator explicitly enables final
-drain/recovery mode.
+It records that no Spark final drain was performed during closeout and that
+Spark-only worker targets are stale/ineligible for new paid work.
 
 Current normal behavior:
 
@@ -203,19 +203,12 @@ Current normal behavior:
 - New payouts route through the LDK provider boundary.
 - New Pylon registrations must provide an LDK-compatible payment target:
   `bolt12_offer`, `bolt11_invoice`, `bip353_name`, or `lnurl_pay`.
-- Spark-only provider targets are stale and ineligible for new paid work.
-- Pylon startup does not create a Spark payout destination unless an operator
-  explicitly opts into the legacy recovery gate.
-
-Explicit legacy gates:
-
-- `NEXUS_TREASURY_PROVIDER=spark_final_drain`
-- `NEXUS_SPARK_FINAL_DRAIN_ENABLED=true`
-- `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`
-
-Do not set those variables for normal Nexus or Pylon operations. They exist
-only for an operator-reviewed final drain or historical recovery task. The
-normal provider value is `NEXUS_TREASURY_PROVIDER=ldk`.
+- Non-LDK provider targets are stale and ineligible for new paid work.
+- Pylon startup does not create a wallet-specific payout destination; it
+  expects an LDK-compatible payout target.
+- Normal deploy checks must keep `crates/spark`, `openagents-spark`,
+  `breez-sdk-spark`, `spark-wallet`, and `spark-sdk` out of the staged Nexus
+  build context.
 
 ## Treasury Operations and Receipts
 
@@ -232,15 +225,14 @@ Operation rows cover:
 - provider payment-status lookup
 - receipt/event projection
 - reconciliation pass
-- explicit final-drain operation, if an operator later needs one
 - LDK admin commands such as peer, channel, payment, and reconciliation writes
 
 Each operation stores only audit-safe metadata: operation id, kind, request id,
-rail (`ldk`, `spark`, or `receipt_ledger`), provider/class metadata, amount
-msat, target kind, target hash, beneficiary id, status, hashed provider payment
-id, receipt references, degraded reason, timestamps, and terminal state. Do not
-store raw invoices, private channel data, seeds, API keys, or wallet secrets in
-these rows.
+rail (`ldk`, `receipt_ledger`, or `retired_legacy_record` for imported old
+state), provider/class metadata, amount msat, target kind, target hash,
+beneficiary id, status, hashed provider payment id, receipt references,
+degraded reason, timestamps, and terminal state. Do not store raw invoices,
+private channel data, seeds, API keys, or wallet secrets in these rows.
 
 `GET /v1/treasury/status` includes a bounded `recent_treasury_operations` list
 for operator debugging. The persistent state retains more rows subject to the
@@ -252,20 +244,19 @@ process restart. Receipt recording now also writes an `event_projection`
 operation and attaches receipt ids back to matching funding or payout
 operations by request id.
 
-Legacy Spark payout records are migrated into `spark` operation rows on
-treasury-state load. The migration hashes Spark payout targets and payment ids
-so old records remain queryable for audit without making new LDK logic depend
-on Spark-specific fields. Spark remains disabled for new funding/payout writes
-unless an operator explicitly enables final-drain/recovery mode.
+Old payout records from the pre-LDK runtime are imported as retired legacy
+operation rows on treasury-state load. The migration hashes old payout targets
+and payment ids so historical receipts remain queryable for audit without
+making LDK logic depend on old target fields. There is no Spark provider,
+final-drain mode, or Spark funding/payout write path in the active runtime.
 
 ## Pylon v0.2 Payment-Target Registration
 
-Pylon v0.2 registers Lightning payout targets with Nexus instead of creating
-new Spark payout destinations. The registration request and status projection
-now include:
+Pylon v0.2 registers Lightning payout targets with Nexus. The registration
+request and status projection now include:
 
 - `payment_target_kind`: `bolt12_offer`, `bolt11_invoice`, `bip353_name`, or
-  `lnurl_pay`; `spark_address` is legacy-only.
+  `lnurl_pay`.
 - `payment_target`: the BOLT12 offer, BOLT11 invoice, BIP353 name, or LNURL-pay
   target.
 - `payment_target_capabilities`: capability markers such as
@@ -276,15 +267,12 @@ now include:
 The signed registration domain is
 `openagents:nexus-treasury-payment-target:v2`. It signs the Pylon Nostr pubkey,
 session id, Nexus challenge, target kind, target value, capability list, and
-version. Legacy Spark registrations still verify under the old signature domain
-only for historical/final-drain paths.
+version.
 
-Nexus stores old Spark-only targets for audit, but they are not eligible for
-new paid work. Availability filtering returns
-`payout_target_requires_ldk_v0_2` when a provider has only a Spark target.
-Normal Pylon startup does not create Spark destinations; that write path is
-available only when an operator explicitly sets
-`OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`.
+Nexus stores old non-LDK targets only for historical audit. They are not
+eligible for new paid work. Availability filtering returns
+`payout_target_requires_ldk_v0_2` when a provider has no LDK-compatible target.
+Normal Pylon startup does not create wallet-specific payout destinations.
 
 ## LDK Accepted-Work Payout Dispatch
 
@@ -295,11 +283,11 @@ Nexus assigns new paid work. Valid target kinds are `bolt12_offer`,
 durable target and BOLT11 should be treated as a per-payment compatibility
 target.
 
-Spark-only registrations are retained for historical audit and final-drain
-recovery, but they are stale targets for normal accepted-work dispatch. Nexus
-does not spend to `spark_address` through the LDK provider and records
-`legacy_spark_target_not_ldk_compatible` as the degraded reason if a stale
-target reaches the provider boundary.
+Old non-LDK registrations are retained only for historical audit. They are stale
+targets for accepted-work dispatch. Nexus does not spend to `spark_address`
+through the LDK provider; if a stale target reaches the provider boundary it is
+rejected as an invalid request and the provider should be re-registered with an
+LDK-compatible target.
 
 Dispatch uses a stable idempotency key of `payout:<payout_key>` for each payout
 send. LDK local proof mode returns a deterministic `ldk-local-payment-*` id for
@@ -490,7 +478,7 @@ After the payer sends funds, verify the result with `/v1/treasury/status`.
 Treat the invoice as paid only after the status surface shows the receive in
 wallet state and subsequent accepted-work payout dispatch/confirmation. Do not
 mistake funding-target creation, an HTTP `504`, a generic account balance
-increase, or an unrelated cached-balance refresh for Spark payout liquidity.
+increase, or an unrelated cached-balance refresh for usable payout liquidity.
 
 If accepted-work payouts are queued with `wallet_balance_insufficient`, the
 wallet refresh loop must keep reconciling even when no payout has dispatched
@@ -502,7 +490,7 @@ reconciliation work.
 Funding target creation is a bounded wallet operation. Hosted Nexus uses
 `NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS` and defaults to `10000` ms.
 In the standard LDK path that timeout wraps `Bolt11Receive`; it must not block
-on Spark wallet history, Spark sync, or Spark leaf selection. If the endpoint
+on any historical wallet sync or old-runtime leaf-selection work. If the endpoint
 times out, it returns `treasury_funding_target_timeout:<ms>` instead of hanging
 the operator surface. That timeout is an operator funding-target failure, not by
 itself proof that the payout wallet is unusable. It must not overwrite a usable
@@ -533,8 +521,8 @@ Spark wallet operations timing out at materially larger budgets:
 - `docs/reports/nexus/issue-4368-local-closure-20260420202905/post-deploy-smoke-funding-timeout.json`
   preserved the `treasury_funding_target_timeout:10000` class.
 
-The current conclusion is that Nexus must stop putting fresh Spark sync,
-invoice creation, and spendable-leaf proof on the critical path of an
+The current conclusion is that Nexus must stop putting old-runtime wallet sync,
+invoice creation, and spendability proof on the critical path of an
 interactive HTTP request. Keep the current longer proxy budget for safety, but
 build toward async funding-target operations with idempotency keys, phase-level
 timing, and typed degraded states such as `spark_wallet_sync_slow` or
@@ -752,33 +740,22 @@ Use that debug register when the operator needs to answer "why is this worker
 not accruing?" or "which row owns this beneficiary right now?" without reading
 raw payout-ledger rows by hand.
 
-## Supported Breez Source
+## LDK Source Boundary
 
-The repo-owned Spark integration must pin `crates/spark/Cargo.toml` to the
-newest stable upstream tag from `https://github.com/breez/spark-sdk`. Do not
-pin production Nexus treasury code to `AtlantisPleb/spark-sdk` or any other
-fork unless the user explicitly approves a temporary emergency fork in writing.
+Production treasury work uses the Nexus-side LDK provider boundary. The normal
+deployable Nexus image must not copy, compile, or link Spark/Breez wallet code.
+If a future operator needs to inspect historical Spark data, that belongs in a
+separate one-off forensics workspace, not in the production Nexus or Pylon build
+context.
 
-Why this rule exists:
+The production source boundary is:
 
-- older SDK pins hard-failed on newer backend tree node statuses such as
-  `PARENT_EXITED`
-- that failure can collapse treasury wallet visibility to `0 sats` even when
-  funds still exist in the wallet
-- upstream tags carry the current Spark/Breez wallet fixes; stale forks can lag
-  behind wallet hydration, tree-selection, and parser changes
-
-Hosted Nexus configures Breez with `prefer_spark_over_lightning=true` for the
-treasury wallet. This keeps newly generated Bolt11 invoices Spark-preferred for
-Spark-capable payers while preserving the standard Bolt11 compatibility path.
-Payouts still require spendable Spark leaves because provider payout targets are
-Spark addresses.
-
-If a copied treasury wallet still reports suspiciously low or zero balance on
-the current upstream tag, treat that as stale local wallet state or an upstream
-wallet/runtime failure, not proof that funds are gone. Rebuild validation from
-the mnemonic into a fresh storage dir before making operator decisions about
-payout continuity or treasury solvency.
+- LDK provider and LDK Server client code live in Nexus-control.
+- Pylon registers durable LDK-compatible payout targets.
+- Nexus deploy staging omits `crates/spark` and rejects staged Spark packages in
+  the deploy lock.
+- Active operator runbooks must not instruct a normal deploy to pin, upgrade, or
+  run a Spark SDK.
 
 ## Runtime Configuration
 
@@ -1074,149 +1051,33 @@ Smoke knobs:
 
 ## Upgrade Validation
 
-Before or immediately after a Spark SDK roll-forward, validate all of the
-following on the upgraded tree:
+Before an LDK treasury release candidate, validate the production path:
 
 ```bash
-cargo test -p openagents-spark
-cargo check -p nexus-control -p pylon -p autopilot-desktop -p openagents-provider-substrate
-cargo run -p nexus-control -- treasury status
-git ls-remote https://github.com/breez/spark-sdk.git 'refs/tags/*'
+cargo check -p nexus-control --lib
+cargo check -p nexus-relay
+cargo check -p pylon --lib
+tmp_context="$(mktemp -d /tmp/openagents-nexus-lock-verify.XXXXXX)"
+scripts/deploy/nexus/stage-build-context.sh "$tmp_context" >/dev/null
+(cd "$tmp_context" && cargo fetch --locked)
+rg -n 'openagents-spark|breez-sdk-spark|spark-wallet|name = "spark"|breez/spark-sdk' "$tmp_context" -S
 ```
 
-For production-like recovery work:
-
-- use a copied mnemonic and copied wallet storage, never the live production
-  files in place
-- if the reused storage still reports `0 sats` or an obviously stale balance on
-  the current upstream tag, rebuild into a fresh storage dir from the same
-  mnemonic and compare
-- do not conclude that funds were spent merely because the old local storage
-  view is empty
+The final `rg` command must return no rows. If Spark packages appear in the
+staged context, remove the caller or artifact. Do not add runtime flags to hide
+the dependency.
 
 ## Wallet Recovery Workflow
 
-Use the recovery flow when treasury reports `0 sats` or an obviously stale
-balance despite funded receive history.
+The active recovery workflow is LDK Server backup/restore plus Nexus operation
+reconciliation. Spark wallet storage recovery commands are not part of the
+production Nexus deploy image. See
+[`deploy/NEXUS_LDK_GCP_RUNBOOK.md`](deploy/NEXUS_LDK_GCP_RUNBOOK.md) for the LDK
+node, Bitcoin backend, backup, restore, and reconciliation procedures.
 
-1. Validate on a copied wallet first.
-
-```bash
-export NEXUS_CONTROL_TREASURY_WALLET_MNEMONIC_PATH=/path/to/copied/treasury.mnemonic
-export NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR=/path/to/copied/treasury-wallet
-export NEXUS_CONTROL_TREASURY_STATE_PATH=/path/to/copied/treasury-state.json
-export NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS=120000
-export NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_PARALLEL_INSPECTIONS=false
-
-cargo run -p nexus-control -- treasury recovery-report --work-dir /tmp/nexus-treasury-recovery --json
-```
-
-What `recovery-report` does:
-
-- copies the current wallet storage into `backup/current-storage`
-- copies the mnemonic and treasury state into the same recovery work dir
-- builds a fresh wallet state from the same mnemonic into `rebuilt-storage`
-- gives each isolated Spark wallet balance, payment-list, and
-  unclaimed-deposit read up to
-  `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS` milliseconds,
-  defaulting to `120000` and clamped to 30 minutes
-- inspects the current and rebuilt wallet storage serially by default; set
-  `NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_PARALLEL_INSPECTIONS=true` only for
-  local or non-mutating probes where Spark upstream health can absorb two
-  simultaneous historical syncs
-- writes a machine-readable `recovery-report.json`
-- records the latest report summary in treasury state/status
-
-The report compares, at minimum:
-
-- wallet identity pubkey
-- current-storage reported balance
-- rebuilt-storage reported balance
-- completed receive/send payment counts and totals
-- unclaimed deposit counts
-- whether the rebuilt wallet materially diverges from the copied current storage
-
-2. Only cut over after the report says `validation_passed=true` and
-   `recommended_action=cutover_rebuilt_storage_after_service_stop`.
-
-Local/manual cutover:
-
-```bash
-cargo run -p nexus-control -- treasury recovery-cutover --report-path /tmp/nexus-treasury-recovery/recovery-report.json --json
-```
-
-Production VM cutover:
-
-```bash
-export NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS=120000
-export NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS=false
-export NEXUS_TREASURY_RECOVERY_RUST_LOG=warn
-export NEXUS_TREASURY_RECOVERY_REPORT_ATTEMPTS=3
-export NEXUS_TREASURY_RECOVERY_REPORT_PATH=/var/lib/nexus-relay/treasury-wallet-recovery-<stamp>/recovery-report.json
-scripts/deploy/nexus/09-recover-treasury-wallet.sh
-```
-
-The production wrapper runs the `nexus-control` binary shipped inside the
-`nexus-relay` image and overrides the container entrypoint. Do not run recovery
-commands against the default relay entrypoint; that starts the relay server
-instead of executing the treasury command.
-
-The production wrapper also takes a VM-local recovery lock, pauses the public
-and treasury watchdog timers/services, applies a runtime `Restart=no` systemd
-drop-in, runtime-masks `nexus-relay`, and removes any stale `nexus-relay`
-container while the report or cutover command is inspecting wallet storage. Do
-not run a second recovery wrapper in parallel. If the lock fails, wait for the
-first recovery command to finish or clean up its recovery containers before
-trying again. The wrapper performs registry login and image pull before
-stopping `nexus-relay`, then avoids command-substitution capture while cleanup
-is armed; recovery JSON is written through a normal temp file so a subshell,
-watchdog, or `Restart=always` path cannot unmask or restart `nexus-relay` while
-an inspection is still running.
-After shell edits to the wrapper, run
-`bash scripts/deploy/nexus/test-recover-treasury-wallet-shell-guards.sh`
-before touching production.
-
-Each isolated Spark wallet inspection gets up to
-`NEXUS_CONTROL_TREASURY_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS`; the production
-wrapper exposes that as `NEXUS_TREASURY_RECOVERY_INSPECTION_TIMEOUT_MS`,
-defaults it to `120000` ms, and clamps it to 30 minutes. The production wrapper
-passes `NEXUS_TREASURY_RECOVERY_PARALLEL_INSPECTIONS=false` by default so the
-current and rebuilt storage inspections do not double upstream Spark sync load;
-enable it only for deliberate local or non-mutating probes. The wrapper also
-passes `NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS=false` by default. Balance
-comparison is enough for bounded wallet-store recovery, and Spark
-payment-history or unclaimed-deposit scans can hang during the same class of
-wallet-store incident. Set `NEXUS_TREASURY_RECOVERY_SCAN_PAYMENTS=true` only
-for deliberate forensics after Nexus is already stable. The wrapper also
-defaults `RUST_LOG` to `warn` so large payment-history syncs do not bury the
-report JSON in per-payment info logs. Recovery report generation defaults to
-three attempts and removes the partial work dir between failed attempts so
-transient Spark upstream failures do not leave stale recovery artifacts.
-
-If explicit Spark sync times out during report generation, the inspector makes
-one bounded cached-balance read against the isolated local storage. A report
-with `runtime_status=cached_after_sync_timeout` can validate the wallet identity
-and cached balance comparison for report-only purposes, but it is not cutover
-safe. Such reports recommend either `no_cutover_needed_sync_timeout_cached` or
-`retry_live_sync_before_cutover`; the cutover command rejects both. Use that
-evidence to avoid unnecessary wallet-storage swaps, then resolve live payout or
-refresh behavior through the normal deploy smoke and treasury status evidence.
-
-The cutover path:
-
-- preserves the live wallet storage by renaming it into a rollback dir
-- atomically swaps the validated rebuilt storage into the active wallet path
-- updates treasury state so status surfaces show `wallet_storage_runtime_mode=rebuilt`
-- seeds treasury state with the rebuilt wallet balance so payouts can resume
-  immediately after restart
-
-Rollback procedure:
-
-1. stop `nexus-relay`
-2. move the active rebuilt storage dir aside
-3. move `wallet_storage_rollback_dir` back onto
-   `NEXUS_CONTROL_TREASURY_WALLET_STORAGE_DIR`
-4. start `nexus-relay`
+For historical Spark forensics, work in an isolated, copied workspace outside
+the production deploy path. Do not add Spark recovery binaries, wallet sync, or
+final-drain code back into the normal Nexus image.
 
 ## Public Stats
 

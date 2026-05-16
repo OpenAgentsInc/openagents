@@ -47,10 +47,10 @@ Do not treat the LDK Server VM as part of the public Nexus binary deploy path.
 It is a private Lightning/Bitcoin authority host with its own backup and
 restore drill.
 
-Spark-era treasury, funding, and payout sections in this older GCP runbook are
-legacy material only. They remain for recovery and audit context. Do not use
-them as normal funding or payout instructions after the Nexus/Pylon v0.2 LDK
-cutover. Normal operators should use the LDK runbook and `docs/nexus-treasury.md`.
+Spark-era treasury, funding, and payout notes in older reports are historical
+audit material only. Do not use them for recovery, funding, payout, or release
+instructions after the Nexus/Pylon v0.2 LDK cutover. Normal operators should use
+the LDK runbook and `docs/nexus-treasury.md`.
 
 The short version is:
 
@@ -131,17 +131,13 @@ cargo fetch --locked
 error: the lock file /work/Cargo.lock needs to be updated but --locked was passed
 ```
 
-Do not fix that by blindly running `cargo generate-lockfile` in the staged
-context. The Spark SDK tree currently depends on a yanked but already-locked
-transitive crate, so a fresh resolver pass can fail on
-`frost-secp256k1-tr-unofficial = "^2.2.0"` even when the committed lockfile is
-still valid for builds. The safe repair path is:
+Regenerate the lock from the staged context so the deploy lock reflects the
+actual Nexus image surface:
 
 ```bash
 tmp_context="$(mktemp -d /tmp/openagents-nexus-lock-check.XXXXXX)"
 scripts/deploy/nexus/stage-build-context.sh "$tmp_context"
-cp Cargo.lock "$tmp_context/Cargo.lock"
-(cd "$tmp_context" && cargo fetch --offline)
+(cd "$tmp_context" && cargo generate-lockfile)
 cp "$tmp_context/Cargo.lock" apps/nexus-relay/deploy/Cargo.nexus.lock
 
 verify_context="$(mktemp -d /tmp/openagents-nexus-lock-verify.XXXXXX)"
@@ -149,10 +145,9 @@ scripts/deploy/nexus/stage-build-context.sh "$verify_context"
 (cd "$verify_context" && cargo fetch --locked)
 ```
 
-Review the resulting deploy-lock diff before committing it. A normal version
-bump should show only owned workspace packages moving to the new version. If
-the diff rewrites large dependency sections, stop and understand why before
-deploying.
+Review the resulting deploy-lock diff before committing it. The staged context
+must not contain Spark packages; if `rg 'openagents-spark|breez-sdk-spark|spark-wallet|name = "spark"' "$verify_context"` returns rows, remove the caller
+or artifact instead of adding a runtime flag.
 
 For Pylon releases, publish the CLI release and npm bootstrap before using a
 production Nexus image as final proof. The end-to-end closeout path depends on

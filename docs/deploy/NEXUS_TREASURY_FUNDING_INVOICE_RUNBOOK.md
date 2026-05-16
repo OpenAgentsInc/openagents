@@ -1,31 +1,24 @@
-# Legacy Spark Nexus Treasury Funding Invoice Runbook
+# Nexus LDK Treasury Funding Invoice Runbook
 
-2026-05-16 legacy notice: this runbook describes the old Spark-backed funding
-path. Do not use it for normal Nexus funding, payout, Pylon registration, API,
-or chat operations. Normal treasury work uses the LDK runbook and treasury
-provider boundary documented in
-[`NEXUS_LDK_GCP_RUNBOOK.md`](NEXUS_LDK_GCP_RUNBOOK.md),
-[`../nexus-treasury.md`](../nexus-treasury.md), and
-[`../2026-05-15-ldk-nexus-treasury-transition-audit.md`](../2026-05-15-ldk-nexus-treasury-transition-audit.md).
-Use this Spark path only for an operator-reviewed historical recovery or final
-drain with `NEXUS_TREASURY_PROVIDER=spark_final_drain` and
-`NEXUS_SPARK_FINAL_DRAIN_ENABLED=true`.
+Normal Nexus funding is LDK-only. Do not use Spark, Spark final-drain flags,
+or Spark wallet files for production funding, payout dispatch, Pylon
+registration, API, or chat operations.
 
-Do not use this when Nexus needs normal spendable sats for accepted-work
-payouts. The default funding path is LDK.
+This runbook creates a Lightning invoice through the active Nexus treasury
+provider boundary. The deployable Nexus image excludes the Spark crate and
+does not compile or stage Spark SDK dependencies.
 
 ## Preconditions
 
 - Work from the `openagents` repo.
-- Read the workspace `.secrets/nexus-admin.env` file for the admin bearer
-  token. Do not print the token.
+- Read `/Users/christopherdavid/work/.secrets/nexus-admin.env` for the admin
+  bearer token. Do not print the token.
 - Use the hosted funding-target endpoint; do not inspect or mutate treasury
   wallet files to create an invoice.
-- Treat the generated Bolt11 invoice as a live payment request. It is safe to
-  hand to the payer, but do not commit it, paste it into issue comments after
-  use, or treat it as a secret-bearing receipt.
+- Treat generated Bolt11 invoices as live payment requests. Do not commit
+  invoices or paste them into issue comments after use.
 
-## Create The Funding Material
+## Create Funding Material
 
 Preserve `PATH` before sourcing the secret file because the secret file is not
 a complete shell profile:
@@ -49,54 +42,30 @@ curl -fsS -X POST https://nexus.openagents.com/v1/treasury/funding-target \
   }' | jq .
 ```
 
-The preferred response field to give a Spark-capable payer is `spark_invoice`
-or `spark_address`. Hosted Nexus pays Pylons to Spark addresses, so Spark
-funding is the direct payout-liquidity path. The `bolt11_invoice` field remains
-available for normal Lightning payers, but a paid Bolt11 invoice is not by
-itself proof that the wallet now has Spark leaves available for Spark-address
-payouts.
-Hosted Nexus should return the Spark invoice even if compatibility Bolt11
-invoice creation fails.
+Use the `bolt11_invoice` field as the payable invoice. The active provider
+also returns provider metadata such as `provider_payment_id` and an internal
+`ldk://...` provider target for receipts and diagnostics; those fields are not
+payment instructions for the payer.
 
 The durable relay shell proxies this request into embedded Nexus-control. Keep
 `NEXUS_RELAY_AUTHORITY_HTTP_TIMEOUT_MS` longer than
-`NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS`; the default relay budget is
-`180000` ms. A shorter relay budget can turn a real Nexus-control funding
-timeout into an unhelpful relay `502`.
-
-If public traffic is temporarily routed through the
-`nexus-http-recovery-proxy` service, keep that proxy's upstream timeout in the
-same budget class. The repo-owned public watchdog installer now defaults
-`NEXUS_HTTP_RECOVERY_PROXY_UPSTREAM_TIMEOUT_SECONDS` to `180` seconds. Restoring
-the older 12 second proxy timeout will make public funding-target requests fail
-with generic recovery-proxy `502` responses while VM-local relay calls can still
-succeed.
-
-Do not treat the 180 second timeout as acceptable product latency. It only
-prevents the public proxy from masking the real wallet result. Historical
-Nexus receipts already show Spark wallet sync, funding-target, and
-leaf-selection classes that can exceed normal chat/API budgets, including
-20s, 180s, and 600s timeout classes. The long-term fix is an async
-funding-target operation with an idempotency key, phase-level wallet timing,
-and explicit degraded reasons such as `spark_wallet_sync_slow` or
-`spark_leaf_selection_blocked`. Keep raw invoices out of logs either way.
-
-If the payer needs a different amount, change only `amount_sats`,
-`description`, and `expiry_seconds`. Keep `amount_sats` positive. A request
-without a positive amount may return receive addresses without amount-specific
-invoices.
+`NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS`; the current default relay
+budget is `180000` ms. That timeout is a protective ceiling, not an acceptable
+product-latency target.
 
 ## Confirm Payment
 
-Invoice creation is not payment. A `504` from the endpoint is also not payment
-or non-payment; it usually means the bounded wallet operation timed out during
-restart, sync, or wallet load.
-
-After the payer says it is paid, verify with treasury status:
+Invoice creation is not payment. After the payer reports payment, verify with
+treasury status:
 
 ```bash
 curl -fsS -H "Authorization: Bearer ${token}" \
   https://nexus.openagents.com/v1/treasury/status | jq '{
+    active_treasury_provider,
+    active_treasury_rail,
+    ldk_network,
+    ldk_chain_backend,
+    ldk_server_configured,
     wallet_balance_sats,
     wallet_runtime_status,
     wallet_balance_updated_at_unix_ms,
@@ -106,37 +75,33 @@ curl -fsS -H "Authorization: Bearer ${token}" \
     payouts_confirmed_24h,
     last_dispatch_at_unix_ms,
     last_confirmed_payout_at_unix_ms,
-    active_continuity_alerts,
-    recent_training_payouts: [.recent_training_payouts[]? | {
-      status,
-      reconciliation_status,
-      amount_sats,
-      payment_id,
-      classification
-    }] | .[0:8]
+    active_continuity_alerts
   }'
 ```
 
-Acceptable payout-liquidity proof is one of:
+Acceptable funding proof is one of:
 
-- Accepted-work payouts move from `queued` or `dispatching` to `confirmed` and
-  `reconciliation_status=settled`.
-- A later wallet/payment scan shows the receive in wallet history.
+- The LDK provider reports a settled receive or updated spendable balance.
+- Accepted-work payouts move from `queued` or `dispatching` to `confirmed`
+  with `reconciliation_status=settled`.
+- An operator payment lookup confirms the provider payment id for the receive.
 
-Do not use invoice creation, a generic cached balance change, or a Lightning
-receive record by itself as proof that Spark-address payouts can drain. Do not
-redeploy or roll back images to solve an underfunded-wallet error; fund the
-wallet with Spark-spendable liquidity, verify status, then rerun the same
-deploy gate if the image was otherwise correct.
+Do not use invoice creation, a generic cached balance change, or an unrelated
+deploy result as proof of liquidity.
 
-## Closeout Notes
+## Build-Path Guard
 
-When funding was used during the issue 4368 / 4413 closeout, the invoice
-payment cleared the insufficient-funds blocker, but the deploy still failed
-until the treasury state hot-write loop was fixed. Future agents should keep
-these concerns separate:
+Before a Nexus release candidate, verify that the staged deploy context does
+not contain Spark packages:
 
-- Funding solves wallet insufficiency.
-- Deploy gates prove the image is healthy.
-- Public Pylon proof proves a user can run `pylon`, complete hosted training
-  work, and receive completed payments in the Pylon wallet.
+```bash
+tmp_context="$(mktemp -d /tmp/openagents-nexus-build-context.XXXXXX)"
+scripts/deploy/nexus/stage-build-context.sh "$tmp_context" >/dev/null
+rg -n 'openagents-spark|breez-sdk-spark|spark-wallet|name = "spark"|breez/spark-sdk' "$tmp_context" -S
+```
+
+The search should return no rows. The root workspace may still exclude a
+non-deployed `crates/spark` directory while old non-Nexus packages exist, but
+that directory must not be copied into the staged Nexus build plan or lockfile.
+If package rows appear, stop and remove the caller or artifact rather than
+adding another runtime flag.

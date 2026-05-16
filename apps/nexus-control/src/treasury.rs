@@ -4,7 +4,8 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::pin::Pin;
-use std::sync::{Arc, OnceLock};
+#[cfg(test)]
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(test)]
@@ -12,19 +13,13 @@ use std::sync::Mutex;
 
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
-use futures::stream::{self, StreamExt};
 use openagents_provider_substrate::{
     ProviderPaymentTargetRegistration, verify_provider_payment_target_registration_signature,
     verify_provider_payout_target_registration_signature,
 };
-use openagents_spark::{
-    DepositClaimFeePolicy, Network as SparkNetwork, PaymentSummary, SparkError, SparkSigner,
-    SparkWallet, WalletConfig,
-};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::sync::Mutex as AsyncMutex;
 
 use crate::economy::AuthorityReceiptContext;
 use crate::treasury_provider::{
@@ -33,11 +28,23 @@ use crate::treasury_provider::{
     TreasuryProviderFundingRequest, TreasuryProviderFundingTarget, TreasuryProviderPayoutRequest,
 };
 
-// TODO(ldk-v0.2): Spark treasury writes are legacy-only. Keep this module's
-// Spark paths for historical receipt reads and explicit final-drain/recovery
-// operations while new funding and payout operations move behind the LDK
-// treasury provider boundary.
-const DEFAULT_OPENAGENTS_SPARK_API_KEY: &str = "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0=";
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentSummary {
+    pub id: String,
+    pub direction: String,
+    pub status: String,
+    pub amount_sats: u64,
+    pub fees_sats: u64,
+    pub timestamp: u64,
+    pub method: String,
+    pub description: Option<String>,
+    pub invoice: Option<String>,
+    pub destination_pubkey: Option<String>,
+    pub payment_hash: Option<String>,
+    pub htlc_status: Option<String>,
+    pub htlc_expiry_epoch_seconds: Option<u64>,
+    pub status_detail: Option<String>,
+}
 
 const ENV_TREASURY_STATE_PATH: &str = "NEXUS_CONTROL_TREASURY_STATE_PATH";
 const ENV_TREASURY_ENABLED: &str = "NEXUS_CONTROL_TREASURY_ENABLED";
@@ -89,9 +96,6 @@ const ENV_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS: &str =
     "NEXUS_CONTROL_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS";
 const ENV_TREASURY_INTEGRATION_TOKEN: &str = "NEXUS_CONTROL_TREASURY_INTEGRATION_TOKEN";
 const ENV_TREASURY_PROVIDER: &str = "NEXUS_TREASURY_PROVIDER";
-const ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED: &str = "NEXUS_SPARK_FINAL_DRAIN_ENABLED";
-const ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED_LEGACY: &str =
-    "NEXUS_CONTROL_SPARK_FINAL_DRAIN_ENABLED";
 const ENV_TREASURY_LDK_SERVER_URL: &str = "NEXUS_LDK_SERVER_URL";
 const ENV_TREASURY_LDK_API_KEY_PATH: &str = "NEXUS_LDK_API_KEY_PATH";
 const ENV_TREASURY_LDK_TLS_CERT_PATH: &str = "NEXUS_LDK_TLS_CERT_PATH";
@@ -424,16 +428,10 @@ impl TreasuryConfig {
             DEFAULT_TREASURY_REGISTRATION_CHALLENGE_TTL_SECONDS,
         )?
         .max(1);
-        let spark_final_drain_enabled = parse_bool_env_alias(
-            ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED,
-            ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED_LEGACY,
-            false,
-        )?;
         let lightning_provider = TreasuryLightningProviderConfig::new(
             TreasuryLightningProviderKind::parse(
                 read_env_nonempty(ENV_TREASURY_PROVIDER).as_deref(),
             )?,
-            spark_final_drain_enabled,
             LdkTreasuryProviderConfig {
                 server_url: read_env_nonempty(ENV_TREASURY_LDK_SERVER_URL),
                 api_key_path: read_env_nonempty(ENV_TREASURY_LDK_API_KEY_PATH).map(PathBuf::from),
@@ -2524,7 +2522,6 @@ pub fn treasury_admin_operation_id(command: &str, idempotency_key: &str) -> Stri
 fn operation_rail_for_provider(provider: TreasuryLightningProviderKind) -> &'static str {
     match provider {
         TreasuryLightningProviderKind::Ldk => "ldk",
-        TreasuryLightningProviderKind::SparkFinalDrain => "spark",
     }
 }
 
@@ -2550,8 +2547,6 @@ fn payout_target_kind_for_payment_request(payment_request: &str) -> &'static str
         || target.starts_with("lntbs")
     {
         "bolt11_invoice"
-    } else if target.starts_with("spark") {
-        "spark_address"
     } else if target.contains('@') {
         "bip353_name"
     } else {
@@ -2561,7 +2556,6 @@ fn payout_target_kind_for_payment_request(payment_request: &str) -> &'static str
 
 fn payout_rail_for_payment_request(payment_request: &str) -> &'static str {
     match payout_target_kind_for_payment_request(payment_request) {
-        "spark_address" => "spark",
         "unknown" => "unknown",
         _ => "ldk",
     }
@@ -3230,7 +3224,7 @@ impl TreasuryState {
         changed |= loaded.backfill_classified_payout_totals();
         loaded.public_snapshot = None;
         changed |= loaded.trim_policy_change_history();
-        changed |= loaded.migrate_legacy_spark_operations(now_unix_ms());
+        changed |= loaded.migrate_legacy_payout_records(now_unix_ms());
         changed |= loaded.trim_retention(now_unix_ms());
         loaded.rebuild_payment_index();
         loaded.state_path = Some(state_path);
@@ -3550,13 +3544,8 @@ impl TreasuryState {
         wallet_hydration_mode: Option<&str>,
         now_unix_ms: u64,
     ) -> bool {
-        let provider = if payment.method.eq_ignore_ascii_case("ldk")
-            || wallet_hydration_mode.is_some_and(|mode| mode.to_ascii_lowercase().contains("ldk"))
-        {
-            TreasuryLightningProviderKind::Ldk
-        } else {
-            TreasuryLightningProviderKind::SparkFinalDrain
-        };
+        let _ = wallet_hydration_mode;
+        let provider = TreasuryLightningProviderKind::Ldk;
         let request_id = format!("payment-status:{}", payment.id);
         let mut rail_metadata = BTreeMap::new();
         rail_metadata.insert("payment_direction".to_string(), payment.direction.clone());
@@ -3630,7 +3619,7 @@ impl TreasuryState {
         changed
     }
 
-    fn migrate_legacy_spark_operations(&mut self, now_unix_ms: u64) -> bool {
+    fn migrate_legacy_payout_records(&mut self, now_unix_ms: u64) -> bool {
         let mut changed = false;
         let records = self
             .payout_records_by_key
@@ -3653,7 +3642,7 @@ impl TreasuryState {
                 _ => TreasuryOperationStatus::Pending,
             };
             let mut rail_metadata = BTreeMap::new();
-            rail_metadata.insert("provider".to_string(), "spark_final_drain".to_string());
+            rail_metadata.insert("provider".to_string(), "retired_legacy_record".to_string());
             rail_metadata.insert(
                 "migrated_from".to_string(),
                 "legacy_payout_record".to_string(),
@@ -3673,10 +3662,10 @@ impl TreasuryState {
                 ),
                 kind: TreasuryOperationKind::OutboundPayoutDispatch,
                 request_id: Some(record.payout_key.clone()),
-                rail: "spark".to_string(),
+                rail: "retired_payout_record".to_string(),
                 rail_metadata,
                 amount_msat: operation_amount_msat(record.amount_sats),
-                target_kind: "legacy_spark_payout_target".to_string(),
+                target_kind: "legacy_payout_target".to_string(),
                 target_hash: (!record.payout_target.trim().is_empty())
                     .then(|| treasury_hash(record.payout_target.as_str())),
                 beneficiary: Some(record.nostr_pubkey_hex.clone()),
@@ -7895,76 +7884,7 @@ pub async fn create_live_funding_target(
             return hook(request).await;
         }
     }
-    if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk {
-        return create_ldk_provider_funding_target(config, request).await;
-    }
-    if !config.lightning_provider.spark_final_drain_enabled || !legacy_spark_final_drain_enabled() {
-        bail!(
-            "legacy Spark funding target creation is disabled; use the LDK treasury provider path or set {ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED}=true for explicit final-drain/recovery work"
-        );
-    }
-
-    with_live_wallet(config, true, |wallet| async move {
-        let spark_address = wallet
-            .get_spark_address()
-            .await
-            .context("failed to create treasury Spark receive address")?;
-        let bitcoin_address = wallet
-            .get_bitcoin_address()
-            .await
-            .context("failed to create treasury Bitcoin receive address")?;
-        let spark_invoice = match request.amount_sats {
-            Some(amount_sats) if amount_sats > 0 => Some(
-                wallet
-                    .create_invoice(
-                        amount_sats,
-                        request.description.clone(),
-                        request.expiry_seconds.map(u64::from),
-                    )
-                    .await
-                    .context("failed to create treasury Spark invoice")?,
-            ),
-            Some(_) => bail!("treasury funding amount must be greater than 0"),
-            None => None,
-        };
-        let bolt11_invoice = match request.amount_sats {
-            Some(amount_sats) if amount_sats > 0 => match wallet
-                .create_bolt11_invoice(
-                    amount_sats,
-                    request.description.clone(),
-                    request.expiry_seconds,
-                )
-                .await
-            {
-                Ok(invoice) => Some(invoice),
-                Err(error) => {
-                    tracing::warn!(
-                        error = %error,
-                        "treasury Bolt11 invoice creation failed after Spark invoice creation"
-                    );
-                    None
-                }
-            },
-            Some(_) => bail!("treasury funding amount must be greater than 0"),
-            None => None,
-        };
-        let wallet_snapshot =
-            wallet_snapshot_from_wallet_for_funding_target(wallet.as_ref()).await?;
-        Ok(TreasuryFundingMaterial {
-            spark_address,
-            bitcoin_address,
-            spark_invoice,
-            bolt11_invoice,
-            provider_payment_id: None,
-            phase_timings: TreasuryFundingTargetPhaseTimings {
-                request_received_at_unix_ms: now_unix_ms(),
-                invoice_returned_at_unix_ms: Some(now_unix_ms()),
-                ..TreasuryFundingTargetPhaseTimings::default()
-            },
-            wallet_snapshot,
-        })
-    })
-    .await
+    create_ldk_provider_funding_target(config, request).await
 }
 
 pub async fn load_live_wallet_snapshot(
@@ -7983,7 +7903,7 @@ pub async fn load_live_wallet_snapshot(
 pub async fn load_live_wallet_refresh_result_with_plan(
     config: &TreasuryConfig,
     create_if_missing: bool,
-    refresh_plan: TreasuryWalletRefreshPlan,
+    _refresh_plan: TreasuryWalletRefreshPlan,
 ) -> Result<TreasuryWalletRefreshResult> {
     let _ = create_if_missing;
     if config.simulated_wallet_enabled {
@@ -8005,22 +7925,10 @@ pub async fn load_live_wallet_refresh_result_with_plan(
         });
     }
 
-    if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk {
-        return Ok(TreasuryWalletRefreshResult {
-            snapshot: ldk_wallet_snapshot(config, 0, Vec::new()),
-            progress: TreasuryWalletRefreshProgress::default(),
-        });
-    }
-
-    with_live_wallet(config, create_if_missing, move |wallet| async move {
-        wallet_snapshot_from_wallet_with_plan_result(
-            wallet.as_ref(),
-            &refresh_plan,
-            config.wallet_refresh_timeout_ms(),
-        )
-        .await
+    Ok(TreasuryWalletRefreshResult {
+        snapshot: ldk_wallet_snapshot(config, 0, Vec::new()),
+        progress: TreasuryWalletRefreshProgress::default(),
     })
-    .await
 }
 
 pub async fn load_live_wallet_snapshot_with_plan(
@@ -8044,26 +7952,6 @@ pub async fn dispatch_live_payouts(
     if config.simulated_wallet_enabled {
         return dispatch_with_simulated_wallet(config, plans);
     }
-    if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk {
-        return dispatch_with_ldk_provider(config, plans).await;
-    }
-    if !config.lightning_provider.spark_final_drain_enabled || !legacy_spark_final_drain_enabled() {
-        let reason = format!(
-            "legacy Spark payout dispatch is disabled; use the LDK treasury provider path or set {ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED}=true for explicit final-drain/recovery work"
-        );
-        return TreasuryDispatchBatchResult {
-            outcomes: plans
-                .iter()
-                .map(|plan| TreasuryDispatchOutcome::Failed {
-                    payout_key: plan.payout_key.clone(),
-                    reason: reason.clone(),
-                })
-                .collect(),
-            wallet_snapshot: None,
-            wallet_error: Some(reason),
-        };
-    }
-
     #[cfg(test)]
     {
         let send_hook = test_wallet_send_hook()
@@ -8078,171 +7966,7 @@ pub async fn dispatch_live_payouts(
             return dispatch_with_test_hooks(config, plans);
         }
     }
-
-    let operation_lock = live_wallet_operation_lock();
-    let _operation_guard = operation_lock.lock().await;
-
-    let send_timeout_ms = config.dispatch_result_timeout_ms(config.payout_interval_ms());
-    let wallet = match tokio::time::timeout(
-        Duration::from_millis(send_timeout_ms),
-        open_wallet(config, false),
-    )
-    .await
-    {
-        Ok(Ok(wallet)) => wallet,
-        Ok(Err(error)) => {
-            return TreasuryDispatchBatchResult {
-                outcomes: plans
-                    .iter()
-                    .map(|plan| TreasuryDispatchOutcome::Failed {
-                        payout_key: plan.payout_key.clone(),
-                        reason: error.to_string(),
-                    })
-                    .collect(),
-                wallet_snapshot: None,
-                wallet_error: Some(error.to_string()),
-            };
-        }
-        Err(_) => {
-            let reason = format!("wallet_open_timeout:{send_timeout_ms}");
-            return TreasuryDispatchBatchResult {
-                outcomes: plans
-                    .iter()
-                    .map(|plan| TreasuryDispatchOutcome::Failed {
-                        payout_key: plan.payout_key.clone(),
-                        reason: reason.clone(),
-                    })
-                    .collect(),
-                wallet_snapshot: None,
-                wallet_error: Some(reason),
-            };
-        }
-    };
-
-    // Keep the wallet-operation lock held for a bounded window even when the
-    // upstream Spark send path stalls or many Pylons become due together.
-    let mut indexed_outcomes = dispatch_live_payout_batch(
-        config,
-        wallet.clone(),
-        plans,
-        send_timeout_ms,
-        TreasuryPayoutClass::AcceptedWork,
-    )
-    .await;
-    indexed_outcomes.extend(
-        dispatch_live_payout_batch(
-            config,
-            wallet.clone(),
-            plans,
-            send_timeout_ms,
-            TreasuryPayoutClass::PlaceholderLiveness,
-        )
-        .await,
-    );
-    indexed_outcomes.extend(
-        dispatch_live_payout_batch(
-            config,
-            wallet.clone(),
-            plans,
-            send_timeout_ms,
-            TreasuryPayoutClass::BetaBonus,
-        )
-        .await,
-    );
-    indexed_outcomes.sort_by_key(|(index, _)| *index);
-    let outcomes = indexed_outcomes
-        .into_iter()
-        .map(|(_, outcome)| outcome)
-        .collect();
-    disconnect_live_wallet(wallet).await;
-
-    TreasuryDispatchBatchResult {
-        outcomes,
-        // The dedicated wallet refresh loop reconciles confirms and balance.
-        // Keeping the full wallet scan out of the dispatch path preserves the
-        // intended payout cadence even when many Pylons are online.
-        wallet_snapshot: None,
-        wallet_error: None,
-    }
-}
-
-async fn dispatch_live_payout_batch(
-    config: &TreasuryConfig,
-    wallet: Arc<SparkWallet>,
-    plans: &[TreasuryDispatchPlan],
-    send_timeout_ms: u64,
-    payout_class: TreasuryPayoutClass,
-) -> Vec<(usize, TreasuryDispatchOutcome)> {
-    let batch = plans
-        .iter()
-        .cloned()
-        .enumerate()
-        .filter(|(_, plan)| plan.classification.payout_class == payout_class)
-        .collect::<Vec<_>>();
-    if batch.is_empty() {
-        return Vec::new();
-    }
-
-    let max_concurrent_sends =
-        config.max_concurrent_send_operations_for_class(batch.len(), payout_class);
-    stream::iter(batch)
-        .map(|(index, plan)| {
-            let wallet = wallet.clone();
-            async move {
-                let outcome =
-                    dispatch_outcome_from_send_future(plan.clone(), send_timeout_ms, async move {
-                        send_treasury_payout(wallet.as_ref(), &plan).await
-                    })
-                    .await;
-                (index, outcome)
-            }
-        })
-        .buffer_unordered(max_concurrent_sends)
-        .collect::<Vec<_>>()
-        .await
-}
-
-async fn send_treasury_payout(
-    wallet: &SparkWallet,
-    plan: &TreasuryDispatchPlan,
-) -> std::result::Result<String, SparkError> {
-    let payment_request = plan.payment_request.trim();
-    if SparkWallet::is_direct_spark_address(payment_request) {
-        return match wallet
-            .send_payment_simple(payment_request, Some(plan.amount_sats))
-            .await
-        {
-            Ok(payment_id) => Ok(payment_id),
-            Err(simple_error) => {
-                if !spark_address_sdk_send_failure_should_fallback(
-                    simple_error.to_string().as_str(),
-                ) {
-                    return Err(simple_error);
-                }
-                wallet
-                    .send_spark_address_direct(payment_request, plan.amount_sats)
-                    .await
-                    .map_err(|direct_error| {
-                        SparkError::Wallet(format!(
-                            "spark_address_sdk_send_failed:{simple_error}; direct_transfer_failed:{direct_error}"
-                        ))
-                    })
-            }
-        };
-    }
-
-    wallet
-        .send_payment_simple(payment_request, Some(plan.amount_sats))
-        .await
-}
-
-fn spark_address_sdk_send_failure_should_fallback(reason: &str) -> bool {
-    let lowered = reason.trim().to_ascii_lowercase();
-    lowered.contains("invalid payment request")
-        || lowered.contains("unsupported")
-        || lowered.contains("failed to parse")
-        || lowered.contains("unable to parse")
-        || lowered.contains("unknown payment request")
+    dispatch_with_ldk_provider(config, plans).await
 }
 
 fn classify_wallet_send_failure(reason: &str) -> String {
@@ -8667,20 +8391,6 @@ fn aggregate_payment_summaries(payments: &[PaymentSummary]) -> TreasuryWalletPay
     aggregate
 }
 
-fn aggregate_unclaimed_deposits(
-    deposits: &[openagents_spark::UnclaimedDeposit],
-) -> TreasuryWalletUnclaimedDepositAggregate {
-    let mut aggregate = TreasuryWalletUnclaimedDepositAggregate::default();
-    for deposit in deposits {
-        aggregate.count = aggregate.count.saturating_add(1);
-        aggregate.total_sats = aggregate.total_sats.saturating_add(deposit.amount_sats);
-        if deposit.claim_error.is_some() {
-            aggregate.with_claim_error_count = aggregate.with_claim_error_count.saturating_add(1);
-        }
-    }
-    aggregate
-}
-
 fn signed_balance_delta(newer: u64, older: u64) -> Option<i64> {
     if newer >= older {
         i64::try_from(newer.saturating_sub(older)).ok()
@@ -8768,226 +8478,21 @@ fn build_treasury_wallet_recovery_comparison(
     }
 }
 
-async fn try_cached_balance_after_inspection_sync_failure(
-    wallet: &SparkWallet,
-    inspection: &mut TreasuryWalletInspection,
-    inspection_timeout_ms: u64,
-    sync_failure: String,
-) -> bool {
-    let cached_timeout_ms = inspection_timeout_ms
-        .min(TREASURY_MIN_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS)
-        .max(1);
-    match tokio::time::timeout(
-        Duration::from_millis(cached_timeout_ms),
-        wallet.get_balance_cached(),
-    )
-    .await
-    {
-        Ok(Ok(balance)) => {
-            inspection.runtime_status = Some("cached_after_sync_timeout".to_string());
-            inspection.runtime_detail = Some(format!(
-                "{sync_failure}; using cached local balance only. This validates identity/balance comparison for report-only recovery but is not cutover-safe."
-            ));
-            inspection.balance_sats = Some(balance.total_sats());
-            true
-        }
-        Ok(Err(error)) => {
-            inspection.runtime_status = Some("error".to_string());
-            inspection.error = Some(format!(
-                "{sync_failure}; cached treasury Spark balance also failed: {error}"
-            ));
-            false
-        }
-        Err(_) => {
-            inspection.runtime_status = Some("timeout".to_string());
-            inspection.error = Some(format!(
-                "{sync_failure}; cached treasury Spark balance also timed out after {cached_timeout_ms} ms"
-            ));
-            false
-        }
-    }
-}
-
 async fn inspect_treasury_wallet_storage(
-    config: &TreasuryConfig,
-    mnemonic: &str,
+    _config: &TreasuryConfig,
+    _mnemonic: &str,
     storage_dir: &Path,
 ) -> TreasuryWalletInspection {
-    let inspection_timeout_ms = config.wallet_recovery_inspection_timeout_ms.clamp(
-        TREASURY_MIN_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS,
-        TREASURY_MAX_WALLET_RECOVERY_INSPECTION_TIMEOUT_MS,
-    );
-    let mut inspection = TreasuryWalletInspection {
+    TreasuryWalletInspection {
         inspected_storage_dir: storage_dir.display().to_string(),
-        inspection_timeout_ms,
+        runtime_status: Some("unsupported".to_string()),
+        runtime_detail: Some(
+            "Spark wallet storage inspection is not part of the LDK-only Nexus runtime"
+                .to_string(),
+        ),
+        error: Some("spark_wallet_inspection_removed_from_active_runtime".to_string()),
         ..TreasuryWalletInspection::default()
-    };
-    let signer = match SparkSigner::from_mnemonic(mnemonic, "") {
-        Ok(signer) => {
-            inspection.wallet_identity_pubkey = signer.public_key_hex();
-            signer
-        }
-        Err(error) => {
-            inspection.error = Some(format!("failed to derive treasury Spark signer: {error}"));
-            return inspection;
-        }
-    };
-    let wallet_config = match treasury_wallet_config(config, storage_dir.to_path_buf()) {
-        Ok(wallet_config) => wallet_config,
-        Err(error) => {
-            inspection.error = Some(error.to_string());
-            return inspection;
-        }
-    };
-    inspection.runtime_status = Some("initializing".to_string());
-    inspection.runtime_detail =
-        Some("treasury wallet inspection is initializing isolated storage".to_string());
-    let wallet = match tokio::time::timeout(
-        Duration::from_millis(inspection_timeout_ms),
-        SparkWallet::new(signer, wallet_config),
-    )
-    .await
-    {
-        Ok(Ok(wallet)) => wallet,
-        Ok(Err(error)) => {
-            inspection.error = Some(format!(
-                "failed to initialize treasury Spark wallet: {error}"
-            ));
-            return inspection;
-        }
-        Err(_) => {
-            inspection.runtime_status = Some("timeout".to_string());
-            inspection.error = Some(format!(
-                "timed out after {inspection_timeout_ms} ms while initializing treasury Spark wallet"
-            ));
-            return inspection;
-        }
-    };
-
-    inspection.runtime_status = Some("syncing".to_string());
-    inspection.runtime_detail =
-        Some("treasury wallet inspection is syncing isolated storage".to_string());
-
-    match tokio::time::timeout(
-        Duration::from_millis(inspection_timeout_ms),
-        wallet.get_balance(),
-    )
-    .await
-    {
-        Ok(Ok(balance)) => {
-            inspection.runtime_status = Some("synced".to_string());
-            inspection.runtime_detail = Some(
-                "treasury wallet inspection completed live sync on isolated storage".to_string(),
-            );
-            inspection.balance_sats = Some(balance.total_sats());
-        }
-        Ok(Err(error)) => {
-            let sync_failure = format!("failed to fetch synced treasury Spark balance: {error}");
-            if try_cached_balance_after_inspection_sync_failure(
-                &wallet,
-                &mut inspection,
-                inspection_timeout_ms,
-                sync_failure,
-            )
-            .await
-            {
-                disconnect_wallet_after_inspection(&wallet).await;
-                return inspection;
-            }
-            disconnect_wallet_after_inspection(&wallet).await;
-            return inspection;
-        }
-        Err(_) => {
-            let sync_failure = format!(
-                "timed out after {inspection_timeout_ms} ms while syncing treasury Spark wallet"
-            );
-            if try_cached_balance_after_inspection_sync_failure(
-                &wallet,
-                &mut inspection,
-                inspection_timeout_ms,
-                sync_failure,
-            )
-            .await
-            {
-                disconnect_wallet_after_inspection(&wallet).await;
-                return inspection;
-            }
-            disconnect_wallet_after_inspection(&wallet).await;
-            return inspection;
-        }
     }
-
-    if !config.wallet_recovery_scan_payments {
-        let detail = inspection.runtime_detail.take().unwrap_or_default();
-        inspection.runtime_detail = Some(format!(
-            "{detail}; payment-history and unclaimed-deposit scans skipped for bounded recovery"
-        ));
-        disconnect_wallet_after_inspection(&wallet).await;
-        return inspection;
-    }
-
-    match tokio::time::timeout(
-        Duration::from_millis(inspection_timeout_ms),
-        wallet.list_all_payments(),
-    )
-    .await
-    {
-        Ok(Ok(payments)) => {
-            inspection.payment_totals = aggregate_payment_summaries(&payments);
-        }
-        Ok(Err(error)) => {
-            inspection.runtime_status = Some("error".to_string());
-            inspection.error = Some(format!("failed to list treasury Spark payments: {error}"));
-            disconnect_wallet_after_inspection(&wallet).await;
-            return inspection;
-        }
-        Err(_) => {
-            inspection.runtime_status = Some("timeout".to_string());
-            inspection.error = Some(format!(
-                "timed out after {inspection_timeout_ms} ms while listing treasury Spark payments"
-            ));
-            disconnect_wallet_after_inspection(&wallet).await;
-            return inspection;
-        }
-    }
-
-    match tokio::time::timeout(
-        Duration::from_millis(inspection_timeout_ms),
-        wallet.list_unclaimed_deposits(),
-    )
-    .await
-    {
-        Ok(Ok(deposits)) => {
-            inspection.unclaimed_deposit_totals = aggregate_unclaimed_deposits(&deposits);
-        }
-        Ok(Err(error)) => {
-            inspection.runtime_status = Some("error".to_string());
-            inspection.error = Some(format!(
-                "failed to list treasury Spark unclaimed deposits: {error}"
-            ));
-            disconnect_wallet_after_inspection(&wallet).await;
-            return inspection;
-        }
-        Err(_) => {
-            inspection.runtime_status = Some("timeout".to_string());
-            inspection.error = Some(format!(
-                "timed out after {inspection_timeout_ms} ms while listing treasury Spark unclaimed deposits"
-            ));
-            disconnect_wallet_after_inspection(&wallet).await;
-            return inspection;
-        }
-    }
-
-    disconnect_wallet_after_inspection(&wallet).await;
-    inspection
-}
-
-async fn disconnect_wallet_after_inspection(wallet: &SparkWallet) {
-    let _ = tokio::time::timeout(
-        Duration::from_millis(TREASURY_WALLET_RECOVERY_DISCONNECT_TIMEOUT_MS),
-        wallet.disconnect(),
-    )
-    .await;
 }
 
 async fn generate_treasury_wallet_recovery_report(
@@ -10183,96 +9688,6 @@ fn truncate_target(value: &str) -> String {
     )
 }
 
-const LIVE_WALLET_DISCONNECT_TIMEOUT_MS: u64 = 5_000;
-
-fn live_wallet_operation_lock() -> &'static AsyncMutex<()> {
-    static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| AsyncMutex::new(()))
-}
-
-async fn with_live_wallet<F, Fut, T>(
-    config: &TreasuryConfig,
-    create_if_missing: bool,
-    operation: F,
-) -> Result<T>
-where
-    F: FnOnce(Arc<SparkWallet>) -> Fut,
-    Fut: std::future::Future<Output = Result<T>>,
-{
-    let operation_lock = live_wallet_operation_lock();
-    let _operation_guard = operation_lock.lock().await;
-    let wallet = open_wallet(config, create_if_missing).await?;
-    let result = operation(wallet.clone()).await;
-    disconnect_live_wallet(wallet).await;
-    result
-}
-
-async fn open_wallet(config: &TreasuryConfig, create_if_missing: bool) -> Result<Arc<SparkWallet>> {
-    Ok(Arc::new(
-        open_wallet_uncached(config, create_if_missing).await?,
-    ))
-}
-
-async fn disconnect_live_wallet(wallet: Arc<SparkWallet>) {
-    // The bounded treasury runtime does not need to retain a long-lived Spark
-    // session between refresh/send cycles. Avoid a shared wallet cache here:
-    // outer timeout guards can cancel wallet futures before this disconnect
-    // path runs, and a globally cached Arc would let the next operation reuse a
-    // stuck SDK handle.
-    match tokio::time::timeout(
-        Duration::from_millis(LIVE_WALLET_DISCONNECT_TIMEOUT_MS),
-        wallet.disconnect(),
-    )
-    .await
-    {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => {
-            tracing::warn!("treasury live wallet disconnect failed: {error}");
-        }
-        Err(_) => {
-            tracing::warn!(
-                "treasury live wallet disconnect timed out after {} ms",
-                LIVE_WALLET_DISCONNECT_TIMEOUT_MS
-            );
-        }
-    }
-}
-
-async fn open_wallet_uncached(
-    config: &TreasuryConfig,
-    create_if_missing: bool,
-) -> Result<SparkWallet> {
-    ensure_rustls_crypto_provider()?;
-    let mnemonic =
-        ensure_wallet_mnemonic(config.wallet_mnemonic_path.as_path(), create_if_missing)?;
-    fs::create_dir_all(config.wallet_storage_dir.as_path()).with_context(|| {
-        format!(
-            "failed to create treasury wallet storage dir {}",
-            config.wallet_storage_dir.display()
-        )
-    })?;
-    let signer = SparkSigner::from_mnemonic(mnemonic.as_str(), "")
-        .map_err(|error| anyhow!("failed to derive treasury Spark signer: {error}"))?;
-    SparkWallet::new(
-        signer,
-        treasury_wallet_config(config, config.wallet_storage_dir.clone())?,
-    )
-    .await
-    .context("failed to initialize treasury Spark wallet")
-}
-
-fn treasury_wallet_config(config: &TreasuryConfig, storage_dir: PathBuf) -> Result<WalletConfig> {
-    Ok(WalletConfig {
-        network: parse_wallet_network(config.wallet_network.as_str())?,
-        api_key: resolve_wallet_api_key(config.wallet_api_key_env.as_deref()),
-        storage_dir,
-        deposit_claim_fee_policy: DepositClaimFeePolicy::Auto,
-        background_processing: false,
-        real_time_sync_enabled: config.wallet_real_time_sync_enabled,
-        prefer_spark_over_lightning: true,
-    })
-}
-
 fn wallet_refresh_payment_page_budget(tracked_payment_count: usize) -> usize {
     if tracked_payment_count == 0 {
         return 1;
@@ -10287,138 +9702,6 @@ fn wallet_refresh_payment_page_budget(tracked_payment_count: usize) -> usize {
         .clamp(1, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES)
 }
 
-async fn wallet_refresh_payments(
-    wallet: &SparkWallet,
-    plan: &TreasuryWalletRefreshPlan,
-) -> Result<WalletRefreshPaymentsResult> {
-    let mut payments = Vec::new();
-    let mut seen_payment_ids = BTreeSet::new();
-    let mut unresolved_payment_ids = plan.tracked_payment_ids.clone();
-    let page_offsets = wallet_refresh_page_offsets(plan);
-    let page_size = TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE as u32;
-    let mut scanned_pages = 0usize;
-    let mut progress = TreasuryWalletRefreshProgress {
-        history_scan_page_offset: plan
-            .history_scan_page_offset
-            .max(TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES),
-        ..TreasuryWalletRefreshProgress::default()
-    };
-
-    for page_offset in page_offsets {
-        let offset = (page_offset * TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE) as u32;
-        let page = wallet
-            .list_payments(Some(page_size), Some(offset))
-            .await
-            .context("failed to list treasury Spark payments")?;
-        if page.is_empty() {
-            progress.history_hit_end_of_history = true;
-            break;
-        }
-
-        scanned_pages = scanned_pages.saturating_add(1);
-        if page_offset >= TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES {
-            progress.history_pages_scanned = progress.history_pages_scanned.saturating_add(1);
-        }
-        for payment in &page {
-            track_wallet_refresh_payment(
-                &mut payments,
-                &mut seen_payment_ids,
-                &mut unresolved_payment_ids,
-                payment.clone(),
-            );
-        }
-        let page_len = page.len();
-
-        if page_len < TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE || unresolved_payment_ids.is_empty()
-        {
-            if page_len < TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE {
-                progress.history_hit_end_of_history = true;
-            }
-            break;
-        }
-    }
-
-    if !unresolved_payment_ids.is_empty() {
-        let pending_lookup_ids = unresolved_payment_ids.iter().cloned().collect::<Vec<_>>();
-        for payment_id in pending_lookup_ids {
-            match tokio::time::timeout(
-                Duration::from_millis(TREASURY_WALLET_REFRESH_TRACKED_PAYMENT_LOOKUP_TIMEOUT_MS),
-                wallet.refresh_transfer_payment_from_network(payment_id.as_str()),
-            )
-            .await
-            {
-                Ok(Ok(Some(payment))) => {
-                    track_wallet_refresh_payment(
-                        &mut payments,
-                        &mut seen_payment_ids,
-                        &mut unresolved_payment_ids,
-                        payment,
-                    );
-                    tracing::info!(
-                        payment_id = payment_id.as_str(),
-                        tracked_payment_count = plan.tracked_payment_count(),
-                        "treasury wallet refresh resolved tracked payout via direct Spark transfer lookup",
-                    );
-                }
-                Ok(Ok(None)) => {}
-                Ok(Err(error)) => {
-                    tracing::warn!(
-                        payment_id = payment_id.as_str(),
-                        error = %error,
-                        "treasury wallet refresh failed direct Spark transfer lookup for tracked payout",
-                    );
-                }
-                Err(_) => {
-                    tracing::warn!(
-                        payment_id = payment_id.as_str(),
-                        timeout_ms = TREASURY_WALLET_REFRESH_TRACKED_PAYMENT_LOOKUP_TIMEOUT_MS,
-                        "treasury wallet refresh timed out during direct Spark transfer lookup for tracked payout",
-                    );
-                }
-            }
-
-            if !unresolved_payment_ids.contains(payment_id.as_str()) {
-                continue;
-            }
-
-            match wallet.get_payment(payment_id.as_str()).await {
-                Ok(payment) => {
-                    track_wallet_refresh_payment(
-                        &mut payments,
-                        &mut seen_payment_ids,
-                        &mut unresolved_payment_ids,
-                        payment,
-                    );
-                    tracing::info!(
-                        payment_id = payment_id.as_str(),
-                        tracked_payment_count = plan.tracked_payment_count(),
-                        "treasury wallet refresh resolved tracked payout via direct Spark payment lookup",
-                    );
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        payment_id = payment_id.as_str(),
-                        error = %error,
-                        "treasury wallet refresh failed direct Spark payment lookup for tracked payout",
-                    );
-                }
-            }
-        }
-    }
-
-    if !unresolved_payment_ids.is_empty() {
-        tracing::warn!(
-            tracked_payment_count = plan.tracked_payment_count(),
-            remaining_payment_count = unresolved_payment_ids.len(),
-            scanned_pages,
-            page_budget = plan.payment_page_budget(),
-            "treasury wallet refresh bounded payment scan left unresolved payouts for a later cycle",
-        );
-    }
-
-    Ok(WalletRefreshPaymentsResult { payments, progress })
-}
-
 fn track_wallet_refresh_payment(
     payments: &mut Vec<PaymentSummary>,
     seen_payment_ids: &mut BTreeSet<String>,
@@ -10431,12 +9714,6 @@ fn track_wallet_refresh_payment(
     }
     payments.push(payment);
     true
-}
-
-#[derive(Debug, Clone, Default)]
-struct WalletRefreshPaymentsResult {
-    payments: Vec<PaymentSummary>,
-    progress: TreasuryWalletRefreshProgress,
 }
 
 fn wallet_refresh_page_offsets(plan: &TreasuryWalletRefreshPlan) -> Vec<usize> {
@@ -10484,99 +9761,6 @@ fn validate_wallet_hydration_balance(
     );
 }
 
-async fn wallet_snapshot_from_wallet(wallet: &SparkWallet) -> Result<TreasuryWalletSnapshot> {
-    wallet_snapshot_from_wallet_with_plan_result(
-        wallet,
-        &TreasuryWalletRefreshPlan::recent_only(),
-        20_000,
-    )
-    .await
-    .map(|result| result.snapshot)
-}
-
-async fn wallet_snapshot_from_wallet_for_funding_target(
-    wallet: &SparkWallet,
-) -> Result<TreasuryWalletSnapshot> {
-    let balance = wallet
-        .get_balance_cached()
-        .await
-        .context("failed to fetch cached treasury Spark balance for funding target")?;
-    Ok(TreasuryWalletSnapshot {
-        runtime_status: "connected".to_string(),
-        runtime_detail: Some(
-            "funding target returned without full wallet sync; refresh loop owns reconciliation"
-                .to_string(),
-        ),
-        wallet_hydration_mode: Some("cached_balance_for_funding_target".to_string()),
-        wallet_payment_scan_mode: Some("skipped_for_funding_target".to_string()),
-        balance_sats: balance.total_sats(),
-        payments: Vec::new(),
-    })
-}
-
-async fn wallet_snapshot_from_wallet_with_plan_result(
-    wallet: &SparkWallet,
-    plan: &TreasuryWalletRefreshPlan,
-    wallet_refresh_timeout_ms: u64,
-) -> Result<TreasuryWalletRefreshResult> {
-    let wallet_refresh_timeout_ms =
-        wallet_refresh_timeout_ms.max(TREASURY_MIN_WALLET_REFRESH_TIMEOUT_MS);
-    let (hydration_mode, runtime_detail) = match tokio::time::timeout(
-        Duration::from_millis(wallet_refresh_timeout_ms),
-        wallet.sync_wallet_state(),
-    )
-    .await
-    {
-        Ok(Ok(())) => ("sync_wallet_then_cached_balance", None),
-        Ok(Err(error)) => {
-            let detail = format!(
-                "sync_wallet_failed:{error}; using cached balance and bounded payment scan"
-            );
-            tracing::warn!(
-                error = %error,
-                "treasury wallet refresh fell back after Spark sync failed"
-            );
-            ("cached_balance_after_sync_failure", Some(detail))
-        }
-        Err(_) => {
-            let detail = format!(
-                "sync_wallet_timeout:{wallet_refresh_timeout_ms}; using cached balance and bounded payment scan"
-            );
-            tracing::warn!(
-                timeout_ms = wallet_refresh_timeout_ms,
-                "treasury wallet refresh fell back after Spark sync timed out"
-            );
-            ("cached_balance_after_sync_timeout", Some(detail))
-        }
-    };
-    let balance = wallet
-        .get_balance_cached()
-        .await
-        .context("failed to fetch treasury Spark balance")?;
-    let refresh = wallet_refresh_payments(wallet, plan).await?;
-    validate_wallet_hydration_balance(plan, balance.total_sats(), hydration_mode)?;
-    Ok(TreasuryWalletRefreshResult {
-        snapshot: TreasuryWalletSnapshot {
-            runtime_status: "connected".to_string(),
-            runtime_detail,
-            wallet_hydration_mode: Some(hydration_mode.to_string()),
-            wallet_payment_scan_mode: Some(wallet_payment_scan_mode(plan).to_string()),
-            balance_sats: balance.total_sats(),
-            payments: refresh.payments,
-        },
-        progress: refresh.progress,
-    })
-}
-
-async fn wallet_snapshot_from_wallet_with_plan(
-    wallet: &SparkWallet,
-    plan: &TreasuryWalletRefreshPlan,
-) -> Result<TreasuryWalletSnapshot> {
-    wallet_snapshot_from_wallet_with_plan_result(wallet, plan, 20_000)
-        .await
-        .map(|result| result.snapshot)
-}
-
 fn ensure_wallet_mnemonic(path: &Path, create_if_missing: bool) -> Result<String> {
     if path.exists() {
         let mnemonic = fs::read_to_string(path)
@@ -10617,43 +9801,6 @@ fn ensure_wallet_mnemonic(path: &Path, create_if_missing: bool) -> Result<String
     Ok(mnemonic)
 }
 
-fn ensure_rustls_crypto_provider() -> Result<()> {
-    if rustls::crypto::CryptoProvider::get_default().is_some() {
-        return Ok(());
-    }
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .map_err(|error| anyhow!("failed to install rustls crypto provider: {error:?}"))
-}
-
-fn parse_wallet_network(raw: &str) -> Result<SparkNetwork> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "mainnet" => Ok(SparkNetwork::Mainnet),
-        "regtest" => Ok(SparkNetwork::Regtest),
-        "testnet" | "signet" => {
-            bail!("unsupported treasury Spark network '{raw}' (supported: mainnet, regtest)")
-        }
-        _ => bail!("invalid treasury wallet_network '{raw}' (supported: mainnet, regtest)"),
-    }
-}
-
-fn resolve_wallet_api_key(config_env: Option<&str>) -> Option<String> {
-    if let Some(name) = config_env
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && *value != "OPENAGENTS_SPARK_API_KEY")
-        && let Some(value) = read_env_nonempty(name)
-    {
-        return Some(value);
-    }
-    if let Some(value) = read_env_nonempty("OPENAGENTS_SPARK_API_KEY") {
-        return Some(value);
-    }
-    if let Some(value) = read_env_nonempty("BREEZ_API_KEY") {
-        return Some(value);
-    }
-    Some(DEFAULT_OPENAGENTS_SPARK_API_KEY.to_string())
-}
-
 fn read_env_nonempty(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -10671,34 +9818,6 @@ fn parse_bool_env(name: &str, default: bool) -> Result<bool, String> {
         },
         Err(_) => Ok(default),
     }
-}
-
-fn parse_bool_env_alias(primary: &str, fallback: &str, default: bool) -> Result<bool, String> {
-    if std::env::var(primary).is_ok() {
-        return parse_bool_env(primary, default);
-    }
-    parse_bool_env(fallback, default)
-}
-
-fn legacy_spark_final_drain_enabled() -> bool {
-    cfg!(test)
-        || legacy_spark_final_drain_enabled_from_value(
-            std::env::var(ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED)
-                .ok()
-                .or_else(|| std::env::var(ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED_LEGACY).ok())
-                .as_deref(),
-        )
-}
-
-fn legacy_spark_final_drain_enabled_from_value(value: Option<&str>) -> bool {
-    value
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
 }
 
 fn parse_u64_env(name: &str, default: u64) -> Result<u64, String> {
@@ -10960,8 +10079,8 @@ mod tests {
         TREASURY_IMPOSSIBLE_ZERO_BALANCE_THRESHOLD_SATS,
         TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
         TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES,
-        TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial, TreasuryFundingReceive,
-        TreasuryFundingTargetPhaseTimings, TreasuryFundingTargetRequest,
+        PaymentSummary, TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial,
+        TreasuryFundingReceive, TreasuryFundingTargetPhaseTimings, TreasuryFundingTargetRequest,
         TreasuryLightningProviderConfig, TreasuryLightningProviderKind, TreasuryOperationKind,
         TreasuryOperationStatus, TreasuryPayoutClass, TreasuryPayoutClassification,
         TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryPublicStats,
@@ -10983,7 +10102,6 @@ mod tests {
         sign_provider_payout_target_registration,
         verify_provider_payment_target_registration_signature,
     };
-    use openagents_spark::PaymentSummary;
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::PathBuf;
@@ -11009,7 +10127,6 @@ mod tests {
             policy_change_reason: None,
             lightning_provider: TreasuryLightningProviderConfig::new(
                 TreasuryLightningProviderKind::Ldk,
-                false,
                 LdkTreasuryProviderConfig {
                     server_url: None,
                     api_key_path: None,
@@ -11040,33 +10157,12 @@ mod tests {
     }
 
     #[test]
-    fn legacy_spark_final_drain_gate_is_default_off_for_normal_runtime() {
-        assert!(!super::legacy_spark_final_drain_enabled_from_value(None));
-        assert!(!super::legacy_spark_final_drain_enabled_from_value(Some(
-            ""
-        )));
-        assert!(!super::legacy_spark_final_drain_enabled_from_value(Some(
-            "false"
-        )));
-        assert!(!super::legacy_spark_final_drain_enabled_from_value(Some(
-            "0"
-        )));
-        assert!(super::legacy_spark_final_drain_enabled_from_value(Some(
-            "true"
-        )));
-        assert!(super::legacy_spark_final_drain_enabled_from_value(Some(
-            "1"
-        )));
-    }
-
-    #[test]
     fn treasury_config_defaults_to_ldk_provider() {
         let config = test_treasury_config();
         assert_eq!(
             config.lightning_provider.provider,
             TreasuryLightningProviderKind::Ldk
         );
-        assert!(!config.lightning_provider.spark_final_drain_enabled);
         assert_eq!(config.lightning_provider.ldk.network, LdkNetwork::Regtest);
     }
 
@@ -11104,41 +10200,6 @@ mod tests {
             funding.wallet_snapshot.wallet_hydration_mode.as_deref(),
             Some("ldk_provider_scaffold")
         );
-    }
-
-    #[tokio::test]
-    async fn spark_final_drain_provider_is_disabled_without_explicit_flag() {
-        let mut config = test_treasury_config();
-        config.lightning_provider.provider = TreasuryLightningProviderKind::SparkFinalDrain;
-        config.lightning_provider.spark_final_drain_enabled = false;
-
-        let error = create_live_funding_target(
-            &config,
-            TreasuryFundingTargetRequest {
-                amount_sats: Some(210),
-                description: Some("fund treasury".to_string()),
-                expiry_seconds: Some(60),
-            },
-        )
-        .await
-        .expect_err("spark drain disabled");
-        assert!(error.to_string().contains("legacy Spark funding target"));
-
-        let batch = dispatch_live_payouts(
-            &config,
-            &[super::TreasuryDispatchPlan {
-                payout_key: "window-a:pubkey-a".to_string(),
-                payment_request: "spark:alice".to_string(),
-                amount_sats: 120,
-                classification: TreasuryPayoutClassification::default(),
-            }],
-        )
-        .await;
-        assert!(matches!(
-            batch.outcomes.first(),
-            Some(TreasuryDispatchOutcome::Failed { reason, .. })
-                if reason.contains("legacy Spark payout dispatch")
-        ));
     }
 
     #[tokio::test]
@@ -16559,19 +15620,17 @@ mod tests {
     #[tokio::test]
     async fn funding_and_dispatch_hooks_cover_happy_path() {
         let _lock = treasury_test_hook_lock().lock().expect("guard");
-        let mut config = test_treasury_config();
-        config.lightning_provider.provider = TreasuryLightningProviderKind::SparkFinalDrain;
-        config.lightning_provider.spark_final_drain_enabled = true;
+        let config = test_treasury_config();
 
         set_test_wallet_funding_hook(Some(Arc::new(|request| {
             Box::pin(async move {
                 assert_eq!(request.amount_sats, Some(210));
                 Ok(TreasuryFundingMaterial {
-                    spark_address: "spark:treasury".to_string(),
-                    bitcoin_address: "bc1qtreasury".to_string(),
-                    spark_invoice: Some("sparkinvoice210fund".to_string()),
+                    spark_address: "ldk://server/regtest/bitcoind/test".to_string(),
+                    bitcoin_address: String::new(),
+                    spark_invoice: None,
                     bolt11_invoice: Some("lnbc210fund".to_string()),
-                    provider_payment_id: None,
+                    provider_payment_id: Some("ldk-funding-target-test".to_string()),
                     phase_timings: TreasuryFundingTargetPhaseTimings::default(),
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
@@ -16594,12 +15653,12 @@ mod tests {
         )
         .await
         .expect("funding target should build");
-        assert_eq!(funding.spark_address, "spark:treasury");
+        assert_eq!(funding.spark_address, "ldk://server/regtest/bitcoind/test");
         assert_eq!(funding.bolt11_invoice.as_deref(), Some("lnbc210fund"));
         set_test_wallet_funding_hook(None);
 
         set_test_wallet_send_hook(Some(Arc::new(|target, amount_sats| {
-            assert_eq!(target, "spark:alice");
+            assert_eq!(target, "lnbcrt120alice");
             assert_eq!(amount_sats, 120);
             Ok("payment-send-001".to_string())
         })));
@@ -16617,9 +15676,9 @@ mod tests {
                     amount_sats: 120,
                     fees_sats: 0,
                     timestamp: 300,
-                    method: "spark".to_string(),
+                    method: "ldk".to_string(),
                     description: None,
-                    invoice: Some("spark:alice".to_string()),
+                    invoice: Some("lnbcrt120alice".to_string()),
                     destination_pubkey: None,
                     payment_hash: None,
                     htlc_status: None,
@@ -16633,7 +15692,7 @@ mod tests {
             &config,
             &[super::TreasuryDispatchPlan {
                 payout_key: "window-a:pubkey-a".to_string(),
-                payment_request: "spark:alice".to_string(),
+                payment_request: "lnbcrt120alice".to_string(),
                 amount_sats: 120,
                 classification: TreasuryPayoutClassification::default(),
             }],
@@ -16777,22 +15836,6 @@ mod tests {
             super::classify_wallet_send_failure("some permanent failure"),
             "wallet_send_failed:unknown:some permanent failure"
         );
-    }
-
-    #[test]
-    fn spark_address_sdk_send_fallback_is_limited_to_request_shape_failures() {
-        assert!(super::spark_address_sdk_send_failure_should_fallback(
-            "invalid payment request: unsupported spark address"
-        ));
-        assert!(super::spark_address_sdk_send_failure_should_fallback(
-            "unable to parse payment request"
-        ));
-        assert!(!super::spark_address_sdk_send_failure_should_fallback(
-            "wallet operation failed: TreeServiceError(InsufficientFunds)"
-        ));
-        assert!(!super::spark_address_sdk_send_failure_should_fallback(
-            "wallet operation failed: service connection error"
-        ));
     }
 
     #[test]

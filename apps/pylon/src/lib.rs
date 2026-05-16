@@ -10747,10 +10747,8 @@ pub fn ensure_local_setup(config_path: &Path) -> Result<PylonConfig> {
 }
 
 async fn run_default_online_earning_loop(config_path: &Path) -> Result<()> {
-    let mut config = ensure_local_setup(config_path)?;
-    if ensure_default_payout_destination(config_path, &mut config).await? {
-        eprintln!("pylon: created legacy Spark payout destination for explicit final-drain work");
-    } else if training_settlement_destination(&config).is_none() {
+    let config = ensure_local_setup(config_path)?;
+    if training_settlement_destination(&config).is_none() {
         eprintln!(
             "pylon: no LDK payout destination configured; paid-work eligibility is disabled until payout_destination is set"
         );
@@ -10766,53 +10764,6 @@ async fn run_default_online_earning_loop(config_path: &Path) -> Result<()> {
         config.node_label, runtime_status
     );
     serve(config_path, config).await
-}
-
-async fn ensure_default_payout_destination(
-    config_path: &Path,
-    config: &mut PylonConfig,
-) -> Result<bool> {
-    if training_settlement_destination(config).is_some() {
-        return Ok(false);
-    }
-    if !legacy_spark_write_enabled() {
-        return Ok(false);
-    }
-    let address_report = create_wallet_address_report(config_path).await?;
-    apply_default_payout_destination(config, address_report.spark_address.as_str())?;
-    save_config(config_path, config)?;
-    Ok(true)
-}
-
-fn legacy_spark_write_enabled() -> bool {
-    legacy_spark_write_enabled_from_value(
-        std::env::var("OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED")
-            .ok()
-            .as_deref(),
-    )
-}
-
-fn legacy_spark_write_enabled_from_value(value: Option<&str>) -> bool {
-    value
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
-}
-
-fn apply_default_payout_destination(config: &mut PylonConfig, spark_address: &str) -> Result<bool> {
-    if training_settlement_destination(config).is_some() {
-        return Ok(false);
-    }
-    let spark_address = spark_address.trim();
-    if spark_address.is_empty() {
-        bail!("wallet returned an empty Spark payout destination");
-    }
-    config.payout_destination = Some(spark_address.to_string());
-    Ok(true)
 }
 
 fn infer_pylon_payment_target_kind(payment_target: &str) -> Result<String> {
@@ -10833,8 +10784,6 @@ fn infer_pylon_payment_target_kind(payment_target: &str) -> Result<String> {
     } else if lower.starts_with("lnbc") || lower.starts_with("lntb") || lower.starts_with("lnbcrt")
     {
         "bolt11_invoice"
-    } else if lower.starts_with("spark") {
-        "spark_address"
     } else if lower.contains('@') {
         "bip353_name"
     } else {
@@ -23351,11 +23300,11 @@ const fn default_relay_auth_enabled() -> bool {
 }
 
 fn default_wallet_network() -> String {
-    "mainnet".to_string()
+    "ldk-external".to_string()
 }
 
 fn default_wallet_api_key_env() -> Option<String> {
-    Some("OPENAGENTS_SPARK_API_KEY".to_string())
+    None
 }
 
 const fn default_buyer_auto_pay_enabled() -> bool {
@@ -23433,12 +23382,8 @@ fn ensure_identity(path: &Path) -> Result<NostrIdentity> {
     })
 }
 
-async fn serve(config_path: &Path, mut config: PylonConfig) -> Result<()> {
-    if ensure_default_payout_destination(config_path, &mut config).await? {
-        eprintln!(
-            "pylon: created legacy Spark payout destination for explicit final-drain/recovery work"
-        );
-    }
+async fn serve(config_path: &Path, config: PylonConfig) -> Result<()> {
+    let _ = config_path;
     let admin_config = provider_admin_config(&config)?;
     let mut desired_mode = ProviderPersistenceStore::open(&admin_config)
         .map_err(anyhow::Error::msg)?
@@ -31973,7 +31918,7 @@ mod tests {
         TrainingManifestInspectionContext, TrainingOperatorStatusReport,
         TrainingTrnPublicationReport, WalletAddressReport, WalletInvoiceReport,
         WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
-        apply_control_command, apply_default_payout_destination,
+        apply_control_command,
         apply_training_reputation_gate_to_availability, build_psionic_train_invocation_manifest,
         build_pylon_training_admin_router, build_snapshot_from_availability, bytes_to_gib_ceil,
         default_config, derive_adapter_training_contributor_availability,
@@ -31986,7 +31931,7 @@ mod tests {
         infer_pylon_payment_target_kind, inspect_psionic_train_runtime_surface_at,
         inspect_psionic_train_runtime_surface_from_candidates,
         inspect_training_retained_contribution_artifacts, inventory_rows,
-        legacy_spark_write_enabled_from_value, load_backend_report, load_earnings_report,
+        load_backend_report, load_earnings_report,
         load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
         load_or_create_config, load_or_create_training_runtime_state, load_product_report,
         load_receipts_report, load_relay_report, load_sandbox_report, load_status_or_detect,
@@ -34332,18 +34277,6 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     }
 
     #[test]
-    fn default_payout_destination_uses_wallet_spark_address()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
-        let changed = apply_default_payout_destination(&mut config, "  spark:local-provider  ")?;
-        ensure(changed, "missing payout destination should be populated")?;
-        ensure(
-            config.payout_destination.as_deref() == Some("spark:local-provider"),
-            "default payout destination should use the trimmed Spark address",
-        )
-    }
-
-    #[test]
     fn pylon_payment_target_kind_and_capabilities_are_ldk_first()
     -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
@@ -34362,10 +34295,7 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
             infer_pylon_payment_target_kind("lnurlp:alice")?,
             "lnurl_pay"
         );
-        assert_eq!(
-            infer_pylon_payment_target_kind("spark:alice")?,
-            "spark_address"
-        );
+        assert!(infer_pylon_payment_target_kind("spark:alice").is_err());
 
         let capabilities = pylon_payment_target_capabilities("bolt12_offer");
         ensure(
@@ -34374,32 +34304,6 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && capabilities.contains(&"bolt11_invoice_request".to_string()),
             "BOLT12 registration should advertise durable LDK payment-target capabilities",
         )
-    }
-
-    #[test]
-    fn default_payout_destination_preserves_explicit_config()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let mut config = default_config(std::path::Path::new("/tmp/pylon-test"));
-        config.payout_destination = Some("lnurlp:alice".to_string());
-        let changed = apply_default_payout_destination(&mut config, "spark:local-provider")?;
-        ensure(
-            !changed,
-            "explicit payout destination should not be replaced",
-        )?;
-        ensure(
-            config.payout_destination.as_deref() == Some("lnurlp:alice"),
-            "explicit payout destination should be preserved",
-        )
-    }
-
-    #[test]
-    fn legacy_spark_write_gate_is_default_off_for_normal_runtime() {
-        assert!(!legacy_spark_write_enabled_from_value(None));
-        assert!(!legacy_spark_write_enabled_from_value(Some("")));
-        assert!(!legacy_spark_write_enabled_from_value(Some("false")));
-        assert!(!legacy_spark_write_enabled_from_value(Some("0")));
-        assert!(legacy_spark_write_enabled_from_value(Some("true")));
-        assert!(legacy_spark_write_enabled_from_value(Some("1")));
     }
 
     #[test]

@@ -1,11 +1,9 @@
 # Pylon/Nexus Earning Release Runbook
 
-2026-05-16 LDK v0.2 notice: historical Spark payout-target sections in this
-runbook are legacy context only. Pylon v0.2 registration must use an
-LDK-compatible target (`bolt12_offer`, `bolt11_invoice`, `bip353_name`, or
-`lnurl_pay`). Spark destination creation is disabled by default and exists only
-behind `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true` for explicit recovery
-or final-drain work.
+2026-05-16 LDK v0.2 notice: Pylon v0.2 registration must use an LDK-compatible
+target (`bolt12_offer`, `bolt11_invoice`, `bip353_name`, or `lnurl_pay`). Do not
+add Spark destination creation or final-drain modes back into public Pylon or
+Nexus release paths.
 
 This runbook captures the practical release and proof lessons from the April
 21, 2026 Issue #4413 work. Its purpose is to keep future agents from repeating
@@ -227,14 +225,13 @@ presence heartbeat, not model-download user agent strings.
 ## Build And Lockfile Pitfalls
 
 The staged Nexus build context does not use only the repo-root `Cargo.lock`.
-It also uses `apps/nexus-relay/deploy/Cargo.nexus.lock`. When the workspace
-package version changes, refresh and verify the deploy lock before building:
+It also uses `apps/nexus-relay/deploy/Cargo.nexus.lock`. Refresh the deploy
+lock from the staged context before building:
 
 ```bash
 tmp_context="$(mktemp -d /tmp/openagents-nexus-lock-check.XXXXXX)"
 scripts/deploy/nexus/stage-build-context.sh "$tmp_context"
-cp Cargo.lock "$tmp_context/Cargo.lock"
-(cd "$tmp_context" && cargo fetch --offline)
+(cd "$tmp_context" && cargo generate-lockfile)
 cp "$tmp_context/Cargo.lock" apps/nexus-relay/deploy/Cargo.nexus.lock
 
 verify_context="$(mktemp -d /tmp/openagents-nexus-lock-verify.XXXXXX)"
@@ -242,11 +239,15 @@ scripts/deploy/nexus/stage-build-context.sh "$verify_context"
 (cd "$verify_context" && cargo fetch --locked)
 ```
 
-Do not run a fresh resolver pass in the staged context as the first repair. The
-Spark SDK dependency tree has included yanked transitive crates that are still
-valid when locked but fail a fresh resolution. If the deploy-lock diff rewrites
-large dependency sections instead of mostly updating owned workspace package
-versions, stop and inspect before deploying.
+The staged context must stay LDK-only. If
+`rg 'openagents-spark|breez-sdk-spark|spark-wallet|name = "spark"' "$verify_context"` returns rows, remove the caller or artifact instead of adding another
+runtime flag.
+
+Do not run a fresh resolver pass against the full repo-root workspace as the
+first repair. The deploy lock must reflect the staged Nexus image, not every
+repo-root workspace member. If the deploy-lock diff rewrites large dependency
+sections instead of mostly updating owned workspace package versions, stop and
+inspect before deploying.
 
 Before publishing Pylon binaries, run:
 
@@ -430,7 +431,7 @@ latency gates.
 
 One common source of repeated treasury writes is payout-target registration
 traffic from online Pylons after a restart. Challenge issuance should be
-in-memory, and registering the same Spark/Bitcoin target for the same node
+in-memory, and registering the same LDK payment target for the same node
 identity should be an idempotent verification, not a fresh persistent receipt
 on every heartbeat. If `strace` shows `treasury.payout_target.registered`
 receipts or `treasury-state.tmp` writes at provider heartbeat pace while the
@@ -442,8 +443,8 @@ gates.
 When the production treasury wallet is underfunded, generate a fresh Lightning
 invoice through the hosted LDK funding-target path. Do not inspect or copy the
 treasury mnemonic, do not manually edit wallet files, and do not infer payment
-from invoice creation. Spark funding targets are legacy final-drain-only
-material and are not the normal path for new Pylon/Nexus payment operations.
+from invoice creation. Spark funding targets are not part of new Pylon/Nexus
+payment operations.
 
 The detailed funding-invoice runbook is
 `docs/deploy/NEXUS_TREASURY_FUNDING_INVOICE_RUNBOOK.md`.

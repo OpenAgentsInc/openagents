@@ -16,7 +16,6 @@ pub type TreasuryProviderResult<T> = std::result::Result<T, TreasuryProviderErro
 #[serde(rename_all = "snake_case")]
 pub enum TreasuryLightningProviderKind {
     Ldk,
-    SparkFinalDrain,
 }
 
 impl TreasuryLightningProviderKind {
@@ -26,14 +25,8 @@ impl TreasuryLightningProviderKind {
         };
         match value.trim().to_ascii_lowercase().as_str() {
             "" | "ldk" => Ok(Self::Ldk),
-            "spark_final_drain" | "spark-final-drain" | "spark_final-drain"
-            | "spark-final_drain" => Ok(Self::SparkFinalDrain),
-            "spark" => Err(
-                "NEXUS_TREASURY_PROVIDER=spark is not supported; use spark_final_drain only for explicit recovery work"
-                    .to_string(),
-            ),
             other => Err(format!(
-                "invalid NEXUS_TREASURY_PROVIDER '{other}' (supported: ldk, spark_final_drain)"
+                "invalid NEXUS_TREASURY_PROVIDER '{other}' (supported: ldk)"
             )),
         }
     }
@@ -41,7 +34,6 @@ impl TreasuryLightningProviderKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Ldk => "ldk",
-            Self::SparkFinalDrain => "spark_final_drain",
         }
     }
 }
@@ -1126,28 +1118,15 @@ fn now_unix_seconds() -> u64 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TreasuryLightningProviderConfig {
     pub provider: TreasuryLightningProviderKind,
-    pub spark_final_drain_enabled: bool,
     pub ldk: LdkTreasuryProviderConfig,
 }
 
 impl TreasuryLightningProviderConfig {
     pub fn new(
         provider: TreasuryLightningProviderKind,
-        spark_final_drain_enabled: bool,
         ldk: LdkTreasuryProviderConfig,
     ) -> Result<Self, String> {
-        if provider == TreasuryLightningProviderKind::SparkFinalDrain && !spark_final_drain_enabled
-        {
-            return Err(
-                "NEXUS_TREASURY_PROVIDER=spark_final_drain requires NEXUS_SPARK_FINAL_DRAIN_ENABLED=true"
-                    .to_string(),
-            );
-        }
-        Ok(Self {
-            provider,
-            spark_final_drain_enabled,
-            ldk,
-        })
+        Ok(Self { provider, ldk })
     }
 }
 
@@ -1314,8 +1293,6 @@ fn infer_ldk_payment_target_kind(explicit_kind: &str, payment_request: &str) -> 
         || target.starts_with("lntbs")
     {
         "bolt11_invoice".to_string()
-    } else if target.starts_with("spark") {
-        "spark_address".to_string()
     } else if target.contains('@') {
         "bip353_name".to_string()
     } else {
@@ -1405,13 +1382,6 @@ impl TreasuryLightningProvider for LdkTreasuryProvider {
                 request.payment_target_kind.as_str(),
                 request.payment_request.as_str(),
             );
-            if payment_target_kind == "spark_address" {
-                return Err(TreasuryProviderError::new(
-                    TreasuryLightningProviderKind::Ldk,
-                    TreasuryProviderErrorKind::StaleTarget,
-                    "legacy_spark_target_not_ldk_compatible",
-                ));
-            }
             if !is_ldk_payout_target_kind(payment_target_kind.as_str()) {
                 return Err(TreasuryProviderError::new(
                     TreasuryLightningProviderKind::Ldk,
@@ -1471,7 +1441,7 @@ mod tests {
         assert!(
             TreasuryLightningProviderKind::parse(Some("spark"))
                 .expect_err("plain spark forbidden")
-                .contains("spark_final_drain")
+                .contains("supported: ldk")
         );
     }
 
@@ -1488,28 +1458,6 @@ mod tests {
         assert_eq!(
             LdkChainBackend::parse(Some("esplora")).expect("esplora"),
             LdkChainBackend::Esplora
-        );
-    }
-
-    #[test]
-    fn spark_final_drain_provider_requires_explicit_flag() {
-        let config = LdkTreasuryProviderConfig::local_scaffold(PathBuf::from("/tmp/ldk"));
-        assert!(
-            TreasuryLightningProviderConfig::new(
-                TreasuryLightningProviderKind::SparkFinalDrain,
-                false,
-                config.clone()
-            )
-            .expect_err("disabled")
-            .contains("NEXUS_SPARK_FINAL_DRAIN_ENABLED")
-        );
-        assert!(
-            TreasuryLightningProviderConfig::new(
-                TreasuryLightningProviderKind::SparkFinalDrain,
-                true,
-                config
-            )
-            .is_ok()
         );
     }
 
@@ -1594,21 +1542,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ldk_scaffold_rejects_stale_spark_targets_and_maps_typed_errors() {
+    async fn ldk_scaffold_rejects_unsupported_targets_and_maps_typed_errors() {
         let provider = LdkTreasuryProvider::new(LdkTreasuryProviderConfig::local_scaffold(
             PathBuf::from("/tmp/ldk"),
         ));
-        let stale_target = provider
+        let unsupported_target = provider
             .dispatch_payout(TreasuryProviderPayoutRequest {
                 payout_key: "payout-a".to_string(),
-                payment_target_kind: "spark_address".to_string(),
-                payment_request: "spark:legacy".to_string(),
+                payment_target_kind: "unknown_wallet_alias".to_string(),
+                payment_request: "legacy:target".to_string(),
                 amount_sats: 1,
                 idempotency_key: "payout-idempotency".to_string(),
             })
             .await
-            .expect_err("spark target rejected");
-        assert_eq!(stale_target.kind, TreasuryProviderErrorKind::StaleTarget);
+            .expect_err("unsupported target rejected");
+        assert_eq!(
+            unsupported_target.kind,
+            TreasuryProviderErrorKind::InvalidRequest
+        );
 
         let no_route = provider
             .dispatch_payout(TreasuryProviderPayoutRequest {
