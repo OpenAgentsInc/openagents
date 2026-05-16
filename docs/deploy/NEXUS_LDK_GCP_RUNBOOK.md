@@ -4,8 +4,8 @@ Date: 2026-05-16
 
 This runbook implements the LDK-06 topology for Nexus v0.2 and Pylon v0.2:
 hosted `bitcoind` plus LDK Server on Google Cloud, with Nexus calling the LDK
-node over a private interface. It does not cut production funding or payout
-traffic to LDK; that belongs to LDK-07 and LDK-09.
+node over a private interface. LDK-07 cuts the standard Nexus funding-invoice
+path to LDK `Bolt11Receive`; payout traffic still belongs to LDK-09.
 
 ## Architecture
 
@@ -188,6 +188,11 @@ NEXUS_LDK_CHAIN_BACKEND=bitcoind
 
 Copy the API key and TLS cert through a secure operator path. The Nexus process
 must load the key from disk and log only a TLS certificate fingerprint.
+
+After this configuration is active, `POST /v1/treasury/funding-target` should
+return a BOLT11 invoice plus `phase_timings`. The standard funding path must
+not create Spark invoices or block on Spark history/sync. Treat
+`spark_invoice` as a legacy final-drain-only field.
 
 ## Rollback Conditions
 

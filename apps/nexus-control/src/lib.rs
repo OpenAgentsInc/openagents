@@ -17773,7 +17773,7 @@ async fn create_treasury_funding_target(
         expiry_seconds: request.expiry_seconds.filter(|value| *value > 0),
     };
     let timeout_ms = state.config.treasury.funding_target_timeout_ms;
-    let material = match tokio::time::timeout(
+    let mut material = match tokio::time::timeout(
         Duration::from_millis(timeout_ms),
         create_live_funding_target(&state.config.treasury, normalized_request.clone()),
     )
@@ -17798,6 +17798,11 @@ async fn create_treasury_funding_target(
         }
     };
     let now = now_unix_ms();
+    material.phase_timings.operation_row_created_at_unix_ms = Some(now);
+    material
+        .phase_timings
+        .invoice_returned_at_unix_ms
+        .get_or_insert(now);
     if let Ok(mut store) = state.store.write() {
         let receipt_events = store.treasury.record_funding_invoice_created_operation(
             &state.config.treasury,
@@ -17824,6 +17829,11 @@ async fn create_treasury_funding_target(
         bitcoin_address: material.bitcoin_address,
         spark_invoice: material.spark_invoice,
         bolt11_invoice: material.bolt11_invoice,
+        provider_payment_id_hash: material
+            .provider_payment_id
+            .as_deref()
+            .map(crate::treasury::treasury_hash),
+        phase_timings: material.phase_timings,
     }))
 }
 
@@ -28217,12 +28227,12 @@ mod tests {
         ProviderPayoutTargetChallengeRequest, ProviderPayoutTargetChallengeResponse,
         ProviderPayoutTargetRegistrationRequest, ProviderPayoutTargetRegistrationResponse,
         RegisteredPayoutTarget, TreasuryCanonicalPublicSnapshot, TreasuryFundingMaterial,
-        TreasuryFundingTargetRequest, TreasuryFundingTargetResponse,
-        TreasuryIntegrationExportResponse, TreasuryIntegrationImportResponse, TreasuryPayoutClass,
-        TreasuryPayoutClassification, TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode,
-        TreasuryState, TreasuryStatusResponse, TreasuryWalletSnapshot,
-        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        treasury_test_hook_lock,
+        TreasuryFundingTargetPhaseTimings, TreasuryFundingTargetRequest,
+        TreasuryFundingTargetResponse, TreasuryIntegrationExportResponse,
+        TreasuryIntegrationImportResponse, TreasuryPayoutClass, TreasuryPayoutClassification,
+        TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryState, TreasuryStatusResponse,
+        TreasuryWalletSnapshot, set_test_wallet_funding_hook, set_test_wallet_send_hook,
+        set_test_wallet_snapshot_hook, treasury_test_hook_lock,
     };
 
     use super::{
@@ -34266,6 +34276,8 @@ mod tests {
                     bitcoin_address: "bc1qtreasury".to_string(),
                     spark_invoice: Some("sparkinvoice210fund".to_string()),
                     bolt11_invoice: Some("lnbc210fund".to_string()),
+                    provider_payment_id: None,
+                    phase_timings: TreasuryFundingTargetPhaseTimings::default(),
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
                         runtime_detail: None,
@@ -34325,6 +34337,78 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn treasury_funding_target_defaults_to_ldk_with_timing_metadata() -> Result<()> {
+        let mut config = test_config()?;
+        config.treasury.enabled = true;
+        let state = build_app_state(config);
+        let app = build_router_with_state(state.clone());
+
+        let funding_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/treasury/funding-target")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &TreasuryFundingTargetRequest {
+                            amount_sats: Some(210),
+                            description: Some("fund treasury".to_string()),
+                            expiry_seconds: Some(60),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(funding_response.status(), StatusCode::OK);
+        let funding: TreasuryFundingTargetResponse = response_json(funding_response).await?;
+        assert_eq!(funding.spark_invoice, None);
+        assert!(
+            funding
+                .bolt11_invoice
+                .as_deref()
+                .is_some_and(|invoice| invoice.starts_with("ln") && invoice.contains("210nexus"))
+        );
+        assert!(funding.provider_payment_id_hash.is_some());
+        assert!(funding.phase_timings.request_received_at_unix_ms > 0);
+        assert!(funding.phase_timings.ldk_rpc_started_at_unix_ms.is_some());
+        assert!(funding.phase_timings.ldk_rpc_completed_at_unix_ms.is_some());
+        assert!(
+            funding
+                .phase_timings
+                .operation_row_created_at_unix_ms
+                .is_some()
+        );
+
+        let store = state.store.read().expect("store");
+        let operation = store
+            .treasury
+            .treasury_operations_by_id
+            .values()
+            .find(|operation| {
+                operation.kind == crate::treasury::TreasuryOperationKind::FundingInvoiceCreation
+            })
+            .expect("funding operation");
+        assert_eq!(operation.rail, "ldk");
+        assert_eq!(
+            operation
+                .rail_metadata
+                .get("has_bolt11_invoice")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert!(
+            operation
+                .rail_metadata
+                .contains_key("phase_ldk_rpc_started_at_unix_ms")
+        );
+        assert!(
+            operation
+                .rail_metadata
+                .contains_key("phase_operation_row_created_at_unix_ms")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn treasury_funding_target_times_out_without_poisoning_wallet_status() -> Result<()> {
         let mut config = test_config()?;
         config.treasury.enabled = true;
@@ -34360,6 +34444,8 @@ mod tests {
                     bitcoin_address: "bc1qtreasury".to_string(),
                     spark_invoice: None,
                     bolt11_invoice: None,
+                    provider_payment_id: None,
+                    phase_timings: TreasuryFundingTargetPhaseTimings::default(),
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
                         runtime_detail: None,
@@ -34432,6 +34518,8 @@ mod tests {
                     bitcoin_address: "bc1qtreasury".to_string(),
                     spark_invoice: None,
                     bolt11_invoice: None,
+                    provider_payment_id: None,
+                    phase_timings: TreasuryFundingTargetPhaseTimings::default(),
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
                         runtime_detail: None,

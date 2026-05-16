@@ -625,6 +625,80 @@ pub struct TreasuryFundingTargetRequest {
     pub expiry_seconds: Option<u32>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TreasuryFundingTargetPhaseTimings {
+    pub request_received_at_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_row_created_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ldk_rpc_started_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ldk_rpc_completed_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invoice_returned_at_unix_ms: Option<u64>,
+}
+
+impl TreasuryFundingTargetPhaseTimings {
+    fn insert_rail_metadata(&self, rail_metadata: &mut BTreeMap<String, String>) {
+        if self.request_received_at_unix_ms > 0 {
+            rail_metadata.insert(
+                "phase_request_received_at_unix_ms".to_string(),
+                self.request_received_at_unix_ms.to_string(),
+            );
+        }
+        if let Some(value) = self.operation_row_created_at_unix_ms {
+            rail_metadata.insert(
+                "phase_operation_row_created_at_unix_ms".to_string(),
+                value.to_string(),
+            );
+        }
+        if let Some(value) = self.ldk_rpc_started_at_unix_ms {
+            rail_metadata.insert(
+                "phase_ldk_rpc_started_at_unix_ms".to_string(),
+                value.to_string(),
+            );
+        }
+        if let Some(value) = self.ldk_rpc_completed_at_unix_ms {
+            rail_metadata.insert(
+                "phase_ldk_rpc_completed_at_unix_ms".to_string(),
+                value.to_string(),
+            );
+        }
+        if let Some(value) = self.invoice_returned_at_unix_ms {
+            rail_metadata.insert(
+                "phase_invoice_returned_at_unix_ms".to_string(),
+                value.to_string(),
+            );
+        }
+        if let Some(duration_ms) = self.ldk_rpc_duration_ms() {
+            rail_metadata.insert(
+                "phase_ldk_rpc_duration_ms".to_string(),
+                duration_ms.to_string(),
+            );
+        }
+        if let Some(duration_ms) = self.total_duration_ms() {
+            rail_metadata.insert(
+                "phase_total_duration_ms".to_string(),
+                duration_ms.to_string(),
+            );
+        }
+    }
+
+    fn ldk_rpc_duration_ms(&self) -> Option<u64> {
+        Some(
+            self.ldk_rpc_completed_at_unix_ms?
+                .saturating_sub(self.ldk_rpc_started_at_unix_ms?),
+        )
+    }
+
+    fn total_duration_ms(&self) -> Option<u64> {
+        let end = self
+            .invoice_returned_at_unix_ms
+            .or(self.operation_row_created_at_unix_ms)?;
+        Some(end.saturating_sub(self.request_received_at_unix_ms))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TreasuryFundingTargetResponse {
     pub authority: String,
@@ -643,6 +717,10 @@ pub struct TreasuryFundingTargetResponse {
     pub spark_invoice: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bolt11_invoice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_payment_id_hash: Option<String>,
+    #[serde(default)]
+    pub phase_timings: TreasuryFundingTargetPhaseTimings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -2187,7 +2265,7 @@ struct AvailabilityObservabilitySnapshot {
     availability_beneficiary_debug_rows: Vec<TreasuryAvailabilityBeneficiaryDebugRow>,
 }
 
-fn treasury_hash(value: &str) -> String {
+pub(crate) fn treasury_hash(value: &str) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(value.as_bytes())))
 }
 
@@ -2461,6 +2539,8 @@ pub struct TreasuryFundingMaterial {
     pub bitcoin_address: String,
     pub spark_invoice: Option<String>,
     pub bolt11_invoice: Option<String>,
+    pub provider_payment_id: Option<String>,
+    pub phase_timings: TreasuryFundingTargetPhaseTimings,
     pub wallet_snapshot: TreasuryWalletSnapshot,
 }
 
@@ -2951,6 +3031,9 @@ impl TreasuryState {
             "has_bolt11_invoice".to_string(),
             material.bolt11_invoice.is_some().to_string(),
         );
+        material
+            .phase_timings
+            .insert_rail_metadata(&mut rail_metadata);
         let target_hash = treasury_hash(target);
         let operation_id =
             treasury_operation_id(TreasuryOperationKind::FundingInvoiceCreation, &request_id);
@@ -2966,9 +3049,15 @@ impl TreasuryState {
             beneficiary: None,
             status: TreasuryOperationStatus::Completed,
             provider_payment_id: material
-                .spark_invoice
+                .provider_payment_id
                 .as_ref()
-                .map(|invoice| treasury_hash(invoice.as_str()))
+                .map(|payment_id| treasury_hash(payment_id.as_str()))
+                .or_else(|| {
+                    material
+                        .spark_invoice
+                        .as_ref()
+                        .map(|invoice| treasury_hash(invoice.as_str()))
+                })
                 .or_else(|| Some(target_hash.clone())),
             receipt_refs: Vec::new(),
             degraded_reason: None,
@@ -2993,6 +3082,18 @@ impl TreasuryState {
         );
         attributes.insert("target_kind".to_string(), target_kind.to_string());
         attributes.insert("target_hash".to_string(), target_hash);
+        if let Some(duration_ms) = material.phase_timings.ldk_rpc_duration_ms() {
+            attributes.insert(
+                "phase_ldk_rpc_duration_ms".to_string(),
+                duration_ms.to_string(),
+            );
+        }
+        if let Some(duration_ms) = material.phase_timings.total_duration_ms() {
+            attributes.insert(
+                "phase_total_duration_ms".to_string(),
+                duration_ms.to_string(),
+            );
+        }
         vec![TreasuryReceiptEvent {
             receipt_type: "treasury.funding_invoice.created",
             context: AuthorityReceiptContext {
@@ -6839,11 +6940,18 @@ fn simulated_funding_target(
     request: TreasuryFundingTargetRequest,
 ) -> TreasuryFundingMaterial {
     let amount = request.amount_sats.unwrap_or_default();
+    let now = now_unix_ms();
     TreasuryFundingMaterial {
         spark_address: "spark:simulated-treasury-proof-wallet".to_string(),
         bitcoin_address: "bcrt1qsimulatedtreasuryproofwallet".to_string(),
         spark_invoice: (amount > 0).then(|| format!("sparkinvoice{amount}simulatedproofwallet")),
         bolt11_invoice: (amount > 0).then(|| format!("lnbc{amount}simulatedproofwallet")),
+        provider_payment_id: None,
+        phase_timings: TreasuryFundingTargetPhaseTimings {
+            request_received_at_unix_ms: now,
+            invoice_returned_at_unix_ms: Some(now),
+            ..TreasuryFundingTargetPhaseTimings::default()
+        },
         wallet_snapshot: simulated_wallet_snapshot(config, Vec::new()),
     }
 }
@@ -6906,12 +7014,15 @@ fn ldk_wallet_snapshot(
 fn funding_material_from_provider_target(
     config: &TreasuryConfig,
     target: TreasuryProviderFundingTarget,
+    phase_timings: TreasuryFundingTargetPhaseTimings,
 ) -> TreasuryFundingMaterial {
     TreasuryFundingMaterial {
         spark_address: target.provider_target,
         bitcoin_address: target.bitcoin_address,
-        spark_invoice: target.provider_invoice,
+        spark_invoice: None,
         bolt11_invoice: target.bolt11_invoice,
+        provider_payment_id: target.provider_invoice,
+        phase_timings,
         wallet_snapshot: ldk_wallet_snapshot(config, target.balance_sats, Vec::new()),
     }
 }
@@ -6921,7 +7032,9 @@ async fn create_ldk_provider_funding_target(
     request: TreasuryFundingTargetRequest,
 ) -> Result<TreasuryFundingMaterial> {
     let provider = LdkTreasuryProvider::new(config.lightning_provider.ldk.clone());
+    let request_received_at_unix_ms = now_unix_ms();
     let idempotency_key = funding_idempotency_key(&request);
+    let ldk_rpc_started_at_unix_ms = now_unix_ms();
     let target = provider
         .create_funding_target(TreasuryProviderFundingRequest {
             amount_sats: request.amount_sats,
@@ -6931,7 +7044,19 @@ async fn create_ldk_provider_funding_target(
         })
         .await
         .map_err(|error| anyhow!(error.normalized_reason()))?;
-    Ok(funding_material_from_provider_target(config, target))
+    let ldk_rpc_completed_at_unix_ms = now_unix_ms();
+    let invoice_returned_at_unix_ms = now_unix_ms();
+    Ok(funding_material_from_provider_target(
+        config,
+        target,
+        TreasuryFundingTargetPhaseTimings {
+            request_received_at_unix_ms,
+            ldk_rpc_started_at_unix_ms: Some(ldk_rpc_started_at_unix_ms),
+            ldk_rpc_completed_at_unix_ms: Some(ldk_rpc_completed_at_unix_ms),
+            invoice_returned_at_unix_ms: Some(invoice_returned_at_unix_ms),
+            ..TreasuryFundingTargetPhaseTimings::default()
+        },
+    ))
 }
 
 async fn dispatch_with_ldk_provider(
@@ -6993,15 +7118,6 @@ pub async fn create_live_funding_target(
     if config.simulated_wallet_enabled {
         return Ok(simulated_funding_target(config, request));
     }
-    if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk {
-        return create_ldk_provider_funding_target(config, request).await;
-    }
-    if !config.lightning_provider.spark_final_drain_enabled || !legacy_spark_final_drain_enabled() {
-        bail!(
-            "legacy Spark funding target creation is disabled; use the LDK treasury provider path or set {ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED}=true for explicit final-drain/recovery work"
-        );
-    }
-
     #[cfg(test)]
     {
         let hook = test_wallet_funding_hook()
@@ -7011,6 +7127,14 @@ pub async fn create_live_funding_target(
         if let Some(hook) = hook {
             return hook(request).await;
         }
+    }
+    if config.lightning_provider.provider == TreasuryLightningProviderKind::Ldk {
+        return create_ldk_provider_funding_target(config, request).await;
+    }
+    if !config.lightning_provider.spark_final_drain_enabled || !legacy_spark_final_drain_enabled() {
+        bail!(
+            "legacy Spark funding target creation is disabled; use the LDK treasury provider path or set {ENV_TREASURY_SPARK_FINAL_DRAIN_ENABLED}=true for explicit final-drain/recovery work"
+        );
     }
 
     with_live_wallet(config, true, |wallet| async move {
@@ -7064,6 +7188,12 @@ pub async fn create_live_funding_target(
             bitcoin_address,
             spark_invoice,
             bolt11_invoice,
+            provider_payment_id: None,
+            phase_timings: TreasuryFundingTargetPhaseTimings {
+                request_received_at_unix_ms: now_unix_ms(),
+                invoice_returned_at_unix_ms: Some(now_unix_ms()),
+                ..TreasuryFundingTargetPhaseTimings::default()
+            },
             wallet_snapshot,
         })
     })
@@ -7558,7 +7688,7 @@ pub async fn run_treasury_command(
             expiry_seconds,
             json,
         } => {
-            let material = create_live_funding_target(
+            let mut material = create_live_funding_target(
                 config,
                 TreasuryFundingTargetRequest {
                     amount_sats: *amount_sats,
@@ -7567,6 +7697,11 @@ pub async fn run_treasury_command(
                 },
             )
             .await?;
+            let now_unix_ms = now_unix_ms();
+            material
+                .phase_timings
+                .invoice_returned_at_unix_ms
+                .get_or_insert(now_unix_ms);
             let response = TreasuryFundingTargetResponse {
                 authority: "openagents-hosted-nexus".to_string(),
                 wallet_runtime_status: material.wallet_snapshot.runtime_status,
@@ -7574,11 +7709,16 @@ pub async fn run_treasury_command(
                 wallet_hydration_mode: material.wallet_snapshot.wallet_hydration_mode,
                 wallet_payment_scan_mode: material.wallet_snapshot.wallet_payment_scan_mode,
                 wallet_balance_sats: material.wallet_snapshot.balance_sats,
-                wallet_balance_updated_at_unix_ms: now_unix_ms(),
+                wallet_balance_updated_at_unix_ms: now_unix_ms,
                 spark_address: material.spark_address,
                 bitcoin_address: material.bitcoin_address,
                 spark_invoice: material.spark_invoice,
                 bolt11_invoice: material.bolt11_invoice,
+                provider_payment_id_hash: material
+                    .provider_payment_id
+                    .as_deref()
+                    .map(treasury_hash),
+                phase_timings: material.phase_timings,
             };
             if *json {
                 return Ok(serde_json::to_string_pretty(&response)?);
@@ -8847,6 +8987,15 @@ fn render_treasury_funding_target_response(response: &TreasuryFundingTargetRespo
     if let Some(invoice) = response.bolt11_invoice.as_deref() {
         lines.push(format!("bolt11_invoice: {invoice}"));
     }
+    if let Some(hash) = response.provider_payment_id_hash.as_deref() {
+        lines.push(format!("provider_payment_id_hash: {hash}"));
+    }
+    if let Some(duration_ms) = response.phase_timings.ldk_rpc_duration_ms() {
+        lines.push(format!("ldk_rpc_duration_ms: {duration_ms}"));
+    }
+    if let Some(duration_ms) = response.phase_timings.total_duration_ms() {
+        lines.push(format!("funding_target_total_duration_ms: {duration_ms}"));
+    }
     if let Some(detail) = response.wallet_runtime_detail.as_deref() {
         lines.push(format!("wallet_runtime_detail: {detail}"));
     }
@@ -10003,19 +10152,19 @@ mod tests {
         TREASURY_WALLET_REFRESH_CURSOR_PAYMENT_PAGES, TREASURY_WALLET_REFRESH_MAX_PAYMENT_PAGES,
         TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES,
         TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial, TreasuryFundingReceive,
-        TreasuryFundingTargetRequest, TreasuryLightningProviderConfig,
-        TreasuryLightningProviderKind, TreasuryOperationKind, TreasuryOperationStatus,
-        TreasuryPayoutClass, TreasuryPayoutClassification, TreasuryPayoutRecord,
-        TreasuryPlaceholderPayoutMode, TreasuryPublicStats, TreasuryQueuedPayoutRequest,
-        TreasuryState, TreasuryWalletInspection, TreasuryWalletPaymentAggregate,
-        TreasuryWalletRecoveryComparison, TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan,
-        TreasuryWalletRefreshProgress, TreasuryWalletSnapshot,
-        apply_treasury_wallet_recovery_cutover, build_treasury_wallet_recovery_comparison,
-        create_live_funding_target, dispatch_live_payouts, parse_treasury_command,
-        payout_phase_offset_ms, payout_window_key, payout_window_started_at,
-        payout_window_started_at_for_identity, set_test_wallet_funding_hook,
-        set_test_wallet_send_hook, set_test_wallet_snapshot_hook, track_wallet_refresh_payment,
-        treasury_test_hook_lock, validate_wallet_hydration_balance,
+        TreasuryFundingTargetPhaseTimings, TreasuryFundingTargetRequest,
+        TreasuryLightningProviderConfig, TreasuryLightningProviderKind, TreasuryOperationKind,
+        TreasuryOperationStatus, TreasuryPayoutClass, TreasuryPayoutClassification,
+        TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryPublicStats,
+        TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
+        TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
+        TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan, TreasuryWalletRefreshProgress,
+        TreasuryWalletSnapshot, apply_treasury_wallet_recovery_cutover,
+        build_treasury_wallet_recovery_comparison, create_live_funding_target,
+        dispatch_live_payouts, parse_treasury_command, payout_phase_offset_ms, payout_window_key,
+        payout_window_started_at, payout_window_started_at_for_identity,
+        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
+        track_wallet_refresh_payment, treasury_test_hook_lock, validate_wallet_hydration_balance,
         verify_payout_target_registration_signature, wallet_refresh_page_offsets,
         wallet_refresh_payment_page_budget, write_json_file,
     };
@@ -10120,14 +10269,24 @@ mod tests {
         )
         .await
         .expect("ldk funding target should build");
-        assert!(funding.spark_address.starts_with("ldk://nexus/regtest/"));
+        assert!(
+            funding
+                .spark_address
+                .starts_with("ldk://server/regtest/bitcoind/")
+        );
         assert_eq!(funding.spark_invoice, None);
+        assert!(funding.provider_payment_id.is_some());
         assert!(
             funding
                 .bolt11_invoice
                 .as_deref()
                 .is_some_and(|invoice| { invoice.starts_with("lnbcrt210") })
         );
+        assert!(funding.phase_timings.request_received_at_unix_ms > 0);
+        assert!(funding.phase_timings.ldk_rpc_started_at_unix_ms.is_some());
+        assert!(funding.phase_timings.ldk_rpc_completed_at_unix_ms.is_some());
+        assert!(funding.phase_timings.invoice_returned_at_unix_ms.is_some());
+        assert!(funding.phase_timings.ldk_rpc_duration_ms().is_some());
         assert_eq!(
             funding.wallet_snapshot.wallet_hydration_mode.as_deref(),
             Some("ldk_provider_scaffold")
@@ -10316,6 +10475,14 @@ mod tests {
             bitcoin_address: "bcrt1qfundingtarget".to_string(),
             spark_invoice: Some("provider-invoice-secret".to_string()),
             bolt11_invoice: Some("lnbc21secretinvoice".to_string()),
+            provider_payment_id: Some("ldk-payment-id-secret".to_string()),
+            phase_timings: TreasuryFundingTargetPhaseTimings {
+                request_received_at_unix_ms: 90,
+                operation_row_created_at_unix_ms: Some(100),
+                ldk_rpc_started_at_unix_ms: Some(91),
+                ldk_rpc_completed_at_unix_ms: Some(99),
+                invoice_returned_at_unix_ms: Some(100),
+            },
             wallet_snapshot: TreasuryWalletSnapshot {
                 runtime_status: "connected".to_string(),
                 runtime_detail: None,
@@ -10350,10 +10517,25 @@ mod tests {
             "ldk:provider-target-secret",
             "provider-invoice-secret",
             "lnbc21secretinvoice",
+            "ldk-payment-id-secret",
         ] {
             assert!(!serialized_operation.contains(secret));
             assert!(!serialized_event.contains(secret));
         }
+        assert_eq!(
+            operation
+                .rail_metadata
+                .get("phase_ldk_rpc_duration_ms")
+                .map(String::as_str),
+            Some("8")
+        );
+        assert_eq!(
+            operation
+                .rail_metadata
+                .get("phase_total_duration_ms")
+                .map(String::as_str),
+            Some("10")
+        );
     }
 
     #[test]
@@ -15266,6 +15448,8 @@ mod tests {
                     bitcoin_address: "bc1qtreasury".to_string(),
                     spark_invoice: Some("sparkinvoice210fund".to_string()),
                     bolt11_invoice: Some("lnbc210fund".to_string()),
+                    provider_payment_id: None,
+                    phase_timings: TreasuryFundingTargetPhaseTimings::default(),
                     wallet_snapshot: TreasuryWalletSnapshot {
                         runtime_status: "connected".to_string(),
                         runtime_detail: None,

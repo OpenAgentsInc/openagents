@@ -70,6 +70,16 @@ API key path, and TLS certificate path are configured after the deployment
 topology lands. The returned invoice is the payment request to give the
 operator. It is not proof of payment.
 
+LDK funding responses now include `phase_timings` plus a hashed
+`provider_payment_id_hash`. The timing object records when Nexus received the
+request, when the LDK receive RPC started and completed, when the invoice was
+returned, and when the operation row was written. The same timing fields are
+copied into the provider-neutral treasury operation metadata and funding
+receipt attributes so operator funding latency can be audited without logging
+raw invoices, payment ids, API keys, TLS material, seeds, or channel state.
+Standard LDK funding responses leave `spark_invoice` empty; Spark invoice
+material is only valid in explicit legacy final-drain/recovery mode.
+
 Current treasury-provider environment:
 
 - `NEXUS_TREASURY_PROVIDER=ldk` by default.
@@ -251,12 +261,14 @@ reconciliation work.
 
 Funding target creation is a bounded wallet operation. Hosted Nexus uses
 `NEXUS_CONTROL_TREASURY_FUNDING_TARGET_TIMEOUT_MS` and defaults to `10000` ms.
-If the Spark wallet path is unhealthy, the endpoint must fail with
-`treasury_funding_target_timeout:<ms>` instead of hanging the operator surface.
-That timeout is an operator funding-target failure, not by itself proof that the
-payout wallet is unusable. It must not overwrite a usable cached wallet balance
-or poison post-deploy payout smoke as `wallet_runtime_status=error`; the wallet
-refresh and payout dispatch loops own payout-wallet health.
+In the standard LDK path that timeout wraps `Bolt11Receive`; it must not block
+on Spark wallet history, Spark sync, or Spark leaf selection. If the endpoint
+times out, it returns `treasury_funding_target_timeout:<ms>` instead of hanging
+the operator surface. That timeout is an operator funding-target failure, not by
+itself proof that the payout wallet is unusable. It must not overwrite a usable
+cached wallet balance or poison post-deploy payout smoke as
+`wallet_runtime_status=error`; the wallet refresh and payout dispatch loops own
+payout-wallet health.
 
 When Nexus is served through the durable relay shell, the relay's embedded
 Nexus-control proxy timeout must be longer than the funding-target wallet

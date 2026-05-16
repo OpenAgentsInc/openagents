@@ -1425,6 +1425,21 @@ Out of scope:
 
 - Do not implement Pylon payout dispatch in this issue.
 
+Status after implementation:
+
+- Standard Nexus funding invoice creation now routes through the LDK provider
+  boundary by default and calls LDK `Bolt11Receive`.
+- Legacy Spark funding target creation remains disabled by default and is only
+  reachable through explicit final-drain/recovery configuration.
+- LDK funding responses expose `phase_timings` and a hashed
+  `provider_payment_id_hash`; operation rows and funding receipts also record
+  request, operation-row, LDK RPC, invoice-return, and total-duration timing
+  metadata.
+- LDK funding material no longer overloads the `spark_invoice` response field
+  with LDK payment ids.
+- Local verification covers LDK invoice creation without Spark, secret-free
+  operation metadata, event projection, and `ListPayments` reconciliation.
+
 #### LDK-08 — Add Pylon v0.2 payment-target registration
 
 Target repo: `OpenAgentsInc/openagents`
