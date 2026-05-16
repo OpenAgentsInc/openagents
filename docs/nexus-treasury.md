@@ -76,6 +76,46 @@ Current treasury-provider environment:
 - `NEXUS_LDK_NETWORK=regtest|signet|bitcoin`, default `regtest`.
 - `NEXUS_LDK_CHAIN_BACKEND=bitcoind|electrum|esplora`, default `bitcoind`.
 
+## Treasury Operations and Receipts
+
+Nexus now persists a provider-neutral treasury operation log beside the
+existing payout records, funding receive records, and authority receipt ledger.
+This is the LDK-03 data model: new LDK funding and payout work should be
+represented as operation rows first, then projected into receipts and public
+status.
+
+Operation rows cover:
+
+- funding invoice creation
+- outbound payout dispatch
+- provider payment-status lookup
+- receipt/event projection
+- reconciliation pass
+- explicit final-drain operation, if an operator later needs one
+
+Each operation stores only audit-safe metadata: operation id, kind, request id,
+rail (`ldk`, `spark`, or `receipt_ledger`), provider/class metadata, amount
+msat, target kind, target hash, beneficiary id, status, hashed provider payment
+id, receipt references, degraded reason, timestamps, and terminal state. Do not
+store raw invoices, private channel data, seeds, API keys, or wallet secrets in
+these rows.
+
+`GET /v1/treasury/status` includes a bounded `recent_treasury_operations` list
+for operator debugging. The persistent state retains more rows subject to the
+normal treasury retention and `TREASURY_OPERATION_LIMIT`.
+
+Receipts remain the public audit events. The treasury operation store is the
+replayable internal state machine that lets Nexus rebuild projections after a
+process restart. Receipt recording now also writes an `event_projection`
+operation and attaches receipt ids back to matching funding or payout
+operations by request id.
+
+Legacy Spark payout records are migrated into `spark` operation rows on
+treasury-state load. The migration hashes Spark payout targets and payment ids
+so old records remain queryable for audit without making new LDK logic depend
+on Spark-specific fields. Spark remains disabled for new funding/payout writes
+unless an operator explicitly enables final-drain/recovery mode.
+
 After the payer sends funds, verify the result with `/v1/treasury/status`.
 Treat the invoice as paid only after the status surface shows the receive in
 wallet state and subsequent accepted-work payout dispatch/confirmation. Do not

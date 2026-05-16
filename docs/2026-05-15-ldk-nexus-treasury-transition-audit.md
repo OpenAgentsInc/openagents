@@ -1148,6 +1148,31 @@ Verification:
 - Receipt projection unit tests.
 - Run `git diff --check`.
 
+Implementation status, 2026-05-16:
+
+- `nexus-control` now persists `TreasuryOperationRecord` rows keyed by stable
+  operation ids. The row is provider neutral: kind, rail, rail metadata,
+  amount msat, hashed target, beneficiary, status, hashed provider payment id,
+  receipt refs, degraded reason, timestamps, and terminal state.
+- New operation kinds cover funding invoice creation, outbound payout dispatch,
+  payment-status lookup, event projection, reconciliation pass, and a reserved
+  explicit final-drain operation.
+- Funding target creation records a `funding_invoice_creation` operation and a
+  `treasury.funding_invoice.created` receipt without storing raw invoices or
+  provider targets in the operation/receipt payload.
+- Payout preparation, dispatch outcomes, wallet snapshots, and reconciliation
+  now update operation rows. Receipt recording also writes an
+  `event_projection` operation and links receipt ids back to matching
+  operation rows.
+- Legacy Spark payout records migrate on treasury-state load into `spark`
+  operation rows with hashed payout targets/payment ids, preserving audit
+  visibility without making new LDK logic depend on Spark fields.
+- `GET /v1/treasury/status` exposes a bounded
+  `recent_treasury_operations` list for operator diagnostics.
+- Unit coverage now includes legacy Spark migration, funding-operation
+  idempotency and secret redaction, projection replay, and receipt-reference
+  attachment.
+
 Out of scope:
 
 - Do not implement live LDK gRPC calls here unless already provided by LDK-05.

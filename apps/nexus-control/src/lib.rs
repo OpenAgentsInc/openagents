@@ -17775,7 +17775,7 @@ async fn create_treasury_funding_target(
     let timeout_ms = state.config.treasury.funding_target_timeout_ms;
     let material = match tokio::time::timeout(
         Duration::from_millis(timeout_ms),
-        create_live_funding_target(&state.config.treasury, normalized_request),
+        create_live_funding_target(&state.config.treasury, normalized_request.clone()),
     )
     .await
     {
@@ -17798,6 +17798,19 @@ async fn create_treasury_funding_target(
         }
     };
     let now = now_unix_ms();
+    if let Ok(mut store) = state.store.write() {
+        let receipt_events = store.treasury.record_funding_invoice_created_operation(
+            &state.config.treasury,
+            &normalized_request,
+            &material,
+            now,
+        );
+        record_treasury_receipt_events(&mut store, receipt_events, now);
+    } else {
+        tracing::error!(
+            "treasury funding target receipt projection failed: session_store_poisoned"
+        );
+    }
     let _ = force_refresh_public_stats_cache(&state, now);
     Ok(Json(TreasuryFundingTargetResponse {
         authority: "openagents-hosted-nexus".to_string(),
@@ -23831,11 +23844,24 @@ fn record_treasury_receipt_events(
     now_unix_ms: u64,
 ) {
     for receipt_event in receipt_events {
-        store.economy.record(
+        let receipt = store.economy.record(
             receipt_event.receipt_type,
             now_unix_ms,
             receipt_event.context,
         );
+        store.treasury.record_event_projection_operation(
+            receipt.receipt_type.as_str(),
+            receipt.receipt_id.as_str(),
+            receipt.context.request_id.as_deref(),
+            now_unix_ms,
+        );
+        if let Some(request_id) = receipt.context.request_id.as_deref() {
+            store.treasury.attach_receipt_reference_for_request(
+                request_id,
+                receipt.receipt_id.as_str(),
+                now_unix_ms,
+            );
+        }
     }
 }
 

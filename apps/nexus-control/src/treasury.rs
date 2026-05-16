@@ -135,6 +135,7 @@ const TREASURY_PAYOUT_LIMIT: usize = 262_144;
 const TREASURY_PLACEHOLDER_PAYOUT_RECORD_LIMIT: usize = 1_024;
 const TREASURY_PLACEHOLDER_PAYOUT_RECORD_RETENTION_WINDOW_MS: u64 = 86_400_000;
 const TREASURY_RECEIVE_LIMIT: usize = 16_384;
+const TREASURY_OPERATION_LIMIT: usize = 262_144;
 const TREASURY_POLICY_CHANGE_LIMIT: usize = 64;
 const TREASURY_STATUS_POLICY_CHANGE_LIMIT: usize = 8;
 const TREASURY_STATUS_PAYOUT_TARGET_ROW_LIMIT: usize = 64;
@@ -1246,6 +1247,8 @@ pub struct TreasuryStatusResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent_training_payouts: Vec<TreasuryTrainingPayoutLedgerEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_treasury_operations: Vec<TreasuryOperationRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub availability_beneficiary_debug_rows: Vec<TreasuryAvailabilityBeneficiaryDebugRow>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub legacy_availability_confirmation_attention_rows:
@@ -1963,6 +1966,79 @@ pub struct TreasuryPayoutRecord {
     pub classification: TreasuryPayoutClassification,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum TreasuryOperationKind {
+    FundingInvoiceCreation,
+    OutboundPayoutDispatch,
+    PaymentStatusLookup,
+    EventProjection,
+    ReconciliationPass,
+    FinalDrainOperation,
+}
+
+impl TreasuryOperationKind {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::FundingInvoiceCreation => "funding_invoice_creation",
+            Self::OutboundPayoutDispatch => "outbound_payout_dispatch",
+            Self::PaymentStatusLookup => "payment_status_lookup",
+            Self::EventProjection => "event_projection",
+            Self::ReconciliationPass => "reconciliation_pass",
+            Self::FinalDrainOperation => "final_drain_operation",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TreasuryOperationStatus {
+    Pending,
+    Completed,
+    Failed,
+    Degraded,
+}
+
+impl TreasuryOperationStatus {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Degraded => "degraded",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TreasuryOperationRecord {
+    pub operation_id: String,
+    pub kind: TreasuryOperationKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    pub rail: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub rail_metadata: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub amount_msat: Option<u64>,
+    pub target_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beneficiary: Option<String>,
+    pub status: TreasuryOperationStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_payment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub receipt_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
+    pub created_at_unix_ms: u64,
+    pub updated_at_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_event_state: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreasuryQueuedPayoutRequest {
     pub payout_key: String,
@@ -1996,6 +2072,8 @@ pub struct TreasuryState {
     payout_key_by_payment_id: BTreeMap<String, String>,
     #[serde(default)]
     pub funding_receives_by_payment_id: BTreeMap<String, TreasuryFundingReceive>,
+    #[serde(default)]
+    pub treasury_operations_by_id: BTreeMap<String, TreasuryOperationRecord>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_runtime_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2107,6 +2185,96 @@ struct AvailabilityObservabilitySnapshot {
     readiness_blocked_online_targets: u64,
     latest_eligible_window_started_at_unix_ms: Option<u64>,
     availability_beneficiary_debug_rows: Vec<TreasuryAvailabilityBeneficiaryDebugRow>,
+}
+
+fn treasury_hash(value: &str) -> String {
+    format!("sha256:{}", hex::encode(Sha256::digest(value.as_bytes())))
+}
+
+fn treasury_short_hash(value: &str) -> String {
+    hex::encode(&Sha256::digest(value.as_bytes())[..16])
+}
+
+fn treasury_operation_id(kind: TreasuryOperationKind, request_id: &str) -> String {
+    format!(
+        "treasury-op-{}-{}",
+        kind.as_str(),
+        treasury_short_hash(request_id)
+    )
+}
+
+fn operation_rail_for_provider(provider: TreasuryLightningProviderKind) -> &'static str {
+    match provider {
+        TreasuryLightningProviderKind::Ldk => "ldk",
+        TreasuryLightningProviderKind::SparkFinalDrain => "spark",
+    }
+}
+
+fn operation_status_for_payment_status(status: &str) -> TreasuryOperationStatus {
+    let lowered = status.trim().to_ascii_lowercase();
+    if matches!(
+        lowered.as_str(),
+        "completed" | "complete" | "confirmed" | "succeeded" | "success"
+    ) {
+        TreasuryOperationStatus::Completed
+    } else if lowered.contains("fail") || lowered.contains("cancel") || lowered.contains("error") {
+        TreasuryOperationStatus::Failed
+    } else {
+        TreasuryOperationStatus::Pending
+    }
+}
+
+fn operation_amount_msat(amount_sats: u64) -> Option<u64> {
+    amount_sats.checked_mul(1_000)
+}
+
+fn payout_dispatch_operation_from_record(
+    config: &TreasuryConfig,
+    record: &TreasuryPayoutRecord,
+    now_unix_ms: u64,
+) -> TreasuryOperationRecord {
+    let mut rail_metadata = BTreeMap::new();
+    rail_metadata.insert(
+        "provider".to_string(),
+        config.lightning_provider.provider.as_str().to_string(),
+    );
+    rail_metadata.insert(
+        "payout_class".to_string(),
+        record
+            .classification
+            .effective_payout_class()
+            .label()
+            .to_string(),
+    );
+    if let Some(training_run_id) = record.classification.training_run_id.as_deref() {
+        rail_metadata.insert("training_run_id".to_string(), training_run_id.to_string());
+    }
+
+    TreasuryOperationRecord {
+        operation_id: treasury_operation_id(
+            TreasuryOperationKind::OutboundPayoutDispatch,
+            record.payout_key.as_str(),
+        ),
+        kind: TreasuryOperationKind::OutboundPayoutDispatch,
+        request_id: Some(record.payout_key.clone()),
+        rail: operation_rail_for_provider(config.lightning_provider.provider).to_string(),
+        rail_metadata,
+        amount_msat: operation_amount_msat(record.amount_sats),
+        target_kind: "payout_target".to_string(),
+        target_hash: (!record.payout_target.trim().is_empty())
+            .then(|| treasury_hash(record.payout_target.as_str())),
+        beneficiary: Some(record.nostr_pubkey_hex.clone()),
+        status: TreasuryOperationStatus::Pending,
+        provider_payment_id: record
+            .payment_id
+            .as_ref()
+            .map(|payment_id| treasury_hash(payment_id.as_str())),
+        receipt_refs: Vec::new(),
+        degraded_reason: record.reason.clone(),
+        created_at_unix_ms: record.created_at_unix_ms.min(now_unix_ms),
+        updated_at_unix_ms: now_unix_ms,
+        terminal_event_state: None,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2635,6 +2803,7 @@ impl TreasuryState {
         changed |= loaded.backfill_classified_payout_totals();
         loaded.public_snapshot = None;
         changed |= loaded.trim_policy_change_history();
+        changed |= loaded.migrate_legacy_spark_operations(now_unix_ms());
         changed |= loaded.trim_retention(now_unix_ms());
         loaded.rebuild_payment_index();
         loaded.state_path = Some(state_path);
@@ -2642,6 +2811,394 @@ impl TreasuryState {
             loaded.persist();
         }
         loaded
+    }
+
+    fn upsert_treasury_operation(&mut self, mut operation: TreasuryOperationRecord) -> bool {
+        if let Some(existing) = self
+            .treasury_operations_by_id
+            .get(operation.operation_id.as_str())
+        {
+            operation.created_at_unix_ms = existing.created_at_unix_ms;
+            for receipt_ref in &existing.receipt_refs {
+                if !operation.receipt_refs.contains(receipt_ref) {
+                    operation.receipt_refs.push(receipt_ref.clone());
+                }
+            }
+            operation.receipt_refs.sort();
+            operation.receipt_refs.dedup();
+            if existing == &operation {
+                return false;
+            }
+        }
+        self.treasury_operations_by_id
+            .insert(operation.operation_id.clone(), operation);
+        true
+    }
+
+    pub fn attach_receipt_reference_for_request(
+        &mut self,
+        request_id: &str,
+        receipt_id: &str,
+        now_unix_ms: u64,
+    ) -> bool {
+        let mut changed = false;
+        for operation in self
+            .treasury_operations_by_id
+            .values_mut()
+            .filter(|operation| {
+                operation.request_id.as_deref() == Some(request_id)
+                    || operation.operation_id == request_id
+            })
+        {
+            if !operation
+                .receipt_refs
+                .iter()
+                .any(|entry| entry == receipt_id)
+            {
+                operation.receipt_refs.push(receipt_id.to_string());
+                operation.receipt_refs.sort();
+                operation.receipt_refs.dedup();
+                operation.updated_at_unix_ms = operation.updated_at_unix_ms.max(now_unix_ms);
+                changed = true;
+            }
+        }
+        if changed {
+            self.persist();
+        }
+        changed
+    }
+
+    pub fn record_event_projection_operation(
+        &mut self,
+        receipt_type: &str,
+        receipt_id: &str,
+        related_request_id: Option<&str>,
+        now_unix_ms: u64,
+    ) -> bool {
+        let request_id = format!("event-projection:{receipt_id}");
+        let mut rail_metadata = BTreeMap::new();
+        rail_metadata.insert("receipt_type".to_string(), receipt_type.to_string());
+        if let Some(related_request_id) = related_request_id {
+            rail_metadata.insert(
+                "related_request_id".to_string(),
+                related_request_id.to_string(),
+            );
+        }
+        let operation = TreasuryOperationRecord {
+            operation_id: treasury_operation_id(
+                TreasuryOperationKind::EventProjection,
+                &request_id,
+            ),
+            kind: TreasuryOperationKind::EventProjection,
+            request_id: Some(request_id),
+            rail: "receipt_ledger".to_string(),
+            rail_metadata,
+            amount_msat: None,
+            target_kind: "authority_receipt".to_string(),
+            target_hash: Some(treasury_hash(receipt_id)),
+            beneficiary: None,
+            status: TreasuryOperationStatus::Completed,
+            provider_payment_id: None,
+            receipt_refs: vec![receipt_id.to_string()],
+            degraded_reason: None,
+            created_at_unix_ms: now_unix_ms,
+            updated_at_unix_ms: now_unix_ms,
+            terminal_event_state: Some("recorded".to_string()),
+        };
+        let changed = self.upsert_treasury_operation(operation);
+        if changed {
+            self.persist();
+        }
+        changed
+    }
+
+    pub fn record_funding_invoice_created_operation(
+        &mut self,
+        config: &TreasuryConfig,
+        request: &TreasuryFundingTargetRequest,
+        material: &TreasuryFundingMaterial,
+        now_unix_ms: u64,
+    ) -> Vec<TreasuryReceiptEvent> {
+        let request_id = funding_idempotency_key(request);
+        let target = material
+            .bolt11_invoice
+            .as_deref()
+            .unwrap_or(material.spark_address.as_str());
+        let target_kind = if material.bolt11_invoice.is_some() {
+            "bolt11_invoice"
+        } else {
+            "provider_target"
+        };
+        let mut rail_metadata = BTreeMap::new();
+        rail_metadata.insert(
+            "provider".to_string(),
+            config.lightning_provider.provider.as_str().to_string(),
+        );
+        rail_metadata.insert(
+            "ldk_network".to_string(),
+            config.lightning_provider.ldk.network.as_str().to_string(),
+        );
+        rail_metadata.insert(
+            "ldk_chain_backend".to_string(),
+            config
+                .lightning_provider
+                .ldk
+                .chain_backend
+                .as_str()
+                .to_string(),
+        );
+        rail_metadata.insert(
+            "has_bolt11_invoice".to_string(),
+            material.bolt11_invoice.is_some().to_string(),
+        );
+        let target_hash = treasury_hash(target);
+        let operation_id =
+            treasury_operation_id(TreasuryOperationKind::FundingInvoiceCreation, &request_id);
+        let operation = TreasuryOperationRecord {
+            operation_id: operation_id.clone(),
+            kind: TreasuryOperationKind::FundingInvoiceCreation,
+            request_id: Some(request_id.clone()),
+            rail: operation_rail_for_provider(config.lightning_provider.provider).to_string(),
+            rail_metadata,
+            amount_msat: request.amount_sats.and_then(operation_amount_msat),
+            target_kind: target_kind.to_string(),
+            target_hash: Some(target_hash.clone()),
+            beneficiary: None,
+            status: TreasuryOperationStatus::Completed,
+            provider_payment_id: material
+                .spark_invoice
+                .as_ref()
+                .map(|invoice| treasury_hash(invoice.as_str()))
+                .or_else(|| Some(target_hash.clone())),
+            receipt_refs: Vec::new(),
+            degraded_reason: None,
+            created_at_unix_ms: now_unix_ms,
+            updated_at_unix_ms: now_unix_ms,
+            terminal_event_state: Some("invoice_created".to_string()),
+        };
+        let changed = self.upsert_treasury_operation(operation);
+        if changed {
+            self.persist();
+        }
+
+        let mut attributes = BTreeMap::new();
+        attributes.insert("operation_id".to_string(), operation_id);
+        attributes.insert(
+            "provider".to_string(),
+            config.lightning_provider.provider.as_str().to_string(),
+        );
+        attributes.insert(
+            "rail".to_string(),
+            operation_rail_for_provider(config.lightning_provider.provider).to_string(),
+        );
+        attributes.insert("target_kind".to_string(), target_kind.to_string());
+        attributes.insert("target_hash".to_string(), target_hash);
+        vec![TreasuryReceiptEvent {
+            receipt_type: "treasury.funding_invoice.created",
+            context: AuthorityReceiptContext {
+                request_id: Some(request_id),
+                status: Some(TreasuryOperationStatus::Completed.as_str().to_string()),
+                amount_sats: request.amount_sats,
+                attributes,
+                ..AuthorityReceiptContext::default()
+            },
+        }]
+    }
+
+    fn record_reconciliation_operation(
+        &mut self,
+        config: &TreasuryConfig,
+        now_unix_ms: u64,
+        degraded_reason: Option<String>,
+    ) -> bool {
+        let request_id = format!("reconciliation:{now_unix_ms}");
+        let mut rail_metadata = BTreeMap::new();
+        rail_metadata.insert(
+            "provider".to_string(),
+            config.lightning_provider.provider.as_str().to_string(),
+        );
+        let operation = TreasuryOperationRecord {
+            operation_id: treasury_operation_id(
+                TreasuryOperationKind::ReconciliationPass,
+                &request_id,
+            ),
+            kind: TreasuryOperationKind::ReconciliationPass,
+            request_id: Some(request_id),
+            rail: operation_rail_for_provider(config.lightning_provider.provider).to_string(),
+            rail_metadata,
+            amount_msat: None,
+            target_kind: "treasury_state".to_string(),
+            target_hash: None,
+            beneficiary: None,
+            status: if degraded_reason.is_some() {
+                TreasuryOperationStatus::Degraded
+            } else {
+                TreasuryOperationStatus::Completed
+            },
+            provider_payment_id: None,
+            receipt_refs: Vec::new(),
+            degraded_reason,
+            created_at_unix_ms: now_unix_ms,
+            updated_at_unix_ms: now_unix_ms,
+            terminal_event_state: Some("projection_checked".to_string()),
+        };
+        self.upsert_treasury_operation(operation)
+    }
+
+    fn record_payment_status_lookup_operation(
+        &mut self,
+        payment: &PaymentSummary,
+        wallet_hydration_mode: Option<&str>,
+        now_unix_ms: u64,
+    ) -> bool {
+        let provider = if payment.method.eq_ignore_ascii_case("ldk")
+            || wallet_hydration_mode.is_some_and(|mode| mode.to_ascii_lowercase().contains("ldk"))
+        {
+            TreasuryLightningProviderKind::Ldk
+        } else {
+            TreasuryLightningProviderKind::SparkFinalDrain
+        };
+        let request_id = format!("payment-status:{}", payment.id);
+        let mut rail_metadata = BTreeMap::new();
+        rail_metadata.insert("payment_direction".to_string(), payment.direction.clone());
+        rail_metadata.insert("payment_method".to_string(), payment.method.clone());
+        let status = operation_status_for_payment_status(payment.status.as_str());
+        let operation = TreasuryOperationRecord {
+            operation_id: treasury_operation_id(
+                TreasuryOperationKind::PaymentStatusLookup,
+                &request_id,
+            ),
+            kind: TreasuryOperationKind::PaymentStatusLookup,
+            request_id: Some(request_id),
+            rail: operation_rail_for_provider(provider).to_string(),
+            rail_metadata,
+            amount_msat: operation_amount_msat(payment.amount_sats),
+            target_kind: "provider_payment".to_string(),
+            target_hash: Some(treasury_hash(payment.id.as_str())),
+            beneficiary: None,
+            status,
+            provider_payment_id: Some(treasury_hash(payment.id.as_str())),
+            receipt_refs: Vec::new(),
+            degraded_reason: payment.status_detail.clone(),
+            created_at_unix_ms: payment.timestamp.saturating_mul(1_000),
+            updated_at_unix_ms: now_unix_ms,
+            terminal_event_state: matches!(
+                status,
+                TreasuryOperationStatus::Completed | TreasuryOperationStatus::Failed
+            )
+            .then(|| payment.status.clone()),
+        };
+        self.upsert_treasury_operation(operation)
+    }
+
+    fn update_payout_operation_status(
+        &mut self,
+        payout_key: &str,
+        status: TreasuryOperationStatus,
+        provider_payment_id: Option<String>,
+        degraded_reason: Option<String>,
+        terminal_event_state: Option<String>,
+        now_unix_ms: u64,
+    ) -> bool {
+        let operation_id =
+            treasury_operation_id(TreasuryOperationKind::OutboundPayoutDispatch, payout_key);
+        let Some(operation) = self
+            .treasury_operations_by_id
+            .get_mut(operation_id.as_str())
+        else {
+            return false;
+        };
+        let mut changed = false;
+        if operation.status != status {
+            operation.status = status;
+            changed = true;
+        }
+        if operation.provider_payment_id != provider_payment_id {
+            operation.provider_payment_id = provider_payment_id;
+            changed = true;
+        }
+        if operation.degraded_reason != degraded_reason {
+            operation.degraded_reason = degraded_reason;
+            changed = true;
+        }
+        if operation.terminal_event_state != terminal_event_state {
+            operation.terminal_event_state = terminal_event_state;
+            changed = true;
+        }
+        if changed {
+            operation.updated_at_unix_ms = now_unix_ms;
+        }
+        changed
+    }
+
+    fn migrate_legacy_spark_operations(&mut self, now_unix_ms: u64) -> bool {
+        let mut changed = false;
+        let records = self
+            .payout_records_by_key
+            .values()
+            .filter(|record| {
+                !record.payout_target.is_empty()
+                    || record.payment_id.is_some()
+                    || matches!(
+                        record.status.as_str(),
+                        "dispatching" | "dispatched" | "confirmed" | "failed"
+                    )
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        for record in records {
+            let status = match record.status.as_str() {
+                "confirmed" => TreasuryOperationStatus::Completed,
+                "failed" => TreasuryOperationStatus::Failed,
+                "skipped" => TreasuryOperationStatus::Degraded,
+                _ => TreasuryOperationStatus::Pending,
+            };
+            let mut rail_metadata = BTreeMap::new();
+            rail_metadata.insert("provider".to_string(), "spark_final_drain".to_string());
+            rail_metadata.insert(
+                "migrated_from".to_string(),
+                "legacy_payout_record".to_string(),
+            );
+            rail_metadata.insert(
+                "payout_class".to_string(),
+                record
+                    .classification
+                    .effective_payout_class()
+                    .label()
+                    .to_string(),
+            );
+            let operation = TreasuryOperationRecord {
+                operation_id: treasury_operation_id(
+                    TreasuryOperationKind::OutboundPayoutDispatch,
+                    record.payout_key.as_str(),
+                ),
+                kind: TreasuryOperationKind::OutboundPayoutDispatch,
+                request_id: Some(record.payout_key.clone()),
+                rail: "spark".to_string(),
+                rail_metadata,
+                amount_msat: operation_amount_msat(record.amount_sats),
+                target_kind: "legacy_spark_payout_target".to_string(),
+                target_hash: (!record.payout_target.trim().is_empty())
+                    .then(|| treasury_hash(record.payout_target.as_str())),
+                beneficiary: Some(record.nostr_pubkey_hex.clone()),
+                status,
+                provider_payment_id: record
+                    .payment_id
+                    .as_ref()
+                    .map(|id| treasury_hash(id.as_str())),
+                receipt_refs: Vec::new(),
+                degraded_reason: record.reason.clone(),
+                created_at_unix_ms: record.created_at_unix_ms,
+                updated_at_unix_ms: record.updated_at_unix_ms.max(now_unix_ms),
+                terminal_event_state: matches!(
+                    status,
+                    TreasuryOperationStatus::Completed | TreasuryOperationStatus::Failed
+                )
+                .then(|| record.status.clone()),
+            };
+            changed |= self.upsert_treasury_operation(operation);
+        }
+        changed
     }
 
     pub fn apply_paid_total_floor(&mut self, payout_sats_paid_total_floor: u64) -> Option<u64> {
@@ -4531,6 +5088,23 @@ impl TreasuryState {
         rows
     }
 
+    fn recent_treasury_operations(&self) -> Vec<TreasuryOperationRecord> {
+        let mut operations = self
+            .treasury_operations_by_id
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        operations.sort_by(|left, right| {
+            right
+                .updated_at_unix_ms
+                .cmp(&left.updated_at_unix_ms)
+                .then_with(|| right.created_at_unix_ms.cmp(&left.created_at_unix_ms))
+                .then_with(|| left.operation_id.cmp(&right.operation_id))
+        });
+        operations.truncate(64);
+        operations
+    }
+
     pub fn status_response(
         &self,
         config: &TreasuryConfig,
@@ -4541,6 +5115,7 @@ impl TreasuryState {
         let training_payout_ledger_summary = self.training_payout_ledger_summary();
         let payout_target_identities = self.payout_target_identity_rows();
         let recent_training_payouts = self.recent_training_payouts();
+        let recent_treasury_operations = self.recent_treasury_operations();
         let legacy_availability_confirmation_attention_rows =
             self.legacy_availability_confirmation_attention_rows(config, now_unix_ms);
         TreasuryStatusResponse {
@@ -4679,6 +5254,7 @@ impl TreasuryState {
             training_payout_ledger_summary,
             payout_target_identities,
             recent_training_payouts,
+            recent_treasury_operations,
             availability_beneficiary_debug_rows: self.availability_beneficiary_debug_rows.clone(),
             legacy_availability_confirmation_attention_rows,
         }
@@ -5117,6 +5693,7 @@ impl TreasuryState {
         queued.sort();
 
         let mut dispatch_plans = Vec::new();
+        let mut operation_records = Vec::new();
         let mut changed = false;
         let mut accepted_work_claimed = 0usize;
         let mut availability_claimed = 0usize;
@@ -5200,12 +5777,20 @@ impl TreasuryState {
             record.reason = None;
             record.updated_at_unix_ms = now_unix_ms;
             changed = true;
+            operation_records.push(payout_dispatch_operation_from_record(
+                config,
+                record,
+                now_unix_ms,
+            ));
             dispatch_plans.push(TreasuryDispatchPlan {
                 payout_key,
                 payment_request: target.spark_address,
                 amount_sats: record.amount_sats,
                 classification: record.classification.clone(),
             });
+        }
+        for operation in operation_records {
+            changed |= self.upsert_treasury_operation(operation);
         }
         (dispatch_plans, changed)
     }
@@ -5300,6 +5885,11 @@ impl TreasuryState {
         let payout_interval_ms = policy.payout_interval_ms();
         let (reconciliation_started_at_unix_ms, reconciliation_degraded_reason) =
             self.payout_reconciliation_started_at(config, now_unix_ms);
+        changed |= self.record_reconciliation_operation(
+            config,
+            now_unix_ms,
+            reconciliation_degraded_reason.clone(),
+        );
         let availability_dispatch_suppression_reason =
             self.availability_dispatch_suppression_reason(config, now_unix_ms);
         let placeholder_classification = policy.placeholder_payout_classification();
@@ -5480,36 +6070,38 @@ impl TreasuryState {
 
                     committed_daily_budget_totals
                         .add_amount(payout_class, policy.payout_sats_per_window);
-                    self.payout_records_by_key.insert(
-                        payout_key.clone(),
-                        TreasuryPayoutRecord {
-                            payout_key: payout_key.clone(),
-                            nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
-                            payout_target: payout_target.clone(),
-                            amount_sats: policy.payout_sats_per_window,
-                            status: "dispatching".to_string(),
-                            reason: None,
-                            payment_id: None,
-                            window_started_at_unix_ms,
-                            window_ends_at_unix_ms,
-                            created_at_unix_ms: now_unix_ms,
-                            updated_at_unix_ms: now_unix_ms,
-                            sellable_at_window_open: identity.sellable,
-                            dispatch_receipt_recorded: false,
-                            confirm_receipt_recorded: false,
-                            fail_receipt_recorded: false,
-                            skip_receipt_recorded: false,
-                            counted_in_paid_total: false,
-                            classification: placeholder_classification.clone(),
-                        },
-                    );
+                    let record = TreasuryPayoutRecord {
+                        payout_key: payout_key.clone(),
+                        nostr_pubkey_hex: identity.nostr_pubkey_hex.clone(),
+                        payout_target: payout_target.clone(),
+                        amount_sats: policy.payout_sats_per_window,
+                        status: "dispatching".to_string(),
+                        reason: None,
+                        payment_id: None,
+                        window_started_at_unix_ms,
+                        window_ends_at_unix_ms,
+                        created_at_unix_ms: now_unix_ms,
+                        updated_at_unix_ms: now_unix_ms,
+                        sellable_at_window_open: identity.sellable,
+                        dispatch_receipt_recorded: false,
+                        confirm_receipt_recorded: false,
+                        fail_receipt_recorded: false,
+                        skip_receipt_recorded: false,
+                        counted_in_paid_total: false,
+                        classification: placeholder_classification.clone(),
+                    };
+                    let operation =
+                        payout_dispatch_operation_from_record(config, &record, now_unix_ms);
+                    self.payout_records_by_key
+                        .insert(payout_key.clone(), record);
+                    changed = true;
+                    changed |= self.upsert_treasury_operation(operation);
                     dispatch_plans.push(TreasuryDispatchPlan {
                         payout_key,
                         payment_request: payout_target,
                         amount_sats: policy.payout_sats_per_window,
                         classification: placeholder_classification.clone(),
                     });
-                    changed = true;
                 }
 
                 if window_started_at_unix_ms >= current_window_started_at_unix_ms {
@@ -5563,6 +6155,14 @@ impl TreasuryState {
                         receipt_events.push(dispatched_payout_receipt(record, payment_id.as_str()));
                     }
                 }
+                self.update_payout_operation_status(
+                    payout_key.as_str(),
+                    TreasuryOperationStatus::Pending,
+                    Some(treasury_hash(payment_id.as_str())),
+                    None,
+                    Some("dispatched".to_string()),
+                    now_unix_ms,
+                );
                 self.payout_key_by_payment_id.insert(payment_id, payout_key);
             }
             TreasuryDispatchOutcome::Failed { payout_key, reason } => {
@@ -5575,6 +6175,14 @@ impl TreasuryState {
                         receipt_events.push(failed_payout_receipt(record));
                     }
                 }
+                self.update_payout_operation_status(
+                    payout_key.as_str(),
+                    TreasuryOperationStatus::Failed,
+                    None,
+                    Some(reason.clone()),
+                    Some("failed".to_string()),
+                    now_unix_ms,
+                );
                 if wallet_send_failure_is_leaf_selection(reason.as_str()) {
                     self.record_wallet_refresh_error(reason, now_unix_ms);
                 }
@@ -5624,6 +6232,11 @@ impl TreasuryState {
         let mut payments = snapshot.payments.clone();
         payments.sort_by_key(|payment| payment.timestamp);
         for payment in &payments {
+            persist_needed |= self.record_payment_status_lookup_operation(
+                payment,
+                snapshot.wallet_hydration_mode.as_deref(),
+                now_unix_ms,
+            );
             if payment.direction.eq_ignore_ascii_case("receive") {
                 let payment_updated_at_unix_ms = payment.timestamp.saturating_mul(1_000);
                 if let Some(existing) = self
@@ -5699,6 +6312,12 @@ impl TreasuryState {
                 }
                 continue;
             };
+            let payout_operation_update: (
+                TreasuryOperationStatus,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+            );
             if recovered_orphan && !record.dispatch_receipt_recorded {
                 record.dispatch_receipt_recorded = true;
                 persist_needed = true;
@@ -5766,6 +6385,12 @@ impl TreasuryState {
                         }
                     }
                 }
+                payout_operation_update = (
+                    TreasuryOperationStatus::Completed,
+                    Some(treasury_hash(payment.id.as_str())),
+                    None,
+                    Some(payment.status.clone()),
+                );
             } else if wallet_payment_is_failed(payment) {
                 let next_reason = payment
                     .status_detail
@@ -5784,6 +6409,12 @@ impl TreasuryState {
                     persist_needed = true;
                     receipt_events.push(failed_payout_receipt(record));
                 }
+                payout_operation_update = (
+                    TreasuryOperationStatus::Failed,
+                    Some(treasury_hash(payment.id.as_str())),
+                    record.reason.clone(),
+                    Some(payment.status.clone()),
+                );
             } else {
                 if record.status != "dispatched" {
                     record.status = "dispatched".to_string();
@@ -5793,7 +6424,23 @@ impl TreasuryState {
                     record.reason = None;
                     persist_needed = true;
                 }
+                payout_operation_update = (
+                    TreasuryOperationStatus::Pending,
+                    Some(treasury_hash(payment.id.as_str())),
+                    None,
+                    Some(payment.status.clone()),
+                );
             }
+            let (status, provider_payment_id, degraded_reason, terminal_event_state) =
+                payout_operation_update;
+            persist_needed |= self.update_payout_operation_status(
+                payout_key.as_str(),
+                status,
+                provider_payment_id,
+                degraded_reason,
+                terminal_event_state,
+                now_unix_ms,
+            );
         }
         if self.last_confirmed_payout_at_unix_ms != last_confirmed_payout_at_unix_ms {
             self.last_confirmed_payout_at_unix_ms = last_confirmed_payout_at_unix_ms;
@@ -6051,6 +6698,24 @@ impl TreasuryState {
         self.funding_receives_by_payment_id
             .retain(|_, receive| receive.updated_at_unix_ms >= oldest_allowed);
         changed |= self.funding_receives_by_payment_id.len() != funding_receives_before;
+        let operations_before = self.treasury_operations_by_id.len();
+        self.treasury_operations_by_id
+            .retain(|_, operation| operation.updated_at_unix_ms >= oldest_allowed);
+        changed |= self.treasury_operations_by_id.len() != operations_before;
+        if self.treasury_operations_by_id.len() > TREASURY_OPERATION_LIMIT {
+            let mut operations = self
+                .treasury_operations_by_id
+                .values()
+                .cloned()
+                .collect::<Vec<_>>();
+            operations.sort_by_key(|operation| operation.updated_at_unix_ms);
+            let overflow = operations.len().saturating_sub(TREASURY_OPERATION_LIMIT);
+            for operation in operations.into_iter().take(overflow) {
+                self.treasury_operations_by_id
+                    .remove(operation.operation_id.as_str());
+            }
+            changed = true;
+        }
         changed |= self.prune_challenges(now_unix_ms);
         self.rebuild_payment_index();
         changed
@@ -9339,17 +10004,18 @@ mod tests {
         TREASURY_WALLET_REFRESH_PAYMENT_PAGE_SIZE, TREASURY_WALLET_REFRESH_RECENT_PAYMENT_PAGES,
         TreasuryConfig, TreasuryDispatchOutcome, TreasuryFundingMaterial, TreasuryFundingReceive,
         TreasuryFundingTargetRequest, TreasuryLightningProviderConfig,
-        TreasuryLightningProviderKind, TreasuryPayoutClass, TreasuryPayoutClassification,
-        TreasuryPayoutRecord, TreasuryPlaceholderPayoutMode, TreasuryPublicStats,
-        TreasuryQueuedPayoutRequest, TreasuryState, TreasuryWalletInspection,
-        TreasuryWalletPaymentAggregate, TreasuryWalletRecoveryComparison,
-        TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan, TreasuryWalletRefreshProgress,
-        TreasuryWalletSnapshot, apply_treasury_wallet_recovery_cutover,
-        build_treasury_wallet_recovery_comparison, create_live_funding_target,
-        dispatch_live_payouts, parse_treasury_command, payout_phase_offset_ms, payout_window_key,
-        payout_window_started_at, payout_window_started_at_for_identity,
-        set_test_wallet_funding_hook, set_test_wallet_send_hook, set_test_wallet_snapshot_hook,
-        track_wallet_refresh_payment, treasury_test_hook_lock, validate_wallet_hydration_balance,
+        TreasuryLightningProviderKind, TreasuryOperationKind, TreasuryOperationStatus,
+        TreasuryPayoutClass, TreasuryPayoutClassification, TreasuryPayoutRecord,
+        TreasuryPlaceholderPayoutMode, TreasuryPublicStats, TreasuryQueuedPayoutRequest,
+        TreasuryState, TreasuryWalletInspection, TreasuryWalletPaymentAggregate,
+        TreasuryWalletRecoveryComparison, TreasuryWalletRecoveryReport, TreasuryWalletRefreshPlan,
+        TreasuryWalletRefreshProgress, TreasuryWalletSnapshot,
+        apply_treasury_wallet_recovery_cutover, build_treasury_wallet_recovery_comparison,
+        create_live_funding_target, dispatch_live_payouts, parse_treasury_command,
+        payout_phase_offset_ms, payout_window_key, payout_window_started_at,
+        payout_window_started_at_for_identity, set_test_wallet_funding_hook,
+        set_test_wallet_send_hook, set_test_wallet_snapshot_hook, track_wallet_refresh_payment,
+        treasury_test_hook_lock, validate_wallet_hydration_balance,
         verify_payout_target_registration_signature, wallet_refresh_page_offsets,
         wallet_refresh_payment_page_budget, write_json_file,
     };
@@ -9560,6 +10226,196 @@ mod tests {
                 .expect("clock")
                 .as_nanos()
         ))
+    }
+
+    fn test_payout_record(payout_key: &str, status: &str) -> TreasuryPayoutRecord {
+        TreasuryPayoutRecord {
+            payout_key: payout_key.to_string(),
+            nostr_pubkey_hex: "pubkey-a".to_string(),
+            payout_target: "spark:alice-secret-target".to_string(),
+            amount_sats: 120,
+            status: status.to_string(),
+            reason: None,
+            payment_id: Some("legacy-payment-secret".to_string()),
+            window_started_at_unix_ms: 1_700_000_000_000,
+            window_ends_at_unix_ms: 1_700_000_060_000,
+            created_at_unix_ms: 1_700_000_000_000,
+            updated_at_unix_ms: 1_700_000_001_000,
+            sellable_at_window_open: true,
+            dispatch_receipt_recorded: true,
+            confirm_receipt_recorded: status == "confirmed",
+            fail_receipt_recorded: status == "failed",
+            skip_receipt_recorded: status == "skipped",
+            counted_in_paid_total: status == "confirmed",
+            classification: TreasuryPayoutClassification::default(),
+        }
+    }
+
+    #[test]
+    fn legacy_spark_payout_records_migrate_to_operation_rows() {
+        let path = unique_treasury_state_path("legacy-spark-operations");
+        let payout_key = "window.legacy:pubkey-a";
+        let mut seed = TreasuryState::default();
+        seed.payout_records_by_key.insert(
+            payout_key.to_string(),
+            test_payout_record(payout_key, "confirmed"),
+        );
+        std::fs::write(
+            path.as_path(),
+            serde_json::to_string_pretty(&seed).expect("serialize seed"),
+        )
+        .expect("write treasury state");
+
+        let state = TreasuryState::new(path.clone());
+        let operation_id =
+            super::treasury_operation_id(TreasuryOperationKind::OutboundPayoutDispatch, payout_key);
+        let operation = state
+            .treasury_operations_by_id
+            .get(operation_id.as_str())
+            .expect("migrated legacy spark operation");
+
+        assert_eq!(operation.rail, "spark");
+        assert_eq!(operation.status, TreasuryOperationStatus::Completed);
+        assert_eq!(
+            operation
+                .rail_metadata
+                .get("migrated_from")
+                .map(String::as_str),
+            Some("legacy_payout_record")
+        );
+        assert!(
+            operation
+                .target_hash
+                .as_deref()
+                .is_some_and(|hash| hash.starts_with("sha256:"))
+        );
+        assert!(
+            operation
+                .provider_payment_id
+                .as_deref()
+                .is_some_and(|hash| hash.starts_with("sha256:"))
+        );
+        let serialized = serde_json::to_string(operation).expect("serialize operation");
+        assert!(!serialized.contains("spark:alice-secret-target"));
+        assert!(!serialized.contains("legacy-payment-secret"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn funding_invoice_operation_is_idempotent_and_secret_free() {
+        let config = test_treasury_config();
+        let mut state = TreasuryState::default();
+        let request = TreasuryFundingTargetRequest {
+            amount_sats: Some(21),
+            description: Some("test funding".to_string()),
+            expiry_seconds: Some(300),
+        };
+        let material = TreasuryFundingMaterial {
+            spark_address: "ldk:provider-target-secret".to_string(),
+            bitcoin_address: "bcrt1qfundingtarget".to_string(),
+            spark_invoice: Some("provider-invoice-secret".to_string()),
+            bolt11_invoice: Some("lnbc21secretinvoice".to_string()),
+            wallet_snapshot: TreasuryWalletSnapshot {
+                runtime_status: "connected".to_string(),
+                runtime_detail: None,
+                wallet_hydration_mode: Some("ldk_provider_scaffold".to_string()),
+                wallet_payment_scan_mode: Some("ldk_provider_boundary".to_string()),
+                balance_sats: 100,
+                payments: Vec::new(),
+            },
+        };
+
+        let first_events =
+            state.record_funding_invoice_created_operation(&config, &request, &material, 100);
+        let second_events =
+            state.record_funding_invoice_created_operation(&config, &request, &material, 200);
+        let operation_id = super::treasury_operation_id(
+            TreasuryOperationKind::FundingInvoiceCreation,
+            super::funding_idempotency_key(&request).as_str(),
+        );
+        let operation = state
+            .treasury_operations_by_id
+            .get(operation_id.as_str())
+            .expect("funding operation");
+
+        assert_eq!(state.treasury_operations_by_id.len(), 1);
+        assert_eq!(operation.status, TreasuryOperationStatus::Completed);
+        assert_eq!(operation.amount_msat, Some(21_000));
+        assert_eq!(first_events.len(), 1);
+        assert_eq!(second_events.len(), 1);
+        let serialized_operation = serde_json::to_string(operation).expect("operation json");
+        let serialized_event = serde_json::to_string(&first_events[0].context).expect("event json");
+        for secret in [
+            "ldk:provider-target-secret",
+            "provider-invoice-secret",
+            "lnbc21secretinvoice",
+        ] {
+            assert!(!serialized_operation.contains(secret));
+            assert!(!serialized_event.contains(secret));
+        }
+    }
+
+    #[test]
+    fn payout_operation_projection_replays_same_read_model() {
+        let config = test_treasury_config();
+        let mut state = TreasuryState::default();
+        let payout_key = "window.replay:pubkey-a";
+        let record = test_payout_record(payout_key, "dispatching");
+        let operation = super::payout_dispatch_operation_from_record(&config, &record, 100);
+
+        assert!(state.upsert_treasury_operation(operation.clone()));
+        assert!(!state.upsert_treasury_operation(operation));
+        assert!(state.update_payout_operation_status(
+            payout_key,
+            TreasuryOperationStatus::Completed,
+            Some(super::treasury_hash("payment-complete")),
+            None,
+            Some("completed".to_string()),
+            200,
+        ));
+
+        let serialized = serde_json::to_string(&state).expect("serialize state");
+        let replayed: TreasuryState = serde_json::from_str(serialized.as_str()).expect("replay");
+        assert_eq!(
+            replayed.treasury_operations_by_id,
+            state.treasury_operations_by_id
+        );
+    }
+
+    #[test]
+    fn receipt_projection_attaches_receipt_refs_and_event_operation() {
+        let config = test_treasury_config();
+        let mut state = TreasuryState::default();
+        let payout_key = "window.receipt:pubkey-a";
+        let record = test_payout_record(payout_key, "dispatching");
+        let operation = super::payout_dispatch_operation_from_record(&config, &record, 100);
+        state.upsert_treasury_operation(operation);
+
+        assert!(state.attach_receipt_reference_for_request(payout_key, "receipt-1", 110));
+        assert!(!state.attach_receipt_reference_for_request(payout_key, "receipt-1", 120));
+        assert!(state.record_event_projection_operation(
+            "treasury.payout.dispatched",
+            "receipt-1",
+            Some(payout_key),
+            130,
+        ));
+
+        let payout_operation_id =
+            super::treasury_operation_id(TreasuryOperationKind::OutboundPayoutDispatch, payout_key);
+        let payout_operation = state
+            .treasury_operations_by_id
+            .get(payout_operation_id.as_str())
+            .expect("payout operation");
+        assert_eq!(payout_operation.receipt_refs, vec!["receipt-1".to_string()]);
+
+        let event_operation = state
+            .treasury_operations_by_id
+            .values()
+            .find(|operation| operation.kind == TreasuryOperationKind::EventProjection)
+            .expect("event projection operation");
+        assert_eq!(event_operation.receipt_refs, vec!["receipt-1".to_string()]);
+        assert_eq!(event_operation.status, TreasuryOperationStatus::Completed);
     }
 
     #[test]
