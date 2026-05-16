@@ -13,7 +13,10 @@ use std::sync::Mutex;
 use anyhow::{Context, Result, anyhow, bail};
 use bip39::{Language, Mnemonic};
 use futures::stream::{self, StreamExt};
-use openagents_provider_substrate::verify_provider_payout_target_registration_signature;
+use openagents_provider_substrate::{
+    ProviderPaymentTargetRegistration, verify_provider_payment_target_registration_signature,
+    verify_provider_payout_target_registration_signature,
+};
 use openagents_spark::{
     DepositClaimFeePolicy, Network as SparkNetwork, PaymentSummary, SparkError, SparkSigner,
     SparkWallet, WalletConfig,
@@ -597,6 +600,15 @@ pub struct ProviderPayoutTargetChallengeResponse {
 pub struct ProviderPayoutTargetRegistrationRequest {
     pub nostr_pubkey_hex: String,
     pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payment_target_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payment_target: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payment_target_capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pylon_payment_target_version: Option<String>,
+    #[serde(default)]
     pub spark_address: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bitcoin_address: Option<String>,
@@ -609,6 +621,12 @@ pub struct ProviderPayoutTargetRegistrationResponse {
     pub authority: String,
     pub nostr_pubkey_hex: String,
     pub session_id: String,
+    pub payment_target_kind: String,
+    pub payment_target: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payment_target_capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pylon_payment_target_version: Option<String>,
     pub spark_address: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bitcoin_address: Option<String>,
@@ -1337,6 +1355,16 @@ pub struct TreasuryStatusResponse {
 pub struct TreasuryPayoutTargetIdentityStatus {
     pub nostr_pubkey_hex: String,
     pub source_session_id: String,
+    #[serde(default)]
+    pub payment_target_kind: String,
+    #[serde(default)]
+    pub payment_target: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payment_target_capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pylon_payment_target_version: Option<String>,
+    #[serde(default)]
+    pub ldk_compatible: bool,
     pub spark_address: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bitcoin_address: Option<String>,
@@ -1985,11 +2013,158 @@ impl TreasuryPayoutClassification {
 pub struct RegisteredPayoutTarget {
     pub nostr_pubkey_hex: String,
     pub source_session_id: String,
+    #[serde(default)]
+    pub payment_target_kind: String,
+    #[serde(default)]
+    pub payment_target: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payment_target_capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pylon_payment_target_version: Option<String>,
     pub spark_address: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bitcoin_address: Option<String>,
     pub registered_at_unix_ms: u64,
     pub last_verified_at_unix_ms: u64,
+}
+
+impl RegisteredPayoutTarget {
+    fn normalized_payment_target_kind(&self) -> &str {
+        let kind = self.payment_target_kind.trim();
+        if !kind.is_empty() {
+            return kind;
+        }
+        if !self.spark_address.trim().is_empty() {
+            return "spark_address";
+        }
+        "unknown"
+    }
+
+    fn normalized_payment_target(&self) -> &str {
+        let target = self.payment_target.trim();
+        if !target.is_empty() {
+            return target;
+        }
+        self.spark_address.trim()
+    }
+
+    fn is_ldk_compatible(&self) -> bool {
+        matches!(
+            self.normalized_payment_target_kind(),
+            "bolt12_offer" | "bolt11_invoice" | "bip353_name" | "lnurl_pay"
+        )
+    }
+}
+
+fn normalized_registration_target_kind(
+    request: &ProviderPayoutTargetRegistrationRequest,
+) -> Result<String> {
+    let explicit = request
+        .payment_target_kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase());
+    let kind = explicit.unwrap_or_else(|| {
+        request
+            .payment_target
+            .as_deref()
+            .map(infer_payment_target_kind)
+            .unwrap_or_else(|| infer_payment_target_kind(request.spark_address.as_str()))
+    });
+    match kind.as_str() {
+        "bolt12_offer" | "bolt11_invoice" | "bip353_name" | "lnurl_pay" | "spark_address" => {
+            Ok(kind)
+        }
+        _ => bail!("unsupported_payment_target_kind:{kind}"),
+    }
+}
+
+fn normalized_registration_target_value(
+    request: &ProviderPayoutTargetRegistrationRequest,
+) -> Result<String> {
+    let value = request
+        .payment_target
+        .as_deref()
+        .or_else(|| {
+            let spark = request.spark_address.trim();
+            (!spark.is_empty()).then_some(spark)
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("payment_target_missing"))?;
+    Ok(value.to_string())
+}
+
+fn normalized_payment_target_capabilities(
+    request: &ProviderPayoutTargetRegistrationRequest,
+) -> Vec<String> {
+    let mut capabilities = request
+        .payment_target_capabilities
+        .iter()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    let kind = request
+        .payment_target_kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| {
+            request
+                .payment_target
+                .as_deref()
+                .map(infer_payment_target_kind)
+                .unwrap_or_else(|| infer_payment_target_kind(request.spark_address.as_str()))
+        });
+    if kind != "spark_address" && !capabilities.iter().any(|value| value == &kind) {
+        capabilities.push(kind.clone());
+    }
+    if kind != "spark_address"
+        && !capabilities
+            .iter()
+            .any(|value| value == "ldk_payment_target_v0_2")
+    {
+        capabilities.push("ldk_payment_target_v0_2".to_string());
+    }
+    capabilities.sort();
+    capabilities.dedup();
+    capabilities
+}
+
+fn normalized_payment_target_version(request: &ProviderPayoutTargetRegistrationRequest) -> String {
+    request
+        .pylon_payment_target_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("pylon-payment-target/v0.2")
+        .to_string()
+}
+
+fn infer_payment_target_kind(value: &str) -> String {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.starts_with("lno") {
+        "bolt12_offer".to_string()
+    } else if normalized.starts_with("lnurl")
+        || normalized.starts_with("https://")
+        || normalized.starts_with("http://")
+    {
+        "lnurl_pay".to_string()
+    } else if normalized.starts_with("lnbc")
+        || normalized.starts_with("lntb")
+        || normalized.starts_with("lnbcrt")
+        || normalized.starts_with("ln")
+    {
+        "bolt11_invoice".to_string()
+    } else if normalized.starts_with("spark") {
+        "spark_address".to_string()
+    } else if normalized.contains('@') {
+        "bip353_name".to_string()
+    } else {
+        "spark_address".to_string()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -3636,10 +3811,14 @@ impl TreasuryState {
                 };
             }
         }
-        if !payout_target.spark_address.trim().is_empty() {
+        if !payout_target.normalized_payment_target().is_empty() {
             return AvailabilityBeneficiaryProjection {
                 kind: AvailabilityBeneficiaryKind::PayoutTarget,
-                key: format!("payout_target:{}", payout_target.spark_address),
+                key: format!(
+                    "payout_target:{}:{}",
+                    payout_target.normalized_payment_target_kind(),
+                    payout_target.normalized_payment_target()
+                ),
             };
         }
         AvailabilityBeneficiaryProjection {
@@ -3683,8 +3862,12 @@ impl TreasuryState {
                 disposition.verdict_reason = Some("missing_payout_target".to_string());
                 continue;
             };
-            if target.spark_address.trim().is_empty() {
+            if target.normalized_payment_target().is_empty() {
                 disposition.verdict_reason = Some("missing_payout_target".to_string());
+                continue;
+            }
+            if !target.is_ldk_compatible() {
+                disposition.verdict_reason = Some("payout_target_requires_ldk_v0_2".to_string());
                 continue;
             }
             disposition.payout_target = Some(target.clone());
@@ -3743,7 +3926,14 @@ impl TreasuryState {
                 continue;
             };
             if seen_payout_targets
-                .insert(target.spark_address.clone(), winner_index)
+                .insert(
+                    format!(
+                        "{}:{}",
+                        target.normalized_payment_target_kind(),
+                        target.normalized_payment_target()
+                    ),
+                    winner_index,
+                )
                 .is_some()
             {
                 dispositions[winner_index].verdict_reason =
@@ -3918,7 +4108,7 @@ impl TreasuryState {
                     payout_target: disposition
                         .payout_target
                         .as_ref()
-                        .map(|target| target.spark_address.clone()),
+                        .map(|target| target.normalized_payment_target().to_string()),
                     beneficiary_kind: disposition
                         .beneficiary
                         .as_ref()
@@ -5014,6 +5204,11 @@ impl TreasuryState {
                 TreasuryPayoutTargetIdentityStatus {
                     nostr_pubkey_hex: target.nostr_pubkey_hex.clone(),
                     source_session_id: target.source_session_id.clone(),
+                    payment_target_kind: target.normalized_payment_target_kind().to_string(),
+                    payment_target: target.normalized_payment_target().to_string(),
+                    payment_target_capabilities: target.payment_target_capabilities.clone(),
+                    pylon_payment_target_version: target.pylon_payment_target_version.clone(),
+                    ldk_compatible: target.is_ldk_compatible(),
                     spark_address: target.spark_address.clone(),
                     bitcoin_address: target.bitcoin_address.clone(),
                     registered_at_unix_ms: target.registered_at_unix_ms,
@@ -5679,21 +5874,46 @@ impl TreasuryState {
         if challenge.challenge != request.challenge {
             bail!("provider_payout_target_challenge_mismatch");
         }
-        verify_payout_target_registration_signature(
-            request.nostr_pubkey_hex.as_str(),
-            request.session_id.as_str(),
-            request.challenge.as_str(),
-            request.spark_address.as_str(),
-            request.challenge_signature_hex.as_str(),
-        )
-        .map_err(anyhow::Error::msg)?;
+        let target_kind = normalized_registration_target_kind(request)?;
+        let target_value = normalized_registration_target_value(request)?;
+        let capabilities = normalized_payment_target_capabilities(request);
+        let version = normalized_payment_target_version(request);
+        if target_kind == "spark_address" {
+            verify_payout_target_registration_signature(
+                request.nostr_pubkey_hex.as_str(),
+                request.session_id.as_str(),
+                request.challenge.as_str(),
+                target_value.as_str(),
+                request.challenge_signature_hex.as_str(),
+            )
+            .map_err(anyhow::Error::msg)?;
+        } else {
+            let capability_refs = capabilities.iter().map(String::as_str).collect::<Vec<_>>();
+            verify_provider_payment_target_registration_signature(
+                request.nostr_pubkey_hex.as_str(),
+                request.session_id.as_str(),
+                request.challenge.as_str(),
+                ProviderPaymentTargetRegistration {
+                    target_kind: target_kind.as_str(),
+                    target_value: target_value.as_str(),
+                    capabilities: capability_refs.as_slice(),
+                    version: version.as_str(),
+                },
+                request.challenge_signature_hex.as_str(),
+            )
+            .map_err(anyhow::Error::msg)?;
+        }
         self.registration_challenges_by_key.remove(&challenge_key);
 
         if let Some(existing) = self
             .payout_targets_by_identity
             .get_mut(request.nostr_pubkey_hex.as_str())
             .filter(|existing| {
-                existing.spark_address == request.spark_address
+                existing.normalized_payment_target_kind() == target_kind
+                    && existing.normalized_payment_target() == target_value
+                    && existing.payment_target_capabilities == capabilities
+                    && existing.pylon_payment_target_version.as_deref() == Some(version.as_str())
+                    && existing.spark_address == request.spark_address
                     && existing.bitcoin_address == request.bitcoin_address
             })
         {
@@ -5704,6 +5924,10 @@ impl TreasuryState {
                     authority: "openagents-hosted-nexus".to_string(),
                     nostr_pubkey_hex: request.nostr_pubkey_hex.clone(),
                     session_id: request.session_id.clone(),
+                    payment_target_kind: target_kind,
+                    payment_target: target_value,
+                    payment_target_capabilities: capabilities,
+                    pylon_payment_target_version: Some(version),
                     spark_address: request.spark_address.clone(),
                     bitcoin_address: request.bitcoin_address.clone(),
                     registered_at_unix_ms: existing.registered_at_unix_ms,
@@ -5715,6 +5939,10 @@ impl TreasuryState {
         let target = RegisteredPayoutTarget {
             nostr_pubkey_hex: request.nostr_pubkey_hex.clone(),
             source_session_id: request.session_id.clone(),
+            payment_target_kind: target_kind.clone(),
+            payment_target: target_value.clone(),
+            payment_target_capabilities: capabilities.clone(),
+            pylon_payment_target_version: Some(version.clone()),
             spark_address: request.spark_address.clone(),
             bitcoin_address: request.bitcoin_address.clone(),
             registered_at_unix_ms: now_unix_ms,
@@ -5730,10 +5958,22 @@ impl TreasuryState {
             "nostr_pubkey_hex".to_string(),
             request.nostr_pubkey_hex.clone(),
         );
+        attributes.insert("payment_target_kind".to_string(), target_kind.clone());
         attributes.insert(
-            "spark_address".to_string(),
-            truncate_target(request.spark_address.as_str()),
+            "payment_target".to_string(),
+            truncate_target(target_value.as_str()),
         );
+        attributes.insert(
+            "ldk_compatible".to_string(),
+            target.is_ldk_compatible().to_string(),
+        );
+        attributes.insert("pylon_payment_target_version".to_string(), version.clone());
+        if !request.spark_address.trim().is_empty() {
+            attributes.insert(
+                "spark_address".to_string(),
+                truncate_target(request.spark_address.as_str()),
+            );
+        }
         if let Some(bitcoin_address) = request.bitcoin_address.as_deref() {
             attributes.insert(
                 "bitcoin_address".to_string(),
@@ -5746,6 +5986,10 @@ impl TreasuryState {
                 authority: "openagents-hosted-nexus".to_string(),
                 nostr_pubkey_hex: request.nostr_pubkey_hex.clone(),
                 session_id: request.session_id.clone(),
+                payment_target_kind: target_kind,
+                payment_target: target_value,
+                payment_target_capabilities: capabilities,
+                pylon_payment_target_version: Some(version),
                 spark_address: request.spark_address.clone(),
                 bitcoin_address: request.bitcoin_address.clone(),
                 registered_at_unix_ms: now_unix_ms,
@@ -5873,7 +6117,7 @@ impl TreasuryState {
             *reserved_wallet_sats = reserved_wallet_sats.saturating_add(record.amount_sats);
             committed_daily_budget_totals.add_amount(payout_class, record.amount_sats);
             *claimed_for_class = claimed_for_class.saturating_add(1);
-            record.payout_target = target.spark_address.clone();
+            record.payout_target = target.normalized_payment_target().to_string();
             record.status = "dispatching".to_string();
             record.reason = None;
             record.updated_at_unix_ms = now_unix_ms;
@@ -5885,7 +6129,7 @@ impl TreasuryState {
             ));
             dispatch_plans.push(TreasuryDispatchPlan {
                 payout_key,
-                payment_request: target.spark_address,
+                payment_request: target.normalized_payment_target().to_string(),
                 amount_sats: record.amount_sats,
                 classification: record.classification.clone(),
             });
@@ -6049,7 +6293,7 @@ impl TreasuryState {
                 let payout_target = disposition
                     .payout_target
                     .as_ref()
-                    .map(|target| target.spark_address.clone())
+                    .map(|target| target.normalized_payment_target().to_string())
                     .unwrap_or_default();
 
                 if !self.payout_records_by_key.contains_key(&payout_key) {
@@ -10169,7 +10413,11 @@ mod tests {
         wallet_refresh_payment_page_budget, write_json_file,
     };
     use crate::treasury_provider::{LdkChainBackend, LdkNetwork, LdkTreasuryProviderConfig};
-    use openagents_provider_substrate::sign_provider_payout_target_registration;
+    use openagents_provider_substrate::{
+        ProviderPaymentTargetRegistration, sign_provider_payment_target_registration,
+        sign_provider_payout_target_registration,
+        verify_provider_payment_target_registration_signature,
+    };
     use openagents_spark::PaymentSummary;
     use std::collections::BTreeSet;
     use std::fs;
@@ -10644,6 +10892,33 @@ mod tests {
     fn payout_target_signature_round_trip_is_valid() {
         let private_key_hex = "1111111111111111111111111111111111111111111111111111111111111111";
         let nostr_pubkey_hex = "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa";
+        let ldk_target = ProviderPaymentTargetRegistration {
+            target_kind: "bolt12_offer",
+            target_value: "lno1pylonalice",
+            capabilities: &[
+                "ldk_payment_target_v0_2",
+                "bolt12_offer",
+                "bolt11_invoice_request",
+            ],
+            version: "pylon-payment-target/v0.2",
+        };
+        let ldk_signature = sign_provider_payment_target_registration(
+            private_key_hex,
+            nostr_pubkey_hex,
+            "session-a",
+            "challenge-a",
+            ldk_target.clone(),
+        )
+        .expect("LDK payment target signature should build");
+        verify_provider_payment_target_registration_signature(
+            nostr_pubkey_hex,
+            "session-a",
+            "challenge-a",
+            ldk_target,
+            ldk_signature.as_str(),
+        )
+        .expect("LDK payment target signature should verify");
+
         let signature = sign_provider_payout_target_registration(
             private_key_hex,
             nostr_pubkey_hex,
@@ -10660,6 +10935,37 @@ mod tests {
             signature.as_str(),
         )
         .expect("signature should verify");
+    }
+
+    #[test]
+    fn spark_only_targets_are_not_ldk_compatible() {
+        let spark_only = super::RegisteredPayoutTarget {
+            nostr_pubkey_hex: "pubkey-a".to_string(),
+            source_session_id: "session-a".to_string(),
+            payment_target_kind: "spark_address".to_string(),
+            payment_target: "spark:alice".to_string(),
+            payment_target_capabilities: Vec::new(),
+            pylon_payment_target_version: None,
+            spark_address: "spark:alice".to_string(),
+            bitcoin_address: None,
+            registered_at_unix_ms: 1,
+            last_verified_at_unix_ms: 1,
+        };
+        let ldk_target = super::RegisteredPayoutTarget {
+            nostr_pubkey_hex: "pubkey-b".to_string(),
+            source_session_id: "session-b".to_string(),
+            payment_target_kind: "bolt12_offer".to_string(),
+            payment_target: "lno1pylonbob".to_string(),
+            payment_target_capabilities: vec!["ldk_payment_target_v0_2".to_string()],
+            pylon_payment_target_version: Some("pylon-payment-target/v0.2".to_string()),
+            spark_address: String::new(),
+            bitcoin_address: None,
+            registered_at_unix_ms: 1,
+            last_verified_at_unix_ms: 1,
+        };
+
+        assert!(!spark_only.is_ldk_compatible());
+        assert!(ldk_target.is_ldk_compatible());
     }
 
     #[test]
@@ -10701,6 +11007,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
                 source_session_id: "session-old".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: Some("bc1qalice".to_string()),
                 registered_at_unix_ms: 500,
@@ -10723,6 +11033,10 @@ mod tests {
                 &super::ProviderPayoutTargetRegistrationRequest {
                     nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
                     session_id: "session-a".to_string(),
+                    payment_target_kind: None,
+                    payment_target: None,
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: "spark:alice".to_string(),
                     bitcoin_address: Some("bc1qalice".to_string()),
                     challenge: challenge.challenge,
@@ -11113,6 +11427,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -11147,6 +11465,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -11536,6 +11858,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -11603,6 +11929,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -11675,6 +12005,10 @@ mod tests {
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: pubkey.to_string(),
                     source_session_id: format!("session-{pubkey}"),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: spark_address.to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
@@ -11806,6 +12140,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -11857,6 +12195,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -11929,6 +12271,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -12035,6 +12381,10 @@ mod tests {
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
                     source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: spark_address.to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
@@ -12096,6 +12446,10 @@ mod tests {
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
                     source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: "spark:shared".to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
@@ -12152,6 +12506,10 @@ mod tests {
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
                     source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: spark_address.to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
@@ -12195,6 +12553,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -12267,6 +12629,10 @@ mod tests {
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
                     source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: spark_address.to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
@@ -12324,6 +12690,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -12352,6 +12722,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -12384,6 +12758,10 @@ mod tests {
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: pubkey.clone(),
                     source_session_id: format!("session-{target_index:03}"),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: format!("spark:{target_index:03}"),
                     bitcoin_address: None,
                     registered_at_unix_ms: 1_000u64.saturating_sub(target_index),
@@ -12801,6 +13179,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-replay".to_string(),
                 source_session_id: "session-replay".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:replay".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: now_unix_ms.saturating_sub(10),
@@ -12927,6 +13309,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-homework".to_string(),
                 source_session_id: "session-homework".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:homework".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: now_unix_ms.saturating_sub(10),
@@ -13020,6 +13406,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-homework".to_string(),
                 source_session_id: "session-homework".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:homework".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: now_unix_ms.saturating_sub(10),
@@ -13751,6 +14141,10 @@ mod tests {
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: pubkey.to_string(),
                     source_session_id: format!("session-{pubkey}"),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: target.to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
@@ -14023,6 +14417,10 @@ mod tests {
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: pubkey.clone(),
                     source_session_id: format!("session-{index}"),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: format!("spark:target-{index}"),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
@@ -14688,6 +15086,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -14838,6 +15240,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: now_unix_ms.saturating_sub(10),
@@ -14962,6 +15368,10 @@ mod tests {
                 super::RegisteredPayoutTarget {
                     nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
                     source_session_id: format!("session-{nostr_pubkey_hex}"),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: spark_address.to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
@@ -15060,6 +15470,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,
@@ -15354,6 +15768,10 @@ mod tests {
             super::RegisteredPayoutTarget {
                 nostr_pubkey_hex: "pubkey-a".to_string(),
                 source_session_id: "session-a".to_string(),
+                payment_target_kind: String::new(),
+                payment_target: String::new(),
+                payment_target_capabilities: Vec::new(),
+                pylon_payment_target_version: None,
                 spark_address: "spark:alice".to_string(),
                 bitcoin_address: None,
                 registered_at_unix_ms: 10,

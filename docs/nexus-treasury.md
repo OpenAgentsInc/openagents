@@ -134,6 +134,34 @@ so old records remain queryable for audit without making new LDK logic depend
 on Spark-specific fields. Spark remains disabled for new funding/payout writes
 unless an operator explicitly enables final-drain/recovery mode.
 
+## Pylon v0.2 Payment-Target Registration
+
+Pylon v0.2 registers Lightning payout targets with Nexus instead of creating
+new Spark payout destinations. The registration request and status projection
+now include:
+
+- `payment_target_kind`: `bolt12_offer`, `bolt11_invoice`, `bip353_name`, or
+  `lnurl_pay`; `spark_address` is legacy-only.
+- `payment_target`: the BOLT12 offer, BOLT11 invoice, BIP353 name, or LNURL-pay
+  target.
+- `payment_target_capabilities`: capability markers such as
+  `ldk_payment_target_v0_2`, `durable_payout_target`,
+  `bolt11_invoice_request`, or `per_payment_invoice`.
+- `pylon_payment_target_version`: currently `pylon-payment-target/v0.2`.
+
+The signed registration domain is
+`openagents:nexus-treasury-payment-target:v2`. It signs the Pylon Nostr pubkey,
+session id, Nexus challenge, target kind, target value, capability list, and
+version. Legacy Spark registrations still verify under the old signature domain
+only for historical/final-drain paths.
+
+Nexus stores old Spark-only targets for audit, but they are not eligible for
+new paid work. Availability filtering returns
+`payout_target_requires_ldk_v0_2` when a provider has only a Spark target.
+Normal Pylon startup does not create Spark destinations; that write path is
+available only when an operator explicitly sets
+`OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`.
+
 ## Local LDK Proof Harness
 
 Before live LDK Server wiring or mainnet funds, use the local proof harness as

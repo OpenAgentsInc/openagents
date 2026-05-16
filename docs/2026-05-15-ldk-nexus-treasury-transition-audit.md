@@ -662,6 +662,19 @@ Required changes:
 7. Update operator/admin APIs and chat tools to surface the payment rail
    clearly.
 
+Current implementation status:
+
+- Pylon signs `openagents:nexus-treasury-payment-target:v2` registrations with
+  the target kind, target value, capabilities, and
+  `pylon-payment-target/v0.2`.
+- Nexus accepts `bolt12_offer`, `bolt11_invoice`, `bip353_name`, and
+  `lnurl_pay` target kinds and projects them in treasury status.
+- Normal Pylon startup does not create Spark destinations. Legacy Spark
+  destination creation is available only when
+  `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`.
+- Spark-only providers are retained for audit but are not eligible for new paid
+  work; Nexus reports `payout_target_requires_ldk_v0_2`.
+
 ## Immediate Roadmap
 
 ### Phase 0: Provider Boundary and Local Harness
@@ -1480,6 +1493,17 @@ Verification:
 - Unit tests for target validation and capability parsing.
 - Grep checklist showing no normal Spark destination creation.
 - Run `git diff --check`.
+
+Implementation proof:
+
+- `cargo test -p pylon pylon_payment_target --lib`
+- `cargo test -p pylon provider_payout_target_registration_uses_signed_wallet_targets --lib`
+- `cargo test -p nexus-control provider_payout_target_registration_requires_live_presence_and_updates_stats --lib`
+- `cargo test -p nexus-control payout_target_signature_round_trip_is_valid --lib`
+- `cargo test -p nexus-control spark_only_targets_are_not_ldk_compatible --lib`
+- `cargo test -p openagents-provider-substrate payout_target --lib`
+- grep confirms the normal Pylon path no longer creates a Spark payout
+  destination.
 
 Out of scope:
 

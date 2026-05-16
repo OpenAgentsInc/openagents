@@ -558,7 +558,6 @@ diagnostics/downloads, the Mac-safe Psionic training-worker launch path, the
 public-safe signed-artifact path, accepted-work payout projection, validator
 intake enabled by default, worker-first/validator-second default role claims,
 failed retained-runtime lease retirement, nonfatal scheduler-error handling,
-default local Spark payout destination creation in the long-lived serve path,
 retained snapshot reuse for validator replay retries, and the Autopilot proof
 projection fixes needed for a normal node that advertises both worker and
 validator roles. `0.1.15` keeps the `0.1.14` long hosted homework ID hashing
@@ -592,6 +591,16 @@ packaged Psionic runtime release asset and npm bootstrap smoke for issue #4451.
 The `0.1.17` package-only launcher receipt is
 `docs/reports/nexus/20260427-pylon-bootstrap-v0.1.17-release.json`. It proves
 the CLI forwarding and bounded update-polling tests plus npm publication.
+
+Current source for Pylon v0.2 changes the paid-work registration path: normal
+startup no longer creates a Spark payout destination. Operators must configure
+`payout_destination` to a Lightning target before the node is eligible for new
+paid work. Supported v0.2 targets are BOLT12 offers, BIP353 names, LNURL-pay
+targets, and per-payment BOLT11 invoices. A Spark destination can still be
+created only by explicitly setting
+`OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true` for final-drain or recovery
+work, and Spark-only nodes are not eligible for new paid work after cutover.
+
 The prior `0.1.15` release receipt is
 `docs/reports/nexus/20260426-pylon-v0.1.15-release.json`. It proves the
 artifact-before-seal regression test, release asset, bootstrap smoke, and

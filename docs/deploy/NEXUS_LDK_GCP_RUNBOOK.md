@@ -118,6 +118,28 @@ xxd -p -c 64 /var/lib/ldk-server/bitcoin/api_key
 Do not paste the raw or hex API key into docs, issue comments, logs, or commit
 messages.
 
+## Pylon v0.2 Registration
+
+Pylon v0.2 nodes must register an LDK-compatible Lightning payout target before
+Nexus treats them as eligible for new paid work. Configure one of:
+
+- a BOLT12 offer, preferred for durable registration;
+- a BIP353 name;
+- an LNURL-pay target;
+- a per-payment BOLT11 invoice when the provider can rotate invoices safely.
+
+Example config intent:
+
+```text
+payout_destination = "lno..."
+```
+
+Normal Pylon startup no longer creates Spark payout destinations. The only
+remaining Spark write path is an explicit final-drain/recovery path guarded by
+`OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`. Spark-only workers remain
+visible to Nexus for audit, but new paid-work eligibility should show
+`payout_target_requires_ldk_v0_2`.
+
 3. Run read-only smoke:
 
 ```bash

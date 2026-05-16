@@ -165,6 +165,20 @@ The required sequence is:
 7. Stop creating new Spark destinations. Workers that only have Spark targets
    are not eligible for new paid work after cutover.
 
+Current implementation status:
+
+- Pylon v0.2 registration signs and submits a provider payment-target record
+  with `payment_target_kind`, `payment_target`, advertised capabilities, and
+  `pylon-payment-target/v0.2`.
+- Supported target kinds are `bolt12_offer`, `bolt11_invoice`, `bip353_name`,
+  and `lnurl_pay`; BOLT12 is the preferred durable target.
+- Normal Pylon startup no longer creates local Spark payout destinations. A
+  legacy Spark write path remains only behind
+  `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true` for explicit final-drain
+  or recovery work.
+- Nexus records old Spark-only targets for audit, but marks them ineligible for
+  new paid work with `payout_target_requires_ldk_v0_2`.
+
 Pylon must remain a provider connector. It should not own Nexus treasury keys,
 run the hosted treasury LDK node, or become a browser wallet/runtime bridge.
 

@@ -12914,7 +12914,37 @@ async fn register_provider_payout_target(
     State(state): State<AppState>,
     Json(request): Json<ProviderPayoutTargetRegistrationRequest>,
 ) -> Result<Json<ProviderPayoutTargetRegistrationResponse>, ApiError> {
-    if !legacy_spark_final_drain_enabled() {
+    let requested_payment_target_kind = request
+        .payment_target_kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| {
+            let target = request
+                .payment_target
+                .as_deref()
+                .unwrap_or(request.spark_address.as_str())
+                .trim()
+                .to_ascii_lowercase();
+            if target.starts_with("spark") {
+                "spark_address".to_string()
+            } else if target.starts_with("lno") {
+                "bolt12_offer".to_string()
+            } else if target.starts_with("lnurl")
+                || target.starts_with("https://")
+                || target.starts_with("http://")
+            {
+                "lnurl_pay".to_string()
+            } else if target.starts_with("ln") {
+                "bolt11_invoice".to_string()
+            } else if target.contains('@') {
+                "bip353_name".to_string()
+            } else {
+                "unknown".to_string()
+            }
+        });
+    if requested_payment_target_kind == "spark_address" && !legacy_spark_final_drain_enabled() {
         return Err(ApiError {
             status: StatusCode::SERVICE_UNAVAILABLE,
             error: "service_unavailable",
@@ -12929,10 +12959,20 @@ async fn register_provider_payout_target(
             "provider_nostr_pubkey_missing",
         )?,
         session_id: normalize_required_field(request.session_id.as_str(), "session_id_missing")?,
-        spark_address: normalize_required_field(
-            request.spark_address.as_str(),
-            "provider_spark_address_missing",
-        )?,
+        payment_target_kind: normalize_optional_field(request.payment_target_kind.as_deref())
+            .map(|value| value.to_ascii_lowercase()),
+        payment_target: normalize_optional_field(request.payment_target.as_deref()),
+        payment_target_capabilities: request
+            .payment_target_capabilities
+            .iter()
+            .filter_map(|value| normalize_optional_field(Some(value.as_str())))
+            .map(|value| value.to_ascii_lowercase())
+            .collect(),
+        pylon_payment_target_version: normalize_optional_field(
+            request.pylon_payment_target_version.as_deref(),
+        ),
+        spark_address: normalize_optional_field(Some(request.spark_address.as_str()))
+            .unwrap_or_default(),
         bitcoin_address: normalize_optional_field(request.bitcoin_address.as_deref()),
         challenge: normalize_required_field(request.challenge.as_str(), "challenge_missing")?,
         challenge_signature_hex: normalize_required_field(
@@ -28191,12 +28231,12 @@ mod tests {
         ProviderHostNetworkInterfaceTelemetry, ProviderHostPowerTelemetry,
         ProviderHostSwapTelemetry, ProviderHostTelemetrySnapshot,
         ProviderHostThermalComponentTelemetry, ProviderHostingTelemetrySnapshot,
-        ProviderInventoryRow, ProviderRuntimeStatusSnapshot,
+        ProviderInventoryRow, ProviderPaymentTargetRegistration, ProviderRuntimeStatusSnapshot,
         ProviderTrainingArtifactUploadLatencyClass, ProviderTrainingCapabilityEnvelopeV2,
         ProviderTrainingCapabilityTier, ProviderTrainingCapabilityTierProfile,
         ProviderTrainingLeaseReliabilityClass, ProviderTrainingReplayCapability,
         ProviderTrainingReplicaTypeEligibility, ProviderTrainingThroughputBand,
-        ProviderTrainingWorkClassEligibility, sign_provider_payout_target_registration,
+        ProviderTrainingWorkClassEligibility, sign_provider_payment_target_registration,
     };
     use openagents_validator_service::{
         GpuFreivaldsMerkleWitness, ValidatorChallengeContext, ValidatorChallengeRequest,
@@ -28690,6 +28730,10 @@ mod tests {
                 RegisteredPayoutTarget {
                     nostr_pubkey_hex: node_pubkey_hex.to_string(),
                     source_session_id: format!("session-{node_pubkey_hex}"),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: format!("spark:{node_pubkey_hex}"),
                     bitcoin_address: None,
                     registered_at_unix_ms: recorded_at_ms,
@@ -33642,6 +33686,10 @@ mod tests {
                 RegisteredPayoutTarget {
                     nostr_pubkey_hex: "aabbccdd00112233".to_string(),
                     source_session_id: "session-a".to_string(),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: "spark:alice".to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
@@ -33699,6 +33747,10 @@ mod tests {
                 RegisteredPayoutTarget {
                     nostr_pubkey_hex: "aabbccdd00112233".to_string(),
                     source_session_id: "session-a".to_string(),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: "spark:alice".to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: 10,
@@ -34160,12 +34212,29 @@ mod tests {
         let challenge: ProviderPayoutTargetChallengeResponse =
             response_json(challenge_response).await?;
 
-        let signature = sign_provider_payout_target_registration(
+        let payment_target = "lno1pylonalice";
+        let payment_target_kind = "bolt12_offer";
+        let payment_target_capabilities = vec![
+            "ldk_payment_target_v0_2".to_string(),
+            "bolt12_offer".to_string(),
+            "bolt11_invoice_request".to_string(),
+        ];
+        let pylon_payment_target_version = "pylon-payment-target/v0.2";
+        let signature = sign_provider_payment_target_registration(
             private_key_hex,
             nostr_pubkey_hex,
             "session-a",
             challenge.challenge.as_str(),
-            "spark:alice",
+            ProviderPaymentTargetRegistration {
+                target_kind: payment_target_kind,
+                target_value: payment_target,
+                capabilities: &[
+                    "ldk_payment_target_v0_2",
+                    "bolt12_offer",
+                    "bolt11_invoice_request",
+                ],
+                version: pylon_payment_target_version,
+            },
         )
         .map_err(anyhow::Error::msg)?;
         let register_response = app
@@ -34179,7 +34248,13 @@ mod tests {
                         &ProviderPayoutTargetRegistrationRequest {
                             nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
                             session_id: "session-a".to_string(),
-                            spark_address: "spark:alice".to_string(),
+                            payment_target_kind: Some(payment_target_kind.to_string()),
+                            payment_target: Some(payment_target.to_string()),
+                            payment_target_capabilities: payment_target_capabilities.clone(),
+                            pylon_payment_target_version: Some(
+                                pylon_payment_target_version.to_string(),
+                            ),
+                            spark_address: String::new(),
                             bitcoin_address: Some("bc1qalice".to_string()),
                             challenge: challenge.challenge,
                             challenge_signature_hex: signature,
@@ -34188,7 +34263,11 @@ mod tests {
             )
             .await?;
         assert_eq!(register_response.status(), StatusCode::OK);
-        let _: ProviderPayoutTargetRegistrationResponse = response_json(register_response).await?;
+        let registration: ProviderPayoutTargetRegistrationResponse =
+            response_json(register_response).await?;
+        assert_eq!(registration.payment_target_kind, payment_target_kind);
+        assert_eq!(registration.payment_target, payment_target);
+        assert_eq!(registration.spark_address, "");
 
         let stats_response = app
             .clone()
@@ -34220,8 +34299,17 @@ mod tests {
             nostr_pubkey_hex
         );
         assert_eq!(
+            treasury_status.payout_target_identities[0].payment_target_kind,
+            payment_target_kind
+        );
+        assert_eq!(
+            treasury_status.payout_target_identities[0].payment_target,
+            payment_target
+        );
+        assert!(treasury_status.payout_target_identities[0].ldk_compatible);
+        assert_eq!(
             treasury_status.payout_target_identities[0].spark_address,
-            "spark:alice"
+            ""
         );
         assert_eq!(
             treasury_status
@@ -34621,12 +34709,29 @@ mod tests {
         let challenge: ProviderPayoutTargetChallengeResponse =
             response_json(challenge_response).await?;
 
-        let signature = sign_provider_payout_target_registration(
+        let payment_target = "lno1pylonalice";
+        let payment_target_kind = "bolt12_offer";
+        let payment_target_capabilities = vec![
+            "ldk_payment_target_v0_2".to_string(),
+            "bolt12_offer".to_string(),
+            "bolt11_invoice_request".to_string(),
+        ];
+        let pylon_payment_target_version = "pylon-payment-target/v0.2";
+        let signature = sign_provider_payment_target_registration(
             private_key_hex,
             nostr_pubkey_hex,
             "session-a",
             challenge.challenge.as_str(),
-            "spark:alice",
+            ProviderPaymentTargetRegistration {
+                target_kind: payment_target_kind,
+                target_value: payment_target,
+                capabilities: &[
+                    "ldk_payment_target_v0_2",
+                    "bolt12_offer",
+                    "bolt11_invoice_request",
+                ],
+                version: pylon_payment_target_version,
+            },
         )
         .map_err(anyhow::Error::msg)?;
         let register_response = app
@@ -34640,7 +34745,13 @@ mod tests {
                         &ProviderPayoutTargetRegistrationRequest {
                             nostr_pubkey_hex: nostr_pubkey_hex.to_string(),
                             session_id: "session-a".to_string(),
-                            spark_address: "spark:alice".to_string(),
+                            payment_target_kind: Some(payment_target_kind.to_string()),
+                            payment_target: Some(payment_target.to_string()),
+                            payment_target_capabilities: payment_target_capabilities.clone(),
+                            pylon_payment_target_version: Some(
+                                pylon_payment_target_version.to_string(),
+                            ),
+                            spark_address: String::new(),
                             bitcoin_address: Some("bc1qalice".to_string()),
                             challenge: challenge.challenge,
                             challenge_signature_hex: signature,
@@ -51125,6 +51236,10 @@ mod tests {
                 RegisteredPayoutTarget {
                     nostr_pubkey_hex: "node-tier2-replay".to_string(),
                     source_session_id: "session-tier2-replay".to_string(),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: "spark:node-tier2-replay".to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: created_at_ms + 50,
@@ -51512,6 +51627,10 @@ mod tests {
                 RegisteredPayoutTarget {
                     nostr_pubkey_hex: "node-tier3-island".to_string(),
                     source_session_id: "session-tier3-island".to_string(),
+                    payment_target_kind: String::new(),
+                    payment_target: String::new(),
+                    payment_target_capabilities: Vec::new(),
+                    pylon_payment_target_version: None,
                     spark_address: "spark:node-tier3-island".to_string(),
                     bitcoin_address: None,
                     registered_at_unix_ms: created_at_ms + 50,
@@ -52363,6 +52482,10 @@ mod tests {
                     RegisteredPayoutTarget {
                         nostr_pubkey_hex: node_pubkey_hex.clone(),
                         source_session_id: format!("session-{node_pubkey_hex}"),
+                        payment_target_kind: String::new(),
+                        payment_target: String::new(),
+                        payment_target_capabilities: Vec::new(),
+                        pylon_payment_target_version: None,
                         spark_address: format!("spark:{node_pubkey_hex}"),
                         bitcoin_address: None,
                         registered_at_unix_ms: created_at_ms + ordinal as u64 * 10 + 5,
