@@ -37,6 +37,15 @@ The current production hotfix decision is frozen in:
 
 - `docs/deploy/NEXUS_HOTFIX_LANE.md`
 
+The LDK v0.2 treasury topology is separate from this hotfix lane and is
+documented in:
+
+- `docs/deploy/NEXUS_LDK_GCP_RUNBOOK.md`
+
+Do not treat the LDK Server VM as part of the public Nexus binary deploy path.
+It is a private Lightning/Bitcoin authority host with its own backup and
+restore drill.
+
 The short version is:
 
 - primary hotfix path: warm Linux builder plus binary-first deploys

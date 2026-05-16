@@ -1356,6 +1356,25 @@ Verification:
 - Run read-only smoke against the dry-run host.
 - Run `git diff --check`.
 
+Implementation note:
+
+- LDK-06 is implemented in `docs/deploy/NEXUS_LDK_GCP_RUNBOOK.md` and
+  `scripts/deploy/nexus/22-provision-ldk-topology.sh` through
+  `26-restore-ldk-server-drill.sh`.
+- The topology keeps the LDK Server VM private-by-default: no external IP,
+  IAP-only SSH, private Nexus-tag gRPC access on `tcp:3536`, and private
+  LDK-tag `bitcoind` RPC access.
+- The install script pins `ldk-server`, installs `ldk-server.service` with
+  `Restart=always`, enables Prometheus metrics on the private gRPC port, and
+  installs logrotate.
+- The backup/restore lane covers `keys_seed`, LDK API key, TLS files,
+  `ldk_node_data.sqlite`, optional payment-history SQLite, and config, with a
+  read-only restore drill so the same node identity is never started twice.
+- Hosted read-only smoke is `NEXUS_LDK_REMOTE_SMOKE=true
+  scripts/deploy/nexus/24-smoke-ldk-server-readonly.sh`; local verification
+  uses the deterministic LDK client-boundary smoke until the GCP host is
+  actually provisioned.
+
 Out of scope:
 
 - Do not move production funding endpoints until LDK-07.

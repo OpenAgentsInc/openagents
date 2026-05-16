@@ -162,6 +162,29 @@ LDK-05 client boundary already validates remote config, loads TLS pins, builds
 HMAC metadata, and normalizes service errors while using this local harness as
 the machine-checkable proof transport.
 
+## Hosted LDK Server GCP Topology
+
+LDK-06 adds the deployable private topology for hosted LDK Server and
+`bitcoind`:
+
+- `scripts/deploy/nexus/22-provision-ldk-topology.sh`
+- `scripts/deploy/nexus/23-install-ldk-server-host.sh`
+- `scripts/deploy/nexus/24-smoke-ldk-server-readonly.sh`
+- `scripts/deploy/nexus/25-backup-ldk-server-state.sh`
+- `scripts/deploy/nexus/26-restore-ldk-server-drill.sh`
+- `docs/deploy/NEXUS_LDK_GCP_RUNBOOK.md`
+
+That lane keeps LDK gRPC private on the Google Cloud VPC. The default LDK VM
+has no external IP, only IAP SSH, gRPC/metrics on `tcp:3536` from the Nexus VM
+tag, and `bitcoind` RPC from the LDK VM tag. Public Lightning P2P is disabled
+until an operator explicitly enables it after channel policy review.
+
+The runbook includes LDK Server installation and pinning, systemd
+`Restart=always`, logrotate, Prometheus metrics, TLS/API-key file locations,
+backup of `keys_seed` and SQLite channel state, and a read-only restore drill.
+Do not move production funding endpoints to the hosted LDK Server until LDK-07
+passes its own invoice and payment-reconciliation acceptance checks.
+
 ## LDK Server Client Boundary
 
 `apps/nexus-control/src/treasury_provider.rs` now contains the first Nexus LDK
