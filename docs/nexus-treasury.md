@@ -269,10 +269,21 @@ The signed registration domain is
 session id, Nexus challenge, target kind, target value, capability list, and
 version.
 
-Nexus stores old non-LDK targets only for historical audit. They are not
-eligible for new paid work. Availability filtering returns
-`payout_target_requires_ldk_v0_2` when a provider has no LDK-compatible target.
-Normal Pylon startup does not create wallet-specific payout destinations.
+Active registration bodies no longer include `spark_address` or
+`bitcoin_address`. Nexus rejects `spark_address` target registrations with
+`invalid_payment_target` before mutating treasury state. Nexus stores old
+non-LDK targets only for historical audit. They are not eligible for new paid
+work. Availability filtering returns `payout_target_requires_ldk_v0_2` when a
+provider has no LDK-compatible target. Normal Pylon startup only registers an
+operator-configured Lightning target and does not create wallet-specific payout
+destinations.
+
+Operator status and public-safe stats expose both the total registered payout
+identity count and the cutover health counters:
+
+- `registered_payout_identities`
+- `ldk_payout_target_identities`
+- `pylon_v0_2_registration_required_identities`
 
 ## LDK Accepted-Work Payout Dispatch
 
@@ -1104,6 +1115,8 @@ Public-safe treasury counters now project through `nexus-control /api/stats`:
 - `nexus_treasury_require_sellable`
 - `nexus_treasury_daily_budget_cap_sats`
 - `nexus_registered_payout_identities`
+- `nexus_ldk_payout_target_identities`
+- `nexus_pylon_v0_2_registration_required_identities`
 - `nexus_payout_sats_paid_total`
 - `nexus_payout_sats_paid_24h`
 - `nexus_payout_sats_in_flight_total`

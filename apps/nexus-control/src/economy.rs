@@ -711,6 +711,10 @@ pub struct PublicStatsSnapshot {
     pub nexus_placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
     #[serde(default)]
     pub nexus_registered_payout_identities: u64,
+    #[serde(default)]
+    pub nexus_ldk_payout_target_identities: u64,
+    #[serde(default)]
+    pub nexus_pylon_v0_2_registration_required_identities: u64,
     pub nexus_payout_sats_paid_total: u64,
     pub nexus_payout_sats_paid_24h: u64,
     #[serde(default)]
@@ -931,6 +935,8 @@ pub struct PublicRuntimeSnapshot {
     pub nexus_treasury_daily_budget_cap_sats: u64,
     pub nexus_placeholder_payout_mode: TreasuryPlaceholderPayoutMode,
     pub nexus_registered_payout_identities: u64,
+    pub nexus_ldk_payout_target_identities: u64,
+    pub nexus_pylon_v0_2_registration_required_identities: u64,
     pub nexus_payout_sats_paid_total: u64,
     pub nexus_payout_sats_paid_24h: u64,
     pub nexus_accepted_work_payout_sats_paid_total: u64,
@@ -1248,6 +1254,9 @@ impl ReceiptLedger {
             nexus_treasury_daily_budget_cap_sats: runtime.nexus_treasury_daily_budget_cap_sats,
             nexus_placeholder_payout_mode: runtime.nexus_placeholder_payout_mode,
             nexus_registered_payout_identities: runtime.nexus_registered_payout_identities,
+            nexus_ldk_payout_target_identities: runtime.nexus_ldk_payout_target_identities,
+            nexus_pylon_v0_2_registration_required_identities: runtime
+                .nexus_pylon_v0_2_registration_required_identities,
             nexus_payout_sats_paid_total: runtime.nexus_payout_sats_paid_total,
             nexus_payout_sats_paid_24h: runtime.nexus_payout_sats_paid_24h,
             nexus_accepted_work_payout_sats_paid_total: runtime
@@ -1637,6 +1646,8 @@ mod tests {
                 nexus_treasury_daily_budget_cap_sats: 0,
                 nexus_placeholder_payout_mode: TreasuryPlaceholderPayoutMode::default(),
                 nexus_registered_payout_identities: 0,
+                nexus_ldk_payout_target_identities: 0,
+                nexus_pylon_v0_2_registration_required_identities: 0,
                 nexus_payout_sats_paid_total: 0,
                 nexus_payout_sats_paid_24h: 0,
                 nexus_accepted_work_payout_sats_paid_total: 0,

@@ -72,27 +72,28 @@ use openagents_kernel_core::{
     },
 };
 use openagents_provider_substrate::{
-    ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
-    ProviderAdapterTrainingSettlementTrigger, ProviderAdminConfig, ProviderAdminRuntime,
-    ProviderAdminUpdate, ProviderAdvertisedProduct, ProviderAppleAdapterHostingAvailability,
-    ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
-    ProviderDiagnosticSummary, ProviderEarningsSummary, ProviderFailureClass, ProviderHealthEvent,
-    ProviderHostDiskTelemetry, ProviderHostGpuTelemetry, ProviderHostLoadAverageTelemetry,
-    ProviderHostMemoryTelemetry, ProviderHostNetworkInterfaceTelemetry, ProviderHostPowerTelemetry,
-    ProviderHostSwapTelemetry, ProviderHostTelemetrySnapshot,
-    ProviderHostThermalComponentTelemetry, ProviderHostingTelemetrySnapshot,
-    ProviderIdentityMetadata, ProviderInventoryControls, ProviderInventoryRow, ProviderJsonEntry,
-    ProviderMode, ProviderPaymentTargetRegistration, ProviderPersistedSnapshot,
-    ProviderPersistenceStore, ProviderPooledInferenceAvailability, ProviderReceiptSummary,
-    ProviderRecentJob, ProviderRuntimeStatusSnapshot, ProviderSandboxDetectionConfig,
-    ProviderSandboxProfile, ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth,
-    ProviderSnapshotParts, ProviderStatusResponse, ProviderTrainingAcceleratorInventoryEntry,
-    ProviderTrainingArtifactUploadLatencyClass, ProviderTrainingCapabilityEnvelopeV2,
-    ProviderTrainingCapabilityTier, ProviderTrainingCapabilityTierProfile,
-    ProviderTrainingLeaseReliabilityClass, ProviderTrainingReplayCapability,
-    ProviderTrainingReplicaTypeEligibility, ProviderTrainingThroughputBand,
-    ProviderTrainingWorkClassEligibility, assemble_provider_persisted_snapshot,
-    derive_provider_products, detect_sandbox_supply, provider_runtime_state_label,
+    PYLON_PAYMENT_TARGET_VERSION_V0_2, ProviderAdapterTrainingContributorAvailability,
+    ProviderAdapterTrainingExecutionBackend, ProviderAdapterTrainingSettlementTrigger,
+    ProviderAdminConfig, ProviderAdminRuntime, ProviderAdminUpdate, ProviderAdvertisedProduct,
+    ProviderAppleAdapterHostingAvailability, ProviderAvailability, ProviderBackendHealth,
+    ProviderControlAction, ProviderDesiredMode, ProviderDiagnosticSummary, ProviderEarningsSummary,
+    ProviderFailureClass, ProviderHealthEvent, ProviderHostDiskTelemetry, ProviderHostGpuTelemetry,
+    ProviderHostLoadAverageTelemetry, ProviderHostMemoryTelemetry,
+    ProviderHostNetworkInterfaceTelemetry, ProviderHostPowerTelemetry, ProviderHostSwapTelemetry,
+    ProviderHostTelemetrySnapshot, ProviderHostThermalComponentTelemetry,
+    ProviderHostingTelemetrySnapshot, ProviderIdentityMetadata, ProviderInventoryControls,
+    ProviderInventoryRow, ProviderJsonEntry, ProviderMode, ProviderPaymentTargetRegistration,
+    ProviderPersistedSnapshot, ProviderPersistenceStore, ProviderPooledInferenceAvailability,
+    ProviderReceiptSummary, ProviderRecentJob, ProviderRuntimeStatusSnapshot,
+    ProviderSandboxDetectionConfig, ProviderSandboxProfile, ProviderSandboxProfileSpec,
+    ProviderSandboxRuntimeHealth, ProviderSnapshotParts, ProviderStatusResponse,
+    ProviderTrainingAcceleratorInventoryEntry, ProviderTrainingArtifactUploadLatencyClass,
+    ProviderTrainingCapabilityEnvelopeV2, ProviderTrainingCapabilityTier,
+    ProviderTrainingCapabilityTierProfile, ProviderTrainingLeaseReliabilityClass,
+    ProviderTrainingReplayCapability, ProviderTrainingReplicaTypeEligibility,
+    ProviderTrainingThroughputBand, ProviderTrainingWorkClassEligibility,
+    assemble_provider_persisted_snapshot, derive_provider_products, detect_sandbox_supply,
+    infer_ldk_payment_target_kind, ldk_payment_target_capabilities, provider_runtime_state_label,
     sign_provider_payment_target_registration, validate_provider_control_action,
 };
 use psionic_train::{
@@ -10764,59 +10765,6 @@ async fn run_default_online_earning_loop(config_path: &Path) -> Result<()> {
         config.node_label, runtime_status
     );
     serve(config_path, config).await
-}
-
-fn infer_pylon_payment_target_kind(payment_target: &str) -> Result<String> {
-    let value = payment_target.trim();
-    ensure!(
-        !value.is_empty(),
-        "pylon payment target must not be empty for LDK registration"
-    );
-    let lower = value.to_ascii_lowercase();
-    let kind = if lower.starts_with("lno") {
-        "bolt12_offer"
-    } else if lower.starts_with("lnurl")
-        || lower.starts_with("lnurlp:")
-        || lower.starts_with("https://")
-        || lower.starts_with("http://")
-    {
-        "lnurl_pay"
-    } else if lower.starts_with("lnbc") || lower.starts_with("lntb") || lower.starts_with("lnbcrt")
-    {
-        "bolt11_invoice"
-    } else if lower.contains('@') {
-        "bip353_name"
-    } else {
-        bail!(
-            "unsupported payout_destination target; use a BOLT12 offer, BIP353 name, LNURL-pay target, or per-payment BOLT11 invoice"
-        );
-    };
-    Ok(kind.to_string())
-}
-
-fn pylon_payment_target_capabilities(payment_target_kind: &str) -> Vec<String> {
-    let mut capabilities = BTreeSet::from(["ldk_payment_target_v0_2".to_string()]);
-    match payment_target_kind {
-        "bolt12_offer" => {
-            capabilities.insert("bolt12_offer".to_string());
-            capabilities.insert("bolt11_invoice_request".to_string());
-            capabilities.insert("durable_payout_target".to_string());
-        }
-        "bolt11_invoice" => {
-            capabilities.insert("bolt11_invoice".to_string());
-            capabilities.insert("per_payment_invoice".to_string());
-        }
-        "bip353_name" => {
-            capabilities.insert("bip353_name".to_string());
-            capabilities.insert("durable_payout_target".to_string());
-        }
-        "lnurl_pay" => {
-            capabilities.insert("lnurl_pay".to_string());
-            capabilities.insert("durable_payout_target".to_string());
-        }
-        _ => {}
-    }
-    capabilities.into_iter().collect()
 }
 
 fn load_config(path: &Path) -> Result<PylonConfig> {
@@ -26858,9 +26806,6 @@ struct NexusProviderPayoutTargetRegistrationRequest {
     payment_target: String,
     payment_target_capabilities: Vec<String>,
     pylon_payment_target_version: String,
-    spark_address: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    bitcoin_address: Option<String>,
     challenge: String,
     challenge_signature_hex: String,
 }
@@ -27410,39 +27355,20 @@ async fn sync_provider_payout_target(
     identity: &NostrIdentity,
     session_id: &str,
 ) -> Result<()> {
-    let address_report = WalletAddressReport {
-        runtime: WalletRuntimeSurface::default(),
-        spark_address: String::new(),
-        bitcoin_address: String::new(),
-    };
-    sync_provider_payout_target_with_report(client, config, identity, session_id, &address_report)
-        .await
-}
-
-async fn sync_provider_payout_target_with_report(
-    client: &reqwest::Client,
-    config: &PylonConfig,
-    identity: &NostrIdentity,
-    session_id: &str,
-    address_report: &WalletAddressReport,
-) -> Result<()> {
     let Some(payment_target) = training_settlement_destination(config) else {
         bail!(
             "missing LDK payment target; set payout_destination to a BOLT12 offer, BIP353 name, LNURL-pay target, or per-payment BOLT11 invoice"
         );
     };
-    let payment_target_kind = infer_pylon_payment_target_kind(payment_target.as_str())?;
-    ensure!(
-        payment_target_kind != "spark_address",
-        "legacy Spark payout destination is not eligible for new paid work; configure an LDK payment target"
-    );
-    let payment_target_capabilities =
-        pylon_payment_target_capabilities(payment_target_kind.as_str());
+    let payment_target_kind = infer_ldk_payment_target_kind(payment_target.as_str())
+        .map_err(|error| anyhow!("unsupported LDK payout target: {error}"))?;
+    let payment_target_capabilities = ldk_payment_target_capabilities(payment_target_kind.as_str())
+        .map_err(|error| anyhow!("unsupported LDK payout target: {error}"))?;
     let capability_refs = payment_target_capabilities
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let pylon_payment_target_version = "pylon-payment-target/v0.2".to_string();
+    let pylon_payment_target_version = PYLON_PAYMENT_TARGET_VERSION_V0_2.to_string();
     let challenge = post_nexus_json::<_, NexusProviderPayoutTargetChallengeResponse>(
         client,
         config,
@@ -27478,9 +27404,6 @@ async fn sync_provider_payout_target_with_report(
             payment_target,
             payment_target_capabilities,
             pylon_payment_target_version,
-            spark_address: String::new(),
-            bitcoin_address: (!address_report.bitcoin_address.trim().is_empty())
-                .then(|| address_report.bitcoin_address.clone()),
             challenge: challenge.challenge,
             challenge_signature_hex,
         },
@@ -31916,9 +31839,8 @@ mod tests {
         PylonWalletPaymentRecord, ReportContext, TRN_TRAINING_NODE_RECORD_KIND,
         TRN_TRAINING_RECEIPT_KIND, TrainingArtifactsCommand, TrainingCommand,
         TrainingManifestInspectionContext, TrainingOperatorStatusReport,
-        TrainingTrnPublicationReport, WalletAddressReport, WalletInvoiceReport,
-        WalletRuntimeSurface, WalletSubcommand, add_configured_relay, apply_config_set,
-        apply_control_command,
+        TrainingTrnPublicationReport, WalletInvoiceReport, WalletRuntimeSurface, WalletSubcommand,
+        add_configured_relay, apply_config_set, apply_control_command,
         apply_training_reputation_gate_to_availability, build_psionic_train_invocation_manifest,
         build_pylon_training_admin_router, build_snapshot_from_availability, bytes_to_gib_ceil,
         default_config, derive_adapter_training_contributor_availability,
@@ -31928,13 +31850,13 @@ mod tests {
         drive_training_supervisor_once, ensure_identity, ensure_no_conflicting_training_assignment,
         ensure_training_contribution_bridge_bundles, garbage_collect_training_download_cache,
         gemma_diagnostic_latest_report_path, gemma_download_spec, gemma_local_installations,
-        infer_pylon_payment_target_kind, inspect_psionic_train_runtime_surface_at,
+        inspect_psionic_train_runtime_surface_at,
         inspect_psionic_train_runtime_surface_from_candidates,
-        inspect_training_retained_contribution_artifacts, inventory_rows,
-        load_backend_report, load_earnings_report,
-        load_inventory_report, load_jobs_report, load_latest_gemma_diagnostic_report, load_ledger,
-        load_or_create_config, load_or_create_training_runtime_state, load_product_report,
-        load_receipts_report, load_relay_report, load_sandbox_report, load_status_or_detect,
+        inspect_training_retained_contribution_artifacts, inventory_rows, load_backend_report,
+        load_earnings_report, load_inventory_report, load_jobs_report,
+        load_latest_gemma_diagnostic_report, load_ledger, load_or_create_config,
+        load_or_create_training_runtime_state, load_product_report, load_receipts_report,
+        load_relay_report, load_sandbox_report, load_status_or_detect,
         load_training_artifact_inspection_report, load_training_status_report_local,
         local_training_release_id, maybe_retire_released_terminal_worker_runtime,
         maybe_start_training_supervisor_from_retained_assignment, merge_ledger_earnings,
@@ -31944,9 +31866,9 @@ mod tests {
         provider_presence_heartbeat_interval, psionic_gemma_benchmark_command_args,
         psionic_repo_root_candidates_with_inputs, psionic_train_release_binary_path,
         psionic_train_supervisor_command_for_surface, publish_announcement_report,
-        publish_training_trn_state, pylon_payment_target_capabilities, refresh_relay_report,
-        remove_configured_relay, render_earnings_report, render_human_status, render_jobs_report,
-        render_public_config_json, render_sandbox_report, render_training_status_report,
+        publish_training_trn_state, refresh_relay_report, remove_configured_relay,
+        render_earnings_report, render_human_status, render_jobs_report, render_public_config_json,
+        render_sandbox_report, render_training_status_report,
         report_provider_presence_heartbeat_for_snapshot,
         report_provider_presence_offline_for_config, resolve_local_gemma_chat_target_from_status,
         restart_training_supervisor, retire_failed_active_training_runtime_lease,
@@ -31958,16 +31880,15 @@ mod tests {
         stabilize_training_retained_psionic_worker_contract,
         stable_training_contribution_receipt_digest, start_training_checkpoint_server,
         start_training_supervisor, strip_startup_thread_limit_args, submit_buyer_job,
-        sync_live_announcement, sync_provider_payout_target_with_report,
-        sync_training_authority_state, sync_training_terminal_runtime_once,
-        training_artifact_digest_from_locator_payload, training_artifact_resolved_cache_key,
-        training_assignment_intake_interval, training_download_cache_root,
-        training_lease_claim_error_is_nonfatal, training_raw_sha256_hex,
-        training_retained_assignment_authority_error_is_stale, training_run_root_for_id,
-        training_runs_root, training_runtime_manifest_path_for_run, training_runtime_state_path,
-        training_settlement_destination, training_supervisor_pid_is_running,
-        training_validator_challenge_path_segment, training_validator_challenge_root,
-        watch_buyer_jobs, write_training_json_value,
+        sync_live_announcement, sync_provider_payout_target, sync_training_authority_state,
+        sync_training_terminal_runtime_once, training_artifact_digest_from_locator_payload,
+        training_artifact_resolved_cache_key, training_assignment_intake_interval,
+        training_download_cache_root, training_lease_claim_error_is_nonfatal,
+        training_raw_sha256_hex, training_retained_assignment_authority_error_is_stale,
+        training_run_root_for_id, training_runs_root, training_runtime_manifest_path_for_run,
+        training_runtime_state_path, training_settlement_destination,
+        training_supervisor_pid_is_running, training_validator_challenge_path_segment,
+        training_validator_challenge_root, watch_buyer_jobs, write_training_json_value,
     };
     use futures_util::{SinkExt, StreamExt};
     use nostr::{NostrIdentity, TrnEvent};
@@ -32000,6 +31921,10 @@ mod tests {
             artifact_digest_from_json, parse_pylon_training_run_manifest_json,
             pylon_training_a1_minimal_expected_output_artifact_kind,
         },
+    };
+    use openagents_provider_substrate::{
+        LDK_PAYMENT_TARGET_CAPABILITY_V0_2, infer_ldk_payment_target_kind,
+        ldk_payment_target_capabilities,
     };
     use openagents_provider_substrate::{
         ProviderAdapterTrainingContributorAvailability, ProviderAdapterTrainingExecutionBackend,
@@ -34280,26 +34205,23 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
     fn pylon_payment_target_kind_and_capabilities_are_ldk_first()
     -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
-            infer_pylon_payment_target_kind("lno1pylonalice")?,
+            infer_ldk_payment_target_kind("lno1pylonalice")?,
             "bolt12_offer"
         );
         assert_eq!(
-            infer_pylon_payment_target_kind("lnbc2500n1pylonalice")?,
+            infer_ldk_payment_target_kind("lnbc2500n1pylonalice")?,
             "bolt11_invoice"
         );
         assert_eq!(
-            infer_pylon_payment_target_kind("alice@example.com")?,
+            infer_ldk_payment_target_kind("alice@example.com")?,
             "bip353_name"
         );
-        assert_eq!(
-            infer_pylon_payment_target_kind("lnurlp:alice")?,
-            "lnurl_pay"
-        );
-        assert!(infer_pylon_payment_target_kind("spark:alice").is_err());
+        assert_eq!(infer_ldk_payment_target_kind("lnurlp:alice")?, "lnurl_pay");
+        assert!(infer_ldk_payment_target_kind("spark:alice").is_err());
 
-        let capabilities = pylon_payment_target_capabilities("bolt12_offer");
+        let capabilities = ldk_payment_target_capabilities("bolt12_offer")?;
         ensure(
-            capabilities.contains(&"ldk_payment_target_v0_2".to_string())
+            capabilities.contains(&LDK_PAYMENT_TARGET_CAPABILITY_V0_2.to_string())
                 && capabilities.contains(&"bolt12_offer".to_string())
                 && capabilities.contains(&"bolt11_invoice_request".to_string()),
             "BOLT12 registration should advertise durable LDK payment-target capabilities",
@@ -48349,16 +48271,12 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
         save_config(config_path.as_path(), &config)?;
         let identity = ensure_identity(config.identity_path.as_path())?;
         let client = provider_presence_client()?;
-        sync_provider_payout_target_with_report(
+        sync_provider_payout_target(
             &client,
+            config_path.as_path(),
             &config,
             &identity,
             "session-payout",
-            &WalletAddressReport {
-                runtime: WalletRuntimeSurface::default(),
-                spark_address: String::new(),
-                bitcoin_address: "bc1qalice".to_string(),
-            },
         )
         .await?;
 
@@ -48384,9 +48302,9 @@ pub const PSIONIC_TRAIN_CS336_A1_DEMO_ENVIRONMENT_REF: &str = \"psionic.environm
                 && requests[1].1["payment_target_kind"] == "bolt12_offer"
                 && requests[1].1["payment_target"] == "lno1pylonalice"
                 && requests[1].1["pylon_payment_target_version"] == "pylon-payment-target/v0.2"
-                && requests[1].1["spark_address"] == ""
-                && requests[1].1["bitcoin_address"] == "bc1qalice",
-            "registered payout target should include the same identity, session, and receive targets",
+                && requests[1].1.get("spark_address").is_none()
+                && requests[1].1.get("bitcoin_address").is_none(),
+            "registered payout target should include only the LDK identity, session, and payment target",
         )?;
         ensure(
             requests[1].1["payment_target_capabilities"]

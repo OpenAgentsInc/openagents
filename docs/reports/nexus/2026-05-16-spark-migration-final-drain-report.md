@@ -110,8 +110,7 @@ LDK-15 made these normal-path changes:
 - Standard payout dispatch routes through the LDK provider boundary.
 - Spark dispatch fails closed unless explicit final-drain mode is enabled.
 - Nexus API payout-target registration rejects `spark_address` by default.
-- Pylon no longer creates a Spark destination on startup unless
-  `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`.
+- Pylon no longer creates a Spark destination on startup.
 
 LDK-15 proof is recorded in the closeout comment:
 

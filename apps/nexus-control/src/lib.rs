@@ -116,7 +116,7 @@ use openagents_provider_substrate::{
     ProviderAdapterTrainingSettlementTrigger, ProviderDiagnosticSummary,
     ProviderHostingTelemetrySnapshot, ProviderTrainingCapabilityEnvelopeV2,
     ProviderTrainingCapabilityTier, ProviderTrainingReplayCapability,
-    ProviderTrainingThroughputBand,
+    ProviderTrainingThroughputBand, infer_ldk_payment_target_kind, is_ldk_payment_target_kind,
 };
 use openagents_validator_service as validator_service;
 use openagents_validator_service::ValidatorChallengeStatus as ServiceValidatorChallengeStatus;
@@ -13076,43 +13076,45 @@ async fn register_provider_payout_target(
     State(state): State<AppState>,
     Json(request): Json<ProviderPayoutTargetRegistrationRequest>,
 ) -> Result<Json<ProviderPayoutTargetRegistrationResponse>, ApiError> {
-    let requested_payment_target_kind = request
+    let requested_payment_target_kind = match request
         .payment_target_kind
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_else(|| {
-            let target = request
-                .payment_target
-                .as_deref()
-                .unwrap_or(request.spark_address.as_str())
-                .trim()
-                .to_ascii_lowercase();
-            if target.starts_with("spark") {
-                "spark_address".to_string()
-            } else if target.starts_with("lno") {
-                "bolt12_offer".to_string()
-            } else if target.starts_with("lnurl")
-                || target.starts_with("https://")
-                || target.starts_with("http://")
-            {
-                "lnurl_pay".to_string()
-            } else if target.starts_with("ln") {
-                "bolt11_invoice".to_string()
-            } else if target.contains('@') {
-                "bip353_name".to_string()
-            } else {
-                "unknown".to_string()
-            }
-        });
-    if requested_payment_target_kind == "spark_address" {
+    {
+        Some(kind) => Some(kind.to_ascii_lowercase()),
+        None => request
+            .payment_target
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(infer_ldk_payment_target_kind)
+            .transpose()
+            .map_err(|error| ApiError {
+                status: StatusCode::BAD_REQUEST,
+                error: "invalid_payment_target",
+                reason: if error == "unsupported_payment_target_kind:spark_address" {
+                    "Spark payout targets are retired; register a BOLT12 offer, BOLT11 invoice, BIP353 name, or LNURL-pay target"
+                        .to_string()
+                } else {
+                    "Register a BOLT12 offer, BOLT11 invoice, BIP353 name, or LNURL-pay target"
+                        .to_string()
+                },
+            })?,
+    };
+    if requested_payment_target_kind
+        .as_deref()
+        .is_some_and(|kind| kind == "spark_address" || !is_ldk_payment_target_kind(kind))
+    {
+        let reason = if requested_payment_target_kind.as_deref() == Some("spark_address") {
+            "Spark payout targets are retired; register a BOLT12 offer, BOLT11 invoice, BIP353 name, or LNURL-pay target"
+        } else {
+            "Register a BOLT12 offer, BOLT11 invoice, BIP353 name, or LNURL-pay target"
+        };
         return Err(ApiError {
-            status: StatusCode::SERVICE_UNAVAILABLE,
-            error: "service_unavailable",
-            reason:
-                "Spark payout target registration is not available in the LDK-only runtime; use an LDK payment target"
-                    .to_string(),
+            status: StatusCode::BAD_REQUEST,
+            error: "invalid_payment_target",
+            reason: reason.to_string(),
         });
     }
     let normalized_request = ProviderPayoutTargetRegistrationRequest {
@@ -13133,9 +13135,6 @@ async fn register_provider_payout_target(
         pylon_payment_target_version: normalize_optional_field(
             request.pylon_payment_target_version.as_deref(),
         ),
-        spark_address: normalize_optional_field(Some(request.spark_address.as_str()))
-            .unwrap_or_default(),
-        bitcoin_address: normalize_optional_field(request.bitcoin_address.as_deref()),
         challenge: normalize_required_field(request.challenge.as_str(), "challenge_missing")?,
         challenge_signature_hex: normalize_required_field(
             request.challenge_signature_hex.as_str(),
@@ -25201,6 +25200,9 @@ fn runtime_snapshot(
         nexus_treasury_daily_budget_cap_sats: treasury_runtime.daily_budget_cap_sats,
         nexus_placeholder_payout_mode: treasury_runtime.placeholder_payout_mode,
         nexus_registered_payout_identities: treasury_runtime.registered_payout_identities,
+        nexus_ldk_payout_target_identities: treasury_runtime.ldk_payout_target_identities,
+        nexus_pylon_v0_2_registration_required_identities: treasury_runtime
+            .pylon_v0_2_registration_required_identities,
         nexus_payout_sats_paid_total: treasury_runtime.payout_sats_paid_total,
         nexus_payout_sats_paid_24h: treasury_runtime.payout_sats_paid_24h,
         nexus_accepted_work_payout_sats_paid_total: treasury_runtime
@@ -29596,7 +29598,6 @@ mod tests {
                 policy_change_reason: None,
                 lightning_provider: crate::treasury_provider::TreasuryLightningProviderConfig::new(
                     crate::treasury_provider::TreasuryLightningProviderKind::Ldk,
-                    false,
                     crate::treasury_provider::LdkTreasuryProviderConfig {
                         server_url: None,
                         api_key_path: None,
@@ -35429,6 +35430,7 @@ mod tests {
             "ldk_payment_target_v0_2".to_string(),
             "bolt12_offer".to_string(),
             "bolt11_invoice_request".to_string(),
+            "durable_payout_target".to_string(),
         ];
         let pylon_payment_target_version = "pylon-payment-target/v0.2";
         let signature = sign_provider_payment_target_registration(
@@ -35443,6 +35445,7 @@ mod tests {
                     "ldk_payment_target_v0_2",
                     "bolt12_offer",
                     "bolt11_invoice_request",
+                    "durable_payout_target",
                 ],
                 version: pylon_payment_target_version,
             },
@@ -35465,8 +35468,6 @@ mod tests {
                             pylon_payment_target_version: Some(
                                 pylon_payment_target_version.to_string(),
                             ),
-                            spark_address: String::new(),
-                            bitcoin_address: Some("bc1qalice".to_string()),
                             challenge: challenge.challenge,
                             challenge_signature_hex: signature,
                         },
@@ -35478,7 +35479,6 @@ mod tests {
             response_json(register_response).await?;
         assert_eq!(registration.payment_target_kind, payment_target_kind);
         assert_eq!(registration.payment_target, payment_target);
-        assert_eq!(registration.spark_address, "");
 
         let stats_response = app
             .clone()
@@ -35491,6 +35491,8 @@ mod tests {
             .await?;
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(stats.nexus_registered_payout_identities, 1);
+        assert_eq!(stats.nexus_ldk_payout_target_identities, 1);
+        assert_eq!(stats.nexus_pylon_v0_2_registration_required_identities, 0);
         assert_eq!(stats.receipt_count, 1);
         assert_eq!(stats.nexus_treasury_provider, "ldk");
         assert_eq!(stats.nexus_treasury_rail, "ldk");
@@ -35557,22 +35559,16 @@ mod tests {
                             pylon_payment_target_version: Some(
                                 "pylon-payment-target/v0.1".to_string(),
                             ),
-                            spark_address: "spark:legacy-provider".to_string(),
-                            bitcoin_address: None,
                             challenge: "unused".to_string(),
                             challenge_signature_hex: "unused".to_string(),
                         },
                     )?))?,
             )
             .await?;
-        assert_eq!(rejected.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
         let error: ErrorResponse = response_json(rejected).await?;
-        assert_eq!(error.error, "service_unavailable");
-        assert!(
-            error
-                .reason
-                .contains("legacy Spark payout target registration is disabled")
-        );
+        assert_eq!(error.error, "invalid_payment_target");
+        assert!(error.reason.contains("Spark payout targets are retired"));
 
         let stats_response = app
             .oneshot(
@@ -35584,6 +35580,8 @@ mod tests {
             .await?;
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
         assert_eq!(stats.nexus_registered_payout_identities, 0);
+        assert_eq!(stats.nexus_ldk_payout_target_identities, 0);
+        assert_eq!(stats.nexus_pylon_v0_2_registration_required_identities, 0);
         assert_eq!(stats.receipt_count, 0);
         Ok(())
     }
@@ -35986,6 +35984,7 @@ mod tests {
             "ldk_payment_target_v0_2".to_string(),
             "bolt12_offer".to_string(),
             "bolt11_invoice_request".to_string(),
+            "durable_payout_target".to_string(),
         ];
         let pylon_payment_target_version = "pylon-payment-target/v0.2";
         let signature = sign_provider_payment_target_registration(
@@ -36000,6 +35999,7 @@ mod tests {
                     "ldk_payment_target_v0_2",
                     "bolt12_offer",
                     "bolt11_invoice_request",
+                    "durable_payout_target",
                 ],
                 version: pylon_payment_target_version,
             },
@@ -36022,8 +36022,6 @@ mod tests {
                             pylon_payment_target_version: Some(
                                 pylon_payment_target_version.to_string(),
                             ),
-                            spark_address: String::new(),
-                            bitcoin_address: Some("bc1qalice".to_string()),
                             challenge: challenge.challenge,
                             challenge_signature_hex: signature,
                         },

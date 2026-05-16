@@ -590,8 +590,9 @@ Migration order:
    - Pylon v0.2 should prefer BOLT12 when available.
    - Pylon should advertise a capability/version marker so Nexus can choose
      LDK-compatible payout behavior without guessing.
-   - Old `spark_address` config may be read only to identify workers that must
-     upgrade before they can receive new payouts.
+   - Spark target registration must be rejected in the active API. Old
+     `spark_address` rows are read-only audit state that identify workers that
+     must upgrade before they can receive new payouts.
    - Pylon should continue to show local payout state, but it must not become a
      broad wallet shell.
 
@@ -653,8 +654,8 @@ Required changes:
 2. Prefer BOLT12 offers for durable worker payout registration.
 3. Add per-payment invoice request support for workers that can supply fresh
    BOLT11 invoices.
-4. Read old Spark targets only to identify workers that need an upgrade; do not
-   accept Spark targets for new paid work after cutover.
+4. Read old Spark targets only as audit state that identifies workers needing
+   an upgrade; do not accept Spark targets for new paid work after cutover.
 5. Add a capability bit or version marker so Nexus knows whether a Pylon can
    receive over LDK-standard Lightning.
 6. Update accepted-work payout records to store the target rail and the exact
@@ -669,9 +670,8 @@ Current implementation status:
   `pylon-payment-target/v0.2`.
 - Nexus accepts `bolt12_offer`, `bolt11_invoice`, `bip353_name`, and
   `lnurl_pay` target kinds and projects them in treasury status.
-- Normal Pylon startup does not create Spark destinations. Legacy Spark
-  destination creation is available only when
-  `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`.
+- Normal Pylon startup does not create Spark destinations. The active
+  registration path is Lightning-only and has no Spark write fallback.
 - Spark-only providers are retained for audit but are not eligible for new paid
   work; Nexus reports `payout_target_requires_ldk_v0_2`.
 
@@ -1909,16 +1909,14 @@ Implementation status, 2026-05-16:
 - Normal payout dispatch calls the LDK provider boundary. Spark dispatch
   returns a failed batch with a `legacy Spark payout dispatch is disabled`
   reason unless explicit final-drain mode is enabled.
-- Nexus API registration rejects `spark_address` payout targets by default
-  before challenge verification or state mutation. Spark-only historical
+- Nexus API registration rejects `spark_address` payout targets in the active
+  API before challenge verification or state mutation. Spark-only historical
   targets remain readable but are not LDK-compatible and are ineligible for new
   paid work.
 - Pylon no longer creates a Spark payout destination in the normal startup
-  path. The old write path is guarded by
-  `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true` for explicit recovery or
-  final-drain work only.
+  path, and the active registration API carries no Spark fields.
 - Remaining Spark references are allowed only in historical receipt migration,
-  disabled final-drain/recovery gates, the reusable legacy Spark crate,
+  disabled Nexus final-drain/recovery gates, the reusable legacy Spark crate,
   deprecated Autopilot code, and tests proving the gates stay closed.
 
 Grep checklist, 2026-05-16:
@@ -1929,9 +1927,8 @@ Grep checklist, 2026-05-16:
 - `rg -n "create_invoice|create_bolt11_invoice|get_spark_address|send_spark"
   apps/nexus-control/src/treasury.rs` shows direct Spark wallet calls only
   below the explicit final-drain gate.
-- `rg -n "OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED|apply_default_payout_destination"
-  apps/pylon/src/lib.rs` shows Pylon Spark destination writes only below the
-  disabled-by-default legacy write gate.
+- `rg -n "apply_default_payout_destination" apps/pylon/src/lib.rs` returns no
+  hits.
 - `rg -n "spark_address" apps/nexus-control/src apps/pylon/src` still finds
   historical readers, compatibility fields, negative tests, and final-drain
   gates. Those references are expected until LDK-16 signs off the final Spark

@@ -149,20 +149,18 @@ Pylon v0.2 is the provider-side half of the Spark-to-LDK cutover documented in
 
 The required sequence is:
 
-1. Read existing Spark payout config only to identify workers that need a
-   Pylon v0.2 payment-target upgrade.
-2. Add standard Lightning payout target variants:
+1. Add standard Lightning payout target variants:
    - `bolt12_offer`
    - `bolt11_invoice`
    - `bip353_name`
    - optional `lnurl_pay`
-3. Prefer BOLT12 offers for new durable payout registration.
-4. Advertise payment-target capability to Nexus so Nexus can verify
+2. Prefer BOLT12 offers for new durable payout registration.
+3. Advertise payment-target capability to Nexus so Nexus can verify
    LDK-compatible payout support without inference from client version strings.
-5. Store payout receipts with the exact rail and payment artifact used.
-6. Emit redacted earning and payout state to Nexus for the read-only Lightning
+4. Store payout receipts with the exact rail and payment artifact used.
+5. Emit redacted earning and payout state to Nexus for the read-only Lightning
    visualization.
-7. Stop creating new Spark destinations. Workers that only have Spark targets
+6. Stop creating new Spark destinations. Workers that only have Spark targets
    are not eligible for new paid work after cutover.
 
 Current implementation status:
@@ -172,10 +170,8 @@ Current implementation status:
   `pylon-payment-target/v0.2`.
 - Supported target kinds are `bolt12_offer`, `bolt11_invoice`, `bip353_name`,
   and `lnurl_pay`; BOLT12 is the preferred durable target.
-- Normal Pylon startup no longer creates local Spark payout destinations. A
-  legacy Spark write path remains only behind
-  `OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true` for explicit final-drain
-  or recovery work.
+- Normal Pylon startup no longer creates local Spark payout destinations. The
+  active registration path is Lightning-only and has no Spark write fallback.
 - Nexus records old Spark-only targets for audit, but marks them ineligible for
   new paid work with `payout_target_requires_ldk_v0_2`.
 - Nexus accepted-work payout dispatch now uses LDK-compatible Pylon v0.2

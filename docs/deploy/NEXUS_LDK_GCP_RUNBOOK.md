@@ -135,9 +135,8 @@ payout_destination = "lno..."
 ```
 
 Normal Pylon startup no longer creates Spark payout destinations. The only
-remaining Spark write path is an explicit final-drain/recovery path guarded by
-`OPENAGENTS_PYLON_LEGACY_SPARK_WRITE_ENABLED=true`. Spark-only workers remain
-visible to Nexus for audit, but new paid-work eligibility should show
+Pylon registration path is Lightning-only. Spark-only workers remain visible to
+Nexus for audit, but new paid-work eligibility should show
 `payout_target_requires_ldk_v0_2`.
 
 3. Run read-only smoke:
